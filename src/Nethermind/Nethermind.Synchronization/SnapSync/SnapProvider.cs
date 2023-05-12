@@ -66,17 +66,17 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddAccountRange(long blockNumber, ValueKeccak expectedRootHash, ValueKeccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null, ValueKeccak? hashLimit = null!)
+        public AddRangeResult AddAccountRange(long blockNumber, in ValueKeccak expectedRootHash, in ValueKeccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null, in ValueKeccak? hashLimit = null!)
         {
             ITrieStore store = _trieStorePool.Get();
             try
             {
                 StateTree tree = new(store, _logManager);
 
-                if (!hashLimit.HasValue) hashLimit = ValueKeccak.MaxValue;
+                ValueKeccak effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
 
                 (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage, IList<ValueKeccak> codeHashes) =
-                    SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, hashLimit.Value, accounts, proofs);
+                    SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
 
                 if (result == AddRangeResult.OK)
                 {
@@ -86,7 +86,7 @@ namespace Nethermind.Synchronization.SnapSync
                     }
 
                     _progressTracker.EnqueueCodeHashes(codeHashes);
-                    _progressTracker.UpdateAccountRangePartitionProgress(hashLimit.Value, accounts[^1].Path, moreChildrenToRight);
+                    _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, accounts[^1].Path, moreChildrenToRight);
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
                 {
@@ -156,7 +156,7 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, ValueKeccak expectedRootHash, ValueKeccak? startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
+        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueKeccak expectedRootHash, in ValueKeccak? startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
         {
             ITrieStore store = _trieStorePool.Get();
             StorageTree tree = new(store, _logManager);

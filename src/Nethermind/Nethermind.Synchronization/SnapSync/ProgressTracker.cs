@@ -283,7 +283,7 @@ namespace Nethermind.Synchronization.SnapSync
             StoragesToRetrieve.Enqueue(pwa);
         }
 
-        public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, ValueKeccak? startingHash)
+        public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, in ValueKeccak? startingHash)
         {
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault() });
         }
@@ -316,7 +316,7 @@ namespace Nethermind.Synchronization.SnapSync
             Interlocked.Decrement(ref _activeStorageRequests);
         }
 
-        public void ReportAccountRangePartitionFinished(ValueKeccak hashLimit)
+        public void ReportAccountRangePartitionFinished(in ValueKeccak hashLimit)
         {
             AccountRangePartition partition = AccountRangePartitions[hashLimit];
 
@@ -327,7 +327,7 @@ namespace Nethermind.Synchronization.SnapSync
             Interlocked.Decrement(ref _activeAccountRequests);
         }
 
-        public void UpdateAccountRangePartitionProgress(ValueKeccak hashLimit, ValueKeccak nextPath, bool moreChildrenToRight)
+        public void UpdateAccountRangePartitionProgress(in ValueKeccak hashLimit, in ValueKeccak nextPath, bool moreChildrenToRight)
         {
             AccountRangePartition partition = AccountRangePartitions[hashLimit];
 

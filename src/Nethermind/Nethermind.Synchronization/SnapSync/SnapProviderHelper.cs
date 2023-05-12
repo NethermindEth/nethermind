@@ -22,9 +22,9 @@ namespace Nethermind.Synchronization.SnapSync
         public static (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<ValueKeccak> codeHashes) AddAccountRange(
             StateTree tree,
             long blockNumber,
-            ValueKeccak expectedRootHash,
-            ValueKeccak startingHash,
-            ValueKeccak limitHash,
+            in ValueKeccak expectedRootHash,
+            in ValueKeccak startingHash,
+            in ValueKeccak limitHash,
             PathWithAccount[] accounts,
             byte[][] proofs = null
         )
@@ -81,9 +81,9 @@ namespace Nethermind.Synchronization.SnapSync
         public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(
             StorageTree tree,
             long blockNumber,
-            ValueKeccak? startingHash,
+            in ValueKeccak? startingHash,
             PathWithStorageSlot[] slots,
-            ValueKeccak expectedRootHash,
+            in ValueKeccak expectedRootHash,
             byte[][]? proofs = null
         )
         {
@@ -122,10 +122,10 @@ namespace Nethermind.Synchronization.SnapSync
 
         private static (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(
             PatriciaTree tree,
-            ValueKeccak? startingHash,
-            ValueKeccak endHash,
-            ValueKeccak limitHash,
-            ValueKeccak expectedRootHash,
+            in ValueKeccak? startingHash,
+            in ValueKeccak endHash,
+            in ValueKeccak limitHash,
+            in ValueKeccak expectedRootHash,
             byte[][]? proofs = null
         )
         {
@@ -139,7 +139,7 @@ namespace Nethermind.Synchronization.SnapSync
                 throw new ArgumentNullException(nameof(tree));
             }
 
-            startingHash ??= ValueKeccak.Zero;
+            ValueKeccak effectiveStartingHAsh = startingHash.HasValue ? startingHash.Value : ValueKeccak.Zero;
             List<TrieNode> sortedBoundaryList = new();
 
             Dictionary<ValueKeccak, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
@@ -150,7 +150,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             Span<byte> leftBoundary = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(startingHash.Value.Bytes, leftBoundary);
+            Nibbles.BytesToNibbleBytes(effectiveStartingHAsh.Bytes, leftBoundary);
             Span<byte> rightBoundary = stackalloc byte[64];
             Nibbles.BytesToNibbleBytes(endHash.Bytes, rightBoundary);
             Span<byte> rightLimit = stackalloc byte[64];
