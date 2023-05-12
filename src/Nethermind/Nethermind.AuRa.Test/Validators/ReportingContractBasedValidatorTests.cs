@@ -204,7 +204,7 @@ namespace Nethermind.AuRa.Test.Validators
 
                 TxSender = Substitute.For<ITxSender>();
                 ITxPool txPool = Substitute.For<ITxPool>();
-                IStateProvider stateProvider = Substitute.For<IStateProvider>();
+                IWorldState stateProvider = Substitute.For<IWorldState>();
                 ISpecProvider specProvider = Substitute.For<ISpecProvider>();
                 stateProvider.GetNonce(ReportingValidatorContract.NodeAddress).Returns(UInt256.One);
 

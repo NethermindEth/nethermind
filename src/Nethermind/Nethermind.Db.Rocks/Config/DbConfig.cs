@@ -155,7 +155,7 @@ public class DbConfig : IDbConfig
     public int? StateDbBlockSize { get; set; } = 4 * 1024;
     public bool? StateDbUseDirectReads { get; set; } = false;
     public bool? StateDbUseDirectIoForFlushAndCompactions { get; set; } = false;
-    public bool? StateDbDisableCompression { get; set; } = true;
+    public bool? StateDbDisableCompression { get; set; } = false;
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;

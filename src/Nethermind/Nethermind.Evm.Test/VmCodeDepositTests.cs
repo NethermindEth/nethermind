@@ -50,19 +50,18 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough
                 .Done;
 
             TestAllTracerWithOutput receipt = Execute(code);
-            byte[] result = Storage.Get(storageCell);
+            byte[] result = TestState.Get(storageCell);
             Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
             Assert.That(receipt.GasSpent, Is.EqualTo(98777), "no refund");
 
-            byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
+            byte[] returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0));
             Assert.That(returnData, Is.EqualTo(new byte[1]), "address returned");
         }
 
@@ -91,19 +90,18 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough
                 .Done;
 
             TestAllTracerWithOutput receipt = Execute(code);
-            byte[] result = Storage.Get(storageCell);
+            byte[] result = TestState.Get(storageCell);
             Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
             Assert.That(receipt.GasSpent, Is.EqualTo(83199), "with refund");
 
-            byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
+            byte[] returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0));
             Assert.That(returnData, Is.EqualTo(deployed.Bytes), "address returned");
         }
     }
