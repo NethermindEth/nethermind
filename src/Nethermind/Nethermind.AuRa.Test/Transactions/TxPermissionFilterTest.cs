@@ -294,7 +294,6 @@ public class TxPermissionFilterTest
                 new RewardCalculator(SpecProvider),
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
-                Storage,
                 ReceiptStorage,
                 LimboLogs.Instance,
                 BlockTree,

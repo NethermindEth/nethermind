@@ -8,10 +8,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State;
+using Nethermind.State.Tracing;
 
 namespace Nethermind.Evm.Tracing
 {
-    public interface ITxTracer : IStateTracer, IStorageTracer
+    public interface ITxTracer : IWorldStateTracer
     {
         /// <summary>
         /// Defines whether MarkAsSuccess or MarkAsFailed will be called

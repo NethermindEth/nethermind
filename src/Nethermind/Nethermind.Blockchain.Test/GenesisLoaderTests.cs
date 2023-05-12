@@ -60,14 +60,12 @@ public class GenesisLoaderTests
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Berlin.Instance);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);
-        StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        GenesisLoader genesisLoader = new(chainSpec, specProvider, stateProvider, storageProvider,
-            transactionProcessor);
+        GenesisLoader genesisLoader = new(chainSpec, specProvider, stateProvider, transactionProcessor);
         return genesisLoader.Load();
     }
 

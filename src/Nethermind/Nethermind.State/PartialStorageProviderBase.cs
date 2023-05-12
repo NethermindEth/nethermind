@@ -7,13 +7,14 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
+using Nethermind.State.Tracing;
 
 namespace Nethermind.State
 {
     /// <summary>
     /// Contains common code for both Persistent and Transient storage providers
     /// </summary>
-    public abstract class PartialStorageProviderBase
+    internal abstract class PartialStorageProviderBase
     {
         protected readonly ResettableDictionary<StorageCell, StackList<int>> _intraBlockCache = new();
 
@@ -145,7 +146,7 @@ namespace Nethermind.State
         /// </summary>
         public void Commit()
         {
-            Commit(NullStorageTracer.Instance);
+            Commit(NullStateTracer.Instance);
         }
 
         protected readonly struct ChangeTrace

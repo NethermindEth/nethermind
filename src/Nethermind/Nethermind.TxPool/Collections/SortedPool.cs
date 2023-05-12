@@ -405,6 +405,19 @@ namespace Nethermind.TxPool.Collections
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool TryGetBucketsWorstValue(TGroupKey groupKey, out TValue? item)
+        {
+            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
+            {
+                item = bucket.Max;
+                return true;
+            }
+
+            item = default;
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public void UpdatePool(Func<TGroupKey, IReadOnlySortedSet<TValue>, IEnumerable<(TValue Tx, Action<TValue>? Change)>> changingElements)
         {
             foreach ((TGroupKey groupKey, EnhancedSortedSet<TValue> bucket) in _buckets)

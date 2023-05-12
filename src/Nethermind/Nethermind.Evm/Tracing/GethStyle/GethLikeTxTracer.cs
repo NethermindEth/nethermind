@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State;
+using Nethermind.State.Tracing;
 
 namespace Nethermind.Evm.Tracing.GethStyle
 {

@@ -320,7 +320,7 @@ namespace Nethermind.Trie
         }
 
         [DebuggerStepThrough]
-        public void Set(Span<byte> rawKey, byte[] value)
+        public void Set(ReadOnlySpan<byte> rawKey, byte[] value)
         {
             if (_logger.IsTrace)
                 _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
@@ -336,7 +336,7 @@ namespace Nethermind.Trie
         }
 
         [DebuggerStepThrough]
-        public void Set(Span<byte> rawKey, Rlp? value)
+        public void Set(ReadOnlySpan<byte> rawKey, Rlp? value)
         {
             Set(rawKey, value is null ? Array.Empty<byte>() : value.Bytes);
         }

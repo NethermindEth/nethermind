@@ -412,6 +412,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             _readAheadReadOptions.SetTailing(true);
         }
 
+        if (dbConfig.DisableCompression == true)
+        {
+            options.SetCompression(Compression.No);
+        }
+
         if (dbConfig.EnableDbStatistics)
         {
             options.EnableStatistics();

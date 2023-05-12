@@ -41,6 +41,7 @@ namespace Nethermind.Trie.Pruning
         }
 
         public bool IsPersisted(Keccak keccak) => true;
+        public bool IsPersisted(in ValueKeccak keccak) => true;
 
         public void Dispose() { }
 
