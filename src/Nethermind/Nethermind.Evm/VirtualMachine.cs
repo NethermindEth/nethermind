@@ -2516,14 +2516,12 @@ public class VirtualMachine : IVirtualMachine
                         {
                             if (!spec.IsEofEvmModeOn || !spec.JumpfOpcodeEnabled || env.CodeInfo.EofVersion() == 0)
                             {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
+                            goto InvalidJumpDestination;
                             }
 
                             if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable)) // still undecided in EIP
                             {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
+                            goto InvalidJumpDestination;
                             }
 
                             var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
