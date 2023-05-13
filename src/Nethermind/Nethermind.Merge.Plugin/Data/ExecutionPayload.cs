@@ -83,7 +83,11 @@ public class ExecutionPayload
     /// </summary>
     public IEnumerable<Withdrawal>? Withdrawals { get; set; }
 
-    [JsonConverter(typeof(NullableUInt256Converter))]
+    /// <summary>
+    /// Gets or sets <see cref="Block.ExcessDataGas"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
+    /// </summary>
+    [JsonProperty(ItemConverterType = typeof(NullableUInt256Converter), NullValueHandling = NullValueHandling.Ignore)]
     public UInt256? ExcessDataGas { get; set; }
 
     /// <summary>
@@ -91,7 +95,7 @@ public class ExecutionPayload
     /// </summary>
     /// <param name="block">When this method returns, contains the execution block.</param>
     /// <param name="totalDifficulty">A total difficulty of the block.</param>
-    /// <returns><c>true</c> if block created successfully; otherise, <c>false</c>.</returns>
+    /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
     public virtual bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
     {
         try

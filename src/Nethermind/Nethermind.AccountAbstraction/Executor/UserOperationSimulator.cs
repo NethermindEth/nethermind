@@ -242,10 +242,7 @@ namespace Nethermind.AccountAbstraction.Executor
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
         {
-            if (transaction.SenderAddress is null)
-            {
-                transaction.SenderAddress = Address.SystemUser;
-            }
+            transaction.SenderAddress ??= Address.SystemUser;
 
             if (transaction.Nonce == 0)
             {

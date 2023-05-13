@@ -20,6 +20,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (rlpStream.IsNextItemNull())
             {
+                rlpStream.ReadByte();
                 return null;
             }
 

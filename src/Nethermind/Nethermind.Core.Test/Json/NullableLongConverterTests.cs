@@ -39,7 +39,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("0xa00000"));
             reader.ReadAsString();
             long? result = converter.ReadJson(reader, typeof(long?), 0, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(10485760, result);
+            Assert.That(result, Is.EqualTo(10485760));
         }
 
         [Test]
@@ -49,7 +49,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("0x0"));
             reader.ReadAsString();
             long? result = converter.ReadJson(reader, typeof(long?), 0L, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(long.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(long.Parse("0")));
         }
 
         [Test]
@@ -59,7 +59,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("0x0000"));
             reader.ReadAsString();
             long? result = converter.ReadJson(reader, typeof(long?), 0L, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(long.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(long.Parse("0")));
         }
 
         [Test]
@@ -69,7 +69,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("0"));
             reader.ReadAsString();
             long? result = converter.ReadJson(reader, typeof(long?), 0L, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(long.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(long.Parse("0")));
         }
 
         [Test]
@@ -79,7 +79,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("1"));
             reader.ReadAsString();
             long? result = converter.ReadJson(reader, typeof(long?), 0L, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(long.Parse("1"), result);
+            Assert.That(result, Is.EqualTo(long.Parse("1")));
         }
 
         [Test]
@@ -89,7 +89,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("null"));
             reader.ReadAsString();
             long? result = converter.ReadJson(reader, typeof(long?), 0L, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(null, result);
+            Assert.That(result, Is.EqualTo(null));
         }
 
         [Test]
@@ -99,7 +99,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("-1"));
             reader.ReadAsString();
             long? result = converter.ReadJson(reader, typeof(long?), 0L, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(long.Parse("-1"), result);
+            Assert.That(result, Is.EqualTo(long.Parse("-1")));
         }
     }
 }

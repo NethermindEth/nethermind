@@ -42,12 +42,12 @@ namespace Nethermind.Network.Test
 
             _statsManager.UpdateCurrentReputation(a, b, c);
 
-            Assert.AreEqual(-1, _comparer.Compare(peerA, peerB));
-            Assert.AreEqual(1, _comparer.Compare(peerA, peerC));
-            Assert.AreEqual(1, _comparer.Compare(peerB, peerC));
-            Assert.AreEqual(0, _comparer.Compare(peerA, peerA));
-            Assert.AreEqual(0, _comparer.Compare(peerB, peerB));
-            Assert.AreEqual(0, _comparer.Compare(peerC, peerC));
+            Assert.That(_comparer.Compare(peerA, peerB), Is.EqualTo(-1));
+            Assert.That(_comparer.Compare(peerA, peerC), Is.EqualTo(1));
+            Assert.That(_comparer.Compare(peerB, peerC), Is.EqualTo(1));
+            Assert.That(_comparer.Compare(peerA, peerA), Is.EqualTo(0));
+            Assert.That(_comparer.Compare(peerB, peerB), Is.EqualTo(0));
+            Assert.That(_comparer.Compare(peerC, peerC), Is.EqualTo(0));
         }
 
         [Test]
@@ -76,11 +76,11 @@ namespace Nethermind.Network.Test
             _statsManager.UpdateCurrentReputation(peers);
             peers.Sort(_comparer);
 
-            Assert.AreEqual(peerC, peers[0]);
-            Assert.AreEqual(peerA, peers[1]);
-            Assert.AreEqual(peerB, peers[2]);
-            Assert.AreEqual(peerD, peers[3]);
-            Assert.AreEqual(peerE, peers[4]);
+            Assert.That(peers[0], Is.EqualTo(peerC));
+            Assert.That(peers[1], Is.EqualTo(peerA));
+            Assert.That(peers[2], Is.EqualTo(peerB));
+            Assert.That(peers[3], Is.EqualTo(peerD));
+            Assert.That(peers[4], Is.EqualTo(peerE));
         }
     }
 }

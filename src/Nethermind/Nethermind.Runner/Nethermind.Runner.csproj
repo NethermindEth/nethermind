@@ -3,23 +3,20 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net7.0</TargetFramework>
     <LangVersion>latest</LangVersion>
-    <ServerGarbageCollection>true</ServerGarbageCollection>
-    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
-    <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
     <Nullable>annotations</Nullable>
-    <UseAppHost>true</UseAppHost>
-    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-    <DockerfileFile>Dockerfile.debug</DockerfileFile>
-    <DockerfileRunArguments>-v $(NETHERMIND_DATA_DIR):/data -p 8545:8545 -p 8551:8551 -p 30303:30303</DockerfileRunArguments>
-    <UserSecretsId>03db39d0-4200-473e-9ff8-4a48d496381f</UserSecretsId>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
+    <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
     <TieredPGO>true</TieredPGO>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <PropertyGroup>
-    <InvariantGlobalization>true</InvariantGlobalization>
-    <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
-    <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <DockerfileRunArguments>-v $(NETHERMIND_DATA_DIR):/data -p 8545:8545 -p 8551:8551 -p 30303:30303</DockerfileRunArguments>
+    <UserSecretsId>03db39d0-4200-473e-9ff8-4a48d496381f</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -35,10 +32,11 @@
     <PackageReference Include="NLog.Targets.Seq" />
     <PackageReference Include="NLog" />
     <PackageReference Include="Seq.Api" />
-    <PackageReference Include="System.IO.Abstractions" />
     <PackageReference Include="System.Linq.Async" />
+    <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" />
     <PackageReference Include="YamlDotNet" />
   </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj" />
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
@@ -68,6 +66,7 @@
     <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
     <ProjectReference Include="..\Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj" />
   </ItemGroup>
+
   <ItemGroup>
     <Content Include="..\Chains\**\*.*">
       <Link>chainspec\%(RecursiveDir)%(Filename)%(Extension)</Link>
@@ -76,42 +75,18 @@
     <Content Include="configs\*.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="baseline\contracts\*.bin">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Remove="out\**" />
-    <Content Remove="keystore\**" />
-    <Content Include="nethermind.css">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Update="Data\static-nodes-baseline.json">
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Content Update="..\Chains\themerge_devnet_m4.json">
-      <Link>chainspec\themerge_devnet_m4.json</Link>
+    <Content Include="nethermind.css">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
-  <ItemGroup>
     <Content Update="NLog.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
-  <ItemGroup>
-    <Compile Remove="out\**" />
-    <Compile Remove="keystore\**" />
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Remove="out\**" />
-    <EmbeddedResource Remove="keystore\**" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Remove="out\**" />
     <None Remove="keystore\**" />
-  </ItemGroup>
-  <ItemGroup>
-    <_ContentIncludedByDefault Remove="Contracts\EntryPoint.json" />
   </ItemGroup>
 
   <Target Name="CollectPlugins" AfterTargets="AfterBuild;AfterPublish">
@@ -122,12 +97,12 @@
   </Target>
 
   <Target Name="CopyPluginsAfterBuild" AfterTargets="AfterBuild" DependsOnTargets="CollectPlugins">
-    <Message Text="---&gt; Copying Plugins After Build" Importance="High" />
+    <Message Text="Copying plugins after build..." Importance="High" />
     <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
   </Target>
 
   <Target Name="CopyPluginsAfterPublish" AfterTargets="AfterPublish" DependsOnTargets="CollectPlugins">
-    <Message Text="---&gt; Copying Plugins After Publish" Importance="High" />
+    <Message Text="Copying plugins after publish..." Importance="High" />
     <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
     <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)\plugins" />
   </Target>

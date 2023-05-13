@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -40,12 +39,12 @@ namespace Nethermind.Core
 
         public byte[] Bytes { get; }
 
-        public void Set(byte[] sequence)
+        public void Set(ReadOnlySpan<byte> sequence)
         {
             Set(sequence, null);
         }
 
-        private void Set(byte[] sequence, Bloom? masterBloom)
+        private void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom)
         {
             if (ReferenceEquals(this, Empty))
             {
@@ -64,10 +63,10 @@ namespace Nethermind.Core
             }
         }
 
-        public bool Matches(byte[] sequence)
+        public bool Matches(ReadOnlySpan<byte> sequence)
         {
             BloomExtract indexes = GetExtract(sequence);
-            return Matches(ref indexes);
+            return Matches(in indexes);
         }
 
         public override string ToString()
@@ -167,17 +166,15 @@ namespace Nethermind.Core
 
         public bool Matches(Keccak topic) => Matches(topic.Bytes);
 
-        public bool Matches(ref BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
-
-        public bool Matches(BloomExtract extract) => Matches(ref extract);
+        public bool Matches(in BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
 
         public static BloomExtract GetExtract(Address address) => GetExtract(address.Bytes);
 
         public static BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Bytes);
 
-        private static BloomExtract GetExtract(byte[] sequence)
+        private static BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
         {
-            int GetIndex(Span<byte> bytes, int index1, int index2)
+            int GetIndex(ReadOnlySpan<byte> bytes, int index1, int index2)
             {
                 return 2047 - ((bytes[index1] << 8) + bytes[index2]) % 2048;
             }
@@ -187,7 +184,7 @@ namespace Nethermind.Core
             return indexes;
         }
 
-        public struct BloomExtract
+        public readonly struct BloomExtract
         {
             public BloomExtract(int index1, int index2, int index3)
             {
@@ -199,6 +196,8 @@ namespace Nethermind.Core
             public int Index1 { get; }
             public int Index2 { get; }
             public int Index3 { get; }
+
+            public bool IsZero() => Index1 == 0 && Index2 == 0 && Index3 == 0;
         }
 
         public BloomStructRef ToStructRef() => new(Bytes);
@@ -229,12 +228,12 @@ namespace Nethermind.Core
 
         public Span<byte> Bytes { get; }
 
-        public void Set(byte[] sequence)
+        public void Set(ReadOnlySpan<byte> sequence)
         {
             Set(sequence, null);
         }
 
-        private void Set(Span<byte> sequence, Bloom? masterBloom = null)
+        private void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom = null)
         {
             Bloom.BloomExtract indexes = GetExtract(sequence);
             Set(indexes.Index1);
@@ -248,10 +247,10 @@ namespace Nethermind.Core
             }
         }
 
-        public bool Matches(byte[] sequence)
+        public bool Matches(ReadOnlySpan<byte> sequence)
         {
             Bloom.BloomExtract indexes = GetExtract(sequence);
-            return Matches(ref indexes);
+            return Matches(in indexes);
         }
 
         public override string ToString()
@@ -349,15 +348,13 @@ namespace Nethermind.Core
 
         public bool Matches(Keccak topic) => Matches(topic.Bytes);
 
-        public bool Matches(ref Bloom.BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
-
-        public bool Matches(Bloom.BloomExtract extract) => Matches(ref extract);
+        public bool Matches(in Bloom.BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
 
         public static Bloom.BloomExtract GetExtract(Address address) => GetExtract(address.Bytes);
 
         public static Bloom.BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Bytes);
 
-        private static Bloom.BloomExtract GetExtract(Span<byte> sequence)
+        private static Bloom.BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
         {
             int GetIndex(Span<byte> bytes, int index1, int index2)
             {

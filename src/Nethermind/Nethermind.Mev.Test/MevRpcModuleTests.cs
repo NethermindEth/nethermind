@@ -84,7 +84,7 @@ namespace Nethermind.Mev.Test
         private static async Task<Keccak> SendSignedTransaction(TestMevRpcBlockchain chain, Transaction tx)
         {
             ResultWrapper<Keccak>? result = await chain.EthRpcModule.eth_sendRawTransaction(EncodeTx(tx).Bytes);
-            Assert.AreNotEqual(result.GetResult().ResultType, ResultType.Failure);
+            Assert.That(result.GetResult().ResultType, Is.Not.EqualTo(ResultType.Failure));
             return result.Data;
         }
 

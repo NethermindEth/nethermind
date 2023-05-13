@@ -13,11 +13,11 @@ namespace Nethermind.Consensus.Tracing
 {
     public class Tracer : ITracer
     {
-        private readonly IStateProvider _stateProvider;
+        private readonly IWorldState _stateProvider;
         private readonly IBlockchainProcessor _blockProcessor;
         private readonly ProcessingOptions _processingOptions;
 
-        public Tracer(IStateProvider stateProvider, IBlockchainProcessor blockProcessor, ProcessingOptions processingOptions = ProcessingOptions.Trace)
+        public Tracer(IWorldState stateProvider, IBlockchainProcessor blockProcessor, ProcessingOptions processingOptions = ProcessingOptions.Trace)
         {
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.Tracing
 
             blockTracer.StartNewBlockTrace(block);
 
-            Block? processedBlock = null;
+            Block? processedBlock;
             try
             {
                 processedBlock = _blockProcessor.Process(block, _processingOptions, blockTracer);

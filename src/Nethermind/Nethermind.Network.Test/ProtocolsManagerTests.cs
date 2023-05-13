@@ -165,7 +165,7 @@ namespace Nethermind.Network.Test
 
             public Context VerifyDisconnected()
             {
-                Assert.AreEqual(SessionState.Disconnected, _currentSession.State);
+                Assert.That(_currentSession.State, Is.EqualTo(SessionState.Disconnected));
                 return this;
             }
 
@@ -188,13 +188,13 @@ namespace Nethermind.Network.Test
 
             public Context VerifyInitialized()
             {
-                Assert.AreEqual(SessionState.Initialized, _currentSession.State);
+                Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
                 return this;
             }
 
             public Context VerifyCompatibilityValidationType(CompatibilityValidationType expectedType)
             {
-                Assert.AreEqual(expectedType, _nodeStatsManager.GetOrAdd(_currentSession.Node).FailedCompatibilityValidation);
+                Assert.That(_nodeStatsManager.GetOrAdd(_currentSession.Node).FailedCompatibilityValidation, Is.EqualTo(expectedType));
                 return this;
             }
 
@@ -229,10 +229,10 @@ namespace Nethermind.Network.Test
             public Context VerifyEthInitialized()
             {
                 INodeStats stats = _nodeStatsManager.GetOrAdd(_currentSession.Node);
-                Assert.AreEqual(TestBlockchainIds.NetworkId, stats.EthNodeDetails.NetworkId);
-                Assert.AreEqual(_blockTree.Genesis.Hash, stats.EthNodeDetails.GenesisHash);
-                Assert.AreEqual(66, stats.EthNodeDetails.ProtocolVersion);
-                Assert.AreEqual(BigInteger.One, stats.EthNodeDetails.TotalDifficulty);
+                Assert.That(stats.EthNodeDetails.NetworkId, Is.EqualTo(TestBlockchainIds.NetworkId));
+                Assert.That(stats.EthNodeDetails.GenesisHash, Is.EqualTo(_blockTree.Genesis.Hash));
+                Assert.That(stats.EthNodeDetails.ProtocolVersion, Is.EqualTo(66));
+                Assert.That(stats.EthNodeDetails.TotalDifficulty, Is.EqualTo(BigInteger.One));
                 return this;
             }
 

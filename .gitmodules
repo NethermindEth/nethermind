@@ -7,6 +7,3 @@
 [submodule "src/Nethermind/Nethermind.GitBook/docs"]
 	path = src/Nethermind/Nethermind.GitBook/docs
 	url = https://github.com/NethermindEth/docs.git
-[submodule "src/ethereum-tests"]
-	path = src/ethereum-tests
-	url = https://github.com/NethermindEth/ethereum-tests.git

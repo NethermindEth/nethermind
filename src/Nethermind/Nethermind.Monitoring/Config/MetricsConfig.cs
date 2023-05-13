@@ -11,5 +11,6 @@ namespace Nethermind.Monitoring.Config
         public string PushGatewayUrl { get; set; } = "";
         public int IntervalSeconds { get; set; } = 5;
         public string NodeName { get; set; } = "Nethermind";
+        public bool EnableDbSizeMetrics { get; set; } = true;
     }
 }

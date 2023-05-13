@@ -43,10 +43,10 @@ namespace Nethermind.Network.Test.P2P
         public void Constructor_sets_the_values()
         {
             Session session = new(30312, new Node(TestItem.PublicKeyB, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-            Assert.AreEqual(TestItem.PublicKeyB, session.RemoteNodeId);
-            Assert.AreEqual(30312, session.LocalPort);
-            Assert.AreEqual(ConnectionDirection.Out, session.Direction);
-            Assert.AreNotEqual(default(Guid), session.SessionId);
+            Assert.That(session.RemoteNodeId, Is.EqualTo(TestItem.PublicKeyB));
+            Assert.That(session.LocalPort, Is.EqualTo(30312));
+            Assert.That(session.Direction, Is.EqualTo(ConnectionDirection.Out));
+            Assert.That(session.SessionId, Is.Not.EqualTo(default(Guid)));
         }
 
         [Test]
@@ -90,7 +90,7 @@ namespace Nethermind.Network.Test.P2P
 
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
-            Assert.AreEqual(5, session.P2PVersion);
+            Assert.That(session.P2PVersion, Is.EqualTo(5));
             Assert.True(wasCalled);
         }
 
@@ -100,8 +100,8 @@ namespace Nethermind.Network.Test.P2P
             Session session = new(30312, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyB);
             session.Init(4, _channelHandlerContext, _packetSender);
-            Assert.AreEqual(4, session.P2PVersion);
-            Assert.AreEqual(TestItem.PublicKeyB, session.RemoteNodeId);
+            Assert.That(session.P2PVersion, Is.EqualTo(4));
+            Assert.That(session.RemoteNodeId, Is.EqualTo(TestItem.PublicKeyB));
         }
 
         [Test]
@@ -221,11 +221,11 @@ namespace Nethermind.Network.Test.P2P
         public void Best_state_reached_is_correct()
         {
             Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-            Assert.AreEqual(SessionState.New, session.BestStateReached);
+            Assert.That(session.BestStateReached, Is.EqualTo(SessionState.New));
             session.Handshake(TestItem.PublicKeyA);
-            Assert.AreEqual(SessionState.HandshakeComplete, session.BestStateReached);
+            Assert.That(session.BestStateReached, Is.EqualTo(SessionState.HandshakeComplete));
             session.Init(5, _channelHandlerContext, _packetSender);
-            Assert.AreEqual(SessionState.Initialized, session.BestStateReached);
+            Assert.That(session.BestStateReached, Is.EqualTo(SessionState.Initialized));
         }
 
         [Test]
@@ -351,7 +351,7 @@ namespace Nethermind.Network.Test.P2P
             session.InitiateDisconnect(InitiateDisconnectReason.Other);
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
-            Assert.AreEqual(1, wasCalledTimes);
+            Assert.That(wasCalledTimes, Is.EqualTo(1));
         }
 
         [Test]
@@ -363,7 +363,7 @@ namespace Nethermind.Network.Test.P2P
             session.Handshake(TestItem.PublicKeyA);
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
             session.Init(5, _channelHandlerContext, _packetSender);
-            Assert.AreEqual(1, wasCalledTimes);
+            Assert.That(wasCalledTimes, Is.EqualTo(1));
         }
 
         [Test]
@@ -371,7 +371,7 @@ namespace Nethermind.Network.Test.P2P
         {
             Session session = new(30312, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyB);
-            Assert.AreEqual(TestItem.PublicKeyB, session.RemoteNodeId);
+            Assert.That(session.RemoteNodeId, Is.EqualTo(TestItem.PublicKeyB));
         }
 
         [Test]
@@ -562,8 +562,8 @@ namespace Nethermind.Network.Test.P2P
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, string.Empty);
             long afterLocal = Network.Metrics.LocalOtherDisconnects;
             long afterRemote = Network.Metrics.OtherDisconnects;
-            Assert.AreEqual(beforeLocal + 1, afterLocal);
-            Assert.AreEqual(beforeRemote, afterRemote);
+            Assert.That(afterLocal, Is.EqualTo(beforeLocal + 1));
+            Assert.That(afterRemote, Is.EqualTo(beforeRemote));
 
             session = new Session(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, new MetricsDisconnectsAnalyzer(), LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
@@ -576,8 +576,8 @@ namespace Nethermind.Network.Test.P2P
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, string.Empty);
             afterLocal = Network.Metrics.LocalOtherDisconnects;
             afterRemote = Network.Metrics.OtherDisconnects;
-            Assert.AreEqual(beforeLocal, afterLocal);
-            Assert.AreEqual(beforeRemote + 1, afterRemote);
+            Assert.That(afterLocal, Is.EqualTo(beforeLocal));
+            Assert.That(afterRemote, Is.EqualTo(beforeRemote + 1));
         }
     }
 }

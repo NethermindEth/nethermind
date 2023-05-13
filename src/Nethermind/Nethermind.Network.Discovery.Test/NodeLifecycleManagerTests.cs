@@ -125,13 +125,13 @@ namespace Nethermind.Network.Discovery.Test
         {
             Node node = new(TestItem.PublicKeyB, _host, _port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            Assert.AreEqual(NodeLifecycleState.New, manager?.State);
+            Assert.That(manager?.State, Is.EqualTo(NodeLifecycleState.New));
 
             PongMsg msgI = new(_nodeIds[0], GetExpirationTime(), new byte[32]);
             msgI.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
             _discoveryManager.OnIncomingMsg(msgI);
 
-            Assert.AreEqual(NodeLifecycleState.New, manager?.State);
+            Assert.That(manager?.State, Is.EqualTo(NodeLifecycleState.New));
         }
 
         [Test]
@@ -140,7 +140,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             Node node = new(TestItem.PublicKeyB, _host, _port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            Assert.AreEqual(NodeLifecycleState.New, manager?.State);
+            Assert.That(manager?.State, Is.EqualTo(NodeLifecycleState.New));
 
             await Task.Delay(500);
 
@@ -164,12 +164,12 @@ namespace Nethermind.Network.Discovery.Test
                 }
 
                 managers.Add(manager);
-                Assert.AreEqual(NodeLifecycleState.New, manager.State);
+                Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.New));
 
                 PongMsg msgI = new(_nodeIds[i], GetExpirationTime(), new byte[32]);
                 msgI.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
                 _discoveryManager.OnIncomingMsg(msgI);
-                Assert.AreEqual(NodeLifecycleState.New, manager.State);
+                Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.New));
             }
 
             //table should contain 3 active nodes
@@ -182,13 +182,13 @@ namespace Nethermind.Network.Discovery.Test
             Node candidateNode = new(_nodeIds[3], _host, _port);
             INodeLifecycleManager? candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
 
-            Assert.AreEqual(NodeLifecycleState.New, candidateManager?.State);
+            Assert.That(candidateManager?.State, Is.EqualTo(NodeLifecycleState.New));
 
             PongMsg pongMsg = new(_nodeIds[3], GetExpirationTime(), new byte[32]);
             pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
             _discoveryManager.OnIncomingMsg(pongMsg);
 
-            Assert.AreEqual(NodeLifecycleState.New, candidateManager?.State);
+            Assert.That(candidateManager?.State, Is.EqualTo(NodeLifecycleState.New));
             INodeLifecycleManager evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
 
             //receiving pong for eviction candidate - should survive
@@ -235,13 +235,13 @@ namespace Nethermind.Network.Discovery.Test
                 }
 
                 managers.Add(manager);
-                Assert.AreEqual(NodeLifecycleState.New, manager.State);
+                Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.New));
 
                 PongMsg msg = new(_nodeIds[i], GetExpirationTime(), new byte[32]);
                 msg.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
                 _discoveryManager.OnIncomingMsg(msg);
 
-                Assert.AreEqual(NodeLifecycleState.Active, manager.State);
+                Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.Active));
             }
 
             //table should contain 3 active nodes
@@ -255,7 +255,7 @@ namespace Nethermind.Network.Discovery.Test
             Node candidateNode = new(_nodeIds[3], _host, _port);
 
             INodeLifecycleManager? candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
-            Assert.AreEqual(NodeLifecycleState.New, candidateManager?.State);
+            Assert.That(candidateManager?.State, Is.EqualTo(NodeLifecycleState.New));
 
             PongMsg pongMsg = new(_nodeIds[3], GetExpirationTime(), new byte[32]);
             pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
