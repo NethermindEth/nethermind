@@ -16,7 +16,7 @@ using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.DebugTrace;
-internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
+public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 {
     public enum DebugPhase
     {
@@ -33,6 +33,10 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public bool CanReadState => CurrentPhase is DebugPhase.Blocked;
 
     private AutoResetEvent _autoResetEvent = new AutoResetEvent(false);
+
+    public event Action BreakPointReached;
+    public event Action ExecutionThreadSet;
+
 
     public bool IsTracingReceipt => ((ITxTracer)InnerTracer).IsTracingReceipt;
 
@@ -61,15 +65,27 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public bool IsTracingStorage => ((IStorageTracer)InnerTracer).IsTracingStorage;
 
 
-    private Dictionary<int, Func<EvmState, bool>> _breakPoints = new();
-    public void SetBreakPoint(int programCounter, Func<EvmState, bool> condition = null)
+    internal Dictionary<(int depth, int pc), Func<EvmState, bool>> _breakPoints = new();
+    public bool IsBreakpoitnSet(int depth, int programCounter)
+        => _breakPoints.ContainsKey((depth, programCounter));
+    public void SetBreakPoint((int depth, int pc) point, Func<EvmState, bool> condition = null)
     {
-        if(CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting) _breakPoints[programCounter] = condition;
+        if (CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting)
+        {
+            _breakPoints[point] = condition;
+        }
+    }
+    public void UnsetBreakPoint(int depth, int programCounter)
+    {
+        if (CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting)
+        {
+            _breakPoints.Remove((depth, programCounter));
+        }
     }
     private Func<EvmState, bool> _globalBreakCondition = null;
     public void SetCondtion(Func<EvmState, bool> condition = null)
     {
-        if(CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting) _globalBreakCondition = condition;
+        if (CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting) _globalBreakCondition = condition;
     }
 
     private object _lock = new();
@@ -96,11 +112,25 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
             CheckBreakPoint();
         }
     }
+
+    public void Reset(ITxTracer newInnerTracer)
+    {
+        lock (_lock)
+        {
+            CurrentPhase = DebugPhase.Starting;
+            _breakPoints.Clear();
+            CurrentState = null;
+            InnerTracer = newInnerTracer;
+        }
+        _autoResetEvent.Reset();
+    }
+
     private void Block()
     {
         lock (_lock)
         {
             CurrentPhase = DebugPhase.Blocked;
+            BreakPointReached?.Invoke();
         }
         _autoResetEvent.WaitOne();
     }
@@ -120,15 +150,17 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         {
             IsStepByStepModeOn = executeOneStep ?? IsStepByStepModeOn;
             CurrentPhase = DebugPhase.Running;
+            ExecutionThreadSet?.Invoke();
         }
         _autoResetEvent.Set();
     }
 
     public void CheckBreakPoint()
     {
-        if (_breakPoints.ContainsKey(CurrentState.ProgramCounter))
+        var breakpoint = (CurrentState.Env.CallDepth, CurrentState.ProgramCounter);
+        if (_breakPoints.ContainsKey(breakpoint))
         {
-            Func<EvmState, bool> condition = _breakPoints[CurrentState.ProgramCounter];
+            Func<EvmState, bool> condition = _breakPoints[breakpoint];
             bool conditionResults = condition is null ? true : condition.Invoke(CurrentState);
             if (conditionResults)
             {
@@ -137,7 +169,7 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         }
         else
         {
-            if(_globalBreakCondition?.Invoke(CurrentState) ?? false)
+            if (_globalBreakCondition?.Invoke(CurrentState) ?? false)
             {
                 Block();
             }

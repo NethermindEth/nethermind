@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Test
             // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :  
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
-            const int JUMP_OPCODE_PTR_BREAK_POINT = 5;
+            (int depth, int pc) JUMP_OPCODE_PTR_BREAK_POINT = (0, 5);
             using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 // we activate GoToNextBreakpoint mode (i.e : deactivate StepByStepMode)
@@ -58,7 +58,7 @@ namespace Nethermind.Evm.Test
                 if (tracer.CanReadState)
                 {
                     iterationsCount++;
-                    confidenceLevelReached += tracer.CurrentState.ProgramCounter == JUMP_OPCODE_PTR_BREAK_POINT ? 1 : 0;
+                    confidenceLevelReached += tracer.CurrentState.ProgramCounter == JUMP_OPCODE_PTR_BREAK_POINT.pc ? 1 : 0;
                     if (iterationsCount == confidenceLevelDesired)
                     {
                         TestFailed = confidenceLevelReached < confidenceLevelDesired;
@@ -81,7 +81,7 @@ namespace Nethermind.Evm.Test
             // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :  
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
-            const int JUMP_OPCODE_PTR_BREAK_POINT = 5;
+            (int depth, int pc) JUMP_OPCODE_PTR_BREAK_POINT = (0, 5);
             using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 // we activate GoToNextBreakpoint mode (i.e : deactivate StepByStepMode)
@@ -110,7 +110,7 @@ namespace Nethermind.Evm.Test
                 if (tracer.CanReadState)
                 {
                     iterationsCount++;
-                    confidenceLevelReached += tracer.CurrentState.ProgramCounter == JUMP_OPCODE_PTR_BREAK_POINT ? 1 : 0;
+                    confidenceLevelReached += tracer.CurrentState.ProgramCounter == JUMP_OPCODE_PTR_BREAK_POINT.pc ? 1 : 0;
 
                     if (iterationsCount == confidenceLevelDesired)
                     {
@@ -199,7 +199,7 @@ namespace Nethermind.Evm.Test
             // this bytecode is just a bunch of NOP/JUMPDEST, the idea is it will take as much bytes in the bytecode as steps to go throught it
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
-            const int BREAKPOINT = 5;
+            (int depth, int pc) BREAKPOINT = (0, 5);
             using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 // we activate step by step mode in tracer
@@ -225,7 +225,7 @@ namespace Nethermind.Evm.Test
             }
 
             // we check that it matches the number of opcodes in the bytecode
-            Assert.That(countBreaks, Is.EqualTo(bytecode.Length - BREAKPOINT));
+            Assert.That(countBreaks, Is.EqualTo(bytecode.Length - BREAKPOINT.pc));
         }
 
         [TestCase("0x5b601760005600")]
@@ -234,7 +234,7 @@ namespace Nethermind.Evm.Test
             // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :  
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
-            const int JUMP_OPCODE_PTR_BREAK_POINT = 5;
+            (int depth, int pc) JUMP_OPCODE_PTR_BREAK_POINT = (0, 5);
             using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 IsStepByStepModeOn = true,
@@ -265,7 +265,7 @@ namespace Nethermind.Evm.Test
             // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :  
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
-            const int JUMP_OPCODE_PTR_BREAK_POINT = 5;
+            (int depth, int pc) JUMP_OPCODE_PTR_BREAK_POINT = (0, 5);
             using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 IsStepByStepModeOn = false,
@@ -300,7 +300,7 @@ namespace Nethermind.Evm.Test
             // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :  
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
-            const int MSTORE_OPCODE_PTR_BREAK_POINT = 6;
+            (int depth, int pc) MSTORE_OPCODE_PTR_BREAK_POINT = (0, 6);
             using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 IsStepByStepModeOn = false,
@@ -333,14 +333,19 @@ namespace Nethermind.Evm.Test
             // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :  
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
-            const int MSTORE_OPCODE_PTR_BREAK_POINT = 6;
+            (int depth, int pc) MSTORE_OPCODE_PTR_BREAK_POINT = (0, 6);
+            (int depth, int pc) POST_MSTORE_OPCODE_PTR_BREAK_POINT = MSTORE_OPCODE_PTR_BREAK_POINT with
+            {
+                pc = MSTORE_OPCODE_PTR_BREAK_POINT.pc + 1
+            };
+
             using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 IsStepByStepModeOn = false,
             };
 
             tracer.SetBreakPoint(MSTORE_OPCODE_PTR_BREAK_POINT);
-            tracer.SetBreakPoint(MSTORE_OPCODE_PTR_BREAK_POINT + 1);
+            tracer.SetBreakPoint(POST_MSTORE_OPCODE_PTR_BREAK_POINT);
 
             Thread vmThread = new Thread(() => Execute(tracer, bytecode));
             vmThread.Start();
