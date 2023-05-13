@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ILogger _logger;
         private readonly bool _isSnapSyncDisabledAfterAnyStateSync;
 
-        private readonly long _pivotNumber;
+        private long _pivotNumber;
         private bool FastSyncEnabled => _syncConfig.FastSync;
         private bool SnapSyncEnabled => _syncConfig.SnapSync && !_isSnapSyncDisabledAfterAnyStateSync;
         private bool FastBlocksEnabled => _syncConfig.FastSync && _syncConfig.FastBlocks;
@@ -98,7 +98,6 @@ namespace Nethermind.Synchronization.ParallelSync
                     _logger.Warn($"'FastSyncCatchUpHeightDelta' parameter is less or equal to {FastSyncLag}, which is a threshold of blocks always downloaded in full sync. 'FastSyncCatchUpHeightDelta' will have no effect.");
             }
 
-            _pivotNumber = _syncConfig.PivotNumberParsed;
             _isSnapSyncDisabledAfterAnyStateSync = _syncProgressResolver.FindBestFullState() != 0;
 
             _ = StartAsync(_cancellation.Token);
@@ -134,6 +133,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Update()
         {
+            _pivotNumber = _syncConfig.PivotNumberParsed;
+
             SyncMode newModes;
             string reason = string.Empty;
             if (_syncProgressResolver.IsLoadingBlocksFromDb())
@@ -148,18 +149,19 @@ namespace Nethermind.Synchronization.ParallelSync
             else
             {
                 bool inBeaconControl = _beaconSyncStrategy.ShouldBeInBeaconModeControl();
+                bool shouldBeInUpdatingPivot = ShouldBeInUpdatingPivot();
                 (UInt256? peerDifficulty, long? peerBlock) = ReloadDataFromPeers();
                 // if there are no peers that we could use then we cannot sync
                 if (peerDifficulty is null || peerBlock is null || peerBlock == 0)
                 {
-                    newModes = inBeaconControl ? SyncMode.WaitingForBlock : SyncMode.Disconnected;
+                    newModes = shouldBeInUpdatingPivot ? SyncMode.UpdatingPivot : inBeaconControl ? SyncMode.WaitingForBlock : SyncMode.Disconnected;
                     reason = "No Useful Peers";
                 }
                 // to avoid expensive checks we make this simple check at the beginning
                 else
                 {
-                    Snapshot best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value, inBeaconControl);
-                    best.IsInBeaconHeaders = _beaconSyncStrategy.ShouldBeInBeaconHeaders();
+                    Snapshot best = EnsureSnapshot(peerDifficulty.Value, peerBlock.Value, inBeaconControl);
+                    best.IsInBeaconHeaders = ShouldBeInBeaconHeaders(shouldBeInUpdatingPivot);
 
                     if (!FastSyncEnabled)
                     {
@@ -190,6 +192,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     {
                         try
                         {
+                            best.IsInUpdatingPivot = shouldBeInUpdatingPivot;
                             best.IsInFastSync = ShouldBeInFastSyncMode(best);
                             best.IsInStateSync = ShouldBeInStateSyncMode(best);
                             best.IsInStateNodes = ShouldBeInStateNodesMode(best);
@@ -202,6 +205,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             best.IsInWaitingForBlock = ShouldBeInWaitingForBlockMode(best);
 
                             newModes = SyncMode.None;
+                            CheckAddFlag(best.IsInUpdatingPivot, SyncMode.UpdatingPivot, ref newModes);
                             CheckAddFlag(best.IsInBeaconHeaders, SyncMode.BeaconHeaders, ref newModes);
                             CheckAddFlag(best.IsInFastHeaders, SyncMode.FastHeaders, ref newModes);
                             CheckAddFlag(best.IsInFastBodies, SyncMode.FastBodies, ref newModes);
@@ -332,6 +336,46 @@ namespace Nethermind.Synchronization.ParallelSync
             return result;
         }
 
+        private bool ShouldBeInBeaconHeaders(bool shouldBeInUpdatingPivot)
+        {
+            bool shouldBeInBeaconHeaders = _beaconSyncStrategy.ShouldBeInBeaconHeaders();
+
+            bool result = shouldBeInBeaconHeaders &&
+                          !shouldBeInUpdatingPivot;
+
+            if (_logger.IsTrace)
+            {
+                LogDetailedSyncModeChecks("BEACON HEADERS",
+                    (nameof(shouldBeInBeaconHeaders), shouldBeInBeaconHeaders),
+                    (nameof(shouldBeInUpdatingPivot), shouldBeInUpdatingPivot));
+            }
+
+            return result;
+        }
+
+        private bool ShouldBeInUpdatingPivot()
+        {
+            bool updateRequestedAndNotFinished = _syncConfig.MaxAttemptsToUpdatePivot > 0;
+            bool isPostMerge = _beaconSyncStrategy.GetFinalizedHash() != null;
+            bool stateSyncNotFinished = _syncProgressResolver.FindBestFullState() == 0;
+
+            bool result = updateRequestedAndNotFinished &&
+                          FastSyncEnabled &&
+                          isPostMerge &&
+                          stateSyncNotFinished;
+
+            if (_logger.IsTrace)
+            {
+                LogDetailedSyncModeChecks("UPDATING PIVOT",
+                    (nameof(updateRequestedAndNotFinished), updateRequestedAndNotFinished),
+                    (nameof(FastSyncEnabled), FastSyncEnabled),
+                    (nameof(isPostMerge), isPostMerge),
+                    (nameof(stateSyncNotFinished), stateSyncNotFinished));
+            }
+
+            return result;
+        }
+
         private bool ShouldBeInFastSyncMode(Snapshot best)
         {
             if (!FastSyncEnabled)
@@ -345,6 +389,8 @@ namespace Nethermind.Synchronization.ParallelSync
                 // we are fine to start from zero if we do not use fast blocks
                 return false;
             }
+
+            bool notInUpdatingPivot = !best.IsInUpdatingPivot;
 
             // Shared with fast sync
             bool notInBeaconModes = !best.IsInAnyBeaconMode;
@@ -360,7 +406,8 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
 
-            bool result = notInBeaconModes &&
+            bool result = notInUpdatingPivot &&
+                          notInBeaconModes &&
                           postPivotPeerAvailable &&
                           // (catch up after node is off for a while
                           // OR standard fast sync)
@@ -372,6 +419,7 @@ namespace Nethermind.Synchronization.ParallelSync
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("FAST",
+                    (nameof(notInUpdatingPivot), notInUpdatingPivot),
                     (nameof(notInBeaconModes), notInBeaconModes),
                     (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
                     (nameof(notReachedFullSyncTransition), notReachedFullSyncTransition),
@@ -385,6 +433,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInFullSyncMode(Snapshot best)
         {
+            bool notInUpdatingPivot = !best.IsInUpdatingPivot;
+
             // Shared with fast sync
             bool notInBeaconModes = !best.IsInAnyBeaconMode;
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.Peer.Block);
@@ -400,7 +450,8 @@ namespace Nethermind.Synchronization.ParallelSync
                                      || _syncConfig.PivotNumberParsed == 0; // if pivot = 0 we can have state = 0 (we can't use best.State>0) and switch to full sync, this case is used by unit tests and shouldn't happen in any existing network
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
 
-            bool result = notInBeaconModes &&
+            bool result = notInUpdatingPivot &&
+                          notInBeaconModes &&
                           desiredPeerKnown &&
                           postPivotPeerAvailable &&
                           hasFastSyncBeenActive &&
@@ -412,6 +463,7 @@ namespace Nethermind.Synchronization.ParallelSync
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("FULL",
+                    (nameof(notInUpdatingPivot), notInUpdatingPivot),
                     (nameof(notInBeaconModes), notInBeaconModes),
                     (nameof(desiredPeerKnown), desiredPeerKnown),
                     (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
@@ -427,15 +479,19 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInFullSyncModeInArchiveMode(Snapshot best)
         {
+            bool notInUpdatingPivot = !best.IsInUpdatingPivot;
+
             bool notInBeaconModes = !best.IsInAnyBeaconMode;
             bool desiredPeerKnown = AnyDesiredPeerKnown(best);
 
-            bool result = notInBeaconModes &&
+            bool result = notInUpdatingPivot &&
+                          notInBeaconModes &&
                           desiredPeerKnown;
 
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("FULL",
+                    (nameof(notInUpdatingPivot), notInUpdatingPivot),
                     (nameof(notInBeaconModes), notInBeaconModes),
                     (nameof(desiredPeerKnown), desiredPeerKnown));
             }
@@ -446,17 +502,21 @@ namespace Nethermind.Synchronization.ParallelSync
         // ReSharper disable once UnusedParameter.Local
         private bool ShouldBeInFastHeadersMode(Snapshot best)
         {
+            bool notInUpdatingPivot = !best.IsInUpdatingPivot;
+
             bool fastBlocksHeadersNotFinished = !FastBlocksHeadersFinished;
 
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("HEADERS",
+                    (nameof(notInUpdatingPivot), notInUpdatingPivot),
                     (nameof(fastBlocksHeadersNotFinished), fastBlocksHeadersNotFinished));
             }
 
             // this is really the only condition - fast blocks headers can always run if there are peers until it is done
             // also fast blocks headers can run in parallel with all other sync modes
-            return fastBlocksHeadersNotFinished;
+            return notInUpdatingPivot &&
+                   fastBlocksHeadersNotFinished;
         }
 
         private bool ShouldBeInFastBodiesMode(Snapshot best)
@@ -509,7 +569,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInDisconnectedMode(Snapshot best)
         {
-            return !best.IsInFastBodies &&
+            return !best.IsInUpdatingPivot &&
+                   !best.IsInFastBodies &&
                    !best.IsInFastHeaders &&
                    !best.IsInFastReceipts &&
                    !best.IsInFastSync &&
@@ -522,6 +583,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInStateSyncMode(Snapshot best)
         {
             bool fastSyncEnabled = FastSyncEnabled;
+            bool notInUpdatingPivot = !best.IsInUpdatingPivot;
             bool notInBeaconModes = !best.IsInAnyBeaconMode;
             bool hasFastSyncBeenActive = best.Header >= _pivotNumber;
             bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best.Peer.Block);
@@ -535,6 +597,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
 
             bool result = fastSyncEnabled &&
+                          notInUpdatingPivot &&
                           notInBeaconModes &&
                           hasFastSyncBeenActive &&
                           hasAnyPostPivotPeer &&
@@ -548,6 +611,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 LogDetailedSyncModeChecks("STATE",
                     (nameof(fastSyncEnabled), fastSyncEnabled),
+                    (nameof(notInUpdatingPivot), notInUpdatingPivot),
                     (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
                     (nameof(hasAnyPostPivotPeer), hasAnyPostPivotPeer),
                     (nameof(notInFastSync), notInFastSync),
@@ -641,6 +705,30 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Dispose() => _cancellation.Dispose();
 
+        private Snapshot EnsureSnapshot(in UInt256 peerDifficulty, long peerBlock, bool inBeaconControl)
+        {
+            // need to find them in the reversed order otherwise we may fall behind the processing
+            // and think that we have an invalid snapshot
+            Snapshot best = TakeSnapshot(peerDifficulty, peerBlock, inBeaconControl);
+
+            if (IsSnapshotInvalid(best))
+            {
+                string stateString = BuildStateString(best);
+                if (_logger.IsWarn) _logger.Warn($"Invalid snapshot calculation: {stateString}. Recalculating progress pointers...");
+                _syncProgressResolver.RecalculateProgressPointers();
+                best = TakeSnapshot(peerDifficulty, peerBlock, inBeaconControl);
+                if (IsSnapshotInvalid(best))
+                {
+                    string recalculatedSnapshot = BuildStateString(best);
+                    string errorMessage = $"Cannot recalculate snapshot progress. Invalid snapshot calculation: {recalculatedSnapshot}";
+                    if (_logger.IsError) _logger.Error(errorMessage);
+                    throw new InvalidAsynchronousStateException(errorMessage);
+                }
+            }
+
+            return best;
+        }
+
         private Snapshot TakeSnapshot(in UInt256 peerDifficulty, long peerBlock, bool inBeaconControl)
         {
             // need to find them in the reversed order otherwise we may fall behind the processing
@@ -652,14 +740,12 @@ namespace Nethermind.Synchronization.ParallelSync
             long targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() ?? peerBlock;
             UInt256 chainDifficulty = _syncProgressResolver.ChainDifficulty;
 
-            Snapshot best = new(processed, state, block, header, chainDifficulty, peerBlock, peerDifficulty, inBeaconControl, targetBlock);
-            VerifySnapshot(best);
-            return best;
+            return new(processed, state, block, header, chainDifficulty, Math.Max(peerBlock, 0), peerDifficulty, inBeaconControl, targetBlock);
         }
 
-        private void VerifySnapshot(Snapshot best)
+        private bool IsSnapshotInvalid(Snapshot best)
         {
-            if ( // none of these values should ever be negative
+            return // none of these values should ever be negative
                 best.Block < 0
                 || best.Header < 0
                 || best.State < 0
@@ -671,17 +757,9 @@ namespace Nethermind.Synchronization.ParallelSync
                 // we cannot download state for an unknown header
                 || best.State > best.Header
                 // we can only process blocks for which we have full body
-                || best.Processed > best.Block
+                || best.Processed > best.Block;
             // for any processed block we should have its full state
-            // || (best.Processed > best.State && best.Processed > best.BeamState))
-            // but we only do limited lookups for state so we need to instead fast sync to now
-            )
-            {
-                string stateString = BuildStateString(best);
-                string errorMessage = $"Invalid best state calculation: {stateString}";
-                if (_logger.IsError) _logger.Error(errorMessage);
-                throw new InvalidAsynchronousStateException(errorMessage);
-            }
+            // but we only do limited lookups for state so we need to instead fast sync to now;
         }
 
         private void LogDetailedSyncModeChecks(string syncType, params (string Name, bool IsSatisfied)[] checks)
@@ -730,9 +808,10 @@ namespace Nethermind.Synchronization.ParallelSync
                 TargetBlock = targetBlock;
 
                 IsInWaitingForBlock = IsInDisconnected = IsInFastReceipts = IsInFastBodies = IsInFastHeaders
-                    = IsInFastSync = IsInFullSync = IsInStateSync = IsInStateNodes = IsInSnapRanges = IsInBeaconHeaders = false;
+                    = IsInFastSync = IsInFullSync = IsInStateSync = IsInStateNodes = IsInSnapRanges = IsInBeaconHeaders = IsInUpdatingPivot = false;
             }
 
+            public bool IsInUpdatingPivot { get; set; }
             public bool IsInFastHeaders { get; set; }
             public bool IsInFastBodies { get; set; }
             public bool IsInFastReceipts { get; set; }

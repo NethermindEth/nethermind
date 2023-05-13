@@ -5,6 +5,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>annotations</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +21,6 @@
   <ItemGroup>
     <PackageReference Include="FastEnum" />
     <PackageReference Include="Polly" />
-    <PackageReference Include="System.IO.Abstractions" />
+    <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" />
   </ItemGroup>
 </Project>

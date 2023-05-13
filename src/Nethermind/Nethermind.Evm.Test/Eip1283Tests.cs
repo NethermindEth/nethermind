@@ -38,8 +38,7 @@ namespace Nethermind.Evm.Test
         public void Test(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
-            Storage.Set(new StorageCell(Recipient, 0), new[] { originalValue });
-            Storage.Commit();
+            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(Bytes.FromHexString(codeHex));

@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
@@ -27,8 +31,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
         [Timeout(Timeout.MaxTestTime)]
         public void copies_state_between_dbs(int fullPruningMemoryBudgetMb, int maxDegreeOfParallelism)
         {
-            MemDb trieDb = new();
-            MemDb clonedDb = new();
+            TestMemDb trieDb = new();
+            TestMemDb clonedDb = new();
 
             VisitingOptions visitingOptions = new()
             {
@@ -36,11 +40,19 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 FullScanMemoryBudget = fullPruningMemoryBudgetMb.MiB(),
             };
 
-            CopyDb(StartPruning(trieDb, clonedDb), trieDb, clonedDb, visitingOptions);
+            IPruningContext ctx = StartPruning(trieDb, clonedDb);
+            CopyDb(ctx, trieDb, clonedDb, visitingOptions, writeFlags: WriteFlags.LowPriority);
+
+            List<byte[]> keys = trieDb.Keys.ToList();
+            List<byte[]> values = trieDb.Values.ToList();
+
+            ctx.Commit();
 
             clonedDb.Count.Should().Be(132);
-            clonedDb.Keys.Should().BeEquivalentTo(trieDb.Keys);
-            clonedDb.Values.Should().BeEquivalentTo(trieDb.Values);
+            clonedDb.Keys.Should().BeEquivalentTo(keys);
+            clonedDb.Values.Should().BeEquivalentTo(values);
+
+            clonedDb.KeyWasWrittenWithFlags(keys[0], WriteFlags.LowPriority);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -58,13 +70,13 @@ namespace Nethermind.Blockchain.Test.FullPruning
             clonedDb.Count.Should().BeLessThan(trieDb.Count);
         }
 
-        private static IPruningContext CopyDb(IPruningContext pruningContext, MemDb trieDb, MemDb clonedDb, VisitingOptions visitingOptions = null)
+        private static IPruningContext CopyDb(IPruningContext pruningContext, MemDb trieDb, MemDb clonedDb, VisitingOptions visitingOptions = null, WriteFlags writeFlags = WriteFlags.None)
         {
             LimboLogs logManager = LimboLogs.Instance;
             PatriciaTree trie = Build.A.Trie(trieDb).WithAccountsByIndex(0, 100).TestObject;
             IStateReader stateReader = new StateReader(new TrieStore(trieDb, logManager), new MemDb(), logManager);
 
-            using CopyTreeVisitor copyTreeVisitor = new(pruningContext, logManager);
+            using CopyTreeVisitor copyTreeVisitor = new(pruningContext, writeFlags, logManager);
             stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);
             return pruningContext;
         }

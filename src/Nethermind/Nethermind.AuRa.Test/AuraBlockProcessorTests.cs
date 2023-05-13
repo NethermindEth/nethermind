@@ -46,8 +46,8 @@ namespace Nethermind.AuRa.Test
                 new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
-            Assert.AreEqual(1, processedBlocks.Length, "length");
-            Assert.AreEqual(block.Author, processedBlocks[0].Author, "author");
+            Assert.That(processedBlocks.Length, Is.EqualTo(1), "length");
+            Assert.That(processedBlocks[0].Author, Is.EqualTo(block.Author), "author");
         }
 
         [Test]
@@ -122,7 +122,7 @@ namespace Nethermind.AuRa.Test
                 },
             };
 
-            (AuRaBlockProcessor processor, IStateProvider stateProvider) =
+            (AuRaBlockProcessor processor, IWorldState stateProvider) =
                 CreateProcessor(contractRewriter: new ContractRewriter(contractOverrides));
 
             stateProvider.CreateAccount(TestItem.AddressA, UInt256.One);
@@ -144,12 +144,12 @@ namespace Nethermind.AuRa.Test
             stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x654"));
         }
 
-        private (AuRaBlockProcessor Processor, IStateProvider StateProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
+        private (AuRaBlockProcessor Processor, IWorldState StateProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
         {
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             AuRaBlockProcessor processor = new AuRaBlockProcessor(
                 RinkebySpecProvider.Instance,
@@ -157,7 +157,6 @@ namespace Nethermind.AuRa.Test
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullReceiptStorage.Instance,
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),

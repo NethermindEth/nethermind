@@ -16,11 +16,6 @@ namespace Nethermind.Evm.Test
 
         protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
 
-        private void AssertEip145(TestAllTracerWithOutput receipt, byte result)
-        {
-            AssertEip145(receipt, new[] { result });
-        }
-
         private void AssertEip145(TestAllTracerWithOutput receipt, string result)
         {
             AssertEip145(receipt, Bytes.FromHexString(result));

@@ -43,7 +43,7 @@ public class PointEvaluationPrecompile : IPrecompile
             ReadOnlySpan<byte> proof = inputDataSpan[144..192];
             Span<byte> hash = stackalloc byte[32];
 
-            return KzgPolynomialCommitments.TryComputeCommitmentV1(commitment, hash)
+            return KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, hash)
                    && hash.SequenceEqual(versionedHash)
                    && KzgPolynomialCommitments.VerifyProof(commitment, z, y, proof);
         }

@@ -48,13 +48,7 @@ namespace Nethermind.Db
             }
             set
             {
-                if (_writeDelay > 0)
-                {
-                    Thread.Sleep(_writeDelay);
-                }
-
-                WritesCount++;
-                _db[key] = value;
+                Set(key, value);
             }
         }
 
@@ -107,18 +101,23 @@ namespace Nethermind.Db
 
         public int Count => _db.Count;
 
+        public long GetSize() => 0;
+        public long GetCacheSize() => 0;
+        public long GetIndexSize() => 0;
+        public long GetMemtableSize() => 0;
+
         public void Dispose()
         {
         }
 
         public virtual Span<byte> GetSpan(ReadOnlySpan<byte> key)
         {
-            return this[key].AsSpan();
+            return Get(key).AsSpan();
         }
 
         public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
         {
-            this[key] = value.ToArray();
+            Set(key, value.ToArray());
         }
 
         public void DangerousReleaseMemory(in Span<byte> span)
@@ -134,6 +133,17 @@ namespace Nethermind.Db
 
             ReadsCount++;
             return _db.TryGetValue(key, out byte[] value) ? value : null;
+        }
+
+        public virtual void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (_writeDelay > 0)
+            {
+                Thread.Sleep(_writeDelay);
+            }
+
+            WritesCount++;
+            _db[key] = value;
         }
     }
 }

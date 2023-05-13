@@ -65,9 +65,8 @@ namespace Ethereum.Test.Base
             }
 
             TrieStore trieStore = new(stateDb, _logManager);
-            StateProvider stateProvider = new(trieStore, codeDb, _logManager);
+            WorldState stateProvider = new(trieStore, codeDb, _logManager);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
-            IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
                 specProvider,
@@ -78,11 +77,10 @@ namespace Ethereum.Test.Base
             TransactionProcessor transactionProcessor = new(
                 specProvider,
                 stateProvider,
-                storageProvider,
                 virtualMachine,
                 _logManager);
 
-            InitializeTestState(test, stateProvider, storageProvider, specProvider);
+            InitializeTestState(test, stateProvider, specProvider);
 
             BlockHeader header = new(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase,
                 test.CurrentDifficulty, test.CurrentNumber, test.CurrentGasLimit, test.CurrentTimestamp, Array.Empty<byte>());
@@ -123,34 +121,27 @@ namespace Ethereum.Test.Base
             return testResult;
         }
 
-        private static void InitializeTestState(GeneralStateTest test, StateProvider stateProvider,
-            IStorageProvider storageProvider, ISpecProvider specProvider)
+        private static void InitializeTestState(GeneralStateTest test, WorldState stateProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    storageProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
+                    stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
                         storageItem.Value.WithoutLeadingZeros().ToArray());
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                Keccak codeHash = stateProvider.UpdateCode(accountState.Value.Code);
-                stateProvider.UpdateCodeHash(accountState.Key, codeHash, specProvider.GenesisSpec);
+                stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
                 stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
             }
 
-            storageProvider.Commit();
             stateProvider.Commit(specProvider.GenesisSpec);
-
-            storageProvider.CommitTrees(0);
             stateProvider.CommitTree(0);
-
-            storageProvider.Reset();
             stateProvider.Reset();
         }
 
-        private List<string> RunAssertions(GeneralStateTest test, IStateProvider stateProvider)
+        private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)
         {
             List<string> differences = new();
             if (test.PostHash != stateProvider.StateRoot)

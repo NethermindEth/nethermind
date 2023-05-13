@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Validators
                    transaction.GasLimit >= IntrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
                    /* if it is a call or a transfer then we require the 'To' field to have a value
                       while for an init it will be empty */
-                   ValidateSignature(transaction.Signature, releaseSpec) &&
+                   ValidateSignature(transaction, releaseSpec) &&
                    ValidateChainId(transaction) &&
                    Validate1559GasFields(transaction, releaseSpec) &&
                    Validate3860Rules(transaction, releaseSpec) &&
@@ -71,8 +71,10 @@ namespace Nethermind.Consensus.Validators
                 _ => transaction.ChainId == _chainIdValue
             };
 
-        private bool ValidateSignature(Signature? signature, IReleaseSpec spec)
+        private bool ValidateSignature(Transaction tx, IReleaseSpec spec)
         {
+            Signature? signature = tx.Signature;
+
             if (signature is null)
             {
                 return false;
@@ -91,12 +93,17 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            if (spec.IsEip155Enabled)
+            if (signature.V is 27 or 28)
             {
-                return (signature.ChainId ?? _chainIdValue) == _chainIdValue;
+                return true;
             }
 
-            return !spec.ValidateChainId || signature.V is 27 or 28;
+            if (tx.Type == TxType.Legacy && spec.IsEip155Enabled && (signature.V == _chainIdValue * 2 + 35ul || signature.V == _chainIdValue * 2 + 36ul))
+            {
+                return true;
+            }
+
+            return !spec.ValidateChainId;
         }
 
         private static bool Validate4844Fields(Transaction transaction)
@@ -146,7 +153,7 @@ namespace Nethermind.Consensus.Validators
                      i < transaction.BlobVersionedHashes!.Length;
                      i++, n += Ckzg.Ckzg.BytesPerCommitment)
                 {
-                    if (!KzgPolynomialCommitments.TryComputeCommitmentV1(
+                    if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(
                             commitements[n..(n + Ckzg.Ckzg.BytesPerCommitment)], hash) ||
                         !hash.SequenceEqual(transaction.BlobVersionedHashes![i]))
                     {

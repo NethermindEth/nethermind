@@ -166,7 +166,7 @@ namespace Nethermind.Synchronization.Test
             await using Context ctx = new();
             for (int i = 0; i < 3; i++)
             {
-                Assert.AreEqual(0, ctx.Pool.PeerCount);
+                Assert.That(ctx.Pool.PeerCount, Is.EqualTo(0));
                 ctx.Pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeys[i]));
             }
         }
@@ -288,7 +288,7 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 3; i > 0; i--)
             {
-                Assert.AreEqual(3, ctx.Pool.PeerCount, $"Remove {i}");
+                Assert.That(ctx.Pool.PeerCount, Is.EqualTo(3), $"Remove {i}");
                 ctx.Pool.RemovePeer(syncPeers[i - 1]);
             }
         }
@@ -300,7 +300,7 @@ namespace Nethermind.Synchronization.Test
             ctx.Pool.Start();
             for (int i = 0; i < 3; i++)
             {
-                Assert.AreEqual(i, ctx.Pool.PeerCount);
+                Assert.That(ctx.Pool.PeerCount, Is.EqualTo(i));
                 ctx.Pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeys[i]));
             }
         }
@@ -313,7 +313,7 @@ namespace Nethermind.Synchronization.Test
             ctx.Pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             ctx.Pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
 
-            Assert.AreEqual(1, ctx.Pool.PeerCount);
+            Assert.That(ctx.Pool.PeerCount, Is.EqualTo(1));
         }
 
         [Test]
@@ -322,7 +322,7 @@ namespace Nethermind.Synchronization.Test
             await using Context ctx = new();
             ctx.Pool.Start();
             ctx.Pool.RemovePeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
-            Assert.AreEqual(0, ctx.Pool.PeerCount);
+            Assert.That(ctx.Pool.PeerCount, Is.EqualTo(0));
         }
 
         [Test]
@@ -339,7 +339,7 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 3; i > 0; i--)
             {
-                Assert.AreEqual(i, ctx.Pool.PeerCount, $"Remove {i}");
+                Assert.That(ctx.Pool.PeerCount, Is.EqualTo(i), $"Remove {i}");
                 ctx.Pool.RemovePeer(syncPeers[i - 1]);
             }
         }
@@ -482,7 +482,7 @@ namespace Nethermind.Synchronization.Test
         {
             await using Context ctx = new();
             _ = await SetupPeers(ctx, 3);
-            Assert.AreEqual(3, ctx.Pool.AllPeers.Count());
+            Assert.That(ctx.Pool.AllPeers.Count(), Is.EqualTo(3));
         }
 
         [Test]
@@ -493,7 +493,7 @@ namespace Nethermind.Synchronization.Test
 
             var allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
 
-            Assert.AreSame(peers[0], allocation.Current?.SyncPeer);
+            Assert.That(allocation.Current?.SyncPeer, Is.SameAs(peers[0]));
         }
 
         [Test]
@@ -508,7 +508,7 @@ namespace Nethermind.Synchronization.Test
             ctx.Pool.Free(allocation);
             allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
 
-            Assert.AreSame(peers[0], allocation.Current?.SyncPeer);
+            Assert.That(allocation.Current?.SyncPeer, Is.SameAs(peers[0]));
         }
 
         [Test]
@@ -578,7 +578,7 @@ namespace Nethermind.Synchronization.Test
         {
             await using Context ctx = new();
             _ = await SetupPeers(ctx, 3);
-            Assert.AreEqual(3, ctx.Pool.InitializedPeers.Count());
+            Assert.That(ctx.Pool.InitializedPeers.Count(), Is.EqualTo(3));
         }
 
         [Test]
@@ -601,7 +601,7 @@ namespace Nethermind.Synchronization.Test
             var allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             var allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
 
-            Assert.AreSame(peers[0], allocation1.Current?.SyncPeer);
+            Assert.That(allocation1.Current?.SyncPeer, Is.SameAs(peers[0]));
             Assert.Null(allocation2.Current);
         }
 
@@ -642,8 +642,8 @@ namespace Nethermind.Synchronization.Test
             var allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             ctx.Pool.RemovePeer(peer);
 
-            Assert.AreEqual(null, allocation.Current);
-            Assert.AreEqual(0, ctx.Pool.PeerCount);
+            Assert.That(allocation.Current, Is.EqualTo(null));
+            Assert.That(ctx.Pool.PeerCount, Is.EqualTo(0));
         }
 
         [Test]
@@ -659,8 +659,8 @@ namespace Nethermind.Synchronization.Test
             var allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             ctx.Pool.RemovePeer(peer);
 
-            Assert.AreEqual(null, allocation.Current);
-            Assert.AreEqual(0, ctx.Pool.PeerCount);
+            Assert.That(allocation.Current, Is.EqualTo(null));
+            Assert.That(ctx.Pool.PeerCount, Is.EqualTo(0));
         }
 
         [Test]
@@ -703,7 +703,7 @@ namespace Nethermind.Synchronization.Test
             var successfulAllocations = allocations.Where(r => r.Current is not null).ToArray();
 
             // we had only two peers and 3 borrow calls so only two are successful
-            Assert.AreEqual(2, successfulAllocations.Length);
+            Assert.That(successfulAllocations.Length, Is.EqualTo(2));
 
             foreach (var allocation in successfulAllocations)
             {
@@ -773,8 +773,8 @@ namespace Nethermind.Synchronization.Test
                 await Task.Delay(10);
             } while (iterations-- > 0 || _pendingRequests > 0);
 
-            Assert.AreEqual(0, ctx.Pool.ReplaceableAllocations.Count(), "allocations");
-            Assert.AreEqual(0, _pendingRequests, "pending requests");
+            Assert.That(ctx.Pool.ReplaceableAllocations.Count(), Is.EqualTo(0), "allocations");
+            Assert.That(_pendingRequests, Is.EqualTo(0), "pending requests");
             Assert.GreaterOrEqual(failures, 0, "pending requests");
         }
 

@@ -33,7 +33,7 @@ namespace Nethermind.Network.Rlpx
             return new FrameInfo(isChunked, isFirst, frameSize, totalPacketSize ?? frameSize);
         }
 
-        internal struct FrameInfo
+        internal readonly struct FrameInfo
         {
             public FrameInfo(bool isChunked, bool isFirst, int size, int totalPacketSize)
             {

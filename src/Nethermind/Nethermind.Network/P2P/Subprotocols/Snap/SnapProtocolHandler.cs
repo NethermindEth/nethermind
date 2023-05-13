@@ -211,7 +211,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return new SlotsAndProofs() { PathsAndSlots = response.Slots, Proofs = response.Proofs };
         }
 
-        public async Task<byte[][]> GetByteCodes(IReadOnlyList<Keccak> codeHashes, CancellationToken token)
+        public async Task<byte[][]> GetByteCodes(IReadOnlyList<ValueKeccak> codeHashes, CancellationToken token)
         {
             var request = new GetByteCodesMessage()
             {
@@ -239,7 +239,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
         }
 
-        private async Task<byte[][]> GetTrieNodes(Keccak rootHash, PathGroup[] groups, CancellationToken token)
+        private async Task<byte[][]> GetTrieNodes(ValueKeccak rootHash, PathGroup[] groups, CancellationToken token)
         {
             GetTrieNodesMessage reqMsg = new()
             {
@@ -263,7 +263,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             for (int i = 0; i < request.Paths.Length; i++)
             {
                 AccountWithStorageStartingHash path = request.Paths[i];
-                groups[i] = new PathGroup() { Group = new[] { path.PathAndAccount.Path.Bytes, _emptyBytes } };
+                groups[i] = new PathGroup() { Group = new[] { path.PathAndAccount.Path.Bytes.ToArray(), _emptyBytes } };
             }
 
             return groups;

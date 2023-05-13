@@ -32,7 +32,7 @@ namespace Nethermind.Core.Test.Buffers
 
             try
             {
-                Assert.AreEqual(s_shared._bytes, array);
+                Assert.That(array, Is.EqualTo(s_shared._bytes));
             }
             finally
             {
@@ -98,7 +98,7 @@ namespace Nethermind.Core.Test.Buffers
             {
             }
 
-            Assert.AreEqual(additional, arrays.Count);
+            Assert.That(arrays.Count, Is.EqualTo(additional));
         }
 
         class SingleArrayPool : ArrayPool<byte>
@@ -107,7 +107,7 @@ namespace Nethermind.Core.Test.Buffers
 
             public override byte[] Rent(int minimumLength) => _bytes;
 
-            public override void Return(byte[] array, bool clearArray = false) => Assert.AreEqual(_bytes, array);
+            public override void Return(byte[] array, bool clearArray = false) => Assert.That(array, Is.EqualTo(_bytes));
         }
     }
 }

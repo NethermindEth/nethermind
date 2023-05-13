@@ -13,17 +13,13 @@ namespace Nethermind.Evm.TransactionProcessing
     public class ReadOnlyTransactionProcessor : IReadOnlyTransactionProcessor
     {
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly IStateProvider _stateProvider;
-        private readonly IStorageProvider _storageProvider;
-        private readonly ReadOnlyDb _codeDb;
+        private readonly IWorldState _stateProvider;
         private readonly Keccak _stateBefore;
 
-        public ReadOnlyTransactionProcessor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider, IStorageProvider storageProvider, ReadOnlyDb codeDb, Keccak startState)
+        public ReadOnlyTransactionProcessor(ITransactionProcessor transactionProcessor, IWorldState stateProvider, Keccak startState)
         {
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
-            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _stateBefore = _stateProvider.StateRoot;
             _stateProvider.StateRoot = startState ?? throw new ArgumentNullException(nameof(startState));
         }
@@ -47,8 +43,6 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             _stateProvider.StateRoot = _stateBefore;
             _stateProvider.Reset();
-            _storageProvider.Reset();
-            _codeDb.ClearTempChanges();
         }
     }
 }

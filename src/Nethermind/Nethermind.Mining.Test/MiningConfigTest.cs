@@ -23,8 +23,8 @@ public class MiningConfigTest
         byte[] dataBytes = Encoding.UTF8.GetBytes(data);
         config.ExtraData = data;
 
-        Assert.AreEqual(config.ExtraData, data);
-        Assert.AreEqual(config.GetExtraDataBytes(), dataBytes);
+        Assert.That(data, Is.EqualTo(config.ExtraData));
+        Assert.That(dataBytes, Is.EqualTo(config.GetExtraDataBytes()));
     }
 
     [Test]
@@ -43,7 +43,7 @@ public class MiningConfigTest
         Assert.Greater(dataBytes.Length, 32);
 
         Assert.Throws<InvalidConfigurationException>(() => config.ExtraData = data); //throw on update
-        Assert.AreEqual(config.ExtraData, defaultData); // Keep previous one
-        Assert.AreEqual(config.GetExtraDataBytes(), defaultDataBytes);
+        Assert.That(defaultData, Is.EqualTo(config.ExtraData)); // Keep previous one
+        Assert.That(defaultDataBytes, Is.EqualTo(config.GetExtraDataBytes()));
     }
 }

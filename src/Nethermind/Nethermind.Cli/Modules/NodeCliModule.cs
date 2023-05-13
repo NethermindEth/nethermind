@@ -24,9 +24,9 @@ namespace Nethermind.Cli.Modules
         [CliFunction("node", "switch")]
         public string Switch(string uri)
         {
-            if (!uri.Contains(":"))
+            if (!uri.Contains(':'))
             {
-                uri = uri + ":8545";
+                uri += ":8545";
             }
 
             if (!uri.StartsWith("http://") && !uri.StartsWith("https://"))
@@ -49,7 +49,7 @@ namespace Nethermind.Cli.Modules
         private static string? GetVariable(string name, string defaultValue)
         {
             string? value = Environment.GetEnvironmentVariable(name.ToUpperInvariant());
-            return string.IsNullOrWhiteSpace(value) ? value : defaultValue;
+            return string.IsNullOrWhiteSpace(value) ? defaultValue : value;
         }
 
         [CliProperty("node", "address")]

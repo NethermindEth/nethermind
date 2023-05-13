@@ -55,7 +55,7 @@ namespace Nethermind.Network.Rlpx.Handshake
 
             AuthMessage authMessage = new AuthMessage();
             Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
-            authMessage.Signature = new Signature(msg.Slice(SigOffset, SigLength - 1), msg[64]);
+            authMessage.Signature = new Signature(msg[..(SigLength - 1)], msg[64]);
             authMessage.EphemeralPublicHash = new Keccak(msg.Slice(EphemeralHashOffset, EphemeralHashLength).ToArray());
             authMessage.PublicKey = new PublicKey(msg.Slice(PublicKeyOffset, PublicKeyLength));
             authMessage.Nonce = msg.Slice(NonceOffset, NonceLength).ToArray();

@@ -41,9 +41,13 @@ namespace Nethermind.Trie.Pruning
         }
 
         public bool IsPersisted(Keccak keccak) => true;
+        public bool IsPersisted(in ValueKeccak keccak) => true;
 
         public void Dispose() { }
 
-        public byte[]? this[ReadOnlySpan<byte> key] => null;
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return null;
+        }
     }
 }

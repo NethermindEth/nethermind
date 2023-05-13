@@ -27,7 +27,7 @@ public class InitializePrecompiles : IStep
 
             try
             {
-                await KzgPolynomialCommitments.Initialize(logger);
+                await KzgPolynomialCommitments.InitializeAsync(logger);
             }
             catch (Exception e)
             {
