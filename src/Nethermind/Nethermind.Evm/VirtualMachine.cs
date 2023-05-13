@@ -58,17 +58,17 @@ public class VirtualMachine : IVirtualMachine
 
     private readonly byte[] _chainId;
 
-        private readonly IBlockhashProvider _blockhashProvider;
-        private readonly ISpecProvider _specProvider;
-        internal static readonly LruCache<KeccakKey, ICodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
-        private readonly ILogger _logger;
-        private IWorldState _worldState;
-        private IWorldState _state;
-        private readonly Stack<EvmState> _stateStack = new();
+    private readonly IBlockhashProvider _blockhashProvider;
+    private readonly ISpecProvider _specProvider;
+    internal static readonly LruCache<KeccakKey, ICodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
+    private readonly ILogger _logger;
+    private IWorldState _worldState;
+    private IWorldState _state;
+    private readonly Stack<EvmState> _stateStack = new();
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
-        private Dictionary<Address, ICodeInfo>? _precompiles;
-        private byte[] _returnDataBuffer = Array.Empty<byte>();
-        private ITxTracer _txTracer = NullTxTracer.Instance;
+    private Dictionary<Address, ICodeInfo>? _precompiles;
+    private byte[] _returnDataBuffer = Array.Empty<byte>();
+    private ITxTracer _txTracer = NullTxTracer.Instance;
 
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
@@ -135,21 +135,21 @@ public class VirtualMachine : IVirtualMachine
                     }
 
 
-                        callResult = ExecuteCall(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
-                        if (!callResult.IsReturn)
-                        {
-                            _stateStack.Push(currentState);
-                            currentState = callResult.StateToExecute;
-                            previousCallResult = null; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests (failing block 9411 on Ropsten https://ropsten.etherscan.io/vmtrace?txhash=0x666194d15c14c54fffafab1a04c08064af165870ef9a87f65711dcce7ed27fe1)
-                            _returnDataBuffer = Array.Empty<byte>();
-                            previousCallOutput = ZeroPaddedSpan.Empty;
-                            continue;
-                        }
-                        if (callResult.IsException)
-                        {
-                            if (_txTracer.IsTracingActions) _txTracer.ReportActionError(callResult.ExceptionType);
+                    callResult = ExecuteCall(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
+                    if (!callResult.IsReturn)
+                    {
+                        _stateStack.Push(currentState);
+                        currentState = callResult.StateToExecute;
+                        previousCallResult = null; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests (failing block 9411 on Ropsten https://ropsten.etherscan.io/vmtrace?txhash=0x666194d15c14c54fffafab1a04c08064af165870ef9a87f65711dcce7ed27fe1)
+                        _returnDataBuffer = Array.Empty<byte>();
+                        previousCallOutput = ZeroPaddedSpan.Empty;
+                        continue;
+                    }
+                    if (callResult.IsException)
+                    {
+                        if (_txTracer.IsTracingActions) _txTracer.ReportActionError(callResult.ExceptionType);
 
-                            _worldState.Restore(currentState.Snapshot);
+                        _worldState.Restore(currentState.Snapshot);
 
                         RevertParityTouchBugAccount(spec);
 
@@ -176,69 +176,69 @@ public class VirtualMachine : IVirtualMachine
                     {
                         long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
 
-                            if (callResult.IsException)
+                        if (callResult.IsException)
+                        {
+                            _txTracer.ReportActionError(callResult.ExceptionType);
+                        }
+                        else if (callResult.ShouldRevert)
+                        {
+                            if (currentState.ExecutionType.IsAnyCreate())
                             {
-                                _txTracer.ReportActionError(callResult.ExceptionType);
-                            }
-                            else if (callResult.ShouldRevert)
-                            {
-                                if (currentState.ExecutionType.IsAnyCreate())
-                                {
-                                    _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable - codeDepositGasCost);
-                                }
-                                else
-                                {
-                                    _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable);
-                                }
+                                _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable - codeDepositGasCost);
                             }
                             else
                             {
-                                if (currentState.ExecutionType.IsAnyCreate() && currentState.GasAvailable < codeDepositGasCost)
+                                _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable);
+                            }
+                        }
+                        else
+                        {
+                            if (currentState.ExecutionType.IsAnyCreate() && currentState.GasAvailable < codeDepositGasCost)
+                            {
+                                if (spec.ChargeForTopLevelCreate)
                                 {
-                                    if (spec.ChargeForTopLevelCreate)
-                                    {
-                                        _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
-                                    }
-                                    else
-                                    {
-                                        _txTracer.ReportActionEnd(currentState.GasAvailable, currentState.To, callResult.Output);
-                                    }
-                                }
-                                // Reject code starting with 0xEF if EIP-3541 is enabled And not following EOF if EIP-3540 is enabled and it has the EOF Prefix.
-                                else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(callResult.Output, spec, callResult.FromVersion))
-                                {
-                                    _txTracer.ReportActionError(callResult.FromVersion > 0 ? EvmExceptionType.InvalidEofCode : EvmExceptionType.InvalidCode);
+                                    _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                                 }
                                 else
                                 {
-                                    if (currentState.ExecutionType.IsAnyCreate())
-                                    {
-                                        _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output);
-                                    }
-                                    else
-                                    {
-                                        _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);
-                                    }
+                                    _txTracer.ReportActionEnd(currentState.GasAvailable, currentState.To, callResult.Output);
+                                }
+                            }
+                            // Reject code starting with 0xEF if EIP-3541 is enabled And not following EOF if EIP-3540 is enabled and it has the EOF Prefix.
+                            else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(callResult.Output, spec, callResult.FromVersion))
+                            {
+                                _txTracer.ReportActionError(callResult.FromVersion > 0 ? EvmExceptionType.InvalidEofCode : EvmExceptionType.InvalidCode);
+                            }
+                            else
+                            {
+                                if (currentState.ExecutionType.IsAnyCreate())
+                                {
+                                    _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output);
+                                }
+                                else
+                                {
+                                    _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);
                                 }
                             }
                         }
-
-                        return new TransactionSubstate(
-                            callResult.Output,
-                            currentState.Refund,
-                            (IReadOnlyCollection<Address>)currentState.DestroyList,
-                            (IReadOnlyCollection<LogEntry>)currentState.Logs,
-                            callResult.ShouldRevert,
-                            _txTracer != NullTxTracer.Instance,
-                            callResult.FromVersion);
                     }
 
-                    Address callCodeOwner = currentState.Env.ExecutingAccount;
-                    EvmState previousState = currentState;
-                    currentState = _stateStack.Pop();
-                    currentState.IsContinuation = true;
-                    currentState.GasAvailable += previousState.GasAvailable;
-                    bool previousStateSucceeded = true;
+                    return new TransactionSubstate(
+                        callResult.Output,
+                        currentState.Refund,
+                        (IReadOnlyCollection<Address>)currentState.DestroyList,
+                        (IReadOnlyCollection<LogEntry>)currentState.Logs,
+                        callResult.ShouldRevert,
+                        _txTracer != NullTxTracer.Instance,
+                        callResult.FromVersion);
+                }
+
+                Address callCodeOwner = currentState.Env.ExecutingAccount;
+                EvmState previousState = currentState;
+                currentState = _stateStack.Pop();
+                currentState.IsContinuation = true;
+                currentState.GasAvailable += previousState.GasAvailable;
+                bool previousStateSucceeded = true;
 
                 if (!callResult.ShouldRevert)
                 {
@@ -250,10 +250,10 @@ public class VirtualMachine : IVirtualMachine
                         _returnDataBuffer = Array.Empty<byte>();
                         previousCallOutput = ZeroPaddedSpan.Empty;
 
-                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                            bool invalidCode = CodeDepositHandler.CodeIsInvalid(callResult.Output, spec, callResult.FromVersion);
-                            if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
-                            {
+                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
+                        bool invalidCode = CodeDepositHandler.CodeIsInvalid(callResult.Output, spec, callResult.FromVersion);
+                        if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
+                        {
                             _state.InsertCode(callCodeOwner, callResult.Output, spec);
                             currentState.GasAvailable -= codeDepositGasCost;
 
@@ -319,17 +319,17 @@ public class VirtualMachine : IVirtualMachine
                     previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
 
-                        if (_txTracer.IsTracingActions)
-                        {
-                            _txTracer.ReportActionError(EvmExceptionType.Revert, previousState.GasAvailable);
-                        }
+                    if (_txTracer.IsTracingActions)
+                    {
+                        _txTracer.ReportActionError(EvmExceptionType.Revert, previousState.GasAvailable);
                     }
-
-                    previousState.Dispose();
                 }
-                catch (Exception ex) when (ex is EvmException or OverflowException)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"exception ({ex.GetType().Name}) in {currentState.ExecutionType} at depth {currentState.Env.CallDepth} - restoring snapshot");
+
+                previousState.Dispose();
+            }
+            catch (Exception ex) when (ex is EvmException or OverflowException)
+            {
+                if (_logger.IsTrace) _logger.Trace($"exception ({ex.GetType().Name}) in {currentState.ExecutionType} at depth {currentState.Env.CallDepth} - restoring snapshot");
 
                 _worldState.Restore(currentState.Snapshot);
 
@@ -377,37 +377,37 @@ public class VirtualMachine : IVirtualMachine
         }
     }
 
-        public ICodeInfo GetCachedCodeInfo(IWorldState state, Address codeSource, IReleaseSpec vmSpec)
+    public ICodeInfo GetCachedCodeInfo(IWorldState state, Address codeSource, IReleaseSpec vmSpec)
+    {
+        if (codeSource.IsPrecompile(vmSpec))
         {
-            if (codeSource.IsPrecompile(vmSpec))
+            if (_precompiles is null)
             {
-                    if (_precompiles is null)
-                    {
-                        throw new InvalidOperationException("EVM precompile have not been initialized properly.");
-                    }
-
-                return _precompiles[codeSource];
+                throw new InvalidOperationException("EVM precompile have not been initialized properly.");
             }
 
-            Keccak codeHash = state.GetCodeHash(codeSource);
-            ICodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
-            if (cachedCodeInfo is null)
-            {
-                byte[] code = state.GetCode(codeHash);
+            return _precompiles[codeSource];
+        }
 
-                if (code is null)
-                {
-                    throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
-                }
-                // check if Eof and make EofCodeInfo
-                cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec);
-                _codeCache.Set(codeHash, cachedCodeInfo);
-            }
-            else
+        Keccak codeHash = state.GetCodeHash(codeSource);
+        ICodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
+        if (cachedCodeInfo is null)
+        {
+            byte[] code = state.GetCode(codeHash);
+
+            if (code is null)
             {
-                // need to touch code so that any collectors that track database access are informed
-                state.TouchCode(codeHash);
+                throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
             }
+            // check if Eof and make EofCodeInfo
+            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec);
+            _codeCache.Set(codeHash, cachedCodeInfo);
+        }
+        else
+        {
+            // need to touch code so that any collectors that track database access are informed
+            state.TouchCode(codeHash);
+        }
 
         return cachedCodeInfo;
     }
@@ -417,35 +417,35 @@ public class VirtualMachine : IVirtualMachine
         _simdOperationsEnabled = false;
     }
 
-        private void InitializePrecompiledContracts()
+    private void InitializePrecompiledContracts()
+    {
+        _precompiles = new Dictionary<Address, ICodeInfo>
         {
-            _precompiles = new Dictionary<Address, ICodeInfo>
-            {
-                [EcRecoverPrecompile.Instance.Address] = new CodeInfo(EcRecoverPrecompile.Instance),
-                [Sha256Precompile.Instance.Address] = new CodeInfo(Sha256Precompile.Instance),
-                [Ripemd160Precompile.Instance.Address] = new CodeInfo(Ripemd160Precompile.Instance),
-                [IdentityPrecompile.Instance.Address] = new CodeInfo(IdentityPrecompile.Instance),
+            [EcRecoverPrecompile.Instance.Address] = new CodeInfo(EcRecoverPrecompile.Instance),
+            [Sha256Precompile.Instance.Address] = new CodeInfo(Sha256Precompile.Instance),
+            [Ripemd160Precompile.Instance.Address] = new CodeInfo(Ripemd160Precompile.Instance),
+            [IdentityPrecompile.Instance.Address] = new CodeInfo(IdentityPrecompile.Instance),
 
-                [Bn254AddPrecompile.Instance.Address] = new CodeInfo(Bn254AddPrecompile.Instance),
-                [Bn254MulPrecompile.Instance.Address] = new CodeInfo(Bn254MulPrecompile.Instance),
-                [Bn254PairingPrecompile.Instance.Address] = new CodeInfo(Bn254PairingPrecompile.Instance),
-                [ModExpPrecompile.Instance.Address] = new CodeInfo(ModExpPrecompile.Instance),
+            [Bn254AddPrecompile.Instance.Address] = new CodeInfo(Bn254AddPrecompile.Instance),
+            [Bn254MulPrecompile.Instance.Address] = new CodeInfo(Bn254MulPrecompile.Instance),
+            [Bn254PairingPrecompile.Instance.Address] = new CodeInfo(Bn254PairingPrecompile.Instance),
+            [ModExpPrecompile.Instance.Address] = new CodeInfo(ModExpPrecompile.Instance),
 
-                [Blake2FPrecompile.Instance.Address] = new CodeInfo(Blake2FPrecompile.Instance),
+            [Blake2FPrecompile.Instance.Address] = new CodeInfo(Blake2FPrecompile.Instance),
 
-                [G1AddPrecompile.Instance.Address] = new CodeInfo(G1AddPrecompile.Instance),
-                [G1MulPrecompile.Instance.Address] = new CodeInfo(G1MulPrecompile.Instance),
-                [G1MultiExpPrecompile.Instance.Address] = new CodeInfo(G1MultiExpPrecompile.Instance),
-                [G2AddPrecompile.Instance.Address] = new CodeInfo(G2AddPrecompile.Instance),
-                [G2MulPrecompile.Instance.Address] = new CodeInfo(G2MulPrecompile.Instance),
-                [G2MultiExpPrecompile.Instance.Address] = new CodeInfo(G2MultiExpPrecompile.Instance),
-                [PairingPrecompile.Instance.Address] = new CodeInfo(PairingPrecompile.Instance),
-                [MapToG1Precompile.Instance.Address] = new CodeInfo(MapToG1Precompile.Instance),
-                [MapToG2Precompile.Instance.Address] = new CodeInfo(MapToG2Precompile.Instance),
+            [G1AddPrecompile.Instance.Address] = new CodeInfo(G1AddPrecompile.Instance),
+            [G1MulPrecompile.Instance.Address] = new CodeInfo(G1MulPrecompile.Instance),
+            [G1MultiExpPrecompile.Instance.Address] = new CodeInfo(G1MultiExpPrecompile.Instance),
+            [G2AddPrecompile.Instance.Address] = new CodeInfo(G2AddPrecompile.Instance),
+            [G2MulPrecompile.Instance.Address] = new CodeInfo(G2MulPrecompile.Instance),
+            [G2MultiExpPrecompile.Instance.Address] = new CodeInfo(G2MultiExpPrecompile.Instance),
+            [PairingPrecompile.Instance.Address] = new CodeInfo(PairingPrecompile.Instance),
+            [MapToG1Precompile.Instance.Address] = new CodeInfo(MapToG1Precompile.Instance),
+            [MapToG2Precompile.Instance.Address] = new CodeInfo(MapToG2Precompile.Instance),
 
-                [PointEvaluationPrecompile.Instance.Address] = new CodeInfo(PointEvaluationPrecompile.Instance),
-            };
-        }
+            [PointEvaluationPrecompile.Instance.Address] = new CodeInfo(PointEvaluationPrecompile.Instance),
+        };
+    }
 
     private static bool UpdateGas(long gasCost, ref long gasAvailable)
     {
@@ -580,27 +580,27 @@ public class VirtualMachine : IVirtualMachine
 
         state.GasAvailable = gasAvailable;
 
-            try
-            {
-                (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
-                CallResult callResult = new(output.ToArray(), success, 0, !success);
-                return callResult;
-            }
-            catch (Exception exception)
-            {
-                if (_logger.IsDebug) _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
-                CallResult callResult = new(Array.Empty<byte>(), false, 0, true);
-                return callResult;
-            }
-        }
-
-        [SkipLocalsInit]
-        private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+        try
         {
-            bool isTrace = _logger.IsTrace;
-            bool traceOpcodes = _txTracer.IsTracingInstructions;
-            ref readonly ExecutionEnvironment env = ref vmState.Env;
-            ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
+            CallResult callResult = new(output.ToArray(), success, 0, !success);
+            return callResult;
+        }
+        catch (Exception exception)
+        {
+            if (_logger.IsDebug) _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
+            CallResult callResult = new(Array.Empty<byte>(), false, 0, true);
+            return callResult;
+        }
+    }
+
+    [SkipLocalsInit]
+    private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+    {
+        bool isTrace = _logger.IsTrace;
+        bool traceOpcodes = _txTracer.IsTracingInstructions;
+        ref readonly ExecutionEnvironment env = ref vmState.Env;
+        ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
 
         if (!vmState.IsContinuation)
         {
@@ -624,19 +624,19 @@ public class VirtualMachine : IVirtualMachine
             goto Empty;
         }
 
-            // if (vmState.Env.CodeInfo.MachineCode.AsSpan().StartsWith(EvmObjectFormat.MAGIC) && vmState.Env.CodeInfo is CodeInfo)
-            // {
-            //     return CallResult.InvalidEofCodeException;
-            // }
-            
-            vmState.InitStacks();
-            EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
-            long gasAvailable = vmState.GasAvailable;
-            int programCounter = vmState.ProgramCounter;
-            int sectionIndex = 0;
-            ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection.Span;
-            ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection.Span;
-            ReadOnlySpan<byte> typeSection = env.CodeInfo.TypeSection.Span;
+        // if (vmState.Env.CodeInfo.MachineCode.AsSpan().StartsWith(EvmObjectFormat.MAGIC) && vmState.Env.CodeInfo is CodeInfo)
+        // {
+        //     return CallResult.InvalidEofCodeException;
+        // }
+
+        vmState.InitStacks();
+        EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
+        long gasAvailable = vmState.GasAvailable;
+        int programCounter = vmState.ProgramCounter;
+        int sectionIndex = 0;
+        ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection.Span;
+        ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection.Span;
+        ReadOnlySpan<byte> typeSection = env.CodeInfo.TypeSection.Span;
 
         static void UpdateCurrentState(EvmState state, int pc, long gas, int stackHead)
         {
@@ -663,14 +663,14 @@ public class VirtualMachine : IVirtualMachine
             //                if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
         }
 
-            while (programCounter < codeSection.Length)
+        while (programCounter < codeSection.Length)
+        {
+            Instruction instruction = (Instruction)codeSection[programCounter];
+            // Console.WriteLine(instruction);
+            if (traceOpcodes)
             {
-                Instruction instruction = (Instruction)codeSection[programCounter];
-                // Console.WriteLine(instruction);
-                if (traceOpcodes)
-                {
-                    StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
-                }
+                StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
+            }
 
             programCounter++;
             switch (instruction)
@@ -1224,26 +1224,26 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                            UInt256 codeLength = (UInt256)env.CodeInfo.MachineCode.Length;
-                            stack.PushUInt256(in codeLength);
-                            break;
-                        }
-                    case Instruction.CODECOPY:
-                        {
-                            UInt256 code_length = (UInt256)env.CodeInfo.MachineCode.Length;
-                            stack.PopUInt256(out UInt256 dest);
-                            stack.PopUInt256(out UInt256 src);
-                            stack.PopUInt256(out UInt256 length);
-                            if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable)) goto OutOfGas;
+                        UInt256 codeLength = (UInt256)env.CodeInfo.MachineCode.Length;
+                        stack.PushUInt256(in codeLength);
+                        break;
+                    }
+                case Instruction.CODECOPY:
+                    {
+                        UInt256 code_length = (UInt256)env.CodeInfo.MachineCode.Length;
+                        stack.PopUInt256(out UInt256 dest);
+                        stack.PopUInt256(out UInt256 src);
+                        stack.PopUInt256(out UInt256 length);
+                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable)) goto OutOfGas;
 
                         if (length > UInt256.Zero)
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in dest, length)) goto OutOfGas;
 
-                                ZeroPaddedSpan codeSlice = env.CodeInfo.MachineCode.SliceWithZeroPadding(src, (int)length);
-                                vmState.Memory.Save(in dest, codeSlice);
-                                if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dest, codeSlice);
-                            }
+                            ZeroPaddedSpan codeSlice = env.CodeInfo.MachineCode.SliceWithZeroPadding(src, (int)length);
+                            vmState.Memory.Save(in dest, codeSlice);
+                            if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dest, codeSlice);
+                        }
 
                         break;
                     }
@@ -1746,14 +1746,14 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                            int currentCodeSectionOffset = env.CodeInfo.SectionOffset(sectionIndex);
-                            int correctedPC = programCounter - currentCodeSectionOffset - 1;
-                            stack.PushUInt32(correctedPC);
-                            break;
-                        }
-                    case Instruction.MSIZE:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
+                        int currentCodeSectionOffset = env.CodeInfo.SectionOffset(sectionIndex);
+                        int correctedPC = programCounter - currentCodeSectionOffset - 1;
+                        stack.PushUInt32(correctedPC);
+                        break;
+                    }
+                case Instruction.MSIZE:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
                         UInt256 size = vmState.Memory.Size;
                         stack.PushUInt256(in size);
@@ -1791,15 +1791,15 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            int programCounterInt = programCounter;
-                            if (programCounterInt >= codeSection.Length)
-                            {
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                stack.PushByte(codeSection[programCounterInt]);
-                            }
+                        int programCounterInt = programCounter;
+                        if (programCounterInt >= codeSection.Length)
+                        {
+                            stack.PushZero();
+                        }
+                        else
+                        {
+                            stack.PushByte(codeSection[programCounterInt]);
+                        }
 
                         programCounter++;
                         break;
@@ -1838,11 +1838,11 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            int length = instruction - Instruction.PUSH1 + 1;
-                            int programCounterInt = programCounter;
-                            int usedFromCode = Math.Min(codeSection.Length - programCounterInt, length);
+                        int length = instruction - Instruction.PUSH1 + 1;
+                        int programCounterInt = programCounter;
+                        int usedFromCode = Math.Min(codeSection.Length - programCounterInt, length);
 
-                            stack.PushLeftPaddedBytes(codeSection.Slice(programCounterInt, usedFromCode), length);
+                        stack.PushLeftPaddedBytes(codeSection.Slice(programCounterInt, usedFromCode), length);
 
                         programCounter += length;
                         break;
@@ -1969,13 +1969,13 @@ public class VirtualMachine : IVirtualMachine
                         Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
 
 
-                            UInt256 balance = _state.GetBalance(env.ExecutingAccount);
-                            if (value > balance)
-                            {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
+                        UInt256 balance = _state.GetBalance(env.ExecutingAccount);
+                        if (value > balance)
+                        {
+                            _returnDataBuffer = Array.Empty<byte>();
+                            stack.PushZero();
+                            break;
+                        }
 
                         UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
                         UInt256 maxNonce = ulong.MaxValue;
@@ -2004,15 +2004,15 @@ public class VirtualMachine : IVirtualMachine
 
                         _state.IncrementNonce(env.ExecutingAccount);
 
-                            // if container is EOF init code must be EOF
-                            if (!CodeDepositHandler.CreateCodeIsValid(env.CodeInfo, initCode, spec))
-                            {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
+                        // if container is EOF init code must be EOF
+                        if (!CodeDepositHandler.CreateCodeIsValid(env.CodeInfo, initCode, spec))
+                        {
+                            _returnDataBuffer = Array.Empty<byte>();
+                            stack.PushZero();
+                            break;
+                        }
 
-                            Snapshot snapshot = _worldState.TakeSnapshot();
+                        Snapshot snapshot = _worldState.TakeSnapshot();
 
                         bool accountExists = _state.AccountExists(contractAddress);
                         if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
@@ -2046,39 +2046,39 @@ public class VirtualMachine : IVirtualMachine
                                 value: value
                             );
 
-                            EvmState callState = new(
-                                callGas,
-                                callEnv,
-                                instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
-                                false,
-                                snapshot,
-                                0L,
-                                0L,
-                                vmState.IsStatic,
-                                vmState,
-                                false,
-                                accountExists);
-                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                            return new CallResult(callState);
-                        }
-                    case Instruction.RETURN:
-                        {
-                            stack.PopUInt256(out UInt256 memoryPos);
-                            stack.PopUInt256(out UInt256 length);
+                        EvmState callState = new(
+                            callGas,
+                            callEnv,
+                            instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
+                            false,
+                            snapshot,
+                            0L,
+                            0L,
+                            vmState.IsStatic,
+                            vmState,
+                            false,
+                            accountExists);
+                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                        return new CallResult(callState);
+                    }
+                case Instruction.RETURN:
+                    {
+                        stack.PopUInt256(out UInt256 memoryPos);
+                        stack.PopUInt256(out UInt256 length);
 
-                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in memoryPos, length)) goto OutOfGas;
-                            ReadOnlySpan<byte> returnData = vmState.Memory.Load(in memoryPos, length).Span;
+                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in memoryPos, length)) goto OutOfGas;
+                        ReadOnlySpan<byte> returnData = vmState.Memory.Load(in memoryPos, length).Span;
 
-                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                            if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-                            return new CallResult(returnData.ToArray(), null, env.CodeInfo.EofVersion());
-                        }
-                    case Instruction.CALL:
-                    case Instruction.CALLCODE:
-                    case Instruction.DELEGATECALL:
-                    case Instruction.STATICCALL:
-                        {
-                            Metrics.Calls++;
+                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                        if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+                        return new CallResult(returnData.ToArray(), null, env.CodeInfo.EofVersion());
+                    }
+                case Instruction.CALL:
+                case Instruction.CALLCODE:
+                case Instruction.DELEGATECALL:
+                case Instruction.STATICCALL:
+                    {
+                        Metrics.Calls++;
 
                         if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
                             instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) goto InvalidInstruction;
@@ -2186,25 +2186,25 @@ public class VirtualMachine : IVirtualMachine
                         Snapshot snapshot = _worldState.TakeSnapshot();
                         _state.SubtractFromBalance(caller, transferValue, spec);
 
-                            ExecutionEnvironment callEnv = new(
-                                txExecutionContext: env.TxExecutionContext,
-                                callDepth: env.CallDepth + 1,
-                                caller: caller,
-                                codeSource: codeSource,
-                                executingAccount: target,
-                                transferValue: transferValue,
-                                value: callValue,
-                                inputData: callData,
-                                codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
-                            );
+                        ExecutionEnvironment callEnv = new(
+                            txExecutionContext: env.TxExecutionContext,
+                            callDepth: env.CallDepth + 1,
+                            caller: caller,
+                            codeSource: codeSource,
+                            executingAccount: target,
+                            transferValue: transferValue,
+                            value: callValue,
+                            inputData: callData,
+                            codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
+                        );
 
-                            if (isTrace) _logger.Trace($"Tx call gas {gasLimitUl}");
-                            if (outputLength == 0)
-                            {
-                                // TODO: when output length is 0 outputOffset can have any value really
-                                // and the value does not matter and it can cause trouble when beyond long range
-                                outputOffset = 0;
-                            }
+                        if (isTrace) _logger.Trace($"Tx call gas {gasLimitUl}");
+                        if (outputLength == 0)
+                        {
+                            // TODO: when output length is 0 outputOffset can have any value really
+                            // and the value does not matter and it can cause trouble when beyond long range
+                            outputOffset = 0;
+                        }
 
                         ExecutionType executionType = GetCallExecutionType(instruction, txCtx.Header.IsPostMerge);
                         EvmState callState = new(
@@ -2234,13 +2234,13 @@ public class VirtualMachine : IVirtualMachine
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in memoryPos, length)) goto OutOfGas;
                         ReadOnlyMemory<byte> errorDetails = vmState.Memory.Load(in memoryPos, length);
 
-                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                            if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-                            return new CallResult(errorDetails.ToArray(), null, env.CodeInfo.EofVersion(), true);
-                        }
-                    case Instruction.INVALID:
-                        {
-                            if (!UpdateGas(GasCostOf.High, ref gasAvailable)) goto OutOfGas;
+                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                        if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+                        return new CallResult(errorDetails.ToArray(), null, env.CodeInfo.EofVersion(), true);
+                    }
+                case Instruction.INVALID:
+                    {
+                        if (!UpdateGas(GasCostOf.High, ref gasAvailable)) goto OutOfGas;
 
                         goto InvalidInstruction;
                     }
@@ -2373,149 +2373,149 @@ public class VirtualMachine : IVirtualMachine
                             stack.PushBytes(_state.GetCodeHash(address).Bytes);
                         }
 
+                        break;
+                    }
+                case Instruction.RJUMP | Instruction.BEGINSUB:
+                    {
+                        if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.IsEof())
+                        {
+                            if (!UpdateGas(GasCostOf.RJump, ref gasAvailable)) goto OutOfGas;
+                            short offset = codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
+                            programCounter += EvmObjectFormat.Eof1.TWO_BYTE_LENGTH + offset;
                             break;
                         }
-                    case Instruction.RJUMP | Instruction.BEGINSUB:
+                        else
                         {
-                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.IsEof())
-                            {
-                                if (!UpdateGas(GasCostOf.RJump, ref gasAvailable)) goto OutOfGas;
-                                short offset = codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
-                                programCounter += EvmObjectFormat.Eof1.TWO_BYTE_LENGTH + offset;
-                                break;
-                            }
-                            else
-                            {
-                                if (!spec.SubroutinesEnabled)
-                                {
-                                    goto InvalidInstruction;
-                                }
-
-                                // why do we even need the cost of it?
-                                if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
-                                EndInstructionTraceError(gasAvailable, EvmExceptionType.InvalidSubroutineEntry);
-                                return CallResult.InvalidSubroutineEntry;
-                            }
-                        }
-                    case Instruction.RJUMPI | Instruction.RETURNSUB:
-                        {
-                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.IsEof())
-                            {
-                                if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) goto OutOfGas;
-                                Span<byte> condition = stack.PopBytes();
-                                short offset = codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
-                                if (!condition.SequenceEqual(BytesZero32))
-                                {
-                                    programCounter += offset;
-                                }
-                                programCounter += EvmObjectFormat.Eof1.TWO_BYTE_LENGTH;
-                            }
-                            else
-                            {
-                                if (!spec.SubroutinesEnabled)
-                                {
-                                    goto InvalidInstruction;
-                                }
-
-                                if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
-                                if (vmState.ReturnStackHead == 0)
-                                {
-                                    EndInstructionTraceError(gasAvailable, EvmExceptionType.InvalidSubroutineReturn);
-                                    goto InvalidSubroutineReturn;
-                                }
-
-                                programCounter = vmState.ReturnStack[--vmState.ReturnStackHead].Offset;
-                            }
-                            break;
-                        }
-                    case Instruction.RJUMPV | Instruction.JUMPSUB:
-                        {
-                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.IsEof())
-                            {
-                                if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
-                                var case_v = stack.PopByte();
-                                var count = codeSection[programCounter];
-                                var immediateValueSize = EvmObjectFormat.Eof1.ONE_BYTE_LENGTH + count * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH;
-                                if (case_v < count)
-                                {
-                                    int caseOffset = codeSection.Slice(
-                                        programCounter + EvmObjectFormat.Eof1.ONE_BYTE_LENGTH + case_v * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH,
-                                        EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
-                                    programCounter += caseOffset;
-                                }
-                                programCounter += immediateValueSize;
-                            }
-                            else
-                            {
-                                if (!spec.SubroutinesEnabled)
-                                {
-                                    goto InvalidInstruction;
-                                }
-
-                                if (!UpdateGas(GasCostOf.High, ref gasAvailable)) goto OutOfGas;
-                                if (vmState.ReturnStackHead == EvmStack.ReturnStackSize) goto InvalidSubroutineEntry;
-
-                                vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
-                                {
-                                    Offset = programCounter
-                                };
-
-                                stack.PopUInt256(out UInt256 jumpDest);
-                                Jump(jumpDest, ref programCounter, env, true);
-                                programCounter++;
-                            }
-                            break;
-                        }
-                    case Instruction.CALLF:
-                        {
-                            if (!spec.IsEofEvmModeOn || !spec.FunctionSections || !env.CodeInfo.IsEof())
+                            if (!spec.SubroutinesEnabled)
                             {
                                 goto InvalidInstruction;
                             }
 
-                            if (!UpdateGas(GasCostOf.Callf, ref gasAvailable)) goto OutOfGas;
-                            var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
-                            var inputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE];
+                            // why do we even need the cost of it?
+                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
+                            EndInstructionTraceError(gasAvailable, EvmExceptionType.InvalidSubroutineEntry);
+                            return CallResult.InvalidSubroutineEntry;
+                        }
+                    }
+                case Instruction.RJUMPI | Instruction.RETURNSUB:
+                    {
+                        if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.IsEof())
+                        {
+                            if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) goto OutOfGas;
+                            Span<byte> condition = stack.PopBytes();
+                            short offset = codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
+                            if (!condition.SequenceEqual(BytesZero32))
+                            {
+                                programCounter += offset;
+                            }
+                            programCounter += EvmObjectFormat.Eof1.TWO_BYTE_LENGTH;
+                        }
+                        else
+                        {
+                            if (!spec.SubroutinesEnabled)
+                            {
+                                goto InvalidInstruction;
+                            }
 
-                            if (vmState.ReturnStackHead > EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT) goto StackOverflow;
+                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
+                            if (vmState.ReturnStackHead == 0)
+                            {
+                                EndInstructionTraceError(gasAvailable, EvmExceptionType.InvalidSubroutineReturn);
+                                goto InvalidSubroutineReturn;
+                            }
 
-                            stack.EnsureDepth(inputCount);
+                            programCounter = vmState.ReturnStack[--vmState.ReturnStackHead].Offset;
+                        }
+                        break;
+                    }
+                case Instruction.RJUMPV | Instruction.JUMPSUB:
+                    {
+                        if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.IsEof())
+                        {
+                            if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
+                            var case_v = stack.PopByte();
+                            var count = codeSection[programCounter];
+                            var immediateValueSize = EvmObjectFormat.Eof1.ONE_BYTE_LENGTH + count * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH;
+                            if (case_v < count)
+                            {
+                                int caseOffset = codeSection.Slice(
+                                    programCounter + EvmObjectFormat.Eof1.ONE_BYTE_LENGTH + case_v * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH,
+                                    EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
+                                programCounter += caseOffset;
+                            }
+                            programCounter += immediateValueSize;
+                        }
+                        else
+                        {
+                            if (!spec.SubroutinesEnabled)
+                            {
+                                goto InvalidInstruction;
+                            }
+
+                            if (!UpdateGas(GasCostOf.High, ref gasAvailable)) goto OutOfGas;
+                            if (vmState.ReturnStackHead == EvmStack.ReturnStackSize) goto InvalidSubroutineEntry;
+
                             vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
                             {
-                                Index = sectionIndex,
-                                Height = stack.Head - inputCount,
-                                Offset = programCounter + EvmObjectFormat.Eof1.TWO_BYTE_LENGTH
+                                Offset = programCounter
                             };
 
-                            sectionIndex = index;
-                            programCounter = env.CodeInfo.SectionOffset(index);
-                            break;
+                            stack.PopUInt256(out UInt256 jumpDest);
+                            Jump(jumpDest, ref programCounter, env, true);
+                            programCounter++;
                         }
-                    case Instruction.RETF:
-                        {
-                            if (!spec.IsEofEvmModeOn && !spec.FunctionSections || !env.CodeInfo.IsEof())
-                            {
-                                goto InvalidInstruction;
-                            }
-
-                            if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) goto OutOfGas;
-                            var index = sectionIndex;
-                            var outputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE + 1];
-                            if (vmState.ReturnStackHead-- == 0)
-                            {
-                                break;
-                            }
-
-                            var stackFrame = vmState.ReturnStack[vmState.ReturnStackHead];
-                            sectionIndex = stackFrame.Index;
-                            programCounter = stackFrame.Offset;
-                            break;
-                        }
-                    default:
+                        break;
+                    }
+                case Instruction.CALLF:
+                    {
+                        if (!spec.IsEofEvmModeOn || !spec.FunctionSections || !env.CodeInfo.IsEof())
                         {
                             goto InvalidInstruction;
                         }
-                }
+
+                        if (!UpdateGas(GasCostOf.Callf, ref gasAvailable)) goto OutOfGas;
+                        var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
+                        var inputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE];
+
+                        if (vmState.ReturnStackHead > EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT) goto StackOverflow;
+
+                        stack.EnsureDepth(inputCount);
+                        vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
+                        {
+                            Index = sectionIndex,
+                            Height = stack.Head - inputCount,
+                            Offset = programCounter + EvmObjectFormat.Eof1.TWO_BYTE_LENGTH
+                        };
+
+                        sectionIndex = index;
+                        programCounter = env.CodeInfo.SectionOffset(index);
+                        break;
+                    }
+                case Instruction.RETF:
+                    {
+                        if (!spec.IsEofEvmModeOn && !spec.FunctionSections || !env.CodeInfo.IsEof())
+                        {
+                            goto InvalidInstruction;
+                        }
+
+                        if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) goto OutOfGas;
+                        var index = sectionIndex;
+                        var outputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE + 1];
+                        if (vmState.ReturnStackHead-- == 0)
+                        {
+                            break;
+                        }
+
+                        var stackFrame = vmState.ReturnStack[vmState.ReturnStackHead];
+                        sectionIndex = stackFrame.Index;
+                        programCounter = stackFrame.Offset;
+                        break;
+                    }
+                default:
+                    {
+                        goto InvalidInstruction;
+                    }
+            }
 
             if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
         }
@@ -2525,13 +2525,13 @@ public class VirtualMachine : IVirtualMachine
 
 // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
 Empty:
-            return CallResult.Empty(0);
+        return CallResult.Empty(0);
 OutOfGas:
         if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.OutOfGas);
         return CallResult.OutOfGasException;
 EmptyTrace:
-            if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-            return CallResult.Empty(0);
+        if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+        return CallResult.Empty(0);
 InvalidInstruction:
         if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.BadInstruction);
         return CallResult.InvalidInstructionException;
@@ -2563,32 +2563,32 @@ AccessViolation:
         }
     }
 
-        private void RemoveInBetween(ref EvmStack stack, int height, int argsCount)
+    private void RemoveInBetween(ref EvmStack stack, int height, int argsCount)
+    {
+        List<UInt256> arguments = new();
+        for (int i = 0; i < argsCount; i++)
         {
-            List<UInt256> arguments = new();
-            for (int i = 0; i < argsCount; i++)
-            {
-                stack.PopUInt256(out var item);
-                arguments.Add(item);
-            }
-
-            while (stack.Head > height)
-            {
-                stack.PopUInt256(out _);
-            }
-
-            for (int i = argsCount - 1; i >= 0; i--)
-            {
-                stack.PushUInt256(arguments[i]);
-            }
+            stack.PopUInt256(out var item);
+            arguments.Add(item);
         }
 
-        static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
+        while (stack.Head > height)
         {
-            if (vmState.Memory is null)
-            {
-                ThrowNotInitialized();
-            }
+            stack.PopUInt256(out _);
+        }
+
+        for (int i = argsCount - 1; i >= 0; i--)
+        {
+            stack.PushUInt256(arguments[i]);
+        }
+    }
+
+    static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
+    {
+        if (vmState.Memory is null)
+        {
+            ThrowNotInitialized();
+        }
 
         long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length);
         if (memoryCost != 0L)
@@ -2690,28 +2690,28 @@ AccessViolation:
         return executionType;
     }
 
-        internal readonly ref struct CallResult
+    internal readonly ref struct CallResult
+    {
+        public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
+        public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
+        public static CallResult OutOfGasException => new(EvmExceptionType.OutOfGas);
+        public static CallResult InvalidEofCodeException => new(EvmExceptionType.InvalidEofCode);
+        public static CallResult AccessViolationException => new(EvmExceptionType.AccessViolation);
+        public static CallResult InvalidJumpDestination => new(EvmExceptionType.InvalidJumpDestination);
+        public static CallResult InvalidInstructionException
         {
-            public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
-            public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
-            public static CallResult OutOfGasException => new(EvmExceptionType.OutOfGas);
-            public static CallResult InvalidEofCodeException => new(EvmExceptionType.InvalidEofCode);
-            public static CallResult AccessViolationException => new(EvmExceptionType.AccessViolation);
-            public static CallResult InvalidJumpDestination => new(EvmExceptionType.InvalidJumpDestination);
-            public static CallResult InvalidInstructionException
+            get
             {
-                get
-                {
-                    return new(EvmExceptionType.BadInstruction);
-                }
+                return new(EvmExceptionType.BadInstruction);
             }
+        }
 
         public static CallResult StaticCallViolationException => new(EvmExceptionType.StaticCallViolation);
         public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
 
-            public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
-            public static CallResult Empty(int version) => new(Array.Empty<byte>(), null, version);
+        public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
+        public static CallResult Empty(int version) => new(Array.Empty<byte>(), null, version);
 
         public CallResult(EvmState stateToExecute)
         {
@@ -2731,23 +2731,23 @@ AccessViolation:
             ExceptionType = exceptionType;
         }
 
-            public CallResult(byte[] output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
-            {
-                StateToExecute = null;
-                Output = output;
-                PrecompileSuccess = precompileSuccess;
-                ShouldRevert = shouldRevert;
-                ExceptionType = exceptionType;
-                FromVersion = fromVersion;
-            }
-
-            public EvmState? StateToExecute { get; }
-            public byte[] Output { get; }
-            public int FromVersion { get; }
-            public EvmExceptionType ExceptionType { get; }
-            public bool ShouldRevert { get; }
-            public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
-            public bool IsReturn => StateToExecute is null;
-            public bool IsException => ExceptionType != EvmExceptionType.None;
+        public CallResult(byte[] output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        {
+            StateToExecute = null;
+            Output = output;
+            PrecompileSuccess = precompileSuccess;
+            ShouldRevert = shouldRevert;
+            ExceptionType = exceptionType;
+            FromVersion = fromVersion;
         }
+
+        public EvmState? StateToExecute { get; }
+        public byte[] Output { get; }
+        public int FromVersion { get; }
+        public EvmExceptionType ExceptionType { get; }
+        public bool ShouldRevert { get; }
+        public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
+        public bool IsReturn => StateToExecute is null;
+        public bool IsException => ExceptionType != EvmExceptionType.None;
     }
+}
