@@ -38,8 +38,8 @@ namespace Nethermind.Mining.Test
             using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromSeconds(600));
             await ethashSealer.MineAsync(cancellationTokenSource.Token, block, validNonce - 3);
 
-            Assert.AreEqual(validNonce, block.Header.Nonce);
-            Assert.AreEqual(new Keccak("0x52b96cf62447129c6bd81f835721ee145b948ae3b05ef6eae454cbf69a5bc05d"), block.Header.MixHash);
+            Assert.That(block.Header.Nonce, Is.EqualTo(validNonce));
+            Assert.That(block.Header.MixHash, Is.EqualTo(new Keccak("0x52b96cf62447129c6bd81f835721ee145b948ae3b05ef6eae454cbf69a5bc05d")));
         }
 
         [Test]

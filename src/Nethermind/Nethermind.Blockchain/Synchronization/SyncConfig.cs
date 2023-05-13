@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Text;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Db;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -39,12 +36,27 @@ namespace Nethermind.Blockchain.Synchronization
         public long AncientBodiesBarrier { get; set; }
         public long AncientReceiptsBarrier { get; set; }
         public string PivotTotalDifficulty { get; set; }
-        public string PivotNumber { get; set; }
-        public string PivotHash { get; set; }
+        private string _pivotNumber = "0";
+        public string PivotNumber
+        {
+            get => FastSync || SnapSync ? _pivotNumber : "0";
+            set => _pivotNumber = value;
+        }
+
+        private string? _pivotHash;
+        public string? PivotHash
+        {
+            get => FastSync || SnapSync ? _pivotHash : null;
+            set => _pivotHash = value;
+        }
+        public int MaxAttemptsToUpdatePivot { get; set; } = 900;
         public bool WitnessProtocolEnabled { get; set; } = false;
         public bool SnapSync { get; set; } = false;
         public int SnapSyncAccountRangePartitionCount { get; set; } = 8;
         public bool FixReceipts { get; set; } = false;
+        public bool FixTotalDifficulty { get; set; } = false;
+        public long FixTotalDifficultyStartingBlock { get; set; } = 1;
+        public long? FixTotalDifficultyLastBlock { get; set; } = null;
         public bool StrictMode { get; set; } = false;
         public bool BlockGossipEnabled { get; set; } = true;
         public bool NonValidatorNode { get; set; } = false;

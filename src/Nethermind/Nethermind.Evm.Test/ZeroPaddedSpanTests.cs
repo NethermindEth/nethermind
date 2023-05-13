@@ -28,7 +28,7 @@ namespace Nethermind.Evm.Test
         {
             byte[] input = Bytes.FromHexString(inputHex);
             ZeroPaddedSpan result = input.SliceWithZeroPadding(startIndex, length, padDirection);
-            Assert.AreEqual(expectedResultHex, result.ToArray().ToHexString(true));
+            Assert.That(result.ToArray().ToHexString(true), Is.EqualTo(expectedResultHex));
         }
     }
 }

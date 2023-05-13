@@ -27,6 +27,7 @@ using Nethermind.TxPool;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
+using Nethermind.State.Tracing;
 using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof
@@ -77,7 +78,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Keccak txHash = _blockTree.FindBlock(1).Transactions[0].Hash;
             TransactionWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data;
             Assert.NotNull(txWithProof.Transaction);
-            Assert.AreEqual(2, txWithProof.TxProof.Length);
+            Assert.That(txWithProof.TxProof.Length, Is.EqualTo(2));
             if (withHeader)
             {
                 Assert.NotNull(txWithProof.BlockHeader);
@@ -142,7 +143,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Keccak txHash = _blockTree.FindBlock(1).Transactions[0].Hash;
             ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
             Assert.NotNull(receiptWithProof.Receipt);
-            Assert.AreEqual(2, receiptWithProof.ReceiptProof.Length);
+            Assert.That(receiptWithProof.ReceiptProof.Length, Is.EqualTo(2));
 
             if (withHeader)
             {
@@ -154,7 +155,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             }
 
             string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}", $"{withHeader}");
-            Assert.AreEqual(expectedResult, response);
+            Assert.That(response, Is.EqualTo(expectedResult));
         }
 
         [TestCase(true, "{\"jsonrpc\":\"2.0\",\"result\":{\"receipt\":{\"transactionHash\":\"0x1d4bacd3b4db06677ec7f43b6be43a6c1c4285ba7c8e2e63021b53701cf8189b\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0x77f368c23226eee1583f671719f117df588fc5bf19c2a73e190e404a8be570f1\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x2\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x1d4bacd3b4db06677ec7f43b6be43a6c1c4285ba7c8e2e63021b53701cf8189b\",\"blockHash\":\"0x77f368c23226eee1583f671719f117df588fc5bf19c2a73e190e404a8be570f1\",\"blockNumber\":\"0x1\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x3\",\"transactionIndex\":\"0x1\",\"transactionHash\":\"0x1d4bacd3b4db06677ec7f43b6be43a6c1c4285ba7c8e2e63021b53701cf8189b\",\"blockHash\":\"0x77f368c23226eee1583f671719f117df588fc5bf19c2a73e190e404a8be570f1\",\"blockNumber\":\"0x1\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},\"txProof\":[\"0xf851a0e244ea69b68d9f3fd5eff812a4a7e1e105a8c1143ff82206458ad45fe1801c9b80808080808080a08a1641bd871a8d574e81653362ae89e549a9ab0660bd5b180328d00f13e9c6bb8080808080808080\",\"0xf86431b861f85f8001825208940000000000000000000000000000000000000000020125a00861eb73c37c3560fc40047523506de00ecfa6b96dff7d37e5ce75dc3986078da032e161403eae434b0f94a36fcc7e6ad46ccffc00fe90f0756118506e918eaef9\"],\"receiptProof\":[\"0xf851a053e4a8d7d8438fa45d6b75bbd6fb699b08049c1caf1c21ada42a746ddfb61d0b80808080808080a04de834bd23b53a3d82923ae5f359239b326c66758f2ae636ab934844dba2b9658080808080808080\",\"0xf9010f31b9010bf901088082a410b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0\"],\"blockHeader\":\"0xf901f9a0b3157bcccab04639f6393042690a6c9862deebe88c781f911e8dfd265531e9ffa01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a038b96dec209c13afedbb48916f68cb38a423d13c469f5f1e338ad7415c9cf5e3a0e1b1585a222beceb3887dc6701802facccf186c2d0f6aa69e26ae0c431fc2b5db9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000830f424001833d090080830f424183010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e28800000000000003e8\"},\"id\":67}")]
@@ -225,13 +226,13 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             }
 
             string response = RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}", $"{withHeader}");
-            Assert.AreEqual(expectedResult, response);
+            Assert.That(response, Is.EqualTo(expectedResult));
         }
 
         [Test]
         public void Can_call()
         {
-            StateProvider stateProvider = CreateInitialState(null);
+            WorldState stateProvider = CreateInitialState(null);
 
             Keccak root = stateProvider.StateRoot;
             Block block = Build.A.Block.WithParent(_blockTree.Head).WithStateRoot(root).TestObject;
@@ -256,7 +257,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         [Test]
         public void Can_call_by_hash()
         {
-            StateProvider stateProvider = CreateInitialState(null);
+            WorldState stateProvider = CreateInitialState(null);
 
             Keccak root = stateProvider.StateRoot;
             Block block = Build.A.Block.WithParent(_blockTree.Head).WithStateRoot(root).TestObject;
@@ -311,7 +312,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.BLOCKHASH)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2, result.BlockHeaders.Length);
+            Assert.That(result.BlockHeaders.Length, Is.EqualTo(2));
         }
 
         [Test]
@@ -324,7 +325,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.BLOCKHASH)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(3, result.BlockHeaders.Length);
+            Assert.That(result.BlockHeaders.Length, Is.EqualTo(3));
         }
 
         [Test]
@@ -337,7 +338,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.BLOCKHASH)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2, result.BlockHeaders.Length);
+            Assert.That(result.BlockHeaders.Length, Is.EqualTo(2));
         }
 
         [Test]
@@ -349,7 +350,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
 
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(1 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
         [Test]
@@ -362,7 +363,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.SLOAD)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(1 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
         [Test]
@@ -375,7 +376,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
 
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(1 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
         [Test]
@@ -389,7 +390,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODECOPY)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
         [Test]
@@ -403,7 +404,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODECOPY)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2, result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [Test]
@@ -414,7 +415,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODESIZE)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
         [Test]
@@ -425,7 +426,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODESIZE)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2, result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [Test]
@@ -437,7 +438,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODEHASH)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
         [Test]
@@ -449,7 +450,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODEHASH)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2, result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [Test]
@@ -460,7 +461,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.STOP)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(1 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
         [Test]
@@ -473,7 +474,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
 
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
         [Test]
@@ -485,7 +486,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
 
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(1 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
         [Test]
@@ -497,7 +498,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.BALANCE)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2, result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [Test]
@@ -515,7 +516,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.CALL)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2, result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [Test]
@@ -532,7 +533,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.STATICCALL)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2, result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [Test]
@@ -549,7 +550,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.DELEGATECALL)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2, result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [Test]
@@ -567,7 +568,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.CALL)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2, result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [Test]
@@ -585,7 +586,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.CALL)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
         [Test]
@@ -602,7 +603,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.STATICCALL)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
         [Test]
@@ -619,7 +620,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.DELEGATECALL)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(3, result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(3));
         }
 
         [Test]
@@ -637,7 +638,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.CALL)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
         [Test]
@@ -650,7 +651,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
 
-            Assert.AreEqual(2 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
         [Test]
@@ -662,7 +663,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.SELFDESTRUCT)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(2, result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
 
@@ -678,7 +679,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.SSTORE)
                 .Done;
             CallResultWithProof result = TestCallWithCode(code);
-            Assert.AreEqual(1 + (_useNonZeroGasPrice ? 1 : 0), result.Accounts.Length);
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
         [Test]
@@ -758,7 +759,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
         private CallResultWithProof TestCallWithCode(byte[] code, Address? from = null)
         {
-            StateProvider stateProvider = CreateInitialState(code);
+            WorldState stateProvider = CreateInitialState(code);
 
             Keccak root = stateProvider.StateRoot;
             Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
@@ -796,16 +797,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
         private void TestCallWithStorageAndCode(byte[] code, UInt256 gasPrice, Address? from = null)
         {
-            StateProvider stateProvider = CreateInitialState(code);
-            StorageProvider storageProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), stateProvider, LimboLogs.Instance);
+            WorldState stateProvider = CreateInitialState(code);
 
             for (int i = 0; i < 10000; i++)
             {
-                storageProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), i.ToBigEndianByteArray());
+                stateProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), i.ToBigEndianByteArray());
             }
-
-            storageProvider.Commit();
-            storageProvider.CommitTrees(0);
 
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);
             stateProvider.CommitTree(0);
@@ -871,9 +868,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.True(response.Contains("\"result\""));
         }
 
-        private StateProvider CreateInitialState(byte[] code)
+        private WorldState CreateInitialState(byte[] code)
         {
-            StateProvider stateProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
+            WorldState stateProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
             AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
             AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 
@@ -892,17 +889,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             return stateProvider;
         }
 
-        private void AddAccount(StateProvider stateProvider, Address account, UInt256 initialBalance)
+        private void AddAccount(WorldState stateProvider, Address account, UInt256 initialBalance)
         {
             stateProvider.CreateAccount(account, initialBalance);
             stateProvider.Commit(MuirGlacier.Instance, NullStateTracer.Instance);
         }
 
-        private void AddCode(StateProvider stateProvider, Address account, byte[] code)
+        private void AddCode(WorldState stateProvider, Address account, byte[] code)
         {
-            Keccak codeHash = stateProvider.UpdateCode(code);
-            stateProvider.UpdateCodeHash(account, codeHash, MuirGlacier.Instance);
-
+            stateProvider.InsertCode(account, code, MuirGlacier.Instance);
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);
         }
     }

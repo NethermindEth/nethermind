@@ -24,7 +24,7 @@ namespace Nethermind.Cli.Console
         public string[] GetSuggestions(string text, int index)
         {
             string[] suggestions = Array.Empty<string>();
-            if (text.IndexOf('.') == -1)
+            if (!text.Contains('.'))
             {
                 suggestions = _cliModuleLoader.ModuleNames.OrderBy(x => x).Where(x => x.StartsWith(text)).ToArray();
             }
@@ -33,7 +33,7 @@ namespace Nethermind.Cli.Console
             {
                 if (text.StartsWith($"{moduleName}."))
                 {
-                    string methodPart = text.Substring(text.IndexOf('.') + 1);
+                    string methodPart = text[(text.IndexOf('.') + 1)..];
                     suggestions = _cliModuleLoader.MethodsByModules[moduleName].Where(x => x.StartsWith(methodPart)).OrderBy(x => x).ToArray();
                     break;
                 }

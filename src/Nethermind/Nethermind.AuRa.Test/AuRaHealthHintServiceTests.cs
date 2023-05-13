@@ -29,8 +29,8 @@ namespace Nethermind.AuRa.Test
             IHealthHintService healthHintService = new AuraHealthHintService(stepCalculator, validatorStore);
             ulong? actualProcessing = healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
             ulong? actualProducing = healthHintService.MaxSecondsIntervalForProducingBlocksHint();
-            Assert.AreEqual(test.ExpectedProcessingHint, actualProcessing);
-            Assert.AreEqual(test.ExpectedProducingHint, actualProducing);
+            Assert.That(actualProcessing, Is.EqualTo(test.ExpectedProcessingHint));
+            Assert.That(actualProducing, Is.EqualTo(test.ExpectedProducingHint));
         }
 
         public class BlockProcessorIntervalHint

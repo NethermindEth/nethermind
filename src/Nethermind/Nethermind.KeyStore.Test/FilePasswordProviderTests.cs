@@ -55,7 +55,7 @@ namespace Nethermind.KeyStore.Test
 
             var password = passwordProvider.GetPassword(Address.Zero);
             Assert.IsTrue(password.IsReadOnly());
-            Assert.AreEqual(test.ExpectedPassword, password.Unsecure());
+            Assert.That(password.Unsecure(), Is.EqualTo(test.ExpectedPassword));
         }
 
         [Test]
@@ -74,9 +74,9 @@ namespace Nethermind.KeyStore.Test
             });
 
             var password = passwordProvider.GetPassword(Address.Zero);
-            Assert.AreEqual(null, password);
+            Assert.That(password, Is.EqualTo(null));
             password = passwordProvider.GetPassword(Address.Zero);
-            Assert.AreEqual(null, password);
+            Assert.That(password, Is.EqualTo(null));
         }
 
         [Test]
@@ -87,7 +87,7 @@ namespace Nethermind.KeyStore.Test
 
             var password = passwordProvider.GetPassword(Address.Zero);
             Assert.IsTrue(password.IsReadOnly());
-            Assert.AreEqual(_files[0].Content.Trim(), password.Unsecure());
+            Assert.That(password.Unsecure(), Is.EqualTo(_files[0].Content.Trim()));
         }
 
         public static IEnumerable<FilePasswordProviderTest> PasswordProviderTestCases

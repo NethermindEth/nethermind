@@ -38,7 +38,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
             ulong chainId = 5;
             Keccak idFromTransaction = new Keccak("0x9f5d37eb5cc7b0707b2898b1da01fa7aac806a18d531b17a981994bc512cbfc8");
             userOperation.CalculateRequestId(entryPointId, chainId);
-            Assert.AreEqual(idFromTransaction, userOperation.RequestId!,
+            Assert.That(userOperation.RequestId!, Is.EqualTo(idFromTransaction),
                 "Request IDs do not match.");
         }
 
@@ -70,7 +70,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
             Keccak idFromTransaction2 =
                 new Keccak("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
             userOperation2.CalculateRequestId(entryPointId, chainId);
-            Assert.AreEqual(idFromTransaction2, userOperation2.RequestId!,
+            Assert.That(userOperation2.RequestId!, Is.EqualTo(idFromTransaction2),
                 "Request IDs do not match.");
         }
     }

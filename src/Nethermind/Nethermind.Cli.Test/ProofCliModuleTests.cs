@@ -54,7 +54,7 @@ namespace Nethermind.Cli.Test
 
             JsValue value = _engine.Execute($"proof.getTransactionByHash(\"{txHash}\", {(includeHeader ? "true" : "false")})");
             Colorful.Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
-            Assert.AreNotEqual(JsValue.Null, value);
+            Assert.That(value, Is.Not.EqualTo(JsValue.Null));
         }
 
         [TestCase(true)]
@@ -73,7 +73,7 @@ namespace Nethermind.Cli.Test
 
             JsValue value = _engine.Execute($"proof.getTransactionReceipt(\"{txHash}\", {(includeHeader ? "true" : "false")})");
             Colorful.Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
-            Assert.AreNotEqual(JsValue.Null, value);
+            Assert.That(value, Is.Not.EqualTo(JsValue.Null));
         }
 
         [Test]
@@ -97,7 +97,7 @@ namespace Nethermind.Cli.Test
 
             JsValue value = _engine.Execute($"proof.call({_serializer.Serialize(tx)}, \"{blockHash}\")");
             Colorful.Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
-            Assert.AreNotEqual(JsValue.Null, value);
+            Assert.That(value, Is.Not.EqualTo(JsValue.Null));
         }
 
         [Test]
@@ -105,7 +105,7 @@ namespace Nethermind.Cli.Test
         {
             _jsonRpcClient.Post<object>("eth_syncing").Returns(false);
             var result = _nodeManager.PostJint("eth_syncing").Result;
-            Assert.AreEqual(JsValue.False, result);
+            Assert.That(result, Is.EqualTo(JsValue.False));
         }
     }
 }

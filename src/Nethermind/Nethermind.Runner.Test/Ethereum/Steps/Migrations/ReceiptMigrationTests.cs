@@ -16,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
@@ -35,11 +36,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(chainLength);
             InMemoryReceiptStorage inMemoryReceiptStorage = new() { MigratedBlockNumber = migratedBlockNumber is not null ? 0 : long.MaxValue };
             InMemoryReceiptStorage outMemoryReceiptStorage = new() { MigratedBlockNumber = migratedBlockNumber is not null ? 0 : long.MaxValue };
-            NethermindApi context = new()
+            NethermindApi context = new(configProvider, new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec())
             {
-                ConfigProvider = configProvider,
-                EthereumJsonSerializer = new EthereumJsonSerializer(),
-                LogManager = LimboLogs.Instance,
                 ReceiptStorage = new TestReceiptStorage(inMemoryReceiptStorage, outMemoryReceiptStorage),
                 DbProvider = Substitute.For<IDbProvider>(),
                 BlockTree = blockTreeBuilder.TestObject,
@@ -48,8 +46,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 SyncModeSelector = Substitute.For<ISyncModeSelector>()
             };
 
-            configProvider.GetConfig<IInitConfig>().StoreReceipts.Returns(true);
-            configProvider.GetConfig<IInitConfig>().ReceiptsMigration.Returns(true);
+            configProvider.GetConfig<IReceiptConfig>().StoreReceipts.Returns(true);
+            configProvider.GetConfig<IReceiptConfig>().ReceiptsMigration.Returns(true);
             context.SyncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
 
             int txIndex = 0;
@@ -123,9 +121,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 set => _outStorage.MigratedBlockNumber = value;
             }
 
-            public bool HasBlock(Keccak hash)
+            public bool HasBlock(long blockNumber, Keccak hash)
             {
-                return _outStorage.HasBlock(hash);
+                return _outStorage.HasBlock(blockNumber, hash);
             }
 
             public void EnsureCanonical(Block block)

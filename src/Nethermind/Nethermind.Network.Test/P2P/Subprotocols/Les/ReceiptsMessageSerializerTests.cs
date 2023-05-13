@@ -26,8 +26,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
             byte[] bytes = serializer.Serialize(receiptsMessage);
             ReceiptsMessage deserialized = serializer.Deserialize(bytes);
 
-            Assert.AreEqual(receiptsMessage.RequestId, deserialized.RequestId, "RequestId");
-            Assert.AreEqual(receiptsMessage.BufferValue, deserialized.BufferValue, "BufferValue");
+            Assert.That(deserialized.RequestId, Is.EqualTo(receiptsMessage.RequestId), "RequestId");
+            Assert.That(deserialized.BufferValue, Is.EqualTo(receiptsMessage.BufferValue), "BufferValue");
         }
     }
 }

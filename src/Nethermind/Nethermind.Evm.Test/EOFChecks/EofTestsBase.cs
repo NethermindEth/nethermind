@@ -104,11 +104,13 @@ namespace Nethermind.Evm.Test
 
         public void EOF_contract_header_parsing_tests(TestCase testcase, IReleaseSpec spec)
         {
+            if (!testcase.isEofCode) return;
+
             var result = EvmObjectFormat.IsValidEof(
                 testcase.Bytecode, out EofHeader? header
             );
 
-            Assert.AreEqual(testcase.Result.Status == StatusCode.Success, result, $"Scenario : {testcase.Result.Msg}");
+            Assert.That(result, Is.EqualTo(testcase.Result.Status == StatusCode.Success), $"Scenario : {testcase.Result.Msg}");
             if (result == false)
             {
                 Assert.IsNull(header);
@@ -123,47 +125,25 @@ namespace Nethermind.Evm.Test
 
         public void EOF_contract_deployment_tests(TestCase testcase, IReleaseSpec spec)
         {
-            Transaction createTx(ref Transaction transaction, byte[] code, Address address)
-            {
-                transaction.GasPrice = 20.GWei();
-                transaction.To = address;
-                transaction.Data = code;
-                transaction.Nonce = address is not null ? transaction.Nonce + 1 : transaction.Nonce;
-                return transaction;
-            }
-
             TestState.CreateAccount(TestItem.AddressC, 200.Ether());
             byte[] createContract = testcase.Bytecode;
 
             ILogManager logManager = GetLogManager();
             TestSpecProvider customSpecProvider = new(Frontier.Instance, spec);
             Machine = new VirtualMachine(TestBlockhashProvider.Instance, customSpecProvider, logManager);
-            _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
+            _processor = new TransactionProcessor(customSpecProvider, TestState, Machine, LimboLogs.Instance);
             (Block block, Transaction transaction) = PrepareInitTx(BlockNumber, 100000, createContract);
 
-            var tracer1 = CreateBlockTracer();
-            tracer1.StartNewTxTrace(transaction);
-            tracer1.StartNewBlockTrace(block);
-
-            _processor.Execute(transaction, block.Header, tracer1);
-
-            if (testcase.Ctx is not DeploymentContext.UseCreateTx)
-            {
-                var cont_transaction = createTx(ref transaction, tracer1.TxReceipts[0].ReturnValue, tracer1.TxReceipts[0].ContractAddress);
-                TestAllTracerWithOutput tracer2 = CreateTracer();
-                _processor.Execute(cont_transaction, block.Header, tracer2);
-                Assert.AreEqual(testcase.Result.Status, tracer2.ReportedActionErrors.Count > 0 ? StatusCode.Failure : StatusCode.Success, testcase.Result.Msg);
-            }
-            else
-            {
-                Assert.AreEqual(testcase.Result.Status, tracer1.TxReceipts[0].StatusCode, testcase.Result.Msg);
-            }
+            var txTracer = new TestAllTracerWithOutput();
+            _processor.Execute(transaction, block.Header, txTracer);
+            Assert.That(txTracer.ReportedActionErrors.Any(x => x is EvmExceptionType.InvalidCode or EvmExceptionType.BadInstruction or EvmExceptionType.InvalidEofCode) ? StatusCode.Failure : StatusCode.Success, Is.EqualTo(testcase.Result.Status), testcase.Result.Msg);
 
         }
 
         public record TestCase(int Index)
         {
             public byte[] Bytecode;
+            public bool isEofCode = true;
             public DeploymentContext Ctx;
             public (byte Status, string Msg) Result;
         }
@@ -525,8 +505,7 @@ namespace Nethermind.Evm.Test
                     }
 
                     byte[] initcode = Prepare.EvmCode
-                        .StoreDataInMemory(0, deployed)
-                        .RETURN(0, (UInt256)deployed.Length)
+                        .ForInitOf(deployed)
                         .Done;
 
                     bool hasEofInitCode = scenarios.HasFlag(DeploymentScenario.EofInitCode);
@@ -552,29 +531,18 @@ namespace Nethermind.Evm.Test
                             {
                                 var prep = Prepare.EvmCode;
 
+                                Address contractAddress = ctx is DeploymentContext.UseCreate
+                                    ? ContractAddress.From(Sender, 0)
+                                    : ContractAddress.From(Sender, salt, initcode);
+
                                 byte[] returnCode =
                                     ctx is DeploymentContext.UseCreate
                                         ? Prepare.EvmCode.Create(initcode, UInt256.Zero).STOP().Done
                                         : Prepare.EvmCode.Create2(initcode, salt, UInt256.Zero).STOP().Done;
-
-                                int offset = 0;
-                                var chunks = returnCode.Chunk(32);
-                                foreach (var chunk in chunks)
-                                {
-                                    if (chunk.Length == 32)
-                                    {
-                                        prep.MSTORE((UInt256)offset, chunk);
-                                    }
-                                    else
-                                    {
-                                        int leftover = 32 - chunk.Length;
-                                        var newchunk = new byte[32];
-                                        chunk.CopyTo(newchunk, 0);
-                                        prep.MSTORE((UInt256)offset, newchunk);
-                                    }
-                                    offset += chunk.Length;
-                                }
-                                result = prep.Return(returnCode.Length, 0)
+                                result = prep
+                                    .Data(returnCode)
+                                    .StaticCall(contractAddress, 99 * 1000)
+                                    .STOP()
                                     .Done;
                                 break;
                             }

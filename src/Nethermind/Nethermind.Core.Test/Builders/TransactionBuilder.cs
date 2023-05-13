@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Crypto;
@@ -23,7 +24,7 @@ namespace Nethermind.Core.Test.Builders
                 Nonce = 0,
                 Value = 1,
                 Data = Array.Empty<byte>(),
-                Timestamp = 0
+                Timestamp = 0,
             };
         }
 
@@ -88,6 +89,9 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public TransactionBuilder<T> WithMaxFeePerGasIfSupports1559(UInt256 feeCap) =>
+            TestObjectInternal.Supports1559 ? WithMaxFeePerGas(feeCap) : this;
+
         public TransactionBuilder<T> WithMaxPriorityFeePerGas(UInt256 maxPriorityFeePerGas)
         {
             TestObjectInternal.GasPrice = maxPriorityFeePerGas;
@@ -140,6 +144,69 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> WithBlobVersionedHashes(byte[][] blobVersionedHashes)
         {
             TestObjectInternal.BlobVersionedHashes = blobVersionedHashes;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithBlobVersionedHashes(int? count)
+        {
+            if (count is null)
+            {
+                return this;
+            }
+
+            TestObjectInternal.BlobVersionedHashes = Enumerable.Range(0, count.Value).Select(x =>
+            {
+                byte[] bvh = new byte[32];
+                bvh[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+                return bvh;
+            }).ToArray();
+            return this;
+        }
+
+        public TransactionBuilder<T> WithBlobs(byte[] blobs)
+        {
+            TestObjectInternal.Blobs = blobs;
+
+            return this;
+        }
+
+        public TransactionBuilder<T> WithShardBlobTxTypeAndFields(int blobCount)
+        {
+            if (blobCount is 0)
+            {
+                return this;
+            }
+
+            TestObjectInternal.Type = TxType.Blob;
+            TestObjectInternal.MaxFeePerDataGas ??= 1;
+            TestObjectInternal.Blobs = new byte[Ckzg.Ckzg.BytesPerBlob * blobCount];
+            TestObjectInternal.BlobKzgs = new byte[Ckzg.Ckzg.BytesPerCommitment * blobCount];
+            TestObjectInternal.BlobProofs = new byte[Ckzg.Ckzg.BytesPerProof * blobCount];
+            TestObjectInternal.BlobVersionedHashes = new byte[blobCount][];
+            for (int i = 0; i < blobCount; i++)
+            {
+                TestObjectInternal.BlobVersionedHashes[i] = new byte[32];
+                TestObjectInternal.Blobs[Ckzg.Ckzg.BytesPerBlob * i] = 1;
+                KzgPolynomialCommitments.KzgifyBlob(
+                    TestObjectInternal.Blobs.AsSpan(Ckzg.Ckzg.BytesPerBlob * i, Ckzg.Ckzg.BytesPerBlob * (i + 1)),
+                    TestObjectInternal.BlobKzgs.AsSpan(Ckzg.Ckzg.BytesPerCommitment * i, Ckzg.Ckzg.BytesPerCommitment * (i + 1)),
+                    TestObjectInternal.BlobProofs.AsSpan(Ckzg.Ckzg.BytesPerProof * i, Ckzg.Ckzg.BytesPerProof * (i + 1)),
+                    TestObjectInternal.BlobVersionedHashes[i].AsSpan());
+            }
+
+
+            return this;
+        }
+
+        public TransactionBuilder<T> WithBlobKzgs(byte[] blobKzgs)
+        {
+            TestObjectInternal.BlobKzgs = blobKzgs;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithProofs(byte[] proofs)
+        {
+            TestObjectInternal.BlobProofs = proofs;
             return this;
         }
 

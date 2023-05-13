@@ -100,8 +100,8 @@ public abstract class DiscoveryMsgSerializerBase
         }
         IByteBuffer data = msg.Slice(98, msg.ReadableBytes - 98);
         Memory<byte> msgBytes = msg.ReadAllBytesAsMemory();
-        Memory<byte> mdc = msgBytes.Slice(0, 32);
-        Span<byte> sigAndData = msgBytes.Span.Slice(32);
+        Memory<byte> mdc = msgBytes[..32];
+        Span<byte> sigAndData = msgBytes.Span[32..];
         Span<byte> computedMdc = ValueKeccak.Compute(sigAndData).BytesAsSpan;
 
         if (!Bytes.AreEqual(mdc.Span, computedMdc))
@@ -109,7 +109,7 @@ public abstract class DiscoveryMsgSerializerBase
             throw new NetworkingException("Invalid MDC", NetworkExceptionType.Validation);
         }
 
-        PublicKey nodeId = _nodeIdResolver.GetNodeId(sigAndData.Slice(0, 64), sigAndData[64], sigAndData.Slice(65, sigAndData.Length - 65));
+        PublicKey nodeId = _nodeIdResolver.GetNodeId(sigAndData[..64], sigAndData[64], sigAndData[65..]);
         return (nodeId, mdc, data);
     }
 
