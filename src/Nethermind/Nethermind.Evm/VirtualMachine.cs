@@ -1864,80 +1864,69 @@ public class VirtualMachine : IVirtualMachine
                 case Instruction.DUP15:
                 case Instruction.DUP16:
                     {
-                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
+                            goto OutOfGas;
 
-                            stack.Dup(instruction - Instruction.DUP1 + 1);
+                        stack.Dup(instruction - Instruction.DUP1 + 1);
+                        break;
+                    }
+                case Instruction.DUPN:
+                    {
+                        if (spec.IncludeGeneralSwapsAndDup && env.CodeInfo.IsEof())
+                        {
+                            if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
+                                goto OutOfGas;
+
+                            byte imm = codeSection[programCounter];
+                            stack.Dup(imm + 1);
                             break;
                         }
-                    case Instruction.DUPN:
-                        {
-                            if (spec.IncludeGeneralSwapsAndDup && env.CodeInfo.IsEof())
-                            {
-                                if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                    return CallResult.OutOfGasException;
-                                }
+                        else return CallResult.InvalidInstructionException;
+                    }
+                case Instruction.SWAP1:
+                case Instruction.SWAP2:
+                case Instruction.SWAP3:
+                case Instruction.SWAP4:
+                case Instruction.SWAP5:
+                case Instruction.SWAP6:
+                case Instruction.SWAP7:
+                case Instruction.SWAP8:
+                case Instruction.SWAP9:
+                case Instruction.SWAP10:
+                case Instruction.SWAP11:
+                case Instruction.SWAP12:
+                case Instruction.SWAP13:
+                case Instruction.SWAP14:
+                case Instruction.SWAP15:
+                case Instruction.SWAP16:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
+                            goto OutOfGas;
 
-                                byte imm = codeSection[programCounter];
-                                stack.Dup(imm + 1);
-                                break;
-                            }
-                            else return CallResult.InvalidInstructionException;
-                        }
-                    case Instruction.SWAP1:
-                    case Instruction.SWAP2:
-                    case Instruction.SWAP3:
-                    case Instruction.SWAP4:
-                    case Instruction.SWAP5:
-                    case Instruction.SWAP6:
-                    case Instruction.SWAP7:
-                    case Instruction.SWAP8:
-                    case Instruction.SWAP9:
-                    case Instruction.SWAP10:
-                    case Instruction.SWAP11:
-                    case Instruction.SWAP12:
-                    case Instruction.SWAP13:
-                    case Instruction.SWAP14:
-                    case Instruction.SWAP15:
-                    case Instruction.SWAP16:
+                        stack.Swap(instruction - Instruction.SWAP1 + 2);
+                        break;
+                    }
+                case Instruction.SWAPN:
+                    {
+                        if (spec.IncludeGeneralSwapsAndDup && env.CodeInfo.IsEof())
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
+                            if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
+                                goto OutOfGas;
 
-                            stack.Swap(instruction - Instruction.SWAP1 + 2);
+                            byte imm = codeSection[programCounter];
+                            stack.Swap(imm + 1);
                             break;
                         }
-                    case Instruction.SWAPN:
-                        {
-                            if (spec.IncludeGeneralSwapsAndDup && env.CodeInfo.IsEof())
-                            {
-                                if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                    return CallResult.OutOfGasException;
-                                }
-
-                                byte imm = codeSection[programCounter];
-                                stack.Swap(imm + 1);
-                                break;
-                            }
-                            else return CallResult.InvalidInstructionException;
-                        }
-                    case Instruction.LOG0:
-                    case Instruction.LOG1:
-                    case Instruction.LOG2:
-                    case Instruction.LOG3:
-                    case Instruction.LOG4:
-                        {
-                            if (vmState.IsStatic)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.StaticCallViolation);
-                                return CallResult.StaticCallViolationException;
-                            }
+                        else return CallResult.InvalidInstructionException;
+                    }
+                case Instruction.LOG0:
+                case Instruction.LOG1:
+                case Instruction.LOG2:
+                case Instruction.LOG3:
+                case Instruction.LOG4:
+                    {
+                        if (vmState.IsStatic)
+                            goto StaticCallViolation;
 
                         stack.PopUInt256(out UInt256 memoryPos);
                         stack.PopUInt256(out UInt256 length);
