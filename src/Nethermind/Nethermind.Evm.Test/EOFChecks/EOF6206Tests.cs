@@ -90,25 +90,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void EOF_Opcode_Deprecation_checks()
-        {
-            var TargetReleaseSpec = new OverridableReleaseSpec(Cancun.Instance);
-
-            Instruction[] StaticRelativeJumpsOpcode =
-            {
-                Instruction.PC,
-                Instruction.JUMP,
-                Instruction.JUMPI,
-            };
-
-            foreach (Instruction opcode in StaticRelativeJumpsOpcode)
-            {
-                Assert.False(opcode.IsValid(true));
-            }
-        }
-
-        [Test]
-        public void EOF_Static_jumps_activation_tests()
+        public void EOF_function_jumps_activation_tests()
         {
             var TargetReleaseSpec = new OverridableReleaseSpec(Cancun.Instance);
 

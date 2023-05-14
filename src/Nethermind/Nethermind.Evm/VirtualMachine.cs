@@ -2519,6 +2519,25 @@ public class VirtualMachine : IVirtualMachine
                         programCounter = stackFrame.Offset;
                         break;
                     }
+                case Instruction.JUMPF:
+                    {
+                        if (!spec.IsEofEvmModeOn || !spec.JumpfOpcodeEnabled || env.CodeInfo.EofVersion() == 0)
+                            goto InvalidInstruction;
+
+                        if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable)) // still undecided in EIP
+                            goto OutOfGas;
+
+                        var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
+                        env.CodeInfo.GetSectionMetadata(index, out _, out _, out int maxStackHeight);
+
+                        if (stack.Head > MaxCallDepth - maxStackHeight)
+                            goto StackOverflow;
+
+                        sectionIndex = index;
+                        programCounter = env.CodeInfo.SectionOffset(index);
+
+                        break;
+                    }
                 default:
                     {
                         goto InvalidInstruction;
