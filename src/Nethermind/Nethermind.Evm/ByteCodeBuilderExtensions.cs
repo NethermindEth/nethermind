@@ -2,9 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
+using Newtonsoft.Json.Linq;
+using Org.BouncyCastle.Asn1.Mozilla;
 
 namespace Nethermind.Evm
 {

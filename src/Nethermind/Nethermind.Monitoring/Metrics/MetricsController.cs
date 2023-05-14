@@ -10,7 +10,9 @@ using System.Reflection;
 using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Monitoring.Config;
 using Prometheus;
 
@@ -26,6 +28,8 @@ namespace Nethermind.Monitoring.Metrics
 
         public readonly Dictionary<string, Gauge> _gauges = new();
         private readonly bool _useCounters;
+
+        private readonly List<Action> _callbacks = new();
 
         public void RegisterMetrics(Type type)
         {
@@ -50,17 +54,33 @@ namespace Nethermind.Monitoring.Metrics
 
         private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member)
         {
-            Dictionary<string, string> staticLabels = member
-                .GetCustomAttributes<MetricsStaticDescriptionTagAttribute>()
-                .ToDictionary(
-                    attribute => attribute.Label,
-                    attribute => GetStaticMemberInfo(attribute.Informer, attribute.Label));
-
             string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
             string name = BuildGaugeName(member);
 
-            return CreateGauge(name, description, staticLabels);
+            bool haveTagAttributes = member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().Any();
+            if (!haveTagAttributes)
+            {
+                return CreateGauge(name, description, _commonStaticTags);
+            }
+
+            Dictionary<string, string> tags = new(_commonStaticTags);
+            member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().ForEach(attribute =>
+                tags.Add(attribute.Label, GetStaticMemberInfo(attribute.Informer, attribute.Label)));
+            return CreateGauge(name, description, tags);
         }
+
+        // Tags that all metrics share
+        private static readonly Dictionary<string, string> _commonStaticTags = new()
+        {
+            { nameof(ProductInfo.Instance), ProductInfo.Instance },
+            { nameof(ProductInfo.Network), ProductInfo.Network },
+            { nameof(ProductInfo.SyncType), ProductInfo.SyncType },
+            { nameof(ProductInfo.PruningMode), ProductInfo.PruningMode },
+            { nameof(ProductInfo.Version), ProductInfo.Version },
+            { nameof(ProductInfo.Commit), ProductInfo.Commit },
+            { nameof(ProductInfo.Runtime), ProductInfo.Runtime },
+            { nameof(ProductInfo.BuildTimestamp), ProductInfo.BuildTimestamp.ToUnixTimeSeconds().ToString() },
+        };
 
         private static ObservableInstrument<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberInfo member, Func<double> observer)
         {
@@ -150,10 +170,20 @@ namespace Nethermind.Monitoring.Metrics
 
         public void UpdateMetrics(object state)
         {
+            foreach (Action callback in _callbacks)
+            {
+                callback();
+            }
+
             foreach (Type metricType in _metricTypes)
             {
                 UpdateMetrics(metricType);
             }
+        }
+
+        public void AddMetricsUpdateAction(Action callback)
+        {
+            _callbacks.Add(callback);
         }
 
         private void UpdateMetrics(Type type)

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Init.Steps.Migrations;
 
 namespace Nethermind.Init.Steps
@@ -34,6 +35,7 @@ namespace Nethermind.Init.Steps
             yield return new BloomMigration(_api);
             yield return new ReceiptMigration(_api);
             yield return new ReceiptFixMigration(_api);
+            yield return new TotalDifficultyFixMigration(_api.ChainLevelInfoRepository, _api.BlockTree, _api.Config<ISyncConfig>(), _api.LogManager);
         }
     }
 }

@@ -168,7 +168,7 @@ namespace Nethermind.Hive
             while (rlpStream.PeekNumberOfItemsRemaining() > 0)
             {
                 rlpStream.PeekNextItem();
-                Block block = Rlp.Decode<Block>(rlpStream);
+                Block block = Rlp.Decode<Block>(rlpStream, RlpBehaviors.AllowExtraBytes);
                 if (_logger.IsInfo)
                     _logger.Info($"HIVE Reading a chain.rlp block {block.ToString(Block.Format.Short)}");
                 blocks.Add(block);

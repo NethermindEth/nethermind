@@ -375,6 +375,8 @@ namespace Nethermind.Core.Specs
 
         public bool TransientStorageEnabled => IsEip1153Enabled;
 
+        public bool IsEofEvmModeOn => IsEip3540Enabled;
+
         public bool WithdrawalsEnabled => IsEip4895Enabled;
     }
 }

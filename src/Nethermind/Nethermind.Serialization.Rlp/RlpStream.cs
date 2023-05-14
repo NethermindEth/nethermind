@@ -155,7 +155,7 @@ namespace Nethermind.Serialization.Rlp
             Write(bytesToWrite.AsSpan());
         }
 
-        public virtual void Write(Span<byte> bytesToWrite)
+        public virtual void Write(ReadOnlySpan<byte> bytesToWrite)
         {
             bytesToWrite.CopyTo(Data.AsSpan(Position, bytesToWrite.Length));
             Position += bytesToWrite.Length;
@@ -207,6 +207,19 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+        public void Encode(in ValueKeccak? keccak)
+        {
+            if (keccak is null)
+            {
+                WriteByte(EmptyArrayByte);
+            }
+            else
+            {
+                WriteByte(160);
+                Write(keccak.Value.Bytes);
+            }
+        }
+
         public void Encode(Keccak[] keccaks)
         {
             if (keccaks is null)
@@ -224,7 +237,43 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+        public void Encode(ValueKeccak[] keccaks)
+        {
+            if (keccaks is null)
+            {
+                EncodeNullObject();
+            }
+            else
+            {
+                var length = Rlp.LengthOf(keccaks);
+                StartSequence(length);
+                for (int i = 0; i < keccaks.Length; i++)
+                {
+                    Encode(keccaks[i]);
+                }
+            }
+        }
+
         public void Encode(IReadOnlyList<Keccak> keccaks)
+        {
+            if (keccaks is null)
+            {
+                EncodeNullObject();
+            }
+            else
+            {
+                var length = Rlp.LengthOf(keccaks);
+                StartSequence(length);
+                var count = keccaks.Count;
+                for (int i = 0; i < count; i++)
+                {
+                    Encode(keccaks[i]);
+                }
+            }
+        }
+
+
+        public void Encode(IReadOnlyList<ValueKeccak> keccaks)
         {
             if (keccaks is null)
             {
@@ -469,7 +518,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(string value)
+        public void Encode(string? value)
         {
             if (string.IsNullOrEmpty(value))
             {
@@ -619,7 +668,7 @@ namespace Nethermind.Serialization.Rlp
                 int length = DeserializeLength(lengthOfLength);
                 if (length < 56)
                 {
-                    throw new RlpException("Expected length greater or equal 56 and was {length}");
+                    throw new RlpException($"Expected length greater or equal 56 and was {length}");
                 }
 
                 result = (lengthOfLength + 1, length);
@@ -814,6 +863,39 @@ namespace Nethermind.Serialization.Rlp
             return new Keccak(keccakSpan.ToArray());
         }
 
+        public ValueKeccak? DecodeValueKeccak()
+        {
+            int prefix = ReadByte();
+            if (prefix == 128)
+            {
+                return null;
+            }
+
+            if (prefix != 128 + 32)
+            {
+                throw new RlpException(
+                    $"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Length} starting with {Description}");
+            }
+
+            Span<byte> keccakSpan = Read(32);
+            return new ValueKeccak(keccakSpan);
+        }
+
+        public Keccak? DecodeZeroPrefixKeccak()
+        {
+            int prefix = PeekByte();
+            if (prefix == 128)
+            {
+                ReadByte();
+                return null;
+            }
+
+            ReadOnlySpan<byte> theSpan = DecodeByteArraySpan();
+            byte[] keccakByte = new byte[32];
+            theSpan.CopyTo(keccakByte.AsSpan(32 - theSpan.Length));
+            return new Keccak(keccakByte);
+        }
+
         public Address? DecodeAddress()
         {
             int prefix = ReadByte();
@@ -832,9 +914,15 @@ namespace Nethermind.Serialization.Rlp
             return new Address(buffer);
         }
 
-        public UInt256 DecodeUInt256()
+        public UInt256 DecodeUInt256(bool allowLeadingZeroBytes = true)
         {
             byte byteValue = PeekByte();
+
+            if (!allowLeadingZeroBytes && byteValue == 0)
+            {
+                throw new RlpException($"Non-canonical UInt256 (leading zero bytes) at position {Position}");
+            }
+
             if (byteValue < 128)
             {
                 SkipBytes(1);
@@ -842,15 +930,21 @@ namespace Nethermind.Serialization.Rlp
             }
 
             ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan();
+
             if (byteSpan.Length > 32)
             {
                 throw new ArgumentException();
             }
 
+            if (!allowLeadingZeroBytes && byteSpan.Length > 1 && byteSpan[0] == 0)
+            {
+                throw new RlpException($"Non-canonical UInt256 (leading zero bytes) at position {Position}");
+            }
+
             return new UInt256(byteSpan, true);
         }
 
-        public UInt256? DecodeNullableUInt256()
+        public UInt256? DecodeNullableUInt256(bool allowLeadingZeroBytes = true)
         {
             if (PeekByte() == 0)
             {
@@ -858,12 +952,16 @@ namespace Nethermind.Serialization.Rlp
                 return null;
             }
 
-            return DecodeUInt256();
+            return DecodeUInt256(allowLeadingZeroBytes);
         }
 
-        public BigInteger DecodeUBigInt()
+        public BigInteger DecodeUBigInt(bool allowLeadingZeroBytes = true)
         {
             ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
+            if (!allowLeadingZeroBytes && bytes.Length > 1 && bytes[0] == 0)
+            {
+                throw new RlpException($"Non-canonical UBigInt (leading zero bytes) at position {Position}");
+            }
             return bytes.ToUnsignedBigInteger();
         }
 
@@ -964,7 +1062,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true,
-            T defaultElement = default(T))
+            T defaultElement = default)
         {
             int positionCheck = ReadSequenceLength() + Position;
             int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
@@ -1008,9 +1106,15 @@ namespace Nethermind.Serialization.Rlp
                 : bytes[1];
         }
 
-        public int DecodeInt()
+        public int DecodeInt(bool allowLeadingZeroBytes = true)
         {
             int prefix = ReadByte();
+
+            if (!allowLeadingZeroBytes && prefix == 0)
+            {
+                throw new RlpException($"Non-canonical integer (leading zero bytes) at position {Position}");
+            }
+
             if (prefix < 128)
             {
                 return prefix;
@@ -1030,10 +1134,14 @@ namespace Nethermind.Serialization.Rlp
             int result = 0;
             for (int i = 4; i > 0; i--)
             {
-                result = result << 8;
+                result <<= 8;
                 if (i <= length)
                 {
-                    result = result | PeekByte(length - i);
+                    result |= PeekByte(length - i);
+                    if (!allowLeadingZeroBytes && result == 0)
+                    {
+                        throw new RlpException($"Non-canonical integer (leading zero bytes) at position {Position}");
+                    }
                 }
             }
 
@@ -1042,15 +1150,25 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public uint DecodeUInt()
+        public uint DecodeUInt(bool allowLeadingZeroBytes = true)
         {
             ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
+            if (!allowLeadingZeroBytes && bytes.Length > 1 && bytes[0] == 0)
+            {
+                throw new RlpException($"Non-canonical UInt (leading zero bytes) at position {Position}");
+            }
             return bytes.Length == 0 ? 0 : bytes.ReadEthUInt32();
         }
 
-        public long DecodeLong()
+        public long DecodeLong(bool allowLeadingZeroBytes = true)
         {
             int prefix = ReadByte();
+
+            if (!allowLeadingZeroBytes && prefix == 0)
+            {
+                throw new RlpException($"Non-canonical long (leading zero bytes) at position {Position}");
+            }
+
             if (prefix < 128)
             {
                 return prefix;
@@ -1070,10 +1188,14 @@ namespace Nethermind.Serialization.Rlp
             long result = 0;
             for (int i = 8; i > 0; i--)
             {
-                result = result << 8;
+                result <<= 8;
                 if (i <= length)
                 {
-                    result = result | PeekByte(length - i);
+                    result |= PeekByte(length - i);
+                    if (!allowLeadingZeroBytes && result == 0)
+                    {
+                        throw new RlpException($"Non-canonical long (leading zero bytes) at position {Position}");
+                    }
                 }
             }
 
@@ -1082,9 +1204,15 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public ulong DecodeULong()
+        public ulong DecodeULong(bool allowLeadingZeroBytes = true)
         {
             int prefix = ReadByte();
+
+            if (!allowLeadingZeroBytes && prefix == 0)
+            {
+                throw new RlpException($"Non-canonical ulong (leading zero bytes) at position {Position}");
+            }
+
             if (prefix < 128)
             {
                 return (ulong)prefix;
@@ -1104,10 +1232,14 @@ namespace Nethermind.Serialization.Rlp
             ulong result = 0;
             for (int i = 8; i > 0; i--)
             {
-                result = result << 8;
+                result <<= 8;
                 if (i <= length)
                 {
-                    result = result | PeekByte(length - i);
+                    result |= PeekByte(length - i);
+                    if (!allowLeadingZeroBytes && result == 0)
+                    {
+                        throw new RlpException($"Non-canonical ulong (leading zero bytes) at position {Position}");
+                    }
                 }
             }
 
@@ -1116,22 +1248,30 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public ulong DecodeUlong()
+        public ulong DecodeUlong(bool allowLeadingZeroBytes = true)
         {
             ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
+            if (!allowLeadingZeroBytes && bytes.Length > 1 && bytes[0] == 0)
+            {
+                throw new RlpException($"Non-canonical ulong (leading zero bytes) at position {Position}");
+            }
             return bytes.Length == 0 ? 0L : bytes.ReadEthUInt64();
         }
 
-        public byte[] DecodeByteArray()
+        public byte[] DecodeByteArray(bool allowLeadingZeroBytes = true)
         {
-            return DecodeByteArraySpan().ToArray();
+            return DecodeByteArraySpan(allowLeadingZeroBytes).ToArray();
         }
 
-        public ReadOnlySpan<byte> DecodeByteArraySpan()
+        public ReadOnlySpan<byte> DecodeByteArraySpan(bool allowLeadingZeroBytes = true)
         {
             int prefix = ReadByte();
             if (prefix == 0)
             {
+                if (!allowLeadingZeroBytes)
+                {
+                    throw new RlpException($"Non-canonical ulong (leading zero bytes) at position {Position}");
+                }
                 return new byte[] { 0 };
             }
 

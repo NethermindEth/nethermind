@@ -76,7 +76,6 @@ namespace Nethermind.Network
         private int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors)
         {
             return Rlp.LengthOf(item.NodeId.Bytes)
-                   + Rlp.LengthOf(item.NodeId.Bytes)
                    + Rlp.LengthOf(item.Host)
                    + Rlp.LengthOf(item.Port)
                    + 1

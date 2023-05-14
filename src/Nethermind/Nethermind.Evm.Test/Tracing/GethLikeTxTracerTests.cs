@@ -32,8 +32,8 @@ namespace Nethermind.Evm.Test.Tracing
             int gasTotal = 0;
             for (int i = 0; i < gasCosts.Length; i++)
             {
-                Assert.AreEqual(79000 - gasTotal, trace.Entries[i].Gas, $"gas[{i}]");
-                Assert.AreEqual(gasCosts[i], trace.Entries[i].GasCost, $"gasCost[{i}]");
+                Assert.That(trace.Entries[i].Gas, Is.EqualTo(79000 - gasTotal), $"gas[{i}]");
+                Assert.That(trace.Entries[i].GasCost, Is.EqualTo(gasCosts[i]), $"gasCost[{i}]");
                 gasTotal += gasCosts[i];
             }
         }
@@ -47,8 +47,8 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
-            Assert.AreEqual(trace.Failed, true);
-            Assert.AreEqual("StackUnderflow", trace.Entries[0].Error);
+            Assert.That(trace.Failed, Is.EqualTo(true));
+            Assert.That(trace.Entries[0].Error, Is.EqualTo("StackUnderflow"));
         }
 
         [Test]
@@ -63,8 +63,8 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
-            Assert.AreEqual(trace.Failed, true);
-            Assert.AreEqual("StackOverflow", trace.Entries.Last().Error);
+            Assert.That(trace.Failed, Is.EqualTo(true));
+            Assert.That(trace.Entries.Last().Error, Is.EqualTo("StackOverflow"));
         }
 
         [Test]
@@ -77,8 +77,8 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
-            Assert.AreEqual(trace.Failed, true);
-            Assert.AreEqual("BadJumpDestination", trace.Entries.Last().Error);
+            Assert.That(trace.Failed, Is.EqualTo(true));
+            Assert.That(trace.Entries.Last().Error, Is.EqualTo("BadJumpDestination"));
         }
 
         [Test]
@@ -90,8 +90,8 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
-            Assert.AreEqual(trace.Failed, true);
-            Assert.AreEqual("BadInstruction", trace.Entries.Last().Error);
+            Assert.That(trace.Failed, Is.EqualTo(true));
+            Assert.That(trace.Entries.Last().Error, Is.EqualTo("BadInstruction"));
         }
 
         [Test]
@@ -108,7 +108,7 @@ namespace Nethermind.Evm.Test.Tracing
             GethLikeTxTrace trace = ExecuteAndTrace(code);
             for (int i = 0; i < opCodes.Length; i++)
             {
-                Assert.AreEqual(opCodes[i], trace.Entries[i].Operation);
+                Assert.That(trace.Entries[i].Operation, Is.EqualTo(opCodes[i]));
             }
         }
 
@@ -127,8 +127,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
@@ -141,14 +140,14 @@ namespace Nethermind.Evm.Test.Tracing
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
                   2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL
                     3, 3, 3, 3, 3, 3, // CREATE
-                  2, // STOP 
+                  2, // STOP
                 1, // STOP
             };
 
-            Assert.AreEqual(depths.Length, trace.Entries.Count);
+            Assert.That(trace.Entries.Count, Is.EqualTo(depths.Length));
             for (int i = 0; i < depths.Length; i++)
             {
-                Assert.AreEqual(depths[i], trace.Entries[i].Depth, $"entries[{i}]");
+                Assert.That(trace.Entries[i].Depth, Is.EqualTo(depths[i]), $"entries[{i}]");
             }
         }
 
@@ -168,8 +167,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .PushData(SampleHexData1) // just to test if stack is restored
@@ -178,7 +176,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
-            /* depths 
+            /* depths
             {
                 1, 1, 1, 1, 1, 1, 1, 1, 1, // SAMPLE STACK + STACK FOR CALL [0..8]
                 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 // SAMPLE STACK + CALL [9..19]
@@ -187,14 +185,14 @@ namespace Nethermind.Evm.Test.Tracing
                 1, // STOP [27]
             }; */
 
-            Assert.AreEqual(0, trace.Entries[0].Stack.Count, "BEGIN 1");
-            Assert.AreEqual(8, trace.Entries[8].Stack.Count, "CALL FROM 1");
-            Assert.AreEqual(0, trace.Entries[9].Stack.Count, "BEGIN 2");
-            Assert.AreEqual(4, trace.Entries[19].Stack.Count, "CREATE FROM 2");
-            Assert.AreEqual(0, trace.Entries[20].Stack.Count, "BEGIN 3");
-            Assert.AreEqual(2, trace.Entries[2].Stack.Count, "END 3");
-            Assert.AreEqual(2, trace.Entries[26].Stack.Count, "END 2");
-            Assert.AreEqual(2, trace.Entries[27].Stack.Count, "END 1");
+            Assert.That(trace.Entries[0].Stack.Count, Is.EqualTo(0), "BEGIN 1");
+            Assert.That(trace.Entries[8].Stack.Count, Is.EqualTo(8), "CALL FROM 1");
+            Assert.That(trace.Entries[9].Stack.Count, Is.EqualTo(0), "BEGIN 2");
+            Assert.That(trace.Entries[19].Stack.Count, Is.EqualTo(4), "CREATE FROM 2");
+            Assert.That(trace.Entries[20].Stack.Count, Is.EqualTo(0), "BEGIN 3");
+            Assert.That(trace.Entries[2].Stack.Count, Is.EqualTo(2), "END 3");
+            Assert.That(trace.Entries[26].Stack.Count, Is.EqualTo(2), "END 2");
+            Assert.That(trace.Entries[27].Stack.Count, Is.EqualTo(2), "END 1");
         }
 
         [Test]
@@ -213,8 +211,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .StoreDataInMemory(64, SampleHexData2.PadLeft(64, '0')) // just to test if memory is restored
@@ -223,7 +220,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
-            /* depths 
+            /* depths
             {
                 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 // MEMORY + STACK FOR CALL [0..10]
                 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 // MEMORY + CALL [11..23]
@@ -232,14 +229,14 @@ namespace Nethermind.Evm.Test.Tracing
                 1, // STOP [21]
             }; */
 
-            Assert.AreEqual(0, trace.Entries[0].Memory.Count, "BEGIN 1");
-            Assert.AreEqual(3, trace.Entries[10].Memory.Count, "CALL FROM 1");
-            Assert.AreEqual(0, trace.Entries[11].Memory.Count, "BEGIN 2");
-            Assert.AreEqual(2, trace.Entries[23].Memory.Count, "CREATE FROM 2");
-            Assert.AreEqual(0, trace.Entries[24].Memory.Count, "BEGIN 3");
-            Assert.AreEqual(1, trace.Entries[29].Memory.Count, "END 3");
-            Assert.AreEqual(2, trace.Entries[30].Memory.Count, "END 2");
-            Assert.AreEqual(3, trace.Entries[31].Memory.Count, "END 1");
+            Assert.That(trace.Entries[0].Memory.Count, Is.EqualTo(0), "BEGIN 1");
+            Assert.That(trace.Entries[10].Memory.Count, Is.EqualTo(3), "CALL FROM 1");
+            Assert.That(trace.Entries[11].Memory.Count, Is.EqualTo(0), "BEGIN 2");
+            Assert.That(trace.Entries[23].Memory.Count, Is.EqualTo(2), "CREATE FROM 2");
+            Assert.That(trace.Entries[24].Memory.Count, Is.EqualTo(0), "BEGIN 3");
+            Assert.That(trace.Entries[29].Memory.Count, Is.EqualTo(1), "END 3");
+            Assert.That(trace.Entries[30].Memory.Count, Is.EqualTo(2), "END 2");
+            Assert.That(trace.Entries[31].Memory.Count, Is.EqualTo(3), "END 1");
         }
 
         [Test]
@@ -258,8 +255,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .PersistData("0x2", HexZero) // just to test if storage is restored
@@ -269,7 +265,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
-            /* depths 
+            /* depths
             {
                 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 // 2x SSTORE + STACK FOR CALL [0..13]
                 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 // SSTORE + CALL [14..26]
@@ -278,14 +274,14 @@ namespace Nethermind.Evm.Test.Tracing
                 1, // STOP [34]
             }; */
 
-            Assert.AreEqual(0, trace.Entries[0].SortedStorage.Count, "BEGIN 1");
-            Assert.AreEqual(2, trace.Entries[13].SortedStorage.Count, "CALL FROM 1");
-            Assert.AreEqual(0, trace.Entries[14].SortedStorage.Count, "BEGIN 2");
-            Assert.AreEqual(1, trace.Entries[26].SortedStorage.Count, "CREATE FROM 2");
-            Assert.AreEqual(0, trace.Entries[27].SortedStorage.Count, "BEGIN 3");
-            Assert.AreEqual(0, trace.Entries[32].SortedStorage.Count, "END 3");
-            Assert.AreEqual(1, trace.Entries[33].SortedStorage.Count, "END 2");
-            Assert.AreEqual(2, trace.Entries[34].SortedStorage.Count, "END 1");
+            Assert.That(trace.Entries[0].SortedStorage.Count, Is.EqualTo(0), "BEGIN 1");
+            Assert.That(trace.Entries[13].SortedStorage.Count, Is.EqualTo(2), "CALL FROM 1");
+            Assert.That(trace.Entries[14].SortedStorage.Count, Is.EqualTo(0), "BEGIN 2");
+            Assert.That(trace.Entries[26].SortedStorage.Count, Is.EqualTo(1), "CREATE FROM 2");
+            Assert.That(trace.Entries[27].SortedStorage.Count, Is.EqualTo(0), "BEGIN 3");
+            Assert.That(trace.Entries[32].SortedStorage.Count, Is.EqualTo(0), "END 3");
+            Assert.That(trace.Entries[33].SortedStorage.Count, Is.EqualTo(1), "END 2");
+            Assert.That(trace.Entries[34].SortedStorage.Count, Is.EqualTo(2), "END 1");
         }
 
         [Test]
@@ -307,10 +303,10 @@ namespace Nethermind.Evm.Test.Tracing
             int[] pcs = new[] { 0, 2, 3, 5, 6, 7, 9, 10, 12, 2, 3, 5, 6, 7, 9, 10, 12, 2, 3, 5, 6, 7, 9, 10, 12, 13 };
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
-            Assert.AreEqual(pcs.Length, trace.Entries.Count);
+            Assert.That(trace.Entries.Count, Is.EqualTo(pcs.Length));
             for (int i = 0; i < pcs.Length; i++)
             {
-                Assert.AreEqual(pcs[i], trace.Entries[i].Pc);
+                Assert.That(trace.Entries[i].Pc, Is.EqualTo(pcs[i]));
             }
         }
 
@@ -326,17 +322,17 @@ namespace Nethermind.Evm.Test.Tracing
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
 
-            Assert.AreEqual(0, trace.Entries[0].Stack.Count, "entry[0] length");
+            Assert.That(trace.Entries[0].Stack.Count, Is.EqualTo(0), "entry[0] length");
 
-            Assert.AreEqual(1, trace.Entries[1].Stack.Count, "entry[1] length");
-            Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[1].Stack[0], "entry[1][0]");
+            Assert.That(trace.Entries[1].Stack.Count, Is.EqualTo(1), "entry[1] length");
+            Assert.That(trace.Entries[1].Stack[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[1][0]");
 
-            Assert.AreEqual(2, trace.Entries[2].Stack.Count, "entry[2] length");
-            Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[2].Stack[0], "entry[2][0]");
-            Assert.AreEqual(HexZero.PadLeft(64, '0'), trace.Entries[2].Stack[1], "entry[2][1]");
+            Assert.That(trace.Entries[2].Stack.Count, Is.EqualTo(2), "entry[2] length");
+            Assert.That(trace.Entries[2].Stack[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[2][0]");
+            Assert.That(trace.Entries[2].Stack[1], Is.EqualTo(HexZero.PadLeft(64, '0')), "entry[2][1]");
 
-            Assert.AreEqual(1, trace.Entries[3].Stack.Count, "entry[3] length");
-            Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[3].Stack[0], "entry[3][0]");
+            Assert.That(trace.Entries[3].Stack.Count, Is.EqualTo(1), "entry[3] length");
+            Assert.That(trace.Entries[3].Stack[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[3][0]");
         }
 
         [Test]
@@ -356,26 +352,26 @@ namespace Nethermind.Evm.Test.Tracing
 
             /* note the curious Geth trace behaviour where memory grows now but is populated from the next trace entry */
 
-            Assert.AreEqual(0, trace.Entries[0].Memory.Count, "entry[0] length");
+            Assert.That(trace.Entries[0].Memory.Count, Is.EqualTo(0), "entry[0] length");
 
-            Assert.AreEqual(0, trace.Entries[1].Memory.Count, "entry[1] length");
+            Assert.That(trace.Entries[1].Memory.Count, Is.EqualTo(0), "entry[1] length");
 
-            Assert.AreEqual(1, trace.Entries[2].Memory.Count, "entry[2] length");
-            Assert.AreEqual(HexZero.PadLeft(64, '0'), trace.Entries[2].Memory[0], "entry[2][0]");
+            Assert.That(trace.Entries[2].Memory.Count, Is.EqualTo(1), "entry[2] length");
+            Assert.That(trace.Entries[2].Memory[0], Is.EqualTo(HexZero.PadLeft(64, '0')), "entry[2][0]");
 
-            Assert.AreEqual(1, trace.Entries[3].Memory.Count, "entry[3] length");
-            Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[3].Memory[0], "entry[3][0]");
+            Assert.That(trace.Entries[3].Memory.Count, Is.EqualTo(1), "entry[3] length");
+            Assert.That(trace.Entries[3].Memory[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[3][0]");
 
-            Assert.AreEqual(1, trace.Entries[4].Memory.Count, "entry[4] length");
-            Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[4].Memory[0], "entry[4][0]");
+            Assert.That(trace.Entries[4].Memory.Count, Is.EqualTo(1), "entry[4] length");
+            Assert.That(trace.Entries[4].Memory[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[4][0]");
 
-            Assert.AreEqual(2, trace.Entries[5].Memory.Count, "entry[5] length");
-            Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[5].Memory[0], "entry[5][0]");
-            Assert.AreEqual(HexZero.PadLeft(64, '0'), trace.Entries[5].Memory[1], "entry[5][1]");
+            Assert.That(trace.Entries[5].Memory.Count, Is.EqualTo(2), "entry[5] length");
+            Assert.That(trace.Entries[5].Memory[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[5][0]");
+            Assert.That(trace.Entries[5].Memory[1], Is.EqualTo(HexZero.PadLeft(64, '0')), "entry[5][1]");
 
-            Assert.AreEqual(2, trace.Entries[6].Memory.Count, "entry[2] length");
-            Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[6].Memory[0], "entry[6][0]");
-            Assert.AreEqual(SampleHexData2.PadLeft(64, '0'), trace.Entries[6].Memory[1], "entry[6][1]");
+            Assert.That(trace.Entries[6].Memory.Count, Is.EqualTo(2), "entry[2] length");
+            Assert.That(trace.Entries[6].Memory[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[6][0]");
+            Assert.That(trace.Entries[6].Memory[1], Is.EqualTo(SampleHexData2.PadLeft(64, '0')), "entry[6][1]");
         }
     }
 }

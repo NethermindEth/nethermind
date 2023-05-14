@@ -237,7 +237,7 @@ namespace Nethermind.TxPool
                     discoveredForPendingTxs++;
                 }
 
-                if (transaction.IsEip1559)
+                if (transaction.Supports1559)
                 {
                     eip1559Txs++;
                 }
@@ -346,14 +346,19 @@ namespace Nethermind.TxPool
             lock (_locker)
             {
                 bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
+                UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
 
-                tx.GasBottleneck = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
+                _transactions.TryGetBucketsWorstValue(tx.SenderAddress!, out Transaction? worstTx);
+                tx.GasBottleneck = (worstTx is null || effectiveGasPrice <= worstTx.GasBottleneck)
+                    ? effectiveGasPrice
+                    : worstTx.GasBottleneck;
+
                 bool inserted = _transactions.TryInsert(tx.Hash!, tx, out Transaction? removed);
-                if (inserted)
+                if (inserted && tx.Hash != removed?.Hash)
                 {
                     _transactions.UpdateGroup(tx.SenderAddress!, state.SenderAccount, UpdateBucketWithAddedTransaction);
                     Metrics.PendingTransactionsAdded++;
-                    if (tx.IsEip1559) { Metrics.Pending1559TransactionsAdded++; }
+                    if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
 
                     if (removed is not null)
                     {
@@ -367,6 +372,11 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
+                    if (isPersistentBroadcast && inserted)
+                    {
+                        // it means it was added and immediately evicted - we are adding only to persistent broadcast
+                        _broadcaster.Broadcast(tx, isPersistentBroadcast);
+                    }
                     Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
                     return AcceptTxResult.FeeTooLowToCompete;
                 }
@@ -412,11 +422,8 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    if (previousTxBottleneck is null)
-                    {
-                        previousTxBottleneck = tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
+                    previousTxBottleneck ??= tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
-                    }
 
                     if (tx.Nonce == currentNonce + i)
                     {
@@ -474,7 +481,7 @@ namespace Nethermind.TxPool
                 {
                     shouldBeDumped = true;
                 }
-                else if (!tx.IsEip1559)
+                else if (!tx.Supports1559)
                 {
                     shouldBeDumped = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256)tx.GasLimit, out UInt256 cost);
                     shouldBeDumped |= UInt256.AddOverflow(cost, tx.Value, out cost);

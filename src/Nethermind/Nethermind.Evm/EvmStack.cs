@@ -71,7 +71,7 @@ namespace Nethermind.Evm
             if (value.Span.Length != 32)
             {
                 word.Clear();
-                value.Span.CopyTo(word.Slice(0, value.Span.Length));
+                value.Span.CopyTo(word[..value.Span.Length]);
             }
             else
             {
@@ -93,7 +93,7 @@ namespace Nethermind.Evm
             if (value.Memory.Length != 32)
             {
                 word.Clear();
-                value.Memory.Span.CopyTo(word.Slice(0, value.Memory.Length));
+                value.Memory.Span.CopyTo(word[..value.Memory.Length]);
             }
             else
             {

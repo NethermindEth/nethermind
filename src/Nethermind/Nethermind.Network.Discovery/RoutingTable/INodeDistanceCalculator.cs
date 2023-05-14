@@ -5,5 +5,5 @@ namespace Nethermind.Network.Discovery.RoutingTable;
 
 public interface INodeDistanceCalculator
 {
-    int CalculateDistance(byte[] sourceId, byte[] destinationId);
+    int CalculateDistance(ReadOnlySpan<byte> sourceId, ReadOnlySpan<byte> destinationId);
 }

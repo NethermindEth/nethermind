@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Test
             TargetAdjustedGasLimitCalculator targetedAdjustedGasLimitCalculator = new(specProvider, new BlocksConfig());
             BlockHeader header = Build.A.BlockHeader.WithNumber(londonBlock - 1).WithGasLimit(gasLimit).TestObject;
             long actualValue = targetedAdjustedGasLimitCalculator.GetGasLimit(header);
-            Assert.AreEqual(gasLimit * Eip1559Constants.ElasticityMultiplier, actualValue);
+            Assert.That(actualValue, Is.EqualTo(gasLimit * Eip1559Constants.ElasticityMultiplier));
         }
     }
 }

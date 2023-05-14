@@ -147,15 +147,47 @@ namespace Nethermind.Blockchain.Test
         }
 
 
+        public static IEnumerable EnoughShardBlobTransactionsSelectedTestCases
+        {
+            get
+            {
+                ProperTransactionsSelectedTestCase maxTransactionsSelected = ProperTransactionsSelectedTestCase.Default;
+                maxTransactionsSelected.Transactions.ForEach(tx =>
+                {
+                    tx.Type = TxType.Blob;
+                    tx.BlobVersionedHashes = new byte[1][];
+                });
+                maxTransactionsSelected.Transactions[1].BlobVersionedHashes =
+                    new byte[Eip4844Constants.MaxBlobsPerBlock - 1][];
+                maxTransactionsSelected.ExpectedSelectedTransactions.AddRange(
+                    maxTransactionsSelected.Transactions.OrderBy(t => t.Nonce).Take(2));
+                yield return new TestCaseData(maxTransactionsSelected).SetName("Enough transactions selected");
+
+                ProperTransactionsSelectedTestCase enoughTransactionsSelected =
+                    ProperTransactionsSelectedTestCase.Default;
+                Transaction[] expectedSelectedTransactions =
+                    enoughTransactionsSelected.Transactions.OrderBy(t => t.Nonce).ToArray();
+                expectedSelectedTransactions[0].Type = TxType.Blob;
+                expectedSelectedTransactions[0].BlobVersionedHashes = new byte[Eip4844Constants.MaxBlobsPerBlock][];
+                expectedSelectedTransactions[1].Type = TxType.Blob;
+                expectedSelectedTransactions[1].BlobVersionedHashes = new byte[1][];
+                enoughTransactionsSelected.ExpectedSelectedTransactions.AddRange(
+                    expectedSelectedTransactions.Where((tx, index) => index != 1));
+                yield return new TestCaseData(enoughTransactionsSelected).SetName(
+                    "Enough shard blob transactions and others selected");
+            }
+        }
+
         [TestCaseSource(nameof(ProperTransactionsSelectedTestCases))]
         [TestCaseSource(nameof(Eip1559LegacyTransactionTestCases))]
         [TestCaseSource(nameof(Eip1559TestCases))]
+        [TestCaseSource(nameof(EnoughShardBlobTransactionsSelectedTestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
             MemDb stateDb = new();
             MemDb codeDb = new();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
+            WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             StateReader stateReader =
                 new(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();

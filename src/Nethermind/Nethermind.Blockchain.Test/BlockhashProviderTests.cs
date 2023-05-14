@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Test
             BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
             Block current = Build.A.Block.WithParent(head).TestObject;
             Keccak result = provider.GetBlockhash(current.Header, chainLength - 1);
-            Assert.AreEqual(head.Hash, result);
+            Assert.That(result, Is.EqualTo(head.Hash));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Test
             BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
             Block current = Build.A.Block.WithParent(head).TestObject;
             Keccak result = provider.GetBlockhash(current.Header, chainLength - 256);
-            Assert.AreEqual(tree.FindHeader(256, BlockTreeLookupOptions.None).Hash, result);
+            Assert.That(result, Is.EqualTo(tree.FindHeader(256, BlockTreeLookupOptions.None).Hash));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -132,7 +132,7 @@ namespace Nethermind.Blockchain.Test
             BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
             Block current = Build.A.Block.WithParent(head).TestObject;
             Keccak result = provider.GetBlockhash(current.Header, chainLength - 1);
-            Assert.AreEqual(head.Hash, result);
+            Assert.That(result, Is.EqualTo(head.Hash));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -177,7 +177,7 @@ namespace Nethermind.Blockchain.Test
             BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
             Block current = Build.A.Block.WithParent(head).TestObject;
             Keccak result = provider.GetBlockhash(current.Header, chainLength - 256);
-            Assert.AreEqual(tree.FindHeader(256, BlockTreeLookupOptions.None).Hash, result);
+            Assert.That(result, Is.EqualTo(tree.FindHeader(256, BlockTreeLookupOptions.None).Hash));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -207,7 +207,7 @@ namespace Nethermind.Blockchain.Test
             BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
             Block current = Build.A.Block.WithParent(head).TestObject;
             Keccak result = provider.GetBlockhash(current.Header, 127);
-            Assert.AreEqual(head.Hash, result);
+            Assert.That(result, Is.EqualTo(head.Hash));
         }
     }
 }

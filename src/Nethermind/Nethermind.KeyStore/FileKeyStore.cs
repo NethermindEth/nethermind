@@ -140,7 +140,7 @@ namespace Nethermind.KeyStore
                     break;
                 case "pbkdf2":
                     int c = kdfParams.C.Value;
-                    var deriveBytes = new Rfc2898DeriveBytes(passBytes, salt, kdfParams.C.Value, HashAlgorithmName.SHA256);
+                    var deriveBytes = new Rfc2898DeriveBytes(passBytes, salt, c, HashAlgorithmName.SHA256);
                     derivedKey = deriveBytes.GetBytes(256);
                     break;
                 default:

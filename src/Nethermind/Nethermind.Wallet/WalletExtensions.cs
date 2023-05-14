@@ -41,7 +41,7 @@ namespace Nethermind.Wallet
                 throw new CryptographicException($"Failed to sign tx {tx.Hash} using the {tx.SenderAddress} address.");
             }
 
-            tx.Signature.V = tx.Signature.V + 8 + 2 * chainId;
+            tx.Signature.V = tx.Type == TxType.Legacy ? tx.Signature.V + 8 + 2 * chainId : (ulong)(tx.Signature.RecoveryId + 27);
         }
     }
 }

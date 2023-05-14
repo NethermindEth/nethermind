@@ -89,7 +89,7 @@ namespace Nethermind.Abi
 
         public override byte[] Encode(object? arg, bool packed)
         {
-            Span<byte> bytes = null;
+            Span<byte> bytes;
             if (arg is UInt256 uint256)
             {
                 bytes = ((BigInteger)uint256).ToBigEndianByteArray();

@@ -36,7 +36,7 @@ namespace Nethermind.Evm.Test
                 .CallWithInput(Blake2FPrecompile.Instance.Address, 1000L, new byte[InputLength])
                 .Done;
             TestAllTracerWithOutput result = Execute(code);
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         }
     }
 }

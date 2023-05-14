@@ -53,7 +53,7 @@ namespace Nethermind.Serialization.Rlp
 
             List<Withdrawal> withdrawals = null;
 
-            if (header.Timestamp >= HeaderDecoder.WithdrawalTimestamp)
+            if (rlpStream.Position != blockCheck)
             {
                 int withdrawalsLength = rlpStream.ReadSequenceLength();
                 int withdrawalsCheck = rlpStream.Position + withdrawalsLength;
@@ -86,7 +86,7 @@ namespace Nethermind.Serialization.Rlp
             contentLength += Rlp.LengthOfSequence(unclesLength);
 
             int? withdrawalsLength = null;
-            if (item.Header.Timestamp >= HeaderDecoder.WithdrawalTimestamp)
+            if (item.Withdrawals is not null)
             {
                 withdrawalsLength = GetWithdrawalsLength(item, rlpBehaviors);
 
@@ -179,7 +179,7 @@ namespace Nethermind.Serialization.Rlp
 
             List<Withdrawal> withdrawals = null;
 
-            if (header.Timestamp >= HeaderDecoder.WithdrawalTimestamp)
+            if (decoderContext.Position != blockCheck)
             {
                 int withdrawalsLength = decoderContext.ReadSequenceLength();
                 int withdrawalsCheck = decoderContext.Position + withdrawalsLength;

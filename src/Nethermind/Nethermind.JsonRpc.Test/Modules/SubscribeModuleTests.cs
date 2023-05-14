@@ -27,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Newtonsoft.Json;
 using NSubstitute;
@@ -74,7 +75,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _txPool,
                 _receiptCanonicalityMonitor,
                 _filterStore,
-                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, _logManager),
+                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, new StaticSelector(SyncMode.All), _logManager),
                 _specProvider,
                 jsonSerializer);
 
@@ -177,7 +178,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(head).TestObject;
             _blockTree.Head.Returns(block);
 
-            EthSyncingInfo ethSyncingInfo = new(_blockTree, _receiptStorage, _syncConfig, _logManager);
+            EthSyncingInfo ethSyncingInfo = new(_blockTree, _receiptStorage, _syncConfig, new StaticSelector(SyncMode.All), _logManager);
 
             SyncingSubscription syncingSubscription = new(_jsonRpcDuplexClient, _blockTree, ethSyncingInfo, _logManager);
 
@@ -828,8 +829,8 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-            var expectedResult = "{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"" + subscriptionId + "\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0xb3157bcccab04639f6393042690a6c9862deebe88c781f911e8dfd265531e9ff\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x0\",\"timestamp\":\"0xf4240\",\"baseFeePerGas\":\"0x2710\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}";
-            expectedResult.Should().Be(serialized);
+            var expectedResult = "{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"" + subscriptionId + "\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x6f38eb4d3ad3beb1f9c6f870b32b55532f2f490bc33dc72696d6bb22dcef5d09\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x204\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x0\",\"timestamp\":\"0xf4240\",\"baseFeePerGas\":\"0x2710\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}";
+            serialized.Should().Be(expectedResult);
 
         }
 

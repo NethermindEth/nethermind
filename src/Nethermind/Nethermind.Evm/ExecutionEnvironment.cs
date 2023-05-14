@@ -68,12 +68,12 @@ namespace Nethermind.Evm
         /// DELEGATECALL behaves like a library call and it uses the value information from the caller even
         /// as no transfer happens.
         /// </summary>
-        public UInt256 Value { get; }
+        public readonly UInt256 Value;
 
         /// <summary>
         /// Parsed bytecode for the current call.
         /// </summary>
-        public ICodeInfo CodeInfo { get; }
+        public readonly ICodeInfo CodeInfo;
 
         /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
         public readonly int CallDepth;

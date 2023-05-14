@@ -58,11 +58,10 @@ namespace Nethermind.Api
         /// <remarks>
         /// DO NOT USE OUTSIDE OF PROCESSING BLOCK CONTEXT!
         /// </remarks>
-        IStateProvider? StateProvider { get; set; }
+        IWorldState? WorldState { get; set; }
         IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
         IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         IStateReader? StateReader { get; set; }
-        IStorageProvider? StorageProvider { get; set; }
         ITransactionProcessor? TransactionProcessor { get; set; }
         ITrieStore? TrieStore { get; set; }
         ITxSender? TxSender { get; set; }
@@ -84,9 +83,9 @@ namespace Nethermind.Api
         /// </remarks>
         IBlockFinalizationManager? FinalizationManager { get; set; }
 
-        IGasLimitCalculator GasLimitCalculator { get; set; }
+        IGasLimitCalculator? GasLimitCalculator { get; set; }
 
-        IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
+        IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
 
         IGasPriceOracle? GasPriceOracle { get; set; }
 
@@ -94,6 +93,6 @@ namespace Nethermind.Api
 
         CompositePruningTrigger PruningTrigger { get; }
 
-        IBlockProductionPolicy BlockProductionPolicy { get; set; }
+        IBlockProductionPolicy? BlockProductionPolicy { get; set; }
     }
 }

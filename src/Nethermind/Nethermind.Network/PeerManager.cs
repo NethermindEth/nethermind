@@ -54,7 +54,7 @@ namespace Nethermind.Network
         private Task _peerUpdateLoopTask;
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
-        private static readonly int _parallelism = Environment.ProcessorCount;
+        private readonly int _parallelism;
 
         public PeerManager(
             IRlpxHost rlpxHost,
@@ -67,6 +67,12 @@ namespace Nethermind.Network
             _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
             _stats = stats ?? throw new ArgumentNullException(nameof(stats));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+            _parallelism = networkConfig.NumConcurrentOutgoingConnects;
+            if (_parallelism == 0)
+            {
+                _parallelism = Environment.ProcessorCount;
+            }
+
             _peerPool = peerPool;
             _candidates = new List<PeerStats>(networkConfig.MaxActivePeers * 2);
         }
@@ -294,7 +300,7 @@ namespace Nethermind.Network
                         if (activePeersCount != previousActivePeersCount)
                         {
                             string countersLog = string.Join(", ", _currentSelection.Counters.Select(x => $"{x.Key.ToString()}: {x.Value}"));
-                            _logger.Trace($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(_currentSelection.Incompatible)}, EligibleCandidates: {_currentSelection.Candidates.Count()}, " +
+                            _logger.Trace($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(_currentSelection.Incompatible)}, EligibleCandidates: {_currentSelection.Candidates.Count}, " +
                                           $"Tried: {_tryCount}, Rounds: {_connectionRounds}, Failed initial connect: {_failedInitialConnect}, Established initial connect: {_newActiveNodes}, " +
                                           $"Current candidate peers: {_peerPool.PeerCount}, Current active peers: {activePeers.Count} " +
                                           $"[InOut: {activePeers.Count(x => x.Value.OutSession is not null && x.Value.InSession is not null)} | " +
@@ -539,7 +545,7 @@ namespace Nethermind.Network
             FilteredByFailedConnection
         }
 
-        private struct PeerStats
+        private readonly struct PeerStats
         {
             public Peer Peer { get; }
             public bool FailedValidation { get; }
@@ -749,7 +755,7 @@ namespace Nethermind.Network
 
         private void RemoveActivePeer(PublicKey nodeId, string reason)
         {
-            bool removed = _peerPool.ActivePeers.TryRemove(nodeId, out Peer removedPeer);
+            bool removed = _peerPool.ActivePeers.TryRemove(nodeId, out _);
             if (removed)
             {
                 Interlocked.Decrement(ref Metrics.PeerCount);

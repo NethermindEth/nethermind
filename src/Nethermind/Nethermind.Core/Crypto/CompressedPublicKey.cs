@@ -4,7 +4,7 @@
 using System;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
-using Nethermind.Secp256k1;
+using Nethermind.Crypto;
 
 namespace Nethermind.Core.Crypto
 {
@@ -31,7 +31,7 @@ namespace Nethermind.Core.Crypto
 
         public PublicKey Decompress()
         {
-            return new PublicKey(Proxy.Decompress(Bytes));
+            return new PublicKey(SecP256k1.Decompress(Bytes));
         }
 
         public byte[] Bytes { get; }

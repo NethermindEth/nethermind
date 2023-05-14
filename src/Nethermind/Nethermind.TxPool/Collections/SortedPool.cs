@@ -86,10 +86,7 @@ namespace Nethermind.TxPool.Collections
         public TValue[] GetSnapshot()
         {
             TValue[]? snapshot = _snapshot;
-            if (snapshot is null)
-            {
-                snapshot = _snapshot = _buckets.SelectMany(b => b.Value).ToArray();
-            }
+            snapshot ??= _snapshot = _buckets.SelectMany(b => b.Value).ToArray();
 
             return snapshot;
         }
@@ -404,6 +401,19 @@ namespace Nethermind.TxPool.Collections
             }
 
             items = Array.Empty<TValue>();
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool TryGetBucketsWorstValue(TGroupKey groupKey, out TValue? item)
+        {
+            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
+            {
+                item = bucket.Max;
+                return true;
+            }
+
+            item = default;
             return false;
         }
 

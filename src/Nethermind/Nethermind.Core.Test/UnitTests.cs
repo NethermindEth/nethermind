@@ -11,9 +11,9 @@ namespace Nethermind.Core.Test
         [Test]
         public void Ratios_are_correct()
         {
-            Assert.AreEqual(Unit.Ether, Unit.Finney * 1000);
-            Assert.AreEqual(Unit.Ether, Unit.Szabo * 1000 * 1000);
-            Assert.AreEqual(Unit.Ether, Unit.Wei * 1000 * 1000 * 1000 * 1000 * 1000 * 1000);
+            Assert.That(Unit.Finney * 1000, Is.EqualTo(Unit.Ether));
+            Assert.That(Unit.Szabo * 1000 * 1000, Is.EqualTo(Unit.Ether));
+            Assert.That(Unit.Wei * 1000 * 1000 * 1000 * 1000 * 1000 * 1000, Is.EqualTo(Unit.Ether));
         }
     }
 }

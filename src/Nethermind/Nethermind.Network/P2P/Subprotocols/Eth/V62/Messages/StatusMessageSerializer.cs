@@ -8,6 +8,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class StatusMessageSerializer : IZeroInnerMessageSerializer<StatusMessage>
     {
+        private const int ForkHashLength = 5;
+
         public void Serialize(IByteBuffer byteBuffer, StatusMessage message)
         {
             int forkIdContentLength = 0;
@@ -15,7 +17,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             if (message.ForkId.HasValue)
             {
                 ForkId forkId = message.ForkId.Value;
-                forkIdContentLength = Rlp.LengthOf(forkId.ForkHash) + Rlp.LengthOf(forkId.Next);
+                forkIdContentLength = ForkHashLength + Rlp.LengthOf(forkId.Next);
             }
 
             NettyRlpStream rlpStream = new(byteBuffer);
@@ -43,7 +45,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             if (message.ForkId.HasValue)
             {
                 ForkId forkId = message.ForkId.Value;
-                int forkIdContentLength = Rlp.LengthOf(forkId.ForkHash) + Rlp.LengthOf(forkId.Next);
+                int forkIdContentLength = ForkHashLength + Rlp.LengthOf(forkId.Next);
                 forkIdSequenceLength = Rlp.LengthOfSequence(forkIdContentLength);
             }
 

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,7 +18,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Test.Builders;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -132,7 +130,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         public void should_send_requested_PooledTransactions_up_to_MaxPacketSize()
         {
             Transaction tx = Build.A.Transaction.WithData(new byte[1024]).SignedAndResolved().TestObject;
-            int sizeOfOneTx = tx.GetLength(new TxDecoder());
+            int sizeOfOneTx = tx.GetLength();
             int numberOfTxsInOneMsg = TransactionsMessage.MaxPacketSize / sizeOfOneTx;
             _transactionPool.TryGetPendingTransaction(Arg.Any<Keccak>(), out Arg.Any<Transaction>())
                 .Returns(x =>
@@ -156,7 +154,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         public void should_send_single_requested_PooledTransaction_even_if_exceed_MaxPacketSize(int dataSize)
         {
             Transaction tx = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved().TestObject;
-            int sizeOfOneTx = tx.GetLength(new TxDecoder());
+            int sizeOfOneTx = tx.GetLength();
             int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
             _transactionPool.TryGetPendingTransaction(Arg.Any<Keccak>(), out Arg.Any<Transaction>())
                 .Returns(x =>
