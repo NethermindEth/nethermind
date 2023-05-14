@@ -2478,7 +2478,7 @@ public class VirtualMachine : IVirtualMachine
                         var inputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE];
                         var maxHeighCount = (int)typeSection.Slice(index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE + EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_OFFSET, EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_LENGTH).ReadEthUInt16();
 
-                        if(stack.Head > EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxHeighCount)
+                        if (stack.Head > EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxHeighCount)
                         {
                             goto StackOverflow;
                         }
