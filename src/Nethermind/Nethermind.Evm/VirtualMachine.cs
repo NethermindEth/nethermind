@@ -2476,9 +2476,15 @@ public class VirtualMachine : IVirtualMachine
 
                         if (!UpdateGas(GasCostOf.Callf, ref gasAvailable)) goto OutOfGas;
                         var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
-                        env.CodeInfo.GetSectionMetadata(index, out int inputCount, out int outputCount, out int maxStack);
+                        var inputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE];
+                        var maxHeighCount = (int)typeSection.Slice(index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE + EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_OFFSET, EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_LENGTH).ReadEthUInt16();
 
-                        if (vmState.ReturnStackHead > EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT) goto StackOverflow;
+                        if (stack.Head > EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxHeighCount)
+                        {
+                            goto StackOverflow;
+                        }
+
+                        if (vmState.ReturnStackHead == EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT) goto InvalidSubroutineEntry;
 
                         stack.EnsureDepth(inputCount);
                         vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
@@ -2502,38 +2508,15 @@ public class VirtualMachine : IVirtualMachine
                         if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) goto OutOfGas;
                         var index = sectionIndex;
                         var outputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE + 1];
-                        if (vmState.ReturnStackHead-- == 0)
+                        if (vmState.ReturnStackHead == 0)
                         {
-                            break;
+                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                            goto EmptyTrace;
                         }
 
-                        var stackFrame = vmState.ReturnStack[vmState.ReturnStackHead];
+                        var stackFrame = vmState.ReturnStack[--vmState.ReturnStackHead];
                         sectionIndex = stackFrame.Index;
                         programCounter = stackFrame.Offset;
-                        break;
-                    }
-                case Instruction.JUMPF:
-                    {
-                        if (!spec.IsEofEvmModeOn || !spec.JumpfOpcodeEnabled || env.CodeInfo.EofVersion() == 0)
-                        {
-                            goto InvalidJumpDestination;
-                        }
-
-                        if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable)) // still undecided in EIP
-                        {
-                            goto InvalidJumpDestination;
-                        }
-
-                        var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
-                        env.CodeInfo.GetSectionMetadata(index, out _, out _, out int maxStackHeight);
-                        if (stack.Head > MaxCallDepth - maxStackHeight)
-                        {
-                            return CallResult.StackOverflowException;
-                        }
-
-                        sectionIndex = index;
-                        programCounter = env.CodeInfo.SectionOffset(index);
-
                         break;
                     }
                 default:
