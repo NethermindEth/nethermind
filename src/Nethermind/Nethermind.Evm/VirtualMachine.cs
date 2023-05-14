@@ -2476,8 +2476,14 @@ public class VirtualMachine : IVirtualMachine
                         if (!UpdateGas(GasCostOf.Callf, ref gasAvailable)) goto OutOfGas;
                         var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
                         var inputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE];
+                        var maxHeighCount = (int)typeSection.Slice(index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE + EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_OFFSET, EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_LENGTH).ReadEthUInt16();
 
-                        if (vmState.ReturnStackHead > EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT) goto StackOverflow;
+                        if(stack.Head > EvmObjectFormat.Eof1.MAX_STACK_HEIGHT - maxHeighCount)
+                        {
+                            goto StackOverflow;
+                        }
+
+                        if (vmState.ReturnStackHead == EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT) goto InvalidSubroutineEntry;
 
                         stack.EnsureDepth(inputCount);
                         vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
@@ -2501,12 +2507,13 @@ public class VirtualMachine : IVirtualMachine
                         if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) goto OutOfGas;
                         var index = sectionIndex;
                         var outputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE + 1];
-                        if (vmState.ReturnStackHead-- == 0)
+                        if (vmState.ReturnStackHead == 0)
                         {
-                            break;
+                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                            goto EmptyTrace;
                         }
 
-                        var stackFrame = vmState.ReturnStack[vmState.ReturnStackHead];
+                        var stackFrame = vmState.ReturnStack[--vmState.ReturnStackHead];
                         sectionIndex = stackFrame.Index;
                         programCounter = stackFrame.Offset;
                         break;
