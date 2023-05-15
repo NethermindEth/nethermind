@@ -33,8 +33,8 @@ public class EthRpcMulticallTests
         return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
     }
 
-    private static void allocateAccounts(MultiCallBlockStateCallsModel requestBlockOne, IStateProvider _stateProvider,
-        IReleaseSpec latestBlockSpec, ISpecProvider _specProvider, IStorageProvider _storageProvider)
+    private static void allocateAccounts(MultiCallBlockStateCallsModel requestBlockOne, IWorldState _stateProvider,
+        IReleaseSpec latestBlockSpec, ISpecProvider _specProvider)
     {
         foreach (var accountOverride in requestBlockOne.StateOverrides)
         {
@@ -50,15 +50,14 @@ public class EthRpcMulticallTests
             _stateProvider.SubtractFromBalance(address, 666, latestBlockSpec);
 
             _stateProvider.Commit(latestBlockSpec);
-            _storageProvider.Commit();
+           // _storageProvider.Commit();
 
 
             if (acc != null)
             {
                 if (accountOverride.Code is not null)
                 {
-                    Keccak codeHash = _stateProvider.UpdateCode(accountOverride.Code);
-                    _stateProvider.UpdateCodeHash(address, codeHash,
+                    _stateProvider.InsertCode(address, accountOverride.Code,
                         latestBlockSpec, true);
                 }
             }
@@ -68,7 +67,7 @@ public class EthRpcMulticallTests
             {
                 foreach (KeyValuePair<UInt256, byte[]> storage in accountOverride.State)
                 {
-                    _storageProvider.Set(new StorageCell(address, storage.Key),
+                    _stateProvider.Set(new StorageCell(address, storage.Key),
                         storage.Value.WithoutLeadingZeros().ToArray());
                 }
             }
@@ -77,7 +76,7 @@ public class EthRpcMulticallTests
             {
                 foreach (KeyValuePair<UInt256, byte[]> storage in accountOverride.StateDiff)
                 {
-                    _storageProvider.Set(new StorageCell(address, storage.Key),
+                    _stateProvider.Set(new StorageCell(address, storage.Key),
                         storage.Value.WithoutLeadingZeros().ToArray());
                 }
             }
@@ -107,10 +106,10 @@ public class EthRpcMulticallTests
         userBalanceBefore.Result.ResultType.Should().Be(Core.ResultType.Success);
 
         //Force persistancy of head block in main chain
+        chain.BlockTree.UpdateMainChain(new []{chain.BlockFinder.Head}, true, true );
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
 
         var tt = chain.TrieStore;
-
         using (var tmpChain =new MultiCallBlockchainFork(chain.DbProvider, chain.SpecProvider))
         {
             //Check if tmpChain initialised
@@ -128,10 +127,9 @@ public class EthRpcMulticallTests
             var num_tmp = userBalanceBefore_fromTmp.Data.Value;
             Assert.AreEqual(userBalanceBefore_fromTmp.Data, userBalanceBefore.Data);
 
-            var processed = tmpChain.ForgeChainBlock((stateProvider, currentSpec, specProvider, storageProvider) =>
+            var processed = tmpChain.ForgeChainBlock((stateProvider, currentSpec, specProvider) =>
             {
-                allocateAccounts(requestBlockOne, stateProvider, currentSpec, specProvider,
-                    storageProvider);
+                allocateAccounts(requestBlockOne, stateProvider, currentSpec, specProvider);
             });
 
             //Check block has been added to chain as main

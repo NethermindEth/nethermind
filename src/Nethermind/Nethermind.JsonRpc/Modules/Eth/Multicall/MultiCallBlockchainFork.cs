@@ -32,6 +32,7 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -87,8 +88,7 @@ public class MultiCallBlockchainFork : IDisposable
     private BlockchainProcessor ChainProcessor { get; }
     private BlockProcessor BlockProcessor { get; }
 
-    public StateProvider StateProvider { get; internal set; }
-    public StorageProvider StorageProvider { get; internal set; }
+    public IWorldState StateProvider { get; internal set; }
     public ISpecProvider SpecProvider { get; internal set; }
     public IBlockTree BlockTree { get; internal set; }
     public IBlockFinder BlockFinder => BlockTree;
@@ -137,7 +137,7 @@ public class MultiCallBlockchainFork : IDisposable
         //Init BlockChain
         //Writable inMemory DBs on with access to the data of existing ones (will not modify existing data)
         if (oldDbProvider == null) throw new ArgumentNullException();
-
+        
         List<byte[]>? oldStack = oldDbProvider.StateDb.GetAllValues().ToList();
         IDb inMemStateDb = new ReadOnlyDb(oldDbProvider.StateDb, true);
         IDb inMemBlockDb = new ReadOnlyDb(oldDbProvider.BlocksDb, true);
@@ -160,19 +160,17 @@ public class MultiCallBlockchainFork : IDisposable
 
         ILogManager logManager = SimpleConsoleLogManager.Instance;
 
-        List<byte[]>? newStack = inMemStateDb.GetAllValues().ToList();
         TrieStore trieStore = new(inMemStateDb, logManager);
-        StateProvider = new StateProvider(trieStore, inMemCodeDb, logManager);
-        StorageProvider = new StorageProvider(trieStore, StateProvider, logManager);
+        StateProvider = new WorldState(trieStore, inMemCodeDb, logManager);
 
         IReadOnlyTrieStore readOnlyTrieStore = trieStore.AsReadOnly(inMemStateDb);
         StateReader stateReader = new(readOnlyTrieStore, inMemCodeDb, logManager);
         SyncConfig syncConfig = new();
-        BlockTree = new BlockTree(inMemBlockDb,
-            inMemHeaderDb,
-            inMemBlockInfoDb,
-            inMemMetadataDb,
-            new ChainLevelInfoRepository(inMemBlockInfoDb),
+        BlockTree = new BlockTree(DbProvider.BlocksDb,
+            DbProvider.HeadersDb,
+            DbProvider.BlockInfosDb,
+            DbProvider.MetadataDb,
+            new ChainLevelInfoRepository(DbProvider.BlockInfosDb),
             SpecProvider,
             NullBloomStorage.Instance,
             syncConfig,
@@ -205,7 +203,7 @@ public class MultiCallBlockchainFork : IDisposable
             logManager);
 
         TransactionProcessor txProcessor =
-            new(SpecProvider, StateProvider, StorageProvider, virtualMachine, logManager);
+            new(SpecProvider, StateProvider, virtualMachine, logManager);
         RecoverSignatures blockPreprocessorStep = new(ethereumEcdsa, txPool, SpecProvider, logManager);
 
         HeaderValidator headerValidator = new(
@@ -225,7 +223,6 @@ public class MultiCallBlockchainFork : IDisposable
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, StateProvider),
             StateProvider,
-            StorageProvider,
             receiptStorage,
             NullWitnessCollector.Instance,
             logManager);
@@ -295,7 +292,7 @@ public class MultiCallBlockchainFork : IDisposable
             LimboLogs.Instance,
             SpecProvider,
             gasPriceOracle,
-            new EthSyncingInfo(BlockTree, receiptStorage, syncConfig, logManager),
+            new EthSyncingInfo(BlockTree, receiptStorage, syncConfig, new StaticSelector(SyncMode.All), logManager),
             feeHistoryOracle);
     }
 
@@ -339,9 +336,7 @@ public class MultiCallBlockchainFork : IDisposable
     //Process Block and UpdateMainChain with it
     public bool FinalizeBlock(Block currentBlock)
     {
-        StorageProvider.Commit();
         StateProvider.Commit(SpecProvider.GetSpec(currentBlock.Header));
-        StorageProvider.CommitTrees(currentBlock.Number);
         StateProvider.CommitTree(currentBlock.Number);
         StateProvider.RecalculateStateRoot();
 
@@ -368,16 +363,16 @@ public class MultiCallBlockchainFork : IDisposable
     ///     provider, and storage provider.
     /// </summary>
     /// <param name="action">An action representing the modifications to the blockchain state and storage.</param>
-    public bool ForgeChainBlock(Action<IStateProvider,
-        IReleaseSpec, ISpecProvider, IStorageProvider> action)
+    public bool ForgeChainBlock(Action<IWorldState,
+        IReleaseSpec, ISpecProvider> action)
     {
         //Prepare a block
         Block? newBlock = CreateBlock();
 
         action(StateProvider,
             CurrentSpec,
-            SpecProvider,
-            StorageProvider);
+            SpecProvider
+            );
 
         //Add block
         bool results = FinalizeBlock(newBlock);

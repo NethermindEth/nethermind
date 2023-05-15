@@ -96,7 +96,7 @@ namespace Nethermind.Db
             _memDb.Clear();
         }
 
-        public Span<byte> GetSpan(ReadOnlySpan<byte> key) => _memDb.Get(key).AsSpan();
+        public Span<byte> GetSpan(ReadOnlySpan<byte> key) => Get(key).AsSpan();
         public void PutSpan(ReadOnlySpan<byte> keyBytes, ReadOnlySpan<byte> value)
         {
             if (!_createInMemWriteStore)
