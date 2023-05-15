@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using FluentAssertions.Extensions;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -141,7 +142,10 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
                 await WriteFileStructure(chain);
 
-                chain.PruningDb.InnerDbName.Should().Be($"State{time + 1}");
+                Assert.That(
+                    () => chain.PruningDb.InnerDbName,
+                    Is.EqualTo($"State{time + 1}").After(1000, 100)
+                    );
 
                 HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
                 currentItems.IsSubsetOf(allItems).Should().BeTrue();
