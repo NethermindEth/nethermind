@@ -54,7 +54,7 @@ jobs:
           docker compose up -d
 
       - name: Wait for Chiado to sync
-        rrun: |
+        run: |
           # Check if Docker container is running
           MAX_RETRIES=10
           RETRY_COUNT=0
