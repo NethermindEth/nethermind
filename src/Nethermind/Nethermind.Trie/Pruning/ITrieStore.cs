@@ -11,7 +11,7 @@ namespace Nethermind.Trie.Pruning
     {
         void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo);
 
-        void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root);
+        void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
 
         bool IsPersisted(Keccak keccak);
         bool IsPersisted(in ValueKeccak keccak);
