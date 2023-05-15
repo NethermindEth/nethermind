@@ -78,18 +78,17 @@ jobs:
       - name: Verify health of a node
         working-directory: sedge
         run: |
-          dockerLogs=$(docker compose logs execution) || exit 10
+          dockerLogs=$(docker compose logs execution)
       
-          countValid=$(echo "$dockerLogs" | grep -c -E "Valid. Result of a new payload:") || exit 10
+          countValid=$(echo "$dockerLogs" | grep -c "Valid. Result of a new payload:")
           if [ $countValid -lt 1 ]; then
             echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well." || exit 20
           fi
           
-          count=$(echo "$dockerLogs" | grep -c -E "Invalid|Exception") || exit 10
+          count=$(echo "$dockerLogs" | grep -c -E "Invalid|Exception")
           if [ $count -gt 0 ]; then
             echo "Error: Lines found for 'Invalid' or 'Exception'"
-            echo "$dockerLogs" | grep -E "Invalid|Exception" || exit 10
-            exit 30
+            echo "$dockerLogs" | grep "Invalid|Exception" || exit 30
           fi
           
   sepolia:
@@ -164,16 +163,17 @@ jobs:
       - name: Verify health of a node
         working-directory: sedge
         run: |
-          dockerLogs=$(docker compose logs execution) || exit 10
+          dockerLogs=$(docker compose logs execution)
       
-          countValid=$(echo "$dockerLogs" | grep -c -E "Valid. Result of a new payload:") || exit 10
+          countValid=$(echo "$dockerLogs" | grep -c "Valid. Result of a new payload:")
           if [ $countValid -lt 1 ]; then
+            echo "Count of Valid: $countValid"
             echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well." || exit 20
           fi
           
-          count=$(echo "$dockerLogs" | grep -c -E "Invalid|Exception") || exit 10
+          count=$(echo "$dockerLogs" | grep -c -E "Invalid|Exception")
           if [ $count -gt 0 ]; then
+            echo "Count of Invalid: $count"
             echo "Error: Lines found for 'Invalid' or 'Exception'"
-            echo "$dockerLogs" | grep -E "Invalid|Exception" || exit 10
-            exit 30
+            echo "$dockerLogs" | grep -E "Invalid|Exception" || exit 30
           fi
