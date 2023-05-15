@@ -68,6 +68,24 @@ jobs:
             echo "Error: Docker container 'sedge-execution-client' is not running after $MAX_RETRIES attempts."
             exit 404
           fi
+          
+          # Check readiness of the service
+          RETRY_COUNT=0
+          while [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; do
+            RESPONSE=$(curl -s --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
+            if [[ $? -eq 0 ]] && [[ -n "$RESPONSE" ]]; then
+              break
+            else
+              echo "Service not ready. Retrying in 10 seconds..."
+              let "RETRY_COUNT+=1"
+              sleep 10
+            fi
+          done
+          
+          if [[ $RETRY_COUNT -eq $MAX_RETRIES ]]; then
+            echo "Error: Service not ready after $MAX_RETRIES attempts."
+            exit 403
+          fi
       
           SYNCING_RESULT=""
           DEBUG_RESULT=""
@@ -92,6 +110,8 @@ jobs:
       - name: Verify health of a node
         working-directory: sedge
         run: |
+          set +e
+          
           dockerLogs=$(docker compose logs execution 2>/dev/null)
       
           validLines=$(echo "$dockerLogs" | grep -E "Valid. Result of a new payload:")
@@ -175,6 +195,24 @@ jobs:
             echo "Error: Docker container 'sedge-execution-client' is not running after $MAX_RETRIES attempts."
             exit 404
           fi
+          
+          # Check readiness of the service
+          RETRY_COUNT=0
+          while [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; do
+            RESPONSE=$(curl -s --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
+            if [[ $? -eq 0 ]] && [[ -n "$RESPONSE" ]]; then
+              break
+            else
+              echo "Service not ready. Retrying in 10 seconds..."
+              let "RETRY_COUNT+=1"
+              sleep 10
+            fi
+          done
+          
+          if [[ $RETRY_COUNT -eq $MAX_RETRIES ]]; then
+            echo "Error: Service not ready after $MAX_RETRIES attempts."
+            exit 403
+          fi
       
           SYNCING_RESULT=""
           DEBUG_RESULT=""
@@ -199,6 +237,8 @@ jobs:
       - name: Verify health of a node
         working-directory: sedge
         run: |
+          set +e
+          
           dockerLogs=$(docker compose logs execution 2>/dev/null)
       
           validLines=$(echo "$dockerLogs" | grep -E "Valid. Result of a new payload:")
