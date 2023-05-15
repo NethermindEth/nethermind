@@ -37,9 +37,7 @@ namespace Nethermind.Trie.Pruning
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root) { }
-
-        public void HackPersistOnShutdown() { }
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {
