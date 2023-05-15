@@ -48,17 +48,25 @@ jobs:
           -c lighthouse:sigp/lighthouse:latest -e nethermind:current_branch_image \
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
+          --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
           --cl-extra-flag checkpoint-sync-url=http://139.144.26.89:4000/
           echo 'Running sedge...'
           docker compose up -d
 
       - name: Wait for Chiado to sync
         run: |
-          RESULT=""
-          while [ "$RESULT" != "false" ]; do
-            echo "Waiting for Sedge to sync..."
+          SYNCING_RESULT=""
+          DEBUG_RESULT=""
+          while [[ "$SYNCING_RESULT" != "false" ]] || [[ "$DEBUG_RESULT" != *"WaitingForBlock"* ]]; do
             sleep 10
-            RESULT=$(curl --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545 | jq .result)
+            RESPONSE_SYNCING=$(curl -s --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
+            SYNCING_RESULT=$(echo $RESPONSE_SYNCING | jq .result)
+            echo "eth_syncing endpoint response: $RESPONSE_SYNCING"
+      
+            RESPONSE_DEBUG=$(curl -s --data '{"method":"debug_getSyncStage","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
+            DEBUG_RESULT=$(echo $RESPONSE_DEBUG | jq -r .result)
+            echo "debug_getSyncStage endpoint response: $RESPONSE_DEBUG"
+            
           done
           sleep 60
           echo "Sedge is synced."
@@ -67,19 +75,25 @@ jobs:
         working-directory: sedge
         run: docker compose logs
         
-      - name: Verify health of a Nethermind client
+      - name: Verify health of a node
         working-directory: sedge
         run: |
-          countValid=$(docker compose logs execution | grep -c -E "Valid. Result of a new payload:")
+          echo "Checking docker compose logs..."
+          dockerLogs=$(docker compose logs execution)
+          echo "Docker logs: $dockerLogs"
+      
+          countValid=$(echo "$dockerLogs" | grep -c -E "Valid. Result of a new payload:")
+          echo "CountValid: $countValid"
           if [ $countValid -lt 1 ]; then
             echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well."
             exit 1
           fi
           
-          count=$(docker compose logs execution | grep -c -E "Invalid|Exception")
+          count=$(echo "$dockerLogs" | grep -c -E "Invalid|Exception")
+          echo "Count: $count"
           if [ $count -gt 0 ]; then
             echo "Error: Lines found for 'Invalid' or 'Exception'"
-            docker compose logs | grep -E "Invalid|Exception" && exit 2
+            echo "$dockerLogs" | grep -E "Invalid|Exception" && exit 2
           fi
   sepolia:
     name: "Run sync of sepolia testnet"
@@ -123,17 +137,25 @@ jobs:
           -c lighthouse:sigp/lighthouse:latest -e nethermind:current_branch_image \
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
+          --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
           --cl-extra-flag checkpoint-sync-url=https://beaconstate-sepolia.chainsafe.io
           echo 'Running sedge...'
           docker compose up -d
 
       - name: Wait for Sepolia to sync
         run: |
-          RESULT=""
-          while [ "$RESULT" != "false" ]; do
-            echo "Waiting for Sedge to sync..."
+          SYNCING_RESULT=""
+          DEBUG_RESULT=""
+          while [[ "$SYNCING_RESULT" != "false" ]] || [[ "$DEBUG_RESULT" != *"WaitingForBlock"* ]]; do
             sleep 10
-            RESULT=$(curl --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545 | jq .result)
+            RESPONSE_SYNCING=$(curl -s --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
+            SYNCING_RESULT=$(echo $RESPONSE_SYNCING | jq .result)
+            echo "eth_syncing endpoint response: $RESPONSE_SYNCING"
+      
+            RESPONSE_DEBUG=$(curl -s --data '{"method":"debug_getSyncStage","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
+            DEBUG_RESULT=$(echo $RESPONSE_DEBUG | jq -r .result)
+            echo "debug_getSyncStage endpoint response: $RESPONSE_DEBUG"
+            
           done
           sleep 60
           echo "Sedge is synced."
@@ -142,17 +164,23 @@ jobs:
         working-directory: sedge
         run: docker compose logs
           
-      - name: Verify health of a Nethermind client
+      - name: Verify health of a node
         working-directory: sedge
         run: |
-          countValid=$(docker compose logs execution | grep -c -E "Valid. Result of a new payload:")
+          echo "Checking docker compose logs..."
+          dockerLogs=$(docker compose logs execution)
+          echo "Docker logs: $dockerLogs"
+      
+          countValid=$(echo "$dockerLogs" | grep -c -E "Valid. Result of a new payload:")
+          echo "CountValid: $countValid"
           if [ $countValid -lt 1 ]; then
             echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well."
             exit 1
           fi
           
-          count=$(docker compose logs execution | grep -c -E "Invalid|Exception")
+          count=$(echo "$dockerLogs" | grep -c -E "Invalid|Exception")
+          echo "Count: $count"
           if [ $count -gt 0 ]; then
             echo "Error: Lines found for 'Invalid' or 'Exception'"
-            docker compose logs execution | grep -E "Invalid|Exception" && exit 2
+            echo "$dockerLogs" | grep -E "Invalid|Exception" && exit 2
           fi
