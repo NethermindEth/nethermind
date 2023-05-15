@@ -201,14 +201,14 @@ namespace Nethermind.Network.Test
             Test(head, headTimestamp, KnownHashes.GnosisGenesis, forkHashHex, next, description, provider);
         }
 
-        [TestCase(0, 0ul, "0x50d39d7b", 0ul, "Chiado genesis")]
-        public void Fork_id_and_hash_as_expected_on_chiado(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
-        {
-            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-            ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "chiado.json")));
-            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
-            Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
-        }
+    [TestCase(0L, 0UL, "0x50d39d7b", ChiadoSpecProvider.ShanghaiTimestamp, "Chiado genesis")]
+    public void Fork_id_and_hash_as_expected_on_chiado(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
+    {
+        ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+        ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "chiado.json")));
+        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+        Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
+    }
 
         // Local is mainnet Gray Glacier, remote announces the same. No future fork is announced.
         [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, 0ul, "0xf0afd0e3", 0ul, ValidationResult.Valid)]

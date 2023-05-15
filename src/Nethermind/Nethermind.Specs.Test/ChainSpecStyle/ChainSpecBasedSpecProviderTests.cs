@@ -252,12 +252,14 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             ChiadoSpecProvider chiado = ChiadoSpecProvider.Instance;
 
-            List<ForkActivation> forkActivationsToTest = new()
-            {
-                (ForkActivation)0,
-                (ForkActivation)1,
-                (ForkActivation)999_999_999, // far in the future
-            };
+        List<ForkActivation> forkActivationsToTest = new()
+        {
+            (ForkActivation)0,
+            //(ForkActivation)1,
+            (1, ChiadoSpecProvider.ShanghaiTimestamp - 1),
+            (1, ChiadoSpecProvider.ShanghaiTimestamp),
+            (999_999_999, 999_999_999) // far in the future
+        };
 
             CompareSpecProviders(chiado, provider, forkActivationsToTest, CompareSpecsOptions.IsGnosis);
             Assert.AreEqual(ChiadoSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
@@ -361,11 +363,11 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             }
         }
 
-        private static void CompareSpecs(IReleaseSpec expectedSpec, IReleaseSpec ActualSpec, ForkActivation activation, CompareSpecsOptions compareSpecsOptions)
-        {
-            bool isMainnet = (compareSpecsOptions & CompareSpecsOptions.IsMainnet) != 0;
-            bool checkDifficultyBomb = (compareSpecsOptions & CompareSpecsOptions.CheckDifficultyBomb) != 0;
-            bool isGnosis = (compareSpecsOptions & CompareSpecsOptions.IsGnosis) != 0;
+    private static void CompareSpecs(IReleaseSpec expectedSpec, IReleaseSpec actualSpec, ForkActivation activation, CompareSpecsOptions compareSpecsOptions)
+    {
+        bool isMainnet = (compareSpecsOptions & CompareSpecsOptions.IsMainnet) != 0;
+        bool checkDifficultyBomb = (compareSpecsOptions & CompareSpecsOptions.CheckDifficultyBomb) != 0;
+        bool isGnosis = (compareSpecsOptions & CompareSpecsOptions.IsGnosis) != 0;
 
             PropertyInfo[] propertyInfos =
                 typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
@@ -385,19 +387,19 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                          .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp))
                          .Where(p => p.Name != nameof(IReleaseSpec.Eip4844TransitionTimestamp))
 
-                         // handle gnosis specific exceptions
-                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
-                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxInitCodeSize))
-                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaximumUncleCount))
-                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip170Enabled))
-                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip1283Enabled))
-                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.LimitCodeSize))
-                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.UseConstantinopleNetGasMetering)))
-            {
-                Assert.AreEqual(propertyInfo.GetValue(expectedSpec), propertyInfo.GetValue(ActualSpec),
-                    activation + "." + propertyInfo.Name);
-            }
+                     // handle gnosis specific exceptions
+                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
+                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxInitCodeSize))
+                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaximumUncleCount))
+                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip170Enabled))
+                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip1283Enabled))
+                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.LimitCodeSize))
+                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.UseConstantinopleNetGasMetering)))
+        {
+            Assert.That(propertyInfo.GetValue(actualSpec), Is.EqualTo(propertyInfo.GetValue(expectedSpec)),
+                activation + "." + propertyInfo.Name);
         }
+    }
 
         [Test]
         public void Ropsten_loads_properly()
