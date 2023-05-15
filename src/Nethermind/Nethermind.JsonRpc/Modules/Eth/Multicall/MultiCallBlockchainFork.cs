@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
-using Jint.Parser;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -27,6 +26,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
@@ -38,57 +38,92 @@ using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Eth.Multicall;
 
+public class SimplifiedBlockValidator : BlockValidator
+{
+    public override bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
+    {
+        if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
+        {
+            //Note we mutate suggested block here to allow eth_multicall enforced State Root change
+            //and still pass validation 
+            suggestedBlock.Header.StateRoot = processedBlock.Header.StateRoot;
+            suggestedBlock.Header.Hash = suggestedBlock.Header.CalculateHash();
+        }
+
+        bool isValid = processedBlock.Header.Hash == suggestedBlock.Header.Hash;
+
+        if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed) isValid = false;
+
+        if (processedBlock.Header.Bloom != suggestedBlock.Header.Bloom) isValid = false;
+
+        if (processedBlock.Header.ReceiptsRoot != suggestedBlock.Header.ReceiptsRoot) isValid = false;
+
+
+        for (int i = 0; i < processedBlock.Transactions.Length; i++)
+            if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
+                isValid = false;
+
+        return isValid;
+    }
+
+    public SimplifiedBlockValidator(ITxValidator? txValidator,
+        IHeaderValidator? headerValidator,
+        IUnclesValidator? unclesValidator,
+        ISpecProvider? specProvider,
+        ILogManager? logManager) : base(txValidator, headerValidator, unclesValidator, specProvider, logManager)
+    {
+    }
+}
+
 /// <summary>
-/// The MultiCallBlockchainFork class enables the creation of temporary in-memory blockchain instances,
-/// based on a base chain's state. It's useful for simulating transactions, testing,
-/// and executing smart contracts without affecting the base chain. The class offers RPC,
-/// StateProvider, and StorageProvider utilities for swift chain data manipulation
-/// and supports multi-block chain simulations using CreateBlock/FinaliseBlock pair manually or ForgeChainBlock method.
+///     The MultiCallBlockchainFork class enables the creation of temporary in-memory blockchain instances,
+///     based on a base chain's state. It's useful for simulating transactions, testing,
+///     and executing smart contracts without affecting the base chain. The class offers RPC,
+///     StateProvider, and StorageProvider utilities for swift chain data manipulation
+///     and supports multi-block chain simulations using CreateBlock/FinaliseBlock pair manually or ForgeChainBlock method.
 /// </summary>
 public class MultiCallBlockchainFork : IDisposable
 {
-    private BlockchainProcessor ChainProcessor { get; set; }
+    private BlockchainProcessor ChainProcessor { get; }
+    private BlockProcessor BlockProcessor { get; }
 
     public StateProvider StateProvider { get; internal set; }
     public StorageProvider StorageProvider { get; internal set; }
     public ISpecProvider SpecProvider { get; internal set; }
-    public IBlockTree BlockTree { get; set; }
-    public IBlockFinder BlockFinder
-    {
-        get => BlockTree;
-    }
-    public Block? LatestBlock { get => BlockFinder.Head; }
+    public IBlockTree BlockTree { get; internal set; }
+    public IBlockFinder BlockFinder => BlockTree;
+    public Block? LatestBlock => BlockFinder.Head;
 
     public EthRpcModule EthRpcModule { get; internal set; }
-    public IReleaseSpec CurrentSpec { get => SpecProvider.GetSpec(LatestBlock!.Header); }
+    public IReleaseSpec CurrentSpec => SpecProvider.GetSpec(LatestBlock!.Header);
 
     /// <summary>
-    /// Creates a MultiCallBlockchainFork instance with the following steps:
-    /// 1. Initialize MultiCallBlockchainFork object
-    /// 2. Create read-only in-memory databases
-    /// 3. Set spec provider
-    /// 4. Set up log manager
-    /// 5. Establish EthereumEcdsa
-    /// 6. Configure TrieStore, StateProvider, and StorageProvider
-    /// 7. Prepare state reader
-    /// 8. Instantiate BlockTree
-    /// 9. Launch read-only state provider
-    /// 10. Create transaction comparer provider and transaction pool
-    /// 11. Start receipt storage
-    /// 12. Initialize virtual machine
-    /// 13. Initialize transaction processor and block preprocessor step
-    /// 14. Initialize header and block validators
-    /// 15. Initialize block processor
-    /// 16. Initialize and start chain processor
-    /// 17. Create and initialize temp database provider for RPC calls
-    /// 18. Initialize filter store and manager
-    /// 19. Set up read-only processing environment
-    /// 20. Initialize Bloom storage and log finder
-    /// 21. Set up timestamper, blockchain bridge, and gas price oracle
-    /// 22. Configure fee history oracle and sync config
-    /// 23. Initialize nonce manager, wallet, and transaction signer
-    /// 24. Create transaction sealer and sender
-    /// 25. Set up EthRpcModule
+    ///     Creates a MultiCallBlockchainFork instance with the following steps:
+    ///     1. Initialize MultiCallBlockchainFork object
+    ///     2. Create read-only in-memory databases
+    ///     3. Set spec provider
+    ///     4. Set up log manager
+    ///     5. Establish EthereumEcdsa
+    ///     6. Configure TrieStore, StateProvider, and StorageProvider
+    ///     7. Prepare state reader
+    ///     8. Instantiate BlockTree
+    ///     9. Launch read-only state provider
+    ///     10. Create transaction comparer provider and transaction pool
+    ///     11. Start receipt storage
+    ///     12. Initialize virtual machine
+    ///     13. Initialize transaction processor and block preprocessor step
+    ///     14. Initialize header and block validators
+    ///     15. Initialize block processor
+    ///     16. Initialize and start chain processor
+    ///     17. Create and initialize temp database provider for RPC calls
+    ///     18. Initialize filter store and manager
+    ///     19. Set up read-only processing environment
+    ///     20. Initialize Bloom storage and log finder
+    ///     21. Set up timestamper, blockchain bridge, and gas price oracle
+    ///     22. Configure fee history oracle and sync config
+    ///     23. Initialize nonce manager, wallet, and transaction signer
+    ///     24. Create transaction sealer and sender
+    ///     25. Set up EthRpcModule
     /// </summary>
     /// <param name="stateDb">Current state database</param>
     /// <param name="blockDb">Current Block database</param>
@@ -101,12 +136,9 @@ public class MultiCallBlockchainFork : IDisposable
     {
         //Init BlockChain
         //Writable inMemory DBs on with access to the data of existing ones (will not modify existing data)
-        if (oldDbProvider == null)
-        {
-            throw new ArgumentNullException();
-        }
+        if (oldDbProvider == null) throw new ArgumentNullException();
 
-        var oldStack = oldDbProvider.StateDb.GetAllValues().ToList();
+        List<byte[]>? oldStack = oldDbProvider.StateDb.GetAllValues().ToList();
         IDb inMemStateDb = new ReadOnlyDb(oldDbProvider.StateDb, true);
         IDb inMemBlockDb = new ReadOnlyDb(oldDbProvider.BlocksDb, true);
         IDb inMemHeaderDb = new ReadOnlyDb(oldDbProvider.HeadersDb, true);
@@ -128,10 +160,10 @@ public class MultiCallBlockchainFork : IDisposable
 
         ILogManager logManager = SimpleConsoleLogManager.Instance;
 
-        var newStack = inMemStateDb.GetAllValues().ToList();
+        List<byte[]>? newStack = inMemStateDb.GetAllValues().ToList();
         TrieStore trieStore = new(inMemStateDb, logManager);
-        StateProvider = new(trieStore, inMemCodeDb, logManager);
-        StorageProvider = new(trieStore, StateProvider, logManager);
+        StateProvider = new StateProvider(trieStore, inMemCodeDb, logManager);
+        StorageProvider = new StorageProvider(trieStore, StateProvider, logManager);
 
         IReadOnlyTrieStore readOnlyTrieStore = trieStore.AsReadOnly(inMemStateDb);
         StateReader stateReader = new(readOnlyTrieStore, inMemCodeDb, logManager);
@@ -145,6 +177,8 @@ public class MultiCallBlockchainFork : IDisposable
             NullBloomStorage.Instance,
             syncConfig,
             LimboLogs.Instance);
+
+        StateProvider.StateRoot = BlockTree.Head.StateRoot;
 
         ChainHeadReadOnlyStateProvider readOnlyState = new(BlockTree, stateReader);
 
@@ -170,7 +204,8 @@ public class MultiCallBlockchainFork : IDisposable
             SpecProvider,
             logManager);
 
-        TransactionProcessor txProcessor = new(SpecProvider, StateProvider, StorageProvider, virtualMachine, logManager);
+        TransactionProcessor txProcessor =
+            new(SpecProvider, StateProvider, StorageProvider, virtualMachine, logManager);
         RecoverSignatures blockPreprocessorStep = new(ethereumEcdsa, txPool, SpecProvider, logManager);
 
         HeaderValidator headerValidator = new(
@@ -179,13 +214,13 @@ public class MultiCallBlockchainFork : IDisposable
             SpecProvider,
             logManager);
 
-        BlockValidator blockValidator = new(new TxValidator(SpecProvider.ChainId),
+        SimplifiedBlockValidator blockValidator = new(new TxValidator(SpecProvider.ChainId),
             headerValidator,
             Always.Valid,
             SpecProvider,
             logManager);
 
-        BlockProcessor blockProcessor = new(SpecProvider,
+        BlockProcessor = new BlockProcessor(SpecProvider,
             blockValidator,
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, StateProvider),
@@ -195,9 +230,9 @@ public class MultiCallBlockchainFork : IDisposable
             NullWitnessCollector.Instance,
             logManager);
 
-        ChainProcessor = new(
+        ChainProcessor = new BlockchainProcessor(
             BlockTree,
-            blockProcessor,
+            BlockProcessor,
             blockPreprocessorStep,
             stateReader,
             logManager,
@@ -207,7 +242,7 @@ public class MultiCallBlockchainFork : IDisposable
         //Init RPC
         IFilterStore filterStore = new FilterStore();
         IFilterManager filterManager =
-            new FilterManager(filterStore, blockProcessor, txPool, LimboLogs.Instance);
+            new FilterManager(filterStore, BlockProcessor, txPool, LimboLogs.Instance);
         ReadOnlyTxProcessingEnv processingEnv = new(
             new ReadOnlyDbProvider(DbProvider, false),
             new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
@@ -262,65 +297,83 @@ public class MultiCallBlockchainFork : IDisposable
             gasPriceOracle,
             new EthSyncingInfo(BlockTree, receiptStorage, syncConfig, logManager),
             feeHistoryOracle);
-
     }
 
-    public IDbProvider DbProvider { get; set; }
+    public IDbProvider DbProvider { get; internal set; }
 
     //Create a new block next to current LatestBlock (BlockFinder.Head)
     public Block CreateBlock()
     {
-        var parent = LatestBlock?.Header;
+        BlockHeader? parent = LatestBlock?.Header;
         if (parent == null)
             throw new Exception("Existing header expected");
-        Keccak? headerHash = parent.Hash;
-
 
         BlockHeader blockHeader = new(
             parent.Hash,
             Keccak.OfAnEmptySequenceRlp,
             Address.Zero,
-            parent.Difficulty, parent.Number + 1,
+            UInt256.Zero,
+            parent.Number + 1,
             parent.GasLimit,
             parent.Timestamp + 1,
             Array.Empty<byte>());
 
+        UInt256 difficulty = ConstantDifficulty.One.Calculate(blockHeader, parent);
+        blockHeader.Difficulty = difficulty;
+        blockHeader.TotalDifficulty = parent.TotalDifficulty + difficulty;
+        blockHeader.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, SpecProvider.GetSpec(blockHeader));
 
-        return new Block(blockHeader);
+        blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
+        blockHeader.TxRoot = Keccak.EmptyTreeHash;
+        blockHeader.Bloom = Bloom.Empty;
+
+        Block? block = new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
+
+        block = ChainProcessor.Process(block,
+            ProcessingOptions.ProducingBlock,
+            NullBlockTracer.Instance);
+
+        return block;
     }
 
     //Process Block and UpdateMainChain with it
-    public bool FinalizeBlock(Block CurrentBlock)
+    public bool FinalizeBlock(Block currentBlock)
     {
         StorageProvider.Commit();
-        StorageProvider.CommitTrees(CurrentBlock.Number);
-        StateProvider.CommitTree(CurrentBlock.Number);
-        CurrentBlock.Header.StateRoot = StateProvider.StateRoot;
-        CurrentBlock.Header.Hash = CurrentBlock.Header.CalculateHash();
+        StateProvider.Commit(SpecProvider.GetSpec(currentBlock.Header));
+        StorageProvider.CommitTrees(currentBlock.Number);
+        StateProvider.CommitTree(currentBlock.Number);
+        StateProvider.RecalculateStateRoot();
 
-        AddBlockResult res = BlockTree.SuggestBlock(CurrentBlock, BlockTreeSuggestOptions.ForceSetAsMain);
+        currentBlock.Header.StateRoot = StateProvider.StateRoot;
+        currentBlock.Header.IsPostMerge = true; //ToDo: Seal if necessary before merge 192 BPB
+        currentBlock.Header.Hash = currentBlock.Header.CalculateHash();
+
+        AddBlockResult res = BlockTree.SuggestBlock(currentBlock, BlockTreeSuggestOptions.ForceSetAsMain);
         if (res != AddBlockResult.Added) return false;
 
-        Block? current = ChainProcessor.Process(CurrentBlock!, ProcessingOptions.None, NullBlockTracer.Instance); //TODo: Maybe Trace!!
-        if (current == null) return false;
+        //ChainProcessor uses parent.StateRoot with the Process, it gets bad on InitBranch due to _state/storage resets
+        Block[]? blocks = BlockProcessor.Process(currentBlock.StateRoot,
+            new List<Block> { currentBlock! },
+            ProcessingOptions.ForceProcessing,
+            new BlockReceiptsTracer());
 
-        BlockTree.UpdateMainChain(new[] { current }, true);
+        BlockTree.UpdateMainChain(blocks, true, true);
+
         return true;
     }
 
     /// <summary>
-    /// Forges a new block in the temp blockchain using the provided action to manipulate state, release spec, spec provider, and storage provider.
+    ///     Forges a new block in the temp blockchain using the provided action to manipulate state, release spec, spec
+    ///     provider, and storage provider.
     /// </summary>
     /// <param name="action">An action representing the modifications to the blockchain state and storage.</param>
-    public bool ForgeChainBlock(Action<IStateProvider ,
-        IReleaseSpec , ISpecProvider , IStorageProvider > action)
+    public bool ForgeChainBlock(Action<IStateProvider,
+        IReleaseSpec, ISpecProvider, IStorageProvider> action)
     {
         //Prepare a block
-        var newBlock = CreateBlock();
-        var tt = StateProvider.StateRoot;
-        var ttt = newBlock.Header.StateRoot;
-        //newBlock.Header.s
-        //Actual stuff
+        Block? newBlock = CreateBlock();
+
         action(StateProvider,
             CurrentSpec,
             SpecProvider,
@@ -332,9 +385,11 @@ public class MultiCallBlockchainFork : IDisposable
     }
 
     //For using scope guard
+
     #region IDisposable
 
     private bool _disposed;
+
     public void Dispose()
     {
         Dispose(true);
@@ -353,5 +408,6 @@ public class MultiCallBlockchainFork : IDisposable
     {
         Dispose(false);
     }
+
     #endregion
 }

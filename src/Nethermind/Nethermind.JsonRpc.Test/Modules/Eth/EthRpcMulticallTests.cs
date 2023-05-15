@@ -18,7 +18,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NUnit.Framework;
-using Nethermind.Blockchain;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -49,6 +48,10 @@ public class EthRpcMulticallTests
 
             var t = acc.Balance;
             _stateProvider.SubtractFromBalance(address, 666, latestBlockSpec);
+
+            _stateProvider.Commit(latestBlockSpec);
+            _storageProvider.Commit();
+
 
             if (acc != null)
             {
@@ -138,6 +141,8 @@ public class EthRpcMulticallTests
             var userBalanceResult_fromTm =
                 await tmpChain.EthRpcModule.eth_getBalance(TestItem.AddressA, BlockParameter.Latest);
             userBalanceResult_fromTm.Result.ResultType.Should().Be(Core.ResultType.Success);
+            var tval = tmpChain.StateProvider.GetBalance(TestItem.AddressA);
+
             Assert.AreNotEqual(userBalanceResult_fromTm.Data, userBalanceBefore.Data);
 
             //Check block has not updated values in the main chain
@@ -151,7 +156,7 @@ public class EthRpcMulticallTests
         GC.Collect();
         GC.WaitForFullGCComplete();
 
-        Assert.Equals(chain.BlockFinder.Head.Number,
+        Assert.AreEqual(chain.BlockFinder.Head.Number,
             blockNumberBefore); // tmp chain is disposed, main chain block number is still the same
     }
 }
