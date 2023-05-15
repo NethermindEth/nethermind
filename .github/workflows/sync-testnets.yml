@@ -54,7 +54,9 @@ jobs:
           docker compose up -d
 
       - name: Wait for Chiado to sync
-        run: |
+        run: |        
+          set +e
+          
           # Check if Docker container is running
           MAX_RETRIES=10
           RETRY_COUNT=0
@@ -182,6 +184,8 @@ jobs:
 
       - name: Wait for Sepolia to sync
         run: |
+          set +e
+          
           # Check if Docker container is running
           MAX_RETRIES=10
           RETRY_COUNT=0
