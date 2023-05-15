@@ -2,7 +2,7 @@ name: Sync Testnets
 
 on:
   push:
-    branches: ["master", "kch/add_sync_testnets"]
+    branches: ["master"]
   workflow_dispatch:
 
 jobs:
@@ -102,7 +102,6 @@ jobs:
             echo "debug_getSyncStage endpoint response: $RESPONSE_DEBUG"
       
           done
-          sleep 60
           echo "Sedge is synced."
                 
       - name: Display Docker logs        
@@ -231,7 +230,6 @@ jobs:
             echo "debug_getSyncStage endpoint response: $RESPONSE_DEBUG"
       
           done
-          sleep 60
           echo "Sedge is synced."
       
       - name: Display Docker logs        
