@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -296,9 +297,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
 
 
-            if (notSystemTransaction && !noValidation)
+            if (notSystemTransaction)
             {
-                if (!ValidateFees((ulong)intrinsicGas, effectiveGasPrice,
+                if (!noValidation && !ValidateFees((ulong)intrinsicGas, effectiveGasPrice,
                         eip658NotEnabled, value, caller, transaction, block, txTracer, spec))
                 {
                     return;
@@ -509,14 +510,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ITxTracer txTracer, Address gasBeneficiary, IReleaseSpec spec)
         {
             UInt256 fees = spentGas * premiumPerGas;
-            if (_stateProvider.AccountExists(gasBeneficiary))
-            {
-                _stateProvider.AddToBalance(gasBeneficiary, fees, spec);
-            }
-            else
-            {
-                _stateProvider.CreateAccount(gasBeneficiary, fees);
-            }
+            _stateProvider.AddToBalanceAndCreateIfNotExists(gasBeneficiary, fees, spec);
 
             UInt256 burntFees = !transaction.IsFree() ? spentGas * block.BaseFeePerGas : 0;
 
@@ -524,14 +518,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (!burntFees.IsZero)
                 {
-                    if (_stateProvider.AccountExists(spec.Eip1559FeeCollector))
-                    {
-                        _stateProvider.AddToBalance(spec.Eip1559FeeCollector, burntFees, spec);
-                    }
-                    else
-                    {
-                        _stateProvider.CreateAccount(spec.Eip1559FeeCollector, burntFees);
-                    }
+                    _stateProvider.AddToBalanceAndCreateIfNotExists(spec.Eip1559FeeCollector, burntFees, spec);
                 }
             }
 
@@ -566,6 +553,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void TraceLogInvalidTx(Transaction transaction, string reason)
         {
             if (_logger.IsTrace) _logger.Trace($"Invalid tx {transaction.Hash} ({reason})");
