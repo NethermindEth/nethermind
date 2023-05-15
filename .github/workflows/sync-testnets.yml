@@ -115,22 +115,22 @@ jobs:
           set +e
           
           dockerLogs=$(docker compose logs execution 2>/dev/null)
-      
+
           validLines=$(echo "$dockerLogs" | grep -E "Valid. Result of a new payload:")
-          countValid=$(echo "$validLines" | wc -l)
+          countValid=$(if [ -z "$validLines" ]; then echo 0; else echo "$validLines" | wc -l; fi)
           if [ $countValid -lt 1 ]; then
             echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well."
             exit 20
           fi
-      
+          
           invalidLines=$(echo "$dockerLogs" | grep -E "Invalid|Exception")
-          countInvalid=$(echo "$invalidLines" | wc -l)
+          countInvalid=$(if [ -z "$invalidLines" ]; then echo 0; else echo "$invalidLines" | wc -l; fi)
           if [ $countInvalid -gt 0 ]; then
             echo "Error: Lines found for 'Invalid' or 'Exception'"
             echo "$invalidLines"
             exit 30
           fi
-      
+          
           # If the script reaches this point, it means there were valid lines and no invalid lines.
           echo "Valid lines:"
           echo "$validLines"
@@ -244,22 +244,22 @@ jobs:
           set +e
           
           dockerLogs=$(docker compose logs execution 2>/dev/null)
-      
+
           validLines=$(echo "$dockerLogs" | grep -E "Valid. Result of a new payload:")
-          countValid=$(echo "$validLines" | wc -l)
+          countValid=$(if [ -z "$validLines" ]; then echo 0; else echo "$validLines" | wc -l; fi)
           if [ $countValid -lt 1 ]; then
             echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well."
             exit 20
           fi
-      
+          
           invalidLines=$(echo "$dockerLogs" | grep -E "Invalid|Exception")
-          countInvalid=$(echo "$invalidLines" | wc -l)
+          countInvalid=$(if [ -z "$invalidLines" ]; then echo 0; else echo "$invalidLines" | wc -l; fi)
           if [ $countInvalid -gt 0 ]; then
             echo "Error: Lines found for 'Invalid' or 'Exception'"
             echo "$invalidLines"
             exit 30
           fi
-      
+          
           # If the script reaches this point, it means there were valid lines and no invalid lines.
           echo "Valid lines:"
           echo "$validLines"
