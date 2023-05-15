@@ -111,6 +111,8 @@ namespace Nethermind.Runner
             _logger.Info("Nethermind starting initialization.");
             _logger.Info($"Client version: {ProductInfo.ClientId}");
 
+            Crypto.Pairings.TryLoadAndResolveDlls();
+
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
             AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
 

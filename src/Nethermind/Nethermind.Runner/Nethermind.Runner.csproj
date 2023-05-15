@@ -29,6 +29,7 @@
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
+    <PackageReference Include="Nethermind.Crypto.Pairings" />
     <PackageReference Include="NLog.Targets.Seq" />
     <PackageReference Include="NLog" />
     <PackageReference Include="Seq.Api" />
