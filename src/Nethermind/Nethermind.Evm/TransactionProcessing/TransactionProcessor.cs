@@ -143,8 +143,8 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             if (spec.IsEip1559Enabled && !transaction.IsFree() &&
-                UInt256.MultiplyOverflow((UInt256)transaction.GasLimit, transaction.MaxFeePerGas, out UInt256 maxGasFee) &&
-                 balanceLeft < maxGasFee)
+                (UInt256.MultiplyOverflow((UInt256)transaction.GasLimit, transaction.MaxFeePerGas, out UInt256 maxGasFee) ||
+                 balanceLeft < maxGasFee))
             {
                 TraceLogInvalidTx(transaction,
                     $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
@@ -313,7 +313,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 _stateProvider.IncrementNonce(caller);
             }
 
-            UInt256 senderReservedGasPayment = (UInt256)gasLimit * effectiveGasPrice;
+            UInt256 senderReservedGasPayment = noValidation ? UInt256.Zero : (UInt256)gasLimit * effectiveGasPrice;
             _stateProvider.SubtractFromBalance(caller, senderReservedGasPayment, spec);
             if (commit)
             {
