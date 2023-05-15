@@ -602,14 +602,7 @@ public class VirtualMachine : IVirtualMachine
 
         if (!vmState.IsContinuation)
         {
-            if (!_state.AccountExists(env.ExecutingAccount))
-            {
-                _state.CreateAccount(env.ExecutingAccount, env.TransferValue);
-            }
-            else
-            {
-                _state.AddToBalance(env.ExecutingAccount, env.TransferValue, spec);
-            }
+            _state.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
 
             if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
             {
