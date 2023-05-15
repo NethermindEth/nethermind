@@ -78,23 +78,20 @@ jobs:
       - name: Verify health of a node
         working-directory: sedge
         run: |
-          echo "Checking docker compose logs..."
-          dockerLogs=$(docker compose logs execution)
-          echo "Docker logs: $dockerLogs"
+          dockerLogs=$(docker compose logs execution) || exit 10
       
-          countValid=$(echo "$dockerLogs" | grep -c -E "Valid. Result of a new payload:")
-          echo "CountValid: $countValid"
+          countValid=$(echo "$dockerLogs" | grep -c -E "Valid. Result of a new payload:") || exit 10
           if [ $countValid -lt 1 ]; then
-            echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well."
-            exit 1
+            echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well." || exit 20
           fi
           
-          count=$(echo "$dockerLogs" | grep -c -E "Invalid|Exception")
-          echo "Count: $count"
+          count=$(echo "$dockerLogs" | grep -c -E "Invalid|Exception") || exit 10
           if [ $count -gt 0 ]; then
             echo "Error: Lines found for 'Invalid' or 'Exception'"
-            echo "$dockerLogs" | grep -E "Invalid|Exception" && exit 2
+            echo "$dockerLogs" | grep -E "Invalid|Exception" || exit 10
+            exit 30
           fi
+          
   sepolia:
     name: "Run sync of sepolia testnet"
     runs-on: ubuntu-latest
@@ -167,20 +164,16 @@ jobs:
       - name: Verify health of a node
         working-directory: sedge
         run: |
-          echo "Checking docker compose logs..."
-          dockerLogs=$(docker compose logs execution)
-          echo "Docker logs: $dockerLogs"
+          dockerLogs=$(docker compose logs execution) || exit 10
       
-          countValid=$(echo "$dockerLogs" | grep -c -E "Valid. Result of a new payload:")
-          echo "CountValid: $countValid"
+          countValid=$(echo "$dockerLogs" | grep -c -E "Valid. Result of a new payload:") || exit 10
           if [ $countValid -lt 1 ]; then
-            echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well."
-            exit 1
+            echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well." || exit 20
           fi
           
-          count=$(echo "$dockerLogs" | grep -c -E "Invalid|Exception")
-          echo "Count: $count"
+          count=$(echo "$dockerLogs" | grep -c -E "Invalid|Exception") || exit 10
           if [ $count -gt 0 ]; then
             echo "Error: Lines found for 'Invalid' or 'Exception'"
-            echo "$dockerLogs" | grep -E "Invalid|Exception" && exit 2
+            echo "$dockerLogs" | grep -E "Invalid|Exception" || exit 10
+            exit 30
           fi
