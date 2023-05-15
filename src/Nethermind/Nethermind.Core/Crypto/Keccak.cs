@@ -372,6 +372,11 @@ namespace Nethermind.Core.Crypto
 
         public static bool operator ==(Keccak? a, Keccak? b)
         {
+            if (ReferenceEquals(a, b))
+            {
+                return true;
+            }
+
             if (a is null)
             {
                 return b is null;

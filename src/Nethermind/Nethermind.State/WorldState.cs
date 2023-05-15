@@ -43,6 +43,12 @@ namespace Nethermind.State
         {
             return _stateProvider.GetAccount(address);
         }
+
+        public bool IsContract(Address address)
+        {
+            return _stateProvider.IsContract(address);
+        }
+
         public byte[] GetOriginal(in StorageCell storageCell)
         {
             return _persistentStorageProvider.GetOriginal(storageCell);
