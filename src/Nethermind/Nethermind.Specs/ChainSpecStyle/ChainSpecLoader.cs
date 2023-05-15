@@ -91,7 +91,6 @@ public class ChainSpecLoader : IChainSpecLoader
 
         chainSpec.Parameters = new ChainParameters
         {
-            AccountStartNonce = chainSpecJson.Params.AccountStartNonce ?? UInt256.Zero,
             GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400,
             MaximumExtraDataSize = chainSpecJson.Params.MaximumExtraDataSize ?? 32,
             MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000,

@@ -108,8 +108,6 @@ public class ChainSpecLoaderTests
 
         Assert.That(chainSpec.Parameters.MaximumExtraDataSize, Is.EqualTo((long)32), "extra data");
         Assert.That(chainSpec.Parameters.GasLimitBoundDivisor, Is.EqualTo((long)0x0400), "gas limit bound divisor");
-        Assert.That(chainSpec.Parameters.AccountStartNonce, Is.EqualTo((UInt256)0x0), "account start nonce");
-
     }
 
     private static ChainSpec LoadChainSpec(string path)
