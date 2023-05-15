@@ -92,16 +92,16 @@ jobs:
       - name: Verify health of a node
         working-directory: sedge
         run: |
-          dockerLogs=$(docker compose logs execution 2>/dev/null) || exit 10
+          dockerLogs=$(docker compose logs execution 2>/dev/null)
       
-          validLines=$(echo "$dockerLogs" | grep -E "Valid. Result of a new payload:") || exit 10
+          validLines=$(echo "$dockerLogs" | grep -E "Valid. Result of a new payload:")
           countValid=$(echo "$validLines" | wc -l)
           if [ $countValid -lt 1 ]; then
             echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well."
             exit 20
           fi
       
-          invalidLines=$(echo "$dockerLogs" | grep -E "Invalid|Exception") || exit 10
+          invalidLines=$(echo "$dockerLogs" | grep -E "Invalid|Exception")
           countInvalid=$(echo "$invalidLines" | wc -l)
           if [ $countInvalid -gt 0 ]; then
             echo "Error: Lines found for 'Invalid' or 'Exception'"
@@ -199,16 +199,16 @@ jobs:
       - name: Verify health of a node
         working-directory: sedge
         run: |
-          dockerLogs=$(docker compose logs execution 2>/dev/null) || exit 10
+          dockerLogs=$(docker compose logs execution 2>/dev/null)
       
-          validLines=$(echo "$dockerLogs" | grep -E "Valid. Result of a new payload:") || exit 10
+          validLines=$(echo "$dockerLogs" | grep -E "Valid. Result of a new payload:")
           countValid=$(echo "$validLines" | wc -l)
           if [ $countValid -lt 1 ]; then
             echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well."
             exit 20
           fi
       
-          invalidLines=$(echo "$dockerLogs" | grep -E "Invalid|Exception") || exit 10
+          invalidLines=$(echo "$dockerLogs" | grep -E "Invalid|Exception")
           countInvalid=$(echo "$invalidLines" | wc -l)
           if [ $countInvalid -gt 0 ]; then
             echo "Error: Lines found for 'Invalid' or 'Exception'"
