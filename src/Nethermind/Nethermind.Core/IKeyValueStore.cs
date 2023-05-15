@@ -44,7 +44,7 @@ namespace Nethermind.Core
         // Hint that this is a low priority write
         LowPriority,
 
-        // Hint that this write does not require consistent writes.
+        // Hint that this write does not require durable writes, as if it crash, it'll start over anyway.
         DisableWAL,
     }
 }

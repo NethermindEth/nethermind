@@ -182,6 +182,8 @@ namespace Nethermind.Blockchain.FullPruning
                     writeFlags = WriteFlags.None;
                 }
 
+                writeFlags |= WriteFlags.DisableWAL;
+
                 using CopyTreeVisitor copyTreeVisitor = new(pruning, writeFlags, _logManager);
                 VisitingOptions visitingOptions = new()
                 {
