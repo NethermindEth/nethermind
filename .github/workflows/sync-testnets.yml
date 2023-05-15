@@ -54,7 +54,21 @@ jobs:
           docker compose up -d
 
       - name: Wait for Chiado to sync
-        run: |
+        rrun: |
+          # Check if Docker container is running
+          MAX_RETRIES=10
+          RETRY_COUNT=0
+          while [[ ! "$(docker inspect -f '{{.State.Status}}' sedge-execution-client 2>/dev/null)" =~ "running" ]] && [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; do
+            echo "Docker container 'sedge-execution-client' is not running. Retrying in 10 seconds..."
+            let "RETRY_COUNT+=1"
+            sleep 10
+          done
+      
+          if [[ ! "$(docker inspect -f '{{.State.Status}}' sedge-execution-client 2>/dev/null)" =~ "running" ]]; then
+            echo "Error: Docker container 'sedge-execution-client' is not running after $MAX_RETRIES attempts."
+            exit 404
+          fi
+      
           SYNCING_RESULT=""
           DEBUG_RESULT=""
           while [[ "$SYNCING_RESULT" != "false" ]] || [[ "$DEBUG_RESULT" != *"WaitingForBlock"* ]]; do
@@ -62,11 +76,11 @@ jobs:
             RESPONSE_SYNCING=$(curl -s --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
             SYNCING_RESULT=$(echo $RESPONSE_SYNCING | jq .result)
             echo "eth_syncing endpoint response: $RESPONSE_SYNCING"
-      
+        
             RESPONSE_DEBUG=$(curl -s --data '{"method":"debug_getSyncStage","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
             DEBUG_RESULT=$(echo $RESPONSE_DEBUG | jq -r .result)
             echo "debug_getSyncStage endpoint response: $RESPONSE_DEBUG"
-            
+      
           done
           sleep 60
           echo "Sedge is synced."
@@ -82,14 +96,17 @@ jobs:
       
           countValid=$(echo "$dockerLogs" | grep -c "Valid. Result of a new payload:")
           if [ $countValid -lt 1 ]; then
+            echo "Count of Valid: $countValid"
             echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well." || exit 20
           fi
           
           count=$(echo "$dockerLogs" | grep -c -E "Invalid|Exception")
           if [ $count -gt 0 ]; then
+            echo "Count of Invalid: $count"
             echo "Error: Lines found for 'Invalid' or 'Exception'"
-            echo "$dockerLogs" | grep "Invalid|Exception" || exit 30
+            echo "$dockerLogs" | grep -E "Invalid|Exception" || exit 30
           fi
+
           
   sepolia:
     name: "Run sync of sepolia testnet"
@@ -140,6 +157,20 @@ jobs:
 
       - name: Wait for Sepolia to sync
         run: |
+          # Check if Docker container is running
+          MAX_RETRIES=10
+          RETRY_COUNT=0
+          while [[ ! "$(docker inspect -f '{{.State.Status}}' sedge-execution-client 2>/dev/null)" =~ "running" ]] && [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; do
+            echo "Docker container 'sedge-execution-client' is not running. Retrying in 10 seconds..."
+            let "RETRY_COUNT+=1"
+            sleep 10
+          done
+      
+          if [[ ! "$(docker inspect -f '{{.State.Status}}' sedge-execution-client 2>/dev/null)" =~ "running" ]]; then
+            echo "Error: Docker container 'sedge-execution-client' is not running after $MAX_RETRIES attempts."
+            exit 404
+          fi
+      
           SYNCING_RESULT=""
           DEBUG_RESULT=""
           while [[ "$SYNCING_RESULT" != "false" ]] || [[ "$DEBUG_RESULT" != *"WaitingForBlock"* ]]; do
@@ -147,11 +178,11 @@ jobs:
             RESPONSE_SYNCING=$(curl -s --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
             SYNCING_RESULT=$(echo $RESPONSE_SYNCING | jq .result)
             echo "eth_syncing endpoint response: $RESPONSE_SYNCING"
-      
+        
             RESPONSE_DEBUG=$(curl -s --data '{"method":"debug_getSyncStage","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
             DEBUG_RESULT=$(echo $RESPONSE_DEBUG | jq -r .result)
             echo "debug_getSyncStage endpoint response: $RESPONSE_DEBUG"
-            
+      
           done
           sleep 60
           echo "Sedge is synced."
