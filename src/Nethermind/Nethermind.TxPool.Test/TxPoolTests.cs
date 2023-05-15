@@ -42,7 +42,7 @@ namespace Nethermind.TxPool.Test
         private IEthereumEcdsa _ethereumEcdsa;
         private ISpecProvider _specProvider;
         private TxPool _txPool;
-        private IStateProvider _stateProvider;
+        private IWorldState _stateProvider;
         private IBlockTree _blockTree;
 
         private int _txGasLimit = 1_000_000;
@@ -55,7 +55,7 @@ namespace Nethermind.TxPool.Test
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);
             var trieStore = new TrieStore(new MemDb(), _logManager);
             var codeDb = new MemDb();
-            _stateProvider = new StateProvider(trieStore, codeDb, _logManager);
+            _stateProvider = new WorldState(trieStore, codeDb, _logManager);
             _blockTree = Substitute.For<IBlockTree>();
             Block block = Build.A.Block.WithNumber(0).TestObject;
             _blockTree.Head.Returns(block);
@@ -169,7 +169,7 @@ namespace Nethermind.TxPool.Test
                 .WithGasLimit(_txGasLimit)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            _stateProvider.UpdateCodeHash(TestItem.AddressA, TestItem.KeccakA, _specProvider.GetSpec((ForkActivation)1));
+            _stateProvider.InsertCode(TestItem.AddressA, "A"u8.ToArray(), _specProvider.GetSpec((ForkActivation)1));
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.SenderIsContract);
         }
@@ -237,7 +237,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            _stateProvider.UpdateCodeHash(TestItem.AddressA, hasCode ? TestItem.KeccakH : Keccak.OfAnEmptyString, London.Instance);
+            _stateProvider.InsertCode(TestItem.AddressA, hasCode ? "H"u8.ToArray() : System.Text.Encoding.UTF8.GetBytes(""), London.Instance);
 
             return txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).ToString();
         }
@@ -276,19 +276,19 @@ namespace Nethermind.TxPool.Test
 
             // LatestPendingNonce=0, for a new account
             latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
-            Assert.AreEqual(latestNonce, (UInt256)0);
+            Assert.That((UInt256)0, Is.EqualTo(latestNonce));
 
             // LatestPendingNonce=1, when the current nonce of the account=1 and no pending transactions
             _stateProvider.IncrementNonce(TestItem.AddressA);
             latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
-            Assert.AreEqual(latestNonce, (UInt256)1);
+            Assert.That((UInt256)1, Is.EqualTo(latestNonce));
 
             // LatestPendingNonce=1, when a pending transaction added to the pool with a gap in nonce (skipping nonce=1)
             Transaction tx = Build.A.Transaction.WithNonce(2).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.Accepted);
             latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
-            Assert.AreEqual(latestNonce, (UInt256)1);
+            Assert.That((UInt256)1, Is.EqualTo(latestNonce));
 
             // LatestPendingNonce=5, when added pending transactions upto nonce=4
             tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -301,14 +301,14 @@ namespace Nethermind.TxPool.Test
             result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.Accepted);
             latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
-            Assert.AreEqual(latestNonce, (UInt256)5);
+            Assert.That((UInt256)5, Is.EqualTo(latestNonce));
 
             //LatestPendingNonce=5, when added a new pending transaction with a gap in nonce (skipped nonce=5)
             tx = Build.A.Transaction.WithNonce(6).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.Accepted);
             latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
-            Assert.AreEqual(latestNonce, (UInt256)5);
+            Assert.That((UInt256)5, Is.EqualTo(latestNonce));
         }
 
         [Test]
@@ -512,7 +512,7 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
             _txPool.GetPendingTransactions().Length.Should().Be(30);
             _txPool.GetOwnPendingTransactions().Length.Should().Be(isLocal ? 1 : 0);
-            result.ToString().Should().Contain(isLocal ? nameof(AcceptTxResult.Accepted) : nameof(AcceptTxResult.FeeTooLow));
+            result.ToString().Should().Contain(isLocal ? nameof(AcceptTxResult.FeeTooLowToCompete) : nameof(AcceptTxResult.FeeTooLow));
         }
 
         [TestCase(0)]
@@ -778,7 +778,7 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             AddTransactionToPool();
-            Assert.AreEqual(1, _txPool.GetOwnPendingTransactions().Length);
+            Assert.That(_txPool.GetOwnPendingTransactions().Length, Is.EqualTo(1));
         }
 
         [Test]
@@ -789,7 +789,7 @@ namespace Nethermind.TxPool.Test
             _txPool.RemoveTransaction(transaction.Hash);
             _txPool.RemoveTransaction(TestItem.KeccakA);
             _txPool.SubmitTx(transaction, TxHandlingOptions.None);
-            Assert.AreEqual(0, _txPool.GetOwnPendingTransactions().Length);
+            Assert.That(_txPool.GetOwnPendingTransactions().Length, Is.EqualTo(0));
         }
 
         [TestCase(1, 0)]
@@ -1374,10 +1374,12 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            _txPool.SubmitTx(firstTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
-            peer.Received().SendNewTransaction(firstTx);
-            _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
-            peer.Received().SendNewTransaction(secondTx);
+            _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(secondTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetPendingTransactions().Should().Contain(firstTx);
+            _txPool.GetPendingTransactions().Should().Contain(secondTx);
+            _txPool.GetOwnPendingTransactions().Should().NotContain(firstTx);
+            _txPool.GetOwnPendingTransactions().Should().NotContain(secondTx);
 
             // Send cheap transaction => Not included in txPool
             Transaction cheapTx = Build.A.Transaction
@@ -1386,7 +1388,9 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1)
                 .WithMaxPriorityFeePerGas(1)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            _txPool.SubmitTx(cheapTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(cheapTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.FeeTooLowToCompete);
+            _txPool.GetPendingTransactions().Should().NotContain(cheapTx);
+            _txPool.GetOwnPendingTransactions().Should().Contain(cheapTx);
             peer.Received().SendNewTransaction(cheapTx);
 
             // Send transaction with increased nonce => NonceGap should not appear as previous transaction is broadcasted, should be accepted
@@ -1396,7 +1400,9 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1)
                 .WithMaxPriorityFeePerGas(1)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            _txPool.SubmitTx(fourthTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(fourthTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.FeeTooLowToCompete);
+            _txPool.GetPendingTransactions().Should().NotContain(fourthTx);
+            _txPool.GetOwnPendingTransactions().Should().Contain(fourthTx);
             peer.Received().SendNewTransaction(fourthTx);
         }
 
@@ -1505,10 +1511,7 @@ namespace Nethermind.TxPool.Test
                 new TransactionComparerProvider(specProvider, _blockTree);
 
             _headInfo = chainHeadInfoProvider;
-            if (_headInfo is null)
-            {
-                _headInfo = new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
-            }
+            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
 
             return new TxPool(
                 _ethereumEcdsa,
@@ -1585,7 +1588,7 @@ namespace Nethermind.TxPool.Test
         private void EnsureSenderBalance(Transaction transaction)
         {
             UInt256 requiredBalance;
-            if (transaction.IsEip1559)
+            if (transaction.Supports1559)
             {
                 if (UInt256.MultiplyOverflow(transaction.MaxFeePerGas, (UInt256)transaction.GasLimit, out requiredBalance))
                 {

@@ -28,7 +28,7 @@ namespace Nethermind.Core.Extensions
         /// <remarks>
         /// This method is thread-sage and uses <see cref="Interlocked.CompareExchange{T}(ref T,T,T)"/> to safely manage reference.
         /// </remarks>
-        public static void CancelDisposeAndClear(ref CancellationTokenSource? cancellationTokenSource)
+        public static bool CancelDisposeAndClear(ref CancellationTokenSource? cancellationTokenSource)
         {
             CancellationTokenSource? source = cancellationTokenSource;
             if (source is not null)
@@ -38,8 +38,11 @@ namespace Nethermind.Core.Extensions
                 {
                     source.Cancel();
                     source.Dispose();
+                    return true;
                 }
             }
+
+            return false;
         }
     }
 }

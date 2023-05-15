@@ -75,5 +75,9 @@ namespace Nethermind.Synchronization
         [GaugeMetric]
         [Description("Requests sent for processing by the witness block sync")]
         public static long WitnessBlockRequests;
+
+        [GaugeMetric]
+        [Description("Sync time in seconds")]
+        public static long SyncTime;
     }
 }

@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Receipts
             remove { }
         }
 
-        public bool HasBlock(Keccak hash)
+        public bool HasBlock(long blockNumber, Keccak hash)
         {
             return false;
         }

@@ -8,6 +8,6 @@ namespace Nethermind.Core
         Legacy = 0,
         AccessList = 1,
         EIP1559 = 2,
-        Blob = 5,
+        Blob = 3,
     }
 }

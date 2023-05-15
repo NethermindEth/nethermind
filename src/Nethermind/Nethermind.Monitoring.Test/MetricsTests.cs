@@ -45,8 +45,8 @@ namespace Nethermind.Monitoring.Test
             Assert.Contains(keyDefault, gauges.Keys);
             Assert.Contains(keySpecial, gauges.Keys);
 
-            Assert.AreEqual(gauges[keyDefault].Name, "nethermind_one_two_three");
-            Assert.AreEqual(gauges[keySpecial].Name, "one_two_three");
+            Assert.That(gauges[keyDefault].Name, Is.EqualTo("nethermind_one_two_three"));
+            Assert.That(gauges[keySpecial].Name, Is.EqualTo("one_two_three"));
         }
 
         [Test]

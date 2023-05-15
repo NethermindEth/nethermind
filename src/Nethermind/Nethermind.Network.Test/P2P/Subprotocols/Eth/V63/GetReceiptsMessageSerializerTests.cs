@@ -19,8 +19,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             var serialized = serializer.Serialize(message);
             GetReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
-            Assert.AreEqual(keys.Length, deserialized.Hashes.Count, "count");
-            for (int i = 0; i < keys.Length; i++) Assert.AreEqual(keys[i], deserialized.Hashes[i], $"blockHashes[{i}]");
+            Assert.That(deserialized.Hashes.Count, Is.EqualTo(keys.Length), "count");
+            for (int i = 0; i < keys.Length; i++) Assert.That(deserialized.Hashes[i], Is.EqualTo(keys[i]), $"blockHashes[{i}]");
         }
 
         [Test]
@@ -47,11 +47,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             GetReceiptsMessage message = serializer.Deserialize(bytes1);
             byte[] serialized = serializer.Serialize(message);
-            Assert.AreEqual(bytes1, serialized);
+            Assert.That(serialized, Is.EqualTo(bytes1));
 
             GetReceiptsMessage message2 = serializer.Deserialize(bytes2);
             byte[] serialized2 = serializer.Serialize(message2);
-            Assert.AreEqual(bytes2, serialized2);
+            Assert.That(serialized2, Is.EqualTo(bytes2));
         }
     }
 }

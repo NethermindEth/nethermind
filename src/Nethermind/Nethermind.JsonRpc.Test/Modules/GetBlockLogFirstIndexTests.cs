@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             int sum = receipts.GetBlockLogFirstIndex(index);
 
-            Assert.AreEqual(sum, 4);
+            Assert.That(sum, Is.EqualTo(4));
         }
     }
 }

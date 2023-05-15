@@ -13,6 +13,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 
 namespace Nethermind.Init.Steps
@@ -67,9 +68,16 @@ namespace Nethermind.Init.Steps
             _set.EngineSigner = signer;
             _set.EngineSignerStore = signerStore;
 
-            ReceiptsRecovery receiptsRecovery = new(_get.EthereumEcdsa, _get.SpecProvider);
+            IReceiptConfig receiptConfig = _set.Config<IReceiptConfig>();
+            ReceiptsRecovery receiptsRecovery = new(_get.EthereumEcdsa, _get.SpecProvider, !receiptConfig.CompactReceiptStore);
             IReceiptStorage receiptStorage = _set.ReceiptStorage = initConfig.StoreReceipts
-                ? new PersistentReceiptStorage(_get.DbProvider.ReceiptsDb, _get.SpecProvider!, receiptsRecovery)
+                ? new PersistentReceiptStorage(
+                    _get.DbProvider.ReceiptsDb,
+                    _get.SpecProvider!,
+                    receiptsRecovery,
+                    blockTree,
+                    receiptConfig,
+                    new ReceiptArrayStorageDecoder(receiptConfig.CompactReceiptStore))
                 : NullReceiptStorage.Instance;
 
             IReceiptFinder receiptFinder = _set.ReceiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
@@ -81,7 +89,7 @@ namespace Nethermind.Init.Steps
                 bloomStorage,
                 _get.LogManager,
                 new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider),
-                1024);
+                receiptConfig.MaxBlockDepth);
 
             _set.LogFinder = logFinder;
 

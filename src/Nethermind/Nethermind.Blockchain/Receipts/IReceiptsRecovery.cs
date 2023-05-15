@@ -8,6 +8,14 @@ namespace Nethermind.Blockchain.Receipts
     public interface IReceiptsRecovery
     {
         ReceiptsRecoveryResult TryRecover(Block block, TxReceipt[] receipts, bool forceRecoverSender = true);
-        bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true);
+        bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true, bool recoverSenderOnly = false);
+
+        IRecoveryContext CreateRecoveryContext(Block block, bool forceRecoverSender = false);
+
+        public interface IRecoveryContext
+        {
+            void RecoverReceiptData(TxReceipt receipt);
+            void RecoverReceiptData(ref TxReceiptStructRef receipt);
+        }
     }
 }

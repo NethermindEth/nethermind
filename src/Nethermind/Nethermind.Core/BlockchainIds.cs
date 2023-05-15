@@ -36,6 +36,7 @@ namespace Nethermind.Core
         public const int DefaultGethPrivateChain = 1337;
         public const int Gnosis = 100;
         public const int PoaCore = 99;
+        public const int Chiado = 10200;
         public const int Volta = 73799;
         public const int Sepolia = 11155111;
 
@@ -57,6 +58,7 @@ namespace Nethermind.Core
                 DefaultGethPrivateChain => nameof(DefaultGethPrivateChain),
                 Gnosis => nameof(Gnosis),
                 PoaCore => nameof(PoaCore),
+                Chiado => nameof(Chiado),
                 Volta => nameof(Volta),
                 Sepolia => nameof(Sepolia),
                 _ => networkId.ToString()

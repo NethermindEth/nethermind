@@ -47,13 +47,13 @@ namespace Nethermind.Network.Test
             _nodeStats.AddTransferSpeedCaptureEvent(speedType, 133);
 
             var av = _nodeStats.GetAverageTransferSpeed(speedType);
-            Assert.AreEqual(122, av);
+            Assert.That(av, Is.EqualTo(122));
 
             _nodeStats.AddTransferSpeedCaptureEvent(speedType, 0);
             _nodeStats.AddTransferSpeedCaptureEvent(speedType, 0);
 
             av = _nodeStats.GetAverageTransferSpeed(speedType);
-            Assert.AreEqual(30, av);
+            Assert.That(av, Is.EqualTo(30));
         }
 
         [Test]
@@ -67,7 +67,7 @@ namespace Nethermind.Network.Test
             _nodeStats.AddNodeStatsDisconnectEvent(DisconnectType.Remote, DisconnectReason.Other);
             isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsTrue(isConnDelayed.Result, "just after disconnect");
-            Assert.AreEqual(NodeStatsEventType.Disconnect, isConnDelayed.DelayReason);
+            Assert.That(isConnDelayed.DelayReason, Is.EqualTo(NodeStatsEventType.Disconnect));
             await Task.Delay(125);
             isConnDelayed = _nodeStats.IsConnectionDelayed();
             Assert.IsFalse(isConnDelayed.Result, "125ms after disconnect");

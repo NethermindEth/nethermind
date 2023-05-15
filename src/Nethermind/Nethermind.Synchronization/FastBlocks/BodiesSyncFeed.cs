@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISpecProvider _specProvider;
         private readonly ISyncPeerPool _syncPeerPool;
 
-        private readonly long _pivotNumber;
+        private long _pivotNumber;
         private readonly long _barrier;
 
         private SyncStatusList _syncStatusList;
@@ -61,6 +61,18 @@ namespace Nethermind.Synchronization.FastBlocks
             if (_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in bodies sync");
 
             ResetSyncStatusList();
+        }
+
+        public override void InitializeFeed()
+        {
+            if (_pivotNumber < _syncConfig.PivotNumberParsed)
+            {
+                _pivotNumber = _syncConfig.PivotNumberParsed;
+                if (_logger.IsInfo) _logger.Info($"Changed pivot in bodies sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
+                ResetSyncStatusList();
+            }
+
+            base.InitializeFeed();
         }
 
         private void ResetSyncStatusList()
