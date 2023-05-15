@@ -70,22 +70,16 @@ jobs:
       - name: Verify health of a node
         working-directory: sedge
         run: |
-          countValid=$(docker compose logs | grep -c -E "Valid.")
-          countWaitingForBlock=$(docker compose logs | grep -c -E "WaitingForBlock")
+          countValid=$(docker compose logs | grep -c -E "Valid. Result of a new payload:")
           if [ $countValid -lt 1 ]; then
-            echo "Error: No lines found for 'Valid.' - probably node is not progressing well."
-            exit 1
-          fi
-          if [ $countWaitingForBlock -lt 1 ]; then
-            echo "Error: No lines found for 'WaitingForBlock' - probably node is not progressing well."
+            echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well."
             exit 1
           fi
           
           count=$(docker compose logs | grep -c -E "Invalid|Exception")
           if [ $count -gt 0 ]; then
-            docker compose logs | grep "Invalid|Exception"
             echo "Error: Lines found for 'Invalid' or 'Exception'"
-            exit 1
+            docker compose logs | grep -E "Invalid|Exception" && exit 2
           fi
   sepolia:
     name: "Run sync of sepolia testnet"
@@ -151,20 +145,14 @@ jobs:
       - name: Verify health of a node
         working-directory: sedge
         run: |
-          countValid=$(docker compose logs | grep -c -E "Valid.")
-          countWaitingForBlock=$(docker compose logs | grep -c -E "WaitingForBlock")
+          countValid=$(docker compose logs | grep -c -E "Valid. Result of a new payload:")
           if [ $countValid -lt 1 ]; then
-            echo "Error: No lines found for 'Valid.' - probably node is not progressing well."
-            exit 1
-          fi
-          if [ $countWaitingForBlock -lt 1 ]; then
-            echo "Error: No lines found for 'WaitingForBlock' - probably node is not progressing well."
+            echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well."
             exit 1
           fi
           
           count=$(docker compose logs | grep -c -E "Invalid|Exception")
           if [ $count -gt 0 ]; then
-            docker compose logs | grep "Invalid|Exception"
             echo "Error: Lines found for 'Invalid' or 'Exception'"
-            exit 1
-          fi        
+            docker compose logs | grep -E "Invalid|Exception" && exit 2
+          fi
