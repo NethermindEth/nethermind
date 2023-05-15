@@ -35,9 +35,10 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     private IntPtr? _rateLimiter;
     internal WriteOptions? WriteOptions { get; private set; }
-    internal WriteOptions? LowPriorityWriteOptions { get; private set; }
-
-    internal ReadOptions? _readAheadReadOptions = null;
+    private WriteOptions? _noWalWrite;
+    private WriteOptions? _lowPriorityAndNoWalWrite;
+    private WriteOptions? _lowPriorityWriteOptions;
+    private ReadOptions? _readAheadReadOptions = null;
 
     internal DbOptions? DbOptions { get; private set; }
 
@@ -396,9 +397,18 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         WriteOptions.SetSync(dbConfig
             .WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
 
-        LowPriorityWriteOptions = new WriteOptions();
-        LowPriorityWriteOptions.SetSync(dbConfig.WriteAheadLogSync);
-        Native.Instance.rocksdb_writeoptions_set_low_pri(LowPriorityWriteOptions.Handle, true);
+        _noWalWrite = new WriteOptions();
+        _noWalWrite.SetSync(dbConfig.WriteAheadLogSync);
+        _noWalWrite.DisableWal(1);
+
+        _lowPriorityWriteOptions = new WriteOptions();
+        _lowPriorityWriteOptions.SetSync(dbConfig.WriteAheadLogSync);
+        Native.Instance.rocksdb_writeoptions_set_low_pri(_lowPriorityWriteOptions.Handle, true);
+
+        _lowPriorityAndNoWalWrite = new WriteOptions();
+        _lowPriorityAndNoWalWrite.SetSync(dbConfig.WriteAheadLogSync);
+        _lowPriorityAndNoWalWrite.DisableWal(1);
+        Native.Instance.rocksdb_writeoptions_set_low_pri(_lowPriorityAndNoWalWrite.Handle, true);
 
         // When readahead flag is on, the next keys are expected to be after the current key. Increasing this value,
         // will increase the chances that the next keys will be in the cache, which reduces iops and latency. This
@@ -472,6 +482,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
+        SetWithColumnFamily(key, null, value, flags);
+    }
+
+    internal void SetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, byte[]? value, WriteFlags flags = WriteFlags.None)
+    {
         if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to write to a disposed database {Name}");
@@ -483,11 +498,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         {
             if (value is null)
             {
-                _db.Remove(key, null, WriteFlagsToWriteOptions(flags));
+                _db.Remove(key, cf, WriteFlagsToWriteOptions(flags));
             }
             else
             {
-                _db.Put(key, value, null, WriteFlagsToWriteOptions(flags));
+                _db.Put(key, value, cf, WriteFlagsToWriteOptions(flags));
             }
         }
         catch (RocksDbSharpException e)
@@ -499,9 +514,19 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     public WriteOptions? WriteFlagsToWriteOptions(WriteFlags flags)
     {
-        if (flags == WriteFlags.LowPriority)
+        if ((flags & WriteFlags.LowPriority) != 0 && (flags & WriteFlags.DisableWAL) != 0)
         {
-            return LowPriorityWriteOptions;
+            return _lowPriorityAndNoWalWrite;
+        }
+
+        if ((flags & WriteFlags.DisableWAL) != 0)
+        {
+            return _noWalWrite;
+        }
+
+        if ((flags & WriteFlags.LowPriority) != 0)
+        {
+            return _lowPriorityWriteOptions;
         }
 
         return WriteOptions;

@@ -36,11 +36,15 @@ namespace Nethermind.Core
         HintReadAhead = 2,
     }
 
+    [Flags]
     public enum WriteFlags
     {
         None,
 
         // Hint that this is a low priority write
         LowPriority,
+
+        // Hint that this write does not require consistent writes.
+        DisableWAL,
     }
 }
