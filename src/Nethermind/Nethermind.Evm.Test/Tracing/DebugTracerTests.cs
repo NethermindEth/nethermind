@@ -395,6 +395,39 @@ namespace Nethermind.Evm.Test
         }
 
 
+        [TestCase("0x716860176017601701500060005260096017f3600052601260006000f0")]
+        public void Debugger_stops_at_correct_breakpoint_depth(string bytecodeHex)
+        {
+            // this bytecode fails on first opcode INVALID
+            byte[] bytecode = Bytes.FromHexString(bytecodeHex);
+
+            (int depth, int pc) TARGET_OPCODE_PTR_BREAK_POINT = (1, 0);
+            using DebugTracer tracer = new DebugTracer(GethLikeTxTracer);
+
+            tracer.SetBreakPoint(TARGET_OPCODE_PTR_BREAK_POINT);
+
+            Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+            vmThread.Start();
+
+            bool stoppedAtCorrectBreakpoint = false;
+            while (vmThread.IsAlive)
+            {
+                if (tracer.CanReadState)
+                {
+                    if(tracer.CurrentState.Env.CallDepth == TARGET_OPCODE_PTR_BREAK_POINT.depth && tracer.CurrentState.ProgramCounter == TARGET_OPCODE_PTR_BREAK_POINT.pc)
+                    {
+                        stoppedAtCorrectBreakpoint = true;
+                    } else
+                    {
+                        stoppedAtCorrectBreakpoint = false;
+                    }
+                    tracer.MoveNext();
+                }
+            }
+
+            Assert.That(stoppedAtCorrectBreakpoint, Is.True);
+        }
+
         [TestCase("0x5b601760005600")]
         public void Debugger_Halts_Execution_When_Global_Condition_Is_Met(string bytecodeHex)
         {
@@ -421,6 +454,32 @@ namespace Nethermind.Evm.Test
             }
 
             Assert.That(stoppedAtLeastOneTime, Is.True);
+        }
+
+        [TestCase("0x5b601760005600")]
+        public void Debugger_Wont_Halt_If_Breakpoint_Is_Unreacheable(string bytecodeHex)
+        {
+            byte[] bytecode = Bytes.FromHexString(bytecodeHex);
+
+            (int depth, int pc) TARGET_OPCODE_PTR_BREAK_POINT = (1, 0);
+            using DebugTracer tracer = new DebugTracer(GethLikeTxTracer);
+
+            tracer.SetBreakPoint(TARGET_OPCODE_PTR_BREAK_POINT);
+
+            Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+            vmThread.Start();
+
+            bool stoppedAtCorrectBreakpoint = false;
+            while (vmThread.IsAlive)
+            {
+                if (tracer.CanReadState)
+                {
+                    stoppedAtCorrectBreakpoint = true;
+                    tracer.MoveNext();
+                }
+            }
+
+            Assert.That(stoppedAtCorrectBreakpoint, Is.False);
         }
     }
 }

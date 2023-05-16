@@ -644,15 +644,6 @@ public class VirtualMachine : IVirtualMachine
             state.DataStackHead = stackHead;
         }
 
-#pragma warning disable CS8321 // Local function is declared but never used
-        static void ApplyExternalState(EvmState state, out int pc, out long gas, out int stackHead)
-        {
-            pc = state.ProgramCounter;
-            gas = state.GasAvailable;
-            stackHead = state.DataStackHead;
-        }
-#pragma warning restore CS8321 // Local function is declared but never used
-
         if (previousCallResult is not null)
         {
             stack.PushBytes(previousCallResult);
@@ -674,8 +665,7 @@ public class VirtualMachine : IVirtualMachine
         while (programCounter < code.Length)
         {
 #if DEBUG
-            debugger?.TryWait(vmState);
-            ApplyExternalState(vmState, out programCounter, out gasAvailable, out stack.Head);
+            debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif  
             Instruction instruction = (Instruction)code[programCounter];
             // Console.WriteLine(instruction);
@@ -2425,9 +2415,6 @@ public class VirtualMachine : IVirtualMachine
             {
                 EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
             }
-#if DEBUG
-            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-#endif
         }
 
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
@@ -2435,9 +2422,6 @@ public class VirtualMachine : IVirtualMachine
 
 // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
 Empty:
-#if DEBUG
-        debugger?.TryWait(vmState);
-#endif
         return CallResult.Empty;
 OutOfGas:
         if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.OutOfGas);
@@ -2445,7 +2429,7 @@ OutOfGas:
 EmptyTrace:
         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
 #if DEBUG
-        debugger?.TryWait(vmState);
+        debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
         return CallResult.Empty;
 InvalidInstruction:

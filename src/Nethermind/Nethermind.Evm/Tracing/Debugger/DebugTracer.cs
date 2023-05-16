@@ -91,7 +91,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     private object _lock = new();
     public bool IsStepByStepModeOn { get; set; } = false;
     public EvmState CurrentState;
-    public void TryWait(EvmState evmState)
+    public void TryWait(ref EvmState evmState, ref int programCounter, ref long gasAvailable, ref int stackHead)
     {
         if (CurrentPhase is DebugPhase.Aborted)
         {
@@ -100,6 +100,9 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
         lock (_lock)
         {
+            evmState.ProgramCounter = programCounter;
+            evmState.GasAvailable = gasAvailable;
+            evmState.DataStackHead = stackHead;
             CurrentState = evmState;
         }
 
@@ -110,6 +113,14 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         else
         {
             CheckBreakPoint();
+        }
+
+
+        lock (_lock)
+        {
+            stackHead = CurrentState.DataStackHead;
+            gasAvailable = CurrentState.GasAvailable;
+            programCounter = CurrentState.ProgramCounter;
         }
     }
 
