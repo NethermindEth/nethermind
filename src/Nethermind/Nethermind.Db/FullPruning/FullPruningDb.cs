@@ -281,7 +281,7 @@ namespace Nethermind.Db.FullPruning
 
         public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
         {
-            throw new NotImplementedException();
+            _currentDb.DeleteByPrefix(keyPrefix);
         }
     }
 }

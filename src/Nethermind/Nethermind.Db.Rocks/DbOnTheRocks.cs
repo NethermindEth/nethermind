@@ -904,14 +904,13 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
     {
-        Iterator prefixIt = _db.NewIterator();
+        using Iterator prefixIt = _db.NewIterator();
         prefixIt.Seek(keyPrefix);
         byte[] startKey = prefixIt.Key();
         prefixIt.SeekToLast();
         byte[] endKey = prefixIt.Key();
-        using (RocksDbBatch batch = new(this))
-        {
-            batch.DeleteRange(startKey, endKey);
-        }
+
+        using RocksDbBatch batch = new(this);
+        batch.DeleteRange(startKey, endKey);
     }
 }
