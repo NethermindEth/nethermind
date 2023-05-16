@@ -205,7 +205,7 @@ namespace Nethermind.Db.Test
                     LimboLogs.Instance, new List<ReceiptsColumns>() { ReceiptsColumns.Blocks });
                 _dbDisposable = columnsDb;
 
-                _db = (ColumnDb) columnsDb.GetColumnDb(ReceiptsColumns.Blocks);
+                _db = (ColumnDb)columnsDb.GetColumnDb(ReceiptsColumns.Blocks);
             }
             else
             {
