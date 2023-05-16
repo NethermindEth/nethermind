@@ -30,7 +30,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly IVirtualMachine _virtualMachine;
 
         [Flags]
-        private enum ExecutionOptions
+        protected enum ExecutionOptions
         {
             /// <summary>
             /// Just accumulate the state
@@ -124,6 +124,188 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
             }
+        }
+
+
+        /// <summary>
+        /// Validates the transaction, in a static manner (i.e. without accesing state/storage).
+        /// It basically ensures the transaction is well formed (i.e. no null values where not allowed, no overflows, etc).
+        /// As a part of validating the transaction the premium per gas will be calculated, to save computation this
+        /// is returned in an out parameter.
+        /// </summary>
+        /// <param name="tx">The transaction to validate</param>
+        /// <param name="blk">The block containing the transaction. Only BaseFee is being used from the block atm.</param>
+        /// <param name="spec">The release spec with which the transaction will be executed</param>
+        /// <param name="tracer">The transaction tracer</param>
+        /// <param name="opts">Options (Flags) to use for execution</param>
+        /// <param name="premium">Computed premium per gas</param>
+        /// <returns></returns>
+        protected virtual bool ValidateStatic(Transaction tx, BlockHeader blk, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
+        {
+            bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
+
+            if (tx.SenderAddress is null)
+            {
+                // TraceLogInvalidTx(transaction, "SENDER_NOT_SPECIFIED");
+                // QuickFail(transaction, block, txTracer, eip658NotEnabled, "sender not specified");
+                return false;
+            }
+
+            if (validate && tx.Nonce >= ulong.MaxValue - 1)
+            {
+                // we are here if nonce is at least (ulong.MaxValue - 1). If tx is contract creation,
+                // it is max possible value. Otherwise, (ulong.MaxValue - 1) is allowed, but ulong.MaxValue not.
+                if (tx.IsContractCreation || tx.Nonce == ulong.MaxValue)
+                {
+                    // TraceLogInvalidTx(transaction, "NONCE_OVERFLOW");
+                    // QuickFail(transaction, block, txTracer, eip658NotEnabled, "nonce overflow");
+                    return false;
+                }
+            }
+
+            if (tx.IsAboveInitCode(spec))
+            {
+                // TraceLogInvalidTx(transaction, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {transaction.DataLength} > {spec.MaxInitCodeSize}");
+                // QuickFail(transaction, block, txTracer, eip658NotEnabled, "EIP-3860 - transaction size over max init code size");
+                return false;
+            }
+
+            return true;
+        }
+
+        protected virtual bool ValidateGasAndFees(Transaction tx, BlockHeader blk, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts, out UInt256 premiumPerGas, out long intrinsicGas)
+        {
+            bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
+
+            intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec);
+
+            if (!tx.TryCalculatePremiumPerGas(blk.BaseFeePerGas, out premiumPerGas) && validate)
+            {
+                // TraceLogInvalidTx(ctx.Tx, "MINER_PREMIUM_IS_NEGATIVE");
+                // QuickFail(ctx.Tx, ctx.Block, txTracer, !spec.IsEip658Enabled, "miner premium is negative");
+                return false;
+            }
+
+            if (!tx.IsSystem())
+            {
+                if (tx.GasLimit < intrinsicGas)
+                {
+                    // TraceLogInvalidTx(transaction, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
+                    // QuickFail(transaction, block, txTracer, eip658NotEnabled, "gas limit below intrinsic gas");
+                    return false;
+                }
+
+                if (validate && tx.GasLimit > blk.GasLimit - blk.GasUsed)
+                {
+                    // TraceLogInvalidTx(transaction, $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
+                    // QuickFail(transaction, block, txTracer, eip658NotEnabled, "block gas limit exceeded");
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // TODO Should we remove this already
+        private bool RecoverSenderIfNeeded(Transaction tx, BlockHeader blk, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts, in UInt256 effectiveGasPrice, out bool deleteCallerAccount)
+        {
+            bool commit = opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled;
+            bool restore = opts.HasFlag(ExecutionOptions.Restore);
+            bool noValidation = opts.HasFlag(ExecutionOptions.NoValidation);
+
+            deleteCallerAccount = false;
+
+            if (!_stateProvider.AccountExists(tx.SenderAddress))
+            {
+                Address prevSender = tx.SenderAddress;
+                // hacky fix for the potential recovery issue
+                if (tx.Signature is not null)
+                    tx.SenderAddress = _ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+
+                if (prevSender != tx.SenderAddress)
+                {
+                    if (_logger.IsWarn)
+                        _logger.Warn($"TX recovery issue fixed - tx was coming with sender {prevSender} and the now it recovers to {tx.SenderAddress}");
+                }
+                else
+                {
+                    TraceLogInvalidTx(tx, $"SENDER_ACCOUNT_DOES_NOT_EXIST {tx.SenderAddress}");
+                    if (!commit || noValidation || effectiveGasPrice == UInt256.Zero)
+                    {
+                        deleteCallerAccount = !commit || restore;
+                        _stateProvider.CreateAccount(tx.SenderAddress, UInt256.Zero);
+                    }
+                }
+
+                if (tx.SenderAddress is null)
+                {
+                    throw new InvalidDataException($"Failed to recover sender address on tx {tx.Hash} when previously recovered sender account did not exist.");
+                }
+            }
+
+            return true;
+        }
+
+        protected virtual bool ValidateSender(Transaction tx, BlockHeader blk, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
+        {
+            bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
+
+            if (validate && _stateProvider.IsInvalidContractSender(spec, tx.SenderAddress))
+            {
+                // TraceLogInvalidTx(tx, "SENDER_IS_CONTRACT");
+                // QuickFail(tx, blk, tracer, eip658NotEnabled, "sender has deployed code");
+                return false;
+            }
+
+            return true;
+        }
+
+        protected virtual bool ExecuteAccountTransaction(
+            Transaction tx,
+            BlockHeader blk,
+            IReleaseSpec spec,
+            ITxTracer tracer,
+            ExecutionOptions opts,
+            in UInt256 effectiveGasPrice,
+            in ulong intrinsicGas)
+        {
+            bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
+            bool commit = opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip158Enabled;
+
+            UInt256 senderReservedGasPayment = validate ? (ulong)tx.GasLimit * effectiveGasPrice : UInt256.Zero;
+
+            if (!tx.IsSystem())
+            {
+                UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);
+                if (validate && (intrinsicGas * effectiveGasPrice + tx.Value > senderBalance || senderReservedGasPayment + tx.Value > senderBalance))
+                {
+                    // TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
+                    // QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
+                    return false;
+                }
+
+                if (validate && spec.IsEip1559Enabled && !tx.IsFree() && senderBalance < (UInt256)tx.GasLimit * tx.MaxFeePerGas + tx.Value)
+                {
+                    // TraceLogInvalidTx(transaction, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
+                    // QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient MaxFeePerGas for sender balance");
+                    return false;
+                }
+
+                if (tx.Nonce != _stateProvider.GetNonce(tx.SenderAddress))
+                {
+                    // TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(caller)})");
+                    // QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce");
+                    return false;
+                }
+
+                _stateProvider.IncrementNonce(tx.SenderAddress);
+            }
+
+            _stateProvider.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
+            if (commit)
+                _stateProvider.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
+
+            return true;
         }
 
         // Expects NoValidation == false
