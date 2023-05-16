@@ -402,6 +402,18 @@ namespace Nethermind.State
             PushNew(address, account);
         }
 
+        public void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)
+        {
+            if (AccountExists(address))
+            {
+                AddToBalance(address, balance, spec);
+            }
+            else
+            {
+                CreateAccount(address, balance);
+            }
+        }
+
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
         {
             Commit(releaseSpec, NullStateTracer.Instance, isGenesis);
