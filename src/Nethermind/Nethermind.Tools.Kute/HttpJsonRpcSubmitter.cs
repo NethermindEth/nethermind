@@ -16,7 +16,7 @@ class HttpJsonRpcSubmitter : IJsonRpcSubmitter
     {
         _httpClient = httpClient;
         _auth = auth;
-        _uri = new Uri(config.Host);
+        _uri = new Uri(config.HostAddress);
     }
 
     public async Task Submit(string jsonContent)
