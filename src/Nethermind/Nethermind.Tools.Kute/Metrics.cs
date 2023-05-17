@@ -5,14 +5,14 @@ namespace Nethermind.Tools.Kute;
 
 public class Metrics
 {
-    public int Total { get; private set; }
+    public int Messages { get; private set; }
     public int Failed { get; private set; }
     public int Responses { get; private set; }
     public IDictionary<string, int> Requests { get; } = new Dictionary<string, int>();
 
     public TimeSpan TotalRunningTime { get; set; }
 
-    public void TickTotal() => Total++;
+    public void TickMessages() => Messages++;
     public void TickFailed() => Failed++;
     public void TickResponses() => Responses++;
 

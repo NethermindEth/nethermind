@@ -31,7 +31,7 @@ class Application
 
         await foreach (var msg in _msgProvider.Messages)
         {
-            _metrics.TickTotal();
+            _metrics.TickMessages();
 
             var rpc = JsonSerializer.Deserialize<JsonDocument>(msg);
             if (rpc is null)

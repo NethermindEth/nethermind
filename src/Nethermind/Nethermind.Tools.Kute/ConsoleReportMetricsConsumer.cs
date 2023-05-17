@@ -8,10 +8,10 @@ class ConsoleReportMetricsConsumer : IMetricsConsumer
     public void ConsumeMetrics(Metrics metrics)
     {
         Console.WriteLine($"""
-        Total Running Time:  {metrics.TotalRunningTime.TotalMilliseconds} ms
+        Running Time:  {metrics.TotalRunningTime.TotalMilliseconds} ms
         Results:
-            Total:     {metrics.Total}
-            Failures:  {metrics.Failed}
+            Messages:  {metrics.Messages}
+            Failed:    {metrics.Failed}
             Methods:
                 Responses: {metrics.Responses}
                 Requests:  {metrics.Requests.Values.Sum()}
