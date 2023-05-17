@@ -63,7 +63,7 @@ namespace Nethermind.Consensus.Ethash
 
         public uint Size { get; set; }
 
-        public EthashCache(uint cacheSize, byte[] seed)
+        public EthashCache(uint cacheSize, ReadOnlySpan<byte> seed)
         {
             uint cachePageCount = cacheSize / Ethash.HashBytes;
             Size = cachePageCount * Ethash.HashBytes;

@@ -159,7 +159,7 @@ namespace Nethermind.AuRa.Test.Validators
             context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.DuplicateStep); // ignored
             context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep); // ignored
             context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep); // ignored
-            context.Validator.ReportBenign(TestItem.AddressC, 100, IReportingValidator.BenignCause.FutureBlock); // sent 
+            context.Validator.ReportBenign(TestItem.AddressC, 100, IReportingValidator.BenignCause.FutureBlock); // sent
             context.Validator.ReportBenign(TestItem.AddressC, 100, IReportingValidator.BenignCause.FutureBlock); // ignored
             context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.FutureBlock); //sent
             context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.IncorrectProposer); //ignored
@@ -204,7 +204,7 @@ namespace Nethermind.AuRa.Test.Validators
 
                 TxSender = Substitute.For<ITxSender>();
                 ITxPool txPool = Substitute.For<ITxPool>();
-                IStateProvider stateProvider = Substitute.For<IStateProvider>();
+                IWorldState stateProvider = Substitute.For<IWorldState>();
                 ISpecProvider specProvider = Substitute.For<ISpecProvider>();
                 stateProvider.GetNonce(ReportingValidatorContract.NodeAddress).Returns(UInt256.One);
 

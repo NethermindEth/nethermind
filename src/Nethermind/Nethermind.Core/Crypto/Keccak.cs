@@ -15,13 +15,15 @@ namespace Nethermind.Core.Crypto
     [DebuggerDisplay("{ToString()}")]
     public readonly struct ValueKeccak : IEquatable<ValueKeccak>, IComparable<ValueKeccak>, IEquatable<Keccak>
     {
-        private readonly Vector256<byte> Bytes;
+        private readonly Vector256<byte> _bytes;
 
         public const int MemorySize = 32;
 
-        public Span<byte> BytesAsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in Bytes), 1));
+        public Span<byte> BytesAsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
 
-        public ReadOnlySpan<byte> Span => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in Bytes), 1));
+        public ReadOnlySpan<byte> Bytes => Span; // To reduce changes when switching to ValueKeccak.
+
+        public ReadOnlySpan<byte> Span => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
 
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
@@ -57,25 +59,25 @@ namespace Nethermind.Core.Crypto
         {
             if (bytes is null || bytes.Length == 0)
             {
-                Bytes = OfAnEmptyString.Bytes;
+                _bytes = OfAnEmptyString._bytes;
                 return;
             }
 
             Debug.Assert(bytes.Length == ValueKeccak.MemorySize);
-            Bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
+            _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
         }
 
         public ValueKeccak(string? hex)
         {
             if (hex is null || hex.Length == 0)
             {
-                Bytes = OfAnEmptyString.Bytes;
+                _bytes = OfAnEmptyString._bytes;
                 return;
             }
 
             byte[] bytes = Extensions.Bytes.FromHexString(hex);
             Debug.Assert(bytes.Length == ValueKeccak.MemorySize);
-            Bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
+            _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
         }
 
         public ValueKeccak(Span<byte> bytes)
@@ -85,12 +87,12 @@ namespace Nethermind.Core.Crypto
         {
             if (bytes.Length == 0)
             {
-                Bytes = OfAnEmptyString.Bytes;
+                _bytes = OfAnEmptyString._bytes;
                 return;
             }
 
             Debug.Assert(bytes.Length == ValueKeccak.MemorySize);
-            Bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
+            _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
         }
 
         [DebuggerStepThrough]
@@ -115,16 +117,16 @@ namespace Nethermind.Core.Crypto
 
         public override bool Equals(object? obj) => obj is ValueKeccak keccak && Equals(keccak);
 
-        public bool Equals(ValueKeccak other) => Bytes.Equals(other.Bytes);
+        public bool Equals(ValueKeccak other) => _bytes.Equals(other._bytes);
 
         public bool Equals(Keccak? other) => BytesAsSpan.SequenceEqual(other?.Bytes);
 
         public override int GetHashCode()
         {
-            long v0 = Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in Bytes));
-            long v1 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in Bytes)), 1);
-            long v2 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in Bytes)), 2);
-            long v3 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in Bytes)), 3);
+            long v0 = Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes));
+            long v1 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes)), 1);
+            long v2 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes)), 2);
+            long v3 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes)), 3);
             v0 ^= v1;
             v2 ^= v3;
             v0 ^= v2;
@@ -370,6 +372,11 @@ namespace Nethermind.Core.Crypto
 
         public static bool operator ==(Keccak? a, Keccak? b)
         {
+            if (ReferenceEquals(a, b))
+            {
+                return true;
+            }
+
             if (a is null)
             {
                 return b is null;

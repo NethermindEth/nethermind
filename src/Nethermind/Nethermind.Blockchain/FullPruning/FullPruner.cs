@@ -210,10 +210,10 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 pruning.MarkStart();
 
-                WriteFlags writeFlags = WriteFlags.LowPriority;
-                if (_pruningConfig.FullPruningDisableLowPriorityWrites)
+                WriteFlags writeFlags = WriteFlags.DisableWAL;
+                if (!_pruningConfig.FullPruningDisableLowPriorityWrites)
                 {
-                    writeFlags = WriteFlags.None;
+                    writeFlags |= WriteFlags.LowPriority;
                 }
 
                 using CopyTreeVisitor copyTreeVisitor = new(pruning, writeFlags, _logManager);

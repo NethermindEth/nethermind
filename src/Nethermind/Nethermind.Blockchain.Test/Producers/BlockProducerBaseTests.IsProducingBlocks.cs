@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<ITxSource>(),
                 Substitute.For<IBlockchainProcessor>(),
                 Substitute.For<IBlockProductionTrigger>(),
-                Substitute.For<IStateProvider>(),
+                Substitute.For<IWorldState>(),
                 Substitute.For<ISealer>(),
                 Substitute.For<IBlockTree>(),
                 Substitute.For<ITimestamper>(),

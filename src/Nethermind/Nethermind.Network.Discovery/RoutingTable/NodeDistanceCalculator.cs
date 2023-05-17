@@ -16,7 +16,7 @@ public class NodeDistanceCalculator : INodeDistanceCalculator
         _bitsPerHoop = discoveryConfig.BitsPerHop;
     }
 
-    public int CalculateDistance(byte[] sourceId, byte[] destinationId)
+    public int CalculateDistance(ReadOnlySpan<byte> sourceId, ReadOnlySpan<byte> destinationId)
     {
         int lowerLength = Math.Min(sourceId.Length, destinationId.Length);
         int distance = _maxDistance;

@@ -66,6 +66,19 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public void When_commit_forward_write_flag_if_available()
+        {
+            TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
+
+            TestMemDb testMemDb = new TestMemDb();
+
+            using TrieStore trieStore = new(testMemDb, No.Pruning, No.Persistence, _logManager);
+            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode), WriteFlags.LowPriority);
+            trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode, WriteFlags.LowPriority);
+            testMemDb.KeyWasWrittenWithFlags(trieNode.Keccak.Bytes, WriteFlags.LowPriority);
+        }
+
+        [Test]
         public void Should_always_announce_block_number_when_pruning_disabled_and_persisting()
         {
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero) { LastSeen = 1 };
