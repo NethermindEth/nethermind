@@ -10,7 +10,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockStore: IBlockStore
+public class BlockStore : IBlockStore
 {
     private readonly IDb _blockDb;
     private readonly BlockDecoder _blockDecoder = new();

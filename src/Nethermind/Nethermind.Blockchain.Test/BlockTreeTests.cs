@@ -1306,7 +1306,6 @@ namespace Nethermind.Blockchain.Test
             tree.SuggestBlock(genesis);
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis));
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis.Header));
-            Assert.Throws<InvalidOperationException>(() => tree.Insert(new[] { genesis }));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -1335,33 +1334,6 @@ namespace Nethermind.Blockchain.Test
             Block A = Build.A.Block.WithParent(genesis).WithDifficulty(0).TestObject;
             tree.SuggestBlock(A).Should().Be(AddBlockResult.Added);
             tree.FindBlock(A.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(UInt256.Zero);
-        }
-
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Can_batch_insert_blocks()
-        {
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            MemDb metadataDb = new();
-
-            long pivotNumber = 5L;
-
-            SyncConfig syncConfig = new();
-            syncConfig.PivotNumber = pivotNumber.ToString();
-
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
-            tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
-
-            List<Block> blocks = new();
-            for (long i = 5; i > 0; i--)
-            {
-                Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(1L).TestObject;
-                tree.Insert(block.Header);
-                blocks.Add(block);
-            }
-
-            tree.Insert(blocks);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]

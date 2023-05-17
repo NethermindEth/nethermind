@@ -667,27 +667,6 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
-        public void Insert(IEnumerable<Block> blocks)
-        {
-            lock (_batchInsertLock)
-            {
-                // TODO: why is this commented out? why was it here in the first place? (2021-03-27)
-                //       yea, why? (2023-05-17)
-                // try
-                // {
-                //   _blockDb.StartBatch();
-                foreach (Block block in blocks)
-                {
-                    Insert(block);
-                }
-                // }
-                // finally
-                // {
-                //     _blockDb.CommitBatch();
-                // }
-            }
-        }
-
         private AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         {
             bool shouldProcess = options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess);
