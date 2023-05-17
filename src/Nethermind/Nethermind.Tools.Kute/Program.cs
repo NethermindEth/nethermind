@@ -7,11 +7,13 @@ static class Program
 {
     public static async Task Main(string[] args)
     {
-        Config config = Parser.Default.ParseArguments<Config>(args).Value;
-        IServiceProvider serviceProvider = BuildServiceProvider(config);
-        Application app = serviceProvider.GetService<Application>()!;
+        await Parser.Default.ParseArguments<Config>(args).WithParsedAsync(async config =>
+        {
+            IServiceProvider serviceProvider = BuildServiceProvider(config);
+            Application app = serviceProvider.GetService<Application>()!;
 
-        await app.Run();
+            await app.Run();
+        });
     }
 
     static IServiceProvider BuildServiceProvider(Config config)
@@ -32,7 +34,17 @@ static class Program
             collection.AddSingleton<IJsonRpcSubmitter, HttpJsonRpcSubmitter>();
         }
 
-        collection.AddSingleton<IMetricsConsumer, JsonMetricsConsumer>();
+        switch (config.MetricConsumerStrategy)
+        {
+            case MetricConsumerStrategy.Report:
+                collection.AddSingleton<IMetricsConsumer, ConsoleReportMetricsConsumer>();
+                break;
+            case MetricConsumerStrategy.Json:
+                collection.AddSingleton<IMetricsConsumer, JsonMetricsConsumer>();
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
 
         return collection.BuildServiceProvider();
     }

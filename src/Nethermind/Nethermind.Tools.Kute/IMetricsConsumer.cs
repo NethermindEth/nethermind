@@ -3,7 +3,12 @@
 
 namespace Nethermind.Tools.Kute;
 
-interface IMetricsConsumer
+public interface IMetricsConsumer
 {
     void ConsumeMetrics(Metrics metrics);
+}
+
+public enum MetricConsumerStrategy
+{
+    Report, Json
 }
