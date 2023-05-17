@@ -35,7 +35,7 @@ class JwtAuth : IAuth
     {
         var signingKey = new SymmetricSecurityKey(_secret);
         var credentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
-        var claims = new[] { new Claim("iat", _clock.UtcNow.ToUnixTimeSeconds().ToString()), };
+        var claims = new[] { new Claim("iat", _clock.UtcNow.ToUnixTimeSeconds().ToString()) };
         var token = new JwtSecurityToken(claims: claims, signingCredentials: credentials);
         var handler = new JwtSecurityTokenHandler();
 

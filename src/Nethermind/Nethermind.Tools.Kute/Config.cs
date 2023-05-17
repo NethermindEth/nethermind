@@ -43,7 +43,7 @@ public class Config
 
     [Option(
         shortName: 'o',
-        $"output",
+        longName: "output",
         Required = false,
         Default = MetricConsumerStrategy.Report,
         HelpText = "Strategy to report metrics."
