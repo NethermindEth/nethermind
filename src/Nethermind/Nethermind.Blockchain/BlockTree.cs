@@ -1249,7 +1249,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException($"Not able to find block {blockHash} from an unknown level {number}");
             }
 
-            int? index = FindIndex(blockHash, levelInfo);
+            int? index = levelInfo.FindIndex(blockHash);
             if (index is null)
             {
                 throw new InvalidOperationException($"Not able to find block {blockHash} index on the chain level");
@@ -1277,7 +1277,7 @@ namespace Nethermind.Blockchain
                 }
 
                 ChainLevelInfo? level = LoadLevel(block.Number);
-                int? index = level is null ? null : FindIndex(block.Hash, level);
+                int? index = level?.FindIndex(block.Hash);
                 if (index is null)
                 {
                     throw new InvalidOperationException($"Cannot mark unknown block {block.ToString(Block.Format.FullHashAndNumber)} as processed");
@@ -1454,11 +1454,7 @@ namespace Nethermind.Blockchain
             }
 
             ChainLevelInfo? level = LoadLevel(block.Number);
-            if (level.BlockInfos.Length > 1)
-            {
-            }
-
-            int? index = level is null ? null : FindIndex(block.Hash, level);
+            int? index = level?.FindIndex(block.Hash);
             if (index is null)
             {
                 throw new InvalidOperationException($"Cannot move unknown block {block.ToString(Block.Format.FullHashAndNumber)} to main");
@@ -1471,8 +1467,7 @@ namespace Nethermind.Blockchain
             info.WasProcessed = wasProcessed;
             if (index.Value != 0)
             {
-                (level.BlockInfos[index.Value], level.BlockInfos[0]) =
-                    (level.BlockInfos[0], level.BlockInfos[index.Value]);
+                level.SwapToMain(index.Value);
             }
 
             _bloomStorage.Store(block.Number, block.Bloom);
@@ -1581,7 +1576,7 @@ namespace Nethermind.Blockchain
             }
 
             ChainLevelInfo? level = LoadLevel(headBlock.Number);
-            int? index = level is null ? null : FindIndex(headHash, level);
+            int? index = level?.FindIndex(headHash);
             if (!index.HasValue)
             {
                 throw new InvalidDataException("Head block data missing from chain info");
@@ -1673,41 +1668,16 @@ namespace Nethermind.Blockchain
         {
             using (BatchWrite? batch = _chainLevelInfoRepository.StartBatch())
             {
-                ChainLevelInfo level = LoadLevel(number, false);
-
                 if (!blockInfo.IsBeaconInfo && number > BestKnownNumber)
                 {
                     BestKnownNumber = number;
                 }
 
+                ChainLevelInfo level = LoadLevel(number, false);
+
                 if (level is not null)
                 {
-                    BlockInfo[] blockInfos = level.BlockInfos;
-
-                    int? foundIndex = FindIndex(hash, level);
-                    if (!foundIndex.HasValue)
-                    {
-                        Array.Resize(ref blockInfos, blockInfos.Length + 1);
-                    }
-                    else
-                    {
-                        if (blockInfo.IsBeaconInfo && blockInfos[foundIndex.Value].IsBeaconMainChain)
-                            blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
-                    }
-
-                    int index = foundIndex ?? blockInfos.Length - 1;
-
-                    if (setAsMain)
-                    {
-                        blockInfos[index] = blockInfos[0];
-                        blockInfos[0] = blockInfo;
-                    }
-                    else
-                    {
-                        blockInfos[index] = blockInfo;
-                    }
-
-                    level.BlockInfos = blockInfos;
+                    level.InsertBlockInfo(hash, blockInfo, setAsMain);
                 }
                 else
                 {
@@ -1735,22 +1705,7 @@ namespace Nethermind.Blockchain
                 return (null, null);
             }
 
-            int? index = FindIndex(blockHash, chainLevelInfo);
-            return index.HasValue ? (chainLevelInfo.BlockInfos[index.Value], chainLevelInfo) : (null, chainLevelInfo);
-        }
-
-        private static int? FindIndex(Keccak blockHash, ChainLevelInfo level)
-        {
-            for (int i = 0; i < level.BlockInfos.Length; i++)
-            {
-                Keccak hashAtIndex = level.BlockInfos[i].BlockHash;
-                if (hashAtIndex.Equals(blockHash))
-                {
-                    return i;
-                }
-            }
-
-            return null;
+            return (chainLevelInfo.FindBlockInfo(blockHash), chainLevelInfo);
         }
 
         private ChainLevelInfo? LoadLevel(long number, bool forceLoad = true)
