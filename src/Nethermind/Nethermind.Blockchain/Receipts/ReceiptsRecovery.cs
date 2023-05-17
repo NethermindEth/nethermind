@@ -23,16 +23,16 @@ namespace Nethermind.Blockchain.Receipts
             _reinsertReceiptOnRecover = reinsertReceiptOnRecover;
         }
 
-        public ReceiptsRecoveryResult TryRecover(Block block, TxReceipt[] receipts, bool forceRecoverSender = true)
+        public ReceiptsRecoveryResult TryRecover(ReceiptRecoveryBlock block, TxReceipt[] receipts, bool forceRecoverSender = true)
         {
-            var canRecover = block.Transactions.Length == receipts?.Length;
+            var canRecover = block.TransactionCount == receipts?.Length;
             if (canRecover)
             {
                 var needRecover = NeedRecover(receipts, forceRecoverSender);
                 if (needRecover)
                 {
-                    var ctx = CreateRecoveryContext(block, forceRecoverSender);
-                    for (int receiptIndex = 0; receiptIndex < block.Transactions.Length; receiptIndex++)
+                    using var ctx = CreateRecoveryContext(block, forceRecoverSender);
+                    for (int receiptIndex = 0; receiptIndex < block.TransactionCount; receiptIndex++)
                     {
                         if (receipts.Length > receiptIndex)
                         {
@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Receipts
             return ReceiptsRecoveryResult.Fail;
         }
 
-        public IReceiptsRecovery.IRecoveryContext CreateRecoveryContext(Block block, bool forceRecoverSender = false)
+        public IReceiptsRecovery.IRecoveryContext CreateRecoveryContext(ReceiptRecoveryBlock block, bool forceRecoverSender = false)
         {
             var releaseSpec = _specProvider.GetSpec(block.Header);
             return new RecoveryContext(releaseSpec, block, forceRecoverSender, _ecdsa);
@@ -72,14 +72,14 @@ namespace Nethermind.Blockchain.Receipts
         private class RecoveryContext : IReceiptsRecovery.IRecoveryContext
         {
             private readonly IReleaseSpec _releaseSpec;
-            private readonly Block _block;
+            private readonly ReceiptRecoveryBlock _block;
             private readonly bool _forceRecoverSender;
             private readonly IEthereumEcdsa _ecdsa;
 
             private long _gasUsedBefore = 0;
             private int _transactionIndex = 0;
 
-            public RecoveryContext(IReleaseSpec releaseSpec, Block block, bool forceRecoverSender, IEthereumEcdsa ecdsa)
+            public RecoveryContext(IReleaseSpec releaseSpec, ReceiptRecoveryBlock block, bool forceRecoverSender, IEthereumEcdsa ecdsa)
             {
                 _releaseSpec = releaseSpec;
                 _block = block;
@@ -89,12 +89,12 @@ namespace Nethermind.Blockchain.Receipts
 
             public void RecoverReceiptData(TxReceipt receipt)
             {
-                if (_transactionIndex >= _block.Transactions.Length)
+                if (_transactionIndex >= _block.TransactionCount)
                 {
                     throw new InvalidOperationException("Trying to recover more receipt that transaction");
                 }
 
-                Transaction transaction = _block.Transactions[_transactionIndex];
+                Transaction transaction = _block.GetTransaction(_transactionIndex);
 
                 receipt.TxType = transaction.Type;
                 receipt.BlockHash = _block.Hash;
@@ -117,12 +117,12 @@ namespace Nethermind.Blockchain.Receipts
 
             public void RecoverReceiptData(ref TxReceiptStructRef receipt)
             {
-                if (_transactionIndex >= _block.Transactions.Length)
+                if (_transactionIndex >= _block.TransactionCount)
                 {
                     throw new InvalidOperationException("Trying to recover more receipt that transaction");
                 }
 
-                Transaction transaction = _block.Transactions[_transactionIndex];
+                Transaction transaction = _block.GetTransaction(_transactionIndex);
 
                 receipt.TxType = transaction.Type;
                 receipt.BlockHash = _block.Hash!.ToStructRef();
@@ -150,6 +150,11 @@ namespace Nethermind.Blockchain.Receipts
             {
                 _transactionIndex++;
                 _gasUsedBefore = gasUsedTotal;
+            }
+
+            public void Dispose()
+            {
+                _block.Dispose();
             }
         }
     }
