@@ -18,11 +18,12 @@ class JwtAuth : IAuth
         get => _token.Value;
     }
 
-    public JwtAuth(ISystemClock clock, string hexSecret)
+    public JwtAuth(ISystemClock clock, Config config)
     {
         _clock = clock;
 
         // TODO: Check if `hexString` is an actual Hex string.
+        var hexSecret = File.ReadAllText(config.JwtSecretFile).Trim();
         _secret = Enumerable.Range(0, hexSecret.Length)
             .Where(x => x % 2 == 0)
             .Select(x => Convert.ToByte(hexSecret.Substring(x, 2), 16))
