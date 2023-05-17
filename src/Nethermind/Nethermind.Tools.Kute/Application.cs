@@ -28,6 +28,8 @@ class Application
     public async Task Run()
     {
         Stopwatch timer = new();
+        timer.Start();
+
         await foreach (var msg in _msgProvider.Messages)
         {
             _metrics.TickTotal();
@@ -57,6 +59,7 @@ class Application
             }
         }
 
+        timer.Stop();
         _metrics.TotalRunningTime = timer.Elapsed;
 
         _metricsConsumer.ConsumeMetrics(_metrics);
