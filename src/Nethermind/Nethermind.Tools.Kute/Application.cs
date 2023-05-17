@@ -27,8 +27,7 @@ class Application
 
     public async Task Run()
     {
-        Stopwatch timer = new();
-        timer.Start();
+        var start = Stopwatch.GetTimestamp();
 
         await foreach (var msg in _msgProvider.Messages)
         {
@@ -59,8 +58,7 @@ class Application
             }
         }
 
-        timer.Stop();
-        _metrics.TotalRunningTime = timer.Elapsed;
+        _metrics.TotalRunningTime = Stopwatch.GetElapsedTime(start);
 
         _metricsConsumer.ConsumeMetrics(_metrics);
     }

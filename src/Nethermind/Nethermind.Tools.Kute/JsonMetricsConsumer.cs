@@ -11,7 +11,7 @@ public class JsonMetricsConsumer : IMetricsConsumer
     {
         var metricsObject = new
         {
-            TotalRunningTime = $"{metrics.TotalRunningTime.Milliseconds} ms",
+            TotalRunningTime = $"{metrics.TotalRunningTime.TotalMilliseconds} ms",
             metrics.Total,
             metrics.Failed,
             Methods = new { metrics.Responses, metrics.Requests }
