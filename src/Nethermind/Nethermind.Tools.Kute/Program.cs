@@ -23,6 +23,7 @@ static class Program
         collection.AddSingleton(config);
         collection.AddSingleton<Application>();
         collection.AddSingleton<ISystemClock, SystemClock>();
+        collection.AddSingleton<HttpClient>();
         collection.AddSingleton<IAuth, JwtAuth>();
         collection.AddSingleton<IJsonRpcMessageProvider, FileJsonRpcMessageProvider>();
         if (config.DryRun)
