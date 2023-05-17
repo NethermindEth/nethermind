@@ -241,9 +241,8 @@ namespace Nethermind.Blockchain.Receipts
             {
                 recoveryContextFactory = () =>
                 {
-                    Block block = _blockStore.Get(blockHash);
-                    // TODO: Send lazy here
-                    return _receiptsRecovery.CreateRecoveryContext(new ReceiptRecoveryBlock(block!));
+                    ReceiptRecoveryBlock block = _blockStore.GetReceiptRecoveryBlock(blockHash);
+                    return _receiptsRecovery.CreateRecoveryContext(block);
                 };
             }
 

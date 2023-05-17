@@ -58,6 +58,12 @@ public class BlockStore : IBlockStore
         return _blockDb.Get(blockHash, _blockDecoder, _blockCache, shouldCache);
     }
 
+    public ReceiptRecoveryBlock GetReceiptRecoveryBlock(Keccak blockHash)
+    {
+        // TODO: Hard logic here
+        return new ReceiptRecoveryBlock(Get(blockHash, false));
+    }
+
     public void Cache(Block block)
     {
         _blockCache.Set(block.Hash, block);
