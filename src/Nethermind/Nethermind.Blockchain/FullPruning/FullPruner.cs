@@ -170,19 +170,19 @@ namespace Nethermind.Blockchain.FullPruning
 
         private bool CanStartNewPruning() => _fullPruningDb.CanStartPruning;
 
-        private const double ChainSizeThresholdFactor = 1.3;
+        private const long ChainSizeThresholdFactor = 130;
 
         private bool HaveEnoughDiskSpaceToRun()
         {
             long? currentChainSize = _chainEstimations.PruningSize;
             if (currentChainSize is null)
             {
-                if (_logger.IsWarn) _logger.Warn("Full Pruning: Chain size estimation is unavailable.");
+                if (_logger.IsInfo) _logger.Info("Full Pruning: Chain size estimation is unavailable.");
                 return true;
             }
 
             long available = _driveInfo.AvailableFreeSpace;
-            if (available < currentChainSize * ChainSizeThresholdFactor)
+            if (available < currentChainSize.Value * ChainSizeThresholdFactor / 100)
             {
                 if (_logger.IsWarn)
                     _logger.Warn(
