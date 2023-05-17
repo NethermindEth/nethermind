@@ -7,20 +7,47 @@ namespace Nethermind.Tools.Kute;
 
 public class Config
 {
-    [Option('m', "messages", Required = true, HelpText = "Path to a Folder or a File containing JSON RPC messages")]
+    [Option(
+        shortName: 'm',
+        longName: "messages",
+        Required = true,
+        HelpText = "Path to a Folder or a File containing JSON RPC messages"
+    )]
     public string MessagesSourcePath { get; }
 
-    [Option('a', "address", Required = false, Default = "http://localhost:8551",
-        HelpText = "Address where to send JSON RPC calls")]
+    [Option(
+        shortName: 'a',
+        longName: "address",
+        Required = false,
+        Default = "http://localhost:8551",
+        HelpText = "Address where to send JSON RPC calls"
+    )]
     public string HostAddress { get; }
 
-    [Option('s', "secret", Required = true, HelpText = "Path to file with hex encoded secret for jwt authentication")]
+    [Option(
+        shortName: 's',
+        longName: "secret",
+        Required = true,
+        HelpText = "Path to file with hex encoded secret for jwt authentication"
+    )]
     public string JwtSecretFile { get; }
 
-    [Option('d', "dry", Required = false, Default = false, HelpText = "Only log into console")]
+    [Option(
+        shortName: 'd',
+        longName: "dry",
+        Required = false,
+        Default = false,
+        HelpText = "Only log into console"
+    )]
     public bool DryRun { get; }
 
-    [Option('o', "output", Required = false, Default = MetricConsumerStrategy.Report, HelpText = "Strategy to report metrics.")]
+    [Option(
+        shortName: 'o',
+        $"output",
+        Required = false,
+        Default = MetricConsumerStrategy.Report,
+        HelpText = "Strategy to report metrics."
+    )]
     public MetricConsumerStrategy MetricConsumerStrategy { get; }
 
     public Config(
