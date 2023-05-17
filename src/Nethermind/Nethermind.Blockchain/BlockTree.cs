@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -30,16 +31,13 @@ namespace Nethermind.Blockchain
     public partial class BlockTree : IBlockTree
     {
         // there is not much logic in the addressing here
-        private const long LowestInsertedBodyNumberDbEntryAddress = 0;
+        private static readonly byte[] LowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
         private static byte[] StateHeadHashDbEntryAddress = new byte[16];
         internal static Keccak DeletePointerAddressInDb = new(new BitArray(32 * 8, true).ToBytes());
 
         internal static Keccak HeadAddressInDb = Keccak.Zero;
 
         private const int CacheSize = 64;
-
-        private readonly LruCache<KeccakKey, Block>
-            _blockCache = new(CacheSize, CacheSize, "blocks");
 
         private readonly LruCache<KeccakKey, BlockHeader> _headerCache =
             new(CacheSize, CacheSize, "headers");
@@ -48,7 +46,7 @@ namespace Nethermind.Blockchain
 
         private readonly object _batchInsertLock = new();
 
-        private readonly IDb _blockDb;
+        private readonly IBlockStore _blockStore;
         private readonly IDb _headerDb;
         private readonly IDb _blockInfoDb;
         private readonly IDb _metadataDb;
@@ -56,7 +54,6 @@ namespace Nethermind.Blockchain
         private readonly LruCache<KeccakKey, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
 
-        private readonly BlockDecoder _blockDecoder = new();
         private readonly HeaderDecoder _headerDecoder = new();
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
@@ -99,7 +96,7 @@ namespace Nethermind.Blockchain
                 _lowestInsertedReceiptBlock = value;
                 if (value.HasValue)
                 {
-                    _blockDb.Set(LowestInsertedBodyNumberDbEntryAddress, Rlp.Encode(value.Value).Bytes);
+                    _blockStore.SetMetadata(LowestInsertedBodyNumberDbEntryAddress, Rlp.Encode(value.Value).Bytes);
                 }
             }
         }
@@ -165,7 +162,7 @@ namespace Nethermind.Blockchain
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _blockDb = blockDb ?? throw new ArgumentNullException(nameof(blockDb));
+            _blockStore = new BlockStore(blockDb ?? throw new ArgumentNullException(nameof(blockDb)));
             _headerDb = headerDb ?? throw new ArgumentNullException(nameof(headerDb));
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
             _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
@@ -252,7 +249,7 @@ namespace Nethermind.Blockchain
         private void LoadLowestInsertedBodyNumber()
         {
             LowestInsertedBodyNumber =
-                _blockDb.Get(LowestInsertedBodyNumberDbEntryAddress)?
+                _blockStore.GetMetadata(LowestInsertedBodyNumberDbEntryAddress)?
                     .AsRlpValueContext().DecodeLong();
         }
 
@@ -654,23 +651,12 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.CannotAccept;
             }
 
-            if (block.Hash is null)
-            {
-                throw new InvalidOperationException("An attempt to store a block with a null hash.");
-            }
-
             if (block.Number == 0)
             {
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
 
-
-            // if we carry Rlp from the network message all the way here then we could solve 4GB of allocations and some processing
-            // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
-            using (NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block))
-            {
-                _blockDb.Set(block.Hash, newRlp.AsSpan());
-            }
+            _blockStore.Insert(block);
 
             bool saveHeader = (insertBlockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0;
             if (saveHeader)
@@ -686,6 +672,7 @@ namespace Nethermind.Blockchain
             lock (_batchInsertLock)
             {
                 // TODO: why is this commented out? why was it here in the first place? (2021-03-27)
+                //       yea, why? (2023-05-17)
                 // try
                 // {
                 //   _blockDb.StartBatch();
@@ -757,8 +744,7 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("An attempt to suggest block with a null hash.");
                 }
 
-                using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
-                _blockDb.Set(block.Hash, newRlp.AsSpan());
+                _blockStore.Insert(block);
             }
 
             if (!isKnown)
@@ -1182,8 +1168,7 @@ namespace Nethermind.Blockchain
                 }
 
                 if (_logger.IsInfo) _logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
-                _blockCache.Delete(currentHash);
-                _blockDb.Delete(currentHash);
+                _blockStore.Delete(currentHash);
                 _headerCache.Delete(currentHash);
                 _headerDb.Delete(currentHash);
 
@@ -1272,7 +1257,7 @@ namespace Nethermind.Blockchain
                 Block block = blocks[i];
                 if (ShouldCache(block.Number))
                 {
-                    _blockCache.Set(block.Hash, blocks[i]);
+                    _blockStore.Cache(block);
                     _headerCache.Set(block.Hash, block.Header);
                 }
 
@@ -1346,7 +1331,7 @@ namespace Nethermind.Blockchain
                 Block block = blocks[i];
                 if (ShouldCache(block.Number))
                 {
-                    _blockCache.Set(block.Hash, blocks[i]);
+                    _blockStore.Cache(block);
                     _headerCache.Set(block.Hash, block.Header);
                 }
 
@@ -1791,7 +1776,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            Block block = _blockDb.Get(blockHash, _blockDecoder, _blockCache, false);
+            Block block = _blockStore.Get(blockHash, false);
             if (block is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
@@ -1845,7 +1830,7 @@ namespace Nethermind.Blockchain
 
             if (block is not null && ShouldCache(block.Number))
             {
-                _blockCache.Set(blockHash, block);
+                _blockStore.Cache(block);
                 _headerCache.Set(blockHash, block.Header);
             }
 
@@ -2038,7 +2023,7 @@ namespace Nethermind.Blockchain
                     {
                         Keccak blockHash = blockInfo.BlockHash;
                         _blockInfoDb.Delete(blockHash);
-                        _blockDb.Delete(blockHash);
+                        _blockStore.Delete(blockHash);
                         _headerDb.Delete(blockHash);
                     }
                 }
