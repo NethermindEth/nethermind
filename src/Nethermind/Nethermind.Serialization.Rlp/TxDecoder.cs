@@ -13,6 +13,7 @@ namespace Nethermind.Serialization.Rlp
     public class TxDecoder : TxDecoder<Transaction>, ITransactionSizeCalculator
     {
         public const int MaxDelayedHashTxnSize = 32768;
+        public static TxDecoder Instance = new TxDecoder();
 
         public int GetLength(Transaction tx)
         {

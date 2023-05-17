@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Receipts
                     throw new InvalidOperationException("Trying to recover more receipt that transaction");
                 }
 
-                Transaction transaction = _block.GetTransaction(_transactionIndex);
+                Transaction transaction = _block.GetNextTransaction();
 
                 receipt.TxType = transaction.Type;
                 receipt.BlockHash = _block.Hash;
@@ -122,7 +122,7 @@ namespace Nethermind.Blockchain.Receipts
                     throw new InvalidOperationException("Trying to recover more receipt that transaction");
                 }
 
-                Transaction transaction = _block.GetTransaction(_transactionIndex);
+                Transaction transaction = _block.GetNextTransaction();
 
                 receipt.TxType = transaction.Type;
                 receipt.BlockHash = _block.Hash!.ToStructRef();

@@ -393,7 +393,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         {
             (block, TxReceipt[] receipts) = PrepareBlock(block, isFinalized, headNumber);
             _storage.Insert(block, receipts);
-            _receiptsRecovery.TryRecover(block, receipts);
+            _receiptsRecovery.TryRecover(new ReceiptRecoveryBlock(block), receipts);
 
             return (block, receipts);
         }

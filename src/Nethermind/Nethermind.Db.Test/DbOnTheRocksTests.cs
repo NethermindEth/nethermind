@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
@@ -10,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks;
@@ -247,6 +249,21 @@ namespace Nethermind.Db.Test
             Span<byte> readSpan = _db.GetSpan(key);
             Assert.That(readSpan.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
             _db.DangerousReleaseMemory(readSpan);
+        }
+
+        [Test]
+        public void Smoke_test_span_with_memory_manager()
+        {
+            byte[] key = new byte[] { 1, 2, 3 };
+            byte[] value = new byte[] { 4, 5, 6 };
+            _db.PutSpan(key, value);
+            Span<byte> readSpan = _db.GetSpan(key);
+            Assert.That(readSpan.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
+
+            IMemoryOwner<byte> manager = new DbSpanMemoryManager(_db, readSpan);
+            Memory<byte> theMemory = manager.Memory;
+            Assert.That(theMemory.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
+            manager.Dispose();
         }
 
         private static RocksDbSettings GetRocksDbSettings(string dbPath, string dbName)

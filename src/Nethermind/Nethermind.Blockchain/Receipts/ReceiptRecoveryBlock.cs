@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
@@ -24,33 +28,40 @@ public class ReceiptRecoveryBlock
     {
         Header = block.Header;
         _transactions = block.Transactions;
+        TransactionCount = _transactions.Length;
     }
 
-    public ReceiptRecoveryBlock(BlockHeader header, Memory<byte> data)
+    public ReceiptRecoveryBlock(IMemoryOwner<byte>? memoryOwner, BlockHeader header, Memory<byte> transactionData, int transactionCount)
     {
-        Header = header ?? throw new ArgumentNullException(nameof(header));
-        Data = data;
+        Header = header;
+        _memoryOwner = memoryOwner;
+        _transactionData = transactionData;
+        TransactionCount = transactionCount;
     }
 
-    private Memory<byte> Data { get; set; }
-    private Memory<byte>[] TransactionData { get; set; }
-
+    private IMemoryOwner<byte>? _memoryOwner;
+    private Memory<byte> _transactionData { get; set; }
+    private int _currentTransactionPosition = 0;
 
     private Transaction[]? _transactions = null;
+    private int _currentTransactionIndex = 0;
 
     public BlockHeader Header { get; }
-    public int TransactionCount => _transactions?.Length ?? TransactionData.Length;
+    public int TransactionCount { get; }
 
-    public Transaction GetTransaction(int idx)
+    public Transaction GetNextTransaction()
     {
         if (_transactions != null)
         {
-            return _transactions[idx];
+            return _transactions[_currentTransactionIndex++];
         }
 
-        Rlp.ValueDecoderContext decoderContext = new(TransactionData[idx].Span);
+        Rlp.ValueDecoderContext decoderContext = new(_transactionData.Span);
+        decoderContext.Position = _currentTransactionPosition;
+        Transaction tx = TxDecoder.Instance.Decode(ref decoderContext);
+        _currentTransactionPosition = decoderContext.Position;
 
-        return TxDecoder.Instance.Decode(ref decoderContext);
+        return tx;
     }
 
     public Keccak? Hash => Header.Hash; // do not add setter here
@@ -58,5 +69,6 @@ public class ReceiptRecoveryBlock
 
     public void Dispose()
     {
+        _memoryOwner?.Dispose();
     }
 }
