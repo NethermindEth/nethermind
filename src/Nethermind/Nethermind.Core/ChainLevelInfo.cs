@@ -72,7 +72,7 @@ namespace Nethermind.Core
             return null;
         }
 
-        public BlockInfo? GetBlockInfo(Keccak blockHash)
+        public BlockInfo? FindBlockInfo(Keccak blockHash)
         {
             int? index = FindIndex(blockHash);
             return index.HasValue ? BlockInfos[index.Value] : null;

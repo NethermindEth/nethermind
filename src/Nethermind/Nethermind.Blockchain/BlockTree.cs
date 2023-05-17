@@ -1705,7 +1705,7 @@ namespace Nethermind.Blockchain
                 return (null, null);
             }
 
-            return (chainLevelInfo.GetBlockInfo(blockHash), chainLevelInfo);
+            return (chainLevelInfo.FindBlockInfo(blockHash), chainLevelInfo);
         }
 
         private ChainLevelInfo? LoadLevel(long number, bool forceLoad = true)
