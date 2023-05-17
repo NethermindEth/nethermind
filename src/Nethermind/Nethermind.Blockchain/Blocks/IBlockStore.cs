@@ -8,6 +8,7 @@ namespace Nethermind.Blockchain.Blocks;
 
 /// <summary>
 /// Raw block store. Does not know or care about blockchain or blocktree, only encoding/decoding to kv store.
+/// Generally you probably need IBlockTree instead of this.
 /// </summary>
 public interface IBlockStore
 {
