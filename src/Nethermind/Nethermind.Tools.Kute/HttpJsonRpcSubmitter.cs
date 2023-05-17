@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 
@@ -26,6 +27,10 @@ class HttpJsonRpcSubmitter : IJsonRpcSubmitter
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", _auth.AuthToken) },
             Content = new StringContent(jsonContent, Encoding.UTF8, "application/json")
         };
-        await _httpClient.SendAsync(request);
+        var response = await _httpClient.SendAsync(request);
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            throw new HttpRequestException($"Expected {HttpStatusCode.OK}, got {response.StatusCode}");
+        }
     }
 }
