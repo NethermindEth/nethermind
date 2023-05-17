@@ -3,23 +3,23 @@
 
 namespace Nethermind.Tools.Kute;
 
-class ConsoleMetricsConsumer : IMetricsConsumer
+class ConsoleReportMetricsConsumer : IMetricsConsumer
 {
     public void ConsumeMetrics(Metrics metrics)
     {
         Console.WriteLine($"""
-        Total Running Time:  {metrics.TotalRunningTime}
+        Total Running Time:  {metrics.TotalRunningTime.Milliseconds} ms
         Results:
-            Total:           {metrics.Total}
-            Failures:        {metrics.Failed}
+            Total:     {metrics.Total}
+            Failures:  {metrics.Failed}
             Methods:
-                Responses:   {metrics.Responses}
-                Requests:    {metrics.Requests.Count}
+                Responses: {metrics.Responses}
+                Requests:  {metrics.Requests.Values.Sum()}
         """);
         foreach (var (method, count) in metrics.Requests)
         {
             Console.WriteLine($"""
-                    {method}: {count}
+                    {method}:  {count}
         """);
         }
     }

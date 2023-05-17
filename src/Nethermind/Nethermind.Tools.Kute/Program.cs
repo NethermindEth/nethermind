@@ -32,7 +32,7 @@ static class Program
             collection.AddSingleton<IJsonRpcSubmitter, HttpJsonRpcSubmitter>();
         }
 
-        collection.AddSingleton<IMetricsConsumer, ConsoleMetricsConsumer>();
+        collection.AddSingleton<IMetricsConsumer, JsonMetricsConsumer>();
 
         return collection.BuildServiceProvider();
     }

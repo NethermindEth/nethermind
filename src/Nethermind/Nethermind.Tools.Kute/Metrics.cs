@@ -3,7 +3,7 @@
 
 namespace Nethermind.Tools.Kute;
 
-class Metrics
+public class Metrics
 {
     public int Total { get; private set; }
     public int Failed { get; private set; }
