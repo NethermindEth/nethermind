@@ -39,12 +39,14 @@ namespace Nethermind.Core
     [Flags]
     public enum WriteFlags
     {
-        None,
+        None = 0,
 
         // Hint that this is a low priority write
-        LowPriority,
+        LowPriority = 1,
 
         // Hint that this write does not require durable writes, as if it crash, it'll start over anyway.
-        DisableWAL,
+        DisableWAL = 2,
+
+        LowPriorityAndNoWAL = LowPriority | DisableWAL,
     }
 }
