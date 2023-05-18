@@ -13,5 +13,5 @@ class ComposedJsonRpcMethodFilter : IJsonRpcMethodFilter
     }
 
     public bool ShouldSubmit(string methodName) =>
-        _filters.All(f => f.ShouldSubmit(methodName));
+        _filters.Any(f => f.ShouldSubmit(methodName));
 }
