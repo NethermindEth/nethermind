@@ -14,7 +14,7 @@ public class Config
         Required = true,
         HelpText = "Path to a Folder or a File containing JSON RPC messages"
     )]
-    public string MessagesSourcePath { get; }
+    public string MessagesFilePath { get; }
 
     [Option(
         shortName: 'a',
@@ -31,7 +31,7 @@ public class Config
         Required = true,
         HelpText = "Path to file with hex encoded secret for jwt authentication"
     )]
-    public string JwtSecretFile { get; }
+    public string JwtSecretFilePath { get; }
 
     [Option(
         shortName: 'd',
@@ -62,17 +62,17 @@ public class Config
     public IEnumerable<string> MethodFilters { get; }
 
     public Config(
-        string messagesSourcePath,
+        string messagesFilePath,
         string hostAddress,
-        string jwtSecretFile,
+        string jwtSecretFilePath,
         bool dryRun,
         MetricConsumerStrategy metricConsumerStrategy,
         IEnumerable<string> methodFilters
     )
     {
-        MessagesSourcePath = messagesSourcePath;
+        MessagesFilePath = messagesFilePath;
         HostAddress = hostAddress;
-        JwtSecretFile = jwtSecretFile;
+        JwtSecretFilePath = jwtSecretFilePath;
         DryRun = dryRun;
         MetricConsumerStrategy = metricConsumerStrategy;
         MethodFilters = methodFilters;
