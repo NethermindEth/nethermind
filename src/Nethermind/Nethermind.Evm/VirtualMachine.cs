@@ -1264,10 +1264,10 @@ public class VirtualMachine : IVirtualMachine
                         Address address = stack.PopAddress();
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
 
-                        if (programCounter < code.Length)
+                        if (programCounter < codeSection.Length)
                         {
                             bool optimizeAccess = false;
-                            Instruction nextInstruction = (Instruction)code[programCounter];
+                            Instruction nextInstruction = (Instruction)codeSection[programCounter];
                             // code.length is zero
                             if (nextInstruction == Instruction.ISZERO)
                             {
