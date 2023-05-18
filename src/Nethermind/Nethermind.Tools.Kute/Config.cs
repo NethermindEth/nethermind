@@ -55,6 +55,7 @@ public class Config
         longName: "filters",
         Separator = ',',
         Required = false,
+        Default = new string[] { },
         HelpText = "A comma separated List of regexes of methods to be executed"
     )]
     public string[] MethodFilters { get; }
