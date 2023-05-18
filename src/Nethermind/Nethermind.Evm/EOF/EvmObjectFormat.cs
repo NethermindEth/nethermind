@@ -309,25 +309,28 @@ internal static class EvmObjectFormat
                 return false;
             }
 
-            for (int sectionIdx = 0; sectionIdx < header.CodeSections.Length; sectionIdx++)
+            bool[] visitedSections = ArrayPool<bool>.Shared.Rent(header.CodeSections.Length);
+            Queue<ushort> validationQueue = new Queue<ushort>();
+            validationQueue.Enqueue(0);
+
+            while (validationQueue.TryDequeue(out ushort sectionIdx))
             {
+                if (visitedSections[sectionIdx])
+                {
+                    continue;
+                }
+
+                visitedSections[sectionIdx] = true;
                 SectionHeader sectionHeader = header.CodeSections[sectionIdx];
                 (int codeSectionStartOffset, int codeSectionSize) = sectionHeader;
                 ReadOnlySpan<byte> code = container.Slice(codeSectionStartOffset, codeSectionSize);
-                if (!ValidateInstructions(code, header, out ushort jumpsCount))
+                if (!ValidateInstructions(sectionIdx, typesection ,code, header, validationQueue, out ushort jumpsCount))
                 {
-                    if (Logger.IsTrace) Logger.Trace($"EIP-3670 : CodeSection {sectionIdx} contains invalid body");
-                    return false;
-                }
-
-                if (!ValidateStackState(sectionIdx, code, typesection, jumpsCount))
-                {
-                    if (Logger.IsTrace) Logger.Trace($"EIP-5450 : CodeSection {sectionIdx} create has Invalid stack configuration");
                     return false;
                 }
             }
 
-            return true;
+            return visitedSections[..header.CodeSections.Length].All(id => id);
         }
 
         bool ValidateTypeSection(ReadOnlySpan<byte> types)
@@ -370,7 +373,7 @@ internal static class EvmObjectFormat
             }
             return true;
         }
-        bool ValidateInstructions(ReadOnlySpan<byte> code, in EofHeader header, out ushort jumpsCount)
+        bool ValidateInstructions(ushort sectionId, ReadOnlySpan<byte> typesection, ReadOnlySpan<byte> code, in EofHeader header, Queue<ushort> worklist, out ushort jumpsCount)
         {
             byte[] codeBitmap = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
             byte[] jumpdests = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
@@ -465,6 +468,8 @@ internal static class EvmObjectFormat
                             if (Logger.IsTrace) Logger.Trace($"EIP-4750 : Invalid Section Id");
                             return false;
                         }
+
+                        worklist.Enqueue(targetSectionId);
                     }
 
                     if (opcode is >= Instruction.PUSH0 and <= Instruction.PUSH32)
@@ -490,6 +495,11 @@ internal static class EvmObjectFormat
                 if (!result)
                 {
                     if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Invalid Jump destination");
+                }
+
+                if (!ValidateStackState(sectionId, code, typesection, jumpsCount))
+                {
+                    return false;
                 }
                 return result;
             }
@@ -529,9 +539,6 @@ internal static class EvmObjectFormat
             }
             return true;
         }
-
-
-
         public bool ValidateStackState(int sectionId, in ReadOnlySpan<byte> code, in ReadOnlySpan<byte> typesection, ushort worksetCount)
         {
             static Worklet PopWorklet(Worklet[] workset, ref ushort worksetPointer) => workset[worksetPointer++];
