@@ -59,7 +59,7 @@ public class Config
         Default = new string[] { },
         HelpText = "A comma separated List of regexes of methods to be executed"
     )]
-    public string[] MethodFilters { get; }
+    public IEnumerable<string> MethodFilters { get; }
 
     public Config(
         string messagesSourcePath,
@@ -67,7 +67,7 @@ public class Config
         string jwtSecretFile,
         bool dryRun,
         MetricConsumerStrategy metricConsumerStrategy,
-        string[] methodFilters
+        IEnumerable<string> methodFilters
     )
     {
         MessagesSourcePath = messagesSourcePath;
