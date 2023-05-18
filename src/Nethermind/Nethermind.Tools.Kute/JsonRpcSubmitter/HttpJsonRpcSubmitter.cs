@@ -14,11 +14,11 @@ class HttpJsonRpcSubmitter : IJsonRpcSubmitter
     private readonly HttpClient _httpClient;
     private readonly IAuth _auth;
 
-    public HttpJsonRpcSubmitter(HttpClient httpClient, IAuth auth, Config config)
+    public HttpJsonRpcSubmitter(HttpClient httpClient, IAuth auth, string hostAddress)
     {
         _httpClient = httpClient;
         _auth = auth;
-        _uri = new Uri(config.HostAddress);
+        _uri = new Uri(hostAddress);
     }
 
     public async Task Submit(string jsonContent)

@@ -30,9 +30,9 @@ static class Program
         collection.AddSingleton<Application>();
         collection.AddSingleton<ISystemClock, SystemClock.SystemClock>();
         collection.AddSingleton<HttpClient>();
-        collection.AddSingleton<ISecretProvider>(new FileSecretProvider(config.JwtSecretFile));
+        collection.AddSingleton<ISecretProvider>(new FileSecretProvider(config.JwtSecretFilePath));
         collection.AddSingleton<IAuth, JwtAuth>();
-        collection.AddSingleton<IJsonRpcMessageProvider, FileJsonRpcMessageProvider>();
+        collection.AddSingleton<IJsonRpcMessageProvider>(new FileJsonRpcMessageProvider(config.MessagesFilePath));
         collection.AddSingleton<IJsonRpcMethodFilter>(
             new ComposedJsonRpcMethodFilter(config.MethodFilters.Select(pattern =>
                 new PatternJsonRpcMethodFilter(pattern)))
@@ -43,7 +43,13 @@ static class Program
         }
         else
         {
-            collection.AddSingleton<IJsonRpcSubmitter, HttpJsonRpcSubmitter>();
+            collection.AddSingleton<IJsonRpcSubmitter>(provider =>
+                new HttpJsonRpcSubmitter(
+                    provider.GetRequiredService<HttpClient>(),
+                    provider.GetRequiredService<IAuth>(),
+                    config.HostAddress
+                )
+            );
         }
 
         switch (config.MetricConsumerStrategy)
