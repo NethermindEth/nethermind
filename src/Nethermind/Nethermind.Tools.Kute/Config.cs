@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using CommandLine;
+using Nethermind.Tools.Kute.MetricsConsumer;
 
 namespace Nethermind.Tools.Kute;
 

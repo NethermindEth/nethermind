@@ -3,7 +3,10 @@
 
 using System.Diagnostics;
 using System.Text.Json;
+using Nethermind.Tools.Kute.JsonRpcMessageProvider;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
+using Nethermind.Tools.Kute.JsonRpcSubmitter;
+using Nethermind.Tools.Kute.MetricsConsumer;
 
 namespace Nethermind.Tools.Kute;
 

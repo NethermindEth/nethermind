@@ -3,7 +3,7 @@
 
 using System.Text.Json;
 
-namespace Nethermind.Tools.Kute;
+namespace Nethermind.Tools.Kute.MetricsConsumer;
 
 public class JsonMetricsConsumer : IMetricsConsumer
 {

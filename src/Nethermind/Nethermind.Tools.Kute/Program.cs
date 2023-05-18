@@ -1,6 +1,11 @@
 ﻿using CommandLine;
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Tools.Kute.Auth;
+using Nethermind.Tools.Kute.JsonRpcMessageProvider;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
+using Nethermind.Tools.Kute.JsonRpcSubmitter;
+using Nethermind.Tools.Kute.MetricsConsumer;
+using Nethermind.Tools.Kute.SystemClock;
 
 namespace Nethermind.Tools.Kute;
 
@@ -23,12 +28,13 @@ static class Program
 
         collection.AddSingleton(config);
         collection.AddSingleton<Application>();
-        collection.AddSingleton<ISystemClock, SystemClock>();
+        collection.AddSingleton<ISystemClock, SystemClock.SystemClock>();
         collection.AddSingleton<HttpClient>();
         collection.AddSingleton<IAuth, JwtAuth>();
         collection.AddSingleton<IJsonRpcMessageProvider, FileJsonRpcMessageProvider>();
         collection.AddSingleton<IJsonRpcMethodFilter>(
-            new ComposedJsonRpcMethodFilter(config.MethodFilters.Select(pattern => new PatternJsonRpcMethodFilter(pattern)))
+            new ComposedJsonRpcMethodFilter(config.MethodFilters.Select(pattern =>
+                new PatternJsonRpcMethodFilter(pattern)))
         );
         if (config.DryRun)
         {

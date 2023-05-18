@@ -4,8 +4,9 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using Nethermind.Tools.Kute.Auth;
 
-namespace Nethermind.Tools.Kute;
+namespace Nethermind.Tools.Kute.JsonRpcSubmitter;
 
 class HttpJsonRpcSubmitter : IJsonRpcSubmitter
 {

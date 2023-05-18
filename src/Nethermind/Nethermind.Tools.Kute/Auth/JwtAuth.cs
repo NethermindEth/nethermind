@@ -4,8 +4,9 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.IdentityModel.Tokens;
+using Nethermind.Tools.Kute.SystemClock;
 
-namespace Nethermind.Tools.Kute;
+namespace Nethermind.Tools.Kute.Auth;
 
 class JwtAuth : IAuth
 {
