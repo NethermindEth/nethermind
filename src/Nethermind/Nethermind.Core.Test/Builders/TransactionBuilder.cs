@@ -146,7 +146,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.BlobVersionedHashes = blobVersionedHashes;
             return this;
         }
-        public TransactionBuilder<T> WitheofInitcodes(byte[][] initcodes)
+        public TransactionBuilder<T> WithEofInitcodes(byte[][] initcodes)
         {
             TestObjectInternal.Initcodes = initcodes;
             return this;
