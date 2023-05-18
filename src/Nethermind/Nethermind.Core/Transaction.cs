@@ -66,11 +66,11 @@ namespace Nethermind.Core
             }
             set
             {
-                lock (this)
+                if (_preHash.Count != 0)
                 {
                     ClearPreHashInternal();
-                    _hash = value;
                 }
+                _hash = value;
             }
         }
 

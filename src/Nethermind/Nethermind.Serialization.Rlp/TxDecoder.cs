@@ -89,7 +89,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Check(lastCheck);
             }
 
-            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
+            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && (rlpBehaviors & RlpBehaviors.DisableLazyHash) == 0)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 transaction.SetPreHash(transactionSequence);
@@ -271,7 +271,7 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(lastCheck);
             }
 
-            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
+            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && (rlpBehaviors & RlpBehaviors.DisableLazyHash) == 0)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 transaction.SetPreHash(transactionSequence);
