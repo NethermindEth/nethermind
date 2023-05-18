@@ -18,7 +18,8 @@ namespace Nethermind.Serialization.Rlp
                                 // when we're calculating tx hash or sending raw transaction we should skip this wrapping
                                 // with additional wrapping for typed transactions we're decoding Uint8Array([TransactionType, TransactionPayload]
                                 // without wrapping we're decoding (TransactionType || TransactionPayload)
-        DisableLazyHash = 64,
+        DisableLazyHash = 64, // Disable lazy hash calculation in transaction
+        SliceMemory = 128,  // Slice Memory<byte> if available instead of copying span to an array.
         All = AllowExtraBytes | ForSealing | Storage | Eip658Receipts | AllowUnsigned | SkipTypedWrapping
     }
 }

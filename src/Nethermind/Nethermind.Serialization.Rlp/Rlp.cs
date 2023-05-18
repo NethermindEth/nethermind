@@ -544,6 +544,15 @@ namespace Nethermind.Serialization.Rlp
                 Position = 0;
             }
 
+            public ValueDecoderContext(Memory<byte> memory)
+            {
+                Memory = memory;
+                Data = memory.Span;
+                Position = 0;
+            }
+
+            public Memory<byte>? Memory { get; }
+
             public Span<byte> Data { get; }
 
             public bool IsEmpty => Data.IsEmpty;
@@ -744,6 +753,13 @@ namespace Nethermind.Serialization.Rlp
             public Span<byte> Read(int length)
             {
                 Span<byte> data = Data.Slice(Position, length);
+                Position += length;
+                return data;
+            }
+
+            public Memory<byte> ReadMemory(int length)
+            {
+                Memory<byte> data = Memory.Value.Slice(Position, length);
                 Position += length;
                 return data;
             }
@@ -1119,6 +1135,63 @@ namespace Nethermind.Serialization.Rlp
                     }
 
                     return Read(length);
+                }
+
+                throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
+            }
+
+            public Memory<byte>? DecodeByteArrayMemory(bool allowLeadingZeroBytes = true)
+            {
+                if (Memory == null)
+                {
+                    throw new RlpException("Rlp not backed by a Memory<byte>");
+                }
+
+                int prefix = ReadByte();
+                if (!allowLeadingZeroBytes && prefix == 0)
+                {
+                    throw new RlpException($"Non-canonical ulong (leading zero bytes) at position {Position}");
+                }
+
+                if (prefix < 128)
+                {
+                    return Memory.Value.Slice(Position - 1, 1);
+                }
+
+                if (prefix == 128)
+                {
+                    return Array.Empty<byte>();
+                }
+
+                if (prefix <= 183)
+                {
+                    int length = prefix - 128;
+                    Memory<byte> buffer = ReadMemory(length);
+                    Span<byte> asSpan = buffer.Span;
+                    if (length == 1 && asSpan[0] < 128)
+                    {
+                        throw new RlpException($"Unexpected byte value {asSpan[0]}");
+                    }
+
+                    return buffer;
+                }
+
+                if (prefix < 192)
+                {
+                    int lengthOfLength = prefix - 183;
+                    if (lengthOfLength > 4)
+                    {
+                        // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
+                        throw new RlpException("Expected length of lenth less or equal 4");
+                    }
+
+                    int length = DeserializeLength(lengthOfLength);
+                    if (length < 56)
+                    {
+                        throw new RlpException("Expected length greater or equal 56 and was {length}");
+                    }
+
+                    return ReadMemory(length);
                 }
 
                 throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
