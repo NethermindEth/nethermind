@@ -224,7 +224,7 @@ namespace Nethermind.Evm
         }
 
         //Note() : Extensively test this, refactor it, 
-        public static (int InputCount, int OutputCount, int immediates) StackRequirements(this Instruction instruction) => instruction switch
+        public static (ushort? InputCount, ushort? OutputCount, ushort? immediates) StackRequirements(this Instruction instruction) => instruction switch
         {
             Instruction.STOP => (0, 0, 0),
             Instruction.ADD => (2, 1, 0),
@@ -291,8 +291,8 @@ namespace Nethermind.Evm
             Instruction.RJUMPI => (1, 0, 2),
             Instruction.DATAHASH => (1, 1, 0),
             >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, 1, instruction - Instruction.PUSH0),
-            >= Instruction.DUP1 and <= Instruction.DUP16 => (instruction - Instruction.DUP1 + 1, instruction - Instruction.DUP1 + 2, 0),
-            >= Instruction.SWAP1 and <= Instruction.SWAP16 => (instruction - Instruction.SWAP1 + 2, instruction - Instruction.SWAP1 + 2, 0),
+            >= Instruction.DUP1 and <= Instruction.DUP16 => ((ushort)(instruction - Instruction.DUP1 + 1), (ushort)(instruction - Instruction.DUP1 + 2), 0),
+            >= Instruction.SWAP1 and <= Instruction.SWAP16 => ((ushort)(instruction - Instruction.SWAP1 + 2), (ushort)(instruction - Instruction.SWAP1 + 2), 0),
             Instruction.LOG0 => (2, 0, 0),
             Instruction.LOG1 => (3, 0, 0),
             Instruction.LOG2 => (4, 0, 0),
@@ -308,9 +308,9 @@ namespace Nethermind.Evm
             Instruction.STATICCALL => (6, 1, 0),
             Instruction.REVERT => (2, 0, 0),
             Instruction.INVALID => (0, 0, 0),
-            Instruction.RJUMPV => (1, 0, -1), // -1 indicates this is a dynamic multi-bytes opcode
-            Instruction.SWAPN => (-1, -1, 1),
-            Instruction.DUPN => (-1, -1, 1),
+            Instruction.RJUMPV => (1, 0, null), // null indicates this is a dynamic multi-bytes opcode
+            Instruction.SWAPN => (null, null, 1),
+            Instruction.DUPN => (null, null, 1),
             _ => throw new NotImplementedException($"Instruction {instruction} not implemented")
         };
 
@@ -327,13 +327,5 @@ namespace Nethermind.Evm
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
             };
         }
-
-        public static bool IsOnlyForEofBytecode(this Instruction instruction) => instruction switch
-        {
-            Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => true,
-            Instruction.RETF or Instruction.CALLF => true,
-            Instruction.SWAPN or Instruction.DUPN => true,
-            _ => false
-        };
     }
 }
