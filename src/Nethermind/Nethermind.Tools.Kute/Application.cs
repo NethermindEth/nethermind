@@ -66,11 +66,14 @@ class Application
                 continue;
             }
 
-            if (_methodFilter.ShouldSubmit(methodName))
+            if (_methodFilter.ShouldIgnore(methodName))
             {
-                _metrics.TickMethod(methodName);
-                await _submitter.Submit(msg);
+                _metrics.TickIgnored();
+                continue;
             }
+
+            _metrics.TickMethod(methodName);
+            await _submitter.Submit(msg);
         }
 
         _metrics.TotalRunningTime = Stopwatch.GetElapsedTime(start);

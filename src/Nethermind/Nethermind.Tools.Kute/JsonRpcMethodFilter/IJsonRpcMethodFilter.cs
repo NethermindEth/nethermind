@@ -6,4 +6,6 @@ namespace Nethermind.Tools.Kute.JsonRpcMethodFilter;
 interface IJsonRpcMethodFilter
 {
     bool ShouldSubmit(string methodName);
+
+    bool ShouldIgnore(string methodName) => !ShouldSubmit(methodName);
 }

@@ -14,6 +14,7 @@ public class JsonMetricsConsumer : IMetricsConsumer
             RunningTime = $"{metrics.TotalRunningTime.TotalMilliseconds} ms",
             metrics.Messages,
             metrics.Failed,
+            metrics.Ignored,
             Methods = new { metrics.Responses, metrics.Requests }
         };
 

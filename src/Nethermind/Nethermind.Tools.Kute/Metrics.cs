@@ -7,6 +7,7 @@ public class Metrics
 {
     public int Messages { get; private set; }
     public int Failed { get; private set; }
+    public int Ignored { get; private set; }
     public int Responses { get; private set; }
     public IDictionary<string, int> Requests { get; } = new Dictionary<string, int>();
 
@@ -14,6 +15,7 @@ public class Metrics
 
     public void TickMessages() => Messages++;
     public void TickFailed() => Failed++;
+    public void TickIgnored() => Ignored++;
     public void TickResponses() => Responses++;
 
     public void TickMethod(string methodName)

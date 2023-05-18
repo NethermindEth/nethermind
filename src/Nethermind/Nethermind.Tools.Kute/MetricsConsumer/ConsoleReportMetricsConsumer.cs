@@ -12,6 +12,7 @@ class ConsoleReportMetricsConsumer : IMetricsConsumer
         Results:
             Messages:  {metrics.Messages}
             Failed:    {metrics.Failed}
+            Ignored:   {metrics.Ignored}
             Methods:
                 Responses: {metrics.Responses}
                 Requests:  {metrics.Requests.Values.Sum()}
