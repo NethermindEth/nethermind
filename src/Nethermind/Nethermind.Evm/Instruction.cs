@@ -220,7 +220,7 @@ namespace Nethermind.Evm
         }
 
         //Note() : Extensively test this, refactor it, 
-        public static (int InputCount, int OutputCount, int immediates) StackRequirements(this Instruction instruction) => instruction switch
+        public static (ushort InputCount, ushort OutputCount, ushort immediates) StackRequirements(this Instruction instruction) => instruction switch
         {
             Instruction.STOP => (0, 0, 0),
             Instruction.ADD => (2, 1, 0),
@@ -288,8 +288,8 @@ namespace Nethermind.Evm
             Instruction.RJUMPV => (1, 0, 4),
             Instruction.DATAHASH => (1, 1, 0),
             >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, 1, instruction - Instruction.PUSH0),
-            >= Instruction.DUP1 and <= Instruction.DUP16 => (instruction - Instruction.DUP1 + 1, instruction - Instruction.DUP1 + 2, 0),
-            >= Instruction.SWAP1 and <= Instruction.SWAP16 => (instruction - Instruction.SWAP1 + 2, instruction - Instruction.SWAP1 + 2, 0),
+            >= Instruction.DUP1 and <= Instruction.DUP16 => ((ushort)(instruction - Instruction.DUP1 + 1), (ushort)(instruction - Instruction.DUP1 + 2), 0),
+            >= Instruction.SWAP1 and <= Instruction.SWAP16 => ((ushort)(instruction - Instruction.SWAP1 + 2), (ushort)(instruction - Instruction.SWAP1 + 2), 0),
             Instruction.LOG0 => (2, 0, 0),
             Instruction.LOG1 => (3, 0, 0),
             Instruction.LOG2 => (4, 0, 0),
