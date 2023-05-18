@@ -8,19 +8,23 @@ class ConsoleReportMetricsConsumer : IMetricsConsumer
     public void ConsumeMetrics(Metrics metrics)
     {
         Console.WriteLine($"""
-        Running Time:  {metrics.TotalRunningTime.TotalMilliseconds} ms
-        Results:
-            Messages:  {metrics.Messages}
-            Failed:    {metrics.Failed}
-            Ignored:   {metrics.Ignored}
-            Methods:
-                Responses: {metrics.Responses}
-                Requests:  {metrics.Requests.Values.Sum()}
+        Running Time .. {metrics.TotalRunningTime.TotalMilliseconds} ms
+        Results
+          Messages .. {metrics.Messages}
+          Failed .... {metrics.Failed}
+          Ignored ... {metrics.Ignored}
+          Methods
+            Responses .. {metrics.Responses}
+            Requests ... {metrics.Requests.Values.Sum()}
         """);
+        var longestMethod = metrics.Requests.Keys
+            .MaxBy(method => method.Length)?
+            .Length ?? 0;
         foreach (var (method, count) in metrics.Requests)
         {
+            var dots = new string('.', (2 + longestMethod - method.Length));
             Console.WriteLine($"""
-                    {method}:  {count}
+              {method} {dots} {count}
         """);
         }
     }
