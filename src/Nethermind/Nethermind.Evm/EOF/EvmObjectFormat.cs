@@ -355,13 +355,25 @@ internal static class EvmObjectFormat
                 return false;
             }
 
-            for (int sectionIdx = 0; sectionIdx < header.CodeSections.Length; sectionIdx++)
+
+            EofCallGraph callGraph = new();
+
+            // one possible optimization of this loop: traverse code sections as a graph, queuing sections called into a handling queue
+            for (ushort sectionIdx = 0; sectionIdx < header.CodeSections.Length; sectionIdx++)
             {
                 SectionHeader sectionHeader = header.CodeSections[sectionIdx];
                 (int codeSectionStartOffset, int codeSectionSize) = sectionHeader;
                 ReadOnlySpan<byte> code = container.Slice(codeSectionStartOffset, codeSectionSize);
-                if (!ValidateInstructions(typesection, code, header, out ushort jumpsCount)) return false;
+                if (!ValidateInstructions(sectionIdx, typesection, code, header, callGraph , out ushort jumpsCount)) return false;
                 if (!ValidateStackState(sectionIdx, code, typesection, jumpsCount)) return false;
+            }
+
+            var segragatedCallsValidation = callGraph.TraverseAndValidate(0);
+
+            if(!segragatedCallsValidation)
+            {
+                if (Logger.IsTrace) Logger.Trace($"EIP-XXXX: non-returning function can only call non-returning functions");
+                return false;
             }
 
             return true;
@@ -407,7 +419,8 @@ internal static class EvmObjectFormat
             }
             return true;
         }
-        bool ValidateInstructions(ReadOnlySpan<byte> typesection, ReadOnlySpan<byte> code, in EofHeader header, out ushort jumpsCount)
+
+        bool ValidateInstructions(ushort sectionId, ReadOnlySpan<byte> typesection, ReadOnlySpan<byte> code, in EofHeader header, EofCallGraph graph, out ushort jumpsCount)
         {
             byte[] codeBitmap = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
             byte[] jumpdests = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
@@ -465,6 +478,9 @@ internal static class EvmObjectFormat
                             if (Logger.IsTrace) Logger.Trace($"EIP-6206 : JUMPF to unknown code section");
                             return false;
                         }
+
+                        graph.AddCall(sectionId, targetSectionId, opcode);
+                        graph.FlagSection(targetSectionId, typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80);
                     }
 
                     if (opcode is Instruction.RJUMPV)
@@ -529,7 +545,16 @@ internal static class EvmObjectFormat
                             return false;
                         }
                         // end block
+
+                        graph.AddCall(sectionId, targetSectionId, opcode);
+                        graph.FlagSection(targetSectionId, typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80);
                     }
+
+                    if(opcode is Instruction.RETF && typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : non returning sections are not allowed to use opcode {Instruction.RETF}");
+                        return false;
+                    } 
 
                     if (opcode is >= Instruction.PUSH0 and <= Instruction.PUSH32)
                     {
