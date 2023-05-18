@@ -5,21 +5,22 @@ namespace Nethermind.Tools.Kute.JsonRpcMessageProvider;
 
 class FileJsonRpcMessageProvider : IJsonRpcMessageProvider
 {
-    private readonly string _path;
+    private readonly string _filePath;
 
-    public FileJsonRpcMessageProvider(Config config)
+    public FileJsonRpcMessageProvider(string filePath)
     {
-        _path = config.MessagesSourcePath;
+        _filePath = filePath;
     }
+
 
     public IAsyncEnumerable<string> Messages
     {
         get
         {
-            var pathInfo = new FileInfo(_path);
+            var pathInfo = new FileInfo(_filePath);
             if (pathInfo.Attributes.HasFlag(FileAttributes.Directory))
             {
-                return Directory.GetFiles(_path)
+                return Directory.GetFiles(_filePath)
                     .Select(filePath => new FileInfo(filePath))
                     .OrderBy(info => info.LastWriteTime)
                     .ToAsyncEnumerable()
@@ -28,10 +29,10 @@ class FileJsonRpcMessageProvider : IJsonRpcMessageProvider
 
             if (pathInfo.Attributes.HasFlag(FileAttributes.Normal))
             {
-                return File.ReadLinesAsync(_path);
+                return File.ReadLinesAsync(_filePath);
             }
 
-            throw new ArgumentException("Path is neither a Folder or a File", nameof(_path));
+            throw new ArgumentException("Path is neither a Folder or a File", nameof(_filePath));
         }
     }
 }
