@@ -216,8 +216,10 @@ public class ChainSpecBasedSpecProviderTests
         List<ForkActivation> forkActivationsToTest = new()
         {
             (ForkActivation)0,
-            (ForkActivation)1,
-            (ForkActivation)999_999_999, // far in the future
+            //(ForkActivation)1,
+            (1, ChiadoSpecProvider.ShanghaiTimestamp - 1),
+            (1, ChiadoSpecProvider.ShanghaiTimestamp),
+            (999_999_999, 999_999_999) // far in the future
         };
 
         CompareSpecProviders(chiado, provider, forkActivationsToTest, CompareSpecsOptions.IsGnosis);
@@ -322,7 +324,7 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
-    private static void CompareSpecs(IReleaseSpec expectedSpec, IReleaseSpec ActualSpec, ForkActivation activation, CompareSpecsOptions compareSpecsOptions)
+    private static void CompareSpecs(IReleaseSpec expectedSpec, IReleaseSpec actualSpec, ForkActivation activation, CompareSpecsOptions compareSpecsOptions)
     {
         bool isMainnet = (compareSpecsOptions & CompareSpecsOptions.IsMainnet) != 0;
         bool checkDifficultyBomb = (compareSpecsOptions & CompareSpecsOptions.CheckDifficultyBomb) != 0;
@@ -355,7 +357,7 @@ public class ChainSpecBasedSpecProviderTests
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.LimitCodeSize))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.UseConstantinopleNetGasMetering)))
         {
-            Assert.That(propertyInfo.GetValue(ActualSpec), Is.EqualTo(propertyInfo.GetValue(expectedSpec)),
+            Assert.That(propertyInfo.GetValue(actualSpec), Is.EqualTo(propertyInfo.GetValue(expectedSpec)),
                 activation + "." + propertyInfo.Name);
         }
     }
