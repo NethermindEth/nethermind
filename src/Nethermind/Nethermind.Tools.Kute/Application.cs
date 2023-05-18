@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Text.Json;
+using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 
 namespace Nethermind.Tools.Kute;
 
@@ -13,16 +14,19 @@ class Application
     private readonly IJsonRpcMessageProvider _msgProvider;
     private readonly IJsonRpcSubmitter _submitter;
     private readonly IMetricsConsumer _metricsConsumer;
+    private readonly IJsonRpcMethodFilter _methodFilter;
 
     public Application(
         IJsonRpcMessageProvider msgProvider,
         IJsonRpcSubmitter submitter,
-        IMetricsConsumer metricsConsumer
+        IMetricsConsumer metricsConsumer,
+        IJsonRpcMethodFilter methodFilter
     )
     {
         _msgProvider = msgProvider;
         _submitter = submitter;
         _metricsConsumer = metricsConsumer;
+        _methodFilter = methodFilter;
     }
 
     public async Task Run()
@@ -43,17 +47,25 @@ class Application
             if (rpc.RootElement.TryGetProperty("response", out _))
             {
                 _metrics.TickResponses();
+                continue;
             }
 
-            if (rpc.RootElement.TryGetProperty("method", out var jsonMethodField))
+            if (!rpc.RootElement.TryGetProperty("method", out var jsonMethodField))
             {
-                var methodName = jsonMethodField.GetString();
-                if (methodName is not null)
-                {
-                    _metrics.TickMethod(methodName);
-                }
+                _metrics.TickFailed();
+                continue;
+            }
 
+            var methodName = jsonMethodField.GetString();
+            if (methodName is null)
+            {
+                _metrics.TickFailed();
+                continue;
+            }
 
+            if (_methodFilter.ShouldSubmit(methodName))
+            {
+                _metrics.TickMethod(methodName);
                 await _submitter.Submit(msg);
             }
         }

@@ -46,16 +46,26 @@ public class Config
         longName: "output",
         Required = false,
         Default = MetricConsumerStrategy.Report,
-        HelpText = "Strategy to report metrics."
+        HelpText = "Strategy to report metrics"
     )]
     public MetricConsumerStrategy MetricConsumerStrategy { get; }
+
+    [Option(
+        shortName: 'f',
+        longName: "filters",
+        Separator = ',',
+        Required = false,
+        HelpText = "A comma separated List of regexes of methods to be executed"
+    )]
+    public string[] MethodFilters { get; }
 
     public Config(
         string messagesSourcePath,
         string hostAddress,
         string jwtSecretFile,
         bool dryRun,
-        MetricConsumerStrategy metricConsumerStrategy
+        MetricConsumerStrategy metricConsumerStrategy,
+        string[] methodFilters
     )
     {
         MessagesSourcePath = messagesSourcePath;
@@ -63,5 +73,6 @@ public class Config
         JwtSecretFile = jwtSecretFile;
         DryRun = dryRun;
         MetricConsumerStrategy = metricConsumerStrategy;
+        MethodFilters = methodFilters;
     }
 }

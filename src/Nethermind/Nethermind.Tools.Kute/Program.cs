@@ -1,5 +1,6 @@
 ﻿using CommandLine;
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 
 namespace Nethermind.Tools.Kute;
 
@@ -26,6 +27,9 @@ static class Program
         collection.AddSingleton<HttpClient>();
         collection.AddSingleton<IAuth, JwtAuth>();
         collection.AddSingleton<IJsonRpcMessageProvider, FileJsonRpcMessageProvider>();
+        collection.AddSingleton<IJsonRpcMethodFilter>(
+            new ComposedJsonRpcMethodFilter(config.MethodFilters.Select(pattern => new PatternJsonRpcMethodFilter(pattern)))
+        );
         if (config.DryRun)
         {
             collection.AddSingleton<IJsonRpcSubmitter, NullJsonRpcSubmitter>();
