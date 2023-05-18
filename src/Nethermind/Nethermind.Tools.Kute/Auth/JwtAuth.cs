@@ -24,7 +24,7 @@ class JwtAuth : IAuth
     {
         _clock = clock;
 
-        var hexSecret = File.ReadAllText(secretProvider.Secret).Trim();
+        var hexSecret = secretProvider.Secret;
         _secret = Enumerable.Range(0, hexSecret.Length)
             .Where(x => x % 2 == 0)
             .Select(x => Convert.ToByte(hexSecret.Substring(x, 2), 16))
