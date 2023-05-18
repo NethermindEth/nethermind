@@ -355,28 +355,31 @@ internal static class EvmObjectFormat
                 return false;
             }
 
+            bool[] visitedSections = ArrayPool<bool>.Shared.Rent(header.CodeSections.Length);
+            Queue<ushort> validationQueue = new Queue<ushort>();
+            validationQueue.Enqueue(0);
 
             EofCallGraph callGraph = new();
 
-            // one possible optimization of this loop: traverse code sections as a graph, queuing sections called into a handling queue
-            for (ushort sectionIdx = 0; sectionIdx < header.CodeSections.Length; sectionIdx++)
+
+            while (validationQueue.TryDequeue(out ushort sectionIdx))
             {
+                if (visitedSections[sectionIdx])
+                {
+                    continue;
+                }
+
+                visitedSections[sectionIdx] = true;
                 SectionHeader sectionHeader = header.CodeSections[sectionIdx];
                 (int codeSectionStartOffset, int codeSectionSize) = sectionHeader;
                 ReadOnlySpan<byte> code = container.Slice(codeSectionStartOffset, codeSectionSize);
-                if (!ValidateInstructions(sectionIdx, typesection, code, header, callGraph , out ushort jumpsCount)) return false;
-                if (!ValidateStackState(sectionIdx, code, typesection, jumpsCount)) return false;
+                if (!ValidateInstructions(sectionIdx, typesection ,code, header, callGraph , validationQueue, out ushort jumpsCount))
+                {
+                    return false;
+                }
             }
 
-            var segragatedCallsValidation = callGraph.TraverseAndValidate(0);
-
-            if(!segragatedCallsValidation)
-            {
-                if (Logger.IsTrace) Logger.Trace($"EIP-XXXX: non-returning function can only call non-returning functions");
-                return false;
-            }
-
-            return true;
+            return visitedSections[..header.CodeSections.Length].All(id => id);
         }
 
         bool ValidateTypeSection(ReadOnlySpan<byte> types)
@@ -420,7 +423,7 @@ internal static class EvmObjectFormat
             return true;
         }
 
-        bool ValidateInstructions(ushort sectionId, ReadOnlySpan<byte> typesection, ReadOnlySpan<byte> code, in EofHeader header, EofCallGraph graph, out ushort jumpsCount)
+        bool ValidateInstructions(ushort sectionId, ReadOnlySpan<byte> typesection, ReadOnlySpan<byte> code, in EofHeader header, EofCallGraph graph, Queue<ushort> worklist, out ushort jumpsCount)
         {
             byte[] codeBitmap = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
             byte[] jumpdests = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
@@ -478,6 +481,8 @@ internal static class EvmObjectFormat
                             if (Logger.IsTrace) Logger.Trace($"EIP-6206 : JUMPF to unknown code section");
                             return false;
                         }
+
+                        worklist.Enqueue(targetSectionId);
 
                         graph.AddCall(sectionId, targetSectionId, opcode);
                         graph.FlagSection(targetSectionId, typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80);
@@ -545,6 +550,8 @@ internal static class EvmObjectFormat
                             return false;
                         }
                         // end block
+
+                        worklist.Enqueue(targetSectionId);
 
                         graph.AddCall(sectionId, targetSectionId, opcode);
                         graph.FlagSection(targetSectionId, typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80);
@@ -616,6 +623,11 @@ internal static class EvmObjectFormat
                 {
                     if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Invalid Jump destination");
                 }
+
+                if (!ValidateStackState(sectionId, code, typesection, jumpsCount))
+                {
+                    return false;
+                }
                 return result;
             }
             finally
@@ -654,9 +666,6 @@ internal static class EvmObjectFormat
             }
             return true;
         }
-
-
-
         public bool ValidateStackState(int sectionId, in ReadOnlySpan<byte> code, in ReadOnlySpan<byte> typesection, ushort worksetCount)
         {
             static Worklet PopWorklet(Worklet[] workset, ref ushort worksetPointer) => workset[worksetPointer++];

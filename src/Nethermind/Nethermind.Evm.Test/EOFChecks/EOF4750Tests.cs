@@ -6,6 +6,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -245,11 +246,16 @@ namespace Nethermind.Evm.Test
                 {
                     Bytecode = new ScenarioCase(
                             Functions: Enumerable.Range(0, 1024)
-                                .Select(_ => new FunctionCase(
+                                .Select(idx => new FunctionCase(
                                     0, 0, 0,
-                                    Prepare.EvmCode
-                                        .STOP()
-                                        .Done
+                                    idx < 1023
+                                        ? Prepare.EvmCode
+                                            .CALLF((ushort)(idx + 1))
+                                            .RETF()
+                                            .Done
+                                        : Prepare.EvmCode
+                                            .RETF()
+                                            .Done
                                     )
                                 ).ToArray(),
                             Data: Bytes.FromHexString("deadbeef")
@@ -261,11 +267,16 @@ namespace Nethermind.Evm.Test
                 {
                     Bytecode = new ScenarioCase(
                             Functions: Enumerable.Range(0, 1025)
-                                .Select(_ => new FunctionCase(
+                                .Select(idx => new FunctionCase(
                                     0, 0, 0,
-                                    Prepare.EvmCode
-                                        .STOP()
-                                        .Done
+                                    idx < 1024
+                                        ? Prepare.EvmCode
+                                            .CALLF((ushort)(idx + 1))
+                                            .RETF()
+                                            .Done
+                                        : Prepare.EvmCode
+                                            .RETF()
+                                            .Done
                                     )
                                 ).ToArray(),
                             Data: Bytes.FromHexString("deadbeef")
