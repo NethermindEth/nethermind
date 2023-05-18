@@ -556,6 +556,42 @@ internal static class EvmObjectFormat
                         return false;
                     } 
 
+                    if(opcode is Instruction.DATALOADN)
+                    {
+                        if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : DATALOADN Argument underflow");
+                            return false;
+                        }
+
+                        ushort dataSectionOffset = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthUInt16();
+
+                        if(dataSectionOffset * 32 >= header.DataSection.Size)
+                        {
+
+                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : DATALOADN's immediate argument must be less than datasection.Length / 32 i.e : {header.DataSection.Size / 32}");
+                            return false;
+                        }
+                    }
+
+                    if(opcode is Instruction.CREATE3)
+                    {
+                        if (postInstructionByte + ONE_BYTE_LENGTH > code.Length)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : CREATE3 Argument underflow");
+                            return false;
+                        }
+
+                        ushort initcodeSectionId = code[postInstructionByte + ONE_BYTE_LENGTH];
+
+                        if (initcodeSectionId >= header.CodeSectionsSize)
+                        {
+
+                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : CREATE3's immediate must falls within the Containers' range available, i.e : {header.CodeSectionsSize}");
+                            return false;
+                        }
+                    }
+
                     if (opcode is >= Instruction.PUSH0 and <= Instruction.PUSH32)
                     {
                         int len = opcode - Instruction.PUSH0;
@@ -737,7 +773,7 @@ internal static class EvmObjectFormat
 
                         if (opcode.IsTerminating())
                         {
-                            var expectedHeight = opcode is Instruction.RETF ? typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] : worklet.StackHeight;
+                            var expectedHeight = opcode is Instruction.RETF or Instruction.JUMPF ? typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] : worklet.StackHeight;
                             if (expectedHeight != worklet.StackHeight)
                             {
                                 if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Stack state invalid required height {expectedHeight} but found {worklet.StackHeight}");
