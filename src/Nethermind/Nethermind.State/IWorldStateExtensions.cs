@@ -3,28 +3,32 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Trie;
 
 namespace Nethermind.State
 {
-    public static class StateProviderExtensions
+    public static class WorldStateExtensions
     {
-        public static byte[] GetCode(this IStateProvider stateProvider, Address address)
+        public static byte[] GetCode(this IWorldState stateProvider, Address address)
         {
-            return stateProvider.GetCode(stateProvider.GetCodeHash(address));
+            Account account = stateProvider.GetAccount(address);
+            if (!account.HasCode)
+            {
+                return Array.Empty<byte>();
+            }
+            return stateProvider.GetCode(account.CodeHash);
         }
 
-        public static string DumpState(this IStateProvider stateProvider)
+        public static string DumpState(this IWorldState stateProvider)
         {
             TreeDumper dumper = new();
             stateProvider.Accept(dumper, stateProvider.StateRoot);
             return dumper.ToString();
         }
 
-        public static TrieStats CollectStats(this IStateProvider stateProvider, IKeyValueStore codeStorage, ILogManager logManager)
+        public static TrieStats CollectStats(this IWorldState stateProvider, IKeyValueStore codeStorage, ILogManager logManager)
         {
             TrieStatsCollector collector = new(codeStorage, logManager);
             stateProvider.Accept(collector, stateProvider.StateRoot, new VisitingOptions

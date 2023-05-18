@@ -3,6 +3,7 @@
 
 using System;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Rlpx;
@@ -75,10 +76,10 @@ namespace Nethermind.Network.Test.Rlpx
         private void Test(string frame, Func<byte[], IByteBuffer, ZeroFrameDecoderTestWrapper, IByteBuffer> deliveryStrategy, string expectedOutput)
         {
             byte[] frameBytes = Bytes.FromHexString(frame);
-            IByteBuffer input = Unpooled.Buffer(256);
+            IByteBuffer input = ReferenceCountUtil.ReleaseLater(Unpooled.Buffer(256));
             ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper = new(_frameCipher, _macProcessor);
 
-            IByteBuffer result = deliveryStrategy(frameBytes, input, zeroFrameDecoderTestWrapper);
+            IByteBuffer result = ReferenceCountUtil.ReleaseLater(deliveryStrategy(frameBytes, input, zeroFrameDecoderTestWrapper));
             Assert.NotNull(result, "did not decode frame");
 
             byte[] resultBytes = new byte[result.ReadableBytes];

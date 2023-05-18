@@ -34,7 +34,7 @@ namespace Nethermind.Serialization.Ssz.Test
             }
         }
 
-        private MerkleTree BuildATree(IKeyValueStore<ulong, byte[]> keyValueStore = null)
+        private MerkleTree BuildATree(IKeyValueStore<ulong, byte[]>? keyValueStore = null)
         {
             return new ShaMerkleTree(keyValueStore ?? new MemMerkleTreeStore());
         }
@@ -222,7 +222,7 @@ namespace Nethermind.Serialization.Ssz.Test
         [TestCase(123u)]
         public void Can_restore_count_from_the_database(uint leafCount)
         {
-            MemMerkleTreeStore memDb = new MemMerkleTreeStore();
+            MemMerkleTreeStore? memDb = new MemMerkleTreeStore();
             MerkleTree baselineTree = BuildATree(memDb);
 
             for (int i = 0; i < leafCount; i++)

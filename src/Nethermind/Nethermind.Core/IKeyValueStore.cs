@@ -23,20 +23,30 @@ namespace Nethermind.Core
         byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
     }
 
+    [Flags]
     public enum ReadFlags
     {
-        None,
+        None = 0,
 
         // Hint that the workload is likely to not going to benefit from caching and should skip any cache handling
         // to reduce CPU usage
-        HintCacheMiss,
+        HintCacheMiss = 1,
+
+        // Hint that the workload is likely to need the next value in the sequence and should prefetch it.
+        HintReadAhead = 2,
     }
 
+    [Flags]
     public enum WriteFlags
     {
-        None,
+        None = 0,
 
         // Hint that this is a low priority write
-        LowPriority,
+        LowPriority = 1,
+
+        // Hint that this write does not require durable writes, as if it crash, it'll start over anyway.
+        DisableWAL = 2,
+
+        LowPriorityAndNoWAL = LowPriority | DisableWAL,
     }
 }

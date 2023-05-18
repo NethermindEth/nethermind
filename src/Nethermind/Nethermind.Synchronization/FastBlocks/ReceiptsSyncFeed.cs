@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncPeerPool _syncPeerPool;
 
         private SyncStatusList _syncStatusList;
-        private readonly long _pivotNumber;
+        private long _pivotNumber;
         private readonly long _barrier;
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllReceiptsDownloaded;
@@ -71,6 +71,18 @@ namespace Nethermind.Synchronization.FastBlocks
             if (_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in receipts sync");
 
             ResetSyncStatusList();
+        }
+
+        public override void InitializeFeed()
+        {
+            if (_pivotNumber < _syncConfig.PivotNumberParsed)
+            {
+                _pivotNumber = _syncConfig.PivotNumberParsed;
+                if (_logger.IsInfo) _logger.Info($"Changed pivot in receipts sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
+                ResetSyncStatusList();
+            }
+
+            base.InitializeFeed();
         }
 
         private void ResetSyncStatusList()

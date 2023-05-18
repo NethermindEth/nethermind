@@ -85,7 +85,7 @@ namespace Nethermind.Core.Extensions
                 return y.Length > x.Length ? 1 : 0;
             }
 
-            public int Compare(Span<byte> x, Span<byte> y)
+            public int Compare(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
             {
                 if (Unsafe.AreSame(ref MemoryMarshal.GetReference(x), ref MemoryMarshal.GetReference(y)) &&
                     x.Length == y.Length)

@@ -19,7 +19,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             GetByteCodesMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                Hashes = TestItem.Keccaks,
+                Hashes = TestItem.ValueKeccaks,
                 Bytes = 10
             };
 
@@ -34,7 +34,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             GetByteCodesMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                Hashes = Array.Empty<Keccak>(),
+                Hashes = Array.Empty<ValueKeccak>(),
                 Bytes = 10
             };
 

@@ -18,6 +18,7 @@ public class TestMemDb : MemDb
     private List<(byte[], ReadFlags)> _readKeys = new();
     private List<(byte[], WriteFlags)> _writeKeys = new();
     private List<byte[]> _removedKeys = new();
+    private List<ITunableDb.TuneType> _tuneTypes = new();
 
     public Func<byte[], byte[]>? ReadFunc { get; set; }
     public Action<byte[]>? RemoveFunc { get; set; }

@@ -37,7 +37,7 @@ namespace Nethermind.Db.FullPruning
             _settings = settings;
             _dbFactory = dbFactory;
             _updateDuplicateWriteMetrics = updateDuplicateWriteMetrics;
-            _currentDb = CreateDb(_settings);
+            _currentDb = CreateDb(_settings).WithEOACompressed();
         }
 
         private IDb CreateDb(RocksDbSettings settings) => _dbFactory.CreateDb(settings);
@@ -171,6 +171,7 @@ namespace Nethermind.Db.FullPruning
 
         private void FinishPruning()
         {
+            _pruningContext?.CloningDb?.Flush();
             IDb oldDb = Interlocked.Exchange(ref _currentDb, _pruningContext?.CloningDb);
             ClearOldDb(oldDb);
         }

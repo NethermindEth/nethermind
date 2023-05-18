@@ -70,5 +70,13 @@ namespace Nethermind.State
             Set(keccak.Bytes, rlp);
             return rlp;
         }
+
+        public Rlp? Set(in ValueKeccak keccak, Account? account)
+        {
+            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
+
+            Set(keccak.Bytes, rlp);
+            return rlp;
+        }
     }
 }

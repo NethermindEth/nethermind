@@ -24,7 +24,7 @@ namespace Nethermind.State
 
         Keccak GetCodeHash(Address address);
 
-        public bool IsContract(Address address) => GetCodeHash(address) != Keccak.OfAnEmptyString;
+        public bool IsContract(Address address);
 
         /// <summary>
         /// Runs a visitor over trie.
