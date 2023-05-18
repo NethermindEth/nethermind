@@ -321,12 +321,5 @@ namespace Nethermind.Evm
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
             };
         }
-
-        public static bool IsOnlyForEofBytecode(this Instruction instruction) => instruction switch
-        {
-            Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => true,
-            Instruction.RETF or Instruction.CALLF => true,
-            _ => false
-        };
     }
 }
