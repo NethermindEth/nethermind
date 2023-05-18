@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -13,6 +14,7 @@ namespace Nethermind.Blockchain.Blocks;
 public class BlockStore : IBlockStore
 {
     private readonly IDb _blockDb;
+    private readonly IDbWithSpan _blockDbAsSpan;
     private readonly BlockDecoder _blockDecoder = new();
     private const int CacheSize = 64;
 
@@ -22,6 +24,7 @@ public class BlockStore : IBlockStore
     public BlockStore(IDb blockDb)
     {
         _blockDb = blockDb;
+        _blockDbAsSpan = (IDbWithSpan)_blockDb;
     }
 
     public void SetMetadata(byte[] key, byte[] value)
@@ -55,13 +58,15 @@ public class BlockStore : IBlockStore
 
     public Block? Get(Keccak blockHash, bool shouldCache)
     {
+
         return _blockDb.Get(blockHash, _blockDecoder, _blockCache, shouldCache);
     }
 
     public ReceiptRecoveryBlock GetReceiptRecoveryBlock(Keccak blockHash)
     {
-        // TODO: Hard logic here
-        return new ReceiptRecoveryBlock(Get(blockHash, false));
+        IMemoryOwner<byte> memory = _blockDbAsSpan.GetOwnedMemory(blockHash.Bytes);
+
+        return _blockDecoder.DecodeToReceiptRecoveryBlock(memory, RlpBehaviors.None);
     }
 
     public void Cache(Block block)

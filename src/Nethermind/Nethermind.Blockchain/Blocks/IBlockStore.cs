@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 

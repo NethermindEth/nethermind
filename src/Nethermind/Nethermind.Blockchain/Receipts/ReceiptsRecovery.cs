@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {

@@ -3,19 +3,11 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Text;
-using Nethermind.Core.Buffers;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
-using Nethermind.Int256;
-using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Core;
+namespace Nethermind.Serialization.Rlp;
 
 /// <summary>
 /// A Block specifically for receipt recovery. Does not contain any of the fields that are not needed for that.
@@ -31,7 +23,7 @@ public class ReceiptRecoveryBlock
         TransactionCount = _transactions.Length;
     }
 
-    public ReceiptRecoveryBlock(IMemoryOwner<byte>? memoryOwner, BlockHeader header, Memory<byte> transactionData, int transactionCount)
+    public ReceiptRecoveryBlock(IMemoryOwner<byte> memoryOwner, BlockHeader header, Memory<byte> transactionData, int transactionCount)
     {
         Header = header;
         _memoryOwner = memoryOwner;
@@ -58,7 +50,7 @@ public class ReceiptRecoveryBlock
 
         Rlp.ValueDecoderContext decoderContext = new(_transactionData.Span);
         decoderContext.Position = _currentTransactionPosition;
-        Transaction tx = TxDecoder.Instance.Decode(ref decoderContext);
+        Transaction tx = TxDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowUnsigned);
         _currentTransactionPosition = decoderContext.Position;
 
         return tx;

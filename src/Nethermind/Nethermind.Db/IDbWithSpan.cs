@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using Nethermind.Core.Buffers;
 
 namespace Nethermind.Db
 {
@@ -15,5 +17,10 @@ namespace Nethermind.Db
         Span<byte> GetSpan(ReadOnlySpan<byte> key);
         void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
         void DangerousReleaseMemory(in Span<byte> span);
+        IMemoryOwner<byte> GetOwnedMemory(ReadOnlySpan<byte> key)
+        {
+            Span<byte> span = GetSpan(key);
+            return new DbSpanMemoryManager(this, span);
+        }
     }
 }

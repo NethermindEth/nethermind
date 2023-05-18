@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {

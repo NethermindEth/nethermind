@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -245,6 +247,40 @@ namespace Nethermind.Serialization.Rlp
                     stream.Encode(item.Withdrawals[i]);
                 }
             }
+        }
+
+        public ReceiptRecoveryBlock DecodeToReceiptRecoveryBlock(IMemoryOwner<byte> memory, RlpBehaviors rlpBehaviors)
+        {
+            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory.Memory.Span);
+
+            if (decoderContext.IsNextItemNull())
+            {
+                decoderContext.ReadByte();
+                return null;
+            }
+
+            int sequenceLength = decoderContext.ReadSequenceLength();
+            int blockCheck = decoderContext.Position + sequenceLength;
+
+            BlockHeader header = Rlp.Decode<BlockHeader>(ref decoderContext);
+
+            int contentLength = decoderContext.ReadSequenceLength();
+            int transactionCount = decoderContext.PeekNumberOfItemsRemaining(decoderContext.Position + contentLength);
+            Memory<byte> transactionMemory = memory.Memory.Slice(decoderContext.Position, contentLength);
+            decoderContext.Position += contentLength; // Skip the whole tx
+
+            decoderContext.SkipItem(); // Skip uncles
+
+            if (decoderContext.Position != blockCheck)
+            {
+                decoderContext.SkipItem(); // Skip withdrawals
+            }
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            {
+                decoderContext.Check(blockCheck);
+            }
+
+            return new ReceiptRecoveryBlock(memory, header, transactionMemory, transactionCount);
         }
     }
 }
