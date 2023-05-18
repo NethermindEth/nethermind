@@ -99,7 +99,7 @@ namespace Nethermind.Core.Test.Encoding
             Transaction? decoded = _txDecoder.Decode(rlpStream);
             decoded!.SenderAddress = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
-            decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
+            decoded.EqualToTransaction(testCase.Tx);
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
@@ -114,7 +114,7 @@ namespace Nethermind.Core.Test.Encoding
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
             decoded!.SenderAddress = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
-            decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
+            decoded.EqualToTransaction(testCase.Tx);
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]

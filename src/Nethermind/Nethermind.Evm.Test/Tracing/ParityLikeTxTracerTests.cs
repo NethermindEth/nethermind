@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(trace.TransactionHash, Is.EqualTo(tx.Hash), "tx hash");
             Assert.That(trace.Action.Gas, Is.EqualTo((long)tx.GasLimit - 21000), "gas");
             Assert.That(trace.Action.Value, Is.EqualTo(tx.Value), "value");
-            Assert.That(trace.Action.Input, Is.EqualTo(tx.Data), "input");
+            Assert.That(trace.Action.Input, Is.EqualTo(tx.Data.FasterToArray()), "input");
             Assert.That(trace.Action.TraceAddress, Is.EqualTo(Array.Empty<int>()), "trace address");
         }
 

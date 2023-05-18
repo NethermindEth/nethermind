@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
+using System;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -22,7 +24,11 @@ namespace Nethermind.Network.Test.P2P
                 T deserialized = serializer.Deserialize(buffer);
 
                 // RlpLength is calculated explicitly when serializing an object by Calculate method. It's null after deserialization.
-                deserialized.Should().BeEquivalentTo(message, options => options.Excluding(c => c.Name == "RlpLength"));
+                deserialized.Should().BeEquivalentTo(message, options => options
+                    .Excluding(c => c.Name == "RlpLength")
+                    .Using<Memory<byte>>((context => context.Subject.FasterToArray().Should().BeEquivalentTo(context.Expectation.FasterToArray())))
+                    .WhenTypeIs<Memory<byte>>()
+                );
 
                 Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");
 

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -180,7 +179,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.GasLimit);
             stream.Encode(item.To);
             stream.Encode(item.Value);
-            stream.Encode(item.Data);
+            stream.Encode(item.Data.FasterToArray());
         }
 
         private void EncodeAccessListPayloadWithoutPayload(T item, RlpStream stream, RlpBehaviors rlpBehaviors)
@@ -191,7 +190,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.GasLimit);
             stream.Encode(item.To);
             stream.Encode(item.Value);
-            stream.Encode(item.Data);
+            stream.Encode(item.Data.FasterToArray());
             _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
         }
 
@@ -204,7 +203,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.GasLimit);
             stream.Encode(item.To);
             stream.Encode(item.Value);
-            stream.Encode(item.Data);
+            stream.Encode(item.Data.FasterToArray());
             _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
         }
 
@@ -454,7 +453,7 @@ namespace Nethermind.Serialization.Rlp
                 + Rlp.LengthOf(item.GasLimit)
                 + Rlp.LengthOf(item.To)
                 + Rlp.LengthOf(item.Value)
-                + Rlp.LengthOf(item.Data);
+                + Rlp.LengthOf(item.Data.FasterToArray());
         }
 
         private int GetAccessListContentLength(T item)
@@ -464,7 +463,7 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(item.GasLimit)
                    + Rlp.LengthOf(item.To)
                    + Rlp.LengthOf(item.Value)
-                   + Rlp.LengthOf(item.Data)
+                   + Rlp.LengthOf(item.Data.FasterToArray())
                    + Rlp.LengthOf(item.ChainId ?? 0)
                    + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
         }
@@ -477,7 +476,7 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(item.GasLimit)
                    + Rlp.LengthOf(item.To)
                    + Rlp.LengthOf(item.Value)
-                   + Rlp.LengthOf(item.Data)
+                   + Rlp.LengthOf(item.Data.FasterToArray())
                    + Rlp.LengthOf(item.ChainId ?? 0)
                    + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
         }

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -202,7 +203,8 @@ namespace Nethermind.JsonRpc.Test.Data
             _transactionForRpc = new TransactionForRpc(_transaction);
             Transaction afterConversion = _transactionForRpc.ToTransaction();
 
-            afterConversion.Should().BeEquivalentTo(_transaction);
+            afterConversion.Should().BeEquivalentTo(_transaction, option => option.ComparingByMembers<Transaction>().Excluding(tx => tx.Data));
+            afterConversion.Data.FasterToArray().Should().BeEquivalentTo(_transaction.Data.FasterToArray());
         }
     }
 }

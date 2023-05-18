@@ -27,7 +27,7 @@ public class TransactionForRpc
         Value = transaction.Value;
         GasPrice = transaction.GasPrice;
         Gas = transaction.GasLimit;
-        Input = Data = transaction.Data;
+        Input = Data = transaction.Data.FasterToArray();
         if (transaction.Supports1559)
         {
             GasPrice = baseFee is not null
@@ -139,6 +139,8 @@ public class TransactionForRpc
 
     public T ToTransaction<T>(ulong? chainId = null) where T : Transaction, new()
     {
+        byte[]? data = Data ?? Input;
+
         T tx = new()
         {
             GasLimit = Gas ?? 0,
@@ -147,12 +149,17 @@ public class TransactionForRpc
             To = To,
             SenderAddress = From,
             Value = Value ?? 0,
-            Data = Data ?? Input,
+            Data = (Memory<byte>?)data,
             Type = Type,
             AccessList = TryGetAccessList(),
             ChainId = chainId,
             MaxFeePerDataGas = MaxFeePerDataGas,
         };
+
+        if (data is null)
+        {
+            tx.Data = null; // Yes this is needed... really. Try a debugger.
+        }
 
         if (tx.Supports1559)
         {

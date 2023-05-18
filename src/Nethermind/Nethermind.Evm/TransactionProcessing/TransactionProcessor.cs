@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using static Nethermind.Core.Extensions.MemoryExtensions;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
@@ -148,8 +149,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFeePerGas);
 
             long gasLimit = transaction.GasLimit;
-            byte[] machineCode = transaction.IsContractCreation ? transaction.Data : null;
-            byte[] data = transaction.IsMessageCall ? transaction.Data : Array.Empty<byte>();
+            byte[] machineCode = transaction.IsContractCreation ? transaction.Data.FasterToArray() : null;
+            byte[] data = transaction.IsMessageCall ? transaction.Data.FasterToArray() : Array.Empty<byte>();
 
             Address? caller = transaction.SenderAddress;
             if (_logger.IsTrace) _logger.Trace($"Executing tx {transaction.Hash}");

@@ -652,7 +652,7 @@ namespace Nethermind.AuRa.Test.Validators
 
         private bool CheckTransaction(Transaction t, (Address Sender, byte[] TransactionData) transactionInfo)
         {
-            return t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data == transactionInfo.TransactionData;
+            return t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data.FasterToArray() == transactionInfo.TransactionData;
         }
 
         public class ConsecutiveInitiateChangeTestParameters
