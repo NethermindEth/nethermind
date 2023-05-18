@@ -714,7 +714,17 @@ internal static class EvmObjectFormat
                         {
                             ushort sectionIndex = code.Slice(posPostInstruction, TWO_BYTE_LENGTH).ReadEthUInt16();
                             inputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
+
                             outputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                            outputs = (ushort)(outputs == 0x80 ? 0 : outputs);
+
+                            ushort maxStackHeigh = typesection.Slice(sectionIndex * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, TWO_BYTE_LENGTH).ReadEthUInt16();
+
+                            if (worklet.StackHeight + maxStackHeigh > MAX_STACK_HEIGHT)
+                            {
+                                if (Logger.IsTrace) Logger.Trace($"EIP-5450 : stack head during callf must not exceed {MAX_STACK_HEIGHT}");
+                                return false;
+                            }
                         }
 
                         if (worklet.StackHeight < inputs)
