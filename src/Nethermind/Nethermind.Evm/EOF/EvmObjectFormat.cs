@@ -359,8 +359,6 @@ internal static class EvmObjectFormat
             Queue<ushort> validationQueue = new Queue<ushort>();
             validationQueue.Enqueue(0);
 
-            EofCallGraph callGraph = new();
-
 
             while (validationQueue.TryDequeue(out ushort sectionIdx))
             {
@@ -372,8 +370,11 @@ internal static class EvmObjectFormat
                 visitedSections[sectionIdx] = true;
                 SectionHeader sectionHeader = header.CodeSections[sectionIdx];
                 (int codeSectionStartOffset, int codeSectionSize) = sectionHeader;
+
+
+                bool isNonReturning = typesection[sectionIdx * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80;
                 ReadOnlySpan<byte> code = container.Slice(codeSectionStartOffset, codeSectionSize);
-                if (!ValidateInstructions(sectionIdx, typesection ,code, header, callGraph , validationQueue, out ushort jumpsCount))
+                if (!ValidateInstructions(sectionIdx, isNonReturning, typesection, code, header, validationQueue, out ushort jumpsCount))
                 {
                     return false;
                 }
@@ -423,7 +424,7 @@ internal static class EvmObjectFormat
             return true;
         }
 
-        bool ValidateInstructions(ushort sectionId, ReadOnlySpan<byte> typesection, ReadOnlySpan<byte> code, in EofHeader header, EofCallGraph graph, Queue<ushort> worklist, out ushort jumpsCount)
+        bool ValidateInstructions(ushort sectionId, bool isNonReturning, ReadOnlySpan<byte> typesection, ReadOnlySpan<byte> code, in EofHeader header, Queue<ushort> worklist, out ushort jumpsCount)
         {
             byte[] codeBitmap = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
             byte[] jumpdests = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
@@ -484,8 +485,14 @@ internal static class EvmObjectFormat
 
                         worklist.Enqueue(targetSectionId);
 
-                        graph.AddCall(sectionId, targetSectionId, opcode);
-                        graph.FlagSection(targetSectionId, typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80);
+
+                        bool isTargetSectionNonReturning = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80;
+
+                        if(isNonReturning && !isTargetSectionNonReturning)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : JUMPF from non returning code-sections can only call non-returning sections");
+                            return false;
+                        }
                     }
 
                     if (opcode is Instruction.RJUMPV)
@@ -552,9 +559,6 @@ internal static class EvmObjectFormat
                         // end block
 
                         worklist.Enqueue(targetSectionId);
-
-                        graph.AddCall(sectionId, targetSectionId, opcode);
-                        graph.FlagSection(targetSectionId, typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80);
                     }
 
                     if(opcode is Instruction.RETF && typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80)
@@ -719,7 +723,7 @@ internal static class EvmObjectFormat
                             return false;
                         }
 
-                        worklet.StackHeight += (ushort)(outputs - inputs);
+                        worklet.StackHeight += (ushort)(outputs - inputs + (opcode is Instruction.JUMPF ? curr_outputs : 0));
                         peakStackHeight = Math.Max(peakStackHeight, worklet.StackHeight);
 
                         switch (opcode)
