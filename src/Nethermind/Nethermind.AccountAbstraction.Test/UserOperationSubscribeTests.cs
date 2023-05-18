@@ -25,6 +25,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Newtonsoft.Json;
 
@@ -74,7 +75,7 @@ namespace Nethermind.AccountAbstraction.Test
                 _txPool,
                 _receiptCanonicalityMonitor,
                 _filterStore,
-                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, _logManager),
+                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, new StaticSelector(SyncMode.All), _logManager),
                 _specProvider,
                 jsonSerializer);
 
@@ -182,7 +183,7 @@ namespace Nethermind.AccountAbstraction.Test
                 "newPendingUserOperations", "{\"entryPoints\":[\"" + _entryPointAddress + "\", \"" + "0x123" + "\"]}");
 
             string beginningOfExpectedResult = "{\"jsonrpc\":\"2.0\",\"error\":";
-            beginningOfExpectedResult.Should().Be(serialized.Substring(0, beginningOfExpectedResult.Length));
+            beginningOfExpectedResult.Should().Be(serialized[..beginningOfExpectedResult.Length]);
         }
 
         [Test]
@@ -243,7 +244,7 @@ namespace Nethermind.AccountAbstraction.Test
                 "eth_subscribe",
                 "newPendingUserOperations", "{\"entryPoints\":[\"" + _entryPointAddress + "\", \"" + "0x123" + "\"]}");
             string beginningOfExpectedResult = "{\"jsonrpc\":\"2.0\",\"error\":";
-            beginningOfExpectedResult.Should().Be(serialized.Substring(0, beginningOfExpectedResult.Length));
+            beginningOfExpectedResult.Should().Be(serialized[..beginningOfExpectedResult.Length]);
         }
 
         [Test]

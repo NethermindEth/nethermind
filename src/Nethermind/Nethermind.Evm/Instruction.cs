@@ -210,7 +210,7 @@ namespace Nethermind.Evm
         public static bool IsTerminating(this Instruction instruction) => instruction switch
         {
             Instruction.RETF or Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
-            // Instruction.JUMPF => true,
+            Instruction.JUMPF or Instruction.RETURNCONTRACT => true,
             // Instruction.SELFDESTRUCT => true
             _ => false
         };
@@ -234,7 +234,6 @@ namespace Nethermind.Evm
                 Instruction.CALLF or Instruction.RETF or Instruction.JUMPF => IsEofContext,
                 Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB => true,
                 Instruction.CALL or Instruction.DELEGATECALL or Instruction.GAS => !IsEofContext,
-
                 _ => true
             };
         }
@@ -350,13 +349,5 @@ namespace Nethermind.Evm
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
             };
         }
-
-        public static bool IsOnlyForEofBytecode(this Instruction instruction) => instruction switch
-        {
-            Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => true,
-            Instruction.RETF or Instruction.CALLF => true,
-            Instruction.JUMPF => true,
-            _ => false
-        };
     }
 }

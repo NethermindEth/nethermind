@@ -80,7 +80,7 @@ namespace Nethermind.Network
                 if (_logger.IsError) _logger.Error("Error while getting external ip", e);
             }
 
-            return IPAddress.Loopback;
+            return IPAddress.Any;
         }
 
         private async Task<IPAddress> InitializeLocalIp()
@@ -88,7 +88,6 @@ namespace Nethermind.Network
             IEnumerable<IIPSource> GetIPSources()
             {
                 yield return new NetworkConfigLocalIPSource(_networkConfig, _logManager);
-                yield return new SocketIPSource(_logManager);
             }
 
             try
@@ -107,7 +106,7 @@ namespace Nethermind.Network
                 if (_logger.IsError) _logger.Error("Error while getting local ip", e);
             }
 
-            return IPAddress.Loopback;
+            return IPAddress.Any;
         }
     }
 }

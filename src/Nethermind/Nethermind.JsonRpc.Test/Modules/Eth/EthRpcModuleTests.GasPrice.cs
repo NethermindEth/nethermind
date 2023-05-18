@@ -29,7 +29,7 @@ public partial class EthRpcModuleTests
 
         string serialized = ctx.Test.TestEthRpc("eth_gasPrice");
 
-        Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}", serialized);
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}"));
     }
 
     [TestCase(true, "0x3")] //Gas Prices: 1,2,3,3,4,5 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 3 (0x3)
@@ -45,7 +45,7 @@ public partial class EthRpcModuleTests
 
         string serialized = ctx.Test.TestEthRpc("eth_gasPrice");
 
-        Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}", serialized);
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}"));
     }
 
 

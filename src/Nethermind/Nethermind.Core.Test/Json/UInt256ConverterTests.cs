@@ -52,7 +52,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("0xa00000"));
             reader.ReadAsString();
             UInt256 result = converter.ReadJson(reader, typeof(UInt256), UInt256.Zero, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(UInt256.Parse("10485760"), result);
+            Assert.That(result, Is.EqualTo(UInt256.Parse("10485760")));
         }
 
         [Test]
@@ -62,7 +62,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("0x0"));
             reader.ReadAsString();
             UInt256 result = converter.ReadJson(reader, typeof(UInt256), UInt256.Zero, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(UInt256.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(UInt256.Parse("0")));
         }
 
         [Test]
@@ -72,7 +72,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("0x0000"));
             reader.ReadAsString();
             UInt256 result = converter.ReadJson(reader, typeof(UInt256), UInt256.Zero, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(UInt256.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(UInt256.Parse("0")));
         }
 
         [Test]
@@ -82,7 +82,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("0"));
             reader.ReadAsString();
             UInt256 result = converter.ReadJson(reader, typeof(UInt256), UInt256.Zero, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(UInt256.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(UInt256.Parse("0")));
         }
 
         [Test]
@@ -92,7 +92,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("1"));
             reader.ReadAsString();
             UInt256 result = converter.ReadJson(reader, typeof(UInt256), UInt256.Zero, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(UInt256.Parse("1"), result);
+            Assert.That(result, Is.EqualTo(UInt256.Parse("1")));
         }
 
         [Test]
@@ -102,7 +102,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader("\"de\""));
             reader.ReadAsString();
             UInt256 result = converter.ReadJson(reader, typeof(UInt256), UInt256.Zero, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(UInt256.Parse("de", NumberStyles.HexNumber), result);
+            Assert.That(result, Is.EqualTo(UInt256.Parse("de", NumberStyles.HexNumber)));
         }
 
         [Test]

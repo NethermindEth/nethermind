@@ -50,63 +50,64 @@ namespace Nethermind.Core
         {
             get
             {
-                Keccak? hash = _hash;
-                if (hash is not null) return hash;
+                if (_hash is not null) return _hash;
 
-                if (_preHash.Length > 0)
+                lock (this)
                 {
-                    GenerateHash();
+                    if (_hash is not null) return _hash;
+
+                    if (_preHash.Count > 0)
+                    {
+                        _hash = Keccak.Compute(_preHash.AsSpan());
+                        ClearPreHashInternal();
+                    }
                 }
 
                 return _hash;
-
-                void GenerateHash()
-                {
-                    _hash = Keccak.Compute(_preHash.Span);
-                    if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
-                    {
-                        ArrayPool<byte>.Shared.Return(rentedArray.Array!);
-                    }
-
-                    _preHash = default;
-                }
             }
             set
             {
-                if (_preHash.Length > 0)
+                lock (this)
                 {
-                    if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
-                    {
-                        ArrayPool<byte>.Shared.Return(rentedArray.Array!);
-                    }
-
-                    _preHash = default;
+                    ClearPreHashInternal();
+                    _hash = value;
                 }
-
-                _hash = value;
             }
         }
 
-        private ReadOnlyMemory<byte> _preHash;
+        private ArraySegment<byte> _preHash;
         public void SetPreHash(ReadOnlySpan<byte> transactionSequence)
         {
-            // Used to delay hash generation, as may be filtered as having too low gas etc
-            _hash = null;
+            lock (this)
+            {
+                // Used to delay hash generation, as may be filtered as having too low gas etc
+                _hash = null;
 
-            int size = transactionSequence.Length;
-            byte[] preHash = ArrayPool<byte>.Shared.Rent(size);
-            transactionSequence.CopyTo(preHash);
-            _preHash = new ReadOnlyMemory<byte>(preHash, 0, size);
+                int size = transactionSequence.Length;
+                byte[] preHash = ArrayPool<byte>.Shared.Rent(size);
+                transactionSequence.CopyTo(preHash);
+                _preHash = new ArraySegment<byte>(preHash, 0, size);
+            }
         }
 
         public void ClearPreHash()
         {
-            if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
+            if (_preHash.Count > 0)
             {
-                ArrayPool<byte>.Shared.Return(rentedArray.Array!);
+                lock (this)
+                {
+                    ClearPreHashInternal();
+                }
             }
+        }
 
-            _preHash = default;
+        private void ClearPreHashInternal()
+        {
+            if (_preHash.Count > 0)
+            {
+                ArrayPool<byte>.Shared.Return(_preHash.Array!);
+                _preHash = default;
+            }
         }
 
         public UInt256 Timestamp { get; set; }

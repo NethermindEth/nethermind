@@ -43,7 +43,7 @@ namespace Nethermind.AuRa.Test
             public ISealer Sealer { get; }
             public IBlockTree BlockTree { get; }
             public IBlockProcessingQueue BlockProcessingQueue { get; }
-            public IStateProvider StateProvider { get; }
+            public IWorldState StateProvider { get; }
             public ITimestamper Timestamper { get; }
             public IAuRaStepCalculator AuRaStepCalculator { get; }
             public Address NodeAddress { get; }
@@ -58,7 +58,7 @@ namespace Nethermind.AuRa.Test
                 Sealer = Substitute.For<ISealer>();
                 BlockTree = Substitute.For<IBlockTree>();
                 BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
-                StateProvider = Substitute.For<IStateProvider>();
+                StateProvider = Substitute.For<IWorldState>();
                 Timestamper = Substitute.For<ITimestamper>();
                 AuRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
                 NodeAddress = TestItem.AddressA;

@@ -25,5 +25,8 @@ namespace Nethermind.Monitoring.Config
 
         [ConfigItem(Description = "Name displayed in the Grafana dashboard", DefaultValue = "\"Nethermind\"")]
         string NodeName { get; }
+
+        [ConfigItem(Description = "If set, will push db size metrics", DefaultValue = "true")]
+        bool EnableDbSizeMetrics { get; }
     }
 }

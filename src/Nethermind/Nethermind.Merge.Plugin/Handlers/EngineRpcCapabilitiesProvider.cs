@@ -39,6 +39,11 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV2)] = spec.WithdrawalsEnabled;
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV2)] = spec.WithdrawalsEnabled;
             #endregion
+
+            #region Cancun
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV3)] = spec.IsEip4844Enabled;
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV3)] = spec.IsEip4844Enabled;
+            #endregion
         }
 
         return _capabilities;

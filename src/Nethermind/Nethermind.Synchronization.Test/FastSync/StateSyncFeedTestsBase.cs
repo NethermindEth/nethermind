@@ -195,11 +195,11 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 if (stage == "END")
                 {
-                    Assert.AreEqual(remote, local, $"{remote}{Environment.NewLine}{local}");
+                    Assert.That(local, Is.EqualTo(remote), $"{remote}{Environment.NewLine}{local}");
                     TrieStatsCollector collector = new(LocalCodeDb, LimboLogs.Instance);
                     LocalStateTree.Accept(collector, LocalStateTree.RootHash);
-                    Assert.AreEqual(0, collector.Stats.MissingNodes);
-                    Assert.AreEqual(0, collector.Stats.MissingCode);
+                    Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
+                    Assert.That(collector.Stats.MissingCode, Is.EqualTo(0));
                 }
 
                 //            Assert.AreEqual(dbContext._remoteCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), dbContext._localCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");

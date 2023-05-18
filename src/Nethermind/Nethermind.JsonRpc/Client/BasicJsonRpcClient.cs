@@ -92,7 +92,7 @@ namespace Nethermind.JsonRpc.Client
         private void AddAuthorizationHeader()
         {
             var url = _client.BaseAddress.ToString();
-            if (!url.Contains("@"))
+            if (!url.Contains('@'))
             {
                 return;
             }

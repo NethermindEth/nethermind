@@ -35,7 +35,7 @@ namespace Nethermind.Evm.Test
             byte[] a = BigInteger.Parse("-57896044618658097711785492504343953926634992332820282019728792003956564819968").ToBigEndianByteArray(32);
             byte[] b = BigInteger.Parse("57896044618658097711785492504343953926634992332820282019728792003956564819968").ToBigEndianByteArray(32);
 
-            Assert.AreEqual(a, b);
+            Assert.That(b, Is.EqualTo(a));
         }
     }
 }

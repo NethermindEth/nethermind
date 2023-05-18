@@ -289,7 +289,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             {
                 _gasAlreadySetForCurrentOp = true;
 
-                _currentOperation.Cost = _currentOperation.Cost - (_treatGasParityStyle ? 0 : gas);
+                _currentOperation.Cost -= (_treatGasParityStyle ? 0 : gas);
 
                 // based on Parity behaviour - adding stipend to the gas cost
                 if (_currentOperation.Cost == 7400)
@@ -390,7 +390,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
-            Dictionary<UInt256, ParityStateChange<byte[]>> storage = null;
+            Dictionary<UInt256, ParityStateChange<byte[]>> storage;
             if (!_trace.StateChanges.ContainsKey(storageCell.Address))
             {
                 _trace.StateChanges[storageCell.Address] = new ParityAccountStateChange();

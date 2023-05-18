@@ -34,6 +34,15 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
+        public void When_reading_values_with_flags_forward_the_flags()
+        {
+            Context ctx = new(2);
+            ctx.Wrapped.ReadFunc = (key) => Value1;
+            _ = ctx.Database.Get(Key1, ReadFlags.HintReadAhead);
+            ctx.Wrapped.KeyWasReadWithFlags(Key1, ReadFlags.HintReadAhead);
+        }
+
+        [Test]
         public void Uses_lru_strategy_when_caching_on_reads()
         {
             Context ctx = new(2);

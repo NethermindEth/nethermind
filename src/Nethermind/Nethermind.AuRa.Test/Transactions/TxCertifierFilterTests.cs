@@ -153,7 +153,6 @@ public class TxCertifierFilterTests
                 new RewardCalculator(SpecProvider),
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
-                Storage,
                 ReceiptStorage,
                 LimboLogs.Instance,
                 BlockTree,

@@ -345,7 +345,7 @@ internal static class EvmObjectFormat
                 SectionHeader sectionHeader = header.CodeSections[sectionIdx];
                 (int codeSectionStartOffset, int codeSectionSize) = sectionHeader;
                 ReadOnlySpan<byte> code = container.Slice(codeSectionStartOffset, codeSectionSize);
-                if (!ValidateInstructions(code, header)) return false;
+                if (!ValidateInstructions(typesection, code, header)) return false;
                 if (!ValidateStackState(sectionIdx, code, typesection, header)) return false;
             }
 
@@ -392,7 +392,7 @@ internal static class EvmObjectFormat
             }
             return true;
         }
-        bool ValidateInstructions(ReadOnlySpan<byte> code, in EofHeader header)
+        bool ValidateInstructions(ReadOnlySpan<byte> typesection, ReadOnlySpan<byte> code, in EofHeader header)
         {
             int pos;
             Span<byte> codeBitmap = stackalloc byte[(code.Length / 8) + 1 + 4];
@@ -499,6 +499,15 @@ internal static class EvmObjectFormat
                         if (Logger.IsTrace) Logger.Trace($"EIP-4750 : Invalid Section Id");
                         return false;
                     }
+
+                    // begin block: might not be included in Eof2
+                    byte targetSectionOutputCount = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                    if (targetSectionOutputCount == 0x80)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : CALLF into non-returning function");
+                        return false;
+                    }
+                    // end block
                 }
 
                 if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)

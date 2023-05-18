@@ -110,7 +110,7 @@ namespace Nethermind.Evm.Test
                 testcase.Bytecode, out EofHeader? header
             );
 
-            Assert.AreEqual(testcase.Result.Status == StatusCode.Success, result, $"Scenario : {testcase.Result.Msg}");
+            Assert.That(result, Is.EqualTo(testcase.Result.Status == StatusCode.Success), $"Scenario : {testcase.Result.Msg}");
             if (result == false)
             {
                 Assert.IsNull(header);
@@ -131,12 +131,12 @@ namespace Nethermind.Evm.Test
             ILogManager logManager = GetLogManager();
             TestSpecProvider customSpecProvider = new(Frontier.Instance, spec);
             Machine = new VirtualMachine(TestBlockhashProvider.Instance, customSpecProvider, logManager);
-            _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
+            _processor = new TransactionProcessor(customSpecProvider, TestState, Machine, LimboLogs.Instance);
             (Block block, Transaction transaction) = PrepareInitTx(BlockNumber, 100000, createContract);
 
             var txTracer = new TestAllTracerWithOutput();
             _processor.Execute(transaction, block.Header, txTracer);
-            Assert.AreEqual(testcase.Result.Status, txTracer.ReportedActionErrors.Any(x => x is EvmExceptionType.InvalidCode or EvmExceptionType.BadInstruction or EvmExceptionType.InvalidEofCode) ? StatusCode.Failure : StatusCode.Success, testcase.Result.Msg);
+            Assert.That(txTracer.ReportedActionErrors.Any(x => x is EvmExceptionType.InvalidCode or EvmExceptionType.BadInstruction or EvmExceptionType.InvalidEofCode) ? StatusCode.Failure : StatusCode.Success, Is.EqualTo(testcase.Result.Status), testcase.Result.Msg);
 
         }
 
