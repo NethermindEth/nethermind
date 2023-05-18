@@ -48,7 +48,7 @@ static class Program
         switch (config.MetricConsumerStrategy)
         {
             case MetricConsumerStrategy.Report:
-                collection.AddSingleton<IMetricsConsumer, ConsoleReportMetricsConsumer>();
+                collection.AddSingleton<IMetricsConsumer, PrettyReportMetricsConsumer>();
                 break;
             case MetricConsumerStrategy.Json:
                 collection.AddSingleton<IMetricsConsumer, JsonMetricsConsumer>();

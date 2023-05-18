@@ -3,7 +3,7 @@
 
 namespace Nethermind.Tools.Kute.MetricsConsumer;
 
-class ConsoleReportMetricsConsumer : IMetricsConsumer
+class PrettyReportMetricsConsumer : IMetricsConsumer
 {
     public void ConsumeMetrics(Metrics metrics)
     {
