@@ -4,6 +4,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.IdentityModel.Tokens;
+using Nethermind.Tools.Kute.SecretProvider;
 using Nethermind.Tools.Kute.SystemClock;
 
 namespace Nethermind.Tools.Kute.Auth;
@@ -19,12 +20,11 @@ class JwtAuth : IAuth
         get => _token.Value;
     }
 
-    public JwtAuth(ISystemClock clock, Config config)
+    public JwtAuth(ISystemClock clock, ISecretProvider secretProvider)
     {
         _clock = clock;
 
-        // TODO: Check if `hexString` is an actual Hex string.
-        var hexSecret = File.ReadAllText(config.JwtSecretFile).Trim();
+        var hexSecret = File.ReadAllText(secretProvider.Secret).Trim();
         _secret = Enumerable.Range(0, hexSecret.Length)
             .Where(x => x % 2 == 0)
             .Select(x => Convert.ToByte(hexSecret.Substring(x, 2), 16))

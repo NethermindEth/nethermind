@@ -5,6 +5,7 @@ using Nethermind.Tools.Kute.JsonRpcMessageProvider;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
 using Nethermind.Tools.Kute.MetricsConsumer;
+using Nethermind.Tools.Kute.SecretProvider;
 using Nethermind.Tools.Kute.SystemClock;
 
 namespace Nethermind.Tools.Kute;
@@ -26,10 +27,10 @@ static class Program
     {
         IServiceCollection collection = new ServiceCollection();
 
-        collection.AddSingleton(config);
         collection.AddSingleton<Application>();
         collection.AddSingleton<ISystemClock, SystemClock.SystemClock>();
         collection.AddSingleton<HttpClient>();
+        collection.AddSingleton<ISecretProvider>(new FileSecretProvider(config.JwtSecretFile));
         collection.AddSingleton<IAuth, JwtAuth>();
         collection.AddSingleton<IJsonRpcMessageProvider, FileJsonRpcMessageProvider>();
         collection.AddSingleton<IJsonRpcMethodFilter>(
