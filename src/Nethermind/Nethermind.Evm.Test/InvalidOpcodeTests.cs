@@ -185,7 +185,7 @@ namespace Nethermind.Evm.Test
                 bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains(instruction);
 
                 byte[] code;
-                if (!instruction.IsValid(true))
+                if (!instruction.IsValid(IsEofContext: true))
                 {
                     code = prepCode.Done;
 
