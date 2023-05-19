@@ -763,6 +763,12 @@ namespace Nethermind.Serialization.Rlp
                 return data;
             }
 
+            public Memory<byte> ReadMemory(int length)
+            {
+                if (_sliceMemory && Memory.HasValue) return ReadSlicedMemory(length);
+                return Read(length).ToArray();
+            }
+
             private Memory<byte> ReadSlicedMemory(int length)
             {
                 Memory<byte> data = Memory.Value.Slice(Position, length);

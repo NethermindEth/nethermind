@@ -249,9 +249,9 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public ReceiptRecoveryBlock DecodeToReceiptRecoveryBlock(IMemoryOwner<byte> memory, RlpBehaviors rlpBehaviors)
+        public ReceiptRecoveryBlock DecodeToReceiptRecoveryBlock(MemoryManager<byte> memory, RlpBehaviors rlpBehaviors)
         {
-            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory.Memory);
+            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory.Memory, true);
 
             if (decoderContext.IsNextItemNull())
             {
@@ -266,8 +266,8 @@ namespace Nethermind.Serialization.Rlp
 
             int contentLength = decoderContext.ReadSequenceLength();
             int transactionCount = decoderContext.PeekNumberOfItemsRemaining(decoderContext.Position + contentLength);
-            Memory<byte> transactionMemory = memory.Memory.Slice(decoderContext.Position, contentLength);
-            decoderContext.Position += contentLength; // Skip the whole tx
+
+            Memory<byte> transactionMemory = decoderContext.ReadMemory(contentLength);
 
             decoderContext.SkipItem(); // Skip uncles
 

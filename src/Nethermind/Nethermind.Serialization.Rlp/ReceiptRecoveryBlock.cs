@@ -23,7 +23,7 @@ public class ReceiptRecoveryBlock
         TransactionCount = _transactions.Length;
     }
 
-    public ReceiptRecoveryBlock(IMemoryOwner<byte> memoryOwner, BlockHeader header, Memory<byte> transactionData, int transactionCount)
+    public ReceiptRecoveryBlock(MemoryManager<byte> memoryOwner, BlockHeader header, Memory<byte> transactionData, int transactionCount)
     {
         Header = header;
         _memoryOwner = memoryOwner;
@@ -31,7 +31,7 @@ public class ReceiptRecoveryBlock
         TransactionCount = transactionCount;
     }
 
-    private IMemoryOwner<byte>? _memoryOwner;
+    private MemoryManager<byte>? _memoryOwner;
     private Memory<byte> _transactionData { get; set; }
     private int _currentTransactionPosition = 0;
 
@@ -64,6 +64,6 @@ public class ReceiptRecoveryBlock
 
     public void Dispose()
     {
-        _memoryOwner?.Dispose();
+        ((IMemoryOwner<byte>)_memoryOwner)?.Dispose();
     }
 }

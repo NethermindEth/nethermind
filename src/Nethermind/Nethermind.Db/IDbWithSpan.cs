@@ -17,7 +17,7 @@ namespace Nethermind.Db
         Span<byte> GetSpan(ReadOnlySpan<byte> key);
         void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
         void DangerousReleaseMemory(in Span<byte> span);
-        IMemoryOwner<byte> GetOwnedMemory(ReadOnlySpan<byte> key)
+        MemoryManager<byte> GetOwnedMemory(ReadOnlySpan<byte> key)
         {
             Span<byte> span = GetSpan(key);
             return new DbSpanMemoryManager(this, span);

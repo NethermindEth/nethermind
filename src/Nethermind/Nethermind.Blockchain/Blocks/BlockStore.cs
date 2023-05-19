@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -64,7 +65,7 @@ public class BlockStore : IBlockStore
 
     public ReceiptRecoveryBlock GetReceiptRecoveryBlock(Keccak blockHash)
     {
-        IMemoryOwner<byte> memory = _blockDbAsSpan.GetOwnedMemory(blockHash.Bytes);
+        MemoryManager<byte> memory = _blockDbAsSpan.GetOwnedMemory(blockHash.Bytes);
 
         return _blockDecoder.DecodeToReceiptRecoveryBlock(memory, RlpBehaviors.DisableLazyHash);
     }
