@@ -9,8 +9,8 @@ namespace Nethermind.Tools.Kute;
 public class Config
 {
     [Option(
-        shortName: 'm',
-        longName: "messages",
+        shortName: 'i',
+        longName: "input",
         Required = true,
         HelpText = "Path to a Folder or a File containing JSON RPC messages"
     )]
