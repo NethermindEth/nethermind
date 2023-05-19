@@ -3,50 +3,65 @@
 
 using System;
 using System.Buffers;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Db;
 
 namespace Nethermind.Core.Buffers;
 
-public class DbSpanMemoryManager : MemoryManager<byte>
+public unsafe sealed class DbSpanMemoryManager : MemoryManager<byte>
 {
     private readonly IDbWithSpan _db;
-    private readonly unsafe void* _ptr;
+    private void* _ptr;
     private readonly int _length;
 
-    public DbSpanMemoryManager(IDbWithSpan db, Span<byte> span)
+    public DbSpanMemoryManager(IDbWithSpan db, Span<byte> unmanagedSpan)
     {
-        unsafe
-        {
-            _db = db;
-            _ptr = Unsafe.AsPointer(ref span.GetPinnableReference());
-            _length = span.Length;
-        }
+        _db = db;
+        _ptr = Unsafe.AsPointer(ref MemoryMarshal.GetReference(unmanagedSpan));
+        _length = unmanagedSpan.Length;
     }
 
     protected override void Dispose(bool disposing)
     {
-        _db.DangerousReleaseMemory(GetSpan());
+        if (_ptr != null)
+        {
+            _db.DangerousReleaseMemory(GetSpan());
+        }
+
+        _ptr = null;
     }
 
     public override Span<byte> GetSpan()
     {
-        unsafe
+        if (_ptr == null && _length > 0)
         {
-            return new Span<byte>(_ptr, _length);
+            ThrowDisposed();
         }
+
+        return new Span<byte>(_ptr, _length);
     }
 
     public override MemoryHandle Pin(int elementIndex = 0)
     {
-        unsafe
+        if (_ptr == null && _length > 0)
         {
-            return new MemoryHandle(_ptr);
+            ThrowDisposed();
         }
+
+        return new MemoryHandle(_ptr);
     }
 
     public override void Unpin()
     {
+    }
+
+    [DoesNotReturn]
+    [StackTraceHidden]
+    private static void ThrowDisposed()
+    {
+        throw new ObjectDisposedException(nameof(DbSpanMemoryManager));
     }
 }
