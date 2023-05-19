@@ -251,7 +251,7 @@ namespace Nethermind.Serialization.Rlp
 
         public ReceiptRecoveryBlock DecodeToReceiptRecoveryBlock(IMemoryOwner<byte> memory, RlpBehaviors rlpBehaviors)
         {
-            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory.Memory.Span);
+            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory.Memory);
 
             if (decoderContext.IsNextItemNull())
             {

@@ -118,29 +118,6 @@ namespace Nethermind.Core.Test.Encoding
             decoded.EqualToTransaction(testCase.Tx);
         }
 
-
-        [TestCaseSource(nameof(TestCaseSource))]
-        public void Roundtrip_ValueDecoderContext_WithMemory((Transaction Tx, string Description) testCase)
-        {
-            RlpStream rlpStream = new(10000);
-            _txDecoder.Encode(rlpStream, testCase.Tx);
-
-            Memory<byte> memory = rlpStream.Data;
-            Rlp.ValueDecoderContext decoderContext = new(memory);
-            rlpStream.Position = 0;
-            Transaction? decoded = _txDecoder.Decode(ref decoderContext, RlpBehaviors.SliceMemory);
-            decoded!.SenderAddress = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
-            decoded.Hash = decoded.CalculateHash();
-            decoded.EqualToTransaction(testCase.Tx);
-
-            if (decoded.Data.FasterToArray().Length > 0)
-            {
-                // Well RlpStream is backed by array.
-                MemoryMarshal.TryGetArray(decoded.Data.Value, out ArraySegment<byte> segment).Should().BeTrue();
-                segment.Offset.Should().NotBe(0); // But its not the whole array.
-            }
-        }
-
         [TestCaseSource(nameof(YoloV3TestCases))]
         public void Roundtrip_yolo_v3((string IncomingRlpHex, Keccak Hash) testCase)
         {

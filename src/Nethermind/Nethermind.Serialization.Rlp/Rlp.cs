@@ -544,14 +544,20 @@ namespace Nethermind.Serialization.Rlp
                 Position = 0;
             }
 
-            public ValueDecoderContext(Memory<byte> memory)
+            public ValueDecoderContext(Memory<byte> memory, bool sliceMemory = false)
             {
                 Memory = memory;
                 Data = memory.Span;
                 Position = 0;
+
+                // Slice memory is turned off by default. Because if you are not careful and being explicit about it,
+                // you can end up with a memory leak.
+                _sliceMemory = sliceMemory;
             }
 
             public Memory<byte>? Memory { get; }
+
+            private bool _sliceMemory = false;
 
             public Span<byte> Data { get; }
 
@@ -757,7 +763,7 @@ namespace Nethermind.Serialization.Rlp
                 return data;
             }
 
-            public Memory<byte> ReadMemory(int length)
+            private Memory<byte> ReadSlicedMemory(int length)
             {
                 Memory<byte> data = Memory.Value.Slice(Position, length);
                 Position += length;
@@ -1142,6 +1148,11 @@ namespace Nethermind.Serialization.Rlp
 
             public Memory<byte>? DecodeByteArrayMemory(bool allowLeadingZeroBytes = true)
             {
+                if (!_sliceMemory)
+                {
+                    return DecodeByteArraySpan().ToArray();
+                }
+
                 if (Memory == null)
                 {
                     throw new RlpException("Rlp not backed by a Memory<byte>");
@@ -1166,7 +1177,7 @@ namespace Nethermind.Serialization.Rlp
                 if (prefix <= 183)
                 {
                     int length = prefix - 128;
-                    Memory<byte> buffer = ReadMemory(length);
+                    Memory<byte> buffer = ReadSlicedMemory(length);
                     Span<byte> asSpan = buffer.Span;
                     if (length == 1 && asSpan[0] < 128)
                     {
@@ -1191,7 +1202,7 @@ namespace Nethermind.Serialization.Rlp
                         throw new RlpException("Expected length greater or equal 56 and was {length}");
                     }
 
-                    return ReadMemory(length);
+                    return ReadSlicedMemory(length);
                 }
 
                 throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
@@ -1560,6 +1571,11 @@ namespace Nethermind.Serialization.Rlp
         public static int LengthOf(byte[]? array)
         {
             return LengthOf(array.AsSpan());
+        }
+
+        public static int LengthOf(Memory<byte>? memory)
+        {
+            return LengthOf(memory.GetValueOrDefault().Span);
         }
 
         public static int LengthOf(IReadOnlyList<byte> array)

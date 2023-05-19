@@ -66,7 +66,7 @@ public class BlockStore : IBlockStore
     {
         IMemoryOwner<byte> memory = _blockDbAsSpan.GetOwnedMemory(blockHash.Bytes);
 
-        return _blockDecoder.DecodeToReceiptRecoveryBlock(memory, RlpBehaviors.DisableLazyHash | RlpBehaviors.SliceMemory);
+        return _blockDecoder.DecodeToReceiptRecoveryBlock(memory, RlpBehaviors.DisableLazyHash);
     }
 
     public void Cache(Block block)

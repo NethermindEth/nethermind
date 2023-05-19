@@ -144,14 +144,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.GasLimit = decoderContext.DecodeLong(allowLeadingZeroBytes: false);
             transaction.To = decoderContext.DecodeAddress();
             transaction.Value = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
-            if ((rlpBehaviors & RlpBehaviors.SliceMemory) != 0)
-            {
-                transaction.Data = decoderContext.DecodeByteArrayMemory();
-            }
-            else
-            {
-                transaction.Data = decoderContext.DecodeByteArray();
-            }
+            transaction.Data = decoderContext.DecodeByteArrayMemory();
         }
 
         private void DecodeAccessListPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
@@ -162,14 +155,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.GasLimit = decoderContext.DecodeLong(allowLeadingZeroBytes: false);
             transaction.To = decoderContext.DecodeAddress();
             transaction.Value = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
-            if ((rlpBehaviors & RlpBehaviors.SliceMemory) != 0)
-            {
-                transaction.Data = decoderContext.DecodeByteArrayMemory();
-            }
-            else
-            {
-                transaction.Data = decoderContext.DecodeByteArray();
-            }
+            transaction.Data = decoderContext.DecodeByteArrayMemory();
             transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
         }
 
@@ -182,14 +168,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.GasLimit = decoderContext.DecodeLong(allowLeadingZeroBytes: false);
             transaction.To = decoderContext.DecodeAddress();
             transaction.Value = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
-            if ((rlpBehaviors & RlpBehaviors.SliceMemory) != 0)
-            {
-                transaction.Data = decoderContext.DecodeByteArrayMemory();
-            }
-            else
-            {
-                transaction.Data = decoderContext.DecodeByteArray();
-            }
+            transaction.Data = decoderContext.DecodeByteArrayMemory();
             transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
         }
 
@@ -200,7 +179,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.GasLimit);
             stream.Encode(item.To);
             stream.Encode(item.Value);
-            stream.Encode(item.Data.FasterToArray());
+            stream.Encode(item.Data);
         }
 
         private void EncodeAccessListPayloadWithoutPayload(T item, RlpStream stream, RlpBehaviors rlpBehaviors)
@@ -211,7 +190,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.GasLimit);
             stream.Encode(item.To);
             stream.Encode(item.Value);
-            stream.Encode(item.Data.FasterToArray());
+            stream.Encode(item.Data);
             _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
         }
 
@@ -224,7 +203,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.GasLimit);
             stream.Encode(item.To);
             stream.Encode(item.Value);
-            stream.Encode(item.Data.FasterToArray());
+            stream.Encode(item.Data);
             _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
         }
 
@@ -474,7 +453,7 @@ namespace Nethermind.Serialization.Rlp
                 + Rlp.LengthOf(item.GasLimit)
                 + Rlp.LengthOf(item.To)
                 + Rlp.LengthOf(item.Value)
-                + Rlp.LengthOf(item.Data.FasterToArray());
+                + Rlp.LengthOf(item.Data);
         }
 
         private int GetAccessListContentLength(T item)
@@ -484,7 +463,7 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(item.GasLimit)
                    + Rlp.LengthOf(item.To)
                    + Rlp.LengthOf(item.Value)
-                   + Rlp.LengthOf(item.Data.FasterToArray())
+                   + Rlp.LengthOf(item.Data)
                    + Rlp.LengthOf(item.ChainId ?? 0)
                    + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
         }
@@ -497,7 +476,7 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(item.GasLimit)
                    + Rlp.LengthOf(item.To)
                    + Rlp.LengthOf(item.Value)
-                   + Rlp.LengthOf(item.Data.FasterToArray())
+                   + Rlp.LengthOf(item.Data)
                    + Rlp.LengthOf(item.ChainId ?? 0)
                    + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
         }
