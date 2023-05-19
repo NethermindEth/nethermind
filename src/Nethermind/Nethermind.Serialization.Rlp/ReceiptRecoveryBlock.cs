@@ -41,6 +41,9 @@ public class ReceiptRecoveryBlock
     public BlockHeader Header { get; }
     public int TransactionCount { get; }
 
+    // Use a buffer to avoid reallocation. Surprisingly significant. May produce incorrect transaction, but for recovery, it is correct.
+    private Transaction? _txBuffer;
+
     public Transaction GetNextTransaction()
     {
         if (_transactions != null)
@@ -50,10 +53,10 @@ public class ReceiptRecoveryBlock
 
         Rlp.ValueDecoderContext decoderContext = new(_transactionData, true);
         decoderContext.Position = _currentTransactionPosition;
-        Transaction tx = TxDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowUnsigned | RlpBehaviors.DisableLazyHash);
+        TxDecoder.Instance.Decode(ref decoderContext, ref _txBuffer, RlpBehaviors.AllowUnsigned | RlpBehaviors.DisableLazyHash);
         _currentTransactionPosition = decoderContext.Position;
 
-        return tx;
+        return _txBuffer;
     }
 
     public Keccak? Hash => Header.Hash; // do not add setter here

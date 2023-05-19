@@ -212,16 +212,32 @@ namespace Nethermind.Serialization.Rlp
 
         public T? Decode(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+
+        {
+            T transaction = null;
+            Decode(ref decoderContext, ref transaction, rlpBehaviors);
+
+            return transaction;
+        }
+
+
+        public void Decode(ref Rlp.ValueDecoderContext decoderContext, ref T? transaction,
+            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {
                 decoderContext.ReadByte();
-                return null;
+                transaction = null;
+                return;
             }
 
-            Span<byte> transactionSequence = decoderContext.PeekNextItem();
+            if (transaction == null)
+            {
+                transaction = new();
+            }
+            transaction.Type = TxType.Legacy;
 
-            T transaction = new();
+            Span<byte> transactionSequence = decoderContext.PeekNextItem();
             if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
             {
                 byte firstByte = decoderContext.PeekByte();
@@ -280,7 +296,6 @@ namespace Nethermind.Serialization.Rlp
                 // Just calculate the Hash immediately as txn too large
                 transaction.Hash = Keccak.Compute(transactionSequence);
             }
-            return transaction;
         }
 
         private static void DecodeSignature(
