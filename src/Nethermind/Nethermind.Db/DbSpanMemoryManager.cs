@@ -9,7 +9,7 @@ using Nethermind.Db;
 
 namespace Nethermind.Core.Buffers;
 
-public class DbSpanMemoryManager: MemoryManager<byte>
+public class DbSpanMemoryManager : MemoryManager<byte>
 {
     private readonly IDbWithSpan _db;
     private readonly unsafe void* _ptr;

@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Receipts
 
         IRecoveryContext CreateRecoveryContext(ReceiptRecoveryBlock block, bool forceRecoverSender = false);
 
-        public interface IRecoveryContext: IDisposable
+        public interface IRecoveryContext : IDisposable
         {
             void RecoverReceiptData(TxReceipt receipt);
             void RecoverReceiptData(ref TxReceiptStructRef receipt);
