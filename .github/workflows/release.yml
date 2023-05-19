@@ -151,7 +151,7 @@ jobs:
       env:
         GIT_COMMIT: ${{ needs.build.outputs.COMMIT_HASH }}
         GIT_TAG: ${{ github.event.inputs.tag }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         PACKAGE_PREFIX: ${{ needs.build.outputs.PACKAGE_PREFIX }}
         PRERELEASE: ${{ needs.build.outputs.PRERELEASE }}
       run: $SCRIPTS_PATH/publish-github.sh
