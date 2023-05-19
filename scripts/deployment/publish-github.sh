@@ -16,7 +16,7 @@ if [ "$release_id" == "" ]
 then
   body=$(printf \
     '{"tag_name": "%s", "target_commitish": "%s", "name": "v%s", "body": "## Release notes\\n\\n", "draft": true, "prerelease": %s}' \
-    $GIT_TAG $GIT_COMMIT $GIT_TAG $PRERELEASE)
+    $GIT_TAG $GITHUB_SHA $GIT_TAG $PRERELEASE)
 
   release_id=$(curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases \
     -X POST \
@@ -27,7 +27,7 @@ then
 else
   body=$(printf \
     '{"target_commitish": "%s", "name": "v%s", "draft": false, "prerelease": %s}' \
-    $GIT_COMMIT $GIT_TAG $PRERELEASE)
+    $GITHUB_SHA $GIT_TAG $PRERELEASE)
 
   curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$release_id \
     -X PATCH \

@@ -24,7 +24,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build-timestamp: ${{ steps.build-runner.outputs.build-timestamp }}
-      commit-hash: ${{ steps.build-runner.outputs.commit-hash }}
       package-prefix: ${{ steps.archive.outputs.package-prefix }}
       prerelease: ${{ steps.build-runner.outputs.prerelease }}
     steps:
@@ -32,7 +31,6 @@ jobs:
         uses: actions/checkout@v3
         with:
           path: nethermind
-          ref: ${{ github.event.inputs.tag }}
       - name: Check out Nethermind Launcher repository
         uses: actions/checkout@v3
         with:
@@ -57,13 +55,12 @@ jobs:
         id: build-runner
         run: |
           build_timestamp=$(date '+%s')
-          cd nethermind && commit_hash=$(git describe --always --exclude=* --abbrev=40) && cd ..
           echo "build-timestamp=$build_timestamp" >> $GITHUB_OUTPUT
-          echo "commit-hash-short=${commit_hash:0:8}" >> $GITHUB_OUTPUT
+          echo "commit-hash=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
           echo "prerelease=${{ contains(github.event.inputs.tag, '-') }}" >> $GITHUB_OUTPUT
-          $SCRIPTS_PATH/build-runner.sh ${{ github.event.inputs.tag }} $commit_hash $build_timestamp
+          $SCRIPTS_PATH/build-runner.sh $GITHUB_SHA $build_timestamp
       - name: Build Nethermind.Cli
-        run: $SCRIPTS_PATH/build-cli.sh ${{ github.event.inputs.tag }} ${{ steps.build-runner.outputs.commit-hash }} ${{ steps.build-runner.outputs.build-timestamp }}
+        run: $SCRIPTS_PATH/build-cli.sh $GITHUB_SHA ${{ steps.build-runner.outputs.build-timestamp }}
       - name: Build Nethermind.Launcher
         run: $SCRIPTS_PATH/build-launcher.sh
       - name: Build Nethermind.Launcher for Linux arm64
@@ -75,7 +72,7 @@ jobs:
       - name: Archive packages
         id: archive
         env:
-          PACKAGE_PREFIX: nethermind-${{ github.event.inputs.tag }}-${{ steps.build-runner.outputs.commit-hash-short }}
+          PACKAGE_PREFIX: nethermind-${{ github.event.inputs.tag }}-${{ steps.build-runner.outputs.commit-hash }}
         run: |
           echo "package-prefix=$PACKAGE_PREFIX" >> $GITHUB_OUTPUT
           $SCRIPTS_PATH/archive-packages.sh
@@ -136,14 +133,12 @@ jobs:
         uses: actions/checkout@v3
         with:
           path: nethermind
-          ref: ${{ github.event.inputs.tag }}
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}
       - name: Publish
         env:
-          GIT_COMMIT: ${{ needs.build.outputs.commit-hash }}
           GIT_TAG: ${{ github.event.inputs.tag }}
           GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
           PACKAGE_PREFIX: ${{ needs.build.outputs.package-prefix }}
@@ -163,7 +158,6 @@ jobs:
         uses: actions/checkout@v3
         with:
           path: nethermind
-          ref: ${{ github.event.inputs.tag }}
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
@@ -192,8 +186,6 @@ jobs:
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.inputs.tag }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
       - name: Set up Docker Buildx
@@ -208,7 +200,7 @@ jobs:
           docker buildx build --platform=linux/amd64,linux/arm64 -f Dockerfile \
             -t "${{ env.DOCKER_IMAGE }}:latest" \
             -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" \
-            --build-arg COMMIT_HASH=${{ needs.build.outputs.commit-hash }} \
+            --build-arg COMMIT_HASH=$GITHUB_SHA \
             --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.build-timestamp }} . --push
           curl -s -X POST https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches \
             -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" \
@@ -219,7 +211,7 @@ jobs:
         run: |
           docker buildx build --platform=linux/amd64,linux/arm64 -f Dockerfile \
             -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" \
-            --build-arg COMMIT_HASH=${{ needs.build.outputs.commit-hash }} \
+            --build-arg COMMIT_HASH=$GITHUB_SHA \
             --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.build-timestamp }} . --push
       - name: Clear Docker cache
         if: always()
