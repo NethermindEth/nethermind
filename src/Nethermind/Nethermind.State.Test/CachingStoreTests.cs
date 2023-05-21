@@ -123,7 +123,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void LruCache_SingleUseMultiUseRatio()
         {
-            LruCache<int, string> cache = new (maxCapacity: 4, startCapacity: 4, "test");
+            LruCache<int, string> cache = new(maxCapacity: 4, startCapacity: 4, "test");
 
             cache.Set(1, "one");
             cache.Set(2, "two");
@@ -148,7 +148,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void LruCache_Remove()
         {
-            LruCache<int, string> cache = new (maxCapacity: 4, startCapacity: 4, "test");
+            LruCache<int, string> cache = new(maxCapacity: 4, startCapacity: 4, "test");
 
             cache.Set(1, "one");
             cache.Set(2, "two");
@@ -170,7 +170,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void LruCache_DeleteFromMiddleOfSections()
         {
-            LruCache<int, string> cache = new (maxCapacity: 6, startCapacity: 6, "test");
+            LruCache<int, string> cache = new(maxCapacity: 6, startCapacity: 6, "test");
 
             cache.Set(1, "one");
             cache.Set(2, "two");

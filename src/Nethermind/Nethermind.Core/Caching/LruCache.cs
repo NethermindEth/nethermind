@@ -165,7 +165,7 @@ namespace Nethermind.Core.Caching
         private void Replace(TKey key, TValue value)
         {
             LinkedListNode<LruCacheItem>? node;
-            if (MultiAccessCount > _maxCapacity / 2)
+            if (MultiAccessCount > _maxCapacity / 2 || _singleAccessLru is null)
             {
                 MultiAccessCount--;
                 node = _multiAccessLru;
@@ -181,7 +181,10 @@ namespace Nethermind.Core.Caching
                 ThrowInvalidOperationException();
             }
 
-            _cacheMap.Remove(node!.Value.Key);
+            if (!_cacheMap.Remove(node.Value.Key))
+            {
+                ThrowInvalidOperationException();
+            }
 
             node.Value = new(key, value);
             node.AccessCount = 1;
