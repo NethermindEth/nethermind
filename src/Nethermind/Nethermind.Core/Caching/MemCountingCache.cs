@@ -168,12 +168,16 @@ namespace Nethermind.Core.Caching
             if (MultiAccessCount > _maxCapacity / 2 || _singleAccessLru is null)
             {
                 MultiAccessCount--;
+                SingleAccessCount++;
                 node = _multiAccessLru;
+                Debug.Assert(node is not null && node.AccessCount > 1);
+                LinkedListNode<LruCacheItem>.Remove(ref _multiAccessLru, node);
             }
             else
             {
-                SingleAccessCount--;
                 node = _singleAccessLru;
+                Debug.Assert(node is not null && node.AccessCount == 1);
+                LinkedListNode<LruCacheItem>.Remove(ref _singleAccessLru, node);
             }
 
             if (node is null)

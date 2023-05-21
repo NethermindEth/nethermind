@@ -6,7 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Core.Caching;
 
-[DebuggerDisplay("{Value} (AccessCount)")]
+[DebuggerDisplay("{Value} ({AccessCount})")]
 internal sealed class LinkedListNode<T>
 {
     internal LinkedListNode<T>? Next;
