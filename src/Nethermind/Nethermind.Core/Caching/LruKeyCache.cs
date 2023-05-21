@@ -15,7 +15,11 @@ namespace Nethermind.Core.Caching
         private readonly int _maxCapacity;
         private readonly string _name;
         private readonly Dictionary<TKey, LinkedListNode<TKey>> _cacheMap;
-        private LinkedListNode<TKey>? _leastRecentlyUsed;
+        private LinkedListNode<TKey>? _singleAccessLru;
+        private LinkedListNode<TKey>? _multiAccessLru;
+
+        public int SingleAccessCount { get; private set; }
+        public int MultiAccessCount { get; private set; }
 
         public LruKeyCache(int maxCapacity, int startCapacity, string name)
         {
@@ -34,16 +38,24 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Clear()
         {
-            _leastRecentlyUsed = null;
+            _singleAccessLru = null;
+            _multiAccessLru = null;
+            SingleAccessCount = 0;
+            MultiAccessCount = 0;
             _cacheMap.Clear();
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Get(TKey key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
-                LinkedListNode<TKey>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                ulong accessCount = node.AccessCount;
+                LinkedListNode<TKey>.MoveToMostRecent(ref _singleAccessLru, ref _multiAccessLru, node);
+                if (accessCount == 1)
+                {
+                    SingleAccessCount--;
+                    MultiAccessCount++;
+                }
                 return true;
             }
 
@@ -55,7 +67,14 @@ namespace Nethermind.Core.Caching
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
-                LinkedListNode<TKey>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                ulong accessCount = node.AccessCount;
+                LinkedListNode<TKey>.MoveToMostRecent(ref _singleAccessLru, ref _multiAccessLru, node);
+                if (accessCount == 1)
+                {
+                    SingleAccessCount--;
+                    MultiAccessCount++;
+                }
+
                 return false;
             }
             else
@@ -66,8 +85,9 @@ namespace Nethermind.Core.Caching
                 }
                 else
                 {
+                    SingleAccessCount++;
                     LinkedListNode<TKey> newNode = new(key);
-                    LinkedListNode<TKey>.AddMostRecent(ref _leastRecentlyUsed, newNode);
+                    LinkedListNode<TKey>.AddMostRecent(ref _singleAccessLru, newNode);
                     _cacheMap.Add(key, newNode);
                 }
 
@@ -78,16 +98,35 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Delete(TKey key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
+            if (_cacheMap.Remove(key, out LinkedListNode<TKey>? node))
             {
-                LinkedListNode<TKey>.Remove(ref _leastRecentlyUsed, node);
-                _cacheMap.Remove(key);
+                if (node.AccessCount == 1)
+                {
+                    SingleAccessCount--;
+                    LinkedListNode<TKey>.Remove(ref _singleAccessLru, node);
+                }
+                else
+                {
+                    MultiAccessCount--;
+                    LinkedListNode<TKey>.Remove(ref _multiAccessLru, node);
+                }
             }
         }
 
         private void Replace(TKey key)
         {
-            LinkedListNode<TKey>? node = _leastRecentlyUsed;
+            LinkedListNode<TKey>? node;
+            if (MultiAccessCount > _maxCapacity / 2)
+            {
+                MultiAccessCount--;
+                node = _multiAccessLru;
+            }
+            else
+            {
+                SingleAccessCount--;
+                node = _singleAccessLru;
+            }
+
             if (node is null)
             {
                 ThrowInvalidOperation();
@@ -95,7 +134,9 @@ namespace Nethermind.Core.Caching
 
             _cacheMap.Remove(node.Value);
             node.Value = key;
-            LinkedListNode<TKey>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+            node.AccessCount = 1;
+
+            LinkedListNode<TKey>.AddMostRecent(ref _singleAccessLru, node);
             _cacheMap.Add(key, node);
 
             [DoesNotReturn]

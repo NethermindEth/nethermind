@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -19,7 +20,11 @@ namespace Nethermind.Core.Caching
     {
         private readonly int _maxCapacity;
         private readonly SpanDictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
-        private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
+        private LinkedListNode<LruCacheItem>? _singleAccessLru;
+        private LinkedListNode<LruCacheItem>? _multiAccessLru;
+
+        public int SingleAccessCount { get; private set; }
+        public int MultiAccessCount { get; private set; }
 
         public SpanLruCache(int maxCapacity, int startCapacity, string name, ISpanEqualityComparer<TKey> comparer)
         {
@@ -35,17 +40,17 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Clear()
         {
-            _leastRecentlyUsed = null;
+            _singleAccessLru = null;
+            _multiAccessLru = null;
+            SingleAccessCount = 0;
+            MultiAccessCount = 0;
             _cacheMap.Clear();
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue Get(ReadOnlySpan<TKey> key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+            if (TryGet(key, out TValue value))
             {
-                TValue value = node.Value.Value;
-                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
                 return value;
             }
 
@@ -61,7 +66,14 @@ namespace Nethermind.Core.Caching
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 value = node.Value.Value;
-                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                ulong accessCount = node.AccessCount;
+                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _singleAccessLru, ref _multiAccessLru, node);
+                if (accessCount == 1)
+                {
+                    SingleAccessCount--;
+                    MultiAccessCount++;
+                }
+
                 return true;
             }
 
@@ -83,7 +95,14 @@ namespace Nethermind.Core.Caching
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 node.Value.Value = val;
-                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                ulong accessCount = node.AccessCount;
+                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _singleAccessLru, ref _multiAccessLru, node);
+                if (accessCount == 1)
+                {
+                    SingleAccessCount--;
+                    MultiAccessCount++;
+                }
+
                 return false;
             }
             else
@@ -95,8 +114,9 @@ namespace Nethermind.Core.Caching
                 else
                 {
                     TKey[] keyAsArray = key.ToArray();
+                    SingleAccessCount++;
                     LinkedListNode<LruCacheItem> newNode = new(new(keyAsArray, val));
-                    LinkedListNode<LruCacheItem>.AddMostRecent(ref _leastRecentlyUsed, newNode);
+                    LinkedListNode<LruCacheItem>.AddMostRecent(ref _singleAccessLru, newNode);
                     _cacheMap.Add(keyAsArray, newNode);
                 }
 
@@ -107,10 +127,19 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Delete(ReadOnlySpan<TKey> key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+            if (_cacheMap.Remove(key, out LinkedListNode<LruCacheItem>? node))
             {
-                LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, node);
-                _cacheMap.Remove(key);
+                if (node.AccessCount == 1)
+                {
+                    SingleAccessCount--;
+                    LinkedListNode<LruCacheItem>.Remove(ref _singleAccessLru, node);
+                }
+                else
+                {
+                    MultiAccessCount--;
+                    LinkedListNode<LruCacheItem>.Remove(ref _multiAccessLru, node);
+                }
+
                 return true;
             }
 
@@ -128,7 +157,18 @@ namespace Nethermind.Core.Caching
 
         private void Replace(ReadOnlySpan<TKey> key, TValue value)
         {
-            LinkedListNode<LruCacheItem>? node = _leastRecentlyUsed;
+            LinkedListNode<LruCacheItem>? node;
+            if (MultiAccessCount > _maxCapacity / 2)
+            {
+                MultiAccessCount--;
+                node = _multiAccessLru;
+            }
+            else
+            {
+                SingleAccessCount--;
+                node = _singleAccessLru;
+            }
+
             if (node is null)
             {
                 ThrowInvalidOperationException();
@@ -138,17 +178,21 @@ namespace Nethermind.Core.Caching
 
             TKey[] keyAsArray = key.ToArray();
             node.Value = new(keyAsArray, value);
-            LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
-            _cacheMap.Add(keyAsArray, node);
+            node.AccessCount = 1;
 
-            [DoesNotReturn]
-            static void ThrowInvalidOperationException()
-            {
-                throw new InvalidOperationException(
-                    $"{nameof(LruCache<TKey, TValue>)} called {nameof(Replace)} when empty.");
-            }
+            LinkedListNode<LruCacheItem>.AddMostRecent(ref _singleAccessLru, node);
+            _cacheMap.Add(keyAsArray, node);
         }
 
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowInvalidOperationException()
+        {
+            throw new InvalidOperationException(
+                $"{nameof(SpanLruCache<TKey, TValue>)} called {nameof(Replace)} when empty.");
+        }
+
+        [DebuggerDisplay("{Key}:{Value}")]
         private struct LruCacheItem
         {
             public LruCacheItem(TKey[] k, TValue v)
