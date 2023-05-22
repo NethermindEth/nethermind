@@ -268,8 +268,10 @@ namespace Nethermind.Core.Crypto
         /// </summary>
         public static Keccak MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
 
+        [ThreadStatic] static byte[]? _threadStaticBytes;
+
         public Span<byte> Bytes => _innerKeccak.BytesAsSpan;
-        internal ValueKeccak _innerKeccak { get; }
+        internal ValueKeccak _innerKeccak;
 
         public Keccak(string hexString)
             : this(Extensions.Bytes.FromHexString(hexString)) { }
@@ -417,6 +419,23 @@ namespace Nethermind.Core.Crypto
         }
 
         public KeccakStructRef ToStructRef() => new(Bytes);
+
+        public byte[] BytesToArray()
+        {
+            // Used to track which piece of code need to create a copy of array
+            return Bytes.ToArray();
+        }
+
+        /// <summary>
+        /// Return a thread static byte array. Can't use this for two keccak at the same time.
+        /// </summary>
+        /// <returns></returns>
+        public byte[] CreateThreadStaticByte()
+        {
+            if (_threadStaticBytes == null) _threadStaticBytes = new byte[Size];
+            Bytes.CopyTo(_threadStaticBytes);
+            return _threadStaticBytes;
+        }
     }
 
     public ref struct KeccakStructRef

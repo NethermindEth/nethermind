@@ -195,6 +195,12 @@ namespace Nethermind.Core.Extensions
             return bytes.AsSpan().WithoutLeadingZeros();
         }
 
+        public static Span<byte> WithoutLeadingZerosOrEmpty(this Span<byte> bytes)
+        {
+            if (bytes.IsNullOrEmpty()) return Array.Empty<byte>();
+            return bytes.WithoutLeadingZeros();
+        }
+
         public static Span<byte> WithoutLeadingZeros(this Span<byte> bytes)
         {
             if (bytes.Length == 0) return new byte[] { 0 };
@@ -274,6 +280,33 @@ namespace Nethermind.Core.Extensions
                 position += parts[i].Length;
             }
 
+            return result;
+        }
+
+        public static byte[] Concat(ReadOnlySpan<byte> part1, ReadOnlySpan<byte> part2)
+        {
+            byte[] result = new byte[part1.Length + part2.Length];
+            part1.CopyTo(result);
+            part2.CopyTo(result.AsSpan(part1.Length));
+            return result;
+        }
+
+        public static byte[] Concat(ReadOnlySpan<byte> part1, ReadOnlySpan<byte> part2, ReadOnlySpan<byte> part3)
+        {
+            byte[] result = new byte[part1.Length + part2.Length + part3.Length];
+            part1.CopyTo(result);
+            part2.CopyTo(result.AsSpan(part1.Length));
+            part3.CopyTo(result.AsSpan(part1.Length + part2.Length));
+            return result;
+        }
+
+        public static byte[] Concat(ReadOnlySpan<byte> part1, ReadOnlySpan<byte> part2, ReadOnlySpan<byte> part3, ReadOnlySpan<byte> part4)
+        {
+            byte[] result = new byte[part1.Length + part2.Length + part3.Length + part4.Length];
+            part1.CopyTo(result);
+            part2.CopyTo(result.AsSpan(part1.Length));
+            part3.CopyTo(result.AsSpan(part1.Length + part2.Length));
+            part4.CopyTo(result.AsSpan(part1.Length + part2.Length + part3.Length));
             return result;
         }
 
@@ -558,6 +591,12 @@ namespace Nethermind.Core.Extensions
             public readonly byte[] Bytes;
             public readonly int LeadingZeros;
             public readonly bool WithZeroX;
+        }
+
+        public static string ByteArrayToHexViaLookup32Safe(ReadOnlySpan<byte> bytes, bool withZeroX)
+        {
+            // TODO: Make this zero copy
+            return ByteArrayToHexViaLookup32Safe(bytes.ToArray(), withZeroX);
         }
 
         [DebuggerStepThrough]

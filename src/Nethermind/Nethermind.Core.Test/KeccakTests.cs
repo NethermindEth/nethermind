@@ -29,7 +29,8 @@ namespace Nethermind.Core.Test
             byte[] bytes = new byte[32];
             new Random(42).NextBytes(bytes);
 
-            string result = Keccak.Compute(bytes).ToString();
+            Keccak theBytes = Keccak.Compute(bytes);
+            string result = theBytes.ToString();
 
             KeccakHash keccakHash = KeccakHash.Create();
             keccakHash.Reset();

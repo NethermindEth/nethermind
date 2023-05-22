@@ -117,7 +117,7 @@ namespace Nethermind.Wallet
 
         public Signature Sign(Keccak message, Address address)
         {
-            var rs = SecP256k1.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
+            var rs = Ecdsa.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
             return new Signature(rs, v);
         }
     }

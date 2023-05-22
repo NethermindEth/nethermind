@@ -41,7 +41,7 @@ public class SignatureTests
         var signatureObject = new Signature(signatureSlice, recoveryId);
         var keccak = Keccak.Compute(Bytes.Concat(messageType, data));
         Span<byte> publicKey = stackalloc byte[65];
-        bool result = SecP256k1.RecoverKeyFromCompact(publicKey, keccak.Bytes, signatureObject.Bytes, signatureObject.RecoveryId, false);
+        bool result = Ecdsa.RecoverKeyFromCompact(publicKey, keccak.Bytes, signatureObject.Bytes, signatureObject.RecoveryId, false);
         result.Should().BeTrue();
     }
 }

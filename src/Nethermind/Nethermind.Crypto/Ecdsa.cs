@@ -19,7 +19,7 @@ namespace Nethermind.Crypto
                 throw new ArgumentException("Invalid private key", nameof(privateKey));
             }
 
-            byte[] signatureBytes = SecP256k1.SignCompact(message.Bytes, privateKey.KeyBytes, out int recoveryId);
+            byte[] signatureBytes = SignCompact(message.Bytes, privateKey.KeyBytes, out int recoveryId);
 
             //// https://bitcoin.stackexchange.com/questions/59820/sign-a-tx-with-low-s-value-using-openssl
 
@@ -51,7 +51,7 @@ namespace Nethermind.Crypto
         public PublicKey? RecoverPublicKey(Signature signature, Keccak message)
         {
             Span<byte> publicKey = stackalloc byte[65];
-            bool success = SecP256k1.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);
+            bool success = RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);
             if (!success)
             {
                 return null;
@@ -63,7 +63,7 @@ namespace Nethermind.Crypto
         public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, Keccak message)
         {
             Span<byte> publicKey = stackalloc byte[33];
-            bool success = SecP256k1.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, true);
+            bool success = RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, true);
             if (!success)
             {
                 return null;
@@ -76,6 +76,20 @@ namespace Nethermind.Crypto
         {
             byte[] deserialized = SecP256k1.Decompress(compressedPublicKey.Bytes);
             return new PublicKey(deserialized);
+        }
+
+        public static byte[]? SignCompact(Span<byte> message, Span<byte> privateKey, out int recoveryId)
+        {
+            // TODO: this is a hack to make it work with the current SecP256k1 implementation.
+            // Should be removed once the binding is updated
+            return SecP256k1.SignCompact(message.ToArray(), privateKey.ToArray(), out recoveryId);
+        }
+
+        internal static bool RecoverKeyFromCompact(Span<byte> publicKey, Span<byte> messageHash, Span<byte> signature, int recoveryId, bool compressed)
+        {
+            // TODO: this is a hack to make it work with the current SecP256k1 implementation.
+            // Should be removed once the binding is updated
+            return SecP256k1.RecoverKeyFromCompact(publicKey, messageHash.ToArray(), signature.ToArray(), recoveryId, compressed);
         }
     }
 }

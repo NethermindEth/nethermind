@@ -136,5 +136,13 @@ namespace Nethermind.Core.Extensions
         public static bool IsNull<T>(this in Span<T> span) => Unsafe.IsNullRef(ref MemoryMarshal.GetReference(span));
         public static bool IsNullOrEmpty<T>(this in ReadOnlySpan<T> span) => span.Length == 0;
         public static bool IsNull<T>(this in ReadOnlySpan<T> span) => Unsafe.IsNullRef(ref MemoryMarshal.GetReference(span));
+
+        public static Memory<T> Concat<T>(this in Span<T> span, Span<T> span2)
+        {
+            T[] newMemory = new T[span.Length + span2.Length];
+            span.CopyTo(newMemory);
+            span2.CopyTo(newMemory.AsSpan(span.Length));
+            return newMemory;
+        }
     }
 }
