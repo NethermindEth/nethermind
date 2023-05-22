@@ -734,7 +734,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task Pivots_test()
+    public async Task Blocks_before_pivots_should_not_be_added()
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
         BlockTree syncedBlockTree = Build.A.BlockTree(chain.BlockTree.Head!, chain.SpecProvider).WithPostMergeRules().OfChainLength(5).TestObject;
@@ -748,9 +748,8 @@ public partial class EngineModuleTests
         };
 
         IEngineRpcModule rpc = CreateEngineModule(chain, syncConfig);
-        Block block = syncedBlockTree.FindBlock(3, BlockTreeLookupOptions.None)!;
-        block.Header.Hash = block.CalculateHash();
-        ExecutionPayload prePivotRequest = new(block);
+        Block blockBeforePivot = syncedBlockTree.FindBlock(3, BlockTreeLookupOptions.None)!;
+        ExecutionPayload prePivotRequest = new(blockBeforePivot);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(prePivotRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         chain.BlockTree.FindBlock(prePivotRequest.BlockHash).Should().BeNull();
