@@ -8,10 +8,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="CommandLineParser" Version="2.9.1" />
-      <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="7.0.0" />
-      <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.30.1" />
-      <PackageReference Include="System.Linq.Async" Version="6.0.1" />
+      <PackageReference Include="CommandLineParser" />
+      <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+      <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
+      <PackageReference Include="System.Linq.Async" />
     </ItemGroup>
 
 </Project>
