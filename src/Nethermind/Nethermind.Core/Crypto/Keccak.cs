@@ -197,6 +197,8 @@ namespace Nethermind.Core.Crypto
     {
         private readonly ValueKeccak _innerKeccak;
 
+        public ReadOnlySpan<byte> Bytes => _innerKeccak.Bytes;
+
         private KeccakKey(ValueKeccak bytes)
         {
             _innerKeccak = bytes;
