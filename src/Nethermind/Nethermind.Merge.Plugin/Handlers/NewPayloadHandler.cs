@@ -109,7 +109,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
         }
 
-        if (block.Header.Number <= _syncConfig.PivotNumberParsed)
+        bool headIsZero = (_blockTree.Head?.Number ?? 0) == 0;
+        if (headIsZero && block.Header.Number <= _syncConfig.PivotNumberParsed)
         {
             if (_logger.IsInfo) _logger.Info($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
             return NewPayloadV1Result.Syncing;
