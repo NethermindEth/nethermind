@@ -3,22 +3,30 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Caching
 {
+    [DebuggerDisplay("MemCountingCache (Single: {SingleAccessCount}, Multi: {MultiAccessCount})")]
     public sealed class MemCountingCache : ICache<ValueKeccak, byte[]>
     {
         private readonly int _maxCapacity;
         private readonly Dictionary<ValueKeccak, LinkedListNode<LruCacheItem>> _cacheMap;
-        private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
+        private LinkedListNode<LruCacheItem>? _singleAccessLru;
+        private LinkedListNode<LruCacheItem>? _multiAccessLru;
+
+        public int SingleAccessCount { get; private set; }
+        public int MultiAccessCount { get; private set; }
 
         private const int PreInitMemorySize =
             80 /* Dictionary */ +
             MemorySizes.SmallObjectOverhead +
             MemorySizes.SmallObjectOverhead +
+            MemorySizes.SmallObjectOverhead +
+            8 /* sizeof(int) * 2 */ +
             8 /* sizeof(int) aligned */;
 
         private const int PostInitMemorySize =
@@ -29,7 +37,10 @@ namespace Nethermind.Core.Caching
 
         public void Clear()
         {
-            _leastRecentlyUsed = null;
+            _singleAccessLru = null;
+            _multiAccessLru = null;
+            SingleAccessCount = 0;
+            MultiAccessCount = 0;
             _cacheMap?.Clear();
         }
 
@@ -44,13 +55,10 @@ namespace Nethermind.Core.Caching
         {
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public byte[]? Get(ValueKeccak key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+            if (TryGet(key, out byte[]? value))
             {
-                byte[] value = node.Value.Value;
-                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
                 return value;
             }
 
@@ -63,7 +71,14 @@ namespace Nethermind.Core.Caching
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 value = node.Value.Value;
-                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                ulong accessCount = node.AccessCount;
+                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _singleAccessLru, ref _multiAccessLru, node);
+                if (accessCount == 1)
+                {
+                    SingleAccessCount--;
+                    MultiAccessCount++;
+                }
+
                 return true;
             }
 
@@ -82,7 +97,14 @@ namespace Nethermind.Core.Caching
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 node.Value.Value = val;
-                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                ulong accessCount = node.AccessCount;
+                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _singleAccessLru, ref _multiAccessLru, node);
+                if (accessCount == 1)
+                {
+                    SingleAccessCount--;
+                    MultiAccessCount++;
+                }
+
                 return false;
             }
             else
@@ -103,8 +125,9 @@ namespace Nethermind.Core.Caching
                 if (newMemorySize <= _maxCapacity)
                 {
                     MemorySize = newMemorySize;
+                    SingleAccessCount++;
                     LinkedListNode<LruCacheItem> newNode = new(new(key, val));
-                    LinkedListNode<LruCacheItem>.AddMostRecent(ref _leastRecentlyUsed, newNode);
+                    LinkedListNode<LruCacheItem>.AddMostRecent(ref _singleAccessLru, newNode);
                     _cacheMap.Add(key, newNode);
                 }
                 else
@@ -120,11 +143,18 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Delete(ValueKeccak key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+            if (_cacheMap.Remove(key, out LinkedListNode<LruCacheItem>? node))
             {
-                MemorySize -= node.Value.MemorySize;
-                LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, node);
-                _cacheMap.Remove(key);
+                if (node.AccessCount == 1)
+                {
+                    SingleAccessCount--;
+                    LinkedListNode<LruCacheItem>.Remove(ref _singleAccessLru, node);
+                }
+                else
+                {
+                    MultiAccessCount--;
+                    LinkedListNode<LruCacheItem>.Remove(ref _multiAccessLru, node);
+                }
 
                 return true;
             }
@@ -137,29 +167,54 @@ namespace Nethermind.Core.Caching
 
         private void Replace(ValueKeccak key, byte[] value)
         {
-            LinkedListNode<LruCacheItem> node = _leastRecentlyUsed!;
+            LinkedListNode<LruCacheItem>? node;
+            if (_singleAccessLru is null ||
+                // Reserve 1/4 of the cache for multi access items.
+                // Prefer the single access item to evict,
+                // if multi-access item was accessed more recently.
+                (MultiAccessCount > _maxCapacity / 4
+                 && _multiAccessLru!.LastAccessSec < _singleAccessLru.LastAccessSec))
+            {
+                MultiAccessCount--;
+                SingleAccessCount++;
+                node = _multiAccessLru;
+                Debug.Assert(node is not null && node.AccessCount > 1);
+                LinkedListNode<LruCacheItem>.Remove(ref _multiAccessLru, node);
+            }
+            else
+            {
+                node = _singleAccessLru;
+                Debug.Assert(node is not null && node.AccessCount == 1);
+                LinkedListNode<LruCacheItem>.Remove(ref _singleAccessLru, node);
+            }
+
             if (node is null)
             {
-                ThrowInvalidOperation();
+                ThrowInvalidOperationException();
             }
 
-            // ReSharper disable once PossibleNullReferenceException
             MemorySize += MemorySizes.Align(value.Length) - MemorySizes.Align(node.Value.Value.Length);
-
-            _cacheMap.Remove(node!.Value.Key);
+            if (!_cacheMap.Remove(node.Value.Key))
+            {
+                ThrowInvalidOperationException();
+            }
 
             node.Value = new(key, value);
-            LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
-            _cacheMap.Add(key, node);
+            node.ResetAccessCount();
 
-            [DoesNotReturn]
-            static void ThrowInvalidOperation()
-            {
-                throw new InvalidOperationException(
-                                    $"{nameof(MemCountingCache)} called {nameof(Replace)} when empty.");
-            }
+            LinkedListNode<LruCacheItem>.AddMostRecent(ref _singleAccessLru, node);
+            _cacheMap.Add(key, node);
         }
 
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowInvalidOperationException()
+        {
+            throw new InvalidOperationException(
+                $"{nameof(MemCountingCache)} called {nameof(Replace)} when empty.");
+        }
+
+        [DebuggerDisplay("{Key}:{Value}")]
         private struct LruCacheItem
         {
             public LruCacheItem(ValueKeccak k, byte[] v)

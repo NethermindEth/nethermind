@@ -400,6 +400,7 @@ public class VirtualMachine : IVirtualMachine
         else
         {
             // need to touch code so that any collectors that track database access are informed
+            Db.Metrics.CodeCacheHits++;
             worldState.TouchCode(codeHash);
         }
 

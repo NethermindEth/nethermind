@@ -39,6 +39,10 @@ namespace Nethermind.Db
         public static long CodeDbReads { get; set; }
 
         [CounterMetric]
+        [Description("Number of Code Cache hits.")]
+        public static long CodeCacheHits { get; set; }
+
+        [CounterMetric]
         [Description("Number of Code DB writes.")]
         public static long CodeDbWrites { get; set; }
 

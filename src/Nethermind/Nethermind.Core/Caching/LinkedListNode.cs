@@ -1,43 +1,57 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Core.Caching;
 
+[DebuggerDisplay("{Value} ({AccessCount})")]
 internal sealed class LinkedListNode<T>
 {
     internal LinkedListNode<T>? Next;
     internal LinkedListNode<T>? Prev;
     internal T Value;
+    internal uint AccessCount { get; private set; }
+    internal uint LastAccessSec { get; private set; }
 
     public LinkedListNode(T value)
     {
         Value = value;
+        ResetAccessCount();
     }
 
-    public static void MoveToMostRecent([NotNull] ref LinkedListNode<T>? leastRecentlyUsed, LinkedListNode<T> node)
+    public void ResetAccessCount()
     {
-        if (node.Next == node)
+        AccessCount = 1;
+        ResetAccessTime();
+    }
+    public void ResetAccessTime()
+    {
+        // Max ~133 years since process restart
+        LastAccessSec = (uint)(Environment.TickCount64 / 1024);
+    }
+
+    public static void MoveToMostRecent(ref LinkedListNode<T>? singleAccessLru, [NotNull] ref LinkedListNode<T>? multiAccessLru, LinkedListNode<T> node)
+    {
+        uint accessCount = node.AccessCount;
+
+        Remove(ref accessCount == 1 ? ref singleAccessLru : ref multiAccessLru, node);
+        AddMostRecent(ref multiAccessLru, node);
+
+        if (accessCount < uint.MaxValue)
         {
-            Debug.Assert(leastRecentlyUsed == node, "this should only be true for a list with only one node");
-            // Do nothing only one node
+            node.AccessCount = accessCount + 1;
         }
-        else
-        {
-            Remove(ref leastRecentlyUsed, node);
-            AddMostRecent(ref leastRecentlyUsed, node);
-        }
+
+        node.ResetAccessTime();
     }
 
     public static void Remove(ref LinkedListNode<T>? leastRecentlyUsed, LinkedListNode<T> node)
     {
-        Debug.Assert(leastRecentlyUsed is not null, "This method shouldn't be called on empty list!");
         if (node.Next == node)
         {
-            Debug.Assert(leastRecentlyUsed == node, "this should only be true for a list with only one node");
             leastRecentlyUsed = null;
         }
         else
@@ -49,6 +63,8 @@ internal sealed class LinkedListNode<T>
                 leastRecentlyUsed = node.Next;
             }
         }
+
+        node.LastAccessSec = 0;
     }
 
     public static void AddMostRecent([NotNull] ref LinkedListNode<T>? leastRecentlyUsed, LinkedListNode<T> node)
@@ -61,6 +77,8 @@ internal sealed class LinkedListNode<T>
         {
             InsertMostRecent(leastRecentlyUsed, node);
         }
+
+        node.ResetAccessTime();
     }
 
     private static void InsertMostRecent(LinkedListNode<T> leastRecentlyUsed, LinkedListNode<T> newNode)

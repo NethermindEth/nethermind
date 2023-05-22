@@ -10,12 +10,17 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Caching
 {
+    [DebuggerDisplay("LruKeyCache (Single: {SingleAccessCount}, Multi: {MultiAccessCount})")]
     public sealed class LruKeyCache<TKey> where TKey : notnull
     {
         private readonly int _maxCapacity;
         private readonly string _name;
         private readonly Dictionary<TKey, LinkedListNode<TKey>> _cacheMap;
-        private LinkedListNode<TKey>? _leastRecentlyUsed;
+        private LinkedListNode<TKey>? _singleAccessLru;
+        private LinkedListNode<TKey>? _multiAccessLru;
+
+        public int SingleAccessCount { get; private set; }
+        public int MultiAccessCount { get; private set; }
 
         public LruKeyCache(int maxCapacity, int startCapacity, string name)
         {
@@ -34,7 +39,10 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Clear()
         {
-            _leastRecentlyUsed = null;
+            _singleAccessLru = null;
+            _multiAccessLru = null;
+            SingleAccessCount = 0;
+            MultiAccessCount = 0;
             _cacheMap.Clear();
         }
 
@@ -43,7 +51,13 @@ namespace Nethermind.Core.Caching
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
-                LinkedListNode<TKey>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                ulong accessCount = node.AccessCount;
+                LinkedListNode<TKey>.MoveToMostRecent(ref _singleAccessLru, ref _multiAccessLru, node);
+                if (accessCount == 1)
+                {
+                    SingleAccessCount--;
+                    MultiAccessCount++;
+                }
                 return true;
             }
 
@@ -55,7 +69,14 @@ namespace Nethermind.Core.Caching
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
-                LinkedListNode<TKey>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                ulong accessCount = node.AccessCount;
+                LinkedListNode<TKey>.MoveToMostRecent(ref _singleAccessLru, ref _multiAccessLru, node);
+                if (accessCount == 1)
+                {
+                    SingleAccessCount--;
+                    MultiAccessCount++;
+                }
+
                 return false;
             }
             else
@@ -66,8 +87,9 @@ namespace Nethermind.Core.Caching
                 }
                 else
                 {
+                    SingleAccessCount++;
                     LinkedListNode<TKey> newNode = new(key);
-                    LinkedListNode<TKey>.AddMostRecent(ref _leastRecentlyUsed, newNode);
+                    LinkedListNode<TKey>.AddMostRecent(ref _singleAccessLru, newNode);
                     _cacheMap.Add(key, newNode);
                 }
 
@@ -78,28 +100,62 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Delete(TKey key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
+            if (_cacheMap.Remove(key, out LinkedListNode<TKey>? node))
             {
-                LinkedListNode<TKey>.Remove(ref _leastRecentlyUsed, node);
-                _cacheMap.Remove(key);
+                if (node.AccessCount == 1)
+                {
+                    SingleAccessCount--;
+                    LinkedListNode<TKey>.Remove(ref _singleAccessLru, node);
+                }
+                else
+                {
+                    MultiAccessCount--;
+                    LinkedListNode<TKey>.Remove(ref _multiAccessLru, node);
+                }
             }
         }
 
         private void Replace(TKey key)
         {
-            LinkedListNode<TKey>? node = _leastRecentlyUsed;
-            if (node is null)
+            LinkedListNode<TKey>? node;
+            if (_singleAccessLru is null ||
+                // Reserve 1/4 of the cache for multi access items.
+                // Prefer the single access item to evict,
+                // if multi-access item was accessed more recently.
+                (MultiAccessCount > _maxCapacity / 4
+                 && _multiAccessLru!.LastAccessSec < _singleAccessLru.LastAccessSec))
             {
-                ThrowInvalidOperation();
+                MultiAccessCount--;
+                SingleAccessCount++;
+                node = _multiAccessLru;
+                Debug.Assert(node is not null && node.AccessCount > 1);
+                LinkedListNode<TKey>.Remove(ref _multiAccessLru, node);
+            }
+            else
+            {
+                node = _singleAccessLru;
+                Debug.Assert(node is not null && node.AccessCount == 1);
+                LinkedListNode<TKey>.Remove(ref _singleAccessLru, node);
             }
 
-            _cacheMap.Remove(node.Value);
+            if (node is null)
+            {
+                ThrowInvalidOperationException();
+            }
+
+            if (!_cacheMap.Remove(node.Value))
+            {
+                ThrowInvalidOperationException();
+            }
+
             node.Value = key;
-            LinkedListNode<TKey>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+            node.ResetAccessCount();
+
+            LinkedListNode<TKey>.AddMostRecent(ref _singleAccessLru, node);
             _cacheMap.Add(key, node);
 
             [DoesNotReturn]
-            static void ThrowInvalidOperation()
+            static void ThrowInvalidOperationException()
             {
                 throw new InvalidOperationException(
                                     $"{nameof(LruKeyCache<TKey>)} called {nameof(Replace)} when empty.");
