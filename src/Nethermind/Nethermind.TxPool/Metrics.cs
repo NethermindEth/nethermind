@@ -69,6 +69,14 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsWithExpensiveFiltering { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending transactions looking up Account that were serviced by cache.")]
+        public static long PendingTransactionAccountCacheHit { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending transactions looking up Account that were not in cache.")]
+        public static long PendingTransactionAccountCacheMiss { get; set; }
+
+        [CounterMetric]
         [Description("Number of already known pending transactions.")]
         public static long PendingTransactionsKnown { get; set; }
 

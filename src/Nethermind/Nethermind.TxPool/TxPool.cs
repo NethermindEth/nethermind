@@ -42,7 +42,7 @@ namespace Nethermind.TxPool
 
         private readonly IChainHeadSpecProvider _specProvider;
 
-        private readonly IAccountStateProvider _accounts;
+        private readonly AccountCache _accounts;
 
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
@@ -87,7 +87,7 @@ namespace Nethermind.TxPool
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
-            _accounts = _headInfo.AccountStateProvider;
+            _accounts = new AccountCache(_headInfo.AccountStateProvider);
             _specProvider = _headInfo.SpecProvider;
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
@@ -159,6 +159,7 @@ namespace Nethermind.TxPool
             {
                 // Clear snapshot
                 _transactionSnapshot = null;
+                _accounts.ClearCache();
                 _hashCache.ClearCurrentBlockCache();
                 _headBlocksChannel.Writer.TryWrite(e);
             }
@@ -664,6 +665,9 @@ Discarded at Filter Stage:
 11. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,24:N0}
 ------------------------------------------------
 Validated via State:    {Metrics.PendingTransactionsWithExpensiveFiltering,24:N0}
+- Cache hit        :    {Metrics.PendingTransactionAccountCacheHit,24:N0}
+- Cache miss       :    {Metrics.PendingTransactionAccountCacheMiss,24:N0}
+- Cache hit ratio  :    {Metrics.PendingTransactionAccountCacheHit / (float)(Metrics.PendingTransactionAccountCacheHit + Metrics.PendingTransactionAccountCacheMiss),24:P5}
 ------------------------------------------------
 Total Discarded:        {Metrics.PendingTransactionsDiscarded,24:N0}
 ------------------------------------------------
@@ -682,6 +686,47 @@ Ratios:
 * DarkPool Level2:      {Metrics.DarkPoolRatioLevel2,24:P5}
 ------------------------------------------------
 ");
+        }
+
+        private class AccountCache : IAccountStateProvider
+        {
+            private readonly IAccountStateProvider _accountStateProvider;
+            private readonly LruCache<ValueAddress, Account> _cache = new(maxCapacity: 3072, startCapacity: 3072, name: nameof(AccountCache));
+
+            public AccountCache(IAccountStateProvider accountStateProvider)
+            {
+                _accountStateProvider = accountStateProvider;
+            }
+
+            public Account GetAccount(Address address)
+            {
+                if (_cache.TryGet(address, out Account? account))
+                {
+                    Metrics.PendingTransactionAccountCacheHit++;
+                    return account;
+                }
+
+                account = _accountStateProvider.GetAccount(address);
+                _cache.Set(address, account);
+                Metrics.PendingTransactionAccountCacheMiss++;
+                return account;
+            }
+
+            public void ClearCache()
+            {
+                _cache.Clear();
+            }
+
+            private readonly struct ValueAddress : IEquatable<ValueAddress>
+            {
+                private readonly Address _address;
+                public ValueAddress(Address address) => _address = address;
+                public static implicit operator ValueAddress(Address address) => new(address);
+                public static implicit operator Address(ValueAddress address) => address._address;
+                public readonly bool Equals(ValueAddress other) => _address.Equals(other._address);
+                public override readonly bool Equals(object? obj) => obj is ValueAddress other && Equals(other);
+                public override readonly int GetHashCode() => _address.GetHashCode();
+            }
         }
     }
 }
