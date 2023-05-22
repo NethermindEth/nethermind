@@ -107,7 +107,7 @@ jobs:
       - name: Display Docker logs        
         working-directory: sedge
         run: docker compose logs
-        if: always()
+        if: success() || failure()
         
       - name: Verify health of a node
         working-directory: sedge
@@ -236,7 +236,7 @@ jobs:
       - name: Display Docker logs        
         working-directory: sedge
         run: docker compose logs
-        if: always()
+        if: success() || failure()
           
       - name: Verify health of a node
         working-directory: sedge
