@@ -120,7 +120,7 @@ namespace Nethermind.Core.Caching
             LinkedListNode<TKey>? node;
             if (_singleAccessLru is null ||
                 (MultiAccessCount > _maxCapacity / 2
-                // Only if last access was earlier than the oldest single access item
+                 // Only if last access was earlier than the oldest single access item
                  && _multiAccessLru!.LastAccessSec < _singleAccessLru.LastAccessSec))
             {
                 MultiAccessCount--;
