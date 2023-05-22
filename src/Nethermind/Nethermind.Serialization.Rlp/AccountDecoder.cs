@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -53,8 +52,12 @@ namespace Nethermind.Serialization.Rlp
             UInt256 balance = rlpStream.DecodeUInt256();
             Keccak storageRoot = DecodeStorageRoot(rlpStream);
             Keccak codeHash = DecodeCodeHash(rlpStream);
-            Account account = new(nonce, balance, storageRoot, codeHash);
-            return account;
+            if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
+            {
+                return new(nonce, balance);
+            }
+
+            return new(nonce, balance, storageRoot, codeHash);
         }
 
         public void Encode(RlpStream stream, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

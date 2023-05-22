@@ -108,8 +108,6 @@ public class ChainSpecLoaderTests
 
         Assert.That(chainSpec.Parameters.MaximumExtraDataSize, Is.EqualTo((long)32), "extra data");
         Assert.That(chainSpec.Parameters.GasLimitBoundDivisor, Is.EqualTo((long)0x0400), "gas limit bound divisor");
-        Assert.That(chainSpec.Parameters.AccountStartNonce, Is.EqualTo((UInt256)0x0), "account start nonce");
-
     }
 
     private static ChainSpec LoadChainSpec(string path)
@@ -249,6 +247,10 @@ public class ChainSpecLoaderTests
 
         chainSpec.AuRa.WithdrawalContractAddress.ToString(true)
             .Should().Be("0xb97036A26259B7147018913bD58a774cf91acf25");
+
+        chainSpec.ShanghaiTimestamp.Should().Be(ChiadoSpecProvider.ShanghaiTimestamp);
+        chainSpec.ShanghaiTimestamp.Should().Be(ChiadoSpecProvider.Instance.TimestampFork);
+
     }
 
     [Test]

@@ -39,15 +39,7 @@ public class ColumnDb : IDbWithSpan
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
-        UpdateWriteMetrics();
-        if (value is null)
-        {
-            _rocksDb.Remove(key, _columnFamily, _mainDb.WriteFlagsToWriteOptions(flags));
-        }
-        else
-        {
-            _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteFlagsToWriteOptions(flags));
-        }
+        _mainDb.SetWithColumnFamily(key, _columnFamily, value, flags);
     }
 
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] =>
@@ -122,11 +114,6 @@ public class ColumnDb : IDbWithSpan
     /// </summary>
     /// <exception cref="NotSupportedException"></exception>
     public void Clear() { throw new NotSupportedException(); }
-
-    private void UpdateWriteMetrics() => _mainDb.UpdateWriteMetrics();
-
-    private void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
-
     public long GetSize() => _mainDb.GetSize();
     public long GetCacheSize() => _mainDb.GetCacheSize();
     public long GetIndexSize() => _mainDb.GetIndexSize();
