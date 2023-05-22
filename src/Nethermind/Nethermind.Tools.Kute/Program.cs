@@ -28,7 +28,7 @@ static class Program
         IServiceCollection collection = new ServiceCollection();
 
         collection.AddSingleton<Application>();
-        collection.AddSingleton<ISystemClock, SystemClock.SystemClock>();
+        collection.AddSingleton<ISystemClock, RealSystemClock>();
         collection.AddSingleton<HttpClient>();
         collection.AddSingleton<ISecretProvider>(new FileSecretProvider(config.JwtSecretFilePath));
         collection.AddSingleton<IAuth, JwtAuth>();

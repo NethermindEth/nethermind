@@ -3,7 +3,7 @@
 
 namespace Nethermind.Tools.Kute.SystemClock;
 
-class SystemClock : ISystemClock
+class RealSystemClock : ISystemClock
 {
     public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
 }
