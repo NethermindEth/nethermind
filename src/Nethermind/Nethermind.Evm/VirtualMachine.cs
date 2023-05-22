@@ -1249,7 +1249,7 @@ public class VirtualMachine : IVirtualMachine
                         Address address = stack.PopAddress();
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
 
-                        if (programCounter < code.Length)
+                        if (!traceOpcodes && programCounter < code.Length)
                         {
                             bool optimizeAccess = false;
                             Instruction nextInstruction = (Instruction)code[programCounter];
@@ -1282,11 +1282,6 @@ public class VirtualMachine : IVirtualMachine
                                 // is is a common pattern to check if address is a contract
                                 // however we can just check the address's loaded CodeHash
                                 // to reduce storage access from trying to load the code
-                                if (traceOpcodes)
-                                {
-                                    EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-                                    StartInstructionTrace(Instruction.ISZERO, vmState, gasAvailable, programCounter, in stack);
-                                }
 
                                 programCounter++;
                                 // Add gas cost for ISZERO, GT, or EQ
