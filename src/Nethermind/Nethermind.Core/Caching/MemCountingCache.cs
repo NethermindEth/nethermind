@@ -24,6 +24,8 @@ namespace Nethermind.Core.Caching
             80 /* Dictionary */ +
             MemorySizes.SmallObjectOverhead +
             MemorySizes.SmallObjectOverhead +
+            MemorySizes.SmallObjectOverhead +
+            8 /* sizeof(int) * 2 */ +
             8 /* sizeof(int) aligned */;
 
         private const int PostInitMemorySize =
@@ -185,6 +187,7 @@ namespace Nethermind.Core.Caching
                 ThrowInvalidOperationException();
             }
 
+            MemorySize += MemorySizes.Align(value.Length) - MemorySizes.Align(node.Value.Value.Length);
             if (!_cacheMap.Remove(node.Value.Key))
             {
                 ThrowInvalidOperationException();
