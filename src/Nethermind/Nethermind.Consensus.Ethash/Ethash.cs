@@ -125,7 +125,7 @@ namespace Nethermind.Consensus.Ethash
             ValueKeccak seed = new ValueKeccak();
             for (uint i = 0; i < epoch; i++)
             {
-                seed = ValueKeccak.Compute(seed.Bytes); // TODO: optimize
+                seed = ValueKeccak.Compute(seed.Bytes);
             }
 
             return new Keccak(seed.Bytes.ToArray());

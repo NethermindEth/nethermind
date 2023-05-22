@@ -7,7 +7,6 @@ namespace Nethermind.Crypto;
 /// </summary>
 public static class SpanSecP256k1
 {
-
     [ThreadStatic] private static byte[]? _signMessageHash;
     [ThreadStatic] private static byte[]? _signPrivateKey;
 
@@ -43,6 +42,7 @@ public static class SpanSecP256k1
     }
 
     [ThreadStatic] private static byte[]? _recoverMessageHash;
+
     public static bool RecoverKeyFromCompact(Span<byte> publicKey, Span<byte> messageHash, Span<byte> signature, int recoveryId, bool compressed)
     {
         byte[] messageHashArray;
