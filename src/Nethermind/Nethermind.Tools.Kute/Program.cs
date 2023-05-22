@@ -1,4 +1,4 @@
-﻿using CommandLine;
+using CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Tools.Kute.Auth;
 using Nethermind.Tools.Kute.JsonRpcMessageProvider;
