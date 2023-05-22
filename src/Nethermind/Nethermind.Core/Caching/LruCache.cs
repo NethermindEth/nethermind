@@ -167,8 +167,10 @@ namespace Nethermind.Core.Caching
         {
             LinkedListNode<LruCacheItem>? node;
             if (_singleAccessLru is null ||
-                (MultiAccessCount > _maxCapacity / 2
-                 // Only if last access was earlier than the oldest single access item
+                // Reserve 1/4 of the cache for multi access items.
+                // Prefer the single access item to evict,
+                // if multi-access item was accessed more recently.
+                (MultiAccessCount > _maxCapacity / 4
                  && _multiAccessLru!.LastAccessSec < _singleAccessLru.LastAccessSec))
             {
                 MultiAccessCount--;
