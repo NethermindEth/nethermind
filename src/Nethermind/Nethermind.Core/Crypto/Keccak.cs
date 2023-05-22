@@ -52,7 +52,7 @@ namespace Nethermind.Core.Crypto
 
         public static implicit operator ValueKeccak(Keccak? keccak)
         {
-            return new ValueKeccak(keccak?.Bytes);
+            return keccak!._innerKeccak;
         }
 
         public ValueKeccak(byte[]? bytes)
@@ -119,7 +119,7 @@ namespace Nethermind.Core.Crypto
 
         public bool Equals(ValueKeccak other) => _bytes.Equals(other._bytes);
 
-        public bool Equals(Keccak? other) => BytesAsSpan.SequenceEqual(other?.Bytes);
+        public bool Equals(Keccak? other) => Equals(other?._innerKeccak);
 
         public override int GetHashCode()
         {
@@ -182,7 +182,7 @@ namespace Nethermind.Core.Crypto
             Bytes = bytes;
         }
 
-        public static implicit operator KeccakKey(Keccak k) => new(k.Bytes);
+        public static implicit operator KeccakKey(Keccak k) => new(k.Bytes.ToArray());
 
         public int CompareTo(KeccakKey other)
         {
@@ -268,7 +268,8 @@ namespace Nethermind.Core.Crypto
         /// </summary>
         public static Keccak MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
 
-        public byte[] Bytes { get; }
+        public Span<byte> Bytes => _innerKeccak.BytesAsSpan;
+        internal ValueKeccak _innerKeccak { get; }
 
         public Keccak(string hexString)
             : this(Extensions.Bytes.FromHexString(hexString)) { }
@@ -280,7 +281,7 @@ namespace Nethermind.Core.Crypto
                 throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
             }
 
-            Bytes = bytes;
+            _innerKeccak = new ValueKeccak(bytes);
         }
 
         public override string ToString()
@@ -349,7 +350,7 @@ namespace Nethermind.Core.Crypto
 
         public int CompareTo(Keccak? other)
         {
-            return Extensions.Bytes.Comparer.Compare(Bytes, other?.Bytes);
+            return Nullable.Compare(_innerKeccak, other?._innerKeccak);
         }
 
         public override bool Equals(object? obj)
@@ -359,10 +360,10 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            long v0 = Unsafe.ReadUnaligned<long>(ref MemoryMarshal.GetArrayDataReference(Bytes));
-            long v1 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long)));
-            long v2 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 2));
-            long v3 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 3));
+            long v0 = Unsafe.ReadUnaligned<long>(ref MemoryMarshal.GetArrayDataReference(Bytes.ToArray()));
+            long v1 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes.ToArray()), sizeof(long)));
+            long v2 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes.ToArray()), sizeof(long) * 2));
+            long v3 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes.ToArray()), sizeof(long) * 3));
             v0 ^= v1;
             v2 ^= v3;
             v0 ^= v2;
@@ -397,22 +398,22 @@ namespace Nethermind.Core.Crypto
 
         public static bool operator >(Keccak? k1, Keccak? k2)
         {
-            return Extensions.Bytes.Comparer.Compare(k1?.Bytes, k2?.Bytes) > 0;
+            return Nullable.Compare(k1?._innerKeccak, k2?._innerKeccak) > 0;
         }
 
         public static bool operator <(Keccak? k1, Keccak? k2)
         {
-            return Extensions.Bytes.Comparer.Compare(k1?.Bytes, k2?.Bytes) < 0;
+            return Nullable.Compare(k1?._innerKeccak, k2?._innerKeccak) < 0;
         }
 
         public static bool operator >=(Keccak? k1, Keccak? k2)
         {
-            return Extensions.Bytes.Comparer.Compare(k1?.Bytes, k2?.Bytes) >= 0;
+            return Nullable.Compare(k1?._innerKeccak, k2?._innerKeccak) >= 0;
         }
 
         public static bool operator <=(Keccak? k1, Keccak? k2)
         {
-            return Extensions.Bytes.Comparer.Compare(k1?.Bytes, k2?.Bytes) <= 0;
+            return Nullable.Compare(k1?._innerKeccak, k2?._innerKeccak) <= 0;
         }
 
         public KeccakStructRef ToStructRef() => new(Bytes);
