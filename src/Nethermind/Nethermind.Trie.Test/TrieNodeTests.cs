@@ -586,7 +586,7 @@ namespace Nethermind.Trie.Test
         public void Size_of_an_unknown_node_with_keccak_is_correct()
         {
             TrieNode trieNode = new(NodeType.Unknown, Keccak.Zero);
-            trieNode.GetMemorySize(false).Should().Be(136);
+            trieNode.GetMemorySize(false).Should().Be(104);
         }
 
         [Test]
@@ -623,7 +623,7 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Size_of_keccak_is_correct()
         {
-            Keccak.MemorySize.Should().Be(80);
+            Keccak.MemorySize.Should().Be(48);
         }
 
         [Test]
@@ -715,7 +715,7 @@ namespace Nethermind.Trie.Test
             trieNode.SetChild(0, child);
 
             trieNode.PrunePersistedRecursively(1);
-            trieNode.GetMemorySize(false).Should().Be(176);
+            trieNode.GetMemorySize(false).Should().Be(144);
         }
 
         [Test]
@@ -728,7 +728,7 @@ namespace Nethermind.Trie.Test
             trieNode.PrunePersistedRecursively(1);
             TrieNode cloned = trieNode.Clone();
 
-            cloned.GetMemorySize(false).Should().Be(176);
+            cloned.GetMemorySize(false).Should().Be(144);
         }
 
         [Test]
