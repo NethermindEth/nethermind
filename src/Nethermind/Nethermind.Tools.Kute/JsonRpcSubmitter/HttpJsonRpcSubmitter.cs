@@ -3,6 +3,7 @@
 
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Mime;
 using System.Text;
 using Nethermind.Tools.Kute.Auth;
 
@@ -26,7 +27,7 @@ class HttpJsonRpcSubmitter : IJsonRpcSubmitter
         var request = new HttpRequestMessage(HttpMethod.Post, _uri)
         {
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", _auth.AuthToken) },
-            Content = new StringContent(jsonContent, Encoding.UTF8, "application/json")
+            Content = new StringContent(jsonContent, Encoding.UTF8, MediaTypeNames.Application.Json)
         };
         var response = await _httpClient.SendAsync(request);
         if (response.StatusCode != HttpStatusCode.OK)
