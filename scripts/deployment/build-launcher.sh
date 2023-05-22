@@ -4,18 +4,17 @@
 
 set -e
 
-APP_NAME=Nethermind.Launcher
-LAUNCHER_PATH=$GITHUB_WORKSPACE/launcher
-OUTPUT_PATH=$GITHUB_WORKSPACE/$PUB_DIR
+app_name=Nethermind.Launcher
+output_path=$GITHUB_WORKSPACE/$PUB_DIR
 
 echo "Building Nethermind Launcher"
 
-cd $LAUNCHER_PATH
+cd $GITHUB_WORKSPACE/launcher
 
 npm i
-pkg index.js -t latest-linux-x64 -o $APP_NAME && mv $APP_NAME $OUTPUT_PATH/linux-x64
-pkg index.js -t latest-win-x64 -o $APP_NAME.exe && mv $APP_NAME.exe $OUTPUT_PATH/win-x64
-pkg index.js -t latest-macos-x64 -o $APP_NAME && mv $APP_NAME $OUTPUT_PATH/osx-x64 && \
-  cp $OUTPUT_PATH/osx-x64/$APP_NAME $OUTPUT_PATH/osx-arm64/$APP_NAME
+pkg index.js -t latest-linux-x64 -o $app_name && mv $app_name $output_path/linux-x64
+pkg index.js -t latest-win-x64 -o $app_name.exe && mv $app_name.exe $output_path/win-x64
+pkg index.js -t latest-macos-x64 -o $app_name && mv $app_name $output_path/osx-x64 && \
+  cp $output_path/osx-x64/$app_name $output_path/osx-arm64/$app_name
 
 echo "Build completed"
