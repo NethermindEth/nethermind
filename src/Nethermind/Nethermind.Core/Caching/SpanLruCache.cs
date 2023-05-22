@@ -16,6 +16,7 @@ namespace Nethermind.Core.Caching
     /// </summary>
     /// <typeparam name="TKey"></typeparam>
     /// <typeparam name="TValue"></typeparam>
+    [DebuggerDisplay("SpanLruCache (Single: {SingleAccessCount}, Multi: {MultiAccessCount})")]
     public sealed class SpanLruCache<TKey, TValue> : ISpanCache<TKey, TValue> where TKey : notnull
     {
         private readonly int _maxCapacity;
@@ -158,7 +159,10 @@ namespace Nethermind.Core.Caching
         private void Replace(ReadOnlySpan<TKey> key, TValue value)
         {
             LinkedListNode<LruCacheItem>? node;
-            if (MultiAccessCount > _maxCapacity / 2 || _singleAccessLru is null)
+            if (_singleAccessLru is null ||
+                (MultiAccessCount > _maxCapacity / 2
+                // Only if last access was earlier than the oldest single access item
+                 && _multiAccessLru!.LastAccessSec < _singleAccessLru.LastAccessSec))
             {
                 MultiAccessCount--;
                 SingleAccessCount++;
@@ -185,7 +189,7 @@ namespace Nethermind.Core.Caching
 
             TKey[] keyAsArray = key.ToArray();
             node.Value = new(keyAsArray, value);
-            node.AccessCount = 1;
+            node.ResetAccessCount();
 
             LinkedListNode<LruCacheItem>.AddMostRecent(ref _singleAccessLru, node);
             _cacheMap.Add(keyAsArray, node);

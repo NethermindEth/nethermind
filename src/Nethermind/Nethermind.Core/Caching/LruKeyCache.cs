@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Caching
 {
+    [DebuggerDisplay("LruKeyCache (Single: {SingleAccessCount}, Multi: {MultiAccessCount})")]
     public sealed class LruKeyCache<TKey> where TKey : notnull
     {
         private readonly int _maxCapacity;
@@ -117,7 +118,10 @@ namespace Nethermind.Core.Caching
         private void Replace(TKey key)
         {
             LinkedListNode<TKey>? node;
-            if (MultiAccessCount > _maxCapacity / 2 || _singleAccessLru is null)
+            if (_singleAccessLru is null ||
+                (MultiAccessCount > _maxCapacity / 2
+                // Only if last access was earlier than the oldest single access item
+                 && _multiAccessLru!.LastAccessSec < _singleAccessLru.LastAccessSec))
             {
                 MultiAccessCount--;
                 SingleAccessCount++;
@@ -143,7 +147,7 @@ namespace Nethermind.Core.Caching
             }
 
             node.Value = key;
-            node.AccessCount = 1;
+            node.ResetAccessCount();
 
             LinkedListNode<TKey>.AddMostRecent(ref _singleAccessLru, node);
             _cacheMap.Add(key, node);
