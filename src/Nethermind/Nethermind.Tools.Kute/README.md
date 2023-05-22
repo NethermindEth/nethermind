@@ -12,7 +12,7 @@ dotnet build [-c Release]
 
 ## Get JSON-RPC messages
 
-To get real JSON-RPC messages, run the Nethermind Client using the `JsonRpcRecording` state feature flag. The minimum required value is `Request` (`All` is also valid); this usually involves adding `--JsonRpc.RpcRecorderState <Request|All>` to your execution flags.
+To get real JSON-RPC messages, run the Nethermind Client using the `RpcRecorderState` state feature flag (see [JsonRpc module](https://docs.nethermind.io/nethermind/ethereum-client/configuration/jsonrpc)). The minimum required value is `Request` (`All` is also valid); this usually involves adding `--JsonRpc.RpcRecorderState <Request|All>` to your execution flags.
 
 ## Run
 
