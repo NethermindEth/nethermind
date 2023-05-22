@@ -195,38 +195,23 @@ namespace Nethermind.Core.Crypto
     [DebuggerStepThrough]
     public readonly struct KeccakKey : IEquatable<KeccakKey>, IComparable<KeccakKey>
     {
-        public byte[] Bytes { get; }
+        private readonly ValueKeccak _innerKeccak;
 
-        private KeccakKey(byte[] bytes)
+        private KeccakKey(ValueKeccak bytes)
         {
-            Bytes = bytes;
+            _innerKeccak = bytes;
         }
 
-        public static implicit operator KeccakKey(Keccak k) => new(k.Bytes.ToArray());
+        public static implicit operator KeccakKey(Keccak k) => new(k.ValueKeccak);
 
         public int CompareTo(KeccakKey other)
         {
-            return Extensions.Bytes.Comparer.Compare(Bytes, other.Bytes);
+            return _innerKeccak.CompareTo(other._innerKeccak);
         }
 
         public bool Equals(KeccakKey other)
         {
-            if (ReferenceEquals(Bytes, other.Bytes))
-            {
-                return true;
-            }
-
-            if (Bytes is null)
-            {
-                return other.Bytes is null;
-            }
-
-            if (other.Bytes is null)
-            {
-                return false;
-            }
-
-            return Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+            return _innerKeccak.Equals(other._innerKeccak);
         }
 
         public override bool Equals(object? obj)
@@ -236,18 +221,7 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            if (Bytes is null) return 0;
-
-            long v0 = Unsafe.ReadUnaligned<long>(ref MemoryMarshal.GetArrayDataReference(Bytes));
-            long v1 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long)));
-            long v2 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 2));
-            long v3 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 3));
-
-            v0 ^= v1;
-            v2 ^= v3;
-            v0 ^= v2;
-
-            return (int)v0 ^ (int)(v0 >> 32);
+            return _innerKeccak.GetHashCode();
         }
     }
 
