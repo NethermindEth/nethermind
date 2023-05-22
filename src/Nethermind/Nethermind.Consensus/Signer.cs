@@ -38,7 +38,7 @@ namespace Nethermind.Consensus
         public Signature Sign(Keccak message)
         {
             if (!CanSign) throw new InvalidOperationException("Cannot sign without provided key.");
-            byte[] rs = Ecdsa.SignCompact(message.Bytes, _key!.KeyBytes, out int v);
+            byte[] rs = SpanSecP256k1.SignCompact(message.Bytes, _key!.KeyBytes, out int v);
             return new Signature(rs, v);
         }
 

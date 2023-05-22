@@ -119,7 +119,7 @@ namespace Nethermind.Crypto
         public Address? RecoverAddress(Span<byte> signatureBytes, Keccak message)
         {
             Span<byte> publicKey = stackalloc byte[65];
-            bool success = RecoverKeyFromCompact(
+            bool success = SpanSecP256k1.RecoverKeyFromCompact(
                 publicKey,
                 message.Bytes,
                 signatureBytes[..64],
