@@ -45,6 +45,7 @@ namespace Nethermind.Core.Caching
             _cacheMap.Clear();
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Get(TKey key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
