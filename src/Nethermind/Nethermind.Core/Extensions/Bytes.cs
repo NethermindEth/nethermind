@@ -593,12 +593,6 @@ namespace Nethermind.Core.Extensions
             public readonly bool WithZeroX;
         }
 
-        public static string ByteArrayToHexViaLookup32Safe(ReadOnlySpan<byte> bytes, bool withZeroX)
-        {
-            // TODO: Make this zero copy
-            return ByteArrayToHexViaLookup32Safe(bytes.ToArray(), withZeroX);
-        }
-
         [DebuggerStepThrough]
         public static string ByteArrayToHexViaLookup32Safe(byte[] bytes, bool withZeroX)
         {
