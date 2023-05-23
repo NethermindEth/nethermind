@@ -519,12 +519,12 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             return _lowPriorityAndNoWalWrite;
         }
 
-        if ((flags & WriteFlags.DisableWAL) != 0)
+        if ((flags & WriteFlags.DisableWAL) == WriteFlags.DisableWAL)
         {
             return _noWalWrite;
         }
 
-        if ((flags & WriteFlags.LowPriority) != 0)
+        if ((flags & WriteFlags.LowPriority) == WriteFlags.LowPriority)
         {
             return _lowPriorityWriteOptions;
         }
