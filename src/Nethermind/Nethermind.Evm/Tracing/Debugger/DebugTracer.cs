@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Int256;
 using Nethermind.State;
+using Nethermind.State.Tracing;
 
 namespace Nethermind.Evm.Tracing.DebugTrace;
 public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
