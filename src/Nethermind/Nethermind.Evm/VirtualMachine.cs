@@ -157,7 +157,7 @@ public class VirtualMachine : IVirtualMachine
 
                         if (currentState.IsTopLevel)
                         {
-                            return new TransactionSubstate(callResult.ExceptionType, _txTracer != NullTxTracer.Instance);
+                            return new TransactionSubstate(callResult.ExceptionType, _txTracer.IsTracing);
                         }
 
                         previousCallResult = StatusCode.FailureBytes;
@@ -231,7 +231,7 @@ public class VirtualMachine : IVirtualMachine
                         (IReadOnlyCollection<Address>)currentState.DestroyList,
                         (IReadOnlyCollection<LogEntry>)currentState.Logs,
                         callResult.ShouldRevert,
-                        _txTracer != NullTxTracer.Instance);
+                        _txTracer.IsTracing);
                 }
 
                 Address callCodeOwner = currentState.Env.ExecutingAccount;
@@ -348,7 +348,7 @@ public class VirtualMachine : IVirtualMachine
 
                 if (currentState.IsTopLevel)
                 {
-                    return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, _txTracer != NullTxTracer.Instance);
+                    return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, _txTracer.IsTracing);
                 }
 
                 previousCallResult = StatusCode.FailureBytes;
