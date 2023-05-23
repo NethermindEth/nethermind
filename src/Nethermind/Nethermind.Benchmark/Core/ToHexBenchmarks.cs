@@ -11,7 +11,7 @@ namespace Nethermind.Benchmarks.Core
 {
     public class ToHexBenchmarks
     {
-        private byte[] bytes = TestItem.KeccakA.Bytes;
+        private byte[] bytes = TestItem.KeccakA.BytesToArray();
 
         [Params(true, false)]
         public bool OddNumber;

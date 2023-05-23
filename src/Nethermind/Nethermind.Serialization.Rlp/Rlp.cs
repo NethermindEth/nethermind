@@ -474,7 +474,7 @@ namespace Nethermind.Serialization.Rlp
 
             byte[] result = new byte[LengthOfKeccakRlp];
             result[0] = 160;
-            Buffer.BlockCopy(keccak.Bytes, 0, result, 1, 32);
+            keccak.Bytes.CopyTo(result.AsSpan()[1..]);
             return new Rlp(result);
         }
 

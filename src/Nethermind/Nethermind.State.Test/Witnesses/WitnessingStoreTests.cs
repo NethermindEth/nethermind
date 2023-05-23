@@ -123,11 +123,11 @@ namespace Nethermind.Store.Test.Witnesses
             }
         }
 
-        private static readonly byte[] Key1 = TestItem.KeccakA.Bytes;
+        private static readonly byte[] Key1 = TestItem.KeccakA.BytesToArray();
 
-        private static readonly byte[] Key2 = TestItem.KeccakB.Bytes;
+        private static readonly byte[] Key2 = TestItem.KeccakB.BytesToArray();
 
-        private static readonly byte[] Key3 = TestItem.KeccakC.Bytes;
+        private static readonly byte[] Key3 = TestItem.KeccakC.BytesToArray();
 
         private static readonly byte[] Value1 = { 1 };
 
