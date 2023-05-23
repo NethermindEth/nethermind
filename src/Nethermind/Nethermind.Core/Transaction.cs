@@ -66,10 +66,7 @@ namespace Nethermind.Core
             }
             set
             {
-                if (_preHash.Count != 0)
-                {
-                    ClearPreHashInternal();
-                }
+                ClearPreHash();
                 _hash = value;
             }
         }
