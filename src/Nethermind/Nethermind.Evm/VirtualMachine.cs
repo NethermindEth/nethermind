@@ -565,17 +565,10 @@ public class VirtualMachine : IVirtualMachine
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        //if(!UpdateGas(dataGasCost, ref gasAvailable)) return CallResult.Exception;
-        if (!UpdateGas(baseGasCost, ref gasAvailable))
+        if (!UpdateGas(baseGasCost, ref gasAvailable) ||
+            !UpdateGas(dataGasCost, ref gasAvailable))
         {
-            Metrics.EvmExceptions++;
-            throw new OutOfGasException();
-        }
-
-        if (!UpdateGas(dataGasCost, ref gasAvailable))
-        {
-            Metrics.EvmExceptions++;
-            throw new OutOfGasException();
+            return CallResult.OutOfGasException;
         }
 
         state.GasAvailable = gasAvailable;
@@ -652,7 +645,9 @@ public class VirtualMachine : IVirtualMachine
             UInt256 localPreviousDest = previousCallOutputDestination;
             if (!UpdateMemoryCost(vmState, ref gasAvailable, in localPreviousDest, (ulong)previousCallOutput.Length))
             {
-                ThrowStackOverflowException();
+                // Never ran any instructions, so nothing to trace (or mark as end of trace)
+                traceOpcodes = false;
+                goto OutOfGas;
             }
 
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
@@ -2508,14 +2503,6 @@ InvalidJumpDestination:
 AccessViolation:
         if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.AccessViolation);
         return CallResult.AccessViolationException;
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowStackOverflowException()
-        {
-            Metrics.EvmExceptions++;
-            throw new OutOfGasException();
-        }
     }
 
     static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
