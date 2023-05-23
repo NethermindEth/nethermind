@@ -9,7 +9,6 @@ jobs:
   chiado:
     name: "Run sync of chiado testnet"
     runs-on: ubuntu-latest
-    timeout-minutes: 90
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -54,6 +53,8 @@ jobs:
           docker compose up -d
 
       - name: Wait for Chiado to sync
+        id: wait
+        timeout-minutes: 90
         run: |        
           set +e
           
@@ -107,9 +108,10 @@ jobs:
       - name: Display Docker logs        
         working-directory: sedge
         run: docker compose logs
-        if: success() || failure()
+        if: steps.wait.outcome == 'success' || steps.wait.outcome == 'failure'
         
       - name: Verify health of a node
+        if: steps.wait.outcome == 'success'
         working-directory: sedge
         run: |
           set +e
@@ -138,7 +140,6 @@ jobs:
   sepolia:
     name: "Run sync of sepolia testnet"
     runs-on: ubuntu-latest
-    timeout-minutes: 60
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -183,6 +184,8 @@ jobs:
           docker compose up -d
 
       - name: Wait for Sepolia to sync
+        id: wait
+        timeout-minutes: 90
         run: |
           set +e
           
@@ -236,9 +239,10 @@ jobs:
       - name: Display Docker logs        
         working-directory: sedge
         run: docker compose logs
-        if: success() || failure()
+        if: steps.wait.outcome == 'success' || steps.wait.outcome == 'failure'
           
       - name: Verify health of a node
+        if: steps.wait.outcome == 'success'
         working-directory: sedge
         run: |
           set +e
