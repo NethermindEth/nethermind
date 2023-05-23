@@ -568,7 +568,8 @@ public class VirtualMachine : IVirtualMachine
         if (!UpdateGas(baseGasCost, ref gasAvailable) ||
             !UpdateGas(dataGasCost, ref gasAvailable))
         {
-            return CallResult.OutOfGasException;
+            Metrics.EvmExceptions++;
+            throw new OutOfGasException();
         }
 
         state.GasAvailable = gasAvailable;
