@@ -1,3 +1,4 @@
+
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -21,6 +22,10 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
+
+#if DEBUG
+using Nethermind.Evm.Tracing.DebugTrace;
+#endif
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -593,6 +598,10 @@ public class VirtualMachine : IVirtualMachine
     {
         bool isTrace = _logger.IsTrace;
         bool traceOpcodes = _txTracer.IsTracingInstructions;
+#if DEBUG
+        DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
+#endif
+
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
 
@@ -651,12 +660,14 @@ public class VirtualMachine : IVirtualMachine
 
         while (programCounter < code.Length)
         {
+#if DEBUG
+            debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+#endif  
             Instruction instruction = (Instruction)code[programCounter];
             // Console.WriteLine(instruction);
+
             if (traceOpcodes)
-            {
                 StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
-            }
 
             programCounter++;
             switch (instruction)
@@ -2453,7 +2464,11 @@ public class VirtualMachine : IVirtualMachine
                     }
             }
 
-            if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+
+            if (traceOpcodes)
+            {
+                EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+            }
         }
 
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
@@ -2467,6 +2482,9 @@ OutOfGas:
         return CallResult.OutOfGasException;
 EmptyTrace:
         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+#if DEBUG
+        debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+#endif
         return CallResult.Empty;
 InvalidInstruction:
         if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.BadInstruction);
