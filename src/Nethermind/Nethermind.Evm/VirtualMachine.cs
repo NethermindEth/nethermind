@@ -231,7 +231,8 @@ public class VirtualMachine : IVirtualMachine
                         (IReadOnlyCollection<Address>)currentState.DestroyList,
                         (IReadOnlyCollection<LogEntry>)currentState.Logs,
                         callResult.ShouldRevert,
-                        _txTracer.IsTracing);
+                        // Check ShouldRevert first as it is less expensive than IsTracing
+                        isTracerConnected: callResult.ShouldRevert && _txTracer.IsTracing);
                 }
 
                 Address callCodeOwner = currentState.Env.ExecutingAccount;
