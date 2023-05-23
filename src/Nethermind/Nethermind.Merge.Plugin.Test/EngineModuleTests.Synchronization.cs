@@ -734,6 +734,28 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task Blocks_before_pivots_should_not_be_added()
+    {
+        using MergeTestBlockchain chain = await CreateBlockChain();
+        BlockTree syncedBlockTree = Build.A.BlockTree(chain.BlockTree.Head!, chain.SpecProvider).WithPostMergeRules().OfChainLength(5).TestObject;
+        ISyncConfig syncConfig = new SyncConfig
+        {
+            FastSync = true,
+            FastBlocks = true,
+            PivotNumber = syncedBlockTree.Head?.Number.ToString() ?? "",
+            PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
+            PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
+        };
+
+        IEngineRpcModule rpc = CreateEngineModule(chain, syncConfig);
+        Block blockBeforePivot = syncedBlockTree.FindBlock(3, BlockTreeLookupOptions.None)!;
+        ExecutionPayload prePivotRequest = new(blockBeforePivot);
+        ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(prePivotRequest);
+        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        chain.BlockTree.FindBlock(prePivotRequest.BlockHash).Should().BeNull();
+    }
+
+    [Test]
     public async Task Maintain_correct_pointers_for_beacon_sync_in_fast_sync()
     {
         using MergeTestBlockchain chain = await CreateBlockChain();

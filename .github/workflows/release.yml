@@ -23,106 +23,95 @@ jobs:
     name: Build Nethermind packages
     runs-on: ubuntu-latest
     outputs:
-      BUILD_TIMESTAMP: ${{ steps.build-runner.outputs.BUILD_TIMESTAMP }}
-      COMMIT_HASH: ${{ steps.build-runner.outputs.COMMIT_HASH }}
-      PACKAGE_PREFIX: ${{ steps.archive.outputs.PACKAGE_PREFIX }}
-      PRERELEASE: ${{ steps.build-runner.outputs.PRERELEASE }}
+      build-timestamp: ${{ steps.build-runner.outputs.build-timestamp }}
+      package-prefix: ${{ steps.archive.outputs.package-prefix }}
+      prerelease: ${{ steps.build-runner.outputs.prerelease }}
     steps:
-    - name: Check out Nethermind repository
-      uses: actions/checkout@v3
-      with:
-        path: nethermind
-        ref: ${{ github.event.inputs.tag }}
-    - name: Check out Nethermind Launcher repository
-      uses: actions/checkout@v3
-      with:
-        repository: NethermindEth/nethermind.launcher
-        path: launcher
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: 14
-    - name: Install npm packages
-      run: npm i pkg @vercel/ncc -g
-    - name: Set up .NET
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: 7
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
-    - name: Set up Docker Buildx
-      id: buildx
-      uses: docker/setup-buildx-action@v2
-    - name: Build Nethermind.Runner
-      id: build-runner
-      run: |
-        build_timestamp=$(date '+%s')
-        cd nethermind && commit_hash=$(git describe --always --exclude=* --abbrev=40) && cd ..
-        echo "BUILD_TIMESTAMP=$build_timestamp" >> $GITHUB_OUTPUT
-        echo "COMMIT_HASH=$commit_hash" >> $GITHUB_OUTPUT
-        echo "COMMIT_HASH_SHORT=$(echo $commit_hash | awk '{print substr($0,0,8);}')" >> $GITHUB_OUTPUT
-        echo "PRERELEASE=${{ contains(github.event.inputs.tag, '-') }}" >> $GITHUB_OUTPUT
-        $SCRIPTS_PATH/build-runner.sh ${{ github.event.inputs.tag }} $commit_hash $build_timestamp
-    - name: Build Nethermind.Cli
-      run: $SCRIPTS_PATH/build-cli.sh ${{ github.event.inputs.tag }} ${{ steps.build-runner.outputs.COMMIT_HASH }} ${{ steps.build-runner.outputs.BUILD_TIMESTAMP }}
-    - name: Build Nethermind.Launcher
-      run: $SCRIPTS_PATH/build-launcher.sh
-    - name: Build Nethermind.Launcher for Linux arm64
-      working-directory: nethermind
-      run: |
-        docker buildx build --platform=linux/arm64 -t tmp-launcher -f Dockerfile.launcher . --load
-        docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
-        mv Nethermind.Launcher $GITHUB_WORKSPACE/$PUB_DIR/linux-arm64/Nethermind.Launcher
-    - name: Archive packages
-      id: archive
-      env:
-        PACKAGE_PREFIX: nethermind-${{ github.event.inputs.tag }}-${{ steps.build-runner.outputs.COMMIT_HASH_SHORT }}
-      run: |
-        echo "PACKAGE_PREFIX=$PACKAGE_PREFIX" >> $GITHUB_OUTPUT
-        $SCRIPTS_PATH/archive-packages.sh
-    - name: Cache packages
-      uses: actions/cache/save@v3
-      with:
-        path: |
-          ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/
-          ${{ env.SCRIPTS_PATH }}/
-        key: packages-${{ steps.build-runner.outputs.COMMIT_HASH }}
-    - name: Upload Nethermind Linux x64 package
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ steps.archive.outputs.PACKAGE_PREFIX }}-linux-x64-package
-        path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-x64*
-        retention-days: ${{ env.PACKAGE_RETENTION }}
-    - name: Upload Nethermind Linux arm64 package
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ steps.archive.outputs.PACKAGE_PREFIX }}-linux-arm64-package
-        path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-arm64*
-        retention-days: ${{ env.PACKAGE_RETENTION }}
-    - name: Upload Nethermind Windows x64 package
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ steps.archive.outputs.PACKAGE_PREFIX }}-windows-x64-package
-        path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*windows-x64*
-        retention-days: ${{ env.PACKAGE_RETENTION }}
-    - name: Upload Nethermind macOS x64 package
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ steps.archive.outputs.PACKAGE_PREFIX }}-macos-x64-package
-        path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-x64*
-        retention-days: ${{ env.PACKAGE_RETENTION }}
-    - name: Upload Nethermind macOS arm64 package
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ steps.archive.outputs.PACKAGE_PREFIX }}-macos-arm64-package
-        path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-arm64*
-        retention-days: ${{ env.PACKAGE_RETENTION }}
-    - name: Upload Nethermind reference assemblies
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ steps.archive.outputs.PACKAGE_PREFIX }}-ref-assemblies-package
-        path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*ref-assemblies*
-        retention-days: ${{ env.PACKAGE_RETENTION }}
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Check out Nethermind Launcher repository
+        uses: actions/checkout@v3
+        with:
+          repository: NethermindEth/nethermind.launcher
+          path: launcher
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 14
+      - name: Install npm packages
+        run: npm i pkg @vercel/ncc -g
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 7
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Nethermind.Runner
+        id: build-runner
+        run: |
+          build_timestamp=$(date '+%s')
+          echo "build-timestamp=$build_timestamp" >> $GITHUB_OUTPUT
+          echo "commit-hash=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
+          echo "prerelease=${{ contains(github.event.inputs.tag, '-') }}" >> $GITHUB_OUTPUT
+          $SCRIPTS_PATH/build-runner.sh $GITHUB_SHA $build_timestamp
+      - name: Build Nethermind.Cli
+        run: $SCRIPTS_PATH/build-cli.sh $GITHUB_SHA ${{ steps.build-runner.outputs.build-timestamp }}
+      - name: Build Nethermind.Launcher
+        run: $SCRIPTS_PATH/build-launcher.sh
+      - name: Build Nethermind.Launcher for Linux arm64
+        working-directory: nethermind
+        run: |
+          docker buildx build --platform=linux/arm64 -t tmp-launcher -f Dockerfile.launcher . --load
+          docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
+          mv Nethermind.Launcher $GITHUB_WORKSPACE/$PUB_DIR/linux-arm64/Nethermind.Launcher
+      - name: Archive packages
+        id: archive
+        env:
+          PACKAGE_PREFIX: nethermind-${{ github.event.inputs.tag }}-${{ steps.build-runner.outputs.commit-hash }}
+        run: |
+          echo "package-prefix=$PACKAGE_PREFIX" >> $GITHUB_OUTPUT
+          $SCRIPTS_PATH/archive-packages.sh
+      - name: Upload Nethermind Linux x64 package
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.archive.outputs.package-prefix }}-linux-x64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-x64*
+          retention-days: ${{ env.PACKAGE_RETENTION }}
+      - name: Upload Nethermind Linux arm64 package
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.archive.outputs.package-prefix }}-linux-arm64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-arm64*
+          retention-days: ${{ env.PACKAGE_RETENTION }}
+      - name: Upload Nethermind Windows x64 package
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.archive.outputs.package-prefix }}-windows-x64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*windows-x64*
+          retention-days: ${{ env.PACKAGE_RETENTION }}
+      - name: Upload Nethermind macOS x64 package
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.archive.outputs.package-prefix }}-macos-x64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-x64*
+          retention-days: ${{ env.PACKAGE_RETENTION }}
+      - name: Upload Nethermind macOS arm64 package
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.archive.outputs.package-prefix }}-macos-arm64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-arm64*
+          retention-days: ${{ env.PACKAGE_RETENTION }}
+      - name: Upload Nethermind reference assemblies
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.archive.outputs.package-prefix }}-ref-assemblies-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*ref-assemblies*
+          retention-days: ${{ env.PACKAGE_RETENTION }}
         
   approval:
     name: Approve
@@ -132,54 +121,61 @@ jobs:
       name: Releases
       url: https://github.com/NethermindEth/nethermind/releases/tag/${{ github.event.inputs.tag }}
     steps:
-    - name: Wait for approval
-      run: echo "Waiting for approval..."
+      - name: Wait for approval
+        run: echo "Waiting for approval..."
 
   publish-github:
     name: Publish to GitHub
     runs-on: ubuntu-latest
     needs: [approval, build]
     steps:
-    - name: Restore packages from cache
-      uses: actions/cache/restore@v3
-      with:
-        path: |
-          ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/
-          ${{ env.SCRIPTS_PATH }}/
-        key: packages-${{ needs.build.outputs.COMMIT_HASH }}
-    - name: Publish
-      env:
-        GIT_COMMIT: ${{ needs.build.outputs.COMMIT_HASH }}
-        GIT_TAG: ${{ github.event.inputs.tag }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        PACKAGE_PREFIX: ${{ needs.build.outputs.PACKAGE_PREFIX }}
-        PRERELEASE: ${{ needs.build.outputs.PRERELEASE }}
-      run: $SCRIPTS_PATH/publish-github.sh
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}
+      - name: Publish
+        env:
+          GIT_TAG: ${{ github.event.inputs.tag }}
+          GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+          PACKAGE_PREFIX: ${{ needs.build.outputs.package-prefix }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: |
+          cp $GITHUB_WORKSPACE/$PACKAGE_DIR/**/*.zip $GITHUB_WORKSPACE/$PACKAGE_DIR
+          rm -rf $GITHUB_WORKSPACE/$PACKAGE_DIR/*/
+          $SCRIPTS_PATH/publish-github.sh
 
   publish-downloads:
     name: Publish to Downloads page
     runs-on: ubuntu-latest
     needs: [approval, build]
-    if: needs.build.outputs.PRERELEASE == 'false'
+    if: needs.build.outputs.prerelease == 'false'
     steps:
-    - name: Restore packages from cache
-      uses: actions/cache/restore@v3
-      with:
-        path: |
-          ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/
-          ${{ env.SCRIPTS_PATH }}/
-        key: packages-${{ needs.build.outputs.COMMIT_HASH }}
-    - name: Configure GPG Key
-      run: |
-        mkdir -p ~/.gnupg/
-        printf "${{ secrets.GPG_SIGNING_KEY }}" | base64 --decode > ~/.gnupg/private.key
-        gpg --import --no-tty --batch --yes ~/.gnupg/private.key
-    - name: Publish packages to Downloads page
-      env:
-        DOWNLOADS_PAGE: ${{ secrets.DOWNLOADS_API_KEY }}
-        PACKAGE_PREFIX: ${{ needs.build.outputs.PACKAGE_PREFIX }}
-        PASS: ${{ secrets.GPG_PASSWORD }}
-      run: $SCRIPTS_PATH/publish-downloads.sh
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}
+      - name: Configure GPG Key
+        run: |
+          mkdir -p ~/.gnupg/
+          printf "${{ secrets.GPG_SIGNING_KEY }}" | base64 --decode > ~/.gnupg/private.key
+          gpg --import --no-tty --batch --yes ~/.gnupg/private.key
+      - name: Publish packages to Downloads page
+        env:
+          DOWNLOADS_PAGE: ${{ secrets.DOWNLOADS_API_KEY }}
+          PACKAGE_PREFIX: ${{ needs.build.outputs.package-prefix }}
+          PASS: ${{ secrets.GPG_PASSWORD }}
+        run: |
+          cp $GITHUB_WORKSPACE/$PACKAGE_DIR/**/*.zip $GITHUB_WORKSPACE/$PACKAGE_DIR
+          rm -rf $GITHUB_WORKSPACE/$PACKAGE_DIR/*/
+          $SCRIPTS_PATH/publish-downloads.sh
 
   publish-docker:
     name: Publish to Docker Hub
@@ -188,38 +184,35 @@ jobs:
     env:
       DOCKER_IMAGE: nethermind/nethermind
     steps:
-    - name: Check out Nethermind repository
-      uses: actions/checkout@v3
-      with:
-        ref: ${{ github.event.inputs.tag }}
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
-    - name: Set up Docker Buildx
-      id: buildx
-      uses: docker/setup-buildx-action@v2
-    - name: Log in to Docker Hub
-      if: success()
-      run: echo "${{ secrets.DOCKER_ACCESS_TOKEN }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-    - name: Build and push image to Docker Hub / Trigger DAppNode build
-      if: needs.build.outputs.PRERELEASE == 'false'
-      run: |
-        docker buildx build --platform=linux/amd64,linux/arm64 -f Dockerfile \
-          -t "${{ env.DOCKER_IMAGE }}:latest" \
-          -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" \
-          --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} \
-          --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
-        curl -s -X POST https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches \
-          -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" \
-          -d '{"event_type":"dappnode","client_payload":{"tag":"${{ github.event.inputs.tag }}"}}' \
-          -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
-    - name: Build and push image to Docker Hub
-      if: needs.build.outputs.PRERELEASE == 'true'
-      run: |
-        docker buildx build --platform=linux/amd64,linux/arm64 -f Dockerfile \
-          -t "${{ env.DOCKER_IMAGE }}:unstable" \
-          -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" \
-          --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} \
-          --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
-    - name: Clear Docker cache
-      if: always()
-      run: rm -f $HOME/.docker/config.json
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Log in to Docker Hub
+        if: success()
+        run: echo "${{ secrets.DOCKER_ACCESS_TOKEN }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: Build and push image to Docker Hub / Trigger DAppNode build
+        if: needs.build.outputs.prerelease == 'false'
+        run: |
+          docker buildx build --platform=linux/amd64,linux/arm64 -f Dockerfile \
+            -t "${{ env.DOCKER_IMAGE }}:latest" \
+            -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" \
+            --build-arg COMMIT_HASH=$GITHUB_SHA \
+            --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.build-timestamp }} . --push
+          curl -s -X POST https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches \
+            -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" \
+            -d '{"event_type":"dappnode","client_payload":{"tag":"${{ github.event.inputs.tag }}"}}' \
+            -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+      - name: Build and push image to Docker Hub
+        if: needs.build.outputs.prerelease == 'true'
+        run: |
+          docker buildx build --platform=linux/amd64,linux/arm64 -f Dockerfile \
+            -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" \
+            --build-arg COMMIT_HASH=$GITHUB_SHA \
+            --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.build-timestamp }} . --push
+      - name: Clear Docker cache
+        if: always()
+        run: rm -f $HOME/.docker/config.json

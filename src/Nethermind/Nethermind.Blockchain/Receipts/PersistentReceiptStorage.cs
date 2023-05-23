@@ -360,7 +360,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 foreach (Transaction tx in block.Transactions)
                 {
-                    batch[tx.Hash.Bytes] = block.Hash.Bytes;
+                    batch[tx.Hash.Bytes] = block.Hash.BytesToArray();
                 }
             }
         }

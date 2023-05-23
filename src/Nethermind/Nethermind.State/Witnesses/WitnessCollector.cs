@@ -61,7 +61,7 @@ namespace Nethermind.State.Witnesses
                 for (var index = 0; index < collected.Length; index++)
                 {
                     Keccak keccak = collected[index];
-                    keccak.Bytes.AsSpan().CopyTo(witnessSpan.Slice(i * Keccak.Size, Keccak.Size));
+                    keccak.Bytes.CopyTo(witnessSpan.Slice(i * Keccak.Size, Keccak.Size));
                     i++;
                 }
 
