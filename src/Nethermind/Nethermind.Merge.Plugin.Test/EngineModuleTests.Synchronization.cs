@@ -734,7 +734,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task Blocks_before_pivots_should_not_be_added()
+    public async Task Blocks_before_pivots_should_not_be_added_if_node_has_never_been_in_sync()
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
         BlockTree syncedBlockTree = Build.A.BlockTree(chain.BlockTree.Head!, chain.SpecProvider).WithPostMergeRules().OfChainLength(5).TestObject;
@@ -748,11 +748,37 @@ public partial class EngineModuleTests
         };
 
         IEngineRpcModule rpc = CreateEngineModule(chain, syncConfig);
-        Block blockBeforePivot = syncedBlockTree.FindBlock(3, BlockTreeLookupOptions.None)!;
+        Block blockBeforePivot = syncedBlockTree.FindBlock(2, BlockTreeLookupOptions.None)!;
         ExecutionPayload prePivotRequest = new(blockBeforePivot);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(prePivotRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         chain.BlockTree.FindBlock(prePivotRequest.BlockHash).Should().BeNull();
+    }
+
+    [Test]
+    public async Task Blocks_before_pivots_should_not_be_added_if_node_has_been_synced()
+    {
+        using MergeTestBlockchain chain = await CreateBlockChain();
+        BlockTree syncedBlockTree = Build.A.BlockTree(chain.BlockTree.Head!, chain.SpecProvider).WithPostMergeRules().OfChainLength(5).TestObject;
+        ISyncConfig syncConfig = new SyncConfig
+        {
+            FastSync = true,
+            FastBlocks = true,
+            PivotNumber = syncedBlockTree.Head?.Number.ToString() ?? "",
+            PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
+            PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
+        };
+
+        Block blockNr1 = syncedBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        await chain.BlockTree.SuggestBlockAsync(blockNr1, BlockTreeSuggestOptions.None);
+        chain.BlockTree.UpdateMainChain( new List<Block>() { blockNr1 }, true, true);
+
+        IEngineRpcModule rpc = CreateEngineModule(chain, syncConfig);
+        Block blockBeforePivot = syncedBlockTree.FindBlock(2, BlockTreeLookupOptions.None)!;
+        ExecutionPayload prePivotRequest = new(blockBeforePivot);
+        ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(prePivotRequest);
+        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatus.Valid).ToUpper());
+        chain.BlockTree.FindBlock(prePivotRequest.BlockHash).Should().NotBeNull();
     }
 
     [Test]
