@@ -1,20 +1,8 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -38,11 +26,11 @@ namespace Nethermind.Evm.Test
         {
             long result = EvmPooledMemory.Div32Ceiling((ulong)input);
             TestContext.WriteLine($"Memory cost (gas): {result}");
-            Assert.AreEqual(expectedResult, result);
+            Assert.That(result, Is.EqualTo(expectedResult));
         }
 
         private const int MaxCodeSize = 24576;
-        
+
         [TestCase(0, 0)]
         [TestCase(0, 32)]
         [TestCase(0, 256)]
@@ -56,7 +44,7 @@ namespace Nethermind.Evm.Test
         public void MemoryCost(int destination, int memoryAllocation)
         {
             EvmPooledMemory memory = new();
-            UInt256 dest = (UInt256) destination;
+            UInt256 dest = (UInt256)destination;
             long result = memory.CalculateMemoryCost(in dest, (UInt256)memoryAllocation);
             TestContext.WriteLine($"Gas cost of allocating {memoryAllocation} starting from {dest}: {result}");
         }
@@ -68,24 +56,24 @@ namespace Nethermind.Evm.Test
             memory.Save(3, TestItem.KeccakA.Bytes);
             ulong initialSize = memory.Size;
             ReadOnlyMemory<byte> result = memory.Inspect(initialSize + 32, 32);
-            Assert.AreEqual(initialSize, memory.Size);
-            Assert.AreEqual(ReadOnlyMemory<byte>.Empty, result);
+            Assert.That(memory.Size, Is.EqualTo(initialSize));
+            Assert.That(result, Is.EqualTo(ReadOnlyMemory<byte>.Empty));
         }
-        
+
         [Test]
         public void Inspect_can_read_memory()
         {
             const int offset = 3;
             byte[] expectedEmptyRead = new byte[32 - offset];
-            byte[] expectedKeccakRead = TestItem.KeccakA.Bytes;
+            byte[] expectedKeccakRead = TestItem.KeccakA.BytesToArray();
             EvmPooledMemory memory = new();
             memory.Save((UInt256)offset, expectedKeccakRead);
             ulong initialSize = memory.Size;
             ReadOnlyMemory<byte> actualKeccakMemoryRead = memory.Inspect((UInt256)offset, 32);
             ReadOnlyMemory<byte> actualEmptyRead = memory.Inspect(32 + (UInt256)offset, 32 - (UInt256)offset);
-            Assert.AreEqual(initialSize, memory.Size);
-            Assert.AreEqual(expectedKeccakRead, actualKeccakMemoryRead.ToArray());
-            Assert.AreEqual(expectedEmptyRead, actualEmptyRead.ToArray());
+            Assert.That(memory.Size, Is.EqualTo(initialSize));
+            Assert.That(actualKeccakMemoryRead.ToArray(), Is.EqualTo(expectedKeccakRead));
+            Assert.That(actualEmptyRead.ToArray(), Is.EqualTo(expectedEmptyRead));
         }
 
         [Test]
@@ -96,8 +84,16 @@ namespace Nethermind.Evm.Test
             memory.Save(3, TestItem.KeccakA.Bytes);
             ulong initialSize = memory.Size;
             ReadOnlyMemory<byte> result = memory.Load(initialSize + 32, 32);
-            Assert.AreNotEqual(initialSize, memory.Size);
-            Assert.AreEqual(expectedResult, result.ToArray());
+            Assert.That(memory.Size, Is.Not.EqualTo(initialSize));
+            Assert.That(result.ToArray(), Is.EqualTo(expectedResult));
+        }
+
+        [Test]
+        public void GetTrace_should_not_thor_on_not_initialized_memory()
+        {
+            EvmPooledMemory memory = new();
+            memory.CalculateMemoryCost(0, 32);
+            memory.GetTrace().Should().BeEquivalentTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" });
         }
     }
 }

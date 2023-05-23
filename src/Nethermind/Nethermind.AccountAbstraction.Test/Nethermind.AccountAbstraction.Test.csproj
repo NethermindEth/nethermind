@@ -1,47 +1,51 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
-        <Nullable>enable</Nullable>
-        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
 
-    <ItemGroup>
-      <PackageReference Include="FluentAssertions" Version="6.7.0" />
-      <PackageReference Include="NSubstitute" Version="4.3.0" />
-      <PackageReference Include="NUnit" Version="3.13.3" />
-      <PackageReference Include="NUnit3TestAdapter" Version="4.2.1" />
-      <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.2.0" />
-    </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit.Analyzers">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="NUnit3TestAdapter" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+  </ItemGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj" />
-      <ProjectReference Include="..\Nethermind.Config.Test\Nethermind.Config.Test.csproj" />
-      <ProjectReference Include="..\Nethermind.Consensus.Test\Nethermind.Consensus.Test.csproj" />
-      <ProjectReference Include="..\Nethermind.Evm.Test\Nethermind.Evm.Test.csproj" />
-      <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
-      <ProjectReference Include="..\Nethermind.Merge.Plugin.Test\Nethermind.Merge.Plugin.Test.csproj" />
-      <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
-      <ProjectReference Include="..\Nethermind.Network.Test\Nethermind.Network.Test.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj" />
+    <ProjectReference Include="..\Nethermind.Config.Test\Nethermind.Config.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Consensus.Test\Nethermind.Consensus.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Evm.Test\Nethermind.Evm.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.Plugin.Test\Nethermind.Merge.Plugin.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
+    <ProjectReference Include="..\Nethermind.Network.Test\Nethermind.Network.Test.csproj" />
+  </ItemGroup>
 
-    <ItemGroup>
-      <None Remove="TestContracts\EntryPoint_2.json" />
-      <None Remove="TestContracts\SimpleWallet.json" />
-      <None Remove="TestContracts\SingletonFactory.json" />
-      <None Remove="TestContracts\TestCounter.json" />
-      <None Remove="TestContracts\TokenPaymaster.json" />
-      <EmbeddedResource Include="TestContracts\EntryPoint_2.json" />
-      <EmbeddedResource Include="TestContracts\SimpleWallet.json" />
-      <EmbeddedResource Include="TestContracts\SingletonFactory.json" />
-      <EmbeddedResource Include="TestContracts\TestCounter.json" />
-      <EmbeddedResource Include="TestContracts\TokenPaymaster.json" />
-    </ItemGroup>
+  <ItemGroup>
+    <None Remove="TestContracts\EntryPoint_2.json" />
+    <None Remove="TestContracts\SimpleWallet.json" />
+    <None Remove="TestContracts\SingletonFactory.json" />
+    <None Remove="TestContracts\TestCounter.json" />
+    <None Remove="TestContracts\TokenPaymaster.json" />
+    <EmbeddedResource Include="TestContracts\EntryPoint_2.json" />
+    <EmbeddedResource Include="TestContracts\SimpleWallet.json" />
+    <EmbeddedResource Include="TestContracts\SingletonFactory.json" />
+    <EmbeddedResource Include="TestContracts\TestCounter.json" />
+    <EmbeddedResource Include="TestContracts\TokenPaymaster.json" />
+  </ItemGroup>
 
-    <ItemGroup>
-      <Content Include="Tests\*.json">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-    </ItemGroup>
+  <ItemGroup>
+    <Content Include="Tests\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 
 </Project>

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,9 +16,8 @@ namespace Nethermind.Core.Extensions
                 throw new NotSupportedException($"GetDirectInterfaceImplementation method is only allowed to use on interface types, got {interfaceType} instead");
             }
 
-            TypeDiscovery typeDiscovery = new();
             Type[] baseInterfaces = interfaceType.GetInterfaces();
-            IEnumerable<Type> implementations = typeDiscovery.FindNethermindTypes(interfaceType).Where(i => i.IsClass);
+            IEnumerable<Type> implementations = TypeDiscovery.FindNethermindTypes(interfaceType).Where(i => i.IsClass);
 
             foreach (Type implementation in implementations)
             {
@@ -23,7 +25,7 @@ namespace Nethermind.Core.Extensions
 
                 interfaces.RemoveAll(i => baseInterfaces.Contains(i));
 
-                if (interfaces.Contains(interfaceType) && interfaces.Count() == 1)
+                if (interfaces.Contains(interfaceType))
                 {
                     return implementation;
                 }
@@ -33,21 +35,21 @@ namespace Nethermind.Core.Extensions
         }
 
         private static readonly ISet<Type> _valueTupleTypes = new HashSet<Type>(
-            new Type[] { 
-                typeof(ValueTuple<>), 
+            new Type[] {
+                typeof(ValueTuple<>),
                 typeof(ValueTuple<,>),
                 typeof(ValueTuple<,,>),
                 typeof(ValueTuple<,,,>),
-                typeof(ValueTuple<,,,,>), 
+                typeof(ValueTuple<,,,,>),
                 typeof(ValueTuple<,,,,,>),
-                typeof(ValueTuple<,,,,,,>), 
+                typeof(ValueTuple<,,,,,,>),
                 typeof(ValueTuple<,,,,,,,>)
             }
         );
 
         public static bool IsValueTuple(this Type type) =>
             type.IsGenericType && _valueTupleTypes.Contains(type.GetGenericTypeDefinition());
-        
+
         public static bool CanBeAssignedNull(this Type type) =>
             !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
 

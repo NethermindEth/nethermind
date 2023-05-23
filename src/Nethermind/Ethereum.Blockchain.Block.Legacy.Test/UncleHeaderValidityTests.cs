@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
@@ -18,7 +21,7 @@ namespace Ethereum.Blockchain.Block.Legacy.Test
         public static IEnumerable<BlockchainTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcUncleHeaderValidity");
-            return (IEnumerable<BlockchainTest>)loader.LoadTests();      
+            return (IEnumerable<BlockchainTest>)loader.LoadTests();
         }
     }
 }

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
 TOOLS=$HOME/.nuget/packages/grpc.tools/1.22.0/tools
 PROTOC=$TOOLS/linux_x64/protoc
 PLUGIN=$TOOLS/linux_x64//grpc_csharp_plugin

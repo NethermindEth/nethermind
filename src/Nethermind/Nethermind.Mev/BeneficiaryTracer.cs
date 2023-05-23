@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -37,7 +23,7 @@ namespace Nethermind.Mev
         }
 
         public ITxTracer StartNewTxTrace(Transaction? tx) => this;
-        
+
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
             if (address == _beneficiary)
@@ -59,12 +45,13 @@ namespace Nethermind.Mev
         public bool IsTracingStack => false;
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
+        public bool IsTracingFees => false;
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
         public void ReportCodeChange(Address address, byte[]? before, byte[]? after) { }
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
         public void ReportAccountRead(Address address) { }
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after) { }
-        public void ReportStorageRead(StorageCell storageCell) { }
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
+        public void ReportStorageRead(in StorageCell storageCell) { }
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null) { }
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null) { }
         public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) { }
@@ -89,5 +76,6 @@ namespace Nethermind.Mev
         public void ReportRefund(long refund) { }
         public void ReportExtraGasPressure(long extraGasPressure) { }
         public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) { }
+        public void ReportFees(UInt256 fees, UInt256 burntFees) { }
     }
 }

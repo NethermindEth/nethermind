@@ -1,22 +1,9 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -72,7 +59,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     {
         Refresh(_lastBlockhashes.headBlockhash, _lastBlockhashes.headParentBlockhash, _lastBlockhashes.finalizedBlockhash);
     }
-    
+
     private void Refresh(Keccak headBlockhash, Keccak headParentBlockhash, Keccak finalizedBlockhash)
     {
         _lastRefresh = DateTime.Now;
@@ -111,7 +98,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     {
         // headBlockhash is obtained together with headParentBlockhash
         Task<BlockHeader[]> getHeadParentHeaderTask = syncPeer.GetBlockHeaders(headParentBlockhash, 2, 0, token);
-        Task<BlockHeader?> getFinalizedHeaderTask = finalizedBlockhash == Keccak.Zero 
+        Task<BlockHeader?> getFinalizedHeaderTask = finalizedBlockhash == Keccak.Zero
             ? Task.FromResult<BlockHeader?>(null)
             : syncPeer.GetHeadBlockHeader(finalizedBlockhash, token);
 
@@ -120,7 +107,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         try
         {
             BlockHeader[] headAndParentHeaders = await getHeadParentHeaderTask;
-            if (!TryGetHeadAndParent(headBlockhash, headParentBlockhash, headAndParentHeaders, out headParentBlockHeader, out headBlockHeader))
+            if (!TryGetHeadAndParent(headBlockhash, headParentBlockhash, headAndParentHeaders, out headBlockHeader, out headParentBlockHeader))
             {
                 _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU unexpected response length");
                 return;
@@ -130,7 +117,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         }
         catch (AggregateException exception) when (exception.InnerException is OperationCanceledException)
         {
-            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU timeout", exception);
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU timeout", exception.InnerException);
             return;
         }
         catch (OperationCanceledException exception)
@@ -146,13 +133,13 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
         if (_logger.IsTrace) _logger.Trace($"PeerRefreshForFCU received block info from {syncPeer.Node:c} headHeader: {headBlockHeader} headParentHeader: {headParentBlockHeader} finalizedBlockHeader: {finalizedBlockHeader}");
 
-        if (finalizedBlockhash != Keccak.Zero && finalizedBlockHeader == null)
+        if (finalizedBlockhash != Keccak.Zero && finalizedBlockHeader is null)
         {
             _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU no finalized block header");
             return;
         }
 
-        if (!CheckHeader(syncPeer, headBlockHeader))
+        if (!CheckHeader(syncPeer, finalizedBlockHeader))
         {
             return;
         }
@@ -162,7 +149,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
             return;
         }
 
-        if (!CheckHeader(syncPeer, finalizedBlockHeader))
+        if (!CheckHeader(syncPeer, headBlockHeader))
         {
             return;
         }

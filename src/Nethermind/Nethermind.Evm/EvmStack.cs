@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers.Binary;
@@ -23,16 +10,21 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.Intrinsics;
+using System.Diagnostics;
 
 namespace Nethermind.Evm
 {
+    using Word = System.Runtime.Intrinsics.Vector256<byte>;
+
     public ref struct EvmStack
     {
         public const int RegisterLength = 1;
         public const int MaxStackSize = 1025;
         public const int ReturnStackSize = 1023;
 
-        public EvmStack(in Span<byte> bytes, in int head, ITxTracer txTracer)
+        public EvmStack(scoped in Span<byte> bytes, scoped in int head, ITxTracer txTracer)
         {
             _bytes = bytes;
             Head = head;
@@ -49,7 +41,7 @@ namespace Nethermind.Evm
 
         private ITxTracer _tracer;
 
-        public void PushBytes(in Span<byte> value)
+        public void PushBytes(scoped in Span<byte> value)
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
 
@@ -67,11 +59,11 @@ namespace Nethermind.Evm
             if (++Head >= MaxStackSize)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowEvmStackOverflowException();
             }
         }
 
-        public void PushBytes(in ZeroPaddedSpan value)
+        public void PushBytes(scoped in ZeroPaddedSpan value)
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
 
@@ -79,7 +71,7 @@ namespace Nethermind.Evm
             if (value.Span.Length != 32)
             {
                 word.Clear();
-                value.Span.CopyTo(word.Slice(0, value.Span.Length));
+                value.Span.CopyTo(word[..value.Span.Length]);
             }
             else
             {
@@ -89,11 +81,11 @@ namespace Nethermind.Evm
             if (++Head >= MaxStackSize)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowEvmStackOverflowException();
             }
         }
-        
-        public void PushBytes(in ZeroPaddedMemory value)
+
+        public void PushBytes(scoped in ZeroPaddedMemory value)
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
 
@@ -101,7 +93,7 @@ namespace Nethermind.Evm
             if (value.Memory.Length != 32)
             {
                 word.Clear();
-                value.Memory.Span.CopyTo( word.Slice(0, value.Memory.Length));
+                value.Memory.Span.CopyTo(word[..value.Memory.Length]);
             }
             else
             {
@@ -111,7 +103,7 @@ namespace Nethermind.Evm
             if (++Head >= MaxStackSize)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowEvmStackOverflowException();
             }
         }
 
@@ -126,7 +118,7 @@ namespace Nethermind.Evm
             if (++Head >= MaxStackSize)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowEvmStackOverflowException();
             }
         }
 
@@ -144,7 +136,7 @@ namespace Nethermind.Evm
             if (++Head >= MaxStackSize)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowEvmStackOverflowException();
             }
         }
 
@@ -162,7 +154,7 @@ namespace Nethermind.Evm
             if (++Head >= MaxStackSize)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowEvmStackOverflowException();
             }
         }
 
@@ -179,7 +171,7 @@ namespace Nethermind.Evm
             if (++Head >= MaxStackSize)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowEvmStackOverflowException();
             }
         }
 
@@ -194,36 +186,37 @@ namespace Nethermind.Evm
             Span<byte> word = _bytes.Slice(Head * 32, 32);
             ref byte bytes = ref word[0];
 
-            ulong u3 = value.u3;
-            ulong u2 = value.u2;
-            ulong u1 = value.u1;
-            ulong u0 = value.u0;
-
+            ulong u3, u2, u1, u0;
             if (BitConverter.IsLittleEndian)
             {
-                u3 = BinaryPrimitives.ReverseEndianness(u3);
-                u2 = BinaryPrimitives.ReverseEndianness(u2);
-                u1 = BinaryPrimitives.ReverseEndianness(u1);
-                u0 = BinaryPrimitives.ReverseEndianness(u0);
+                u3 = BinaryPrimitives.ReverseEndianness(value.u3);
+                u2 = BinaryPrimitives.ReverseEndianness(value.u2);
+                u1 = BinaryPrimitives.ReverseEndianness(value.u1);
+                u0 = BinaryPrimitives.ReverseEndianness(value.u0);
+            }
+            else
+            {
+                u3 = value.u3;
+                u2 = value.u2;
+                u1 = value.u1;
+                u0 = value.u0;
             }
 
-            Unsafe.WriteUnaligned(ref bytes, u3);
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref bytes, sizeof(ulong)), u2);
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong)), u1);
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong)), u0);
+            Unsafe.WriteUnaligned(ref bytes, Vector256.Create(u3, u2, u1, u0));
 
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(word);
 
             if (++Head >= MaxStackSize)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowEvmStackOverflowException();
             }
         }
 
         public void PushSignedInt256(in Int256.Int256 value)
         {
-            PushUInt256((UInt256)value);
+            // tail call into UInt256
+            PushUInt256(Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
         }
 
         public void PopLimbo()
@@ -231,14 +224,15 @@ namespace Nethermind.Evm
             if (Head-- == 0)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackUnderflowException();
+                ThrowEvmStackUnderflowException();
             }
         }
 
         public void PopSignedInt256(out Int256.Int256 result)
         {
-            PopUInt256(out UInt256 value);
-            result = new Int256.Int256(value);
+            // tail call into UInt256
+            Unsafe.SkipInit(out result);
+            PopUInt256(out Unsafe.As<Int256.Int256, UInt256>(ref result));
         }
 
         /// <summary>
@@ -253,20 +247,36 @@ namespace Nethermind.Evm
         {
             ref byte bytes = ref PopBytesByRef();
 
-            ulong u3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
-            ulong u2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong)));
-            ulong u1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong)));
-            ulong u0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong)));
-
+            ulong u3, u2, u1, u0;
             if (BitConverter.IsLittleEndian)
             {
-                u3 = BinaryPrimitives.ReverseEndianness(u3);
-                u2 = BinaryPrimitives.ReverseEndianness(u2);
-                u1 = BinaryPrimitives.ReverseEndianness(u1);
-                u0 = BinaryPrimitives.ReverseEndianness(u0);
+                // Combine read and switch endianness to movbe reg, mem
+                u3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
+                u2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong))));
+                u1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong))));
+                u0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong))));
+            }
+            else
+            {
+                u3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
+                u2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong)));
+                u1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong)));
+                u0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong)));
             }
 
             result = new UInt256(u0, u1, u2, u3);
+        }
+
+        public bool PeekUInt256IsZero()
+        {
+            int head = Head - 1;
+            if (head <= 0)
+            {
+                return false;
+            }
+
+            ref byte bytes = ref _bytes[head * 32];
+            return Unsafe.ReadUnaligned<UInt256>(ref bytes).IsZero;
         }
 
         public Address PopAddress()
@@ -274,7 +284,7 @@ namespace Nethermind.Evm
             if (Head-- == 0)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackUnderflowException();
+                ThrowEvmStackUnderflowException();
             }
 
             return new Address(_bytes.Slice(Head * 32 + 12, 20).ToArray());
@@ -285,19 +295,18 @@ namespace Nethermind.Evm
             if (Head-- == 0)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackUnderflowException();
+                ThrowEvmStackUnderflowException();
             }
 
             return ref _bytes[Head * 32];
         }
 
-        // ReSharper disable once ImplicitlyCapturedClosure
         public Span<byte> PopBytes()
         {
             if (Head-- == 0)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackUnderflowException();
+                ThrowEvmStackUnderflowException();
             }
 
             return _bytes.Slice(Head * 32, 32);
@@ -308,7 +317,7 @@ namespace Nethermind.Evm
             if (Head-- == 0)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackUnderflowException();
+                ThrowEvmStackUnderflowException();
             }
 
             return _bytes[Head * 32 + 31];
@@ -328,7 +337,7 @@ namespace Nethermind.Evm
             if (++Head >= MaxStackSize)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowEvmStackOverflowException();
             }
         }
 
@@ -345,16 +354,13 @@ namespace Nethermind.Evm
 
             if (_tracer.IsTracingInstructions)
             {
-                for (int i = depth; i >= 0; i--)
-                {
-                    _tracer.ReportStackPush(_bytes.Slice(Head * 32 - i * 32, 32));
-                }
+                Trace(depth);
             }
 
             if (++Head >= MaxStackSize)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowEvmStackOverflowException();
             }
         }
 
@@ -363,7 +369,7 @@ namespace Nethermind.Evm
             if (Head < depth)
             {
                 Metrics.EvmExceptions++;
-                throw new EvmStackUnderflowException();
+                ThrowEvmStackUnderflowException();
             }
         }
 
@@ -375,23 +381,25 @@ namespace Nethermind.Evm
 
             ref byte bottom = ref Unsafe.Add(ref bytes, (Head - depth) * 32);
             ref byte top = ref Unsafe.Add(ref bytes, (Head - 1) * 32);
-            
+
             Word buffer = Unsafe.ReadUnaligned<Word>(ref bottom);
             Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));
             Unsafe.WriteUnaligned(ref top, buffer);
 
             if (_tracer.IsTracingInstructions)
             {
-                for (int i = depth; i > 0; i--)
-                {
-                    _tracer.ReportStackPush(_bytes.Slice(Head * 32 - i * 32, 32));
-                }
+                Trace(depth);
             }
         }
 
-        [StructLayout(LayoutKind.Explicit, Size = 32)]
-        struct Word { }
-        
+        private readonly void Trace(int depth)
+        {
+            for (int i = depth; i > 0; i--)
+            {
+                _tracer.ReportStackPush(_bytes.Slice(Head * 32 - i * 32, 32));
+            }
+        }
+
         public List<string> GetStackTrace()
         {
             List<string> stackTrace = new();
@@ -402,6 +410,20 @@ namespace Nethermind.Evm
             }
 
             return stackTrace;
+        }
+
+        [StackTraceHidden]
+        [DoesNotReturn]
+        private static void ThrowEvmStackUnderflowException()
+        {
+            throw new EvmStackUnderflowException();
+        }
+
+        [StackTraceHidden]
+        [DoesNotReturn]
+        internal static void ThrowEvmStackOverflowException()
+        {
+            throw new EvmStackOverflowException();
         }
     }
 }

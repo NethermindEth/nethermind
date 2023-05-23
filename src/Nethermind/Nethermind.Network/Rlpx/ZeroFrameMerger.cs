@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -29,12 +16,18 @@ namespace Nethermind.Network.Rlpx
     {
         private ILogger _logger;
 
-        private ZeroPacket _zeroPacket;
+        private ZeroPacket? _zeroPacket;
         private FrameHeaderReader _headerReader = new();
 
         public ZeroFrameMerger(ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger<ZeroFrameMerger>() ?? throw new ArgumentNullException(nameof(logManager));
+        }
+
+        public override void HandlerRemoved(IChannelHandlerContext context)
+        {
+            base.HandlerRemoved(context);
+            _zeroPacket?.Release();
         }
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
@@ -76,13 +69,13 @@ namespace Nethermind.Network.Rlpx
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ReadChunk(IByteBuffer input, FrameHeaderReader.FrameInfo frame)
+        private void ReadChunk(IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
         {
             input.ReadBytes(_zeroPacket.Content, frame.Size);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ReadFirstChunk(IChannelHandlerContext context, IByteBuffer input, FrameHeaderReader.FrameInfo frame)
+        private void ReadFirstChunk(IChannelHandlerContext context, IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
         {
             byte packetTypeRlp = input.ReadByte();
             IByteBuffer content;
@@ -92,12 +85,7 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                content = input.ReadSlice(frame.Size - 1);
-
-                // Since we will call release in the next handler and we use a derived buffer here
-                // we need to call Retain to prevent the buffer from being released twice
-                // (once in the next handler and once in the base class).
-                content.Retain();
+                content = input.ReadRetainedSlice(frame.Size - 1);
             }
 
             _zeroPacket = new ZeroPacket(content);
@@ -108,14 +96,14 @@ namespace Nethermind.Network.Rlpx
             if (frame.IsChunked)
             {
                 input.ReadBytes(_zeroPacket.Content, frame.Size - 1);
-                // do not call Release since the input buffer is managed by 
+                // do not call Release since the input buffer is managed by
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static byte GetPacketType(byte packetTypeRlp)
         {
-            return packetTypeRlp == 128 ? (byte) 0 : packetTypeRlp;
+            return packetTypeRlp == 128 ? (byte)0 : packetTypeRlp;
         }
     }
 }

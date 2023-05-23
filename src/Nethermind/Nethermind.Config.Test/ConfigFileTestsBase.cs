@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -42,7 +28,7 @@ namespace Nethermind.Config.Test
         {
             // by pre-caching configs we make the tests do lot less work
 
-            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(typeof(IConfig)).Where(t => t.IsInterface).ToArray();
+            IEnumerable<Type> configTypes = TypeDiscovery.FindNethermindTypes(typeof(IConfig)).Where(t => t.IsInterface).ToArray();
 
             Parallel.ForEach(Resolve("*"), configFile =>
             {
@@ -75,10 +61,6 @@ namespace Nethermind.Config.Test
         protected IEnumerable<string> PoaCoreConfigs
             => Configs.Where(config => config.Contains("poacore"));
 
-        [ConfigFileGroup("sokol")]
-        protected IEnumerable<string> SokolConfigs
-            => Configs.Where(config => config.Contains("sokol"));
-
         [ConfigFileGroup("volta")]
         protected IEnumerable<string> VoltaConfigs
             => Configs.Where(config => config.Contains("volta"));
@@ -90,6 +72,18 @@ namespace Nethermind.Config.Test
         [ConfigFileGroup("xdai")]
         protected IEnumerable<string> XDaiConfigs
             => Configs.Where(config => config.Contains("xdai"));
+
+        [ConfigFileGroup("gnosis")]
+        protected IEnumerable<string> GnosisConfigs
+            => Configs.Where(config => config.Contains("gnosis"));
+
+        [ConfigFileGroup("sepolia")]
+        protected IEnumerable<string> SepoliaConfigs
+            => Configs.Where(config => config.Contains("sepolia"));
+
+        [ConfigFileGroup("chiado")]
+        protected IEnumerable<string> ChiadoConfigs
+            => Configs.Where(config => config.Contains("chiado"));
 
         [ConfigFileGroup("goerli")]
         protected IEnumerable<string> GoerliConfigs
@@ -107,10 +101,6 @@ namespace Nethermind.Config.Test
         protected IEnumerable<string> SpacenethConfigs
             => Configs.Where(config => config.Contains("spaceneth"));
 
-        [ConfigFileGroup("baseline")]
-        protected IEnumerable<string> BaselineConfigs
-            => Configs.Where(config => config.Contains("baseline"));
-
         [ConfigFileGroup("mainnet")]
         protected IEnumerable<string> MainnetConfigs
             => Configs.Where(config => config.Contains("mainnet"));
@@ -126,8 +116,9 @@ namespace Nethermind.Config.Test
         [ConfigFileGroup("aura")]
         protected IEnumerable<string> AuraConfigs
             => PoaCoreConfigs
-                .Union(SokolConfigs)
                 .Union(XDaiConfigs)
+                .Union(GnosisConfigs)
+                .Union(ChiadoConfigs)
                 .Union(VoltaConfigs)
                 .Union(EnergyConfigs)
                 .Union(KovanConfigs);
@@ -144,7 +135,7 @@ namespace Nethermind.Config.Test
         protected IEnumerable<string> EthashConfigs
             => MainnetConfigs.Union(RopstenConfigs);
 
-        private IEnumerable<string> Resolve(string configWildcard)
+        protected IEnumerable<string> Resolve(string configWildcard)
         {
             Dictionary<string, IEnumerable<string>> groups = BuildConfigGroups();
             string[] configWildcards = configWildcard.Split(" ");
@@ -153,9 +144,7 @@ namespace Nethermind.Config.Test
             foreach (string singleWildcard in configWildcards)
             {
                 string singleWildcardBase = singleWildcard.Replace("^", string.Empty);
-                IEnumerable<string> result = groups.ContainsKey(singleWildcardBase)
-                    ? groups[singleWildcardBase]
-                    : Enumerable.Repeat(singleWildcardBase, 1);
+                IEnumerable<string> result = groups.TryGetValue(singleWildcardBase, out IEnumerable<string>? value) ? value : Enumerable.Repeat(singleWildcardBase, 1);
 
                 if (singleWildcard.StartsWith("^"))
                 {
@@ -232,19 +221,14 @@ namespace Nethermind.Config.Test
             {
                 if (_configGroups.Count == 0)
                 {
-                    lock (_configGroups)
+                    PropertyInfo[] propertyInfos = GetType()
+                        .GetProperties(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
+                    foreach (PropertyInfo propertyInfo in propertyInfos)
                     {
-                        if (_configGroups.Count == 0)
+                        ConfigFileGroup? groupAttribute = propertyInfo.GetCustomAttribute<ConfigFileGroup>();
+                        if (groupAttribute is not null)
                         {
-                            PropertyInfo[] propertyInfos = GetType().GetProperties(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
-                            foreach (PropertyInfo propertyInfo in propertyInfos)
-                            {
-                                ConfigFileGroup? groupAttribute = propertyInfo.GetCustomAttribute<ConfigFileGroup>();
-                                if (groupAttribute is not null)
-                                {
-                                    _configGroups.Add(groupAttribute.Name, (IEnumerable<string>)propertyInfo.GetValue(this)!);
-                                }
-                            }
+                            _configGroups.Add(groupAttribute.Name, (IEnumerable<string>)propertyInfo.GetValue(this)!);
                         }
                     }
                 }

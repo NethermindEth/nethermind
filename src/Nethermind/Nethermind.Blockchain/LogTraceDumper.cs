@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -32,7 +18,7 @@ namespace Nethermind.Blockchain
     public static class BlockTraceDumper
     {
         public static List<JsonConverter> Converters { get; } = new List<JsonConverter>();
-        
+
         public static void LogDiagnosticTrace(
             IBlockTracer blockTracer,
             Keccak blockHash,
@@ -43,7 +29,7 @@ namespace Nethermind.Blockchain
                     Path.Combine(Path.GetTempPath(), name),
                     FileMode.Create,
                     FileAccess.Write);
-            
+
             string fileName = string.Empty;
 
             try
@@ -54,14 +40,14 @@ namespace Nethermind.Blockchain
                 if (blockTracer is BlockReceiptsTracer receiptsTracer)
                 {
                     fileName = $"receipts_{blockHash}.txt";
-                    using FileStream diagnosticFile = GetFileStream(fileName);               
+                    using FileStream diagnosticFile = GetFileStream(fileName);
                     IReadOnlyList<TxReceipt> receipts = receiptsTracer.TxReceipts;
                     serializer.Serialize(diagnosticFile, receipts, true);
                     if (logger.IsInfo)
                         logger.Info($"Created a Receipts trace of block {blockHash} in file {diagnosticFile.Name}");
 
                 }
-                
+
                 if (blockTracer is GethLikeBlockTracer gethTracer)
                 {
                     fileName = $"gethStyle_{blockHash}.txt";

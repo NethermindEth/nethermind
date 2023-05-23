@@ -1,28 +1,14 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using System;
+using Nethermind.Merge.Plugin.GC;
 
 namespace Nethermind.Merge.Plugin
 {
     public class MergeConfig : IMergeConfig
     {
-        public bool Enabled { get; set; }
+        public bool Enabled { get; set; } = true;
 
         public string? FinalTotalDifficulty { get; set; }
 
@@ -32,8 +18,17 @@ namespace Nethermind.Merge.Plugin
 
         public long? TerminalBlockNumber { get; set; }
 
+        [Obsolete("Use BlocksConfig.SecondsPerSlot")]
         public ulong SecondsPerSlot { get; set; } = 12;
 
         public string? BuilderRelayUrl { get; set; }
+
+        public bool PrioritizeBlockLatency { get; set; } = true;
+
+        public GcLevel SweepMemory { get; set; } = GcLevel.Gen1;
+
+        public GcCompaction CompactMemory { get; set; } = GcCompaction.Yes;
+
+        public int CollectionsPerDecommit { get; set; } = 75;
     }
 }

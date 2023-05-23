@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers.Binary;
@@ -62,7 +49,7 @@ namespace Nethermind.Consensus.Ethash
 
         public static uint GetEpoch(long blockNumber)
         {
-            return (uint) (blockNumber / EpochLength);
+            return (uint)(blockNumber / EpochLength);
         }
 
         /// Improvement from @AndreaLanfranchi
@@ -70,7 +57,7 @@ namespace Nethermind.Consensus.Ethash
         {
             uint upperBound = (DataSetBytesInit / MixBytes) + (DataSetBytesGrowth / MixBytes) * epoch;
             uint dataItems = FindLargestPrime(upperBound);
-            return dataItems * (ulong) MixBytes;
+            return dataItems * (ulong)MixBytes;
         }
 
         /// Improvement from @AndreaLanfranchi
@@ -109,7 +96,7 @@ namespace Nethermind.Consensus.Ethash
         }
 
         /// <summary>
-        /// Improvement from @AndreaLanfranchi 
+        /// Improvement from @AndreaLanfranchi
         /// </summary>
         /// <param name="number"></param>
         /// <returns></returns>
@@ -123,7 +110,7 @@ namespace Nethermind.Consensus.Ethash
                To avoid computing sqrt, compare d*d <= number with 64-bit
                precision. Use only odd divisors as even ones are yet divisible
                by 2 */
-            for (uint d = 3; d * (ulong) d <= number; d += 2)
+            for (uint d = 3; d * (ulong)d <= number; d += 2)
             {
                 if (number % d == 0)
                     return false;
@@ -135,13 +122,13 @@ namespace Nethermind.Consensus.Ethash
 
         public static Keccak GetSeedHash(uint epoch)
         {
-            byte[] seed = new byte[32];
+            ValueKeccak seed = new ValueKeccak();
             for (uint i = 0; i < epoch; i++)
             {
-                seed = Keccak.Compute(seed).Bytes; // TODO: optimize
+                seed = ValueKeccak.Compute(seed.Bytes);
             }
 
-            return new Keccak(seed);
+            return new Keccak(seed.Bytes.ToArray());
         }
 
         private readonly BigInteger _2To256 = BigInteger.Pow(2, 256);
@@ -155,7 +142,7 @@ namespace Nethermind.Consensus.Ethash
             return BitConverter.ToUInt64(buffer, 0);
         }
 
-        private bool IsLessOrEqualThanTarget(byte[] result, in UInt256 difficulty)
+        private bool IsLessOrEqualThanTarget(ReadOnlySpan<byte> result, in UInt256 difficulty)
         {
             UInt256 resultAsInteger = new(result, true);
             BigInteger target = BigInteger.Divide(_2To256, (BigInteger)difficulty);
@@ -180,9 +167,9 @@ namespace Nethermind.Consensus.Ethash
             byte[] mixHash;
             while (true)
             {
-                byte[] result;
+                ValueKeccak result;
                 (mixHash, result, _) = Hashimoto(fullSize, dataSet, headerHashed, null, nonce);
-                if (IsLessOrEqualThanTarget(result, header.Difficulty))
+                if (IsLessOrEqualThanTarget(result.Bytes, header.Difficulty))
                 {
                     break;
                 }
@@ -213,7 +200,7 @@ namespace Nethermind.Consensus.Ethash
 
         private static uint GetUInt(byte[] bytes, uint offset)
         {
-            return BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int) offset * 4);
+            return BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int)offset * 4);
         }
 
         public void HintRange(Guid guid, long start, long end)
@@ -241,13 +228,13 @@ namespace Nethermind.Consensus.Ethash
 
             ulong fullSize = GetDataSize(epoch);
             Keccak headerHashed = GetTruncatedHash(header);
-            (byte[] _, byte[] result, bool isValid) = Hashimoto(fullSize, dataSet, headerHashed, header.MixHash, header.Nonce);
+            (byte[] _, ValueKeccak result, bool isValid) = Hashimoto(fullSize, dataSet, headerHashed, header.MixHash, header.Nonce);
             if (!isValid)
             {
                 return false;
             }
-            
-            return IsLessOrEqualThanTarget(result, header.Difficulty);
+
+            return IsLessOrEqualThanTarget(result.Bytes, header.Difficulty);
         }
 
         private readonly Stopwatch _cacheStopwatch = new();
@@ -273,16 +260,16 @@ namespace Nethermind.Consensus.Ethash
             return headerHashed;
         }
 
-        public (byte[], byte[], bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
+        public (byte[], ValueKeccak, bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
         {
-            uint hashesInFull = (uint) (fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
+            uint hashesInFull = (uint)(fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
             const uint wordsInMix = MixBytes / WordBytes;
             const uint hashesInMix = MixBytes / HashBytes;
 
             byte[] nonceBytes = new byte[8];
             BinaryPrimitives.WriteUInt64LittleEndian(nonceBytes, nonce);
 
-            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.Bytes, nonceBytes)).Bytes; // this tests fine
+            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.BytesToArray(), nonceBytes)).Bytes; // this tests fine
             uint[] mixInts = new uint[MixBytes / WordBytes];
 
             for (int i = 0; i < hashesInMix; i++)
@@ -298,7 +285,7 @@ namespace Nethermind.Consensus.Ethash
                 for (uint j = 0; j < hashesInMix; j++)
                 {
                     uint[] item = dataSet.CalcDataSetItem(p + j);
-                    Buffer.BlockCopy(item, 0, newData, (int) (j * item.Length * 4), item.Length * 4);
+                    Buffer.BlockCopy(item, 0, newData, (int)(j * item.Length * 4), item.Length * 4);
                 }
 
                 Fnv(mixInts, newData);
@@ -313,12 +300,12 @@ namespace Nethermind.Consensus.Ethash
             byte[] cmix = new byte[MixBytes / WordBytes];
             Buffer.BlockCopy(cmixInts, 0, cmix, 0, cmix.Length);
 
-            if (expectedMixHash != null && !Bytes.AreEqual(cmix, expectedMixHash.Bytes))
+            if (expectedMixHash is not null && !Bytes.AreEqual(cmix, expectedMixHash.Bytes))
             {
                 return (null, null, false);
             }
 
-            return (cmix, Keccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)).Bytes, true); // this tests fine
+            return (cmix, ValueKeccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)), true); // this tests fine
         }
     }
 }

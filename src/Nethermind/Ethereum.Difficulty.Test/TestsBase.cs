@@ -1,20 +1,5 @@
-﻿/*
- * Copyright (c) 2021 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -69,7 +54,7 @@ namespace Ethereum.Difficulty.Test
             hex = hex.Replace("0x", "0");
             return BigInteger.Parse(hex, NumberStyles.HexNumber);
         }
-        
+
         private static UInt256 ToUInt256(string hex)
         {
             hex = hex.Replace("0x", "0");
@@ -83,9 +68,9 @@ namespace Ethereum.Difficulty.Test
             return new DifficultyTests(
                 fileName,
                 name,
-                ToUInt256(json.ParentTimestamp),
+                (ulong)ToUInt256(json.ParentTimestamp),
                 ToUInt256(json.ParentDifficulty),
-                ToUInt256(json.CurrentTimestamp),
+                (ulong)ToUInt256(json.CurrentTimestamp),
                 (long)ToUInt256(json.CurrentBlockNumber),
                 ToUInt256(json.CurrentDifficulty),
                 !string.IsNullOrWhiteSpace(json.ParentUncles) && new Keccak(json.ParentUncles) != noUnclesHash);
@@ -102,7 +87,7 @@ namespace Ethereum.Difficulty.Test
                 test.CurrentBlockNumber,
                 test.ParentHasUncles);
 
-            Assert.AreEqual(test.CurrentDifficulty, difficulty, test.Name);
+            Assert.That(difficulty, Is.EqualTo(test.CurrentDifficulty), test.Name);
         }
     }
 }

@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Reflection;
@@ -36,15 +22,15 @@ namespace Nethermind.GitBook
             _markdownGenerator = markdownGenerator;
             _sharedContent = sharedContent;
         }
-        
+
         public void Generate()
         {
             string docsDir = DocsDirFinder.FindDocsDir();
             RpcAndCliDataProvider rpcAndCliDataProvider = new RpcAndCliDataProvider();
-            
+
             Dictionary<string, Dictionary<string, MethodData>> modulesData =
                 rpcAndCliDataProvider.GetRpcAndCliData();
-            
+
             foreach (string moduleName in modulesData.Keys)
             {
                 modulesData.TryGetValue(moduleName, out var moduleMethods);
@@ -59,7 +45,7 @@ namespace Nethermind.GitBook
 
             rpcBuilder.AppendLine($"# {moduleName}");
             rpcBuilder.AppendLine();
-            
+
             cliBuilder.AppendLine($"# {moduleName}");
             cliBuilder.AppendLine();
 
@@ -72,7 +58,7 @@ namespace Nethermind.GitBook
                 {
                     continue;
                 }
-                
+
                 string rpcMethodName = $"{moduleName}_{methodName}";
                 string cliMethodName = $"{moduleName}.{methodName}";
 
@@ -111,13 +97,13 @@ namespace Nethermind.GitBook
 
                 string rpcInvocation = _markdownGenerator.GetRpcInvocationExample(rpcMethodName, defaultArguments);
                 string cliInvocation = _markdownGenerator.GetCliInvocationExample(cliMethodName, defaultArguments, methodData.IsFunction);
-                
+
                 if (exampleArguments.Count != defaultArguments.Count)
                 {
                     exampleArguments = defaultArguments;
                 }
-                
-                
+
+
                 if (methodData.InvocationType != InvocationType.Cli)
                 {
                     bool isImplemented = methodData.IsImplemented ?? true;
@@ -125,7 +111,7 @@ namespace Nethermind.GitBook
                     {
                         continue;
                     }
-                    
+
                     Type returnType = GetTypeFromWrapper(methodData.ReturnType);
                     string returnTypeToWrite = _sharedContent.GetTypeToWrite(returnType, typesToDescribe);
                     returnBuilder.AppendLine("| Returned type | Description |");
@@ -157,7 +143,7 @@ namespace Nethermind.GitBook
                         _markdownGenerator.CreateCodeBlock(rpcBuilder, exampleResponse);
                         _markdownGenerator.CloseTab(rpcBuilder);
                     }
-                    
+
                     if (typesToDescribe.Count != 0)
                     {
                         objectsBuilder.AppendLine();
@@ -169,11 +155,11 @@ namespace Nethermind.GitBook
                     rpcBuilder.Append(objectsBuilder);
                     _markdownGenerator.CloseTabs(rpcBuilder);
                     rpcBuilder.AppendLine();
-                    
+
                     if (methodData.InvocationType == InvocationType.Both)
                     {
                         rpcBuilder.AppendLine($"[See also CLI {cliMethodName}](https://docs.nethermind.io/nethermind/nethermind-utilities/cli/{moduleName}#{moduleName.ToLower()}-{methodName.ToLower()})");
-                        
+
                         CreateCliContent(cliBuilder, paramBuilder, returnBuilder, objectsBuilder, cliMethodName, exampleArguments, cliInvocation, methodData);
                         cliBuilder.AppendLine($"[See also JSON RPC {rpcMethodName}](https://docs.nethermind.io/nethermind/ethereum-client/json-rpc/{moduleName}#{rpcMethodName.ToLower()})");
                     }
@@ -189,9 +175,9 @@ namespace Nethermind.GitBook
                     CreateCliContent(cliBuilder, paramBuilder, returnBuilder, objectsBuilder, cliMethodName, exampleArguments, cliInvocation, methodData);
                 }
             }
-            
+
             int emptyModuleLength = "# only_some_module_name".Length;
-            
+
             if (rpcBuilder.Length > emptyModuleLength)
             {
                 _sharedContent.Save(moduleName, string.Concat(docsDir, "/ethereum-client/json-rpc"), rpcBuilder);
@@ -223,7 +209,7 @@ namespace Nethermind.GitBook
             cliBuilder.AppendLine();
             cliBuilder.Append(returnBuilder);
             cliBuilder.AppendLine();
-            
+
             _markdownGenerator.OpenTabs(cliBuilder);
             _markdownGenerator.CreateTab(cliBuilder, $"Example request of {cliMethodName}");
 
@@ -246,7 +232,7 @@ namespace Nethermind.GitBook
             _markdownGenerator.CloseTabs(cliBuilder);
             cliBuilder.AppendLine();
         }
-        
+
         private void TryAddDescription(StringBuilder moduleBuilder, string description)
         {
             if (description != null)
@@ -256,7 +242,7 @@ namespace Nethermind.GitBook
                 moduleBuilder.AppendLine();
             }
         }
-        
+
         private void TryAddHint(StringBuilder moduleBuilder, string hint)
         {
             if (hint?.Length > 0)
@@ -282,11 +268,11 @@ namespace Nethermind.GitBook
 
             bool isNullableType = returnType.IsNullable();
 
-            if(isNullableType)
+            if (isNullableType)
             {
                 return Nullable.GetUnderlyingType(returnType);
             }
-            
+
             return returnType.IsArray ? returnType.GetElementType() : returnType;
         }
     }

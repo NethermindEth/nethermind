@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
 import json
 import subprocess
 import emoji
@@ -12,7 +15,7 @@ headers = {
     'Content-type': 'application/json',
 }
 
-print(emoji.emojize("Fast Sync configuration settings initialization     :white_check_mark: ", use_aliases=True))
+print(emoji.emojize("Fast Sync configuration settings initialization     :white_check_mark: "))
 
 configs = {
     # fast sync section
@@ -24,30 +27,20 @@ configs = {
     "goerli": {
         "url": "api-goerli.etherscan.io",
         "blockReduced": 8192,
-        "multiplierRequirement": 30000 
-    },
-    "ropsten": {
-        "url": "api-ropsten.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    "rinkeby": {
-        "url": "api-rinkeby.etherscan.io",
-        "blockReduced": 8192,
         "multiplierRequirement": 30000
     },
-    "kovan": {
-        "url": "api-kovan.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },     
-    "poacore": {
-        "url": "https://core.poa.network",
+    "gnosis": {
+        "url": "https://rpc.gnosischain.com",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
     "xdai": {
-        "url": "http://rpc.gnosischain.com",
+        "url": "https://rpc.gnosischain.com",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "chiado": {
+        "url": "https://rpc.chiadochain.net",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
@@ -55,11 +48,6 @@ configs = {
         "url": "api-sepolia.etherscan.io",
         "blockReduced": 1000,
         "multiplierRequirement": 1000
-    },
-    "sokol": {
-        "url": "https://sokol.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
     },
     "energyweb": {
         "url": "https://rpc.energyweb.org",
@@ -70,36 +58,9 @@ configs = {
         "url": "https://volta-rpc.energyweb.org",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
-    },   
-    # mev section
-    "mainnet_mev": {
-        "url": "api.etherscan.io",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
     },
-    "goerli_mev": {
-        "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000 
-    },
-    "xdai_mev": {
-        "url": "http://rpc.gnosischain.com",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    # aa section
-    "mainnet_aa": {
-        "url": "api.etherscan.io",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
-    },
-    "goerli_aa": {
-        "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000 
-    },
-    "xdai_aa": {
-        "url": "http://rpc.gnosischain.com",
+    "exosama": {
+        "url": "https://rpc.exosama.com",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     }
@@ -139,5 +100,5 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
             json.dump(data, mainnetCfgChanged, indent=2)
 
 for config, value in configs.items():
-    print(emoji.emojize(f"{config.capitalize()} section                                     :white_check_mark: ", use_aliases=True))
+    print(emoji.emojize(f"{config.capitalize()} section                                     :white_check_mark: "))
     fastBlocksSettings(config, value['url'], value['blockReduced'], value['multiplierRequirement'])

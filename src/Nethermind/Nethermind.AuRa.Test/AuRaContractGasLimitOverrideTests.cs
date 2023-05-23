@@ -1,24 +1,11 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -57,16 +44,16 @@ namespace Nethermind.AuRa.Test
             blockGasLimitContract3.Activation.Returns(10);
             blockGasLimitContract3.BlockGasLimit(Arg.Any<BlockHeader>()).Throws(new AbiException(string.Empty));
 
-            MiningConfig config = new() {TargetBlockGasLimit = 4000000};
+            BlocksConfig config = new() { TargetBlockGasLimit = 4000000 };
             AuRaContractGasLimitOverride gasLimitOverride = new(
-                new List<IBlockGasLimitContract> {blockGasLimitContract1, blockGasLimitContract2, blockGasLimitContract3}, 
-                new AuRaContractGasLimitOverride.Cache(), 
+                new List<IBlockGasLimitContract> { blockGasLimitContract1, blockGasLimitContract2, blockGasLimitContract3 },
+                new AuRaContractGasLimitOverride.Cache(),
                 minimum2MlnGasPerBlockWhenUsingBlockGasLimit,
-                new TargetAdjustedGasLimitCalculator(MainnetSpecProvider.Instance, config), 
+                new TargetAdjustedGasLimitCalculator(MainnetSpecProvider.Instance, config),
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithGasLimit(3999999).WithNumber(blockNumber - 1).TestObject;
-            
+
             gasLimitOverride.GetGasLimit(header).Should().Be(expected);
         }
     }

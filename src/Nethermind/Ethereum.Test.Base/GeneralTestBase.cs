@@ -1,20 +1,5 @@
-﻿/*
- * Copyright (c) 2021 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -70,9 +55,9 @@ namespace Ethereum.Test.Base
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
 
-            ISpecProvider specProvider = new CustomSpecProvider(1,
-                (0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                (1, test.Fork));
+            ISpecProvider specProvider = new CustomSpecProvider(
+                ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+                ((ForkActivation)1, test.Fork));
 
             if (specProvider.GenesisSpec != Frontier.Instance)
             {
@@ -80,9 +65,8 @@ namespace Ethereum.Test.Base
             }
 
             TrieStore trieStore = new(stateDb, _logManager);
-            StateProvider stateProvider = new (trieStore, codeDb, _logManager);
+            WorldState stateProvider = new(trieStore, codeDb, _logManager);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
-            IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
                 specProvider,
@@ -91,11 +75,10 @@ namespace Ethereum.Test.Base
             TransactionProcessor transactionProcessor = new(
                 specProvider,
                 stateProvider,
-                storageProvider,
                 virtualMachine,
                 _logManager);
 
-            InitializeTestState(test, stateProvider, storageProvider, specProvider);
+            InitializeTestState(test, stateProvider, specProvider);
 
             BlockHeader header = new(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase,
                 test.CurrentDifficulty, test.CurrentNumber, test.CurrentGasLimit, test.CurrentTimestamp, Array.Empty<byte>());
@@ -107,7 +90,7 @@ namespace Ethereum.Test.Base
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             var txValidator = new TxValidator((MainnetSpecProvider.Instance.ChainId));
-            var spec = specProvider.GetSpec(test.CurrentNumber);
+            var spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
             if (test.Transaction.ChainId == null)
                 test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
             bool isValid = txValidator.IsWellFormed(test.Transaction, spec);
@@ -123,6 +106,7 @@ namespace Ethereum.Test.Base
             {
                 stateProvider.CreateAccount(test.CurrentCoinbase, 0);
             }
+            stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
 
             stateProvider.RecalculateStateRoot();
 
@@ -131,38 +115,31 @@ namespace Ethereum.Test.Base
             testResult.TimeInMs = (int)stopwatch.Elapsed.TotalMilliseconds;
             testResult.StateRoot = stateProvider.StateRoot;
 
-//            Assert.Zero(differences.Count, "differences");
+            //            Assert.Zero(differences.Count, "differences");
             return testResult;
         }
 
-        private static void InitializeTestState(GeneralStateTest test, StateProvider stateProvider,
-            IStorageProvider storageProvider, ISpecProvider specProvider)
+        private static void InitializeTestState(GeneralStateTest test, WorldState stateProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    storageProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
+                    stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
                         storageItem.Value.WithoutLeadingZeros().ToArray());
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                Keccak codeHash = stateProvider.UpdateCode(accountState.Value.Code);
-                stateProvider.UpdateCodeHash(accountState.Key, codeHash, specProvider.GenesisSpec);
+                stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
                 stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
             }
 
-            storageProvider.Commit();
             stateProvider.Commit(specProvider.GenesisSpec);
-
-            storageProvider.CommitTrees(0);
             stateProvider.CommitTree(0);
-
-            storageProvider.Reset();
             stateProvider.Reset();
         }
 
-        private List<string> RunAssertions(GeneralStateTest test, IStateProvider stateProvider)
+        private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)
         {
             List<string> differences = new();
             if (test.PostHash != stateProvider.StateRoot)

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Jint.Native;
 using Nethermind.Abi;
@@ -32,10 +19,10 @@ namespace Nethermind.Cli.Modules
 
         [CliFunction("web3", "sha3")]
         public string? Sha3(string data) => NodeManager.Post<string>("web3_sha3", data).Result;
-        
+
         [CliFunction("web3", "toDecimal")]
         public JsValue ToDecimal(string hex) => Engine.Execute(hex);
-        
+
         [CliFunction("web3", "abi")]
         public string Abi(string name) => new AbiSignature(name).Address.ToHexString();
     }

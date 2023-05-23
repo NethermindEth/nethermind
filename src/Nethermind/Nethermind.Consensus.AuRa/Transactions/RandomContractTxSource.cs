@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -27,7 +14,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.HashLib;
 using Nethermind.Logging;
 using Nethermind.State;
 using Org.BouncyCastle.Crypto;
@@ -62,13 +48,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _random = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _logger = logManager?.GetClassLogger<RandomContractTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
+
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
             if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
             {
                 Transaction? tx = GetTransaction(contract, parent);
-                if (tx != null)
+                if (tx is not null)
                 {
                     yield return tx;
                 }
@@ -83,65 +69,65 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 switch (phase)
                 {
                     case IRandomContract.Phase.BeforeCommit:
-                    {
-                        byte[] bytes = new byte[32];
-                        _random.GenerateRandomBytes(bytes);
-                        var hash = Keccak.Compute(bytes);
-                        PrivateKey? privateKey = _signer.Key;
-                        if (privateKey is not null)
                         {
-                            var cipher = _eciesCipher.Encrypt(privateKey.PublicKey, bytes);
-                            Metrics.CommitHashTransaction++;
-                            return contract.CommitHash(hash, cipher);
-                        }
-
-                        return null;
-                    }
-                    case IRandomContract.Phase.Reveal:
-                    {
-                        var (hash, cipher) = contract.GetCommitAndCipher(parent, round);
-                        byte[] bytes;
-                        try
-                        {
-                            PrivateKey privateKey = _signer.Key;
+                            byte[] bytes = new byte[32];
+                            _random.GenerateRandomBytes(bytes);
+                            var hash = Keccak.Compute(bytes);
+                            PrivateKey? privateKey = _signer.Key;
                             if (privateKey is not null)
                             {
-                                using (privateKey)
+                                var cipher = _eciesCipher.Encrypt(privateKey.PublicKey, bytes);
+                                Metrics.CommitHashTransaction++;
+                                return contract.CommitHash(hash, cipher);
+                            }
+
+                            return null;
+                        }
+                    case IRandomContract.Phase.Reveal:
+                        {
+                            var (hash, cipher) = contract.GetCommitAndCipher(parent, round);
+                            byte[] bytes;
+                            try
+                            {
+                                PrivateKey privateKey = _signer.Key;
+                                if (privateKey is not null)
                                 {
-                                    bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
+                                    using (privateKey)
+                                    {
+                                        bytes = _eciesCipher.Decrypt(privateKey, cipher).PlainText;
+                                    }
+                                }
+                                else
+                                {
+                                    return null;
                                 }
                             }
-                            else
+                            catch (InvalidCipherTextException)
                             {
-                                return null;
+                                // Before we used node key here, now we want to use signer key. So we can move signer to other node.
+                                // But we need to fallback to node key here when we upgrade version.
+                                // This is temporary code after all validators are upgraded we can remove it.
+                                using PrivateKey privateKey = _previousCryptoKey.Unprotect();
+                                bytes = _eciesCipher.Decrypt(privateKey, cipher).PlainText;
                             }
-                        }
-                        catch (InvalidCipherTextException)
-                        {
-                            // Before we used node key here, now we want to use signer key. So we can move signer to other node.
-                            // But we need to fallback to node key here when we upgrade version.
-                            // This is temporary code after all validators are upgraded we can remove it.
-                            using PrivateKey privateKey = _previousCryptoKey.Unprotect();
-                            bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
-                        }
 
-                        if (bytes?.Length != 32)
-                        {
-                            // This can only happen if there is a bug in the smart contract, or if the entire network goes awry.
-                            throw new AuRaException("Decrypted random number has the wrong length.");
+                            if (bytes?.Length != 32)
+                            {
+                                // This can only happen if there is a bug in the smart contract, or if the entire network goes awry.
+                                throw new AuRaException("Decrypted random number has the wrong length.");
+                            }
+
+                            var computedHash = ValueKeccak.Compute(bytes);
+                            if (!Bytes.AreEqual(hash.Bytes, computedHash.BytesAsSpan))
+                            {
+                                throw new AuRaException("Decrypted random number doesn't agree with the hash.");
+                            }
+
+                            UInt256 number = new UInt256(bytes, true);
+
+                            Metrics.RevealNumber++;
+                            return contract.RevealNumber(number);
                         }
-
-                        var computedHash = ValueKeccak.Compute(bytes);
-                        if (!Bytes.AreEqual(hash.Bytes, computedHash.BytesAsSpan))
-                        {
-                            throw new AuRaException("Decrypted random number doesn't agree with the hash.");
-                        }
-
-                        UInt256 number = new UInt256(bytes, true);
-
-                        Metrics.RevealNumber++;
-                        return contract.RevealNumber(number);
-                    }
                 }
             }
             catch (AuRaException e)

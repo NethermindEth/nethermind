@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Linq;
@@ -32,13 +18,13 @@ namespace Nethermind.AccountAbstraction.Network
         private readonly IUserOperationBroadcaster _broadcaster;
         private readonly ILogger _logger;
 
-        public AccountAbstractionPeerManager(IDictionary<Address,IUserOperationPool> userOperationPools,
+        public AccountAbstractionPeerManager(IDictionary<Address, IUserOperationPool> userOperationPools,
             IUserOperationBroadcaster broadcaster,
             ILogger logger)
             : this(userOperationPools, broadcaster, 0, logger)
         {
         }
-        
+
         public AccountAbstractionPeerManager(IDictionary<Address, IUserOperationPool> userOperationPools,
             IUserOperationBroadcaster broadcaster,
             int numberOfPriorityAaPeers,
@@ -52,7 +38,7 @@ namespace Nethermind.AccountAbstraction.Network
         }
 
         public int NumberOfPriorityAaPeers { get; set; }
-        
+
         public void AddPeer(IUserOperationPoolPeer peer)
         {
             PeerInfo peerInfo = new(peer);
@@ -63,10 +49,11 @@ namespace Nethermind.AccountAbstraction.Network
                 UserOperation[][] userOperations = new UserOperation[_userOperationPools.Count][];
                 int counter = 0;
                 int totalLength = 0;
-                foreach (KeyValuePair<Address, IUserOperationPool> kv in _userOperationPools) {
+                foreach (KeyValuePair<Address, IUserOperationPool> kv in _userOperationPools)
+                {
                     entryPoints[counter] = kv.Key;
                     userOperations[counter] = kv.Value.GetUserOperations().ToArray();
-                    totalLength = totalLength + userOperations[counter].Length;
+                    totalLength += userOperations[counter].Length;
                     counter++;
                 }
                 UserOperationWithEntryPoint[] userOperationsWithEntryPoints = new UserOperationWithEntryPoint[totalLength];
@@ -83,7 +70,7 @@ namespace Nethermind.AccountAbstraction.Network
                     }
                 }
                 _broadcaster.BroadcastOnce(peerInfo, userOperationsWithEntryPoints);
-                
+
                 if (_logger.IsTrace) _logger.Trace($"Added a peer to User Operation pool: {peer.Id}");
             }
         }

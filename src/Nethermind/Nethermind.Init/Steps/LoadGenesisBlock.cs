@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
@@ -44,20 +31,20 @@ namespace Nethermind.Init.Steps
             _initConfig = _api.Config<IInitConfig>();
             Keccak? expectedGenesisHash = string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash);
 
-            if (_api.BlockTree == null)
+            if (_api.BlockTree is null)
             {
                 throw new StepDependencyException();
             }
-            
+
             // if we already have a database with blocks then we do not need to load genesis from spec
-            if (_api.BlockTree.Genesis == null)
+            if (_api.BlockTree.Genesis is null)
             {
-                Load();    
+                Load();
             }
-            
+
             ValidateGenesisHash(expectedGenesisHash);
-            
-            if(!_initConfig.ProcessingEnabled)
+
+            if (!_initConfig.ProcessingEnabled)
             {
                 if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
                 await (_api.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
@@ -66,19 +53,17 @@ namespace Nethermind.Init.Steps
 
         protected virtual void Load()
         {
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.StateProvider == null) throw new StepDependencyException(nameof(_api.StateProvider));
-            if (_api.StorageProvider == null) throw new StepDependencyException(nameof(_api.StorageProvider));
-            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.TransactionProcessor == null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
+            if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
 
             Block genesis = new GenesisLoader(
                 _api.ChainSpec,
                 _api.SpecProvider,
-                _api.StateProvider,
-                _api.StorageProvider,
+                _api.WorldState,
                 _api.TransactionProcessor)
                 .Load();
 
@@ -87,7 +72,7 @@ namespace Nethermind.Init.Steps
             bool genesisLoaded = false;
             void GenesisProcessed(object? sender, BlockEventArgs args)
             {
-                if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+                if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
                 _api.BlockTree.NewHeadBlock -= GenesisProcessed;
                 genesisLoaded = true;
                 genesisProcessedEvent.Set();
@@ -96,7 +81,7 @@ namespace Nethermind.Init.Steps
             _api.BlockTree.NewHeadBlock += GenesisProcessed;
             _api.BlockTree.SuggestBlock(genesis);
             genesisProcessedEvent.Wait(TimeSpan.FromSeconds(40));
-            
+
             if (!genesisLoaded)
             {
                 throw new BlockchainException("Genesis block processing failure");
@@ -109,13 +94,13 @@ namespace Nethermind.Init.Steps
         /// <param name="expectedGenesisHash"></param>
         private void ValidateGenesisHash(Keccak? expectedGenesisHash)
         {
-            if (_api.StateProvider == null) throw new StepDependencyException(nameof(_api.StateProvider));
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
             BlockHeader genesis = _api.BlockTree.Genesis!;
-            if (expectedGenesisHash != null && genesis.Hash != expectedGenesisHash)
+            if (expectedGenesisHash is not null && genesis.Hash != expectedGenesisHash)
             {
-                if (_logger.IsWarn) _logger.Warn(_api.StateProvider.DumpState());
+                if (_logger.IsWarn) _logger.Warn(_api.WorldState.DumpState());
                 if (_logger.IsWarn) _logger.Warn(genesis.ToString(BlockHeader.Format.Full));
                 if (_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {genesis.Hash}");
             }
@@ -123,7 +108,7 @@ namespace Nethermind.Init.Steps
             {
                 if (_logger.IsDebug) _logger.Info($"Genesis hash :  {genesis.Hash}");
             }
-            
+
             ThisNodeInfo.AddInfo("Genesis hash :", $"{genesis.Hash}");
         }
     }

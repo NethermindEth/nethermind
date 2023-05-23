@@ -1,0 +1,112 @@
+name: Hive tests
+   
+on: 
+  push:
+    tags: ['*']
+
+  workflow_dispatch:
+    inputs:
+      test-suite:
+        description: Test suite
+        required: true
+        default: ethereum/engine
+        type: choice
+        options:
+        - devp2p
+        - ethereum/consensus
+        - ethereum/engine
+        - ethereum/graphql
+        - ethereum/pyspec
+        - ethereum/rpc
+        - ethereum/rpc-compat
+        - ethereum/sync
+      limit:
+        description: Limit
+        required: false
+        type: string 
+      log-level:
+        description: Log level
+        required: true
+        default: '3'
+        type: choice
+        options: ['0', '1', '2', '3', '4', '5']
+      hive-repo:
+        description: Hive repo
+        required: true
+        default: ethereum/hive
+        type: string        
+      hive-branch:
+        description: Hive branch
+        required: false
+        default: master
+        type: string
+
+jobs:
+  test:
+    name: Build and run tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up parameters
+        run: |
+          echo "TEST_SUITE=${{ github.event.inputs.test-suite || 'ethereum/engine' }}" >> $GITHUB_ENV
+          echo "LIMIT=${{ github.event.inputs.limit || '' }}" >> $GITHUB_ENV
+          echo "LOG_LEVEL=${{ github.event.inputs.log-level || '3' }}" >> $GITHUB_ENV
+          echo "HIVE_REPO=${{ github.event.inputs.hive-repo || 'ethereum/hive' }}" >> $GITHUB_ENV
+          echo "HIVE_BRANCH=${{ github.event.inputs.hive-branch || 'master' }}" >> $GITHUB_ENV
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with: 
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: stable
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ env.HIVE_REPO }}
+          ref: ${{ env.HIVE_BRANCH }}
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM $user/$repo:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        if: env.LIMIT == ''
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim $TEST_SUITE --sim.loglevel $LOG_LEVEL
+      - name: Run Hive with limit
+        if: env.LIMIT != ''
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim $TEST_SUITE --sim.loglevel $LOG_LEVEL --sim.limit $LIMIT
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-${{ github.run_number }}-${{ github.run_attempt }}
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          rm hive/workspace/logs/hive.json # redundant: remove to avoid jq error
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"

@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -23,10 +10,9 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Secp256k1;
 
 namespace Nethermind.Wallet
-{   
+{
     [DoNotUseInSecuredContext("For dev purposes only")]
     public class DevWallet : IWallet
     {
@@ -52,7 +38,7 @@ namespace Nethermind.Wallet
                 _isUnlocked.Add(key.Address, true);
                 _keySeed[31]++;
             }
-        } 
+        }
 
         public void Import(byte[] keyData, SecureString passphrase)
         {
@@ -76,12 +62,12 @@ namespace Nethermind.Wallet
 
         public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan)
         {
-            
+
             if (address is null || address == Address.Zero)
             {
                 return false;
             }
-            
+
             if (!_passwords.ContainsKey(address))
             {
                 if (_logger.IsError) _logger.Error("Account does not exist.");
@@ -96,7 +82,7 @@ namespace Nethermind.Wallet
 
             AccountUnlocked?.Invoke(this, new AccountUnlockedEventArgs(address));
             _isUnlocked[address] = true;
-            
+
             return true;
         }
 
@@ -131,7 +117,7 @@ namespace Nethermind.Wallet
 
         public Signature Sign(Keccak message, Address address)
         {
-            var rs = Proxy.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
+            var rs = SpanSecP256k1.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
             return new Signature(rs, v);
         }
     }

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain;
@@ -23,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -85,7 +71,7 @@ namespace Nethermind.Synchronization.ParallelSync
             //   3) the full block state has been synced in the state nodes sync (fast sync)
             // In 2) and 3) the state root will be saved in the database.
             // In fast sync we never save the state root unless all the descendant nodes have been stored in the DB.
-            return stateRootIsInMemory || _stateDb.Get(stateRoot) != null;
+            return stateRootIsInMemory || _stateDb.Get(stateRoot) is not null;
         }
 
         public long FindBestFullState()
@@ -103,13 +89,13 @@ namespace Nethermind.Synchronization.ParallelSync
             BlockHeader bestSuggested = initialBestSuggested;
 
             long bestFullState = 0;
-            if (head != null)
+            if (head is not null)
             {
                 // head search should be very inexpensive as we generally expect the state to be there
                 bestFullState = SearchForFullState(head.Header);
             }
 
-            if (bestSuggested != null)
+            if (bestSuggested is not null)
             {
                 if (bestFullState < bestSuggested?.Number)
                 {
@@ -125,7 +111,7 @@ namespace Nethermind.Synchronization.ParallelSync
             long bestFullState = 0;
             for (int i = 0; i < MaxLookupBack; i++)
             {
-                if (startHeader == null)
+                if (startHeader is null)
                 {
                     break;
                 }
@@ -155,7 +141,7 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             BlockHeader best = _blockTree.BestSuggestedHeader;
 
-            if (best != null)
+            if (best is not null)
             {
                 if (best.Hash == blockHash)
                 {
@@ -185,6 +171,8 @@ namespace Nethermind.Synchronization.ParallelSync
                                                                            long.MaxValue) <= _receiptsBarrier);
 
         public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
+
+        public void RecalculateProgressPointers() => _blockTree.RecalculateTreeLevels();
 
         private bool IsFastBlocks()
         {

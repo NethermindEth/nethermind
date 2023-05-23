@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
 using Nethermind.Core;
@@ -39,32 +26,26 @@ namespace Nethermind.Store.Test
             MemDb memDb = new();
             IDb stateDb = memDb;
             TrieStore trieStore = new(stateDb, new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
-            StateProvider stateProvider = new(trieStore, stateDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
+            WorldState stateProvider = new(trieStore, stateDb, LimboLogs.Instance);
 
             stateProvider.CreateAccount(TestItem.AddressA, 1);
-            Keccak codeHash = stateProvider.UpdateCode(new byte[] {1, 2, 3});
-            stateProvider.UpdateCodeHash(TestItem.AddressA, codeHash, Istanbul.Instance);
-            
+            stateProvider.InsertCode(TestItem.AddressA, new byte[] { 1, 2, 3 }, Istanbul.Instance);
+
             stateProvider.CreateAccount(TestItem.AddressB, 1);
-            Keccak codeHash2 = stateProvider.UpdateCode(new byte[] {1, 2, 3, 4});
-            stateProvider.UpdateCodeHash(TestItem.AddressB, codeHash2, Istanbul.Instance);
+            stateProvider.InsertCode(TestItem.AddressB, new byte[] { 1, 2, 3, 4 }, Istanbul.Instance);
 
             for (int i = 0; i < 1000; i++)
             {
                 StorageCell storageCell = new(TestItem.AddressA, (UInt256)i);
-                storageProvider.Set(storageCell, new byte[] {(byte)i});    
+                stateProvider.Set(storageCell, new byte[] { (byte)i });
             }
 
-            storageProvider.Commit();
             stateProvider.Commit(Istanbul.Instance);
 
-            storageProvider.CommitTrees(0);
             stateProvider.CommitTree(0);
-            storageProvider.CommitTrees(1);
             stateProvider.CommitTree(1);
 
-            memDb.Delete(codeHash2); // missing code
+            memDb.Delete(Keccak.Compute(new byte[] { 1, 2, 3, 4 })); // missing code
             Keccak storageKey = new("0x345e54154080bfa9e8f20c99d7a0139773926479bc59e5b4f830ad94b6425332");
             memDb.Delete(storageKey); // deletes some storage
             trieStore.ClearCache();
@@ -74,19 +55,19 @@ namespace Nethermind.Store.Test
             {
                 MaxDegreeOfParallelism = parallel ? 0 : 1
             };
-            
+
             stateProvider.Accept(statsCollector, stateProvider.StateRoot, visitingOptions);
             var stats = statsCollector.Stats;
-            
+
             stats.CodeCount.Should().Be(1);
             stats.MissingCode.Should().Be(1);
-            
+
             stats.NodesCount.Should().Be(1348);
-            
+
             stats.StateBranchCount.Should().Be(1);
             stats.StateExtensionCount.Should().Be(1);
             stats.AccountCount.Should().Be(2);
-            
+
             stats.StorageCount.Should().Be(1343);
             stats.StorageBranchCount.Should().Be(337);
             stats.StorageExtensionCount.Should().Be(12);

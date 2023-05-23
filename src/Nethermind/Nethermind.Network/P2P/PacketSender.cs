@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -33,11 +20,14 @@ namespace Nethermind.Network.P2P
         private readonly IMessageSerializationService _messageSerializationService;
         private readonly ILogger _logger;
         private IChannelHandlerContext _context;
+        private TimeSpan _sendLatency;
 
-        public PacketSender(IMessageSerializationService messageSerializationService, ILogManager logManager)
+        public PacketSender(IMessageSerializationService messageSerializationService, ILogManager logManager,
+            TimeSpan sendLatency)
         {
             _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
             _logger = logManager.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
+            _sendLatency = sendLatency;
         }
 
         public int Enqueue<T>(T message) where T : P2PMessage
@@ -46,22 +36,38 @@ namespace Nethermind.Network.P2P
             {
                 return 0;
             }
-            
+
             IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message);
             int length = buffer.ReadableBytes;
-            _context.WriteAndFlushAsync(buffer).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    if (_context.Channel is { Active: false })
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Channel is not active - {t.Exception.Message}");
-                    }
-                    else if (_logger.IsError) _logger.Error("Channel is active", t.Exception);
-                }
-            });
-            
+
+            // Running in background
+#pragma warning disable CS4014
+            SendBuffer(buffer);
+#pragma warning restore CS4014
+
             return length;
+        }
+
+        private async Task SendBuffer(IByteBuffer buffer)
+        {
+            try
+            {
+                if (_sendLatency != TimeSpan.Zero)
+                {
+                    // Tried to implement this as a pipeline handler. Got a lot of peering issue for some reason...
+                    await Task.Delay(_sendLatency);
+                }
+
+                await _context.WriteAndFlushAsync(buffer);
+            }
+            catch (Exception exception)
+            {
+                if (_context.Channel is { Active: false })
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Channel is not active - {exception.Message}");
+                }
+                else if (_logger.IsError) _logger.Error("Channel is active", exception);
+            }
         }
 
         public override void HandlerAdded(IChannelHandlerContext context)

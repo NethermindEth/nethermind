@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
@@ -32,40 +18,40 @@ public class TxTraceFilterTests
     [Test]
     public void Trace_filter_should_filter_proper_traces()
     {
-        ParityTraceAction action1 = new () {From = TestItem.AddressA, To = TestItem.AddressB};
-        ParityTraceAction action2 = new () {From = TestItem.AddressB, To = TestItem.AddressC};
-        ParityTraceAction action3 = new () {From = TestItem.AddressA, To = TestItem.AddressC};
-        
-        TxTraceFilter filterForFrom = new(new []{ TestItem.AddressA }, null, 0, null);
-        Assert.AreEqual(true, filterForFrom.ShouldUseTxTrace(action1));
-        Assert.AreEqual(false, filterForFrom.ShouldUseTxTrace(action2));
-        Assert.AreEqual(true, filterForFrom.ShouldUseTxTrace(action3));
-        
-        TxTraceFilter filterForTo = new(null, new []{ TestItem.AddressC }, 0, null);
-        Assert.AreEqual(false, filterForTo.ShouldUseTxTrace(action1));
-        Assert.AreEqual(true, filterForTo.ShouldUseTxTrace(action2));
-        Assert.AreEqual(true, filterForTo.ShouldUseTxTrace(action3));
-        
-        TxTraceFilter filterForFromAndTo = new ( new []{ TestItem.AddressA }, new []{ TestItem.AddressC }, 0, null);
-        Assert.AreEqual(false, filterForFromAndTo.ShouldUseTxTrace(action1));
-        Assert.AreEqual(false, filterForFromAndTo.ShouldUseTxTrace(action2));
-        Assert.AreEqual(true, filterForFromAndTo.ShouldUseTxTrace(action3));
+        ParityTraceAction action1 = new() { From = TestItem.AddressA, To = TestItem.AddressB };
+        ParityTraceAction action2 = new() { From = TestItem.AddressB, To = TestItem.AddressC };
+        ParityTraceAction action3 = new() { From = TestItem.AddressA, To = TestItem.AddressC };
+
+        TxTraceFilter filterForFrom = new(new[] { TestItem.AddressA }, null, 0, null);
+        Assert.That(filterForFrom.ShouldUseTxTrace(action1), Is.EqualTo(true));
+        Assert.That(filterForFrom.ShouldUseTxTrace(action2), Is.EqualTo(false));
+        Assert.That(filterForFrom.ShouldUseTxTrace(action3), Is.EqualTo(true));
+
+        TxTraceFilter filterForTo = new(null, new[] { TestItem.AddressC }, 0, null);
+        Assert.That(filterForTo.ShouldUseTxTrace(action1), Is.EqualTo(false));
+        Assert.That(filterForTo.ShouldUseTxTrace(action2), Is.EqualTo(true));
+        Assert.That(filterForTo.ShouldUseTxTrace(action3), Is.EqualTo(true));
+
+        TxTraceFilter filterForFromAndTo = new(new[] { TestItem.AddressA }, new[] { TestItem.AddressC }, 0, null);
+        Assert.That(filterForFromAndTo.ShouldUseTxTrace(action1), Is.EqualTo(false));
+        Assert.That(filterForFromAndTo.ShouldUseTxTrace(action2), Is.EqualTo(false));
+        Assert.That(filterForFromAndTo.ShouldUseTxTrace(action3), Is.EqualTo(true));
     }
-    
+
     [Test]
     public void Trace_filter_should_skip_expected_number_of_traces_()
     {
-        TxTraceFilter traceFilter = new(new []{ TestItem.AddressA }, null, 2, 2);
-        ParityTraceAction action1 = new () {From = TestItem.AddressA};
-        ParityTraceAction action2 = new () {From = TestItem.AddressB};
-    
-        Assert.AreEqual(false, traceFilter.ShouldUseTxTrace(action1));
-        Assert.AreEqual(false, traceFilter.ShouldUseTxTrace(action2));
-        Assert.AreEqual(false, traceFilter.ShouldUseTxTrace(action1));
-        Assert.AreEqual(false, traceFilter.ShouldUseTxTrace(action2));
-        Assert.AreEqual(true, traceFilter.ShouldUseTxTrace(action1));
-        Assert.AreEqual(true, traceFilter.ShouldUseTxTrace(action1));
-        Assert.AreEqual(false, traceFilter.ShouldUseTxTrace(action1));
-        
+        TxTraceFilter traceFilter = new(new[] { TestItem.AddressA }, null, 2, 2);
+        ParityTraceAction action1 = new() { From = TestItem.AddressA };
+        ParityTraceAction action2 = new() { From = TestItem.AddressB };
+
+        Assert.That(traceFilter.ShouldUseTxTrace(action1), Is.EqualTo(false));
+        Assert.That(traceFilter.ShouldUseTxTrace(action2), Is.EqualTo(false));
+        Assert.That(traceFilter.ShouldUseTxTrace(action1), Is.EqualTo(false));
+        Assert.That(traceFilter.ShouldUseTxTrace(action2), Is.EqualTo(false));
+        Assert.That(traceFilter.ShouldUseTxTrace(action1), Is.EqualTo(true));
+        Assert.That(traceFilter.ShouldUseTxTrace(action1), Is.EqualTo(true));
+        Assert.That(traceFilter.ShouldUseTxTrace(action1), Is.EqualTo(false));
+
     }
 }

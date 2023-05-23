@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -32,7 +19,7 @@ namespace Nethermind.GitBook
         private string ReplaceType(Type type)
         {
             if (type.Name.Contains("`")) return "Array";
-            
+
             string replacedType = type.Name switch
             {
                 "Address" => "Address",
@@ -60,7 +47,7 @@ namespace Nethermind.GitBook
             };
             return replacedType;
         }
-        
+
         public void AddObjectsDescription(StringBuilder moduleBuilder, List<Type> typesToDescribe)
         {
             foreach (Type type in typesToDescribe.Distinct().Where(type => ReplaceType(type).Contains("object")))
@@ -69,20 +56,20 @@ namespace Nethermind.GitBook
                 moduleBuilder.AppendLine(@$"`{type.Name}`");
                 moduleBuilder.AppendLine();
 
-                if(type == typeof(BlockParameterType))
+                if (type == typeof(BlockParameterType))
                 {
                     moduleBuilder.AppendLine("- `Quantity` or `String` (latest, earliest, pending)");
                     moduleBuilder.AppendLine();
                     continue;
                 }
-                
-                if(type == typeof(TxType))
+
+                if (type == typeof(TxType))
                 {
                     moduleBuilder.AppendLine("- [EIP2718](https://eips.ethereum.org/EIPS/eip-2718) transaction type");
                     moduleBuilder.AppendLine();
                     continue;
                 }
-                
+
                 Type typeToDescribe = type.IsArray ? type.GetElementType() : type;
 
                 PropertyInfo[] properties = typeToDescribe.GetProperties();
@@ -98,7 +85,7 @@ namespace Nethermind.GitBook
                 }
             }
         }
-        
+
         public string GetTypeToWrite(Type type, List<Type> typesToDescribe)
         {
             if (type.IsNullable())
@@ -116,12 +103,12 @@ namespace Nethermind.GitBook
 
             return replacedType;
         }
-        
+
         private void AdditionalPropertiesToDescribe(Type type, List<Type> typesToDescribe)
         {
             PropertyInfo[] properties = type.GetProperties()
                 .Where(p => !p.PropertyType.IsPrimitive
-                            && p.PropertyType != typeof(string) 
+                            && p.PropertyType != typeof(string)
                             && p.PropertyType != typeof(long)
                             && p.PropertyType != typeof(Keccak))
                 .ToArray();

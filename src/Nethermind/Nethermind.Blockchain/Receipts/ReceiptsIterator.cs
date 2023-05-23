@@ -1,21 +1,10 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 #pragma warning disable 618
@@ -27,70 +16,113 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IDbWithSpan _blocksDb;
         private readonly int _length;
         private Rlp.ValueDecoderContext _decoderContext;
-        
-        private readonly TxReceipt[] _receipts;
-        private int _position;
+        private int _startingPosition;
 
-        public ReceiptsIterator(in Span<byte> receiptsData, IDbWithSpan blocksDb)
+        private readonly TxReceipt[]? _receipts;
+        private int _receiptIndex;
+
+        private readonly Func<IReceiptsRecovery.IRecoveryContext>? _recoveryContextFactory;
+        private IReceiptsRecovery.IRecoveryContext? _recoveryContext;
+        private IReceiptRefDecoder _receiptRefDecoder;
+        private bool _recoveryContextConfigured;
+
+        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDbWithSpan blocksDb, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory, IReceiptRefDecoder receiptRefDecoder)
         {
             _decoderContext = receiptsData.AsRlpValueContext();
-            _length = receiptsData.Length == 0 ? 0 : _decoderContext.ReadSequenceLength();
             _blocksDb = blocksDb;
             _receipts = null;
-            _position = 0;
+            _receiptIndex = 0;
+            _recoveryContextFactory = recoveryContextFactory;
+            _recoveryContextConfigured = false;
+            _recoveryContext = null;
+            _receiptRefDecoder = receiptRefDecoder;
+
+            if (_decoderContext.Length > 0 && _decoderContext.PeekByte() == ReceiptArrayStorageDecoder.CompactEncoding)
+            {
+                _decoderContext.ReadByte();
+            }
+
+            _startingPosition = _decoderContext.Position;
+            _length = receiptsData.Length == 0 ? 0 : _decoderContext.ReadSequenceLength();
         }
 
+        /// <summary>
+        /// Note: This code path assume the receipts already have other info recovered. Its used only by cache.
+        /// </summary>
+        /// <param name="receipts"></param>
         public ReceiptsIterator(TxReceipt[] receipts)
         {
             _decoderContext = new Rlp.ValueDecoderContext();
             _length = receipts.Length;
             _blocksDb = null;
             _receipts = receipts;
-            _position = 0;
+            _receiptIndex = 0;
+            _recoveryContextConfigured = true;
         }
 
         public bool TryGetNext(out TxReceiptStructRef current)
         {
-            if (_receipts == null)
+            if (_receipts is null)
             {
                 if (_decoderContext.Position < _length)
                 {
-                    ReceiptStorageDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
+                    _receiptRefDecoder.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
+                    _recoveryContext?.RecoverReceiptData(ref current);
+                    _receiptIndex++;
                     return true;
                 }
             }
             else
             {
-                if (_position < _length)
+                if (_receiptIndex < _length)
                 {
-                    current = new TxReceiptStructRef(_receipts[_position++]);
+                    current = new TxReceiptStructRef(_receipts[_receiptIndex++]);
                     return true;
                 }
             }
-            
+
             current = new TxReceiptStructRef();
             return false;
         }
 
-        public void Reset()
+        public void RecoverIfNeeded(ref TxReceiptStructRef current)
         {
-            if (_receipts != null)
+            if (_recoveryContextConfigured) return;
+
+            _recoveryContext = _recoveryContextFactory?.Invoke();
+            if (_recoveryContext != null)
             {
-                _position = 0;
+                // Need to replay the context.
+                _decoderContext.Position = _startingPosition;
+                if (_length != 0) _decoderContext.ReadSequenceLength();
+                for (int i = 0; i < _receiptIndex; i++)
+                {
+                    _receiptRefDecoder.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
+                    _recoveryContext?.RecoverReceiptData(ref current);
+                }
             }
-            else
-            {
-                _decoderContext.Position = 0;
-                _decoderContext.ReadSequenceLength();
-            }
+
+            _recoveryContextConfigured = true;
         }
 
         public void Dispose()
         {
-            if (_receipts == null && !_decoderContext.Data.IsEmpty)
+            if (_receipts is null && !_decoderContext.Data.IsEmpty)
             {
                 _blocksDb?.DangerousReleaseMemory(_decoderContext.Data);
             }
         }
+
+        public LogEntriesIterator IterateLogs(TxReceiptStructRef receipt)
+        {
+            return receipt.Logs is null ? new LogEntriesIterator(receipt.LogsRlp, _receiptRefDecoder) : new LogEntriesIterator(receipt.Logs);
+        }
+
+        public Keccak[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
+        {
+            return _receiptRefDecoder.DecodeTopics(valueDecoderContext);
+        }
+
+        public bool CanDecodeBloom => _receiptRefDecoder == null || _receiptRefDecoder.CanDecodeBloom;
     }
 }

@@ -1,7 +1,11 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -16,18 +20,21 @@ namespace Nethermind.Evm.Tracing
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ISpecProvider _specProvider;
+        private readonly IBlocksConfig _blocksConfig;
 
-        public GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyStateProvider stateProvider, ISpecProvider specProvider)
+        public GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyStateProvider stateProvider,
+            ISpecProvider specProvider, IBlocksConfig blocksConfig)
         {
             _transactionProcessor = transactionProcessor;
             _stateProvider = stateProvider;
             _specProvider = specProvider;
+            _blocksConfig = blocksConfig;
         }
 
         public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer)
         {
-            IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1);
-            
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1, header.Timestamp + _blocksConfig.SecondsPerSlot);
+
             long intrinsicGas = tx.GasLimit - gasTracer.IntrinsicGasAt;
             if (tx.GasLimit > header.GasLimit)
             {
@@ -35,18 +42,18 @@ namespace Nethermind.Evm.Tracing
             }
 
             tx.SenderAddress ??= Address.Zero; //If sender is not specified, use zero address.
-            
+
             // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
-            long leftBound = (gasTracer.GasSpent != 0 && gasTracer.GasSpent >= Transaction.BaseTxGasCost) 
-                ? gasTracer.GasSpent - 1 
+            long leftBound = (gasTracer.GasSpent != 0 && gasTracer.GasSpent >= Transaction.BaseTxGasCost)
+                ? gasTracer.GasSpent - 1
                 : Transaction.BaseTxGasCost - 1;
-            long rightBound = (tx.GasLimit != 0 && tx.GasPrice >= Transaction.BaseTxGasCost) 
-                ? tx.GasLimit 
+            long rightBound = (tx.GasLimit != 0 && tx.GasPrice >= Transaction.BaseTxGasCost)
+                ? tx.GasLimit
                 : header.GasLimit;
 
             UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);
-            
-            // Calculate and return additional gas required in case of insufficient funds.    
+
+            // Calculate and return additional gas required in case of insufficient funds.
             if (tx.Value != UInt256.Zero && tx.Value >= senderBalance)
             {
                 return gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
@@ -55,7 +62,7 @@ namespace Nethermind.Evm.Tracing
             // Execute binary search to find the optimal gas estimation.
             return BinarySearchEstimate(leftBound, rightBound, rightBound, tx, header);
         }
-        
+
         private long BinarySearchEstimate(long leftBound, long rightBound, long cap, Transaction tx, BlockHeader header)
         {
             while (leftBound + 1 < rightBound)
@@ -76,8 +83,8 @@ namespace Nethermind.Evm.Tracing
                 return 0;
             }
 
-            return rightBound;   
-        }        
+            return rightBound;
+        }
 
         private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit)
         {
@@ -87,7 +94,7 @@ namespace Nethermind.Evm.Tracing
 
             return !tracer.OutOfGas;
         }
-        
+
         private class OutOfGasTracer : ITxTracer
         {
             public OutOfGasTracer()
@@ -106,11 +113,12 @@ namespace Nethermind.Evm.Tracing
             public bool IsTracingStorage => false;
             public bool IsTracingBlockHash => false;
             public bool IsTracingAccess => false;
-            
+            public bool IsTracingFees => false;
+
             public bool OutOfGas { get; set; }
-            
+
             public byte[] ReturnValue { get; set; }
-            
+
             public byte StatusCode { get; set; }
 
             public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
@@ -182,12 +190,12 @@ namespace Nethermind.Evm.Tracing
             {
             }
 
-            public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+            public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
             {
                 throw new NotSupportedException();
             }
 
-            public void ReportStorageRead(StorageCell storageCell)
+            public void ReportStorageRead(in StorageCell storageCell)
             {
                 throw new NotSupportedException();
             }
@@ -252,7 +260,11 @@ namespace Nethermind.Evm.Tracing
             public void SetOperationMemory(List<string> memoryTrace)
             {
             }
-            
+
+            public void ReportFees(UInt256 fees, UInt256 burntFees)
+            {
+                throw new NotImplementedException();
+            }
         }
     }
 }

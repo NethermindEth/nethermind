@@ -1,21 +1,7 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Core.Attributes;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -41,14 +27,13 @@ namespace Nethermind.JsonRpc.Modules
         public const string Trace = nameof(Trace);
         public const string TxPool = nameof(TxPool);
         public const string Web3 = nameof(Web3);
-        public const string Baseline = nameof(Baseline);
         public const string Vault = nameof(Vault);
         public const string Deposit = nameof(Deposit);
-        public const string Health= nameof(Health);
+        public const string Health = nameof(Health);
         public const string Witness = nameof(Witness);
         public const string AccountAbstraction = nameof(AccountAbstraction);
         public const string Rpc = nameof(Rpc);
-        
+
         public static IEnumerable<string> AllBuiltInModules { get; } = new List<string>()
         {
             Admin,
@@ -71,7 +56,6 @@ namespace Nethermind.JsonRpc.Modules
             Trace,
             TxPool,
             Web3,
-            Baseline,
             Vault,
             Deposit,
             Health,
@@ -82,17 +66,25 @@ namespace Nethermind.JsonRpc.Modules
 
         public static IEnumerable<string> DefaultModules { get; } = new List<string>()
         {
-            Eth, 
-            Subscribe, 
-            Trace, 
-            TxPool, 
-            Web3, 
-            Personal, 
-            Proof, 
+            Eth,
+            Subscribe,
+            Trace,
+            TxPool,
+            Web3,
+            Personal,
+            Proof,
             Net,
             Parity,
             Health,
             Rpc,
+        };
+
+        public static IEnumerable<string> DefaultEngineModules { get; } = new List<string>()
+        {
+            Net,
+            Eth,
+            Subscribe,
+            Web3
         };
     }
 }

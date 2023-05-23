@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -59,7 +45,7 @@ namespace Nethermind.Config.Test
                     {
                         throw new Exception($"Missing config implementation for {configType}");
                     }
-                    
+
                     object? instance = Activator.CreateInstance(implementationType);
 
                     foreach (PropertyInfo property in properties)
@@ -96,7 +82,7 @@ namespace Nethermind.Config.Test
         private static void CheckDefault(PropertyInfo property, object? instance)
         {
             ConfigItemAttribute? attribute = property.GetCustomAttribute<ConfigItemAttribute>();
-            if (attribute == null || attribute.DisabledForCli)
+            if (attribute is null || attribute.DisabledForCli)
             {
                 //there are properties without attribute - we don't pay attention to them 
                 return;
@@ -128,11 +114,11 @@ namespace Nethermind.Config.Test
                 {
                     string? actualValueAtIndex = actualValueArray[i]?.ToString();
                     string expectedValueAtIndex = expectedItems[i];
-                    Assert.AreEqual(actualValueAtIndex, expectedValueAtIndex,
+                    Assert.That(expectedValueAtIndex, Is.EqualTo(actualValueAtIndex),
                         $"Property: {property.Name}, expected value at index {i}: <{expectedValueAtIndex}> but was <{actualValueAtIndex}>");
                 }
 
-                Assert.AreEqual(actualValueArray.Count, expectedItems.Length,
+                Assert.That(expectedItems.Length, Is.EqualTo(actualValueArray.Count),
                     $"Property: {property.Name}, expected value length: <{expectedItems.Length}> but was <{actualValueArray.Count}>");
 
                 return;
@@ -142,7 +128,7 @@ namespace Nethermind.Config.Test
                 actualValue = value.ToString()!;
             }
 
-            Assert.AreEqual(actualValue, expectedValue,
+            Assert.That(expectedValue, Is.EqualTo(actualValue),
                 $"Property: {property.Name}, expected value: <{expectedValue}> but was <{actualValue}>");
         }
     }

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Dynamic;
 using Jint.Native;
@@ -36,6 +23,7 @@ namespace Nethermind.Cli.Test
         private EthereumJsonSerializer _serializer;
         private IJsonRpcClient _jsonRpcClient;
         private CliEngine _engine;
+        private NodeManager _nodeManager;
 
         [SetUp]
         public void Setup()
@@ -43,10 +31,10 @@ namespace Nethermind.Cli.Test
             _serializer = new EthereumJsonSerializer();
             _jsonRpcClient = Substitute.For<IJsonRpcClient>();
             _engine = new CliEngine(_cliConsole);
-            NodeManager nodeManager = new(_engine, _serializer, _cliConsole, LimboLogs.Instance);
-            nodeManager.SwitchClient(_jsonRpcClient);
+            _nodeManager = new(_engine, _serializer, _cliConsole, LimboLogs.Instance);
+            _nodeManager.SwitchClient(_jsonRpcClient);
             ICliConsole cliConsole = Substitute.For<ICliConsole>();
-            CliModuleLoader moduleLoader = new(_engine, nodeManager, cliConsole);
+            CliModuleLoader moduleLoader = new(_engine, _nodeManager, cliConsole);
             moduleLoader.LoadModule(typeof(ProofCliModule));
         }
 
@@ -66,7 +54,7 @@ namespace Nethermind.Cli.Test
 
             JsValue value = _engine.Execute($"proof.getTransactionByHash(\"{txHash}\", {(includeHeader ? "true" : "false")})");
             Colorful.Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
-            Assert.AreNotEqual(JsValue.Null, value);
+            Assert.That(value, Is.Not.EqualTo(JsValue.Null));
         }
 
         [TestCase(true)]
@@ -85,7 +73,7 @@ namespace Nethermind.Cli.Test
 
             JsValue value = _engine.Execute($"proof.getTransactionReceipt(\"{txHash}\", {(includeHeader ? "true" : "false")})");
             Colorful.Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
-            Assert.AreNotEqual(JsValue.Null, value);
+            Assert.That(value, Is.Not.EqualTo(JsValue.Null));
         }
 
         [Test]
@@ -109,7 +97,15 @@ namespace Nethermind.Cli.Test
 
             JsValue value = _engine.Execute($"proof.call({_serializer.Serialize(tx)}, \"{blockHash}\")");
             Colorful.Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
-            Assert.AreNotEqual(JsValue.Null, value);
+            Assert.That(value, Is.Not.EqualTo(JsValue.Null));
+        }
+
+        [Test]
+        public void Syncing_false()
+        {
+            _jsonRpcClient.Post<object>("eth_syncing").Returns(false);
+            var result = _nodeManager.PostJint("eth_syncing").Result;
+            Assert.That(result, Is.EqualTo(JsValue.False));
         }
     }
 }

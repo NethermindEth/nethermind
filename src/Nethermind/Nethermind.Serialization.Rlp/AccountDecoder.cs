@@ -1,21 +1,7 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -27,12 +13,12 @@ namespace Nethermind.Serialization.Rlp
         private readonly bool _slimFormat;
 
         public AccountDecoder() { }
-        
+
         public AccountDecoder(bool slimFormat = false)
         {
             _slimFormat = slimFormat;
         }
-        
+
         public (Keccak CodeHash, Keccak StorageRoot) DecodeHashesOnly(RlpStream rlpStream)
         {
             rlpStream.SkipLength();
@@ -41,7 +27,7 @@ namespace Nethermind.Serialization.Rlp
 
             Keccak storageRoot = DecodeStorageRoot(rlpStream);
             Keccak codeHash = DecodeCodeHash(rlpStream);
-            
+
             return (codeHash, storageRoot);
         }
 
@@ -53,7 +39,7 @@ namespace Nethermind.Serialization.Rlp
             Keccak storageRoot = DecodeStorageRoot(rlpStream);
             return storageRoot;
         }
-        
+
         public Account? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int length = rlpStream.ReadSequenceLength();
@@ -61,18 +47,22 @@ namespace Nethermind.Serialization.Rlp
             {
                 return null;
             }
-            
+
             UInt256 nonce = rlpStream.DecodeUInt256();
             UInt256 balance = rlpStream.DecodeUInt256();
             Keccak storageRoot = DecodeStorageRoot(rlpStream);
             Keccak codeHash = DecodeCodeHash(rlpStream);
-            Account account = new(nonce, balance, storageRoot, codeHash);
-            return account;
+            if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
+            {
+                return new(nonce, balance);
+            }
+
+            return new(nonce, balance, storageRoot, codeHash);
         }
 
         public void Encode(RlpStream stream, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 stream.EncodeNullObject();
                 return;
@@ -90,7 +80,7 @@ namespace Nethermind.Serialization.Rlp
 
             int contentLength = GetContentLength(item);
             RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));
-            
+
             Encode(item, rlpStream, contentLength);
 
             return new Rlp(rlpStream.Data);
@@ -98,11 +88,8 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(Account account, RlpStream rlpStream, int? contentLength = null)
         {
-            if (contentLength == null)
-            {
-                contentLength = GetContentLength(account);
-            }
-            
+            contentLength ??= GetContentLength(account);
+
             rlpStream.StartSequence(contentLength.Value);
             rlpStream.Encode(account.Nonce);
             rlpStream.Encode(account.Balance);
@@ -129,8 +116,8 @@ namespace Nethermind.Serialization.Rlp
         public int GetLength(Account[] accounts)
         {
             int length = 0;
-            
-            if (accounts == null || accounts.Length == 0)
+
+            if (accounts is null || accounts.Length == 0)
             {
                 return 1;
             }
@@ -142,24 +129,24 @@ namespace Nethermind.Serialization.Rlp
 
             return length;
         }
-        
+
         public int GetLength(Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
                 return 1;
             }
-            
+
             return Rlp.LengthOfSequence(GetContentLength(item));
         }
-        
+
         public int GetContentLength(Account? item)
         {
             if (item is null)
             {
                 return 0;
             }
-            
+
             var contentLength = Rlp.LengthOf(item.Nonce);
             contentLength += Rlp.LengthOf(item.Balance);
 
@@ -171,7 +158,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 contentLength += Rlp.LengthOfKeccakRlp;
             }
-            
+
             if (_slimFormat && !item.HasCode)
             {
                 contentLength++;
@@ -180,13 +167,13 @@ namespace Nethermind.Serialization.Rlp
             {
                 contentLength += Rlp.LengthOfKeccakRlp;
             }
-            
+
             return contentLength;
         }
-        
+
         private Keccak DecodeStorageRoot(RlpStream rlpStream)
         {
-            Keccak storageRoot = null;
+            Keccak storageRoot;
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();
@@ -199,10 +186,10 @@ namespace Nethermind.Serialization.Rlp
 
             return storageRoot;
         }
-        
+
         private Keccak DecodeCodeHash(RlpStream rlpStream)
         {
-            Keccak codeHash = null;
+            Keccak codeHash;
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();

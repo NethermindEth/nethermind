@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -131,7 +117,7 @@ namespace Nethermind.Mev.Test
             };
 
             bundles.Select(b => test.BundlePool.AddBundle(b))
-                .Should().BeEquivalentTo(new bool[] {true, false, true, false, true, false});
+                .Should().BeEquivalentTo(new bool[] { true, false, true, false, true, false });
         }
 
         [Test]
@@ -285,12 +271,12 @@ namespace Nethermind.Mev.Test
             test.Simulator.Received(1).Simulate(bundle, block.Header, Arg.Any<CancellationToken>());
         }
 
-        [TestCase(0, new int[] {1, 0, 0, 0, 0, 0})]
-        [TestCase(1, new int[] {0, 1, 0, 0, 0, 0})]
-        [TestCase(2, new int[] {0, 0, 1, 0, 0, 0})]
-        [TestCase(3, new int[] {0, 0, 0, 0, 0, 0})]
-        [TestCase(4, new int[] {0, 0, 0, 0, 0, 0})]
-        [TestCase(5, new int[] {0, 0, 0, 0, 0, 3})]
+        [TestCase(0, new int[] { 1, 0, 0, 0, 0, 0 })]
+        [TestCase(1, new int[] { 0, 1, 0, 0, 0, 0 })]
+        [TestCase(2, new int[] { 0, 0, 1, 0, 0, 0 })]
+        [TestCase(3, new int[] { 0, 0, 0, 0, 0, 0 })]
+        [TestCase(4, new int[] { 0, 0, 0, 0, 0, 0 })]
+        [TestCase(5, new int[] { 0, 0, 0, 0, 0, 3 })]
         public async Task should_remove_bundle_simulations_on_eviction(long headDelta, int[] expectedSimulations)
         {
             int head = 3;
@@ -301,7 +287,7 @@ namespace Nethermind.Mev.Test
             bundleSimulator.Simulate(Arg.Any<MevBundle>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
                 .Returns(Task.FromResult(successfulBundle));
 
-            TestContext tc = new(default, bundleSimulator, new MevConfig() {BundlePoolSize = 10}, default, head);
+            TestContext tc = new(default, bundleSimulator, new MevConfig() { BundlePoolSize = 10 }, default, head);
             ISimulatedBundleSource simulatedBundleSource = tc.BundlePool;
 
             async Task<IEnumerable<SimulatedMevBundle>> GetSimulatedBundlesForBlock(int blockNumber)
@@ -333,10 +319,10 @@ namespace Nethermind.Mev.Test
                 Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(buildBlockNumber).TestObject));
             await CheckSimulatedBundles(expectedSimulations);
         }
-        
-        [TestCase(0, new int[] {0, 0, 0})]
-        [TestCase(1, new int[] {0, 1, 0})]
-        [TestCase(2, new int[] {0, 0, 2})]
+
+        [TestCase(0, new int[] { 0, 0, 0 })]
+        [TestCase(1, new int[] { 0, 1, 0 })]
+        [TestCase(2, new int[] { 0, 0, 2 })]
         public async Task should_remove_megabundle_simulations_on_eviction(long headDelta, int[] expectedSimulations)
         {
             int head = 7;
@@ -393,7 +379,7 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        [Ignore("ToDo - it is failing after the merge changes")] 
+        [Ignore("ToDo - it is failing after the merge changes")]
         public async Task should_remove_bundle_when_simulation_fails()
         {
             var chain = await MevRpcModuleTests.CreateChain(1);
@@ -410,8 +396,8 @@ namespace Nethermind.Mev.Test
             BundleTransaction normalBundleTx = Build.A.TypedTransaction<BundleTransaction>()
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            MevBundle failingBundle = new(2, new[] {revertingBundleTx});
-            MevBundle normalBundle = new(2, new[] {normalBundleTx});
+            MevBundle failingBundle = new(2, new[] { revertingBundleTx });
+            MevBundle normalBundle = new(2, new[] { normalBundleTx });
 
             chain.BundlePool.AddBundle(failingBundle);
             chain.BundlePool.AddBundle(normalBundle);
@@ -449,7 +435,7 @@ namespace Nethermind.Mev.Test
             TestContext test = new();
             test.BundlePool.GetBundles(9, timestamp).Should().HaveCount(expectedCount);
         }
-        
+
         [TestCase(1u, 0)]
         [TestCase(6u, 1)]
         [TestCase(11u, 2)]
@@ -463,25 +449,25 @@ namespace Nethermind.Mev.Test
                 TestItem.AddressB,
                 TestItem.AddressC
             );
-            MevConfig mevConfig = new () { TrustedRelays = $"{TestItem.AddressA},{TestItem.AddressB},{TestItem.AddressC}"};
+            MevConfig mevConfig = new() { TrustedRelays = $"{TestItem.AddressA},{TestItem.AddressB},{TestItem.AddressC}" };
             TestContext test = new(config: mevConfig, ecdsa: ecdsa);
             test.BundlePool.GetMegabundles(10, timestamp).Should().HaveCount(expectedCount);
         }
-        
+
         [Test]
         public static void should_evict_bundles_by_block_number_and_min_timestamp()
         {
-            MevConfig mevConfig = new() {BundlePoolSize = 5};
+            MevConfig mevConfig = new() { BundlePoolSize = 5 };
             TestContext test = new(config: mevConfig);
 
             Dictionary<long, int> expectedCountPerBlock = new()
             {
-                {4, 1},
-                {5, 1},
-                {6, 1},
-                {9, 2},
-                {12, 0},
-                {15, 0}
+                { 4, 1 },
+                { 5, 1 },
+                { 6, 1 },
+                { 9, 2 },
+                { 12, 0 },
+                { 15, 0 }
             };
 
             foreach (var expectedCount in expectedCountPerBlock)
@@ -502,24 +488,25 @@ namespace Nethermind.Mev.Test
                 BundleTransaction CreateTransaction(PrivateKey privateKey) => Build.A
                     .TypedTransaction<BundleTransaction>().SignedAndResolved(privateKey).TestObject;
 
-                if (blockTreeHead != null)
+                if (blockTreeHead is not null)
                 {
                     BlockTree.Head.Returns(Build.A.Block.WithNumber((long)blockTreeHead).TestObject);
                 }
 
-                BlockTree.ChainId.Returns((ulong)ChainId.Mainnet);
+                BlockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
+                BlockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
 
-                if (timestamper != null)
+                if (timestamper is not null)
                 {
                     Timestamper = timestamper;
                 }
 
-                if (bundleSimulator != null)
+                if (bundleSimulator is not null)
                 {
                     Simulator = bundleSimulator;
                 }
 
-                if (ecdsa != null)
+                if (ecdsa is not null)
                 {
                     EthereumEcdsa = ecdsa;
                 }
@@ -534,7 +521,7 @@ namespace Nethermind.Mev.Test
                     Timestamper,
                     new TxValidator(BlockTree.ChainId),
                     new TestSpecProvider(London.Instance),
-                    config ?? new MevConfig() {TrustedRelays = TestItem.AddressA.ToString()},
+                    config ?? new MevConfig() { TrustedRelays = TestItem.AddressA.ToString() },
                     LimboLogs.Instance,
                     EthereumEcdsa);
 
@@ -546,12 +533,12 @@ namespace Nethermind.Mev.Test
                 AddBundle(CreateBundle(4, tx1));
                 AddBundle(CreateBundle(5, tx2));
                 AddBundle(CreateBundle(6, tx2));
-                AddBundle(new MevBundle(9, new[] {tx1}, 0, 0));
-                AddBundle(new MevBundle(9, new[] {tx2}, 10, 100));
-                AddBundle(new MevBundle(9, new[] {tx3}, 5, 50));
+                AddBundle(new MevBundle(9, new[] { tx1 }, 0, 0));
+                AddBundle(new MevBundle(9, new[] { tx2 }, 10, 100));
+                AddBundle(new MevBundle(9, new[] { tx3 }, 5, 50));
                 AddMegabundle(CreateMegabundle(9, tx1, tx2, tx3));
-                AddMegabundle(new MevMegabundle(10, new[] {tx1}, minTimestamp: 10, maxTimestamp: 100));
-                AddMegabundle(new MevMegabundle(10, new[] {tx1}, minTimestamp: 5, maxTimestamp: 50));
+                AddMegabundle(new MevMegabundle(10, new[] { tx1 }, minTimestamp: 10, maxTimestamp: 100));
+                AddMegabundle(new MevMegabundle(10, new[] { tx1 }, minTimestamp: 5, maxTimestamp: 50));
                 AddBundle(CreateBundle(12, tx1, tx2, tx3));
                 AddBundle(CreateBundle(15, tx1, tx2));
             }

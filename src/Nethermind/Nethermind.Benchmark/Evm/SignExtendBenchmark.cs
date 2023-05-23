@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -43,9 +30,9 @@ namespace Nethermind.Benchmarks.Evm
             120, 21, 123, 12, 76, 121, 1, 12, 23, 8,
             55, 255
         };
-        
+
         private byte[] c = new byte[32];
-        
+
         [Benchmark(Baseline = true)]
         public void Current()
         {
@@ -69,7 +56,7 @@ namespace Nethermind.Benchmarks.Evm
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0
         };
-        
+
         private readonly byte[] BytesMax32 =
         {
             255, 255, 255, 255, 255, 255, 255, 255,
@@ -77,7 +64,7 @@ namespace Nethermind.Benchmarks.Evm
             255, 255, 255, 255, 255, 255, 255, 255,
             255, 255, 255, 255, 255, 255, 255, 255
         };
-        
+
         [Benchmark]
         public void Improved()
         {
@@ -93,10 +80,10 @@ namespace Nethermind.Benchmarks.Evm
             {
                 BytesMax32.AsSpan().Slice(0, position).CopyTo(localB.Slice(0, position));
             }
-            
+
             localB.CopyTo(c);
         }
-        
+
         [Benchmark]
         public void Improved2()
         {
@@ -106,7 +93,7 @@ namespace Nethermind.Benchmarks.Evm
 
             Span<byte> signBytes = sign < 0 ? BytesZero32.AsSpan() : BytesMax32.AsSpan();
             signBytes.Slice(0, position).CopyTo(b.Slice(0, position));
-            
+
             localB.CopyTo(c);
         }
     }

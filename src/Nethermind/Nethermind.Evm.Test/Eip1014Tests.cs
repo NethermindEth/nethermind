@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using FluentAssertions;
@@ -44,16 +31,16 @@ namespace Nethermind.Evm.Test
             byte[] code = Prepare.EvmCode
                 .FromCode("0x73095e7baea6a6c7c4c2dfeb977efac326af552d873173095e7baea6a6c7c4c2dfeb977efac326af552d873173095e7baea6a6c7c4c2dfeb977efac326af552d87313700")
                 .Done;
-            
+
             Execute(code);
         }
-        
+
         [Test]
         public void Test()
         {
-            byte[] salt = {4, 5, 6};
+            byte[] salt = { 4, 5, 6 };
 
-            byte[] deployedCode = {1, 2, 3};
+            byte[] deployedCode = { 1, 2, 3 };
 
             byte[] initCode = Prepare.EvmCode
                 .ForInitOf(deployedCode).Done;
@@ -62,8 +49,7 @@ namespace Nethermind.Evm.Test
                 .Create2(initCode, salt, 0).Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
@@ -78,8 +64,8 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test_out_of_gas_existing_account()
         {
-            byte[] salt = {4, 5, 6};
-            byte[] deployedCode = {1, 2, 3};
+            byte[] salt = { 4, 5, 6 };
+            byte[] deployedCode = { 1, 2, 3 };
 
             byte[] initCode = Prepare.EvmCode
                 .ForInitOf(deployedCode).Done;
@@ -92,8 +78,7 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(expectedAddress, 1.Ether());
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
 
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32100)
@@ -109,8 +94,8 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test_out_of_gas_existing_account_with_storage()
         {
-            byte[] salt = {4, 5, 6};
-            byte[] deployedCode = {1, 2, 3};
+            byte[] salt = { 4, 5, 6 };
+            byte[] deployedCode = { 1, 2, 3 };
 
             byte[] initCode = Prepare.EvmCode
                 .ForInitOf(deployedCode).Done;
@@ -121,19 +106,16 @@ namespace Nethermind.Evm.Test
             Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
 
             TestState.CreateAccount(expectedAddress, 1.Ether());
-            Storage.Set(new StorageCell(expectedAddress, 1), new byte[] {1, 2, 3, 4, 5});
-            Storage.Commit();
-            Storage.CommitTrees(0);
+            TestState.Set(new StorageCell(expectedAddress, 1), new byte[] { 1, 2, 3, 4, 5 });
             TestState.Commit(Spec);
             TestState.CommitTree(0);
-            
+
             Keccak storageRoot = TestState.GetAccount(expectedAddress).StorageRoot;
             storageRoot.Should().NotBe(PatriciaTree.EmptyTreeHash);
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
 
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32100)
@@ -150,8 +132,8 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test_out_of_gas_non_existing_account()
         {
-            byte[] salt = {4, 5, 6};
-            byte[] deployedCode = {1, 2, 3};
+            byte[] salt = { 4, 5, 6 };
+            byte[] deployedCode = { 1, 2, 3 };
 
             byte[] initCode = Prepare.EvmCode
                 .ForInitOf(deployedCode).Done;
@@ -164,8 +146,7 @@ namespace Nethermind.Evm.Test
             // TestState.CreateAccount(expectedAddress, 1.Ether()); <-- non-existing
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
 
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32100)
@@ -198,8 +179,7 @@ namespace Nethermind.Evm.Test
                 .Create2(initCode, salt, 0).Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
@@ -209,7 +189,7 @@ namespace Nethermind.Evm.Test
 
             Address expectedAddress = new(resultHex);
             AssertEip1014(expectedAddress, deployedCode);
-//            Assert.AreEqual(gas, trace.Entries.Single(e => e.Operation == Instruction.CREATE2.ToString()).GasCost);
+            //            Assert.AreEqual(gas, trace.Entries.Single(e => e.Operation == Instruction.CREATE2.ToString()).GasCost);
         }
     }
 }

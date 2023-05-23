@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
 using Nethermind.Core;
@@ -30,12 +17,12 @@ namespace Nethermind.Evm.Test
         private class AfterIstanbul : Eip2028Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => new CustomSpecProvider(32000, (0, Istanbul.Instance));
+            protected override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
 
             [Test]
             public void non_zero_transaction_data_cost_should_be_16()
             {
-                Transaction transaction = new Transaction {Data = new byte[] {1}, To = Address.Zero};
+                Transaction transaction = new Transaction { Data = new byte[] { 1 }, To = Address.Zero };
                 long cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
                 cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataNonZeroEip2028);
             }
@@ -43,7 +30,7 @@ namespace Nethermind.Evm.Test
             [Test]
             public void zero_transaction_data_cost_should_be_4()
             {
-                Transaction transaction = new Transaction {Data = new byte[] {0}, To = Address.Zero};
+                Transaction transaction = new Transaction { Data = new byte[] { 0 }, To = Address.Zero };
                 long cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
                 cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
             }
@@ -57,7 +44,7 @@ namespace Nethermind.Evm.Test
             [Test]
             public void non_zero_transaction_data_cost_should_be_68()
             {
-                Transaction transaction = new Transaction {Data = new byte[] {1}, To = Address.Zero};
+                Transaction transaction = new Transaction { Data = new byte[] { 1 }, To = Address.Zero };
                 long cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
                 cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataNonZero);
             }
@@ -65,7 +52,7 @@ namespace Nethermind.Evm.Test
             [Test]
             public void zero_transaction_data_cost_should_be_4()
             {
-                Transaction transaction = new Transaction {Data = new byte[] {0}, To = Address.Zero};
+                Transaction transaction = new Transaction { Data = new byte[] { 0 }, To = Address.Zero };
                 long cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
                 cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
             }

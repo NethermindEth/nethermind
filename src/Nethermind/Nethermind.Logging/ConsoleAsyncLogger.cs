@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -37,7 +24,7 @@ namespace Nethermind.Logging
         }
 
         private Task _task;
-        
+
         public ConsoleAsyncLogger(LogLevel logLevel, string prefix = null)
         {
             _logLevel = logLevel;
@@ -67,7 +54,7 @@ namespace Nethermind.Logging
 
         private void Log(string text)
         {
-            _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} [{Thread.CurrentThread.ManagedThreadId}] {_prefix}{text}");
+            _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} [{Environment.CurrentManagedThreadId}] {_prefix}{text}");
         }
 
         public void Info(string text)
@@ -92,13 +79,13 @@ namespace Nethermind.Logging
 
         public void Error(string text, Exception ex = null)
         {
-            Log(ex != null ? $"{text}, Exception: {ex}" : text);
+            Log(ex is not null ? $"{text}, Exception: {ex}" : text);
         }
 
-        public bool IsInfo => (int) _logLevel >= 2;
-        public bool IsWarn => (int) _logLevel >= 1;
-        public bool IsDebug => (int) _logLevel >= 3;
-        public bool IsTrace => (int) _logLevel >= 4;
+        public bool IsInfo => (int)_logLevel >= 2;
+        public bool IsWarn => (int)_logLevel >= 1;
+        public bool IsDebug => (int)_logLevel >= 3;
+        public bool IsTrace => (int)_logLevel >= 4;
         public bool IsError => true;
     }
 }

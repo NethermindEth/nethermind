@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net7.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <LangVersion>latest</LangVersion>
     <Nullable>annotations</Nullable>
@@ -14,24 +14,19 @@
     <WarningsAsErrors />
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="NUnit" Version="3.13.3" />
-    <PackageReference Include="NUnit3TestAdapter" Version="4.2.1" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit.Analyzers">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="NUnit3TestAdapter" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj">
-      <Project>{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}</Project>
-      <Name>Nethermind.Blockchain</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
-    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj">
-      <Project>{5751C57B-9F2D-45DE-BCC2-42645B85E39E}</Project>
-      <Name>Nethermind.Core</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj">
-      <Project>{E992EFB5-85F0-49B1-9C0B-6D3846A813A5}</Project>
-      <Name>Nethermind.Evm</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
   </ItemGroup>
 </Project>

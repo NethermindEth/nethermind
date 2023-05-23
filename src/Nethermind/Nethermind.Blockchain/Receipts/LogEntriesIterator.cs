@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
@@ -25,19 +12,21 @@ namespace Nethermind.Blockchain.Receipts
         private readonly LogEntry[]? _logs;
         private readonly int _length;
         private Rlp.ValueDecoderContext _decoderContext;
+        private IReceiptRefDecoder _receiptRefDecoder;
         public long Index { get; private set; }
 
-        public LogEntriesIterator(Span<byte> data)
+        public LogEntriesIterator(Span<byte> data, IReceiptRefDecoder receiptRefDecoder)
         {
             _decoderContext = new Rlp.ValueDecoderContext(data);
             _length = _decoderContext.ReadSequenceLength();
             Index = -1;
             _logs = null;
+            _receiptRefDecoder = receiptRefDecoder;
         }
 
         public LogEntriesIterator(LogEntry[] logs)
         {
-            _decoderContext =new Rlp.ValueDecoderContext();
+            _decoderContext = new Rlp.ValueDecoderContext();
             _length = logs.Length;
             Index = -1;
             _logs = logs;
@@ -49,7 +38,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 if (_decoderContext.Position < _length)
                 {
-                    LogEntryDecoder.DecodeStructRef(ref _decoderContext, RlpBehaviors.None, out current);
+                    _receiptRefDecoder.DecodeLogEntryStructRef(ref _decoderContext, RlpBehaviors.None, out current);
                     Index++;
                     return true;
                 }
@@ -62,15 +51,15 @@ namespace Nethermind.Blockchain.Receipts
                     return true;
                 }
             }
-            
+
             current = new LogEntryStructRef();
             return false;
         }
-        
+
         public void Reset()
         {
             Index = -1;
-            
+
             if (_logs is null)
             {
                 _decoderContext.Position = 0;

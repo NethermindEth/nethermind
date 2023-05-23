@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
@@ -28,53 +15,53 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void Start_values_are_correct()
         {
             BranchProgress progress = new(7, LimboTraceLogger.Instance);
-            Assert.AreEqual(7, progress.CurrentSyncBlock);
-            Assert.AreEqual(0M, progress.LastProgress);
+            Assert.That(progress.CurrentSyncBlock, Is.EqualTo(7));
+            Assert.That(progress.LastProgress, Is.EqualTo(0M));
         }
 
         [TestCase(0, -1, -1, 1d)]
-        [TestCase(1, -1, 1, (double) 1 / 16)]
-        [TestCase(1, 1, -1, (double) 1)]
-        [TestCase(2, 1, 1, (double) 1 / 256)]
-        [TestCase(2, 1, -1, (double) 1 / 16)]
-        [TestCase(2, -1, 1, (double) 1 / 16)]
+        [TestCase(1, -1, 1, (double)1 / 16)]
+        [TestCase(1, 1, -1, (double)1)]
+        [TestCase(2, 1, 1, (double)1 / 256)]
+        [TestCase(2, 1, -1, (double)1 / 16)]
+        [TestCase(2, -1, 1, (double)1 / 16)]
         public void Single_item_progress_is_correct(int level, int parentIndex, int childIndex, double expectedResult)
         {
             BranchProgress progress = new(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.State, NodeProgressState.Empty);
-            Assert.AreEqual((decimal) expectedResult, progress.LastProgress, "state, empty");
+            Assert.That(progress.LastProgress, Is.EqualTo((decimal)expectedResult), "state, empty");
 
             progress = new BranchProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.Storage, NodeProgressState.Empty);
-            Assert.AreEqual(0d, progress.LastProgress, "storage, empty");
+            Assert.That(progress.LastProgress, Is.EqualTo(0d), "storage, empty");
 
             progress = new BranchProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.Code, NodeProgressState.Empty);
-            Assert.AreEqual(0d, progress.LastProgress, "code, empty");
+            Assert.That(progress.LastProgress, Is.EqualTo(0d), "code, empty");
 
             progress = new BranchProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.State, NodeProgressState.Saved);
-            Assert.AreEqual((decimal) expectedResult, progress.LastProgress, "state, saved");
+            Assert.That(progress.LastProgress, Is.EqualTo((decimal)expectedResult), "state, saved");
 
             progress = new BranchProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.Storage, NodeProgressState.Saved);
-            Assert.AreEqual(0d, progress.LastProgress, "storage, saved");
+            Assert.That(progress.LastProgress, Is.EqualTo(0d), "storage, saved");
 
             progress = new BranchProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.Code, NodeProgressState.Saved);
-            Assert.AreEqual(0d, progress.LastProgress, "code, saved");
+            Assert.That(progress.LastProgress, Is.EqualTo(0d), "code, saved");
 
             progress = new BranchProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.State, NodeProgressState.AlreadySaved);
-            Assert.AreEqual((decimal) expectedResult, progress.LastProgress, "state, already");
+            Assert.That(progress.LastProgress, Is.EqualTo((decimal)expectedResult), "state, already");
 
             progress = new BranchProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.Storage, NodeProgressState.AlreadySaved);
-            Assert.AreEqual(0d, progress.LastProgress, "storage, already");
+            Assert.That(progress.LastProgress, Is.EqualTo(0d), "storage, already");
 
             progress = new BranchProgress(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.Code, NodeProgressState.AlreadySaved);
-            Assert.AreEqual(0d, progress.LastProgress, "code, already");
+            Assert.That(progress.LastProgress, Is.EqualTo(0d), "code, already");
         }
 
         [Test]
@@ -82,25 +69,25 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             BranchProgress progress = new(7, LimboTraceLogger.Instance);
             progress.ReportSynced(2, 1, 1, NodeDataType.State, NodeProgressState.Saved);
-            Assert.AreEqual((decimal) 1/256, progress.LastProgress, "0");
-            
+            Assert.That(progress.LastProgress, Is.EqualTo((decimal)1 / 256), "0");
+
             progress.ReportSynced(2, 1, 2, NodeDataType.State, NodeProgressState.Saved);
-            Assert.AreEqual((decimal) 2/256, progress.LastProgress, "1");
-            
+            Assert.That(progress.LastProgress, Is.EqualTo((decimal)2 / 256), "1");
+
             progress.ReportSynced(2, 2, 1, NodeDataType.State, NodeProgressState.Saved);
-            Assert.AreEqual((decimal) 3/256, progress.LastProgress, "2");
-            
+            Assert.That(progress.LastProgress, Is.EqualTo((decimal)3 / 256), "2");
+
             progress.ReportSynced(1, 1, 2, NodeDataType.State, NodeProgressState.Saved);
-            Assert.AreEqual((decimal) 18/256, progress.LastProgress, "3");
-            
+            Assert.That(progress.LastProgress, Is.EqualTo((decimal)18 / 256), "3");
+
             progress.ReportSynced(2, 3, 1, NodeDataType.State, NodeProgressState.Saved);
-            Assert.AreEqual((decimal) 19/256, progress.LastProgress, "4");
-            
+            Assert.That(progress.LastProgress, Is.EqualTo((decimal)19 / 256), "4");
+
             progress.ReportSynced(1, 1, 4, NodeDataType.State, NodeProgressState.Saved);
-            Assert.AreEqual((decimal) 35/256, progress.LastProgress, "5");
-            
+            Assert.That(progress.LastProgress, Is.EqualTo((decimal)35 / 256), "5");
+
             progress.ReportSynced(0, -1, -1, NodeDataType.State, NodeProgressState.Saved);
-            Assert.AreEqual((decimal) 256/256, progress.LastProgress, "6");
+            Assert.That(progress.LastProgress, Is.EqualTo((decimal)256 / 256), "6");
         }
     }
 }

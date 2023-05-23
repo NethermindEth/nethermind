@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -29,43 +16,43 @@ namespace Nethermind.Evm.Test
     /// </summary>
     internal class Eip1153Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ShanghaiBlockNumber;
-        protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+        protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
+        protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
         /// <summary>
-        /// Transient storage should be activated after Shanghai hardfork
+        /// Transient storage should be activated after activation hardfork
         /// </summary>
         [Test]
-        public void after_shanghai_can_call_tstore_tload()
+        public void after_activation_can_call_tstore_tload()
         {
             byte[] code = Prepare.EvmCode
                 .StoreDataInTransientStorage(1, 8)
                 .LoadDataFromTransientStorage(1)
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            TestAllTracerWithOutput result = Execute(code);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         }
 
         /// <summary>
-        /// Transient storage should not be activated until after Shanghai hardfork
+        /// Transient storage should not be activated until after activation hardfork
         /// </summary>
         [Test]
-        public void before_shanghai_can_not_call_tstore_tload()
+        public void before_activation_can_not_call_tstore_tload()
         {
             byte[] code = Prepare.EvmCode
                 .StoreDataInTransientStorage(1, 8)
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber - 1, 100000, code);
-            Assert.AreEqual(StatusCode.Failure, result.StatusCode);
+            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, 100000, code, timestamp: MainnetSpecProvider.CancunBlockTimestamp - 1);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Failure));
 
             code = Prepare.EvmCode
                 .LoadDataFromTransientStorage(1)
                 .Done;
 
-            result = Execute(MainnetSpecProvider.ShanghaiBlockNumber - 1, 100000, code);
-            Assert.AreEqual(StatusCode.Failure, result.StatusCode);
+            result = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, 100000, code, timestamp: MainnetSpecProvider.CancunBlockTimestamp - 1);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Failure));
         }
 
         /// <summary>
@@ -80,11 +67,11 @@ namespace Nethermind.Evm.Test
                 .Return(32, 0)
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            TestAllTracerWithOutput result = Execute(code);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
 
             // Should be 0 since it's not yet set
-            Assert.AreEqual(0, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(0));
         }
 
         /// <summary>
@@ -108,8 +95,8 @@ namespace Nethermind.Evm.Test
             byte[] code = prepare.Done;
 
             stopwatch.Start();
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, blockGasLimit, code, blockGasLimit);
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, blockGasLimit, code, blockGasLimit, Timestamp);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
             stopwatch.Stop();
             Assert.IsTrue(stopwatch.ElapsedMilliseconds < 5000);
         }
@@ -127,10 +114,10 @@ namespace Nethermind.Evm.Test
                 .Return(32, 0)
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            TestAllTracerWithOutput result = Execute(code);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
 
-            Assert.AreEqual(8, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
         }
 
         /// <summary>
@@ -151,10 +138,10 @@ namespace Nethermind.Evm.Test
                 .Return(32, 0)
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            TestAllTracerWithOutput result = Execute(code);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
 
-            Assert.AreEqual(0, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(0));
         }
 
         /// <summary>
@@ -174,8 +161,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             // Store 8 at index 1 and call contract from above
             // Return the result received from the contract
@@ -185,10 +171,10 @@ namespace Nethermind.Evm.Test
                 .ReturnInnerCallResult()
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput result = Execute(code);
 
             // If transient state was not isolated, the return value would be 8
-            Assert.AreEqual(0, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(0));
         }
 
         /// <summary>
@@ -223,8 +209,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
@@ -232,9 +217,9 @@ namespace Nethermind.Evm.Test
                 .ReturnInnerCallResult()
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(8, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
         }
 
         /// <summary>
@@ -270,8 +255,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
@@ -279,9 +263,9 @@ namespace Nethermind.Evm.Test
                 .ReturnInnerCallResult()
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(9, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(9));
         }
 
         /// <summary>
@@ -316,8 +300,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
@@ -325,9 +308,9 @@ namespace Nethermind.Evm.Test
                 .ReturnInnerCallResult()
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(9, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(9));
         }
 
         /// <summary>
@@ -363,8 +346,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
@@ -372,10 +354,10 @@ namespace Nethermind.Evm.Test
                 .ReturnInnerCallResult()
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput result = Execute(code);
 
             // Should be original TSTORE value
-            Assert.AreEqual(8, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
         }
 
         /// <summary>
@@ -412,8 +394,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
@@ -421,10 +402,10 @@ namespace Nethermind.Evm.Test
                 .ReturnInnerCallResult()
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput result = Execute(code);
 
             // Should be original TSTORE value
-            Assert.AreEqual(8, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
         }
 
         /// <summary>
@@ -461,7 +442,7 @@ namespace Nethermind.Evm.Test
                 // Call depth = 0, call self after TSTORE 8
                 .StoreDataInTransientStorage(1, 8)
 
-                // Recursive call with input
+                    // Recursive call with input
                     // Depth++
                     .PushData(5)
                     .Op(Instruction.MLOAD)
@@ -481,7 +462,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.JUMPDEST) // PC = 84
                 .StoreDataInTransientStorage(1, 9)
 
-                // Recursive call with input
+                    // Recursive call with input
                     // Depth++
                     .PushData(5)
                     .Op(Instruction.MLOAD)
@@ -498,8 +479,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
@@ -507,10 +487,10 @@ namespace Nethermind.Evm.Test
                 .ReturnInnerCallResult()
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput result = Execute(code);
 
             // Should be original TSTORE value
-            Assert.AreEqual(8, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
         }
 
         /// <summary>
@@ -530,19 +510,18 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             // Return the result received from the contract (1 if successful)
             byte[] code = Prepare.EvmCode
                 .StoreDataInTransientStorage(1, 7)
-                .DynamicCallWithInput(callType, TestItem.AddressD, 50000, new byte[32])                    
+                .DynamicCallWithInput(callType, TestItem.AddressD, 50000, new byte[32])
                 .ReturnInnerCallResult()
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(expectedResult));
         }
 
         /// <summary>
@@ -579,8 +558,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
@@ -588,9 +566,9 @@ namespace Nethermind.Evm.Test
                 .ReturnInnerCallResult()
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(expectedResult));
         }
 
         /// <summary>
@@ -668,8 +646,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
@@ -677,10 +654,10 @@ namespace Nethermind.Evm.Test
                 .ReturnInnerCallResult()
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput result = Execute(code);
 
             // Should be original TSTORE value
-            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(expectedResult));
         }
 
         /// <summary>
@@ -695,8 +672,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .StoreDataInTransientStorage(1, 7)
@@ -709,9 +685,9 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.RETURN)
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(expectedResult));
         }
 
         /// <summary>
@@ -730,8 +706,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .StoreDataInTransientStorage(1, 7)
@@ -740,9 +715,9 @@ namespace Nethermind.Evm.Test
                 .ReturnInnerCallResult()
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(expectedResult));
         }
 
         /// <summary>
@@ -756,8 +731,8 @@ namespace Nethermind.Evm.Test
                 .StoreDataInTransientStorage(1, 0)
                 .Done;
 
-            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.TStore * 2, receipt.GasSpent, "gas");
+            TestAllTracerWithOutput receipt = Execute(code);
+            Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.TStore * 2), "gas");
         }
 
         /// <summary>
@@ -792,12 +767,12 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.RETURN)
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
-            Assert.AreEqual(1, (int)result.ReturnValue.ToUInt256());
+            TestAllTracerWithOutput result = Execute(code);
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(1));
 
             // If transient state persisted across txs, calling again would return 0
-            result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
-            Assert.AreEqual(1, (int)result.ReturnValue.ToUInt256());
+            result = Execute(code);
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(1));
         }
 
 
@@ -833,8 +808,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
@@ -842,9 +816,9 @@ namespace Nethermind.Evm.Test
                 .ReturnInnerCallResult()
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(expectedResult));
         }
     }
 }

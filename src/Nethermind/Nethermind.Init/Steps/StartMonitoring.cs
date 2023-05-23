@@ -1,78 +1,177 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
+using Type = System.Type;
 
-namespace Nethermind.Init.Steps
+namespace Nethermind.Init.Steps;
+
+[RunnerStepDependencies(typeof(InitializeNetwork))]
+public class StartMonitoring : IStep
 {
-    [RunnerStepDependencies(typeof(InitializeNetwork))]
-    public class StartMonitoring : IStep
-    {
-        private readonly IApiWithNetwork _api;
+    private readonly IApiWithNetwork _api;
+    private readonly ILogger _logger;
+    private readonly IMetricsConfig _metricsConfig;
 
-        public StartMonitoring(INethermindApi api)
+    public StartMonitoring(INethermindApi api)
+    {
+        _api = api;
+        _logger = _api.LogManager.GetClassLogger();
+        _metricsConfig = _api.Config<IMetricsConfig>();
+    }
+
+    public async Task Execute(CancellationToken cancellationToken)
+    {
+        // hacky
+        if (!string.IsNullOrEmpty(_metricsConfig.NodeName))
         {
-            _api = api;
+            _api.LogManager.SetGlobalVariable("nodeName", _metricsConfig.NodeName);
         }
 
-        public async Task Execute(CancellationToken cancellationToken)
+        MetricsController? controller = null;
+        if (_metricsConfig.Enabled || _metricsConfig.CountersEnabled)
         {
-            IMetricsConfig metricsConfig = _api.Config<IMetricsConfig>();
-            ILogger logger = _api.LogManager.GetClassLogger();
-            
-            // hacky
-            if (!string.IsNullOrEmpty(metricsConfig.NodeName))
-            {
-                _api.LogManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
-            }
-            
-            if (metricsConfig.Enabled)
-            {
-                Metrics.Version = VersionToMetrics.ConvertToNumber(ClientVersion.Version);
-                MetricsUpdater metricsUpdater = new MetricsUpdater(metricsConfig);
-                _api.MonitoringService = new MonitoringService(metricsUpdater, metricsConfig, _api.LogManager);
-                IEnumerable<Type> metrics = new TypeDiscovery().FindNethermindTypes(nameof(Metrics));
-                foreach (Type metric in metrics)
-                {
-                    _api.MonitoringService.RegisterMetrics(metric);    
-                }
+            PrepareProductInfoMetrics();
+            controller = new(_metricsConfig);
 
-                await _api.MonitoringService.StartAsync().ContinueWith(x =>
-                {
-                    if (x.IsFaulted && logger.IsError) 
-                        logger.Error("Error during starting a monitoring.", x.Exception);
-                }, cancellationToken);
-                
-                _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => _api.MonitoringService.StopAsync())); // do not await
-            }
-            else
+            IEnumerable<Type> metrics = TypeDiscovery.FindNethermindTypes(nameof(Metrics));
+            foreach (Type metric in metrics)
             {
-                if (logger.IsInfo) 
-                    logger.Info("Grafana / Prometheus metrics are disabled in configuration");
+                controller.RegisterMetrics(metric);
             }
+        }
+
+        if (_metricsConfig.Enabled)
+        {
+            _api.MonitoringService = new MonitoringService(controller, _metricsConfig, _api.LogManager);
+
+            await _api.MonitoringService.StartAsync().ContinueWith(x =>
+            {
+                if (x.IsFaulted && _logger.IsError)
+                    _logger.Error("Error during starting a monitoring.", x.Exception);
+            }, cancellationToken);
+
+            SetupMetrics();
+
+            _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => _api.MonitoringService.StopAsync())); // do not await
+        }
+        else
+        {
+            if (_logger.IsInfo)
+                _logger.Info("Grafana / Prometheus metrics are disabled in configuration");
+        }
+
+        if (_logger.IsInfo)
+        {
+            _logger.Info(_metricsConfig.CountersEnabled
+                ? "System.Diagnostics.Metrics enabled and will be collectable with dotnet-counters"
+                : "System.Diagnostics.Metrics disabled");
         }
     }
+
+    private void SetupMetrics()
+    {
+        if (_metricsConfig.EnableDbSizeMetrics)
+        {
+            _api.MonitoringService.AddMetricsUpdateAction(() =>
+            {
+                IDbProvider? dbProvider = _api.DbProvider;
+                if (dbProvider is null)
+                {
+                    return;
+                }
+
+                Db.Metrics.StateDbSize = dbProvider.StateDb.GetSize();
+                Db.Metrics.ReceiptsDbSize = dbProvider.ReceiptsDb.GetSize();
+                Db.Metrics.HeadersDbSize = dbProvider.HeadersDb.GetSize();
+                Db.Metrics.BlocksDbSize = dbProvider.BlocksDb.GetSize();
+                Db.Metrics.BloomDbSize = dbProvider.BloomDb.GetSize();
+                Db.Metrics.CodeDbSize = dbProvider.CodeDb.GetSize();
+                Db.Metrics.BlockInfosDbSize = dbProvider.BlockInfosDb.GetSize();
+                Db.Metrics.ChtDbSize = dbProvider.ChtDb.GetSize();
+                Db.Metrics.MetadataDbSize = dbProvider.MetadataDb.GetSize();
+                Db.Metrics.WitnessDbSize = dbProvider.WitnessDb.GetSize();
+
+                Db.Metrics.DbBlockCacheMemorySize = dbProvider.StateDb.GetCacheSize()
+                                                    + dbProvider.BlockInfosDb.GetCacheSize()
+                                                    + dbProvider.HeadersDb.GetCacheSize()
+                                                    + dbProvider.BlocksDb.GetCacheSize()
+                                                    + dbProvider.ReceiptsDb.GetCacheSize();
+                // Share same cache with StateDb
+                // + dbProvider.ChtDb.GetCacheSize()
+                // + dbProvider.MetadataDb.GetCacheSize()
+                // + dbProvider.WitnessDb.GetCacheSize()
+                // + dbProvider.CodeDb.GetCacheSize()
+                // + dbProvider.BloomDb.GetCacheSize()
+
+                Db.Metrics.DbIndexFilterMemorySize = dbProvider.StateDb.GetIndexSize()
+                                                    + dbProvider.ReceiptsDb.GetIndexSize()
+                                                    + dbProvider.HeadersDb.GetIndexSize()
+                                                    + dbProvider.BlocksDb.GetIndexSize()
+                                                    + dbProvider.BloomDb.GetIndexSize()
+                                                    + dbProvider.CodeDb.GetIndexSize()
+                                                    + dbProvider.BlockInfosDb.GetIndexSize()
+                                                    + dbProvider.ChtDb.GetIndexSize()
+                                                    + dbProvider.MetadataDb.GetIndexSize()
+                                                    + dbProvider.WitnessDb.GetIndexSize();
+
+                Db.Metrics.DbMemtableMemorySize = dbProvider.StateDb.GetMemtableSize()
+                                                    + dbProvider.ReceiptsDb.GetMemtableSize()
+                                                    + dbProvider.HeadersDb.GetMemtableSize()
+                                                    + dbProvider.BlocksDb.GetMemtableSize()
+                                                    + dbProvider.BloomDb.GetMemtableSize()
+                                                    + dbProvider.CodeDb.GetMemtableSize()
+                                                    + dbProvider.BlockInfosDb.GetMemtableSize()
+                                                    + dbProvider.ChtDb.GetMemtableSize()
+                                                    + dbProvider.MetadataDb.GetMemtableSize()
+                                                    + dbProvider.WitnessDb.GetMemtableSize();
+
+                Db.Metrics.DbTotalMemorySize = Db.Metrics.DbBlockCacheMemorySize
+                                                + Db.Metrics.DbIndexFilterMemorySize
+                                                + Db.Metrics.DbMemtableMemorySize;
+            });
+        }
+
+        _api.MonitoringService.AddMetricsUpdateAction(() =>
+        {
+            Synchronization.Metrics.SyncTime = (long?)_api.EthSyncingInfo?.UpdateAndGetSyncTime().TotalSeconds ?? 0;
+        });
+    }
+
+    private void PrepareProductInfoMetrics()
+    {
+        IPruningConfig pruningConfig = _api.Config<IPruningConfig>();
+        IMetricsConfig metricsConfig = _api.Config<IMetricsConfig>();
+        ISyncConfig syncConfig = _api.Config<ISyncConfig>();
+        ProductInfo.Instance = metricsConfig.NodeName;
+
+        if (syncConfig.SnapSync)
+        {
+            ProductInfo.SyncType = "Snap";
+        }
+        else if (syncConfig.FastSync)
+        {
+            ProductInfo.SyncType = "Fast";
+        }
+        else
+        {
+            ProductInfo.SyncType = "Full";
+        }
+
+        ProductInfo.PruningMode = pruningConfig.Mode.ToString();
+        Metrics.Version = VersionToMetrics.ConvertToNumber(ProductInfo.Version);
+    }
+
+    public bool MustInitialize => false;
 }

@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.a
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -28,7 +14,7 @@ namespace Nethermind.GitBook
     {
         private Dictionary<string, Dictionary<string, MethodData>> _modulesData =
             new Dictionary<string, Dictionary<string, MethodData>>();
-        
+
 
         public Dictionary<string, Dictionary<string, MethodData>> GetRpcAndCliData()
         {
@@ -39,12 +25,12 @@ namespace Nethermind.GitBook
 
             return _modulesData;
         }
-        
+
         private List<Type> GetRpcModules()
         {
             Assembly assembly = Assembly.Load("Nethermind.JsonRpc");
             List<Type> jsonRpcModules = new List<Type>();
-        
+
             foreach (Type type in assembly.GetTypes()
                 .Where(t => typeof(IRpcModule).IsAssignableFrom(t))
                 .Where(t => !typeof(IContextAwareRpcModule).IsAssignableFrom(t))
@@ -52,14 +38,14 @@ namespace Nethermind.GitBook
             {
                 jsonRpcModules.Add(type);
             }
-            
-            jsonRpcModules.Add( Assembly.Load("Nethermind.Consensus.Clique").GetTypes()
+
+            jsonRpcModules.Add(Assembly.Load("Nethermind.Consensus.Clique").GetTypes()
                 .Where(t => typeof(IRpcModule).IsAssignableFrom(t))
                 .First(t => t.IsInterface && t != typeof(IRpcModule)));
-            
+
             return jsonRpcModules;
         }
-        
+
         private List<Type> GetCliModules()
         {
             Assembly assembly = Assembly.Load("Nethermind.Cli");
@@ -79,16 +65,16 @@ namespace Nethermind.GitBook
             foreach (Type rpcType in rpcTypes)
             {
                 string rpcModuleName = rpcType.Name.Substring(1).Replace("RpcModule", "").ToLower();
-                
+
                 MethodInfo[] moduleMethods = rpcType.GetMethods();
                 Dictionary<string, MethodData> methods =
                     new Dictionary<string, MethodData>();
-                
+
                 foreach (MethodInfo moduleMethod in moduleMethods)
                 {
                     string methodName = moduleMethod.Name.Substring(moduleMethod.Name.IndexOf('_') + 1);
                     JsonRpcMethodAttribute methodAttribute = moduleMethod.GetCustomAttribute<JsonRpcMethodAttribute>();
-                    
+
                     MethodData methodData = new MethodData()
                     {
                         IsImplemented = methodAttribute?.IsImplemented,
@@ -100,20 +86,20 @@ namespace Nethermind.GitBook
                         ExampleResponse = methodAttribute?.ExampleResponse,
                         InvocationType = InvocationType.JsonRpc
                     };
-                    
+
                     methods.Add(methodName, methodData);
                 }
-                
+
                 _modulesData.Add(rpcModuleName, methods);
             }
         }
-                
+
         private void AddCliModulesData(List<Type> cliTypes)
         {
             foreach (Type cliType in cliTypes)
             {
                 MethodInfo[] moduleMethods = cliType.GetMethods().ToArray();
-                
+
                 string cliModuleName = cliType.Name.Replace("CliModule", "").ToLower();
 
                 if (_modulesData.Keys.Contains(cliModuleName))
@@ -126,18 +112,18 @@ namespace Nethermind.GitBook
                 }
             }
         }
-        
+
         private void AddNewModule(string cliModuleName, MethodInfo[] moduleMethods)
         {
             Dictionary<string, MethodData> methods =
                 new Dictionary<string, MethodData>();
-            
+
             foreach (MethodInfo moduleMethod in moduleMethods)
             {
                 string methodName = GetCliMethodName(moduleMethod);
                 AddNewMethod(methods, cliModuleName, methodName, moduleMethod);
             }
-            
+
             _modulesData.Add(cliModuleName, methods);
         }
 
@@ -145,16 +131,16 @@ namespace Nethermind.GitBook
         {
             CliFunctionAttribute functionAttribute = moduleMethod.GetCustomAttribute<CliFunctionAttribute>();
             CliPropertyAttribute propertyAttribute = moduleMethod.GetCustomAttribute<CliPropertyAttribute>();
-            
+
             return functionAttribute?.FunctionName ??
                    propertyAttribute?.PropertyName ??
-                   string.Concat(moduleMethod.Name.Substring(0,1).ToLower(), moduleMethod.Name.Substring(1));
+                   string.Concat(moduleMethod.Name.Substring(0, 1).ToLower(), moduleMethod.Name.Substring(1));
         }
-        
+
         private void UpdateModule(string cliModuleName, MethodInfo[] moduleMethods)
         {
             _modulesData.TryGetValue(cliModuleName, out var methods);
-            
+
             foreach (MethodInfo moduleMethod in moduleMethods)
             {
                 string methodName = GetCliMethodName(moduleMethod);
@@ -191,16 +177,16 @@ namespace Nethermind.GitBook
                 methods.Add(methodName, methodData);
             }
         }
-        
+
         private void UpdateMethod(Dictionary<string, MethodData> methods, string methodName, MethodInfo moduleMethod)
         {
             CliFunctionAttribute functionAttribute = moduleMethod.GetCustomAttribute<CliFunctionAttribute>();
             CliPropertyAttribute propertyAttribute = moduleMethod.GetCustomAttribute<CliPropertyAttribute>();
-            
+
             methods.Remove(methodName, out MethodData commonMethod);
             commonMethod.InvocationType = InvocationType.Both;
             commonMethod.IsFunction = functionAttribute != null;
-            
+
             if (commonMethod.Description?.Length == 0)
             {
                 commonMethod.Description = functionAttribute?.Description ?? propertyAttribute?.Description;

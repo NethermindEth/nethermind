@@ -1,21 +1,8 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -25,16 +12,16 @@ namespace Nethermind.Consensus.Transactions
     public class TxFilterPipelineBuilder
     {
         private readonly ITxFilterPipeline _filterPipeline;
-        
+
         public static ITxFilterPipeline CreateStandardFilteringPipeline(
             ILogManager logManager,
             ISpecProvider? specProvider,
-            IMiningConfig? miningConfig = null)
+            IBlocksConfig blocksConfig)
         {
-            if (specProvider == null) throw new ArgumentNullException(nameof(specProvider));
-            
+            if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
+
             return new TxFilterPipelineBuilder(logManager)
-                .WithMinGasPriceFilter(miningConfig?.MinGasPrice ?? UInt256.Zero, specProvider)
+                .WithMinGasPriceFilter(blocksConfig, specProvider)
                 .WithBaseFeeFilter(specProvider)
                 .Build;
         }
@@ -43,10 +30,10 @@ namespace Nethermind.Consensus.Transactions
         {
             _filterPipeline = new TxFilterPipeline(logManager);
         }
-        
-        public TxFilterPipelineBuilder WithMinGasPriceFilter(in UInt256 minGasPrice, ISpecProvider specProvider)
+
+        public TxFilterPipelineBuilder WithMinGasPriceFilter(IBlocksConfig blocksConfig, ISpecProvider specProvider)
         {
-            _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(minGasPrice, specProvider));
+            _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(blocksConfig, specProvider));
             return this;
         }
 
@@ -55,7 +42,7 @@ namespace Nethermind.Consensus.Transactions
             _filterPipeline.AddTxFilter(new BaseFeeTxFilter(specProvider));
             return this;
         }
-        
+
         public TxFilterPipelineBuilder WithCustomTxFilter(ITxFilter txFilter)
         {
             _filterPipeline.AddTxFilter(txFilter);

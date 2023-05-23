@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using FluentAssertions;
@@ -51,42 +37,43 @@ namespace Nethermind.JsonRpc.Test.Data
             return accessListBuilder.ToAccessList();
         }
 
-        [Test]
-        public void can_serialize_valid_accessList()
+        [TestCase(TxType.AccessList, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"0x0000000000000000000000000000000000000000000000000000000000000003\",\"0x0000000000000000000000000000000000000000000000000000000000000005\",\"0x0000000000000000000000000000000000000000000000000000000000000008\"]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageKeys\":[\"0x000000000000000000000000000000000000000000000000000000000000002a\"]}]}")]
+        [TestCase(TxType.EIP1559, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"maxPriorityFeePerGas\":\"0x0\",\"maxFeePerGas\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x2\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"0x0000000000000000000000000000000000000000000000000000000000000003\",\"0x0000000000000000000000000000000000000000000000000000000000000005\",\"0x0000000000000000000000000000000000000000000000000000000000000008\"]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageKeys\":[\"0x000000000000000000000000000000000000000000000000000000000000002a\"]}]}")]
+        public void can_serialize_valid_accessList(TxType txType, string txJson)
         {
             _transaction = new Transaction();
-            _transaction.Type = TxType.AccessList;
+            _transaction.Type = txType;
             _transaction.AccessList = GetTestAccessList();
             _transactionForRpc = new TransactionForRpc(_transaction);
 
             string serialized = _serializer.Serialize(_transactionForRpc);
-            string expected = "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\",\"0x0000000000000000000000000000000000000000000000000000000000000003\",\"0x0000000000000000000000000000000000000000000000000000000000000005\",\"0x0000000000000000000000000000000000000000000000000000000000000008\"]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageKeys\":[\"0x000000000000000000000000000000000000000000000000000000000000002a\"]}]}";
-            expected.Should().Be(serialized);
+            txJson.Should().Be(serialized);
         }
 
-        [Test]
-        public void can_deserialize_valid_accessList()
+        [TestCase(TxType.AccessList, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[\"0x1\",\"0x2\",\"0x3\",\"0x5\",\"0x8\"]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageKeys\":[\"0x2a\"]}]}")]
+        [TestCase(TxType.EIP1559, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"maxFeePerGas\":\"0x0\",\"maxPriorityFeePerGas\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x02\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[\"0x1\",\"0x2\",\"0x3\",\"0x5\",\"0x8\"]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageKeys\":[\"0x2a\"]}]}")]
+        public void can_deserialize_valid_accessList(TxType txType, string txJson)
         {
-            TransactionForRpc deserializedTxForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[\"0x1\",\"0x2\",\"0x3\",\"0x5\",\"0x8\"]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageKeys\":[\"0x2a\"]}]}");
-            
+            TransactionForRpc deserializedTxForRpc = _serializer.Deserialize<TransactionForRpc>(txJson);
+
             _transaction = new Transaction();
-            _transaction.Type = TxType.AccessList;
+            _transaction.Type = txType;
             _transaction.AccessList = GetTestAccessList();
             _transactionForRpc = new TransactionForRpc(_transaction);
-            
+
             deserializedTxForRpc.Should().BeEquivalentTo(_transactionForRpc);
         }
 
-        [Test]
-        public void can_serialize_null_accessList()
+        [TestCase(TxType.AccessList, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\"}")]
+        [TestCase(TxType.EIP1559, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"maxPriorityFeePerGas\":\"0x0\",\"maxFeePerGas\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x2\"}")]
+        public void can_serialize_null_accessList(TxType txType, string txJson)
         {
             _transaction = new Transaction();
-            _transaction.Type = TxType.AccessList;
+            _transaction.Type = txType;
             _transactionForRpc = new TransactionForRpc(_transaction);
 
             string serialized = _serializer.Serialize(_transactionForRpc);
-            string expected = "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\"}";
-            expected.Should().Be(serialized);
+            txJson.Should().Be(serialized);
         }
 
         [Test]
@@ -98,44 +85,44 @@ namespace Nethermind.JsonRpc.Test.Data
             _transactionForRpc.AccessList.Should().BeNull();
         }
 
-        [Test]
-        public void can_serialize_empty_accessList()
+        [TestCase(TxType.AccessList, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\",\"accessList\":[]}")]
+        [TestCase(TxType.EIP1559, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"maxPriorityFeePerGas\":\"0x0\",\"maxFeePerGas\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x2\",\"accessList\":[]}")]
+        public void can_serialize_empty_accessList(TxType txType, string txJson)
         {
             _data = new Dictionary<Address, IReadOnlySet<UInt256>>();
             _transaction = new Transaction();
-            _transaction.Type = TxType.AccessList;
+            _transaction.Type = txType;
             _transaction.AccessList = new AccessList(_data);
             _transactionForRpc = new TransactionForRpc(_transaction);
 
             string serialized = _serializer.Serialize(_transactionForRpc);
-            string expected = "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\",\"accessList\":[]}";
-            expected.Should().Be(serialized);
+            txJson.Should().Be(serialized);
         }
 
         [Test]
         public void can_deserialize_empty_accessList()
         {
-            _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[]}");
+            _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[]}")!;
 
             _transactionForRpc.Type.Should().Be(TxType.AccessList);
-            _transactionForRpc.AccessList.Length.Should().Be(0);
+            _transactionForRpc.AccessList!.Length.Should().Be(0);
         }
 
-        [Test]
-        public void can_serialize_accessList_with_empty_storageKeys()
+        [TestCase(TxType.AccessList, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[]}]}")]
+        [TestCase(TxType.EIP1559, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"maxPriorityFeePerGas\":\"0x0\",\"maxFeePerGas\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x2\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[]}]}")]
+        public void can_serialize_accessList_with_empty_storageKeys(TxType txType, string txJson)
         {
             _data = new Dictionary<Address, IReadOnlySet<UInt256>>();
             _transaction = new Transaction();
-            _transaction.Type = TxType.AccessList;
+            _transaction.Type = txType;
 
-            _storageKeys = new HashSet<UInt256> {};
+            _storageKeys = new HashSet<UInt256> { };
             _data.Add(TestItem.AddressA, _storageKeys);
             _transaction.AccessList = new AccessList(_data);
             _transactionForRpc = new TransactionForRpc(_transaction);
 
             string serialized = _serializer.Serialize(_transactionForRpc);
-            string expected = "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[]}]}";
-            expected.Should().Be(serialized);
+            txJson.Should().Be(serialized);
         }
 
         [Test]
@@ -143,34 +130,45 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[]}]}");
 
-            object[] accessList = {new AccessListItemForRpc(TestItem.AddressA, new HashSet<UInt256>{})};
+            object[] accessList = { new AccessListItemForRpc(TestItem.AddressA, new HashSet<UInt256> { }) };
             _transactionForRpc.Type.Should().Be(TxType.AccessList);
             _transactionForRpc.AccessList.Should().BeEquivalentTo(accessList);
         }
-        
-        [Test]
-        public void can_serialize_accessList_with_null_storageKeys()
+
+        [TestCase(TxType.AccessList, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[]}]}")]
+        [TestCase(TxType.EIP1559, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"maxPriorityFeePerGas\":\"0x0\",\"maxFeePerGas\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x2\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[]}]}")]
+        public void can_serialize_accessList_with_null_storageKeys(TxType txType, string txJson)
         {
             _data = new Dictionary<Address, IReadOnlySet<UInt256>>();
             _transaction = new Transaction();
-            _transaction.Type = TxType.AccessList;
+            _transaction.Type = txType;
 
             _data.Add(TestItem.AddressA, null);
             _transaction.AccessList = new AccessList(_data);
             _transactionForRpc = new TransactionForRpc(_transaction);
 
             string serialized = _serializer.Serialize(_transactionForRpc);
-            string expected = "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageKeys\":[]}]}";
-            expected.Should().Be(serialized);
+            txJson.Should().Be(serialized);
         }
 
         [Test]
         public void can_deserialize_accessList_with_null_storageKeys()
         {
             _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x01\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\"}]}");
-            
-            object[] accessList = {new AccessListItemForRpc(TestItem.AddressA, null)};
+
+            object[] accessList = { new AccessListItemForRpc(TestItem.AddressA, null) };
             _transactionForRpc.Type.Should().Be(TxType.AccessList);
+            _transactionForRpc.AccessList.Length.Should().Be(1);
+            _transactionForRpc.AccessList.Should().BeEquivalentTo(accessList);
+        }
+
+        [Test]
+        public void can_deserialize_accessList_with_null_storageKeys_and_eip1559_txType()
+        {
+            _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"maxFeePerGas\":\"0x10\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x02\",\"accessList\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\"}]}");
+
+            object[] accessList = { new AccessListItemForRpc(TestItem.AddressA, null) };
+            _transactionForRpc.Type.Should().Be(TxType.EIP1559);
             _transactionForRpc.AccessList.Length.Should().Be(1);
             _transactionForRpc.AccessList.Should().BeEquivalentTo(accessList);
         }
@@ -179,7 +177,7 @@ namespace Nethermind.JsonRpc.Test.Data
         public void can_deserialize_not_provided_txType()
         {
             _transactionForRpc = _serializer.Deserialize<TransactionForRpc>("{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null}");
-            
+
             // if there is not TxType provided, default value should be TxType.Legacy equal 0
             _transactionForRpc.Type.Should().Be(0);
         }
@@ -193,11 +191,12 @@ namespace Nethermind.JsonRpc.Test.Data
             _transactionForRpc.Type.Should().Be(0);
         }
 
-        [Test]
-        public void can_convert_from_Transaction_to_TransactionForRpc_and_back()
+        [TestCase(TxType.AccessList)]
+        [TestCase(TxType.EIP1559)]
+        public void can_convert_from_Transaction_to_TransactionForRpc_and_back(TxType txType)
         {
             _transaction = new Transaction();
-            _transaction.Type = TxType.AccessList;
+            _transaction.Type = txType;
 
             _transaction.AccessList = GetTestAccessList();
             _transactionForRpc = new TransactionForRpc(_transaction);

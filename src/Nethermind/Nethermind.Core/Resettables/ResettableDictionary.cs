@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -27,8 +14,8 @@ namespace Nethermind.Core.Resettables
         private readonly int _startCapacity;
         private readonly int _resetRatio;
 
-        private IDictionary<TKey, TValue> _wrapped;
-        
+        private Dictionary<TKey, TValue> _wrapped;
+
         public ResettableDictionary(
             IEqualityComparer<TKey>? comparer,
             int startCapacity = Resettable.StartCapacity,
@@ -60,7 +47,7 @@ namespace Nethermind.Core.Resettables
 
         public void Add(KeyValuePair<TKey, TValue> item)
         {
-            _wrapped.Add(item);
+            _wrapped.Add(item.Key, item.Value);
         }
 
         public void Clear()
@@ -70,17 +57,17 @@ namespace Nethermind.Core.Resettables
 
         public bool Contains(KeyValuePair<TKey, TValue> item)
         {
-            return _wrapped.Contains(item);
+            return ((IDictionary<TKey, TValue>)_wrapped).Contains(item);
         }
 
         public void CopyTo(KeyValuePair<TKey, TValue>[] array, int arrayIndex)
         {
-            _wrapped.CopyTo(array, arrayIndex);
+            ((IDictionary<TKey, TValue>)_wrapped).CopyTo(array, arrayIndex);
         }
 
         public bool Remove(KeyValuePair<TKey, TValue> item)
         {
-            return _wrapped.Remove(item);
+            return ((IDictionary<TKey, TValue>)_wrapped).Remove(item);
         }
 
         public int Count => _wrapped.Count;

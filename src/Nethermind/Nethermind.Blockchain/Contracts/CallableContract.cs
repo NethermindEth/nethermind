@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Abi;
@@ -53,7 +39,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="sender">Sender of the transaction - caller of the function.</param>
         /// <param name="arguments">Arguments to the function.</param>
         /// <returns>Deserialized return value of the <see cref="functionName"/> based on its definition.</returns>
-        protected object[] Call(BlockHeader header, string functionName, Address sender, params object[] arguments) => 
+        protected object[] Call(BlockHeader header, string functionName, Address sender, params object[] arguments) =>
             Call(header, functionName, sender, DefaultContractGasLimit, arguments);
 
         /// <summary>
@@ -77,7 +63,7 @@ namespace Nethermind.Blockchain.Contracts
         private bool TryCall(BlockHeader header, Transaction transaction, out byte[] result)
         {
             CallOutputTracer tracer = new();
-            
+
             try
             {
                 _transactionProcessor.Execute(transaction, header, tracer);
@@ -100,7 +86,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="result">Deserialized return value of the <see cref="functionName"/> based on its definition.</param>
         /// <param name="arguments">Arguments to the function.</param>
         /// <returns>true if function was <see cref="StatusCode.Success"/> otherwise false.</returns>
-        protected bool TryCall(BlockHeader header, string functionName, Address sender, out object[] result, params object[] arguments) => 
+        protected bool TryCall(BlockHeader header, string functionName, Address sender, out object[] result, params object[] arguments) =>
             TryCall(header, functionName, sender, DefaultContractGasLimit, out result, arguments);
 
         /// <summary>
@@ -126,12 +112,12 @@ namespace Nethermind.Blockchain.Contracts
             result = null;
             return false;
         }
-        
+
         /// <summary>
         /// Creates <see cref="Address.SystemUser"/> account if its not in current state.
         /// </summary>
         /// <param name="stateProvider">State provider.</param>
-        protected void EnsureSystemAccount(IStateProvider stateProvider)
+        protected void EnsureSystemAccount(IWorldState stateProvider)
         {
             if (!stateProvider.AccountExists(Address.SystemUser))
             {

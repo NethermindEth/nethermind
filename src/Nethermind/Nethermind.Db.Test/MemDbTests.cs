@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using FluentAssertions;
@@ -23,34 +10,35 @@ using NUnit.Framework;
 namespace Nethermind.Db.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class MemDbTests
     {
         [Test]
         public void Simple_set_get_is_fine()
         {
             IDb memDb = new MemDb();
-            byte[] bytes = new byte[] {1, 2, 3};
+            byte[] bytes = new byte[] { 1, 2, 3 };
             memDb.Set(TestItem.KeccakA, bytes);
             byte[] retrievedBytes = memDb.Get(TestItem.KeccakA);
             retrievedBytes.Should().BeEquivalentTo(bytes);
         }
 
-        private byte[] _sampleValue = {1, 2, 3};
+        private byte[] _sampleValue = { 1, 2, 3 };
 
         [Test]
         public void Can_create_with_delays()
         {
             MemDb memDb = new(10, 10);
-            memDb.Set(TestItem.KeccakA, new byte[] {1, 2, 3});
+            memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
             memDb.Get(TestItem.KeccakA);
-            KeyValuePair<byte[], byte[]>[] some = memDb[new[] {TestItem.KeccakA.Bytes}];
+            KeyValuePair<byte[], byte[]>[] some = memDb[new[] { TestItem.KeccakA.BytesToArray() }];
         }
 
         [Test]
         public void Can_create_with_name()
         {
             MemDb memDb = new("desc");
-            memDb.Set(TestItem.KeccakA, new byte[] {1, 2, 3});
+            memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
             memDb.Get(TestItem.KeccakA);
             memDb.Name.Should().Be("desc");
         }
@@ -59,7 +47,7 @@ namespace Nethermind.Db.Test
         public void Can_create_without_arguments()
         {
             MemDb memDb = new();
-            memDb.Set(TestItem.KeccakA, new byte[] {1, 2, 3});
+            memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
             memDb.Get(TestItem.KeccakA);
         }
 
@@ -119,7 +107,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
-            KeyValuePair<byte[], byte[]>[] result = memDb[new[] {TestItem.KeccakB.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes}];
+            KeyValuePair<byte[], byte[]>[] result = memDb[new[] { TestItem.KeccakB.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() }];
             result.Should().HaveCount(3);
             result[0].Value.Should().NotBeNull();
             result[1].Value.Should().NotBeNull();

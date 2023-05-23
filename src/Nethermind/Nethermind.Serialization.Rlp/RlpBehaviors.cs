@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 
@@ -22,7 +9,7 @@ namespace Nethermind.Serialization.Rlp
     public enum RlpBehaviors
     {
         None,
-        AllowExtraData = 1,
+        AllowExtraBytes = 1,
         ForSealing = 2,
         Storage = 4,
         Eip658Receipts = 8,
@@ -31,6 +18,6 @@ namespace Nethermind.Serialization.Rlp
                                 // when we're calculating tx hash or sending raw transaction we should skip this wrapping
                                 // with additional wrapping for typed transactions we're decoding Uint8Array([TransactionType, TransactionPayload]
                                 // without wrapping we're decoding (TransactionType || TransactionPayload)
-        All = AllowExtraData | ForSealing | Storage | Eip658Receipts | AllowUnsigned | SkipTypedWrapping
+        All = AllowExtraBytes | ForSealing | Storage | Eip658Receipts | AllowUnsigned | SkipTypedWrapping
     }
 }

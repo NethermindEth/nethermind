@@ -1,22 +1,10 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
-using System.Threading;
+
+using Microsoft.Win32.SafeHandles;
 
 namespace Nethermind.Db.Blooms
 {
@@ -24,16 +12,13 @@ namespace Nethermind.Db.Blooms
     {
         private readonly string _path;
         private readonly int _elementSize;
-        private readonly Stream _fileWrite;
-        private readonly Stream _fileRead;
-        private int _needsFlush;
-        
+        private readonly SafeFileHandle _file;
+
         public FixedSizeFileStore(string path, int elementSize)
         {
             _path = path;
             _elementSize = elementSize;
-            _fileWrite = File.Open(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read);
-            _fileRead = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            _file = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
         }
 
         public void Write(long index, ReadOnlySpan<byte> element)
@@ -45,12 +30,7 @@ namespace Nethermind.Db.Blooms
 
             try
             {
-                lock (_fileWrite)
-                {
-                    SeekIndex(_fileWrite, index);
-                    _fileWrite.Write(element);
-                    Interlocked.Exchange(ref _needsFlush, 1);
-                }
+                RandomAccess.Write(_file, element, GetPosition(index));
             }
             catch (ArgumentOutOfRangeException e)
             {
@@ -71,47 +51,19 @@ namespace Nethermind.Db.Blooms
 
         public int Read(long index, Span<byte> element)
         {
-            EnsureFlushed();
-            
-            lock (_fileRead)
-            {
-                SeekIndex(_fileRead, index);
-                return _fileRead.Read(element);
-            }            
+            return RandomAccess.Read(_file, element, GetPosition(index));
         }
 
         public IFileReader CreateFileReader()
         {
-            EnsureFlushed();
             return new FileReader(_path, _elementSize);
-        }
-
-        private void EnsureFlushed()
-        {
-            if (Interlocked.CompareExchange(ref _needsFlush, 0, 1) == 1)
-            {
-                lock (_fileWrite)
-                {
-                    _fileWrite.Flush();
-                }
-            }
-        }
-
-        private void SeekIndex(Stream file, long index)
-        {
-            long seekPosition = GetPosition(index);
-            if (file.Position != seekPosition)
-            {
-                file.Position = seekPosition;
-            }
         }
 
         private long GetPosition(long index) => index * _elementSize;
 
         public void Dispose()
         {
-            _fileWrite.Dispose();
-            _fileRead.Dispose();
+            _file.Dispose();
         }
     }
 }

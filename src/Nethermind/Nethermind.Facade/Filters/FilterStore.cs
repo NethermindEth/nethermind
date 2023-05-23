@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -20,6 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -53,21 +41,46 @@ namespace Nethermind.Blockchain.Filters
             }
         }
 
-        public IEnumerable<T> GetFilters<T>() where T : FilterBase => 
-            _filters.Select(f => f.Value).OfType<T>();
+        // Stop gap method to reduce allocations from non-struct enumerator
+        // https://github.com/dotnet/runtime/pull/38296
+        private IEnumerator<KeyValuePair<int, FilterBase>>? _enumerator;
 
-        public BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true) => 
+        public IEnumerable<T> GetFilters<T>() where T : FilterBase
+        {
+            // Reuse the enumerator
+            var enumerator = Interlocked.Exchange(ref _enumerator, null) ?? _filters.GetEnumerator();
+
+            while (enumerator.MoveNext())
+            {
+                FilterBase value = enumerator.Current.Value;
+                if (value is T t)
+                {
+                    yield return t;
+                }
+            }
+
+            // Stop gap method to reduce allocations from non-struct enumerator
+            // https://github.com/dotnet/runtime/pull/38296
+            enumerator.Reset();
+            _enumerator = enumerator;
+        }
+
+        public T? GetFilter<T>(int filterId) where T : FilterBase => _filters.TryGetValue(filterId, out var filter)
+                ? filter as T
+                : null;
+
+        public BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true) =>
             new(GetFilterId(setId), startBlockNumber);
 
-        public PendingTransactionFilter CreatePendingTransactionFilter(bool setId = true) => 
+        public PendingTransactionFilter CreatePendingTransactionFilter(bool setId = true) =>
             new(GetFilterId(setId));
 
         public LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock,
             object? address = null, IEnumerable<object?>? topics = null, bool setId = true) =>
-            new(GetFilterId(setId), 
-                fromBlock, 
-                toBlock, 
-                GetAddress(address), 
+            new(GetFilterId(setId),
+                fromBlock,
+                toBlock,
+                GetAddress(address),
                 GetTopicsFilter(topics));
 
         public void RemoveFilter(int filterId)
@@ -108,7 +121,7 @@ namespace Nethermind.Blockchain.Filters
 
         private TopicsFilter GetTopicsFilter(IEnumerable<object?>? topics = null)
         {
-            if (topics == null)
+            if (topics is null)
             {
                 return SequenceTopicsFilter.AnyTopic;
             }
@@ -126,7 +139,7 @@ namespace Nethermind.Blockchain.Filters
 
         private TopicExpression GetTopicExpression(FilterTopic? filterTopic)
         {
-            if (filterTopic == null)
+            if (filterTopic is null)
             {
                 return AnyTopic.Instance;
             }
@@ -140,7 +153,7 @@ namespace Nethermind.Blockchain.Filters
             }
             else
             {
-                return AnyTopic.Instance; 
+                return AnyTopic.Instance;
             }
         }
 
@@ -148,19 +161,19 @@ namespace Nethermind.Blockchain.Filters
         {
             if (address is null)
             {
-                return AddressFilter.AnyAddress; 
+                return AddressFilter.AnyAddress;
             }
 
             if (address is string s)
             {
                 return new AddressFilter(new Address(s));
             }
-            
+
             if (address is IEnumerable<string> e)
             {
                 return new AddressFilter(e.Select(a => new Address(a)).ToHashSet());
             }
-            
+
             throw new InvalidDataException("Invalid address filter format");
         }
 
@@ -187,8 +200,7 @@ namespace Nethermind.Blockchain.Filters
                     };
             }
 
-            var topics = obj as IEnumerable<string>;
-            if (topics == null)
+            if (obj is not IEnumerable<string> topics)
             {
                 return null;
             }
@@ -200,12 +212,12 @@ namespace Nethermind.Blockchain.Filters
                 };
             }
         }
-        
+
         private class FilterTopic
         {
             public Keccak? Topic { get; set; }
             public Keccak[]? Topics { get; set; }
-        
+
         }
     }
 }

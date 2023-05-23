@@ -1,15 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
-        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
 
-    <ItemGroup>
-      <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="6.0.4" />
-      <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
-      <PackageReference Include="AspNetCore.HealthChecks.UI" Version="6.0.4" />
-      <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="6.0.4" />
-    </ItemGroup>
-
+  <ItemGroup>
+    <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI.Client" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
+  </ItemGroup>
 </Project>

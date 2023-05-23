@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using NUnit.Framework;
 
@@ -27,36 +13,36 @@ public class EnrTreeParserTests
     {
         EnrTreeRoot root = EnrTreeParser.ParseEnrRoot(enrTreeRootText);
         string actual = root.ToString();
-        Assert.AreEqual(enrTreeRootText, actual);
+        Assert.That(actual, Is.EqualTo(enrTreeRootText));
     }
-    
+
     [TestCase("enrtree-branch:TSVUMUTQU3AMKR36PNX4ILDJJI,VPN5OWLF7Q2PBBJUSOYKPQDGFE", 2)]
     [TestCase("enrtree-branch:", 1)]
     public void Can_parse_branch(string enrBranchText, int hashCount)
     {
         EnrTreeBranch branch = EnrTreeParser.ParseBranch(enrBranchText);
         string actual = branch.ToString();
-        Assert.AreEqual(hashCount, branch.Hashes.Length);
-        Assert.AreEqual(enrBranchText, actual);
+        Assert.That(branch.Hashes.Length, Is.EqualTo(hashCount));
+        Assert.That(actual, Is.EqualTo(enrBranchText));
     }
-    
+
     [TestCase("enrtree-branch:TSVUMUTQU3AMKR36PNX4ILDJJI,VPN5OWLF7Q2PBBJUSOYKPQDGFE", 2)]
     [TestCase("enrtree-branch:", 1)]
     public void Can_parse_leaf(string enrBranchText, int hashCount)
     {
         EnrTreeBranch branch = EnrTreeParser.ParseBranch(enrBranchText);
         string actual = branch.ToString();
-        Assert.AreEqual(hashCount, branch.Hashes.Length);
-        Assert.AreEqual(enrBranchText, actual);
+        Assert.That(branch.Hashes.Length, Is.EqualTo(hashCount));
+        Assert.That(actual, Is.EqualTo(enrBranchText));
     }
-    
+
     [TestCase("enrtree-branch:TSVUMUTQU3AMKR36PNX4ILDJJI,VPN5OWLF7Q2PBBJUSOYKPQDGFE", 2)]
     [TestCase("enrtree-branch:", 1)]
     public void Can_parse_linked_tree(string enrBranchText, int hashCount)
     {
         EnrTreeBranch branch = EnrTreeParser.ParseBranch(enrBranchText);
         string actual = branch.ToString();
-        Assert.AreEqual(hashCount, branch.Hashes.Length);
-        Assert.AreEqual(enrBranchText, actual);
+        Assert.That(branch.Hashes.Length, Is.EqualTo(hashCount));
+        Assert.That(actual, Is.EqualTo(enrBranchText));
     }
 }

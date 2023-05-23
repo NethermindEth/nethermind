@@ -1,20 +1,18 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
-        <LangVersion>latest</LangVersion>
-        <Nullable>enable</Nullable>
-        <Deterministic>true</Deterministic>
-        <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
-        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+  </ItemGroup>
 
-    <ItemGroup>
-      <PackageReference Include="MathNet.Numerics.FSharp" Version="5.0.0" />
-    </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MathNet.Numerics.FSharp" />
+  </ItemGroup>
 
 </Project>

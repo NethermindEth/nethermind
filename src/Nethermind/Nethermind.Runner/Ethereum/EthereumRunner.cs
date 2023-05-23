@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -20,13 +7,11 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using Google.Protobuf.WellKnownTypes;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Steps;
 
 namespace Nethermind.Runner.Ethereum
 {
@@ -58,9 +43,9 @@ namespace Nethermind.Runner.Ethereum
         {
             yield return typeof(IStep).Assembly;
             yield return GetType().Assembly;
-            IEnumerable<IInitializationPlugin> enabledInitializationPlugins = 
+            IEnumerable<IInitializationPlugin> enabledInitializationPlugins =
                 _api.Plugins.OfType<IInitializationPlugin>().Where(p => p.ShouldRunSteps(api));
-            
+
             foreach (IInitializationPlugin initializationPlugin in enabledInitializationPlugins)
             {
                 yield return initializationPlugin.GetType().Assembly;
@@ -70,6 +55,7 @@ namespace Nethermind.Runner.Ethereum
         public async Task StopAsync()
         {
             Stop(() => _api.SessionMonitor?.Stop(), "Stopping session monitor");
+            Stop(() => _api.SyncModeSelector?.Stop(), "Stopping session sync mode selector");
             Task discoveryStopTask = Stop(() => _api.DiscoveryApp?.StopAsync(), "Stopping discovery app");
             Task blockProducerTask = Stop(() => _api.BlockProducer?.StopAsync(), "Stopping block producer");
             Task syncPeerPoolTask = Stop(() => _api.SyncPeerPool?.StopAsync(), "Stopping sync peer pool");
@@ -110,7 +96,7 @@ namespace Nethermind.Runner.Ethereum
                 if (_logger.IsError) _logger.Error($"{description} shutdown error.", e);
             }
         }
-        
+
         private Task Stop(Func<Task?> stopAction, string description)
         {
             try
@@ -122,20 +108,6 @@ namespace Nethermind.Runner.Ethereum
             {
                 if (_logger.IsError) _logger.Error($"{description} shutdown error.", e);
                 return Task.CompletedTask;
-            }
-        }
-        
-        private ValueTask Stop(Func<ValueTask?> stopAction, string description)
-        {
-            try
-            {
-                if (_logger.IsInfo) _logger.Info($"{description}...");
-                return stopAction() ?? default;
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error($"{description} shutdown error.", e);
-                return default;
             }
         }
     }

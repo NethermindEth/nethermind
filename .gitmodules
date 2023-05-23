@@ -1,23 +1,9 @@
 [submodule "src/tests"]
 	path = src/tests
 	url = https://github.com/ethereum/tests.git
-[submodule "src/Dirichlet"]
-	path = src/Dirichlet
-	url = https://github.com/tkstanczak/Dirichlet.git
-[submodule "src/rocksdb-sharp"]
-	path = src/rocksdb-sharp
-	url = https://github.com/NethermindEth/rocksdb-sharp.git
-	branch = master
 [submodule "src/bench_precompiles"]
 	path = src/bench_precompiles
 	url = https://github.com/shamatar/bench_precompiles.git
-[submodule "gitbook/docs"]
-	path = gitbook/docs
+[submodule "src/Nethermind/Nethermind.GitBook/docs"]
+	path = src/Nethermind/Nethermind.GitBook/docs
 	url = https://github.com/NethermindEth/docs.git
-[submodule "src/int256"]
-	path = src/int256
-	url = https://github.com/NethermindEth/int256.git
-[submodule "src/Math.Gmp.Native"]
-	path = src/Math.Gmp.Native
-	url = https://github.com/NethermindEth/Math.Gmp.Native.git
-	branch = master

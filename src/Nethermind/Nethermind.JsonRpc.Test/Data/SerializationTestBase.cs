@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.JsonRpc.Data;
@@ -26,10 +13,10 @@ namespace Nethermind.JsonRpc.Test.Data
 {
     public class SerializationTestBase
     {
-        protected void TestRoundtrip<T>(T item, Func<T, T, bool> equalityComparer, JsonConverter<T> converter = null, string description = null)
+        protected void TestRoundtrip<T>(T item, Func<T, T, bool>? equalityComparer, JsonConverter<T>? converter = null, string? description = null)
         {
             IJsonSerializer serializer = BuildSerializer();
-            if (converter != null)
+            if (converter is not null)
             {
                 serializer.RegisterConverter(converter);
             }
@@ -37,54 +24,54 @@ namespace Nethermind.JsonRpc.Test.Data
             string result = serializer.Serialize(item);
             T deserialized = serializer.Deserialize<T>(result);
 
-            if (equalityComparer == null)
+            if (equalityComparer is null)
             {
-                Assert.AreEqual(item, deserialized, description);
+                Assert.That(deserialized, Is.EqualTo(item), description);
             }
             else
             {
-                Assert.True(equalityComparer(item, deserialized), description);    
+                Assert.True(equalityComparer(item, deserialized), description);
             }
         }
-        
-        protected void TestRoundtrip<T>(T item, JsonConverter<T> converter = null, string description = null)
+
+        protected void TestRoundtrip<T>(T item, JsonConverter<T>? converter = null, string? description = null)
         {
-            TestRoundtrip(item, (a,b) => a.Equals(b), converter, description);
+            TestRoundtrip(item, (a, b) => a!.Equals(b), converter, description);
         }
-        
+
         protected void TestRoundtrip<T>(T item, string description)
         {
             TestRoundtrip(item, null, null, description);
         }
-        
-        protected void TestRoundtrip<T>(T item, Func<T, T, bool> equalityComparer, string description = null)
+
+        protected void TestRoundtrip<T>(T item, Func<T, T, bool>? equalityComparer, string? description = null)
         {
             TestRoundtrip(item, equalityComparer, null, description);
         }
 
-        protected void TestRoundtrip<T>(string json, JsonConverter converter = null)
+        protected void TestRoundtrip<T>(string json, JsonConverter? converter = null)
         {
             IJsonSerializer serializer = BuildSerializer();
-            if (converter != null)
+            if (converter is not null)
             {
                 serializer.RegisterConverter(converter);
             }
 
             T deserialized = serializer.Deserialize<T>(json);
             string result = serializer.Serialize(deserialized);
-            Assert.AreEqual(json, result);
+            Assert.That(result, Is.EqualTo(json));
         }
 
-        private void TestToJson<T>(T item, JsonConverter<T> converter, string expectedResult)
+        private void TestToJson<T>(T item, JsonConverter<T>? converter, string expectedResult)
         {
             IJsonSerializer serializer = BuildSerializer();
-            if (converter != null)
+            if (converter is not null)
             {
                 serializer.RegisterConverter(converter);
             }
 
             string result = serializer.Serialize(item);
-            Assert.AreEqual(expectedResult, result, result.Replace("\"", "\\\""));
+            Assert.That(result, Is.EqualTo(expectedResult), result.Replace("\"", "\\\""));
         }
 
         protected void TestToJson<T>(T item, string expectedResult)

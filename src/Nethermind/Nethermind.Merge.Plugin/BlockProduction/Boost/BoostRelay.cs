@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
@@ -27,7 +13,7 @@ public class BoostRelay : IBoostRelay
 {
     public const string GetPayloadAttributesPath = "/eth/v1/relay/payload_attributes";
     public const string SendPayloadPath = "/eth/v1/relay/submit_block";
-    
+
     private readonly IHttpClient _httpClient;
     private readonly string _relayUrl;
 
@@ -36,12 +22,12 @@ public class BoostRelay : IBoostRelay
         _httpClient = httpClient;
         _relayUrl = relayUrl;
     }
-    
-    public Task<PayloadAttributes> GetPayloadAttributes(PayloadAttributes payloadAttributes, CancellationToken cancellationToken) => 
+
+    public Task<PayloadAttributes> GetPayloadAttributes(PayloadAttributes payloadAttributes, CancellationToken cancellationToken) =>
         _httpClient.PostJsonAsync<PayloadAttributes>(GetUri(_relayUrl, GetPayloadAttributesPath), payloadAttributes, cancellationToken);
 
-    public Task SendPayload(BoostExecutionPayloadV1 executionPayloadV1, CancellationToken cancellationToken) => 
+    public Task SendPayload(BoostExecutionPayloadV1 executionPayloadV1, CancellationToken cancellationToken) =>
         _httpClient.PostJsonAsync<object>(GetUri(_relayUrl, SendPayloadPath), executionPayloadV1, cancellationToken);
-    
+
     private string GetUri(string relayUrl, string relativeUrl) => relayUrl + relativeUrl;
 }

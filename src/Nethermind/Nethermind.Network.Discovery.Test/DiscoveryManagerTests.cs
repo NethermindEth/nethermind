@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -78,7 +65,7 @@ namespace Nethermind.Network.Discovery.Test
             NodeLifecycleManagerFactory lifecycleFactory = new(_nodeTable, evictionManager,
                     new NodeStatsManager(timerFactory, logManager), new NodeRecord(), discoveryConfig, Timestamper.Default, logManager);
 
-            _nodes = new[] {new Node(TestItem.PublicKeyA, "192.168.1.18", 1), new Node(TestItem.PublicKeyB,"192.168.1.19", 2)};
+            _nodes = new[] { new Node(TestItem.PublicKeyA, "192.168.1.18", 1), new Node(TestItem.PublicKeyB, "192.168.1.19", 2) };
 
             IFullDb nodeDb = new SimpleFilePublicKeyDb("Test", "test_db", logManager);
             _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(nodeDb, logManager), discoveryConfig, logManager);
@@ -90,7 +77,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             //receiving ping
             IPEndPoint address = new(IPAddress.Parse(Host), Port);
-            _discoveryManager.OnIncomingMsg(new PingMsg(_publicKey, GetExpirationTime(), address, _nodeTable.MasterNode!.Address, new byte[32]) {FarAddress = address});
+            _discoveryManager.OnIncomingMsg(new PingMsg(_publicKey, GetExpirationTime(), address, _nodeTable.MasterNode!.Address, new byte[32]) { FarAddress = address });
             await Task.Delay(500);
 
             // expecting to send pong
@@ -105,15 +92,15 @@ namespace Nethermind.Network.Discovery.Test
         {
             //receiving pong
             ReceiveSomePong();
-            
+
             //expecting to activate node as valid peer
             IEnumerable<Node> nodes = _nodeTable.GetClosestNodes().ToArray();
-            Assert.AreEqual(1, nodes.Count());
+            Assert.That(nodes.Count(), Is.EqualTo(1));
             Node node = nodes.First();
-            Assert.AreEqual(Host, node.Host);
-            Assert.AreEqual(Port, node.Port);
+            Assert.That(node.Host, Is.EqualTo(Host));
+            Assert.That(node.Port, Is.EqualTo(Port));
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            Assert.AreEqual(NodeLifecycleState.Active, manager?.State);
+            Assert.That(manager?.State, Is.EqualTo(NodeLifecycleState.Active));
         }
 
         [Test, Ignore("Add bonding"), Retry(3)]
@@ -121,21 +108,21 @@ namespace Nethermind.Network.Discovery.Test
         {
             //receiving pong to have a node in the system
             ReceiveSomePong();
-            
+
             //expecting to activate node as valid peer
             IEnumerable<Node> nodes = _nodeTable.GetClosestNodes().ToArray();
-            Assert.AreEqual(1, nodes.Count());
+            Assert.That(nodes.Count(), Is.EqualTo(1));
             Node node = nodes.First();
-            Assert.AreEqual(Host, node.Host);
-            Assert.AreEqual(Port, node.Port);
+            Assert.That(node.Host, Is.EqualTo(Host));
+            Assert.That(node.Port, Is.EqualTo(Port));
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            Assert.AreEqual(NodeLifecycleState.Active, manager?.State);
+            Assert.That(manager?.State, Is.EqualTo(NodeLifecycleState.Active));
 
             //receiving findNode
             FindNodeMsg msg = new(_publicKey, GetExpirationTime(), Build.A.PrivateKey.TestObject.PublicKey.Bytes);
             msg.FarAddress = new IPEndPoint(IPAddress.Parse(Host), Port);
             _discoveryManager.OnIncomingMsg(msg);
-            
+
             //expecting to respond with sending Neighbors
             _msgSender.Received(1).SendMsg(Arg.Is<NeighborsMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
         }
@@ -150,7 +137,7 @@ namespace Nethermind.Network.Discovery.Test
                 {
                     INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(new Node(TestItem.PublicKeyA, $"{a}.{b}.1.1", 8000));
                     manager?.SendPingAsync();
-                    
+
                     PongMsg pongMsg = new(_publicKey, GetExpirationTime(), Array.Empty<byte>());
                     pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse($"{a}.{b}.1.1"), Port);
                     _discoveryManager.OnIncomingMsg(pongMsg);
@@ -168,12 +155,12 @@ namespace Nethermind.Network.Discovery.Test
 
             //expecting to activate node as valid peer
             IEnumerable<Node> nodes = _nodeTable.GetClosestNodes().ToArray();
-            Assert.AreEqual(1, nodes.Count());
+            Assert.That(nodes.Count(), Is.EqualTo(1));
             Node node = nodes.First();
-            Assert.AreEqual(Host, node.Host);
-            Assert.AreEqual(Port, node.Port);
+            Assert.That(node.Host, Is.EqualTo(Host));
+            Assert.That(node.Port, Is.EqualTo(Port));
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            Assert.AreEqual(NodeLifecycleState.Active, manager?.State);
+            Assert.That(manager?.State, Is.EqualTo(NodeLifecycleState.Active));
 
             //sending FindNode to expect Neighbors
             manager?.SendFindNode(_nodeTable.MasterNode!.Id.Bytes);

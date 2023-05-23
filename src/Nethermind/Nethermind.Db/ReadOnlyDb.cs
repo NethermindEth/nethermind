@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -40,18 +27,19 @@ namespace Nethermind.Db
 
         public string Name { get; } = "ReadOnlyDb";
 
-        public byte[]? this[byte[] key]
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            get => _memDb[key] ?? _wrappedDb[key];
-            set
-            {
-                if (!_createInMemWriteStore)
-                {
-                    throw new InvalidOperationException($"This {nameof(ReadOnlyDb)} did not expect any writes.");
-                }
+            return _memDb.Get(key, flags) ?? _wrappedDb.Get(key, flags);
+        }
 
-                _memDb[key] = value;
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (!_createInMemWriteStore)
+            {
+                throw new InvalidOperationException($"This {nameof(ReadOnlyDb)} did not expect any writes.");
             }
+
+            _memDb.Set(key, value, flags);
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys]
@@ -63,7 +51,7 @@ namespace Nethermind.Db
                 for (int i = 0; i < memResult.Length; i++)
                 {
                     var memValue = memResult[i];
-                    if (memValue.Value != null)
+                    if (memValue.Value is not null)
                     {
                         result[i] = memValue;
                     }
@@ -82,9 +70,14 @@ namespace Nethermind.Db
             return this.LikeABatch();
         }
 
-        public void Remove(byte[] key) { }
+        public long GetSize() => _wrappedDb.GetSize();
+        public long GetCacheSize() => _wrappedDb.GetCacheSize();
+        public long GetIndexSize() => _wrappedDb.GetIndexSize();
+        public long GetMemtableSize() => _wrappedDb.GetMemtableSize();
 
-        public bool KeyExists(byte[] key)
+        public void Remove(ReadOnlySpan<byte> key) { }
+
+        public bool KeyExists(ReadOnlySpan<byte> key)
         {
             return _memDb.KeyExists(key) || _wrappedDb.KeyExists(key);
         }
@@ -101,8 +94,17 @@ namespace Nethermind.Db
         {
             _memDb.Clear();
         }
-        
-        public Span<byte> GetSpan(byte[] key) => this[key].AsSpan();
+
+        public Span<byte> GetSpan(ReadOnlySpan<byte> key) => _memDb.Get(key).AsSpan();
+        public void PutSpan(ReadOnlySpan<byte> keyBytes, ReadOnlySpan<byte> value)
+        {
+            if (!_createInMemWriteStore)
+            {
+                throw new InvalidOperationException($"This {nameof(ReadOnlyDb)} did not expect any writes.");
+            }
+
+            _memDb.Set(keyBytes, value.ToArray());
+        }
 
         public void DangerousReleaseMemory(in Span<byte> span) { }
     }

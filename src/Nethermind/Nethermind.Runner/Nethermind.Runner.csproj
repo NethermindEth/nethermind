@@ -1,36 +1,42 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net7.0</TargetFramework>
     <LangVersion>latest</LangVersion>
-    <ServerGarbageCollection>true</ServerGarbageCollection>
-    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
-    <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
     <Nullable>annotations</Nullable>
-    <UseAppHost>true</UseAppHost>
-    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-    <DockerfileFile>Dockerfile.debug</DockerfileFile>
-    <DockerfileRunArguments>-v $(NETHERMIND_DATA_DIR):/data -p 8545:8545 -p 30303:30303</DockerfileRunArguments>
-    <UserSecretsId>03db39d0-4200-473e-9ff8-4a48d496381f</UserSecretsId>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
+    <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <TieredPGO>true</TieredPGO>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <DockerfileRunArguments>-v $(NETHERMIND_DATA_DIR):/data -p 8545:8545 -p 8551:8551 -p 30303:30303</DockerfileRunArguments>
+    <UserSecretsId>03db39d0-4200-473e-9ff8-4a48d496381f</UserSecretsId>
+  </PropertyGroup>
+
   <ItemGroup>
-    <PackageReference Include="Antlr4.Runtime.Standard" Version="4.10.1" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI" Version="6.0.4" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="6.0.4" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="6.0.4" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="6.0.5" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="6.0.5" />
-    <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="6.0.0" />
-    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.16.1" />
-    <PackageReference Include="NLog.Targets.Seq" Version="2.1.0" />
-    <PackageReference Include="NLog" Version="5.0.0" />
-    <PackageReference Include="Seq.Api" Version="2022.1.0" />
-    <PackageReference Include="System.IO.Abstractions" Version="17.0.15" />
-    <PackageReference Include="YamlDotNet" Version="11.2.1" />
+    <PackageReference Include="Antlr4.Runtime.Standard" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI.Client" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" />
+    <PackageReference Include="Microsoft.Extensions.CommandLineUtils" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
+    <PackageReference Include="NLog.Targets.Seq" />
+    <PackageReference Include="NLog" />
+    <PackageReference Include="Seq.Api" />
+    <PackageReference Include="System.Linq.Async" />
+    <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" />
+    <PackageReference Include="YamlDotNet" />
   </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj" />
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
@@ -44,6 +50,7 @@
     <ProjectReference Include="..\Nethermind.Grpc\Nethermind.Grpc.csproj" />
     <ProjectReference Include="..\Nethermind.Hive\Nethermind.Hive.csproj" />
     <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />
+    <ProjectReference Include="..\Nethermind.JsonRpc.TraceStore\Nethermind.JsonRpc.TraceStore.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
     <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
@@ -57,17 +64,10 @@
     <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
     <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
-	  <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
+    <ProjectReference Include="..\Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj" />
   </ItemGroup>
+
   <ItemGroup>
-    <Content Include="..\..\..\Nethermind Data Marketplace - Terms and Conditions 20190831.pdf">
-      <Link>Nethermind Data Marketplace - Terms and Conditions 20190831.pdf</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="..\..\..\Nethermind Ethereum Client - Terms and Conditions 20190831.pdf">
-      <Link>Nethermind Ethereum Client - Terms and Conditions 20190831.pdf</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Include="..\Chains\**\*.*">
       <Link>chainspec\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -75,74 +75,51 @@
     <Content Include="configs\*.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="baseline\contracts\*.bin">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Remove="out\**" />
-    <Content Remove="keystore\**" />
-    <Content Include="git-hash">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="nethermind.css">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Update="Data\static-nodes-baseline.json">
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Content Update="..\Chains\themerge_devnet_m4.json">
-      <Link>chainspec\themerge_devnet_m4.json</Link>
+    <Content Include="nethermind.css">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
-  <ItemGroup>
     <Content Update="NLog.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
-  <ItemGroup>
-    <Compile Remove="out\**" />
-    <Compile Remove="keystore\**" />
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Remove="out\**" />
-    <EmbeddedResource Remove="keystore\**" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Remove="out\**" />
     <None Remove="keystore\**" />
   </ItemGroup>
-  <ItemGroup>
-    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.AuRa.*;&#xD;&#xA;$(OutputPath)\Nethermind.Merge.Plugin.*;&#xD;&#xA;$(OutputPath)\Nethermind.Consensus.AuRa.*;&#xD;&#xA;$(OutputPath)\Nethermind.Init.*;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.*;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.*;&#xD;&#xA;$(OutputPath)\Nethermind.Api.*;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.*;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.*" />
-    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.AuRa.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Merge.Plugin.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Consensus.AuRa.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Init.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.dll;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Api.dll;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.dll;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.dll" />
-  </ItemGroup>
-  <ItemGroup>
-    <GitHash Include="git-hash" />
-  </ItemGroup>
-  <ItemGroup>
-    <_ContentIncludedByDefault Remove="Contracts\EntryPoint.json" />
-  </ItemGroup>
 
-  <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
-    <Message Text="---&gt; Generating Git Hash file Before Build" Importance="High" />
-    <Exec Command="git describe --tags --long --always &gt; git-hash" ContinueOnError="WarnAndContinue" />
-    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(OutDir)\git-hash" ContinueOnError="WarnAndContinue" />
+  <Target Name="CollectPlugins" AfterTargets="AfterBuild;AfterPublish">
+    <ItemGroup>
+      <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.AuRa.*;$(OutputPath)\Nethermind.Merge.Plugin.*;$(OutputPath)\Nethermind.Consensus.AuRa.*;$(OutputPath)\Nethermind.Init.*;$(OutputPath)\Nethermind.Mev.*;$(OutputPath)\Nethermind.HealthChecks.*;$(OutputPath)\Nethermind.Api.*;$(OutputPath)\Nethermind.AccountAbstraction.*;$(OutputPath)\Nethermind.EthStats.*;$(OutputPath)\Nethermind.JsonRpc.TraceStore.*" />
+      <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.AuRa.dll;$(OutputPath)\Nethermind.Merge.Plugin.dll;$(OutputPath)\Nethermind.Consensus.AuRa.dll;$(OutputPath)\Nethermind.Init.dll;$(OutputPath)\Nethermind.Mev.dll;$(OutputPath)\Nethermind.HealthChecks.dll;$(OutputPath)\Nethermind.Api.dll;$(OutputPath)\Nethermind.AccountAbstraction.dll;$(OutputPath)\Nethermind.EthStats.dll;$(OutputPath)\Nethermind.JsonRpc.TraceStore.dll" />
+    </ItemGroup>
   </Target>
 
-  <Target Name="StoreGitHashBeforePublish" BeforeTargets="BeforePublish">
-    <Message Text="---&gt; Generating Git Hash file Before Publish" Importance="High" />
-    <Exec Command="git describe --tags --long --always &gt; git-hash" ContinueOnError="WarnAndContinue" />
-    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(PublishDir)\git-hash" ContinueOnError="WarnAndContinue" />
-  </Target>
-
-  <Target Name="CopyPluginsAfterBuild" AfterTargets="AfterBuild">
-    <Message Text="---&gt; Copying Plugins After Build" Importance="High" />
+  <Target Name="CopyPluginsAfterBuild" AfterTargets="AfterBuild" DependsOnTargets="CollectPlugins">
+    <Message Text="Copying plugins after build..." Importance="High" />
     <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
   </Target>
 
-    <Target Name="CopyPluginsAfterPublish" AfterTargets="AfterPublish">
-    <Message Text="---&gt; Copying Plugins After Publish" Importance="High" />
+  <Target Name="CopyPluginsAfterPublish" AfterTargets="AfterPublish" DependsOnTargets="CollectPlugins">
+    <Message Text="Copying plugins after publish..." Importance="High" />
     <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
     <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)\plugins" />
   </Target>
- </Project>
+
+  <Target Name="CommitFallback" AfterTargets="BeforeBuild" Condition="'$(Commit)' == ''">
+    <Exec Command="git describe --always --exclude=* --abbrev=40" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
+      <Output PropertyName="Commit" TaskParameter="ConsoleOutput" />
+    </Exec>
+    <PropertyGroup>
+      <SourceRevisionId>$(Commit.Substring(0, 8))</SourceRevisionId>
+    </PropertyGroup>
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>Commit</_Parameter1>
+        <_Parameter2>$(Commit)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+
+</Project>

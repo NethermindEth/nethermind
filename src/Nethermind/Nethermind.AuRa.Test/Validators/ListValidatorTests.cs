@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -47,7 +34,7 @@ namespace Nethermind.AuRa.Test.Validators
                     ValidatorType = AuRaParameters.ValidatorType.List,
                     Addresses = address
                 }, _validSealerStrategy, Substitute.For<IValidatorStore>(), logManager, 1);
-            
+
             return validator;
         }
 
@@ -55,12 +42,12 @@ namespace Nethermind.AuRa.Test.Validators
         {
             get
             {
-                yield return new TestCaseData(TestItem.AddressA, 0L) {ExpectedResult = true};
-                yield return new TestCaseData(TestItem.AddressA, 1L) {ExpectedResult = false};
-                yield return new TestCaseData(TestItem.AddressB, 1L) {ExpectedResult = true};
-                yield return new TestCaseData(TestItem.AddressB, 0L) {ExpectedResult = false};
-                yield return new TestCaseData(TestItem.AddressC, 0L) {ExpectedResult = false};
-                yield return new TestCaseData(TestItem.AddressC, 1L) {ExpectedResult = false};
+                yield return new TestCaseData(TestItem.AddressA, 0L) { ExpectedResult = true };
+                yield return new TestCaseData(TestItem.AddressA, 1L) { ExpectedResult = false };
+                yield return new TestCaseData(TestItem.AddressB, 1L) { ExpectedResult = true };
+                yield return new TestCaseData(TestItem.AddressB, 0L) { ExpectedResult = false };
+                yield return new TestCaseData(TestItem.AddressC, 0L) { ExpectedResult = false };
+                yield return new TestCaseData(TestItem.AddressC, 1L) { ExpectedResult = false };
             }
         }
 
@@ -76,7 +63,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             GetListValidator(TestItem.Addresses.Take(validatorCount).ToArray()).Validators.Length.Should().Be(validatorCount);
         }
-        
+
         [TestCase(1, ExpectedResult = 1)]
         [TestCase(2, ExpectedResult = 2)]
         [TestCase(3, ExpectedResult = 2)]
@@ -86,17 +73,17 @@ namespace Nethermind.AuRa.Test.Validators
         [TestCase(9, ExpectedResult = 5)]
         [TestCase(10, ExpectedResult = 6)]
         [TestCase(100, ExpectedResult = 51)]
-        public int should_get_min_sealers_for_finalization(int validatorCount) => 
+        public int should_get_min_sealers_for_finalization(int validatorCount) =>
             GetListValidator(TestItem.Addresses.Take(validatorCount).ToArray()).Validators.MinSealersForFinalization();
 
         [Test]
         public void throws_ArgumentNullException_on_empty_validator()
         {
             LimboLogs logManager = LimboLogs.Instance;
-            Action act = () => new ListBasedValidator(null, new ValidSealerStrategy(), Substitute.For<IValidatorStore>(), logManager, 1); 
+            Action act = () => new ListBasedValidator(null, new ValidSealerStrategy(), Substitute.For<IValidatorStore>(), logManager, 1);
             act.Should().Throw<ArgumentNullException>();
         }
-        
+
         [Test]
         public void throws_ArgumentException_on_empty_addresses()
         {

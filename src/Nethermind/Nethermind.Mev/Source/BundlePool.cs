@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -54,15 +40,15 @@ namespace Nethermind.Mev.Source
         private readonly HashSet<Address> _trustedRelays;
 
         private long HeadNumber => _blockTree.Head?.Number ?? 0;
-        
+
         public event EventHandler<BundleEventArgs>? NewReceived;
         public event EventHandler<BundleEventArgs>? NewPending;
-        
+
         public BundlePool(
-            IBlockTree blockTree, 
+            IBlockTree blockTree,
             IBundleSimulator simulator,
             ITimestamper timestamper,
-            ITxValidator txValidator, 
+            ITxValidator txValidator,
             ISpecProvider specProvider,
             IMevConfig mevConfig,
             IAccountStateProvider stateProvider,
@@ -80,7 +66,7 @@ namespace Nethermind.Mev.Source
             _ecdsa = ecdsa;
 
             _trustedRelays = _mevConfig.GetTrustedRelayAddresses().ToHashSet();
-            
+
             IComparer<MevBundle> comparer = CompareMevBundleByBlock.Default.ThenBy(CompareMevBundleByMinTimestamp.Default);
             _bundles = new BundleSortedPool(
                 _mevConfig.BundlePoolSize,
@@ -91,10 +77,10 @@ namespace Nethermind.Mev.Source
             _blockTree.NewHeadBlock += OnNewBlock;
         }
 
-        public Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default) => 
+        public Task<IEnumerable<MevBundle>> GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default) =>
             Task.FromResult(GetBundles(parent.Number + 1, timestamp, token));
 
-        public IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 timestamp, CancellationToken token = default) => 
+        public IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 timestamp, CancellationToken token = default) =>
             GetBundles(blockNumber, timestamp, timestamp, token);
 
         private IEnumerable<MevBundle> GetBundles(long blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp, CancellationToken token = default)
@@ -107,8 +93,8 @@ namespace Nethermind.Mev.Source
                     {
                         break;
                     }
-                    
-                    if (BundleInTimestampRange(mevBundle, minTimestamp, maxTimestamp)) 
+
+                    if (BundleInTimestampRange(mevBundle, minTimestamp, maxTimestamp))
                     {
                         yield return mevBundle;
                     }
@@ -118,10 +104,10 @@ namespace Nethermind.Mev.Source
 
         public Task<IEnumerable<MevBundle>> GetMegabundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token = default) =>
             Task.FromResult(GetMegabundles(parent.Number + 1, timestamp, token));
-        
+
         public IEnumerable<MevBundle> GetMegabundles(long blockNumber, UInt256 timestamp, CancellationToken token = default) =>
             GetMegabundles(blockNumber, timestamp, timestamp, token);
-        
+
         private IEnumerable<MevBundle> GetMegabundles(long blockNumber, UInt256 minTimestamp, UInt256 maxTimestamp,
             CancellationToken token = default)
         {
@@ -131,9 +117,9 @@ namespace Nethermind.Mev.Source
                 {
                     break;
                 }
-                
+
                 bool bundleIsInCurrentBlock = bundle.BlockNumber == blockNumber;
-                if (BundleInTimestampRange(bundle, minTimestamp, maxTimestamp) && bundleIsInCurrentBlock) 
+                if (BundleInTimestampRange(bundle, minTimestamp, maxTimestamp) && bundleIsInCurrentBlock)
                 {
                     yield return bundle;
                 }
@@ -145,7 +131,7 @@ namespace Nethermind.Mev.Source
             Metrics.BundlesReceived++;
             BundleEventArgs bundleEventArgs = new(bundle);
             NewReceived?.Invoke(this, bundleEventArgs);
-            
+
             if (ValidateBundle(bundle))
             {
                 bool result = _bundles.TryInsert(bundle, bundle);
@@ -155,7 +141,7 @@ namespace Nethermind.Mev.Source
                     Metrics.ValidBundlesReceived++;
                     NewPending?.Invoke(this, bundleEventArgs);
                     if (bundle.BlockNumber == HeadNumber + 1)
-                    { 
+                    {
                         TrySimulateBundle(bundle);
                     }
                 }
@@ -179,7 +165,7 @@ namespace Nethermind.Mev.Source
                 {
                     Metrics.ValidMegabundlesReceived++;
                     NewPending?.Invoke(this, bundleEventArgs);
-                    
+
                     // add megabundle from trusted relay into dictionary
                     // stop and remove simulation if relay has previously sent a megabundle
                     _megabundles.AddOrUpdate(relayAddress,
@@ -208,7 +194,7 @@ namespace Nethermind.Mev.Source
             bool bundleIsTooOld = bundle.MaxTimestamp != UInt256.Zero && maxTimestamp > bundle.MaxTimestamp;
             return !bundleIsInFuture && !bundleIsTooOld;
         }
-        
+
         private bool IsTrustedRelay(Address relayAddress) => _trustedRelays.Contains(relayAddress);
 
         private bool ValidateBundle(MevBundle bundle)
@@ -244,11 +230,11 @@ namespace Nethermind.Mev.Source
             {
                 if (_logger.IsDebug)
                     _logger.Debug(
-                        $"Bundle rejected, because {nameof(bundle.MinTimestamp)} {bundle.MaxTimestamp} is further into the future than accepted horizon {_mevConfig.BundleHorizon}.");
+                        $"Bundle rejected, because {nameof(bundle.MinTimestamp)} {bundle.MinTimestamp} is further into the future than accepted horizon {_mevConfig.BundleHorizon}.");
                 return false;
             }
 
-            IReleaseSpec spec = _specProvider.GetSpec(bundle.BlockNumber);
+            IReleaseSpec spec = _specProvider.GetSpec(bundle.BlockNumber, currentTimestamp);
             for (int i = 0; i < bundle.Transactions.Count; i++)
             {
                 BundleTransaction tx = bundle.Transactions[i];
@@ -294,14 +280,14 @@ namespace Nethermind.Mev.Source
 
             return false;
         }
-              
+
         protected virtual SimulatedMevBundleContext? SimulateBundle(MevBundle bundle, BlockHeader parent)
         {
             SimulatedMevBundleContext? context = null;
             (MevBundle, Keccak) key = (bundle, parent.Hash!);
 
             Metrics.BundlesSimulated++;
-            
+
             SimulatedMevBundleContext CreateContext()
             {
                 CancellationTokenSource cancellationTokenSource = new();
@@ -309,16 +295,16 @@ namespace Nethermind.Mev.Source
                 simulateTask.ContinueWith(TryRemoveFailedSimulatedBundle, cancellationTokenSource.Token);
                 return context = new(simulateTask, cancellationTokenSource);
             }
-            
+
             ConcurrentDictionary<(MevBundle, Keccak), SimulatedMevBundleContext> AddContext(ConcurrentDictionary<(MevBundle, Keccak), SimulatedMevBundleContext> d)
             {
-                d.AddOrUpdate(key, 
-                    _ => CreateContext(), 
+                d.AddOrUpdate(key,
+                    _ => CreateContext(),
                     (_, c) => c);
                 return d;
             }
-            
-            _simulatedBundles.AddOrUpdate(parent.Number, 
+
+            _simulatedBundles.AddOrUpdate(parent.Number,
                     _ =>
                     {
                         ConcurrentDictionary<(MevBundle, Keccak), SimulatedMevBundleContext> d = new();
@@ -369,7 +355,7 @@ namespace Nethermind.Mev.Source
                     StopSimulation(simulation);
                 }
             }
-            
+
             IDictionary<long, MevBundle[]> bundlesToRemove = _bundles.GetBucketSnapshot(b => b <= blockNumber);
 
             foreach (KeyValuePair<long, MevBundle[]> bundleBucket in bundlesToRemove)
@@ -426,7 +412,7 @@ namespace Nethermind.Mev.Source
                     }
                 }
 
-                if (simulations.Count == 0)
+                if (simulations.IsEmpty)
                 {
                     _simulatedBundles.Remove(bundle.BlockNumber, out _);
                 }
@@ -450,20 +436,20 @@ namespace Nethermind.Mev.Source
                     .Where(b => bundles.Contains(b.Key.Bundle))
                     .Select(b => b.Value.Task)
                     .ToArray();
-                
-                await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask()); 
+
+                await Task.WhenAny(Task.WhenAll(resultTasks), token.AsTask());
 
                 IEnumerable<SimulatedMevBundle> res = resultTasks
                     .Where(t => t.IsCompletedSuccessfully)
                     .Select(t => t.Result)
                     .Where(t => t.Success)
-                    .Where(s => s.GasUsed <= gasLimit); 
-                
+                    .Where(s => s.GasUsed <= gasLimit);
+
                 return res;
             }
             return (Enumerable.Empty<SimulatedMevBundle>());
         }
-        
+
         async Task<IEnumerable<SimulatedMevBundle>> ISimulatedBundleSource.GetBundles(BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token)
         {
             HashSet<MevBundle> bundles = (await GetBundles(parent, timestamp, gasLimit, token)).ToHashSet();
@@ -490,7 +476,7 @@ namespace Nethermind.Mev.Source
                 Task = task;
                 CancellationTokenSource = cancellationTokenSource;
             }
-            
+
             public CancellationTokenSource CancellationTokenSource { get; }
             public Task<SimulatedMevBundle> Task { get; }
 

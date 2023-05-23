@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,7 +17,7 @@ namespace Nethermind.Evm.Test
     {
         protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
-        
+
         [Test]
         public void after_istanbul_selfbalance_opcode_puts_current_address_balance_onto_the_stack()
         {
@@ -39,15 +26,13 @@ namespace Nethermind.Evm.Test
                 .PushData(0)
                 .Op(Instruction.SSTORE)
                 .Done;
-                    
-            Keccak codeHash = TestState.UpdateCode(contractCode);
-            
+
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            TestState.UpdateCodeHash(TestItem.AddressC, codeHash, Spec);
-            
+            TestState.InsertCode(TestItem.AddressC, contractCode, Spec);
+
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            TestState.UpdateCodeHash(TestItem.AddressD, codeHash, Spec);
-            
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
+
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
                 .DelegateCall(TestItem.AddressD, 50000)
@@ -55,9 +40,9 @@ namespace Nethermind.Evm.Test
                 .PushData(1)
                 .Op(Instruction.SSTORE)
                 .Done;
-            
+
             TestAllTracerWithOutput result = Execute(code);
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
             AssertGas(result, 21000 + 2 * GasCostOf.CallEip150 + 24 + 21 + GasCostOf.VeryLow + 3 * GasCostOf.SelfBalance + 3 * GasCostOf.SSet);
             UInt256 balanceB = TestState.GetBalance(TestItem.AddressB);
             UInt256 balanceC = TestState.GetBalance(TestItem.AddressC);
@@ -79,7 +64,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput result = Execute(code);
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.ExtCodeHashEip1884);
         }
-        
+
         [Test]
         public void after_istanbul_balance_cost_is_increased()
         {
@@ -93,7 +78,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput result = Execute(code);
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.BalanceEip1884);
         }
-        
+
         [Test]
         public void after_istanbul_sload_cost_is_increased()
         {
@@ -108,7 +93,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput result = Execute(code);
             AssertGas(result, 21000 + 2 * GasCostOf.VeryLow + GasCostOf.SLoadEip1884);
         }
-        
+
         [Test]
         public void just_before_istanbul_extcodehash_cost_is_increased()
         {
@@ -122,7 +107,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput result = Execute(BlockNumber - 1, 100000, code);
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.ExtCodeHash);
         }
-        
+
         [Test]
         public void just_before_istanbul_balance_cost_is_increased()
         {
@@ -136,7 +121,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput result = Execute(BlockNumber - 1, 100000, code);
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.BalanceEip150);
         }
-        
+
         [Test]
         public void just_before_istanbul_sload_cost_is_increased()
         {

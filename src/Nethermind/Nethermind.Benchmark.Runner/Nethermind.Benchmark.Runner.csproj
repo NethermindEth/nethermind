@@ -1,21 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <OutputType>Exe</OutputType>
-        <TargetFramework>net6.0</TargetFramework>
-    </PropertyGroup>
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net7.0</TargetFramework>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
 
-    <ItemGroup>
-      <PackageReference Include="BenchmarkDotNet" Version="0.13.1" />
-    </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Benchmark\Nethermind.Benchmark.csproj" />
-      <ProjectReference Include="..\Nethermind.EthereumTests.Benchmark\Nethermind.EthereumTests.Benchmark.csproj" />
-      <ProjectReference Include="..\Nethermind.Evm.Benchmark\Nethermind.Evm.Benchmark.csproj" />
-      <ProjectReference Include="..\Nethermind.JsonRpc.Benchmark\Nethermind.JsonRpc.Benchmark.csproj" />
-      <ProjectReference Include="..\Nethermind.Network.Benchmark\Nethermind.Network.Benchmark.csproj" />
-      <ProjectReference Include="..\Nethermind.Precompiles.Benchmark\Nethermind.Precompiles.Benchmark.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Benchmark\Nethermind.Benchmark.csproj" />
+    <ProjectReference Include="..\Nethermind.EthereumTests.Benchmark\Nethermind.EthereumTests.Benchmark.csproj" />
+    <ProjectReference Include="..\Nethermind.Evm.Benchmark\Nethermind.Evm.Benchmark.csproj" />
+    <ProjectReference Include="..\Nethermind.JsonRpc.Benchmark\Nethermind.JsonRpc.Benchmark.csproj" />
+    <ProjectReference Include="..\Nethermind.Network.Benchmark\Nethermind.Network.Benchmark.csproj" />
+    <ProjectReference Include="..\Nethermind.Precompiles.Benchmark\Nethermind.Precompiles.Benchmark.csproj" />
+  </ItemGroup>
 
 </Project>

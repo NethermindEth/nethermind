@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -53,7 +39,7 @@ namespace Nethermind.AccountAbstraction.Test
         private Contracts _contracts = new();
         private AbiEncoder _encoder = new();
         private static int entryPointNum = 2;
-        
+
         public class Contracts
         {
             internal AbiDefinition SingletonFactory;
@@ -63,7 +49,7 @@ namespace Nethermind.AccountAbstraction.Test
             internal AbiDefinition TokenPaymasterAbi;
 
             private AbiEncoder _encoder = new();
-            
+
             public Contracts()
             {
                 SingletonFactory = LoadContract(typeof(SingletonFactory));
@@ -74,7 +60,7 @@ namespace Nethermind.AccountAbstraction.Test
                 TestCounterAbi = LoadContract(typeof(TestCounter));
                 TokenPaymasterAbi = LoadContract(typeof(TokenPaymaster));
             }
-            
+
             private AbiDefinition LoadContract(Type contractType)
             {
                 var parser = new AbiDefinitionParser();
@@ -82,9 +68,9 @@ namespace Nethermind.AccountAbstraction.Test
                 var json = parser.LoadContract(contractType);
                 return parser.Parse(json);
             }
-            
+
             public static long LargeGasLimit = 5_000_000;
-            
+
             public static PrivateKey ContractCreatorPrivateKey = TestItem.PrivateKeyC;
             public static PrivateKey WalletOwnerPrivateKey = TestItem.PrivateKeyA;
             public static Address WalletOwner = WalletOwnerPrivateKey.Address;
@@ -98,12 +84,12 @@ namespace Nethermind.AccountAbstraction.Test
                     .WithData(_encoder.Encode(AbiEncodingStyle.IncludeSignature, TestCounterAbi.Functions["counters"].GetCallInfo().Signature, wallet))
                     .SignedAndResolved(TestItem.PrivateKeyA)
                     .TestObject;
-            
+
                 UInt256 count = new UInt256(Bytes.FromHexString(chain.EthRpcModule.eth_call(new TransactionForRpc(getCountTransaction)).Data), true);
 
                 return count;
             }
-            
+
             public Address GetAccountAddress(TestRpcBlockchain chain, Address entryPointAddress, byte[] bytecode, UInt256 salt, int epNum)
             {
                 Transaction getAccountAddressTransaction = Core.Test.Builders.Build.A.Transaction
@@ -113,7 +99,7 @@ namespace Nethermind.AccountAbstraction.Test
                     .WithData(_encoder.Encode(AbiEncodingStyle.IncludeSignature, EntryPointAbi[epNum].Functions["getSenderAddress"].GetCallInfo().Signature, bytecode, salt))
                     .SignedAndResolved(TestItem.PrivateKeyA)
                     .TestObject;
-            
+
                 Address accountAddress = new(Bytes.FromHexString(chain.EthRpcModule.eth_call(new TransactionForRpc(getAccountAddressTransaction)).Data).SliceWithZeroPaddingEmptyOnError(12, 20));
 
                 return accountAddress;
@@ -135,7 +121,7 @@ namespace Nethermind.AccountAbstraction.Test
                 Address?[] createWalletTxReceiptContractAddresses = new Address[entryPointNum];
                 Address?[] miscContractTxReceiptContractAddresses = new Address[entryPointNum];
 
-                for(int i=0; i<entryPointNum; i++)
+                for (int i = 0; i < entryPointNum; i++)
                 {
 
                     byte[] entryPointConstructorBytes = Bytes.Concat(EntryPointAbi[i].Bytecode!, _encoder.Encode(AbiEncodingStyle.None, EntryPointAbi[i].Constructors[0].GetCallInfo().Signature, singletonFactoryAddress, 0, 2));
@@ -144,21 +130,21 @@ namespace Nethermind.AccountAbstraction.Test
                     Transaction entryPointTx = Core.Test.Builders.Build.A.Transaction.WithTo(singletonFactoryAddress).WithData(createEntryPointBytes).WithGasLimit(6_000_000).WithNonce(chain.State.GetNonce(ContractCreatorPrivateKey.Address)).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
                     await chain.AddBlock(true, entryPointTx);
 
-                    Address computedAddress = new(Keccak.Compute(Bytes.Concat(Bytes.FromHexString("0xff"), singletonFactoryAddress.Bytes, Bytes.Zero32, Keccak.Compute(entryPointConstructorBytes).Bytes)).Bytes.TakeLast(20).ToArray());
+                    Address computedAddress = new(Keccak.Compute(Bytes.Concat(Bytes.FromHexString("0xff"), singletonFactoryAddress.Bytes, Bytes.Zero32, Keccak.Compute(entryPointConstructorBytes).Bytes)).BytesToArray().TakeLast(20).ToArray());
 
                     TxReceipt createEntryPointTxReceipt = chain.Bridge.GetReceipt(entryPointTx.Hash!);
                     createEntryPointTxReceipt.Error.Should().BeNullOrEmpty($"Contract transaction {computedAddress!} was not deployed.");
                     chain.State.GetCode(computedAddress).Should().NotBeNullOrEmpty();
-                    
+
                     bool createMiscContract = miscContractCode is not null;
                     IList<Transaction> transactionsToInclude = new List<Transaction>();
-                    
+
                     Transaction? walletTx = Core.Test.Builders.Build.A.Transaction.WithCode(GetWalletConstructor(computedAddress)).WithGasLimit(LargeGasLimit).WithNonce(chain.State.GetNonce(ContractCreatorPrivateKey.Address)).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
                     transactionsToInclude.Add(walletTx!);
-                    
+
                     Transaction? miscContractTx = createMiscContract ? Core.Test.Builders.Build.A.Transaction.WithCode(miscContractCode!).WithGasLimit(LargeGasLimit).WithNonce(chain.State.GetNonce(ContractCreatorPrivateKey.Address) + 1).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject : null;
                     if (createMiscContract) transactionsToInclude.Add(miscContractTx!);
-                    
+
                     await chain.AddBlock(true, transactionsToInclude.ToArray());
 
                     TxReceipt createWalletTxReceipt = chain.Bridge.GetReceipt(walletTx.Hash!);
@@ -173,7 +159,7 @@ namespace Nethermind.AccountAbstraction.Test
                     createWalletTxReceiptContractAddresses[i] = createWalletTxReceipt?.ContractAddress!;
                     miscContractTxReceiptContractAddresses[i] = miscContractTxReceipt?.ContractAddress!;
                 }
-                
+
                 return (computedAddresses, createWalletTxReceiptContractAddresses, miscContractTxReceiptContractAddresses);
             }
         }
@@ -184,7 +170,7 @@ namespace Nethermind.AccountAbstraction.Test
             var chain = await CreateChain();
             (Address[] entryPointAddresses, Address?[] walletAddresses, _) = await _contracts.Deploy(chain);
         }
-        
+
         [Test]
         public void Should_sign_correctly()
         {
@@ -199,35 +185,35 @@ namespace Nethermind.AccountAbstraction.Test
                 .WithMaxPriorityFeePerGas(1000000000)
                 .SignedAndResolved(
                     new PrivateKey("0xa31e1f30394cba49bca6783cf25679abae1e5fd7f70a95ef794b73e041a8c864"),
-                    new Address("0x90f3E1105E63C877bF9587DE5388C23Cdb702c6B"), 
+                    new Address("0x90f3E1105E63C877bF9587DE5388C23Cdb702c6B"),
                     5
                     )
                 .TestObject;
-            
+
             Address entryPointId = new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b");
             ulong chainId = 5;
             Keccak idFromTransaction =
                 new Keccak("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
             createOp.CalculateRequestId(entryPointId, chainId);
-            Assert.AreEqual(idFromTransaction, createOp.RequestId!,
+            Assert.That(createOp.RequestId!, Is.EqualTo(idFromTransaction),
                 "Request IDs do not match.");
-            
-            Assert.AreEqual(
-                Bytes.FromHexString("0xe4ef96c1ebffdae061838b79a0ba2b0289083099dc4d576a7ed0c61c80ed893273ba806a581c72be9e550611defe0bf490f198061b8aa63dd6acfc0b620e0c871c"),
-                createOp.Signature,
+
+            Assert.That(
+                createOp.Signature, Is.EqualTo(Bytes.FromHexString("0xe4ef96c1ebffdae061838b79a0ba2b0289083099dc4d576a7ed0c61c80ed893273ba806a581c72be9e550611defe0bf490f198061b8aa63dd6acfc0b620e0c871c")),
                 "signatures are different"
             );
         }
 
         [TestCase(true, false)]
         [TestCase(false, true)]
-        public async Task Should_execute_well_formed_op_successfully_if_codehash_not_changed(bool changeCodeHash, bool success) {
+        public async Task Should_execute_well_formed_op_successfully_if_codehash_not_changed(bool changeCodeHash, bool success)
+        {
             var chain = await CreateChain();
             (Address[] entryPointAddress, Address?[] walletAddress, Address?[] counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
-            
+
             byte[] countCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TestCounterAbi.Functions["count"].GetCallInfo().Signature);
             byte[] execCounterCountFromEntryPoint = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["execFromEntryPoint"].GetCallInfo().Signature, counterAddress[0]!, 0, countCallData);
-            
+
             UserOperation op = Build.A.UserOperation
                 .WithSender(walletAddress[0]!)
                 .WithCallData(execCounterCountFromEntryPoint)
@@ -240,8 +226,7 @@ namespace Nethermind.AccountAbstraction.Test
             chain.SendUserOperation(entryPointAddress[0], op);
             if (changeCodeHash)
             {
-                Keccak codeHash = chain.State.UpdateCode(Bytes.Concat(chain.State.GetCode(walletAddress[0]!), 0x00));
-                chain.State.UpdateCodeHash(walletAddress[0]!, codeHash, chain.SpecProvider.GenesisSpec);
+                chain.State.InsertCode(walletAddress[0]!, Bytes.Concat(chain.State.GetCode(walletAddress[0]!), 0x00), chain.SpecProvider.GenesisSpec);
                 chain.State.Commit(chain.SpecProvider.GenesisSpec);
                 chain.State.RecalculateStateRoot();
                 chain.State.CommitTree(chain.BlockTree.Head!.Number);
@@ -249,14 +234,17 @@ namespace Nethermind.AccountAbstraction.Test
             }
             await chain.AddBlock(true);
 
-            UInt256 countAfter = _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!);
             if (success)
             {
-                countAfter.Should().Be(1);
+                Assert.That(
+                    () => _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!),
+                    Is.EqualTo(UInt256.One).After(2000, 50));
             }
             else
             {
-                countAfter.Should().Be(0);
+                Assert.That(
+                    () => _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!),
+                    Is.EqualTo(UInt256.Zero).After(2000, 50));
             }
         }
 
@@ -267,9 +255,10 @@ namespace Nethermind.AccountAbstraction.Test
             (Address[] entryPointAddress, Address?[] walletAddress, Address?[] counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
             chain.SupportedEntryPoints();
         }
-        
+
         [Test]
-        public async Task Should_execute_well_formed_op_successfully_for_all_entry_points() {
+        public async Task Should_execute_well_formed_op_successfully_for_all_entry_points()
+        {
             var chain = await CreateChain();
             (Address[] entryPointAddress, Address?[] walletAddress, Address?[] counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
 
@@ -301,7 +290,7 @@ namespace Nethermind.AccountAbstraction.Test
 
                 UInt256 countBefore = _contracts.GetCount(chain, counterAddress[i]!, walletAddress[i]!);
                 countBefore.Should().Be(0);
-                
+
                 chain.SendUserOperation(entryPointAddress[i], op);
                 await chain.AddBlock(true);
 
@@ -311,9 +300,10 @@ namespace Nethermind.AccountAbstraction.Test
             }
 
         }
-        
+
         [Test]
-        public async Task Should_execute_well_formed_op_successfully_for_all_entry_points_at_the_same_time() {
+        public async Task Should_execute_well_formed_op_successfully_for_all_entry_points_at_the_same_time()
+        {
             var chain = await CreateChain();
             (Address[] entryPointAddress, Address?[] walletAddress, Address?[] counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
 
@@ -345,11 +335,11 @@ namespace Nethermind.AccountAbstraction.Test
 
                 UInt256 countBefore = _contracts.GetCount(chain, counterAddress[i]!, walletAddress[i]!);
                 countBefore.Should().Be(0);
-                
+
                 chain.SendUserOperation(entryPointAddress[i], op);
             }
-            
-            
+
+
             await chain.AddBlock(true);
 
             for (int i = 0; i < entryPointNum; i++)
@@ -357,10 +347,10 @@ namespace Nethermind.AccountAbstraction.Test
                 UInt256 countAfter = _contracts.GetCount(chain, counterAddress[i]!, walletAddress[i]!);
                 countAfter.Should().Be(1);
             }
-            
+
             Console.WriteLine("2");
         }
-        
+
         [Test]
         public async Task Should_succeed_at_creating_account_after_prefund()
         {
@@ -370,7 +360,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             byte[] walletConstructor = _contracts.GetWalletConstructor(entryPointAddress[0]);
             Address accountAddress = _contracts.GetAccountAddress(chain, entryPointAddress[0], walletConstructor, 0, 0);
-            
+
             UserOperation createOp = Build.A.UserOperation
                 .WithSender(accountAddress!)
                 .WithInitCode(walletConstructor)
@@ -393,26 +383,26 @@ namespace Nethermind.AccountAbstraction.Test
 
             chain.State.GetCode(accountAddress).Should().BeEquivalentTo(_contracts.SimpleWalletAbi.DeployedBytecode!);
         }
-        
+
         [Test]
         public async Task Should_batch_multiple_ops()
         {
             var chain = await CreateChain();
             chain.GasLimitCalculator.GasLimit = 30_000_000;
             (Address[] entryPointAddress, Address?[] walletAddress, Address?[] counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
-            
+
             byte[] countCalldata = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TestCounterAbi.Functions["count"].GetCallInfo().Signature);
             byte[] execCounterCountFromEntryPoint = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["execFromEntryPoint"].GetCallInfo().Signature, counterAddress[0]!, 0, countCalldata);
-            
+
             UserOperation op = Build.A.UserOperation
                 .WithSender(walletAddress[0]!)
                 .WithCallData(execCounterCountFromEntryPoint)
                 .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[0], chain.SpecProvider.ChainId)
                 .TestObject;
-            
+
             byte[] walletConstructor = _contracts.GetWalletConstructor(entryPointAddress[0]);
             Address accountAddress = _contracts.GetAccountAddress(chain, entryPointAddress[0], walletConstructor, 0, 0);
-            
+
             UserOperation createOp = Build.A.UserOperation
                 .WithSender(accountAddress!)
                 .WithInitCode(walletConstructor)
@@ -421,7 +411,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .WithVerificationGas(2_000_000)
                 .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[0], chain.SpecProvider.ChainId)
                 .TestObject;
-            
+
             Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
                 .WithTo(accountAddress!)
                 .WithGasLimit(100_000)
@@ -453,7 +443,7 @@ namespace Nethermind.AccountAbstraction.Test
             UInt256 countAfter1 = _contracts.GetCount(chain, counterAddress[0]!, accountAddress!);
             countAfter.Should().Be(1);
             countAfter1.Should().Be(1);
-                
+
         }
 
         [Test]
@@ -519,7 +509,7 @@ namespace Nethermind.AccountAbstraction.Test
         public static void SignUserOperation(UserOperation op, PrivateKey privateKey, Address entryPointAddress, ulong chainId)
         {
             op.CalculateRequestId(entryPointAddress, chainId);
-            
+
             Signer signer = new(chainId, privateKey, NullLogManager.Instance);
             Keccak hashedRequestId = Keccak.Compute(
                 Bytes.Concat(

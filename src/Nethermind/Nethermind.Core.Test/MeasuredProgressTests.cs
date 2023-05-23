@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading.Tasks;
@@ -27,21 +14,21 @@ namespace Nethermind.Core.Test
         public void Current_per_second_uninitialized()
         {
             MeasuredProgress measuredProgress = new();
-            Assert.AreEqual(decimal.Zero, measuredProgress.CurrentPerSecond);
+            Assert.That(measuredProgress.CurrentPerSecond, Is.EqualTo(decimal.Zero));
         }
 
         [Test]
         public void Total_per_second_uninitialized()
         {
             MeasuredProgress measuredProgress = new();
-            Assert.AreEqual(decimal.Zero, measuredProgress.TotalPerSecond);
+            Assert.That(measuredProgress.TotalPerSecond, Is.EqualTo(decimal.Zero));
         }
 
         [Test]
         public void Current_value_uninitialized()
         {
             MeasuredProgress measuredProgress = new();
-            Assert.AreEqual(0L, measuredProgress.CurrentValue);
+            Assert.That(measuredProgress.CurrentValue, Is.EqualTo(0L));
         }
 
         [Test]
@@ -49,7 +36,7 @@ namespace Nethermind.Core.Test
         {
             MeasuredProgress measuredProgress = new();
             measuredProgress.Update(0L);
-            Assert.AreEqual(0L, measuredProgress.CurrentValue);
+            Assert.That(measuredProgress.CurrentValue, Is.EqualTo(0L));
         }
 
         [Test]
@@ -57,7 +44,7 @@ namespace Nethermind.Core.Test
         {
             MeasuredProgress measuredProgress = new();
             measuredProgress.Update(0L);
-            Assert.AreEqual(0L, measuredProgress.TotalPerSecond);
+            Assert.That(measuredProgress.TotalPerSecond, Is.EqualTo(0L));
         }
 
         [Test]
@@ -65,7 +52,7 @@ namespace Nethermind.Core.Test
         {
             MeasuredProgress measuredProgress = new();
             measuredProgress.Update(0L);
-            Assert.AreEqual(0L, measuredProgress.CurrentPerSecond);
+            Assert.That(measuredProgress.CurrentPerSecond, Is.EqualTo(0L));
         }
 
         [Test]
@@ -147,7 +134,7 @@ namespace Nethermind.Core.Test
             measuredProgress.SetMeasuringPoint();
             Assert.GreaterOrEqual(measuredProgress.TotalPerSecond, 6M);
             Assert.LessOrEqual(measuredProgress.TotalPerSecond, 15M);
-            Assert.AreEqual(0M, measuredProgress.CurrentPerSecond);
+            Assert.That(measuredProgress.CurrentPerSecond, Is.EqualTo(0M));
         }
 
         [Test]
@@ -157,7 +144,7 @@ namespace Nethermind.Core.Test
             measuredProgress.MarkEnd();
             Assert.True(measuredProgress.HasEnded);
         }
-        
+
         [Test]
         public void Has_ended_returns_false_when_ended()
         {

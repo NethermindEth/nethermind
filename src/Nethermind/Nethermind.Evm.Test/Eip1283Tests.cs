@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
@@ -28,7 +15,7 @@ namespace Nethermind.Evm.Test
     public class Eip1283Tests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
-        
+
         protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
 
         [TestCase("0x60006000556000600055", 412, 0, 0)]
@@ -51,10 +38,9 @@ namespace Nethermind.Evm.Test
         public void Test(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
-            Storage.Set(new StorageCell(Recipient, 0), new [] {originalValue});
-            Storage.Commit();
+            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
-            
+
             TestAllTracerWithOutput receipt = Execute(Bytes.FromHexString(codeHex));
             AssertGas(receipt, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / 2, refund));
         }

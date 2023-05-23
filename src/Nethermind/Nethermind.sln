@@ -1,11 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.28307.645
+# Visual Studio Version 17
+VisualStudioVersion = 17.2.32630.192
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Core", "Nethermind.Core\Nethermind.Core.csproj", "{5751C57B-9F2D-45DE-BCC2-42645B85E39E}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.HashLib", "Nethermind.HashLib\Nethermind.HashLib.csproj", "{75B8BE8D-18B0-493C-8BA5-083D4B952BF9}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Blockchain", "Nethermind.Blockchain\Nethermind.Blockchain.csproj", "{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}"
 EndProject
@@ -14,10 +12,6 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.State", "Nethermind.State\Nethermind.State.csproj", "{8311E4F7-DB36-40F5-A496-7CE4FD486FEE}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Core.Test", "Nethermind.Core.Test\Nethermind.Core.Test.csproj", "{6BAD851C-B0A2-4DFE-A1F3-1C3A634C522B}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Secp256k1", "Nethermind.Secp256k1\Nethermind.Secp256k1.csproj", "{233F90B7-8850-4E62-93F2-32E4676E8D22}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Secp256k1.Test", "Nethermind.Secp256k1.Test\Nethermind.Secp256k1.Test.csproj", "{99176509-944E-4330-BCC0-B286A9E585E6}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Evm.Test", "Nethermind.Evm.Test\Nethermind.Evm.Test.csproj", "{44B0C68E-E3F0-4CAE-8C7C-4A3EAB62E7DD}"
 EndProject
@@ -43,33 +37,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Mining.Test", "N
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Blockchain.Test", "Nethermind.Blockchain.Test\Nethermind.Blockchain.Test.csproj", "{E6C8C319-1BA8-437D-961D-1357FF5A9699}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83BB-6092-45A4-B751-D05D4A6ED995}"
-	ProjectSection(SolutionItems) = preProject
-		Chains\foundation.json = Chains\foundation.json
-		Chains\genesis.json = Chains\genesis.json
-		Chains\goerli.json = Chains\goerli.json
-		Chains\rinkeby.json = Chains\rinkeby.json
-		Chains\ropsten.json = Chains\ropsten.json
-		Chains\spaceneth.json = Chains\spaceneth.json
-		Chains\sokol.json = Chains\sokol.json
-		Chains\poacore.json = Chains\poacore.json
-		Chains\volta.json = Chains\volta.json
-		Chains\AuRaTest.json = Chains\AuRaTest.json
-		Chains\xdai.json = Chains\xdai.json
-		Chains\ndmlocal.json = Chains\ndmlocal.json
-		Chains\energyweb.json = Chains\energyweb.json
-		Chains\baseline.json = Chains\baseline.json
-		Chains\kovan.json = Chains\kovan.json
-		Chains\wit.json = Chains\wit.json
-		Chains\yolo_v3x.json = Chains\yolo_v3x.json
-		Chains\catalyst.json = Chains\catalyst.json
-		Chains\themerge_devnet.json = Chains\themerge_devnet.json
-		Chains\themerge_testvectors.json = Chains\themerge_testvectors.json
-		Chains\hacknet_v2.json = Chains\hacknet_v2.json
-		Chains\themerge_kintsugi_testvectors.json = Chains\themerge_kintsugi_testvectors.json
-		Chains\themerge_kintsugi_mev.json = Chains\themerge_kintsugi_mev.json
-	EndProjectSection
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.State.Test", "Nethermind.State.Test\Nethermind.State.Test.csproj", "{0A927E80-884F-4F41-BC5E-1825D32726DB}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Config", "Nethermind.Config\Nethermind.Config.csproj", "{56791AE4-2679-47A5-9918-6D0199FD2EE9}"
@@ -79,10 +46,6 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{4019B82F-1104-4D2C-9F96-05FD7D3575E8}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Stats", "Nethermind.Network.Stats\Nethermind.Network.Stats.csproj", "{9BEFCE4E-8814-42F4-B405-16195F9E1244}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RocksDbSharp", "..\rocksdb-sharp\RocksDbSharp\RocksDbSharp.csproj", "{294F2DF2-1F01-4478-A613-EF911C21DD2E}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RocksDbNative", "..\rocksdb-sharp\RocksDbNative\RocksDbNative.csproj", "{0CD42613-757B-4AA6-903D-CDFC0EAC697B}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Db.Test", "Nethermind.Db.Test\Nethermind.Db.Test.csproj", "{462BCF0B-2B76-45F0-A73D-34B540FEA569}"
 EndProject
@@ -112,93 +75,85 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.EthStats", "Neth
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Grpc", "Nethermind.Grpc\Nethermind.Grpc.csproj", "{B1B6C55A-04C4-4A66-828E-9A808A78E65F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Runner.Test", "Nethermind.Runner.Test\Nethermind.Runner.Test.csproj", "{47B19E0D-5DED-436D-9BFB-17EF887634D3}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Runner.Test", "Nethermind.Runner.Test\Nethermind.Runner.Test.csproj", "{47B19E0D-5DED-436D-9BFB-17EF887634D3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus.AuRa", "Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj", "{82C4DEFF-0025-4BFF-9FED-A050F1BEFC3E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Consensus.AuRa", "Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj", "{82C4DEFF-0025-4BFF-9FED-A050F1BEFC3E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.AuRa.Test", "Nethermind.AuRa.Test\Nethermind.AuRa.Test.csproj", "{2D5512D3-8E5B-4815-9791-A2220559AF92}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.AuRa.Test", "Nethermind.AuRa.Test\Nethermind.AuRa.Test.csproj", "{2D5512D3-8E5B-4815-9791-A2220559AF92}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Facade.Test", "Nethermind.Facade.Test\Nethermind.Facade.Test.csproj", "{0F09355D-ECB3-4F3F-93F7-BCDD70027B30}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Facade.Test", "Nethermind.Facade.Test\Nethermind.Facade.Test.csproj", "{0F09355D-ECB3-4F3F-93F7-BCDD70027B30}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Logging.NLog", "Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj", "{79330582-F005-494E-AE8D-D8C92A37CD72}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Logging.NLog", "Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj", "{79330582-F005-494E-AE8D-D8C92A37CD72}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Logging.NLog.Test", "Nethermind.Logging.NLog.Test\Nethermind.Logging.NLog.Test.csproj", "{B6A4B633-1630-4501-BF43-743D6A40FF86}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Logging.NLog.Test", "Nethermind.Logging.NLog.Test\Nethermind.Logging.NLog.Test.csproj", "{B6A4B633-1630-4501-BF43-743D6A40FF86}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Logging.Microsoft", "Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj", "{B07BC190-D053-408F-A9EF-C4C45AD0D9E2}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Logging.Microsoft", "Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj", "{B07BC190-D053-408F-A9EF-C4C45AD0D9E2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Json", "Nethermind.Serialization.Json\Nethermind.Serialization.Json.csproj", "{D3475FB1-E71A-430C-A758-460DD6D19A2C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Json", "Nethermind.Serialization.Json\Nethermind.Serialization.Json.csproj", "{D3475FB1-E71A-430C-A758-460DD6D19A2C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Specs", "Nethermind.Specs\Nethermind.Specs.csproj", "{BABC9F9C-38A4-445A-8BCC-439E5189497F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Specs", "Nethermind.Specs\Nethermind.Specs.csproj", "{BABC9F9C-38A4-445A-8BCC-439E5189497F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Rlp", "Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj", "{01D726FD-6980-4F7B-A77B-60BCDBDFECDB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Rlp", "Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj", "{01D726FD-6980-4F7B-A77B-60BCDBDFECDB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.TxPool", "Nethermind.TxPool\Nethermind.TxPool.csproj", "{7E5E72BF-5878-4FC0-B18F-CC3E814EC739}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.TxPool", "Nethermind.TxPool\Nethermind.TxPool.csproj", "{7E5E72BF-5878-4FC0-B18F-CC3E814EC739}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Trie", "Nethermind.Trie\Nethermind.Trie.csproj", "{991BF7D6-EC40-48F1-BF26-E4B66BB840BE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Trie", "Nethermind.Trie\Nethermind.Trie.csproj", "{991BF7D6-EC40-48F1-BF26-E4B66BB840BE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Db.Rpc", "Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj", "{78618EE3-9D90-4BD9-80F0-BAF842B3E07D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Db.Rpc", "Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj", "{78618EE3-9D90-4BD9-80F0-BAF842B3E07D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Db.Rocks", "Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj", "{EBDCE0AD-DDB6-46D6-B86D-396679FEBB3C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Db.Rocks", "Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj", "{EBDCE0AD-DDB6-46D6-B86D-396679FEBB3C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus", "Nethermind.Consensus\Nethermind.Consensus.csproj", "{74F3A9CF-C38C-497C-8FC1-131AC97C0DAE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Consensus", "Nethermind.Consensus\Nethermind.Consensus.csproj", "{74F3A9CF-C38C-497C-8FC1-131AC97C0DAE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Sockets.Test", "Nethermind.Sockets.Test\Nethermind.Sockets.Test.csproj", "{7655686B-E40E-4D0D-8BEA-B9CE57F5D163}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Sockets.Test", "Nethermind.Sockets.Test\Nethermind.Sockets.Test.csproj", "{7655686B-E40E-4D0D-8BEA-B9CE57F5D163}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Synchronization", "Nethermind.Synchronization\Nethermind.Synchronization.csproj", "{1FC0913D-D3D1-44A2-AA35-B2CF4A4F1815}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Synchronization", "Nethermind.Synchronization\Nethermind.Synchronization.csproj", "{1FC0913D-D3D1-44A2-AA35-B2CF4A4F1815}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Synchronization.Test", "Nethermind.Synchronization.Test\Nethermind.Synchronization.Test.csproj", "{41C27830-0B6C-40E8-B328-76FDB3E6FDA4}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Synchronization.Test", "Nethermind.Synchronization.Test\Nethermind.Synchronization.Test.csproj", "{41C27830-0B6C-40E8-B328-76FDB3E6FDA4}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Logging", "Logging", "{94CF4207-DA03-4D26-AAA2-284475A6DF1E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Native", "Nethermind.Native\Nethermind.Native.csproj", "{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Seq", "Nethermind.Seq\Nethermind.Seq.csproj", "{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Seq", "Nethermind.Seq\Nethermind.Seq.csproj", "{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Api", "Nethermind.Api\Nethermind.Api.csproj", "{5D8E2F39-9B57-48C0-8D0B-C85E21DED3DA}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "RocksDb", "RocksDb", "{086D039C-039D-4E2B-997E-33E95F7EB1DF}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Cli", "Nethermind.Cli\Nethermind.Cli.csproj", "{241EC70E-DAB2-4679-8ABE-55E07C9771CE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Api", "Nethermind.Api\Nethermind.Api.csproj", "{5D8E2F39-9B57-48C0-8D0B-C85E21DED3DA}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Trie.Test", "Nethermind.Trie.Test\Nethermind.Trie.Test.csproj", "{5CCA7D86-2D47-4464-970F-27A3604FC5A5}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cli", "Nethermind.Cli\Nethermind.Cli.csproj", "{241EC70E-DAB2-4679-8ABE-55E07C9771CE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Analytics", "Nethermind.Analytics\Nethermind.Analytics.csproj", "{643A1DD3-5DBE-44DB-B56D-9C3C5A46763F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Trie.Test", "Nethermind.Trie.Test\Nethermind.Trie.Test.csproj", "{5CCA7D86-2D47-4464-970F-27A3604FC5A5}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Cli.Test", "Nethermind.Cli.Test\Nethermind.Cli.Test.csproj", "{A06EBCB5-D56A-47D9-ACC2-B1A27F74E94B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Analytics", "Nethermind.Analytics\Nethermind.Analytics.csproj", "{643A1DD3-5DBE-44DB-B56D-9C3C5A46763F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Crypto", "Nethermind.Crypto\Nethermind.Crypto.csproj", "{50485E9D-C8A4-4543-9CD6-38BF65F9E3D7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cli.Test", "Nethermind.Cli.Test\Nethermind.Cli.Test.csproj", "{A06EBCB5-D56A-47D9-ACC2-B1A27F74E94B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.HealthChecks", "Nethermind.HealthChecks\Nethermind.HealthChecks.csproj", "{19105CF0-2602-4F5A-85F3-B3B7BA5B6C40}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Int256", "..\int256\src\Nethermind.Int256\Nethermind.Int256.csproj", "{B27A33D7-CBF0-4CD5-A056-14C16819586E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.EthStats.Test", "Nethermind.EthStats.Test\Nethermind.EthStats.Test.csproj", "{7CD8E337-B91C-46FE-8098-18448501AB04}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Crypto", "Nethermind.Crypto\Nethermind.Crypto.csproj", "{50485E9D-C8A4-4543-9CD6-38BF65F9E3D7}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.HealthChecks.Test", "Nethermind.HealthChecks.Test\Nethermind.HealthChecks.Test.csproj", "{09A68405-C911-4827-A705-931F45E26EFD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.HealthChecks", "Nethermind.HealthChecks\Nethermind.HealthChecks.csproj", "{19105CF0-2602-4F5A-85F3-B3B7BA5B6C40}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Ethash.Test", "Nethermind.Ethash.Test\Nethermind.Ethash.Test.csproj", "{8089024B-6744-4034-8F4A-0FD86C1491E2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.EthStats.Test", "Nethermind.EthStats.Test\Nethermind.EthStats.Test.csproj", "{7CD8E337-B91C-46FE-8098-18448501AB04}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Specs.Test", "Nethermind.Specs.Test\Nethermind.Specs.Test.csproj", "{0EC840BB-CC6A-4AB1-9E2A-625C777EBAB6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.HealthChecks.Test", "Nethermind.HealthChecks.Test\Nethermind.HealthChecks.Test.csproj", "{09A68405-C911-4827-A705-931F45E26EFD}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Api.Test", "Nethermind.Api.Test\Nethermind.Api.Test.csproj", "{DF891F59-5764-4F39-B42B-6263499B0464}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Ethash.Test", "Nethermind.Ethash.Test\Nethermind.Ethash.Test.csproj", "{8089024B-6744-4034-8F4A-0FD86C1491E2}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Merge.Plugin", "Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj", "{889ED383-C21B-471C-A8B6-9339FD397394}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Specs.Test", "Nethermind.Specs.Test\Nethermind.Specs.Test.csproj", "{0EC840BB-CC6A-4AB1-9E2A-625C777EBAB6}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MathGmp.Native", "..\Math.Gmp.Native\MathGmp.Native\MathGmp.Native.csproj", "{11A5D908-1FB6-4492-BFA8-676A096AC089}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Api.Test", "Nethermind.Api.Test\Nethermind.Api.Test.csproj", "{DF891F59-5764-4F39-B42B-6263499B0464}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.Plugin", "Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj", "{889ED383-C21B-471C-A8B6-9339FD397394}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.Plugin.Test", "Nethermind.Merge.Plugin.Test\Nethermind.Merge.Plugin.Test.csproj", "{87ECA5BD-8DB0-4ED6-82FF-9F68D576A8E8}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Merge.Plugin.Test", "Nethermind.Merge.Plugin.Test\Nethermind.Merge.Plugin.Test.csproj", "{87ECA5BD-8DB0-4ED6-82FF-9F68D576A8E8}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{ABB7AC7F-0FFE-4C2F-857C-C776E6764A76}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Tools.GasHistorian", "Nethermind.Tools.GasHistorian\Nethermind.Tools.GasHistorian.csproj", "{169ECB38-2AB5-4AEC-B90D-819A3B0ABB89}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Tools.GasHistorian", "Nethermind.Tools.GasHistorian\Nethermind.Tools.GasHistorian.csproj", "{169ECB38-2AB5-4AEC-B90D-819A3B0ABB89}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Mev", "Nethermind.Mev\Nethermind.Mev.csproj", "{003931D5-C59C-4273-A627-0905B172E6BB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Mev", "Nethermind.Mev\Nethermind.Mev.csproj", "{003931D5-C59C-4273-A627-0905B172E6BB}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Mev", "Mev", "{1EB9CF62-8EBD-4403-9F25-7D111146FC16}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Mev.Test", "Nethermind.Mev.Test\Nethermind.Mev.Test.csproj", "{03A35C06-7016-40A7-8C03-12FA79BC6F89}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Mev.Test", "Nethermind.Mev.Test\Nethermind.Mev.Test.csproj", "{03A35C06-7016-40A7-8C03-12FA79BC6F89}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Monitoring.Test", "Nethermind.Monitoring.Test\Nethermind.Monitoring.Test.csproj", "{CB8776CC-41B3-4D4C-91DF-669C76F0942B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Monitoring.Test", "Nethermind.Monitoring.Test\Nethermind.Monitoring.Test.csproj", "{CB8776CC-41B3-4D4C-91DF-669C76F0942B}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Plugins", "Plugins", "{78BED57D-720E-4E6C-ABA2-397B73B494F9}"
 EndProject
@@ -206,39 +161,59 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Merge", "Merge", "{6466669A
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Analytics", "Analytics", "{1CA19A3B-0E9F-44E6-B9D4-0066E443BBD5}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus.Test", "Nethermind.Consensus.Test\Nethermind.Consensus.Test.csproj", "{1343D865-029A-490F-A904-0015D10365F9}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Consensus.Test", "Nethermind.Consensus.Test\Nethermind.Consensus.Test.csproj", "{1343D865-029A-490F-A904-0015D10365F9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.TxPool.Test", "Nethermind.TxPool.Test\Nethermind.TxPool.Test.csproj", "{E218301C-9B8F-46A6-AE8D-236DB0A38112}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.TxPool.Test", "Nethermind.TxPool.Test\Nethermind.TxPool.Test.csproj", "{E218301C-9B8F-46A6-AE8D-236DB0A38112}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "AccountAbstraction", "AccountAbstraction", "{8817AC70-914D-4984-A22A-A36BB2C466DB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.AccountAbstraction", "Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj", "{4AD050F4-2C44-4E00-B6E6-2BE0ACD3A414}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.AccountAbstraction", "Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj", "{4AD050F4-2C44-4E00-B6E6-2BE0ACD3A414}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.AccountAbstraction.Test", "Nethermind.AccountAbstraction.Test\Nethermind.AccountAbstraction.Test.csproj", "{B2B7E43C-B459-488D-9ED0-A9A83B24AF1B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.AccountAbstraction.Test", "Nethermind.AccountAbstraction.Test\Nethermind.AccountAbstraction.Test.csproj", "{B2B7E43C-B459-488D-9ED0-A9A83B24AF1B}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Hive", "Hive", "{C9AFA242-6BFF-4579-B67E-956B013BFE4A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Hive", "Nethermind.Hive\Nethermind.Hive.csproj", "{B9C52326-BC13-4C16-B440-8BD25EB23BFA}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Hive", "Nethermind.Hive\Nethermind.Hive.csproj", "{B9C52326-BC13-4C16-B440-8BD25EB23BFA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Hive.Tests", "Nethermind.Hive.Tests\Nethermind.Hive.Tests.csproj", "{96270195-EB87-41ED-A4E2-A342C50C4CF4}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Hive.Test", "Nethermind.Hive.Test\Nethermind.Hive.Test.csproj", "{96270195-EB87-41ED-A4E2-A342C50C4CF4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Enr", "Nethermind.Network.Enr\Nethermind.Network.Enr.csproj", "{03D72C8A-4659-4E84-9880-EC686EF25F65}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Enr", "Nethermind.Network.Enr\Nethermind.Network.Enr.csproj", "{03D72C8A-4659-4E84-9880-EC686EF25F65}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Enr.Test", "Nethermind.Network.Enr.Test\Nethermind.Network.Enr.Test.csproj", "{1BA992CF-157C-4E0C-B031-46502D1AFD7D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Enr.Test", "Nethermind.Network.Enr.Test\Nethermind.Network.Enr.Test.csproj", "{1BA992CF-157C-4E0C-B031-46502D1AFD7D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Discovery", "Nethermind.Network.Discovery\Nethermind.Network.Discovery.csproj", "{0B5265D6-2B5C-411D-9E8C-9748CBCBFE84}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Discovery", "Nethermind.Network.Discovery\Nethermind.Network.Discovery.csproj", "{0B5265D6-2B5C-411D-9E8C-9748CBCBFE84}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Discovery.Test", "Nethermind.Network.Discovery.Test\Nethermind.Network.Discovery.Test.csproj", "{25910851-D58B-42D5-83F1-0BA530CD8E1E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Discovery.Test", "Nethermind.Network.Discovery.Test\Nethermind.Network.Discovery.Test.csproj", "{25910851-D58B-42D5-83F1-0BA530CD8E1E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Dns", "Nethermind.Network.Dns\Nethermind.Network.Dns.csproj", "{DB6AD9E1-415C-44B3-93BA-F5A97ED53B9B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Dns", "Nethermind.Network.Dns\Nethermind.Network.Dns.csproj", "{DB6AD9E1-415C-44B3-93BA-F5A97ED53B9B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Dns.Test", "Nethermind.Network.Dns.Test\Nethermind.Network.Dns.Test.csproj", "{0DD96857-0F06-42CA-B249-45B4AF4E81CA}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Dns.Test", "Nethermind.Network.Dns.Test\Nethermind.Network.Dns.Test.csproj", "{0DD96857-0F06-42CA-B249-45B4AF4E81CA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Init", "Nethermind.Init\Nethermind.Init.csproj", "{7D7D6C9F-4DF9-4CAE-9AAA-76D79081B0AD}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Init", "Nethermind.Init\Nethermind.Init.csproj", "{7D7D6C9F-4DF9-4CAE-9AAA-76D79081B0AD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.AuRa.Test", "Nethermind.Merge.AuRa.Test\Nethermind.Merge.AuRa.Test.csproj", "{B5BE357D-69B3-4354-BC6C-F39182BE937E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Merge.AuRa.Test", "Nethermind.Merge.AuRa.Test\Nethermind.Merge.AuRa.Test.csproj", "{B5BE357D-69B3-4354-BC6C-F39182BE937E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.AuRa", "Nethermind.Merge.AuRa\Nethermind.Merge.AuRa.csproj", "{F166365D-6E31-401B-9753-59EADB800E2A}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Merge.AuRa", "Nethermind.Merge.AuRa\Nethermind.Merge.AuRa.csproj", "{F166365D-6E31-401B-9753-59EADB800E2A}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "TraceStore", "TraceStore", "{06AF5D92-0E47-4A98-AF49-492F814618E3}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc.TraceStore", "Nethermind.JsonRpc.TraceStore\Nethermind.JsonRpc.TraceStore.csproj", "{D4C5A63E-8E47-43D3-B726-B1D95591100C}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc.TraceStore.Test", "Nethermind.JsonRpc.TraceStore.Test\Nethermind.JsonRpc.TraceStore.Test.csproj", "{B4A10FCA-4982-4D89-8D8C-6154882938E4}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "UPnP", "UPnP", "{2EDE2554-59C0-4E78-92F7-EB8077AA597D}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.UPnP.Plugin", "Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj", "{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{0E0F75A7-A03F-4D66-910B-17DB659A33E3}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Ssz.Test", "Nethermind.Serialization.Ssz.Test\Nethermind.Serialization.Ssz.Test.csproj", "{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Merkleization", "Nethermind.Merkleization\Nethermind.Merkleization.csproj", "{E5001E79-6562-4EC4-9000-4C70DF95DF00}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Ssz", "Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj", "{FD9E69EA-75DB-495B-A8DD-139D7A9D8C6D}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Contract", "Nethermind.Network.Contract\Nethermind.Network.Contract.csproj", "{AD151E35-4BBC-4A83-8F57-CC8665F6E007}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -250,10 +225,6 @@ Global
 		{5751C57B-9F2D-45DE-BCC2-42645B85E39E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5751C57B-9F2D-45DE-BCC2-42645B85E39E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5751C57B-9F2D-45DE-BCC2-42645B85E39E}.Release|Any CPU.Build.0 = Release|Any CPU
-		{75B8BE8D-18B0-493C-8BA5-083D4B952BF9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{75B8BE8D-18B0-493C-8BA5-083D4B952BF9}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{75B8BE8D-18B0-493C-8BA5-083D4B952BF9}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{75B8BE8D-18B0-493C-8BA5-083D4B952BF9}.Release|Any CPU.Build.0 = Release|Any CPU
 		{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -270,14 +241,6 @@ Global
 		{6BAD851C-B0A2-4DFE-A1F3-1C3A634C522B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6BAD851C-B0A2-4DFE-A1F3-1C3A634C522B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6BAD851C-B0A2-4DFE-A1F3-1C3A634C522B}.Release|Any CPU.Build.0 = Release|Any CPU
-		{233F90B7-8850-4E62-93F2-32E4676E8D22}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{233F90B7-8850-4E62-93F2-32E4676E8D22}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{233F90B7-8850-4E62-93F2-32E4676E8D22}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{233F90B7-8850-4E62-93F2-32E4676E8D22}.Release|Any CPU.Build.0 = Release|Any CPU
-		{99176509-944E-4330-BCC0-B286A9E585E6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{99176509-944E-4330-BCC0-B286A9E585E6}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{99176509-944E-4330-BCC0-B286A9E585E6}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{99176509-944E-4330-BCC0-B286A9E585E6}.Release|Any CPU.Build.0 = Release|Any CPU
 		{44B0C68E-E3F0-4CAE-8C7C-4A3EAB62E7DD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{44B0C68E-E3F0-4CAE-8C7C-4A3EAB62E7DD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{44B0C68E-E3F0-4CAE-8C7C-4A3EAB62E7DD}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -342,14 +305,6 @@ Global
 		{9BEFCE4E-8814-42F4-B405-16195F9E1244}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9BEFCE4E-8814-42F4-B405-16195F9E1244}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9BEFCE4E-8814-42F4-B405-16195F9E1244}.Release|Any CPU.Build.0 = Release|Any CPU
-		{294F2DF2-1F01-4478-A613-EF911C21DD2E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{294F2DF2-1F01-4478-A613-EF911C21DD2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{294F2DF2-1F01-4478-A613-EF911C21DD2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{294F2DF2-1F01-4478-A613-EF911C21DD2E}.Release|Any CPU.Build.0 = Release|Any CPU
-		{0CD42613-757B-4AA6-903D-CDFC0EAC697B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{0CD42613-757B-4AA6-903D-CDFC0EAC697B}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{0CD42613-757B-4AA6-903D-CDFC0EAC697B}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{0CD42613-757B-4AA6-903D-CDFC0EAC697B}.Release|Any CPU.Build.0 = Release|Any CPU
 		{462BCF0B-2B76-45F0-A73D-34B540FEA569}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{462BCF0B-2B76-45F0-A73D-34B540FEA569}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{462BCF0B-2B76-45F0-A73D-34B540FEA569}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -482,14 +437,6 @@ Global
 		{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{5CCA7D86-2D47-4464-970F-27A3604FC5A5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{5CCA7D86-2D47-4464-970F-27A3604FC5A5}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{5CCA7D86-2D47-4464-970F-27A3604FC5A5}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{5CCA7D86-2D47-4464-970F-27A3604FC5A5}.Release|Any CPU.Build.0 = Release|Any CPU
-		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Release|Any CPU.Build.0 = Release|Any CPU
-		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5D8E2F39-9B57-48C0-8D0B-C85E21DED3DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{5D8E2F39-9B57-48C0-8D0B-C85E21DED3DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5D8E2F39-9B57-48C0-8D0B-C85E21DED3DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -498,6 +445,10 @@ Global
 		{241EC70E-DAB2-4679-8ABE-55E07C9771CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{241EC70E-DAB2-4679-8ABE-55E07C9771CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{241EC70E-DAB2-4679-8ABE-55E07C9771CE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5CCA7D86-2D47-4464-970F-27A3604FC5A5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5CCA7D86-2D47-4464-970F-27A3604FC5A5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5CCA7D86-2D47-4464-970F-27A3604FC5A5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5CCA7D86-2D47-4464-970F-27A3604FC5A5}.Release|Any CPU.Build.0 = Release|Any CPU
 		{643A1DD3-5DBE-44DB-B56D-9C3C5A46763F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{643A1DD3-5DBE-44DB-B56D-9C3C5A46763F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{643A1DD3-5DBE-44DB-B56D-9C3C5A46763F}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -506,10 +457,6 @@ Global
 		{A06EBCB5-D56A-47D9-ACC2-B1A27F74E94B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A06EBCB5-D56A-47D9-ACC2-B1A27F74E94B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A06EBCB5-D56A-47D9-ACC2-B1A27F74E94B}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B27A33D7-CBF0-4CD5-A056-14C16819586E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B27A33D7-CBF0-4CD5-A056-14C16819586E}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B27A33D7-CBF0-4CD5-A056-14C16819586E}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B27A33D7-CBF0-4CD5-A056-14C16819586E}.Release|Any CPU.Build.0 = Release|Any CPU
 		{50485E9D-C8A4-4543-9CD6-38BF65F9E3D7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{50485E9D-C8A4-4543-9CD6-38BF65F9E3D7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{50485E9D-C8A4-4543-9CD6-38BF65F9E3D7}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -534,18 +481,10 @@ Global
 		{0EC840BB-CC6A-4AB1-9E2A-625C777EBAB6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0EC840BB-CC6A-4AB1-9E2A-625C777EBAB6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0EC840BB-CC6A-4AB1-9E2A-625C777EBAB6}.Release|Any CPU.Build.0 = Release|Any CPU
-		{11A5D908-1FB6-4492-BFA8-676A096AC089}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{11A5D908-1FB6-4492-BFA8-676A096AC089}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{11A5D908-1FB6-4492-BFA8-676A096AC089}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{11A5D908-1FB6-4492-BFA8-676A096AC089}.Release|Any CPU.Build.0 = Release|Any CPU
 		{DF891F59-5764-4F39-B42B-6263499B0464}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{DF891F59-5764-4F39-B42B-6263499B0464}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DF891F59-5764-4F39-B42B-6263499B0464}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DF891F59-5764-4F39-B42B-6263499B0464}.Release|Any CPU.Build.0 = Release|Any CPU
-		{6E358E52-CDA6-4716-AEBC-A94E2F779AE3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{6E358E52-CDA6-4716-AEBC-A94E2F779AE3}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{6E358E52-CDA6-4716-AEBC-A94E2F779AE3}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{6E358E52-CDA6-4716-AEBC-A94E2F779AE3}.Release|Any CPU.Build.0 = Release|Any CPU
 		{889ED383-C21B-471C-A8B6-9339FD397394}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{889ED383-C21B-471C-A8B6-9339FD397394}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{889ED383-C21B-471C-A8B6-9339FD397394}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -586,10 +525,6 @@ Global
 		{B2B7E43C-B459-488D-9ED0-A9A83B24AF1B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B2B7E43C-B459-488D-9ED0-A9A83B24AF1B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B2B7E43C-B459-488D-9ED0-A9A83B24AF1B}.Release|Any CPU.Build.0 = Release|Any CPU
-		{F6356747-7925-46D9-AA4C-72671B199A31}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{F6356747-7925-46D9-AA4C-72671B199A31}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{F6356747-7925-46D9-AA4C-72671B199A31}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{F6356747-7925-46D9-AA4C-72671B199A31}.Release|Any CPU.Build.0 = Release|Any CPU
 		{B9C52326-BC13-4C16-B440-8BD25EB23BFA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B9C52326-BC13-4C16-B440-8BD25EB23BFA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B9C52326-BC13-4C16-B440-8BD25EB23BFA}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -634,79 +569,80 @@ Global
 		{F166365D-6E31-401B-9753-59EADB800E2A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F166365D-6E31-401B-9753-59EADB800E2A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F166365D-6E31-401B-9753-59EADB800E2A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D4C5A63E-8E47-43D3-B726-B1D95591100C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D4C5A63E-8E47-43D3-B726-B1D95591100C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D4C5A63E-8E47-43D3-B726-B1D95591100C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D4C5A63E-8E47-43D3-B726-B1D95591100C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B4A10FCA-4982-4D89-8D8C-6154882938E4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B4A10FCA-4982-4D89-8D8C-6154882938E4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B4A10FCA-4982-4D89-8D8C-6154882938E4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B4A10FCA-4982-4D89-8D8C-6154882938E4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E5001E79-6562-4EC4-9000-4C70DF95DF00}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E5001E79-6562-4EC4-9000-4C70DF95DF00}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E5001E79-6562-4EC4-9000-4C70DF95DF00}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E5001E79-6562-4EC4-9000-4C70DF95DF00}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FD9E69EA-75DB-495B-A8DD-139D7A9D8C6D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FD9E69EA-75DB-495B-A8DD-139D7A9D8C6D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FD9E69EA-75DB-495B-A8DD-139D7A9D8C6D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FD9E69EA-75DB-495B-A8DD-139D7A9D8C6D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
-		{1E36E03B-7457-42D0-A085-FC2BB23038F5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{1E36E03B-7457-42D0-A085-FC2BB23038F5}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{1E36E03B-7457-42D0-A085-FC2BB23038F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{1E36E03B-7457-42D0-A085-FC2BB23038F5}.Release|Any CPU.Build.0 = Release|Any CPU
-		{20ACBDCF-F208-4752-A9FB-11AEAC977F96}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{20ACBDCF-F208-4752-A9FB-11AEAC977F96}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{20ACBDCF-F208-4752-A9FB-11AEAC977F96}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{20ACBDCF-F208-4752-A9FB-11AEAC977F96}.Release|Any CPU.Build.0 = Release|Any CPU
-		{9FD2C89A-9194-4C15-8267-8FEC0135A315}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{9FD2C89A-9194-4C15-8267-8FEC0135A315}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{9FD2C89A-9194-4C15-8267-8FEC0135A315}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{9FD2C89A-9194-4C15-8267-8FEC0135A315}.Release|Any CPU.Build.0 = Release|Any CPU
-		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Release|Any CPU.Build.0 = Release|Any CPU
-		{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{5CCA7D86-2D47-4464-970F-27A3604FC5A5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{5CCA7D86-2D47-4464-970F-27A3604FC5A5}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{5CCA7D86-2D47-4464-970F-27A3604FC5A5}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{5CCA7D86-2D47-4464-970F-27A3604FC5A5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{E513347C-7082-42B8-B3A8-39C3D6992A9B} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{2D5512D3-8E5B-4815-9791-A2220559AF92} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{E6C8C319-1BA8-437D-961D-1357FF5A9699} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{333F90F5-6A53-40AF-98DC-1DE4B024D5D8} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{8167D02A-F653-45D6-BDAA-110FEAB6116D} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
-		{B07BC190-D053-408F-A9EF-C4C45AD0D9E2} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
-		{79330582-F005-494E-AE8D-D8C92A37CD72} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
-		{0CD42613-757B-4AA6-903D-CDFC0EAC697B} = {086D039C-039D-4E2B-997E-33E95F7EB1DF}
-		{294F2DF2-1F01-4478-A613-EF911C21DD2E} = {086D039C-039D-4E2B-997E-33E95F7EB1DF}
-		{44B0C68E-E3F0-4CAE-8C7C-4A3EAB62E7DD} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{462BCF0B-2B76-45F0-A73D-34B540FEA569} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{0F09355D-ECB3-4F3F-93F7-BCDD70027B30} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{6BAD851C-B0A2-4DFE-A1F3-1C3A634C522B} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{318B0825-0389-4A00-9448-551CA3AF7E45} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{658F7F8A-0314-4005-93E8-03B4EB367597} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{E9B7F7DC-7FE0-4EAC-B1C4-C9592B266A2A} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{F3A983E4-1E44-49DF-B948-210490415CEB} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{44B0C68E-E3F0-4CAE-8C7C-4A3EAB62E7DD} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{F6FDB712-1670-4B62-B341-EC6804815991} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{E9B7F7DC-7FE0-4EAC-B1C4-C9592B266A2A} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{2CE2C804-40B6-4ECA-AF81-556041FA03C6} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{47B19E0D-5DED-436D-9BFB-17EF887634D3} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{99176509-944E-4330-BCC0-B286A9E585E6} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{658F7F8A-0314-4005-93E8-03B4EB367597} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{E6C8C319-1BA8-437D-961D-1357FF5A9699} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{0A927E80-884F-4F41-BC5E-1825D32726DB} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{41C27830-0B6C-40E8-B328-76FDB3E6FDA4} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{318B0825-0389-4A00-9448-551CA3AF7E45} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{462BCF0B-2B76-45F0-A73D-34B540FEA569} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{7765262D-2A18-4C65-80F6-6C94977A5DAD} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{7655686B-E40E-4D0D-8BEA-B9CE57F5D163} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{333F90F5-6A53-40AF-98DC-1DE4B024D5D8} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{E513347C-7082-42B8-B3A8-39C3D6992A9B} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{F3A983E4-1E44-49DF-B948-210490415CEB} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{8167D02A-F653-45D6-BDAA-110FEAB6116D} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
+		{47B19E0D-5DED-436D-9BFB-17EF887634D3} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{2D5512D3-8E5B-4815-9791-A2220559AF92} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{0F09355D-ECB3-4F3F-93F7-BCDD70027B30} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{79330582-F005-494E-AE8D-D8C92A37CD72} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
 		{B6A4B633-1630-4501-BF43-743D6A40FF86} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
-		{5CCA7D86-2D47-4464-970F-27A3604FC5A5} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{B07BC190-D053-408F-A9EF-C4C45AD0D9E2} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
+		{7655686B-E40E-4D0D-8BEA-B9CE57F5D163} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{41C27830-0B6C-40E8-B328-76FDB3E6FDA4} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
+		{5CCA7D86-2D47-4464-970F-27A3604FC5A5} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{643A1DD3-5DBE-44DB-B56D-9C3C5A46763F} = {1CA19A3B-0E9F-44E6-B9D4-0066E443BBD5}
 		{A06EBCB5-D56A-47D9-ACC2-B1A27F74E94B} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{7CD8E337-B91C-46FE-8098-18448501AB04} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{09A68405-C911-4827-A705-931F45E26EFD} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{8089024B-6744-4034-8F4A-0FD86C1491E2} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{0EC840BB-CC6A-4AB1-9E2A-625C777EBAB6} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{DF891F59-5764-4F39-B42B-6263499B0464} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{169ECB38-2AB5-4AEC-B90D-819A3B0ABB89} = {ABB7AC7F-0FFE-4C2F-857C-C776E6764A76}
-		{003931D5-C59C-4273-A627-0905B172E6BB} = {1EB9CF62-8EBD-4403-9F25-7D111146FC16}
-		{03A35C06-7016-40A7-8C03-12FA79BC6F89} = {1EB9CF62-8EBD-4403-9F25-7D111146FC16}
-		{CB8776CC-41B3-4D4C-91DF-669C76F0942B} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{1EB9CF62-8EBD-4403-9F25-7D111146FC16} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
-		{6466669A-B504-4E2E-9D20-C7E03FCF7D4F} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
 		{889ED383-C21B-471C-A8B6-9339FD397394} = {6466669A-B504-4E2E-9D20-C7E03FCF7D4F}
 		{87ECA5BD-8DB0-4ED6-82FF-9F68D576A8E8} = {6466669A-B504-4E2E-9D20-C7E03FCF7D4F}
+		{169ECB38-2AB5-4AEC-B90D-819A3B0ABB89} = {ABB7AC7F-0FFE-4C2F-857C-C776E6764A76}
+		{003931D5-C59C-4273-A627-0905B172E6BB} = {1EB9CF62-8EBD-4403-9F25-7D111146FC16}
+		{1EB9CF62-8EBD-4403-9F25-7D111146FC16} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
+		{03A35C06-7016-40A7-8C03-12FA79BC6F89} = {1EB9CF62-8EBD-4403-9F25-7D111146FC16}
+		{CB8776CC-41B3-4D4C-91DF-669C76F0942B} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{6466669A-B504-4E2E-9D20-C7E03FCF7D4F} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
 		{1CA19A3B-0E9F-44E6-B9D4-0066E443BBD5} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
-		{643A1DD3-5DBE-44DB-B56D-9C3C5A46763F} = {1CA19A3B-0E9F-44E6-B9D4-0066E443BBD5}
 		{1343D865-029A-490F-A904-0015D10365F9} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{E218301C-9B8F-46A6-AE8D-236DB0A38112} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{8817AC70-914D-4984-A22A-A36BB2C466DB} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
@@ -718,9 +654,13 @@ Global
 		{1BA992CF-157C-4E0C-B031-46502D1AFD7D} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{25910851-D58B-42D5-83F1-0BA530CD8E1E} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{0DD96857-0F06-42CA-B249-45B4AF4E81CA} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
+		{B5BE357D-69B3-4354-BC6C-F39182BE937E} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{06AF5D92-0E47-4A98-AF49-492F814618E3} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
+		{D4C5A63E-8E47-43D3-B726-B1D95591100C} = {06AF5D92-0E47-4A98-AF49-492F814618E3}
+		{B4A10FCA-4982-4D89-8D8C-6154882938E4} = {06AF5D92-0E47-4A98-AF49-492F814618E3}
+		{2EDE2554-59C0-4E78-92F7-EB8077AA597D} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
+		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE} = {2EDE2554-59C0-4E78-92F7-EB8077AA597D}
+		{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

@@ -1,25 +1,14 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
-using System.Timers;
+
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -29,13 +18,15 @@ namespace Nethermind.Network
 {
     public class SessionMonitor : ISessionMonitor
     {
-        private Timer _pingTimer;
-
+        private PeriodicTimer _pingTimer;
+        private Task _pingTimerTask;
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
 
         private TimeSpan _pingInterval;
         private List<Task<bool>> _pingTasks = new();
+
+        private CancellationTokenSource? _cancellationTokenSource;
 
         public SessionMonitor(INetworkConfig config, ILogManager logManager)
         {
@@ -68,57 +59,58 @@ namespace Nethermind.Network
 
         private void OnDisconnected(object sender, DisconnectEventArgs e)
         {
-            ISession session = (ISession) sender;
+            ISession session = (ISession)sender;
             session.Disconnected -= OnDisconnected;
             _sessions.TryRemove(session.SessionId, out session);
         }
 
-        private void SendPingMessages()
-        {
-            Task task = Task.Run(SendPingMessagesAsync).ContinueWith(x =>
-            {
-                if (x.IsFaulted && _logger.IsError)
-                {
-                    if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error during send ping messages: {x.Exception}");
-                }
-            });
-
-            task.Wait();
-        }
-
         private async Task SendPingMessagesAsync()
         {
-            foreach (ISession session in _sessions.Values)
+            var token = _cancellationTokenSource.Token;
+            while (!token.IsCancellationRequested
+                && await _pingTimer.WaitForNextTickAsync(token))
             {
-                if (session.State == SessionState.Initialized && DateTime.UtcNow - session.LastPingUtc > _pingInterval)
+                try
                 {
-                    Task<bool> pingTask = SendPingMessage(session);
-                    _pingTasks.Add(pingTask);
-                }
-            }
-
-            if (_pingTasks.Any())
-            {
-                bool[] tasks = await Task.WhenAll(_pingTasks);
-                int tasksLength = tasks.Length;
-                if (tasksLength != 0)
-                {
-                    int successes = tasks.Count(x => x);
-                    int failures = tasksLength - successes;
-                    if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasksLength} peers. Received {successes} pongs.");
-                    if (failures > tasks.Length / 3)
+                    _pingTasks.Clear();
+                    foreach (ISession session in _sessions.Values)
                     {
-                        decimal percentage = (decimal) failures / tasksLength;
-                        if (_logger.IsInfo) _logger.Info($"{percentage:P0} of nodes did not respond to a Ping message - {failures}/{tasksLength}");
+                        if (session.State == SessionState.Initialized && DateTime.UtcNow - session.LastPingUtc > _pingInterval)
+                        {
+                            Task<bool> pingTask = SendPingMessage(session);
+                            _pingTasks.Add(pingTask);
+                        }
                     }
+
+                    if (_pingTasks.Count > 0)
+                    {
+                        bool[] tasks = await Task.WhenAll(_pingTasks);
+                        int tasksLength = tasks.Length;
+                        if (tasksLength != 0)
+                        {
+                            int successes = tasks.Count(x => x);
+                            int failures = tasksLength - successes;
+                            if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasksLength} peers. Received {successes} pongs.");
+                            if (failures > tasks.Length / 3)
+                            {
+                                decimal percentage = (decimal)failures / tasksLength;
+                                if (_logger.IsInfo) _logger.Info($"{percentage:P0} of nodes did not respond to a Ping message - {failures}/{tasksLength}");
+                            }
+                        }
+                    }
+                    else if (_logger.IsTrace) _logger.Trace("Sent no ping messages.");
+
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"DEBUG/ERROR Error during send ping messages: {ex}");
                 }
             }
-            else if (_logger.IsTrace) _logger.Trace("Sent no ping messages.");
         }
 
         private async Task<bool> SendPingMessage(ISession session)
         {
-            if (session.PingSender == null)
+            if (session.PingSender is null)
             {
                 /* this would happen when session is initialized already but the protocol is not yet initialized
                    we do not have a separate session state for it at the moment */
@@ -157,26 +149,9 @@ namespace Nethermind.Network
         {
             if (_logger.IsDebug) _logger.Debug("Starting session monitor");
 
-            _pingTimer = new Timer(_networkConfig.P2PPingInterval) {AutoReset = false};
-            _pingTimer.Elapsed += (sender, e) =>
-            {
-                try
-                {
-                    _pingTimer.Enabled = false;
-                    SendPingMessages();
-                }
-                catch (Exception exception)
-                {
-                    if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Ping timer failed", exception);
-                }
-                finally
-                {
-                    _pingTasks.Clear();
-                    _pingTimer.Enabled = true;
-                }
-            };
-
-            _pingTimer.Start();
+            _cancellationTokenSource = new CancellationTokenSource();
+            _pingTimer = new PeriodicTimer(_pingInterval);
+            _pingTimerTask = SendPingMessagesAsync();
         }
 
         private void StopPingTimer()
@@ -184,7 +159,7 @@ namespace Nethermind.Network
             try
             {
                 if (_logger.IsDebug) _logger.Debug("Stopping session monitor");
-                _pingTimer?.Stop();
+                CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
             }
             catch (Exception e)
             {

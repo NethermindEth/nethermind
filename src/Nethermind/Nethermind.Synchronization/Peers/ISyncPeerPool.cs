@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -32,8 +19,8 @@ namespace Nethermind.Synchronization.Peers
 
         void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts allocationContexts);
 
-        void ReportBreachOfProtocol(PeerInfo peerInfo, string details);
-        
+        void ReportBreachOfProtocol(PeerInfo peerInfo, InitiateDisconnectReason initiateDisconnectReason, string details);
+
         void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts allocationContexts);
 
         /// <summary>
@@ -71,7 +58,7 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         /// <param name="syncPeer"></param>
         void AddPeer(ISyncPeer syncPeer);
-        
+
         /// <summary>
         /// Invoked after a session / connection is closed.
         /// </summary>
@@ -83,7 +70,7 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         /// <param name="id"></param>
         void SetPeerPriority(PublicKey id);
-        
+
         /// <summary>
         /// It is hard to track total difficulty so occasionally we send a total difficulty request to update node information.
         /// Specifically when nodes send HintBlock message they do not attach total difficulty information.
@@ -91,7 +78,7 @@ namespace Nethermind.Synchronization.Peers
         /// <param name="syncPeer"></param>
         /// <param name="hash">Hash of a block that we know might be the head block of the peer</param>
         void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak hash);
-        
+
         /// <summary>
         /// Starts the pool loops.
         /// </summary>
@@ -102,11 +89,11 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         /// <returns></returns>
         Task StopAsync();
-        
+
         PeerInfo? GetPeer(Node node);
 
         event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
-        
+
         event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed;
     }
 }

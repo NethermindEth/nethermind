@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -38,7 +25,7 @@ namespace Nethermind.Evm.Test
             base.Setup();
             _blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
         }
-        
+
         [Test(Description = "Refunds should not be given when the call fails due to lack of gas for code deposit payment")]
         public void Regression_mainnet_6108276()
         {
@@ -63,22 +50,21 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough
                 .Done;
 
             TestAllTracerWithOutput receipt = Execute(code);
-            byte[] result = Storage.Get(storageCell);
-            Assert.AreEqual(new byte[] {0}, result, "storage reverted");
-            Assert.AreEqual(98777, receipt.GasSpent, "no refund");
-            
-            byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
-            Assert.AreEqual(new byte[1], returnData, "address returned");
+            byte[] result = TestState.Get(storageCell);
+            Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
+            Assert.That(receipt.GasSpent, Is.EqualTo(98777), "no refund");
+
+            byte[] returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0));
+            Assert.That(returnData, Is.EqualTo(new byte[1]), "address returned");
         }
-        
+
         [Test(Description = "Deposit OutOfGas before EIP-2")]
         public void Regression_mainnet_226522()
         {
@@ -104,20 +90,19 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough
                 .Done;
 
             TestAllTracerWithOutput receipt = Execute(code);
-            byte[] result = Storage.Get(storageCell);
-            Assert.AreEqual(new byte[] {0}, result, "storage reverted");
-            Assert.AreEqual(83199, receipt.GasSpent, "with refund");
-            
-            byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
-            Assert.AreEqual(deployed.Bytes, returnData, "address returned");
+            byte[] result = TestState.Get(storageCell);
+            Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
+            Assert.That(receipt.GasSpent, Is.EqualTo(83199), "with refund");
+
+            byte[] returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0));
+            Assert.That(returnData, Is.EqualTo(deployed.Bytes), "address returned");
         }
     }
 }

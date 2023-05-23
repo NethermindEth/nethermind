@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Abi;
@@ -22,7 +9,6 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -30,12 +16,13 @@ using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.TxPool;
+using Nethermind.Config;
 
 namespace Nethermind.Consensus.AuRa
 {
     public class AuRaValidatorFactory : IAuRaValidatorFactory
     {
-        private readonly IStateProvider _stateProvider;
+        private readonly IWorldState _stateProvider;
         private readonly IAbiEncoder _abiEncoder;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
@@ -45,7 +32,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IAuRaBlockFinalizationManager _finalizationManager;
         private readonly ITxSender _txSender;
         private readonly ITxPool _txPool;
-        private readonly IMiningConfig _miningConfig;
+        private readonly IBlocksConfig _blocksConfig;
         private readonly ILogManager _logManager;
         private readonly ISigner _signer;
         private readonly ISpecProvider _specProvider;
@@ -55,7 +42,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly bool _forSealing;
 
         public AuRaValidatorFactory(IAbiEncoder abiEncoder,
-            IStateProvider stateProvider,
+            IWorldState stateProvider,
             ITransactionProcessor transactionProcessor,
             IBlockTree blockTree,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
@@ -64,7 +51,7 @@ namespace Nethermind.Consensus.AuRa
             IAuRaBlockFinalizationManager finalizationManager,
             ITxSender txSender,
             ITxPool txPool,
-            IMiningConfig miningConfig,
+            IBlocksConfig blocksConfig,
             ILogManager logManager,
             ISigner signer,
             ISpecProvider specProvider,
@@ -82,7 +69,7 @@ namespace Nethermind.Consensus.AuRa
             _finalizationManager = finalizationManager;
             _txSender = txSender;
             _txPool = txPool;
-            _miningConfig = miningConfig;
+            _blocksConfig = blocksConfig;
             _logManager = logManager;
             _signer = signer;
             _reportingValidatorCache = reportingValidatorCache;
@@ -99,7 +86,7 @@ namespace Nethermind.Consensus.AuRa
 
             var validSealerStrategy = new ValidSealerStrategy();
             long startBlockNumber = startBlock ?? AuRaValidatorBase.DefaultStartBlockNumber;
-            
+
             ContractBasedValidator GetContractBasedValidator() =>
                 new ContractBasedValidator(
                     GetValidatorContract(),
@@ -113,35 +100,35 @@ namespace Nethermind.Consensus.AuRa
                     startBlockNumber,
                     _posdaoTransition,
                     _forSealing);
-            
+
             return validator.ValidatorType switch
             {
-                AuRaParameters.ValidatorType.List => 
+                AuRaParameters.ValidatorType.List =>
                     new ListBasedValidator(
-                        validator, 
-                        validSealerStrategy, 
-                        _validatorStore, 
+                        validator,
+                        validSealerStrategy,
+                        _validatorStore,
                         _logManager,
                         startBlockNumber,
                         _forSealing),
-                
+
                 AuRaParameters.ValidatorType.Contract => GetContractBasedValidator(),
-                
-                AuRaParameters.ValidatorType.ReportingContract => 
+
+                AuRaParameters.ValidatorType.ReportingContract =>
                     new ReportingContractBasedValidator(
                         GetContractBasedValidator(),
                         GetReportingValidatorContract(),
                         _posdaoTransition,
                         _txSender,
                         _txPool,
-                        _miningConfig,
+                        _blocksConfig,
                         _stateProvider,
                         _reportingValidatorCache,
                         _specProvider,
                         _gasPriceOracle,
                         _logManager),
-                
-                AuRaParameters.ValidatorType.Multi => 
+
+                AuRaParameters.ValidatorType.Multi =>
                     new MultiValidator(
                         validator,
                         this,
@@ -151,7 +138,7 @@ namespace Nethermind.Consensus.AuRa
                         parentHeader,
                         _logManager,
                         _forSealing),
-                
+
                 _ => throw new ArgumentOutOfRangeException()
             };
         }

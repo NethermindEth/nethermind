@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
 using System.Linq;
@@ -37,8 +24,8 @@ namespace Nethermind.Blockchain.Test.Proofs
         {
             _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_calculate_root()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
@@ -46,40 +33,38 @@ namespace Nethermind.Blockchain.Test.Proofs
 
             if (_releaseSpec == Berlin.Instance)
             {
-                Assert.AreEqual("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5",
-                    txTrie.RootHash.ToString());
+                Assert.That(txTrie.RootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
             }
             else
             {
-                Assert.AreEqual("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5",
-                    txTrie.RootHash.ToString());
+                Assert.That(txTrie.RootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
             }
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_collect_proof_trie_case_1()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
             TxTrie txTrie = new(block.Transactions, true);
             byte[][] proof = txTrie.BuildProof(0);
-            
+
             txTrie.UpdateRootHash();
             VerifyProof(proof, txTrie.RootHash);
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_collect_proof_with_trie_case_2()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
             TxTrie txTrie = new(block.Transactions, true);
             byte[][] proof = txTrie.BuildProof(0);
-            Assert.AreEqual(2, proof.Length);
-            
+            Assert.That(proof.Length, Is.EqualTo(2));
+
             txTrie.UpdateRootHash();
             VerifyProof(proof, txTrie.RootHash);
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_collect_proof_with_trie_case_3_modified()
         {
             Block block = Build.A.Block.WithTransactions(Enumerable.Repeat(Build.A.Transaction.TestObject, 1000).ToArray()).TestObject;
@@ -88,8 +73,8 @@ namespace Nethermind.Blockchain.Test.Proofs
             txTrie.UpdateRootHash();
             for (int i = 0; i < 1000; i++)
             {
-                byte[][] proof = txTrie.BuildProof(i);    
-                VerifyProof(proof, txTrie.RootHash);    
+                byte[][] proof = txTrie.BuildProof(i);
+                VerifyProof(proof, txTrie.RootHash);
             }
         }
 

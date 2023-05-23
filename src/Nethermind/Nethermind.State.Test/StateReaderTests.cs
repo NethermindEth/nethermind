@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -43,9 +30,9 @@ namespace Nethermind.Store.Test
         [Test]
         public async Task Can_ask_about_balance_in_parallel()
         {
-            IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.ConstantinopleFixBlockNumber);
+            IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber);
             MemDb stateDb = new();
-            StateProvider provider =
+            WorldState provider =
                 new(new TrieStore(stateDb, Logger), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
@@ -88,12 +75,11 @@ namespace Nethermind.Store.Test
             IReleaseSpec spec = MuirGlacier.Instance;
             MemDb stateDb = new();
             TrieStore trieStore = new(stateDb, Logger);
-            StateProvider provider = new(trieStore, new MemDb(), Logger);
-            StorageProvider storageProvider = new(trieStore, provider, Logger);
+            WorldState provider = new(trieStore, new MemDb(), Logger);
 
             void UpdateStorageValue(byte[] newValue)
             {
-                storageProvider.Set(storageCell, newValue);
+                provider.Set(storageCell, newValue);
             }
 
             void AddOneToBalance()
@@ -103,8 +89,6 @@ namespace Nethermind.Store.Test
 
             void CommitEverything()
             {
-                storageProvider.Commit();
-                storageProvider.CommitTrees(0);
                 provider.Commit(spec);
                 provider.CommitTree(0);
             }
@@ -113,32 +97,32 @@ namespace Nethermind.Store.Test
             CommitEverything();
 
             AddOneToBalance();
-            UpdateStorageValue(new byte[] {1});
+            UpdateStorageValue(new byte[] { 1 });
             CommitEverything();
             Keccak stateRoot0 = provider.StateRoot;
 
             AddOneToBalance();
-            UpdateStorageValue(new byte[] {2});
+            UpdateStorageValue(new byte[] { 2 });
             CommitEverything();
             Keccak stateRoot1 = provider.StateRoot;
 
             AddOneToBalance();
-            UpdateStorageValue(new byte[] {3});
+            UpdateStorageValue(new byte[] { 3 });
             CommitEverything();
             Keccak stateRoot2 = provider.StateRoot;
 
             AddOneToBalance();
-            UpdateStorageValue(new byte[] {4});
+            UpdateStorageValue(new byte[] { 4 });
             CommitEverything();
             Keccak stateRoot3 = provider.StateRoot;
 
             StateReader reader =
                 new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
 
-            Task a = StartStorageTask(reader, stateRoot0, storageCell, new byte[] {1});
-            Task b = StartStorageTask(reader, stateRoot1, storageCell, new byte[] {2});
-            Task c = StartStorageTask(reader, stateRoot2, storageCell, new byte[] {3});
-            Task d = StartStorageTask(reader, stateRoot3, storageCell, new byte[] {4});
+            Task a = StartStorageTask(reader, stateRoot0, storageCell, new byte[] { 1 });
+            Task b = StartStorageTask(reader, stateRoot1, storageCell, new byte[] { 2 });
+            Task c = StartStorageTask(reader, stateRoot2, storageCell, new byte[] { 3 });
+            Task d = StartStorageTask(reader, stateRoot3, storageCell, new byte[] { 4 });
 
             await Task.WhenAll(a, b, c, d);
         }
@@ -151,27 +135,24 @@ namespace Nethermind.Store.Test
 
             MemDb stateDb = new();
             TrieStore trieStore = new(stateDb, Logger);
-            StateProvider provider = new(trieStore, new MemDb(), Logger);
-            StorageProvider storageProvider = new(trieStore, provider, Logger);
+            WorldState provider = new(trieStore, new MemDb(), Logger);
 
             void CommitEverything()
             {
-                storageProvider.Commit();
-                storageProvider.CommitTrees(0);
                 provider.Commit(spec);
                 provider.CommitTree(0);
             }
 
             provider.CreateAccount(_address1, 1);
-            storageProvider.Set(storageCell, new byte[] {1});
+            provider.Set(storageCell, new byte[] { 1 });
             CommitEverything();
             Keccak stateRoot0 = provider.StateRoot;
-            
+
             StateReader reader =
                 new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
             Keccak storageRoot = reader.GetStorageRoot(stateRoot0, _address1);
-            reader.GetStorage(storageRoot, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] {0});
-            reader.GetStorage(Keccak.EmptyTreeHash, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] {0});
+            reader.GetStorage(storageRoot, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
+            reader.GetStorage(Keccak.EmptyTreeHash, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
         }
 
         private Task StartTask(StateReader reader, Keccak stateRoot, UInt256 value)
@@ -182,7 +163,7 @@ namespace Nethermind.Store.Test
                     for (int i = 0; i < 10000; i++)
                     {
                         UInt256 balance = reader.GetBalance(stateRoot, _address1);
-                        Assert.AreEqual(value, balance);
+                        Assert.That(balance, Is.EqualTo(value));
                     }
                 });
         }
@@ -210,8 +191,7 @@ namespace Nethermind.Store.Test
             StorageCell storageCell = new(_address1, UInt256.One);
 
             TrieStore trieStore = new(dbProvider.StateDb, Logger);
-            StateProvider state = new(trieStore, dbProvider.CodeDb, Logger);
-            StorageProvider storage = new(trieStore, state, Logger);
+            WorldState state = new(trieStore, dbProvider.CodeDb, Logger);
 
             /* to start with we need to create an account that we will be setting storage at */
             state.CreateAccount(storageCell.Address, UInt256.One);
@@ -220,10 +200,8 @@ namespace Nethermind.Store.Test
 
             /* at this stage we have an account with empty storage at the address that we want to test */
 
-            byte[] initialValue = new byte[] {1, 2, 3};
-            storage.Set(storageCell, initialValue);
-            storage.Commit();
-            storage.CommitTrees(2);
+            byte[] initialValue = new byte[] { 1, 2, 3 };
+            state.Set(storageCell, initialValue);
             state.Commit(MuirGlacier.Instance);
             state.CommitTree(2);
 
@@ -240,18 +218,13 @@ namespace Nethermind.Store.Test
                To do that we create some different storage / state access stack that represents the processor.
                It is a different stack of objects than the one that is used by the blockchain bridge. */
 
-            byte[] newValue = new byte[] {1, 2, 3, 4, 5};
+            byte[] newValue = new byte[] { 1, 2, 3, 4, 5 };
 
-            StateProvider processorStateProvider =
+            WorldState processorStateProvider =
                 new(trieStore, new MemDb(), LimboLogs.Instance);
             processorStateProvider.StateRoot = state.StateRoot;
 
-            StorageProvider processorStorageProvider =
-                new(trieStore, processorStateProvider, LimboLogs.Instance);
-
-            processorStorageProvider.Set(storageCell, newValue);
-            processorStorageProvider.Commit();
-            processorStorageProvider.CommitTrees(3);
+            processorStateProvider.Set(storageCell, newValue);
             processorStateProvider.Commit(MuirGlacier.Instance);
             processorStateProvider.CommitTree(3);
 

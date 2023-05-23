@@ -1,20 +1,10 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
+using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -27,7 +17,7 @@ namespace Nethermind.Core
     public class Transaction
     {
         public const int BaseTxGasCost = 21000;
-        
+
         public ulong? ChainId { get; set; }
 
         /// <summary>
@@ -38,42 +28,125 @@ namespace Nethermind.Core
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
         public UInt256? GasBottleneck { get; set; }
-        public UInt256 MaxPriorityFeePerGas => GasPrice; 
+        public UInt256 MaxPriorityFeePerGas => GasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
-        public UInt256 MaxFeePerGas => IsEip1559 ? DecodedMaxFeePerGas : GasPrice;
-        public bool IsEip1559 => Type == TxType.EIP1559;
-        public bool IsEip2930 => Type == TxType.AccessList;
+        public UInt256 MaxFeePerGas => Supports1559 ? DecodedMaxFeePerGas : GasPrice;
+        public bool SupportsAccessList => Type >= TxType.AccessList;
+        public bool Supports1559 => Type >= TxType.EIP1559;
+        public bool SupportsBlobs => Type == TxType.Blob;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
         public byte[]? Data { get; set; }
         public Address? SenderAddress { get; set; }
         public Signature? Signature { get; set; }
-        public bool IsSigned => Signature != null;
-        public bool IsContractCreation => To == null;
-        public bool IsMessageCall => To != null;
-        public Keccak? Hash { get; set; }
-        public PublicKey? DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
+        public bool IsSigned => Signature is not null;
+        public bool IsContractCreation => To is null;
+        public bool IsMessageCall => To is not null;
+
+        private Keccak? _hash;
+        public Keccak? Hash
+        {
+            get
+            {
+                if (_hash is not null) return _hash;
+
+                lock (this)
+                {
+                    if (_hash is not null) return _hash;
+
+                    if (_preHash.Count > 0)
+                    {
+                        _hash = Keccak.Compute(_preHash.AsSpan());
+                        ClearPreHashInternal();
+                    }
+                }
+
+                return _hash;
+            }
+            set
+            {
+                lock (this)
+                {
+                    ClearPreHashInternal();
+                    _hash = value;
+                }
+            }
+        }
+
+        private ArraySegment<byte> _preHash;
+        public void SetPreHash(ReadOnlySpan<byte> transactionSequence)
+        {
+            lock (this)
+            {
+                // Used to delay hash generation, as may be filtered as having too low gas etc
+                _hash = null;
+
+                int size = transactionSequence.Length;
+                byte[] preHash = ArrayPool<byte>.Shared.Rent(size);
+                transactionSequence.CopyTo(preHash);
+                _preHash = new ArraySegment<byte>(preHash, 0, size);
+            }
+        }
+
+        public void ClearPreHash()
+        {
+            if (_preHash.Count > 0)
+            {
+                lock (this)
+                {
+                    ClearPreHashInternal();
+                }
+            }
+        }
+
+        private void ClearPreHashInternal()
+        {
+            if (_preHash.Count > 0)
+            {
+                ArrayPool<byte>.Shared.Return(_preHash.Array!);
+                _preHash = default;
+            }
+        }
+
         public UInt256 Timestamp { get; set; }
 
+        public int DataLength => Data?.Length ?? 0;
+
         public AccessList? AccessList { get; set; } // eip2930
+        public UInt256? MaxFeePerDataGas { get; set; } // eip4844
+        public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
+
+        // Network form of blob transaction fields
+        public byte[]? BlobKzgs { get; set; }
+        public byte[]? Blobs { get; set; }
+        public byte[]? BlobProofs { get; set; }
 
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
         /// </summary>
         /// <remarks>Used for AuRa consensus.</remarks>
         public bool IsServiceTransaction { get; set; }
-        
+
         /// <summary>
         /// In-memory only property, representing order of transactions going to TxPool.
         /// </summary>
         /// <remarks>Used for sorting in edge cases.</remarks>
         public ulong PoolIndex { get; set; }
 
+        private int? _size = null;
+        /// <summary>
+        /// Encoded transaction length
+        /// </summary>
+        public int GetLength(ITransactionSizeCalculator sizeCalculator)
+        {
+            return _size ??= sizeCalculator.GetLength(this);
+        }
+
         public string ToShortString()
         {
             string gasPriceString =
-                IsEip1559 ? $"maxPriorityFeePerGas: {MaxPriorityFeePerGas}, MaxFeePerGas: {MaxFeePerGas}" : $"gas price {GasPrice}";
+                Supports1559 ? $"maxPriorityFeePerGas: {MaxPriorityFeePerGas}, MaxFeePerGas: {MaxFeePerGas}" : $"gas price {GasPrice}";
             return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data?.ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
         }
 
@@ -83,7 +156,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Hash:      {Hash}");
             builder.AppendLine($"{indent}From:      {SenderAddress}");
             builder.AppendLine($"{indent}To:        {To}");
-            if (IsEip1559)
+            if (Supports1559)
             {
                 builder.AppendLine($"{indent}MaxPriorityFeePerGas: {MaxPriorityFeePerGas}");
                 builder.AppendLine($"{indent}MaxFeePerGas: {MaxFeePerGas}");
@@ -92,16 +165,20 @@ namespace Nethermind.Core
             {
                 builder.AppendLine($"{indent}Gas Price: {GasPrice}");
             }
-            
+
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
-            builder.AppendLine($"{indent}Data:      {(Data ?? new byte[0]).ToHexString()}");
-            builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? new byte[0]).ToHexString()}");
+            builder.AppendLine($"{indent}Data:      {(Data ?? Array.Empty<byte>()).ToHexString()}");
+            builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? Array.Empty<byte>()).ToHexString()}");
             builder.AppendLine($"{indent}V:         {Signature?.V}");
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
-            
+
+            if (SupportsBlobs)
+            {
+                builder.AppendLine($"{indent}BlobVersionedHashes: {BlobVersionedHashes?.Length}");
+            }
 
             return builder.ToString();
         }
@@ -115,7 +192,16 @@ namespace Nethermind.Core
     public class GeneratedTransaction : Transaction { }
 
     /// <summary>
-    /// System transaction that is to be executed by the node without including in the block. 
+    /// System transaction that is to be executed by the node without including in the block.
     /// </summary>
     public class SystemTransaction : Transaction { }
+
+    /// <summary>
+    /// Used inside Transaction::GetSize to calculate encoded transaction size
+    /// </summary>
+    /// <remarks>Created because of cyclic dependencies between Core and Rlp modules</remarks>
+    public interface ITransactionSizeCalculator
+    {
+        int GetLength(Transaction tx);
+    }
 }

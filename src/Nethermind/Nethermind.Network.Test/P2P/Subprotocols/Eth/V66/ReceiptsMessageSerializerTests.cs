@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
 using Nethermind.Core;
@@ -39,16 +25,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             ReceiptsMessageSerializer serializer = new(serializer63);
             ReceiptsMessage deserializedMessage = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(deserializedMessage);
-            
-            Assert.AreEqual(bytes,  serialized);
+
+            Assert.That(serialized, Is.EqualTo(bytes));
             Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage ethMessage = deserializedMessage.EthMessage;
-            
+
             TxReceipt txReceipt = ethMessage.TxReceipts[0][0];
-            
+
             txReceipt.StatusCode.Should().Be(0);
             txReceipt.GasUsedTotal.Should().Be(1);
             txReceipt.Bloom.Should().Be(Bloom.Empty);
-            
+
             txReceipt.Logs[0].LoggersAddress.Should().BeEquivalentTo(new Address("0x0000000000000000000000000000000000000011"));
             txReceipt.Logs[0].Topics[0].Should().BeEquivalentTo(new Keccak("0x000000000000000000000000000000000000000000000000000000000000dead"));
             txReceipt.Logs[0].Topics[1].Should().BeEquivalentTo(new Keccak("0x000000000000000000000000000000000000000000000000000000000000beef"));
@@ -57,7 +43,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             txReceipt.TxHash.Should().BeNull();
             txReceipt.BlockHash.Should().BeNull();
             txReceipt.Index.Should().Be(0x0);
-            
+
             ReceiptsMessage message = new(1111, ethMessage);
 
             SerializerTester.TestZero(serializer, message, rlp);

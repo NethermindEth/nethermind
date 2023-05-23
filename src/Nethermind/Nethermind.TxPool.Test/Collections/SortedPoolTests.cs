@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using FluentAssertions;
@@ -37,18 +24,18 @@ namespace Nethermind.TxPool.Test.Collections
     {
         private const int Capacity = 16;
 
-        private SortedPool<Keccak, Transaction, Address> _sortedPool;
+        private SortedPool<ValueKeccak, Transaction, Address> _sortedPool;
 
         private Transaction[] _transactions = new Transaction[Capacity * 8];
-        
+
         [SetUp]
         public void Setup()
         {
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            Block block =  Build.A.Block.WithNumber(0).TestObject;
+            Block block = Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
-            specProvider.GetSpec(Arg.Any<long>()).Returns(new ReleaseSpec() {IsEip1559Enabled = false});
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new ReleaseSpec() { IsEip1559Enabled = false });
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
             _sortedPool = new TxDistinctSortedPool(Capacity, transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
             for (int i = 0; i < _transactions.Length; i++)
@@ -67,21 +54,21 @@ namespace Nethermind.TxPool.Test.Collections
                 var tx = _transactions[^(i + 1)];
                 tx.Hash = tx.CalculateHash();
                 _sortedPool.TryInsert(tx.Hash, tx);
-                Assert.AreEqual(i > 15 ? null : tx, _sortedPool.TryGetValue(tx.Hash, out Transaction txOther) ? txOther : null);
-                Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
+                Assert.That(_sortedPool.TryGetValue(tx.Hash, out Transaction txOther) ? txOther : null, Is.EqualTo(i > 15 ? null : tx));
+                Assert.That(_sortedPool.Count, Is.EqualTo(Math.Min(16, i + 1)));
             }
-        
-            Assert.AreEqual(Capacity, _sortedPool.GetSnapshot().Length);
-            
+
+            Assert.That(_sortedPool.GetSnapshot().Length, Is.EqualTo(Capacity));
+
             for (int i = 0; i < Capacity; i++)
             {
                 _sortedPool.TryTakeFirst(out Transaction tx);
                 UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
-                Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
-                Assert.AreEqual(gasPrice, tx.GasPrice);
+                Assert.That(_sortedPool.Count, Is.EqualTo(Capacity - i - 1));
+                Assert.That(tx.GasPrice, Is.EqualTo(gasPrice));
             }
         }
-        
+
         [Test]
         public void Beyond_capacity_ordered()
         {
@@ -90,15 +77,15 @@ namespace Nethermind.TxPool.Test.Collections
                 var tx = _transactions[i];
                 tx.Hash = tx.CalculateHash();
                 _sortedPool.TryInsert(tx.Hash, tx);
-                Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
+                Assert.That(_sortedPool.Count, Is.EqualTo(Math.Min(16, i + 1)));
             }
-        
+
             for (int i = 0; i < Capacity; i++)
             {
                 _sortedPool.TryTakeFirst(out Transaction tx);
                 UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
-                Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
-                Assert.AreEqual(gasPrice, tx.GasPrice);
+                Assert.That(_sortedPool.Count, Is.EqualTo(Capacity - i - 1));
+                Assert.That(tx.GasPrice, Is.EqualTo(gasPrice));
             }
         }
 
@@ -108,10 +95,10 @@ namespace Nethermind.TxPool.Test.Collections
             Transaction tx = Build.A.Transaction
                 .WithSenderAddress(TestItem.AddressA)
                 .WithHash(TestItem.KeccakA).TestObject;
-                
+
             _sortedPool.TryInsert(tx.Hash, tx);
-            _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeTrue(); 
-                
+            _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeTrue();
+
             _sortedPool.TryRemove(tx.Hash);
             _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeFalse();
         }

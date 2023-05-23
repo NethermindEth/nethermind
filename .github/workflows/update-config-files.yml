@@ -1,4 +1,4 @@
-name: '[UPDATE] Config files (Fast Sync Settings)'
+name: '[UPDATE] Config files (fast sync settings)'
 
 on:
   schedule:
@@ -12,20 +12,21 @@ permissions:
 jobs:
   update-configs:
     if: github.repository_owner == 'NethermindEth'
-    name: Updating Fast Sync Settings in config files
+    name: Update fast sync settings in config files
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - name: Check out repository
+        uses: actions/checkout@v3
         with:
           ref: master
-      - name: Installing dependencies
+      - name: Install dependencies
         run: |
           pip3 install setuptools
           pip3 install emoji
-      - name: Updating config files
+      - name: Update config files
         run: |
           python3 scripts/syncSettings.py ${{ secrets.ETHERSCAN_API_KEY }}
-      - name: Creating Pull Request
+      - name: Create pull request
         uses: peter-evans/create-pull-request@v3.7.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -52,6 +53,6 @@ jobs:
           branch: configs-update
           branch-suffix: short-commit-hash
           base: master
-      - name: Checking Outputs
+      - name: Check outputs
         run: |
           echo "Pull Request Number - ${{ env.PULL_REQUEST_NUMBER }}"

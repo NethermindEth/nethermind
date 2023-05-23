@@ -1,20 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
-        <Nullable>enable</Nullable>
-        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+  </PropertyGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\..\rocksdb-sharp\RocksDbNative\RocksDbNative.csproj" />
-      <ProjectReference Include="..\..\rocksdb-sharp\RocksDbSharp\RocksDbSharp.csproj" />
-      <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
-      <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+    <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
+  </ItemGroup>
 
-    <ItemGroup>
-      <PackageReference Include="FastEnum" Version="1.7.0" />
-    </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ConcurrentHashSet" />
+    <PackageReference Include="FastEnum" />
+    <PackageReference Include="RocksDB" />
+  </ItemGroup>
 
 </Project>

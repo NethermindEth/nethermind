@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
 using System.Net;
@@ -52,7 +38,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
             Context context = new();
             context.WitProtocolHandler.ProtocolVersion.Should().Be(0);
         }
-        
+
         [Test]
         public void Message_space_should_be_correct()
         {
@@ -60,7 +46,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
                 .GetFields(BindingFlags.Static | BindingFlags.Public)
                 .Where(f => f.FieldType == typeof(int))
                 .Select(f => (int)f.GetValue(null)!).Max();
-            
+
             Context context = new();
             context.WitProtocolHandler.MessageIdSpaceSize.Should().Be(maxCode + 1);
         }
@@ -117,7 +103,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         {
             Context context = new();
             context.SyncServer.GetBlockWitnessHashes(Keccak.Zero)
-                .Returns(new[] {TestItem.KeccakA, TestItem.KeccakB});
+                .Returns(new[] { TestItem.KeccakA, TestItem.KeccakB });
 
             context.WitProtocolHandler.Init();
 
@@ -129,18 +115,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
             context.Session.Received().DeliverMessage(
                 Arg.Is<BlockWitnessHashesMessage>(msg => msg.Hashes.Length == 2));
         }
-        
+
         [Test]
         public async Task Can_request_non_empty_witness()
         {
             Context context = new();
-            BlockWitnessHashesMessage msg = new(5, new[] {TestItem.KeccakA, TestItem.KeccakB});
+            BlockWitnessHashesMessage msg = new(5, new[] { TestItem.KeccakA, TestItem.KeccakB });
             BlockWitnessHashesMessageSerializer serializer = new();
             var serialized = serializer.Serialize(msg);
-            
+
             context.WitProtocolHandler.Init();
-            
-            
+
+
             context.Session
                 // check if you did not enable the Init -> send message diag
                 .When(s => s.DeliverMessage(

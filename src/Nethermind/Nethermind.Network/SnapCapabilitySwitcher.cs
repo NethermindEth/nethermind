@@ -1,24 +1,13 @@
-//  Copyright (c) 2022 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+//
 
 using System;
+using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization.SnapSync;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Network;
 
@@ -27,12 +16,14 @@ namespace Nethermind.Network;
 public class SnapCapabilitySwitcher
 {
     private readonly IProtocolsManager _protocolsManager;
-    private readonly ProgressTracker _progressTracker;
+    private readonly ISyncModeSelector _syncModeSelector;
+    private readonly ILogger _logger;
 
-    public SnapCapabilitySwitcher(IProtocolsManager? protocolsManager, ProgressTracker? progressTracker)
+    public SnapCapabilitySwitcher(IProtocolsManager? protocolsManager, ISyncModeSelector? syncModeSelector, ILogManager? logManager)
     {
         _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
-        _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
+        _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
+        _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
     /// <summary>
@@ -40,16 +31,18 @@ public class SnapCapabilitySwitcher
     /// </summary>
     public void EnableSnapCapabilityUntilSynced()
     {
-        if (!_progressTracker.IsSnapGetRangesFinished())
-        {
-            _protocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-            _progressTracker.SnapSyncFinished += OnSnapSyncFinished;
-        }
+        _protocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+        _syncModeSelector.Changed += OnSyncModeChanged;
+        if (_logger.IsDebug) _logger.Debug("Enabled snap capability");
     }
 
-    private void OnSnapSyncFinished(object? sender, EventArgs e)
+    private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs syncMode)
     {
-        _progressTracker.SnapSyncFinished -= OnSnapSyncFinished;
-        _protocolsManager.RemoveSupportedCapability(new Capability(Protocol.Snap, 1));
+        if ((syncMode.Current & SyncMode.Full) != 0)
+        {
+            _syncModeSelector.Changed -= OnSyncModeChanged;
+            _protocolsManager.RemoveSupportedCapability(new Capability(Protocol.Snap, 1));
+            if (_logger.IsInfo) _logger.Info("State sync finished. Disabled snap capability.");
+        }
     }
 }

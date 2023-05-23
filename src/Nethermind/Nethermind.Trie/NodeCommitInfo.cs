@@ -8,9 +8,9 @@ namespace Nethermind.Trie
             Node = node;
             NodeParent = null;
         }
-        
+
         public NodeCommitInfo(
-            TrieNode node, 
+            TrieNode node,
             TrieNode nodeParent,
             int childPositionAtParent)
         {
@@ -18,16 +18,16 @@ namespace Nethermind.Trie
             Node = node;
             NodeParent = nodeParent;
         }
-            
+
         public TrieNode? Node { get; }
-            
+
         public TrieNode? NodeParent { get; }
-            
+
         public int ChildPositionAtParent { get; }
 
-        public bool IsEmptyBlockMarker => Node == null;
-        
-        public bool IsRoot => !IsEmptyBlockMarker && NodeParent == null;
+        public bool IsEmptyBlockMarker => Node is null;
+
+        public bool IsRoot => !IsEmptyBlockMarker && NodeParent is null;
 
         public override string ToString()
         {

@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.IO;
@@ -39,16 +26,16 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 return null;
             }
 
-            int length = rlpStream.PeekNextRlpLength();
+            int length = rlpStream.ReadSequenceLength();
             int check = rlpStream.Position + length;
-            rlpStream.SkipLength();
 
             AccessListBuilder accessListBuilder = new();
             while (rlpStream.Position < check)
             {
-                rlpStream.SkipLength();
+                int accessListItemLength = rlpStream.ReadSequenceLength();
+                int accessListItemCheck = rlpStream.Position + accessListItemLength;
                 Address address = rlpStream.DecodeAddress();
-                if (address == null)
+                if (address is null)
                 {
                     throw new RlpException("Invalid tx access list format - address is null");
                 }
@@ -57,17 +44,30 @@ namespace Nethermind.Serialization.Rlp.Eip2930
 
                 if (rlpStream.Position < check)
                 {
-                    int storageCheck = rlpStream.Position + rlpStream.PeekNextRlpLength();
-                    rlpStream.SkipLength();
-                    while (rlpStream.Position < storageCheck)
+                    int storagesLength = rlpStream.ReadSequenceLength();
+                    int storagesCheck = rlpStream.Position + storagesLength;
+                    while (rlpStream.Position < storagesCheck)
                     {
+                        int storageItemCheck = rlpStream.Position + 33;
                         UInt256 index = rlpStream.DecodeUInt256();
                         accessListBuilder.AddStorage(index);
+                        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                        {
+                            rlpStream.Check(storageItemCheck);
+                        }
                     }
+                    if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                    {
+                        rlpStream.Check(storagesCheck);
+                    }
+                }
+                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                {
+                    rlpStream.Check(accessListItemCheck);
                 }
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 rlpStream.Check(check);
             }
@@ -91,16 +91,16 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 return null;
             }
 
-            int length = decoderContext.PeekNextRlpLength();
+            int length = decoderContext.ReadSequenceLength();
             int check = decoderContext.Position + length;
-            decoderContext.SkipLength();
 
             AccessListBuilder accessListBuilder = new();
             while (decoderContext.Position < check)
             {
-                decoderContext.SkipLength();
+                int accessListItemLength = decoderContext.ReadSequenceLength();
+                int accessListItemCheck = decoderContext.Position + accessListItemLength;
                 Address address = decoderContext.DecodeAddress();
-                if (address == null)
+                if (address is null)
                 {
                     throw new RlpException("Invalid tx access list format - address is null");
                 }
@@ -109,17 +109,30 @@ namespace Nethermind.Serialization.Rlp.Eip2930
 
                 if (decoderContext.Position < check)
                 {
-                    int storageCheck = decoderContext.Position + decoderContext.PeekNextRlpLength();
-                    decoderContext.SkipLength();
-                    while (decoderContext.Position < storageCheck)
+                    int storagesLength = decoderContext.ReadSequenceLength();
+                    int storagesCheck = decoderContext.Position + storagesLength;
+                    while (decoderContext.Position < storagesCheck)
                     {
+                        int storageItemCheck = decoderContext.Position + 33;
                         UInt256 index = decoderContext.DecodeUInt256();
                         accessListBuilder.AddStorage(index);
+                        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                        {
+                            decoderContext.Check(storageItemCheck);
+                        }
                     }
+                    if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                    {
+                        decoderContext.Check(storagesCheck);
+                    }
+                }
+                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                {
+                    decoderContext.Check(accessListItemCheck);
                 }
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 decoderContext.Check(check);
             }
@@ -181,7 +194,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                             }
 
                             currentItem.Value.Indexes.Add((UInt256)accessListEntry);
-                        }   
+                        }
                     }
 
                     // serialize the last element
@@ -278,7 +291,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                     else
                     {
                         indexCounter++;
-                    }   
+                    }
                 }
 
                 if (isOpen)

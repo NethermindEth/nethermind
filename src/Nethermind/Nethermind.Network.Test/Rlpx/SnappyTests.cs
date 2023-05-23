@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.IO;
@@ -21,6 +8,7 @@ using DotNetty.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx
@@ -43,7 +31,7 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 List<object> result = new();
                 Decode(null, new Packet(input), result);
-                return ((Packet) result[0]).Data;
+                return ((Packet)result[0]).Data;
             }
         }
 
@@ -58,7 +46,7 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 var result = UnpooledByteBufferAllocator.Default.Buffer();
                 Encode(null, input.ToUnpooledByteBuffer(), result);
-                return result.ReadAllBytes();
+                return result.ReadAllBytesAsArray();
             }
         }
 
@@ -69,7 +57,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
             byte[] compressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _goCompressedTestFileName)));
             byte[] uncompressedResult = decoder.TestDecode(compressed);
-            Assert.AreEqual(expectedUncompressed, uncompressedResult);
+            Assert.That(uncompressedResult, Is.EqualTo(expectedUncompressed));
         }
 
         [Test]
@@ -79,7 +67,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
             byte[] compressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
             byte[] uncompressedResult = decoder.TestDecode(compressed);
-            Assert.AreEqual(expectedUncompressed, uncompressedResult);
+            Assert.That(uncompressedResult, Is.EqualTo(expectedUncompressed));
         }
 
         [Test]
@@ -125,7 +113,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
             byte[] compressed = encoder.TestEncode(Bytes.Concat(1, expectedUncompressed));
             byte[] uncompressedResult = decoder.TestDecode(compressed.Skip(1).ToArray());
-            Assert.AreEqual(expectedUncompressed, uncompressedResult);
+            Assert.That(uncompressedResult, Is.EqualTo(expectedUncompressed));
         }
     }
 }

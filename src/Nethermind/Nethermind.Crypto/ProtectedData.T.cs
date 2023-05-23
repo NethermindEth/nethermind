@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Security.Cryptography;
@@ -26,20 +12,21 @@ namespace Nethermind.Crypto
         private const int EntropyMaxLength = 10;
         private const int EntropyMinLength = 5;
         private static readonly TimeSpan MaxSecureTimeSpan = TimeSpan.FromMinutes(10);
-        
+
         private readonly ICryptoRandom _random;
         private readonly ITimestamper _timestamper;
         private byte[] _entropy;
         private DateTime _timestamp;
         private byte[] _encryptedData;
 
-        public ProtectedData(byte[] data, ICryptoRandom? random = null, ITimestamper? timestamper = null)
+        protected ProtectedData(byte[] data, string keyStoreDir, ICryptoRandom? random = null, ITimestamper? timestamper = null)
+            : base(keyStoreDir)
         {
             _random = random ?? new CryptoRandom();
             _timestamper = timestamper ?? Timestamper.Default;
             Protect(data);
         }
-        
+
 #pragma warning disable CA1416
         private void Protect(byte[] data)
         {
@@ -55,7 +42,7 @@ namespace Nethermind.Crypto
             return CreateUnprotected(data);
         }
 #pragma warning restore CA1416
-        
+
         protected abstract T CreateUnprotected(byte[] data);
 
         private void CheckReProtect(byte[] data)

@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -50,14 +37,14 @@ namespace Nethermind.Core.Test
         public void Cannot_be_initialized_with_null_bytes()
         {
             // ReSharper disable once ObjectCreationAsStatement
-            Assert.Throws<ArgumentNullException>(() => new PrivateKey((byte[]) null));
+            Assert.Throws<ArgumentNullException>(() => new PrivateKey((byte[])null!));
         }
 
         [Test]
         public void Cannot_be_initialized_with_null_string()
         {
             // ReSharper disable once ObjectCreationAsStatement
-            Assert.Throws<ArgumentNullException>(() => new PrivateKey((string) null));
+            Assert.Throws<ArgumentNullException>(() => new PrivateKey((string)null!));
         }
 
         [Test]
@@ -74,7 +61,7 @@ namespace Nethermind.Core.Test
         {
             PrivateKey privateKey = new(hexString);
             string privateKeyString = privateKey.ToString();
-            Assert.AreEqual(hexString, privateKeyString);
+            Assert.That(privateKeyString, Is.EqualTo(hexString));
         }
 
         [TestCase("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266", "0xc2d7cf95645d33006175b78989035c7c9061d3f9")]
@@ -83,7 +70,7 @@ namespace Nethermind.Core.Test
         {
             PrivateKey privateKey = new(privateKeyHex);
             Address address = privateKey.Address;
-            Assert.AreEqual(addressHex, address.ToString());
+            Assert.That(address.ToString(), Is.EqualTo(addressHex));
         }
 
         [Test]
@@ -92,7 +79,7 @@ namespace Nethermind.Core.Test
             PrivateKey privateKey = new(TestPrivateKeyHex);
             Address address1 = privateKey.Address;
             Address address2 = privateKey.Address;
-            Assert.AreSame(address1, address2);
+            Assert.That(address2, Is.SameAs(address1));
         }
 
         [Test]
@@ -101,10 +88,10 @@ namespace Nethermind.Core.Test
             PrivateKey privateKey = new(TestPrivateKeyHex);
             PublicKey a = privateKey.PublicKey;
             PublicKey b = privateKey.CompressedPublicKey.Decompress();
-            Assert.AreEqual(a, b);
+            Assert.That(b, Is.EqualTo(a));
         }
 
-        
+
         /// <summary>
         /// https://en.bitcoin.it/wiki/Private_key
         /// </summary>

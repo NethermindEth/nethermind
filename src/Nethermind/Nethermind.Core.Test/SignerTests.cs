@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -39,29 +26,29 @@ namespace Nethermind.Core.Test
         {
             Signature signature = new(hexSignature);
             string hexAgain = signature.ToString();
-            Assert.AreEqual(hexSignature, hexAgain);
+            Assert.That(hexAgain, Is.EqualTo(hexSignature));
         }
 
         [Test]
         public void Sign_and_recover()
         {
-            EthereumEcdsa ethereumEcdsa = new(ChainId.Olympic, LimboLogs.Instance);
+            EthereumEcdsa ethereumEcdsa = new(BlockchainIds.Olympic, LimboLogs.Instance);
 
             Keccak message = Keccak.Compute("Test message");
             PrivateKey privateKey = Build.A.PrivateKey.TestObject;
             Signature signature = ethereumEcdsa.Sign(privateKey, message);
-            Assert.AreEqual(privateKey.Address, ethereumEcdsa.RecoverAddress(signature, message));
+            Assert.That(ethereumEcdsa.RecoverAddress(signature, message), Is.EqualTo(privateKey.Address));
         }
-        
+
         [Test]
         public void Decompress()
         {
-            EthereumEcdsa ethereumEcdsa = new(ChainId.Olympic, LimboLogs.Instance);
+            EthereumEcdsa ethereumEcdsa = new(BlockchainIds.Olympic, LimboLogs.Instance);
             PrivateKey privateKey = Build.A.PrivateKey.TestObject;
             CompressedPublicKey compressedPublicKey = privateKey.CompressedPublicKey;
             PublicKey expected = privateKey.PublicKey;
             PublicKey actual = ethereumEcdsa.Decompress(compressedPublicKey);
-            Assert.AreEqual(expected, actual);
+            Assert.That(actual, Is.EqualTo(expected));
         }
     }
 }

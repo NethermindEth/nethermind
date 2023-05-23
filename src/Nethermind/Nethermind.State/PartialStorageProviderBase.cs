@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -20,13 +7,14 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
+using Nethermind.State.Tracing;
 
 namespace Nethermind.State
 {
     /// <summary>
     /// Contains common code for both Persistent and Transient storage providers
     /// </summary>
-    public abstract class PartialStorageProviderBase
+    internal abstract class PartialStorageProviderBase
     {
         protected readonly ResettableDictionary<StorageCell, StackList<int>> _intraBlockCache = new();
 
@@ -41,7 +29,7 @@ namespace Nethermind.State
         // this is needed for OriginalValues for new transactions
         protected readonly Stack<int> _transactionChangesSnapshots = new();
 
-        protected static readonly byte[] _zeroValue = {0};
+        protected static readonly byte[] _zeroValue = { 0 };
 
         protected PartialStorageProviderBase(ILogManager? logManager)
         {
@@ -53,7 +41,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        public byte[] Get(StorageCell storageCell)
+        public byte[] Get(in StorageCell storageCell)
         {
             return GetCurrentValue(storageCell);
         }
@@ -63,7 +51,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public void Set(StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, byte[] newValue)
         {
             PushUpdate(storageCell, newValue);
         }
@@ -97,7 +85,7 @@ namespace Nethermind.State
             {
                 throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
             }
-            
+
             if (snapshot == _currentPosition)
             {
                 return;
@@ -145,7 +133,7 @@ namespace Nethermind.State
                 _changes[_currentPosition] = kept;
                 _intraBlockCache[kept.StorageCell].Push(_currentPosition);
             }
-            
+
             while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
             {
                 _transactionChangesSnapshots.Pop();
@@ -158,7 +146,7 @@ namespace Nethermind.State
         /// </summary>
         public void Commit()
         {
-            Commit(NullStorageTracer.Instance);
+            Commit(NullStateTracer.Instance);
         }
 
         protected readonly struct ChangeTrace
@@ -226,7 +214,7 @@ namespace Nethermind.State
         /// <param name="storageCell">Storage location</param>
         /// <param name="bytes">Resulting value</param>
         /// <returns>True if value has been set</returns>
-        protected bool TryGetCachedValue(StorageCell storageCell, out byte[]? bytes)
+        protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
         {
             if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
@@ -246,14 +234,14 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected abstract byte[] GetCurrentValue(StorageCell storageCell);
+        protected abstract byte[] GetCurrentValue(in StorageCell storageCell);
 
         /// <summary>
         /// Update the storage cell with provided value
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(StorageCell cell, byte[] value)
+        private void PushUpdate(in StorageCell cell, byte[] value)
         {
             SetupRegistry(cell);
             IncrementChangePosition();
@@ -262,7 +250,7 @@ namespace Nethermind.State
         }
 
         /// <summary>
-        /// Increment position and size (if needed) of _changes 
+        /// Increment position and size (if needed) of _changes
         /// </summary>
         protected void IncrementChangePosition()
         {
@@ -273,7 +261,7 @@ namespace Nethermind.State
         /// Initialize the StackList at the storage cell position if needed
         /// </summary>
         /// <param name="cell"></param>
-        protected void SetupRegistry(StorageCell cell)
+        protected void SetupRegistry(in StorageCell cell)
         {
             if (!_intraBlockCache.ContainsKey(cell))
             {

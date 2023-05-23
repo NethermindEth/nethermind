@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -22,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
+using Nethermind.State.Tracing;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
@@ -30,10 +18,10 @@ namespace Nethermind.State
     /// Manages persistent storage allowing for snapshotting and restoring
     /// Persists data to ITrieStore
     /// </summary>
-    public class PersistentStorageProvider : PartialStorageProviderBase
+    internal class PersistentStorageProvider : PartialStorageProviderBase
     {
         private readonly ITrieStore _trieStore;
-        private readonly IStateProvider _stateProvider;
+        private readonly StateProvider _stateProvider;
         private readonly ILogManager? _logManager;
         private readonly ResettableDictionary<Address, StorageTree> _storages = new();
         /// <summary>
@@ -42,7 +30,7 @@ namespace Nethermind.State
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
-        public PersistentStorageProvider(ITrieStore? trieStore, IStateProvider? stateProvider, ILogManager? logManager)
+        public PersistentStorageProvider(ITrieStore? trieStore, StateProvider? stateProvider, ILogManager? logManager)
             : base(logManager)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
@@ -66,7 +54,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected override byte[] GetCurrentValue(StorageCell storageCell) =>
+        protected override byte[] GetCurrentValue(in StorageCell storageCell) =>
             TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
 
         /// <summary>
@@ -74,7 +62,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell"></param>
         /// <returns></returns>
-        public byte[] GetOriginal(StorageCell storageCell)
+        public byte[] GetOriginal(in StorageCell storageCell)
         {
             if (!_originalValues.ContainsKey(storageCell))
             {
@@ -110,7 +98,7 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(PartialStorageProviderBase)}");
             }
 
-            if (_changes[_currentPosition + 1] != null)
+            if (_changes[_currentPosition + 1] is not null)
             {
                 throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(PartialStorageProviderBase)}");
             }
@@ -221,7 +209,7 @@ namespace Nethermind.State
             {
                 storage.Value.Commit(blockNumber);
             }
-            
+
             // TODO: maybe I could update storage roots only now?
 
             // only needed here as there is no control over cached storage size otherwise
@@ -239,7 +227,7 @@ namespace Nethermind.State
             return _storages[address];
         }
 
-        private byte[] LoadFromTree(StorageCell storageCell)
+        private byte[] LoadFromTree(in StorageCell storageCell)
         {
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
 
@@ -249,7 +237,7 @@ namespace Nethermind.State
             return value;
         }
 
-        private void PushToRegistryOnly(StorageCell cell, byte[] value)
+        private void PushToRegistryOnly(in StorageCell cell, byte[] value)
         {
             SetupRegistry(cell);
             IncrementChangePosition();

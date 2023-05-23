@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -42,7 +29,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             _jsonRpcConfig = new JsonRpcConfig();
             _provider = new RpcModuleProvider(new FileSystem(), _jsonRpcConfig, LimboLogs.Instance);
-            
+
             _provider.Register(new SingletonModulePool<INetRpcModule>(new SingletonFactory<INetRpcModule>(typeof(INetRpcModule).IsAssignableFrom(typeof(T)) ? (INetRpcModule)module : Substitute.For<INetRpcModule>()), true));
             _provider.Register(new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(typeof(IEthRpcModule).IsAssignableFrom(typeof(T)) ? (IEthRpcModule)module : Substitute.For<IEthRpcModule>()), true));
             _provider.Register(new SingletonModulePool<IWeb3RpcModule>(new SingletonFactory<IWeb3RpcModule>(typeof(IWeb3RpcModule).IsAssignableFrom(typeof(T)) ? (IWeb3RpcModule)module : Substitute.For<IWeb3RpcModule>()), true));
@@ -63,7 +50,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 if (!_jsonRpcConfig.EnabledModules.Contains(rpcModuleAttribute.ModuleType))
                 {
-                    _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Union(new[] {rpcModuleAttribute.ModuleType}).ToArray();
+                    _jsonRpcConfig.EnabledModules = _jsonRpcConfig.EnabledModules.Union(new[] { rpcModuleAttribute.ModuleType }).ToArray();
                 }
             }
         }
@@ -72,24 +59,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReadOnlyCollection<JsonConverter> Converters => _provider.Converters;
         public IReadOnlyCollection<string> Enabled => _provider.All;
         public IReadOnlyCollection<string> All => _provider.All;
-        public ModuleResolution Check(string methodName, JsonRpcContext context)
-        {
-            return _provider.Check(methodName, context);
-        }
+        public ModuleResolution Check(string methodName, JsonRpcContext context) => _provider.Check(methodName, context);
 
-        public (MethodInfo, bool) Resolve(string methodName)
-        {
-            return _provider.Resolve(methodName);
-        }
+        public (MethodInfo, bool) Resolve(string methodName) => _provider.Resolve(methodName);
 
-        public Task<IRpcModule> Rent(string methodName, bool readOnly)
-        {
-            return _provider.Rent(methodName, readOnly);
-        }
+        public Task<IRpcModule> Rent(string methodName, bool readOnly) => _provider.Rent(methodName, readOnly);
 
-        public void Return(string methodName, IRpcModule rpcModule)
-        {
-            _provider.Return(methodName, rpcModule);
-        }
+        public void Return(string methodName, IRpcModule rpcModule) => _provider.Return(methodName, rpcModule);
+
+        public IRpcModulePool? GetPool(string moduleType) => _provider.GetPool(moduleType);
     }
 }

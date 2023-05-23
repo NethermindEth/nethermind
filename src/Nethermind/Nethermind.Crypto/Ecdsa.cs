@@ -1,22 +1,8 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core.Crypto;
-using Nethermind.Secp256k1;
 
 namespace Nethermind.Crypto
 {
@@ -28,12 +14,12 @@ namespace Nethermind.Crypto
     {
         public Signature Sign(PrivateKey privateKey, Keccak message)
         {
-            if (!Proxy.VerifyPrivateKey(privateKey.KeyBytes))
+            if (!SecP256k1.VerifyPrivateKey(privateKey.KeyBytes))
             {
                 throw new ArgumentException("Invalid private key", nameof(privateKey));
             }
 
-            byte[] signatureBytes = Proxy.SignCompact(message.Bytes, privateKey.KeyBytes, out int recoveryId);
+            byte[] signatureBytes = SpanSecP256k1.SignCompact(message.Bytes, privateKey.KeyBytes, out int recoveryId);
 
             //// https://bitcoin.stackexchange.com/questions/59820/sign-a-tx-with-low-s-value-using-openssl
 
@@ -65,30 +51,30 @@ namespace Nethermind.Crypto
         public PublicKey? RecoverPublicKey(Signature signature, Keccak message)
         {
             Span<byte> publicKey = stackalloc byte[65];
-            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);
+            bool success = SpanSecP256k1.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);
             if (!success)
             {
                 return null;
             }
-            
+
             return new PublicKey(publicKey);
         }
-        
+
         public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, Keccak message)
         {
             Span<byte> publicKey = stackalloc byte[33];
-            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, true);
+            bool success = SpanSecP256k1.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, true);
             if (!success)
             {
                 return null;
             }
-            
+
             return new CompressedPublicKey(publicKey);
         }
 
         public PublicKey Decompress(CompressedPublicKey compressedPublicKey)
         {
-            byte[] deserialized = Proxy.Decompress(compressedPublicKey.Bytes);
+            byte[] deserialized = SecP256k1.Decompress(compressedPublicKey.Bytes);
             return new PublicKey(deserialized);
         }
     }

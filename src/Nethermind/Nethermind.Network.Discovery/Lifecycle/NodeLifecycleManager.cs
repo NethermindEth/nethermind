@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -41,7 +28,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
     /// This is the value set by other clients based on real network tests.
     /// </summary>
     private const int ExpirationTimeInSeconds = 20;
-    
+
     private PingMsg? _lastSentPing;
     private bool _isNeighborsExpected;
 
@@ -87,14 +74,14 @@ public class NodeLifecycleManager : INodeLifecycleManager
         {
             SendEnrRequest();
         }
-        
+
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingIn);
         RefreshNodeContactTime();
     }
 
     private void SendEnrRequest()
     {
-        EnrRequestMsg msg = new (ManagedNode.Address, CalculateExpirationTime());
+        EnrRequestMsg msg = new(ManagedNode.Address, CalculateExpirationTime());
         _discoveryManager.SendMessage(msg);
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestOut);
     }
@@ -106,19 +93,19 @@ public class NodeLifecycleManager : INodeLifecycleManager
             return;
         }
         _lastEnrSequence = enrResponseMsg.NodeRecord.EnrSequence;
-        
+
         // TODO: 6) use the fork ID knowledge to mark each node with info on the forkhash
-        
+
         // Enr.ForkId? forkId = enrResponseMsg.NodeRecord.GetValue<Enr.ForkId>(EnrContentKey.Eth);
         // if (forkId is not null)
         // {
         //     _logger.Warn($"Discovered new node with forkId {forkId.Value.ForkHash.ToHexString()}");
         // }
-        
+
         OnStateChanged?.Invoke(this, NodeLifecycleState.ActiveWithEnr);
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseIn);
     }
-    
+
     public void ProcessEnrRequestMsg(EnrRequestMsg enrRequestMessage)
     {
         if (IsBonded)
@@ -131,14 +118,14 @@ public class NodeLifecycleManager : INodeLifecycleManager
         }
         else
         {
-            if (_logger.IsDebug) _logger.Warn("Attempt to request ENR before bonding");
+            if (_logger.IsDebug) _logger.Debug("Attempt to request ENR before bonding");
         }
     }
 
     public void ProcessPongMsg(PongMsg pongMsg)
     {
         PingMsg? sentPingMsg = Interlocked.Exchange(ref _lastSentPing, null);
-        if (sentPingMsg == null)
+        if (sentPingMsg is null)
         {
             return;
         }
@@ -150,18 +137,18 @@ public class NodeLifecycleManager : INodeLifecycleManager
             if (IsBonded)
             {
                 UpdateState(NodeLifecycleState.Active);
-                if(_logger.IsDebug) _logger.Debug($"Bonded with {ManagedNode.Host}");
+                if (_logger.IsTrace) _logger.Trace($"Bonded with {ManagedNode.Host}");
             }
             else
             {
-                if(_logger.IsDebug) _logger.Debug($"Bonding with {ManagedNode} failed.");
+                if (_logger.IsTrace) _logger.Trace($"Bonding with {ManagedNode} failed.");
             }
 
             RefreshNodeContactTime();
         }
         else
         {
-            if(_logger.IsDebug) _logger.Debug($"Unmatched MDC when bonding with {ManagedNode}");
+            if (_logger.IsTrace) _logger.Trace($"Unmatched MDC when bonding with {ManagedNode}");
             // ignore spoofed message
             _receivedPong = false;
         }
@@ -173,7 +160,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         {
             return;
         }
-        
+
         if (!IsBonded)
         {
             return;
@@ -199,7 +186,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
         _isNeighborsExpected = false;
     }
-        
+
     public void ProcessFindNodeMsg(FindNodeMsg msg)
     {
         if (!IsBonded)
@@ -213,7 +200,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         Node[] nodes = _nodeTable.GetClosestNodes(msg.SearchedNodeId).ToArray();
         SendNeighbors(nodes);
     }
-        
+
     private readonly DateTime _lastTimeSendFindNode = DateTime.MinValue;
 
     private long _lastEnrSequence;
@@ -224,7 +211,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         {
             if (_logger.IsDebug) _logger.Debug($"Sending FIND NODE on {ManagedNode} before bonding");
         }
-            
+
         if (DateTime.UtcNow - _lastTimeSendFindNode < TimeSpan.FromSeconds(60))
         {
             return;
@@ -249,10 +236,10 @@ public class NodeLifecycleManager : INodeLifecycleManager
     {
         return ExpirationTimeInSeconds + _timestamper.UnixTime.SecondsLong;
     }
-    
+
     public void SendPong(PingMsg discoveryMsg)
     {
-        PongMsg msg = new (ManagedNode.Address, CalculateExpirationTime(), discoveryMsg.Mdc!);
+        PongMsg msg = new(ManagedNode.Address, CalculateExpirationTime(), discoveryMsg.Mdc!);
         _discoveryManager.SendMessage(msg);
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongOut);
         // _sentPong = true;
@@ -307,7 +294,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
                 if (result.ResultType == NodeAddResultType.Full && result.EvictionCandidate?.Node is not null)
                 {
                     INodeLifecycleManager? evictionCandidate = _discoveryManager.GetNodeLifecycleManager(result.EvictionCandidate.Node);
-                    if (evictionCandidate != null)
+                    if (evictionCandidate is not null)
                     {
                         _evictionManager.StartEvictionProcess(evictionCandidate, this);
                     }
@@ -356,7 +343,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
         PingMsg msg = new(ManagedNode.Address, CalculateExpirationTime(), _nodeTable.MasterNode.Address);
         msg.EnrSequence = _nodeRecord.EnrSequence;
-        
+
         try
         {
             _lastSentPing = msg;

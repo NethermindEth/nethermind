@@ -1,19 +1,7 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -21,7 +9,6 @@ using Nethermind.Crypto;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using NUnit.Framework;
-using Org.BouncyCastle.Crypto.Digests;
 
 namespace Nethermind.Network.Test
 {
@@ -35,12 +22,12 @@ namespace Nethermind.Network.Test
 
             byte[] bytes = AesSecret.Xor(MacSecret);
 
-            KeccakDigest egressMac = new(256);
-            egressMac.BlockUpdate(bytes, 0, 32);
+            KeccakHash egressMac = KeccakHash.Create(32);
+            egressMac.Update(bytes.AsSpan(0, 32));
             secrets.EgressMac = egressMac;
 
-            KeccakDigest ingressMac = new(256);
-            ingressMac.BlockUpdate(bytes, 0, 32);
+            KeccakHash ingressMac = KeccakHash.Create(32);
+            ingressMac.Update(bytes.AsSpan(0, 32));
             secrets.IngressMac = ingressMac;
             return secrets;
         }
@@ -48,16 +35,16 @@ namespace Nethermind.Network.Test
         public static (EncryptionSecrets A, EncryptionSecrets B) GetSecretsPair()
         {
             EncryptionHandshake handshakeA = new();
-            handshakeA.InitiatorNonce = TestItem.KeccakA.Bytes;
-            handshakeA.RecipientNonce = TestItem.KeccakB.Bytes;
+            handshakeA.InitiatorNonce = TestItem.KeccakA.BytesToArray();
+            handshakeA.RecipientNonce = TestItem.KeccakB.BytesToArray();
             handshakeA.EphemeralPrivateKey = TestItem.PrivateKeyA;
             handshakeA.RemoteEphemeralPublicKey = TestItem.PrivateKeyB.PublicKey;
             handshakeA.AckPacket = new Packet(new byte[128]);
             handshakeA.AuthPacket = new Packet(new byte[128]);
 
             EncryptionHandshake handshakeB = new();
-            handshakeB.InitiatorNonce = TestItem.KeccakA.Bytes;
-            handshakeB.RecipientNonce = TestItem.KeccakB.Bytes;
+            handshakeB.InitiatorNonce = TestItem.KeccakA.BytesToArray();
+            handshakeB.RecipientNonce = TestItem.KeccakB.BytesToArray();
             handshakeB.EphemeralPrivateKey = TestItem.PrivateKeyB;
             handshakeB.RemoteEphemeralPublicKey = TestItem.PrivateKeyA.PublicKey;
             handshakeB.AckPacket = new Packet(new byte[128]);
@@ -66,26 +53,21 @@ namespace Nethermind.Network.Test
             HandshakeService.SetSecrets(handshakeA, HandshakeRole.Initiator);
             HandshakeService.SetSecrets(handshakeB, HandshakeRole.Recipient);
 
-            Assert.AreEqual(handshakeA.Secrets.AesSecret, handshakeB.Secrets.AesSecret, "aes");
-            Assert.AreEqual(handshakeA.Secrets.MacSecret, handshakeB.Secrets.MacSecret, "mac");
+            Assert.That(handshakeB.Secrets.AesSecret, Is.EqualTo(handshakeA.Secrets.AesSecret), "aes");
+            Assert.That(handshakeB.Secrets.MacSecret, Is.EqualTo(handshakeA.Secrets.MacSecret), "mac");
 
-            KeccakDigest aIngress = handshakeA.Secrets.IngressMac.Copy() as KeccakDigest;
-            KeccakDigest bIngress = handshakeB.Secrets.IngressMac.Copy() as KeccakDigest;
-            KeccakDigest aEgress = handshakeA.Secrets.EgressMac.Copy() as KeccakDigest;
-            KeccakDigest bEgress = handshakeB.Secrets.EgressMac.Copy() as KeccakDigest;
+            KeccakHash aIngress = handshakeA.Secrets.IngressMac.Copy();
+            KeccakHash bIngress = handshakeB.Secrets.IngressMac.Copy();
+            KeccakHash aEgress = handshakeA.Secrets.EgressMac.Copy();
+            KeccakHash bEgress = handshakeB.Secrets.EgressMac.Copy();
 
-            byte[] aIngressFinal = new byte[32];
-            byte[] bIngressFinal = new byte[32];
-            byte[] aEgressFinal = new byte[32];
-            byte[] bEgressFinal = new byte[32];
+            byte[] aIngressFinal = aIngress.Hash;
+            byte[] bIngressFinal = bIngress.Hash;
+            byte[] aEgressFinal = aEgress.Hash;
+            byte[] bEgressFinal = bEgress.Hash;
 
-            aIngress.DoFinal(aIngressFinal, 0);
-            bIngress.DoFinal(bIngressFinal, 0);
-            aEgress.DoFinal(aEgressFinal, 0);
-            bEgress.DoFinal(bEgressFinal, 0);
-
-            Assert.AreEqual(aIngressFinal.ToHexString(), bEgressFinal.ToHexString());
-            Assert.AreEqual(aEgressFinal.ToHexString(), bIngressFinal.ToHexString());
+            Assert.That(bEgressFinal.ToHexString(), Is.EqualTo(aIngressFinal.ToHexString()));
+            Assert.That(bIngressFinal.ToHexString(), Is.EqualTo(aEgressFinal.ToHexString()));
 
             return (handshakeA.Secrets, handshakeB.Secrets);
         }

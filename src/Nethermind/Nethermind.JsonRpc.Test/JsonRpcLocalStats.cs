@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using FluentAssertions;
@@ -26,14 +13,14 @@ namespace Nethermind.JsonRpc.Test
     [TestFixture]
     public class JsonRpcLocalStatsTests
     {
-        private TestLogger _testLogger;
-        
+        private TestLogger _testLogger = null!;
+
         private JsonRpcConfig _config = new();
 
-        private ManualTimestamper _manualTimestamper;
+        private ManualTimestamper _manualTimestamper = null!;
 
         private DateTime _startTime = DateTime.MinValue;
-        private OneLoggerLogManager _logManager;
+        private OneLoggerLogManager _logManager = null!;
 
         [SetUp]
         public void Setup()
@@ -54,7 +41,7 @@ namespace Nethermind.JsonRpc.Test
             CheckLogLine("A|2|150|200|0|0|0|");
             CheckLogLine("TOTAL|2|150|200|0|0|0|");
         }
-        
+
         [Test]
         public void Single_average_is_fine()
         {
@@ -65,7 +52,7 @@ namespace Nethermind.JsonRpc.Test
             CheckLogLine("A|1|100|100|0|0|0|");
             CheckLogLine("TOTAL|1|100|100|0|0|0|");
         }
-        
+
         [Test]
         public void Swaps_properly()
         {
@@ -84,7 +71,7 @@ namespace Nethermind.JsonRpc.Test
             CheckLogLine("A|1|500|500|0|0|0|");
             _testLogger.LogList.Clear();
         }
-        
+
         [Test]
         public void Calls_do_not_delay_report()
         {
@@ -97,13 +84,13 @@ namespace Nethermind.JsonRpc.Test
 
             _testLogger.LogList.Should().HaveCountGreaterThan(0);
         }
-        
+
         [Test]
         public void Does_not_report_when_info_not_enabled()
         {
             _testLogger = new TestLogger();
             _testLogger.IsInfo = false;
-            
+
             OneLoggerLogManager logManager = new(_testLogger);
             JsonRpcLocalStats localStats = new(_manualTimestamper, _config, logManager);
             localStats.ReportCall("A", 100, true);
@@ -111,7 +98,7 @@ namespace Nethermind.JsonRpc.Test
             localStats.ReportCall("A", 300, true);
             _testLogger.LogList.Should().HaveCount(0);
         }
-        
+
         [Test]
         public void Does_not_report_when_nothing_to_report()
         {
@@ -120,7 +107,7 @@ namespace Nethermind.JsonRpc.Test
             localStats.ReportCall("A", 300, true);
             _testLogger.LogList.Should().HaveCount(0);
         }
-        
+
         [Test]
         public void Multiple_have_no_decimal_places()
         {
@@ -136,7 +123,7 @@ namespace Nethermind.JsonRpc.Test
             CheckLogLine("A|3|33|50|3|67|100|");
             CheckLogLine("TOTAL|3|33|50|3|67|100|");
         }
-        
+
         [Test]
         public void Single_of_each_is_fine()
         {
@@ -151,7 +138,7 @@ namespace Nethermind.JsonRpc.Test
             CheckLogLine("B|1|75|75|1|175|175|");
             CheckLogLine("TOTAL|2|50|75|2|150|175|");
         }
-        
+
         [Test]
         public void Orders_alphabetically()
         {
@@ -169,7 +156,7 @@ namespace Nethermind.JsonRpc.Test
         {
             _manualTimestamper.UtcNow = _manualTimestamper.UtcNow.AddSeconds(seconds);
         }
-        
+
         private void MakeTimePass()
         {
             _manualTimestamper.UtcNow = _manualTimestamper.UtcNow.AddSeconds(_config.ReportIntervalSeconds + 1);

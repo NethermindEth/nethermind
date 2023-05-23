@@ -1,25 +1,13 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
@@ -31,7 +19,7 @@ namespace Nethermind.Db
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
 
-        private readonly ConcurrentDictionary<byte[], byte[]?> _db;
+        private readonly SpanConcurrentDictionary<byte, byte[]?> _db;
 
         public MemDb(string name)
             : this(0, 0)
@@ -47,32 +35,20 @@ namespace Nethermind.Db
         {
             _writeDelay = writeDelay;
             _readDelay = readDelay;
-            _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
+            _db = new SpanConcurrentDictionary<byte, byte[]>(Bytes.SpanEqualityComparer);
         }
 
         public string Name { get; }
 
-        public byte[]? this[byte[] key]
+        public virtual byte[]? this[ReadOnlySpan<byte> key]
         {
             get
             {
-                if (_readDelay > 0)
-                {
-                    Thread.Sleep(_readDelay);
-                }
-
-                ReadsCount++;
-                return _db.ContainsKey(key) ? _db[key] : null;
+                return Get(key);
             }
             set
             {
-                if (_writeDelay > 0)
-                {
-                    Thread.Sleep(_writeDelay);
-                }
-
-                WritesCount++;
-                _db[key] = value;
+                Set(key, value);
             }
         }
 
@@ -90,12 +66,12 @@ namespace Nethermind.Db
             }
         }
 
-        public void Remove(byte[] key)
+        public virtual void Remove(ReadOnlySpan<byte> key)
         {
             _db.TryRemove(key, out _);
         }
 
-        public bool KeyExists(byte[] key)
+        public bool KeyExists(ReadOnlySpan<byte> key)
         {
             return _db.ContainsKey(key);
         }
@@ -115,7 +91,7 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
 
-        public IBatch StartBatch()
+        public virtual IBatch StartBatch()
         {
             return this.LikeABatch();
         }
@@ -125,17 +101,49 @@ namespace Nethermind.Db
 
         public int Count => _db.Count;
 
+        public long GetSize() => 0;
+        public long GetCacheSize() => 0;
+        public long GetIndexSize() => 0;
+        public long GetMemtableSize() => 0;
+
         public void Dispose()
         {
         }
 
-        public Span<byte> GetSpan(byte[] key)
+        public virtual Span<byte> GetSpan(ReadOnlySpan<byte> key)
         {
-            return this[key].AsSpan();
+            return Get(key).AsSpan();
+        }
+
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        {
+            Set(key, value.ToArray());
         }
 
         public void DangerousReleaseMemory(in Span<byte> span)
         {
+        }
+
+        public virtual byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            if (_readDelay > 0)
+            {
+                Thread.Sleep(_readDelay);
+            }
+
+            ReadsCount++;
+            return _db.TryGetValue(key, out byte[] value) ? value : null;
+        }
+
+        public virtual void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (_writeDelay > 0)
+            {
+                Thread.Sleep(_writeDelay);
+            }
+
+            WritesCount++;
+            _db[key] = value;
         }
     }
 }

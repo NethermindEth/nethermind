@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Linq;
@@ -34,8 +20,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public VersionedTransactionPermissionContract(IAbiEncoder abiEncoder,
             Address contractAddress,
             long activation,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource, 
-            ICache<Keccak, UInt256> cache,
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
+            LruCache<KeccakKey, UInt256> cache,
             ILogManager logManager,
             ISpecProvider specProvider)
             : base(
@@ -48,7 +34,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 logManager)
         {
         }
-        
+
         private static TransactionPermissionContractV1 CreateV1(IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
@@ -80,7 +66,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 readOnlyTxProcessorSource,
                 specProvider);
         }
-        
+
         private static TransactionPermissionContractV4 CreateV4(IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
@@ -102,23 +88,27 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return new()
             {
                 {
-                    UInt256.One, CreateV1(abiEncoder,
+                    UInt256.One,
+                    CreateV1(abiEncoder,
                         contractAddress,
                         readOnlyTxProcessorSource)
                 },
                 {
-                    2, CreateV2(abiEncoder,
+                    2,
+                    CreateV2(abiEncoder,
                         contractAddress,
                         readOnlyTxProcessorSource)
                 },
                 {
-                    3, CreateV3(abiEncoder,
+                    3,
+                    CreateV3(abiEncoder,
                         contractAddress,
                         readOnlyTxProcessorSource,
                         specProvider)
                 },
                 {
-                    4, CreateV4(abiEncoder,
+                    4,
+                    CreateV4(abiEncoder,
                         contractAddress,
                         readOnlyTxProcessorSource,
                         specProvider)

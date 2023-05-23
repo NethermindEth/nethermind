@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -64,7 +51,7 @@ namespace Nethermind.Cli
 
             _currentClient = _clients[uri];
         }
-        
+
         public void SwitchClient(IJsonRpcClient client)
         {
             _currentClient = client;
@@ -72,8 +59,6 @@ namespace Nethermind.Cli
 
         public async Task<JsValue> PostJint(string method, params object[] parameters)
         {
-            JsValue returnValue = JsValue.Null;
-            
             try
             {
                 if (_currentClient is null)
@@ -88,14 +73,16 @@ namespace Nethermind.Cli
                     stopwatch.Stop();
                     decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
                     Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");
-                    string? resultString = result?.ToString();
-                    if (resultString == "0x" || resultString is null)
+
+                    if (result is bool boolResult)
                     {
-                        returnValue = JsValue.Null;
+                        return boolResult ? JsValue.True : JsValue.False;
                     }
-                    else
+
+                    string? resultString = result?.ToString();
+                    if (resultString != "0x" && resultString is not null)
                     {
-                        returnValue = _jsonParser.Parse(resultString);    
+                        return _jsonParser.Parse(resultString);
                     }
                 }
             }
@@ -113,8 +100,7 @@ namespace Nethermind.Cli
             {
                 _cliConsole.WriteException(e);
             }
-
-            return returnValue;
+            return JsValue.Null;
         }
 
         public async Task<string?> Post(string method, params object?[] parameters)
@@ -127,7 +113,7 @@ namespace Nethermind.Cli
             T? result = default;
             try
             {
-                if (_currentClient == null)
+                if (_currentClient is null)
                 {
                     _cliConsole.WriteErrorLine("[INTERNAL ERROR] JSON RPC client not set.");
                 }
@@ -138,7 +124,7 @@ namespace Nethermind.Cli
                     result = await _currentClient.Post<T>(method, parameters);
                     stopwatch.Stop();
                     decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
-                    Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");   
+                    Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");
                 }
             }
             catch (HttpRequestException e)

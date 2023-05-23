@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -25,7 +12,7 @@ namespace Nethermind.Evm.Tracing
     public class NullTxTracer : ITxTracer
     {
         public static ITxTracer Instance { get; } = new NullTxTracer();
-        
+
         private const string ErrorMessage = "Null tracer should never receive any calls.";
         private NullTxTracer() { }
 
@@ -41,6 +28,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingStorage => false;
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
+        public bool IsTracingFees => false;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
             => throw new InvalidOperationException(ErrorMessage);
@@ -59,7 +47,7 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationMemorySize(ulong newSize)
             => throw new InvalidOperationException(ErrorMessage);
-        
+
         public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
             => throw new InvalidOperationException(ErrorMessage);
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
@@ -67,7 +55,7 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationStack(List<string> stackTrace)
             => throw new InvalidOperationException(ErrorMessage);
-        
+
         public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
             => throw new InvalidOperationException(ErrorMessage);
 
@@ -77,7 +65,7 @@ namespace Nethermind.Evm.Tracing
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) 
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
             => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
@@ -91,13 +79,13 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
             => throw new InvalidOperationException(ErrorMessage);
-        
+
         public void ReportAccountRead(Address address)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
             => throw new InvalidOperationException(ErrorMessage);
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
             => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
@@ -123,6 +111,9 @@ namespace Nethermind.Evm.Tracing
             => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+            => throw new InvalidOperationException(ErrorMessage);
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
             => throw new InvalidOperationException(ErrorMessage);
     }
 }

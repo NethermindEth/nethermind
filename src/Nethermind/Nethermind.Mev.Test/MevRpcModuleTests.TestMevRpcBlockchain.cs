@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -21,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -29,6 +16,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Test;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -63,7 +51,6 @@ namespace Nethermind.Mev.Test
             TestSpecProvider testSpecProvider = releaseSpec is not null
                 ? new TestSpecProvider(releaseSpec)
                 : new TestSpecProvider(Berlin.Instance);
-            testSpecProvider.ChainId = 1;
             return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
         }
 
@@ -89,7 +76,7 @@ namespace Nethermind.Mev.Test
                 };
                 Signer = new TestMevSigner(MinerAddress);
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
-                    .WithTimestamp(UInt256.One)
+                    .WithTimestamp(1UL)
                     .WithGasLimit(GasLimitCalculator.GasLimit)
                     .WithBaseFeePerGas(initialBaseFeePerGas ?? 0);
             }
@@ -100,12 +87,12 @@ namespace Nethermind.Mev.Test
             public Address MinerAddress => TestItem.PrivateKeyD.Address;
             private ISigner Signer { get; }
 
-            public override ILogManager LogManager => NUnitLogManager.Instance;
+            public override ILogManager LogManager => LimboLogs.Instance;
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer,
                 ITransactionComparerProvider transactionComparerProvider)
             {
-                MiningConfig miningConfig = new() { MinGasPrice = UInt256.One };
+                BlocksConfig blocksConfig = new() { MinGasPrice = UInt256.One };
                 SpecProvider.UpdateMergeTransitionInfo(1, 0);
 
                 BlockProducerEnvFactory blockProducerEnvFactory = new(
@@ -119,7 +106,7 @@ namespace Nethermind.Mev.Test
                     BlockPreprocessorStep,
                     TxPool,
                     transactionComparerProvider,
-                    miningConfig,
+                    blocksConfig,
                     LogManager)
                 {
                     TransactionsExecutorFactory =
@@ -130,7 +117,7 @@ namespace Nethermind.Mev.Test
                     ITxSource? txSource = null)
                 {
                     BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(txSource);
-                    return new PostMergeBlockProducerFactory(SpecProvider, SealEngine, Timestamper, miningConfig,
+                    return new PostMergeBlockProducerFactory(SpecProvider, SealEngine, Timestamper, blocksConfig,
                         LogManager).Create(
                         blockProducerEnv, blockProductionTrigger, txSource);
                 }
@@ -217,7 +204,6 @@ namespace Nethermind.Mev.Test
                     NoBlockRewards.Instance,
                     new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
-                    Storage,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
                     LogManager);
@@ -274,7 +260,9 @@ namespace Nethermind.Mev.Test
                 Keccak[] revertingTxHashes = txs.Where(t => t.CanRevert).Select(t => t.Hash!).ToArray();
                 MevBundleRpc mevBundleRpc = new()
                 {
-                    BlockNumber = blockNumber, Txs = bundleBytes, RevertingTxHashes = revertingTxHashes
+                    BlockNumber = blockNumber,
+                    Txs = bundleBytes,
+                    RevertingTxHashes = revertingTxHashes
                 };
                 ResultWrapper<bool> resultOfBundle = MevRpcModule.eth_sendBundle(mevBundleRpc);
                 resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);

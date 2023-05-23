@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -24,6 +11,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -77,25 +65,24 @@ namespace Nethermind.Init.Steps
             InitBlockTraceDumper();
 
             (IApiWithStores getApi, IApiWithBlockchain setApi) = _api.ForBlockchain;
-            
-            if (getApi.ChainSpec == null) throw new StepDependencyException(nameof(getApi.ChainSpec));
-            if (getApi.DbProvider == null) throw new StepDependencyException(nameof(getApi.DbProvider));
-            if (getApi.SpecProvider == null) throw new StepDependencyException(nameof(getApi.SpecProvider));
-            if (getApi.BlockTree == null) throw new StepDependencyException(nameof(getApi.BlockTree));
-            
+
+            if (getApi.ChainSpec is null) throw new StepDependencyException(nameof(getApi.ChainSpec));
+            if (getApi.DbProvider is null) throw new StepDependencyException(nameof(getApi.DbProvider));
+            if (getApi.SpecProvider is null) throw new StepDependencyException(nameof(getApi.SpecProvider));
+            if (getApi.BlockTree is null) throw new StepDependencyException(nameof(getApi.BlockTree));
+
             _logger = getApi.LogManager.GetClassLogger();
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
             IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
+            IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
             IMiningConfig miningConfig = getApi.Config<IMiningConfig>();
 
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
-                _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
+                if (_logger.IsWarn) _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
-            
-            Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
             IWitnessCollector witnessCollector;
             if (syncConfig.WitnessProtocolEnabled)
@@ -127,11 +114,11 @@ namespace Nethermind.Init.Steps
                     getApi.DisposeStack.Push(triggerPersistenceStrategy);
                     persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
                 }
-                
+
                 setApi.TrieStore = trieStore = new TrieStore(
                     stateWitnessedBy,
                     Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
-                    persistenceStrategy, 
+                    persistenceStrategy,
                     getApi.LogManager);
 
                 if (pruningConfig.Mode.IsFull())
@@ -152,26 +139,26 @@ namespace Nethermind.Init.Steps
                     Persist.EveryBlock,
                     getApi.LogManager);
             }
-            
-            getApi.DisposeStack.Push(trieStore);
+
             TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);
             getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
+            getApi.DisposeStack.Push(trieStore);
+
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
 
-            IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
+            IWorldState worldState = setApi.WorldState = new WorldState(
                 trieStore,
                 codeDb,
                 getApi.LogManager);
 
             ReadOnlyDbProvider readOnly = new(getApi.DbProvider, false);
-            
+
             IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
-            
+
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
-            Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
-            stateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+            worldState.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
 
             if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
             {
@@ -180,7 +167,12 @@ namespace Nethermind.Init.Steps
                     try
                     {
                         _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                        TrieStats stats = stateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
+                        TrieStore noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
+                        IWorldState diagStateProvider = new WorldState(noPruningStore, codeDb, getApi.LogManager)
+                        {
+                            StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
+                        };
+                        TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
                         _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
                     }
                     catch (Exception ex)
@@ -191,13 +183,13 @@ namespace Nethermind.Init.Steps
             }
 
             // Init state if we need system calls before actual processing starts
-            if (getApi.BlockTree!.Head?.StateRoot != null)
+            if (getApi.BlockTree!.Head?.StateRoot is not null)
             {
-                stateProvider.StateRoot = getApi.BlockTree.Head.StateRoot;
+                worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
             }
-            
+
             TxValidator txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
-            
+
             ITxPool txPool = _api.TxPool = CreateTxPool();
 
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.BlockTree, getApi.ReceiptStorage, _api.LogManager);
@@ -206,22 +198,16 @@ namespace Nethermind.Init.Steps
 
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
-            
-            IStorageProvider storageProvider = setApi.StorageProvider = new StorageProvider(
-                trieStore,
-                stateProvider,
-                getApi.LogManager);
 
             // blockchain processing
-            BlockhashProvider blockhashProvider = new (
+            BlockhashProvider blockhashProvider = new(
                 getApi.BlockTree, getApi.LogManager);
 
-            VirtualMachine virtualMachine = new (
+            VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 getApi.SpecProvider,
                 getApi.LogManager);
 
-            WorldState worldState = new (stateProvider, storageProvider);
             _api.TransactionProcessor = new TransactionProcessor(
                 getApi.SpecProvider,
                 worldState,
@@ -229,7 +215,7 @@ namespace Nethermind.Init.Steps
                 getApi.LogManager);
 
             InitSealEngine();
-            if (_api.SealValidator == null) throw new StepDependencyException(nameof(_api.SealValidator));
+            if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
 
             setApi.HeaderValidator = CreateHeaderValidator();
 
@@ -248,8 +234,17 @@ namespace Nethermind.Init.Steps
 
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider, getApi.BlockTree, stateReader);
+
+            // TODO: can take the tx sender from plugin here maybe
+            ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider.ChainId);
+            TxSealer nonceReservingTxSealer =
+                new(txSigner, getApi.Timestamper);
+            INonceManager nonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
+            setApi.NonceManager = nonceManager;
+            setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
+
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
-            setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree, getApi.SpecProvider, _api.LogManager, miningConfig.MinGasPrice);
+            setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new(
@@ -266,30 +261,21 @@ namespace Nethermind.Init.Steps
 
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
-            setApi.EthSyncingInfo = new EthSyncingInfo(getApi.BlockTree);
 
-            // TODO: can take the tx sender from plugin here maybe
-            ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider.ChainId);
-            TxSealer standardSealer = new(txSigner, getApi.Timestamper);
-            NonceReservingTxSealer nonceReservingTxSealer =
-                new(txSigner, getApi.Timestamper, txPool);
-            setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, standardSealer);
-
-            // TODO: possibly hide it (but need to confirm that NDM does not really need it)
             IFilterStore filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = new BlockProductionPolicy(miningConfig);
-            
+
             InitializeFullPruning(pruningConfig, initConfig, _api, stateReader);
-            
+
             return Task.CompletedTask;
         }
 
         private static void InitializeFullPruning(
             IPruningConfig pruningConfig,
-            IInitConfig initConfig, 
-            INethermindApi api, 
+            IInitConfig initConfig,
+            INethermindApi api,
             IStateReader stateReader)
         {
             IPruningTrigger? CreateAutomaticTrigger(string dbPath)
@@ -318,19 +304,19 @@ namespace Nethermind.Init.Steps
                         api.PruningTrigger.Add(pruningTrigger);
                     }
 
-                    FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!, stateReader, api.LogManager);
+                    FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!, stateReader, api.ProcessExit!, api.LogManager);
                     api.DisposeStack.Push(pruner);
                 }
             }
         }
-		
+
         private static void InitBlockTraceDumper()
         {
             BlockTraceDumper.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
             BlockTraceDumper.Converters.AddRange(DebugModuleFactory.Converters);
             BlockTraceDumper.Converters.AddRange(TraceModuleFactory.Converters);
             BlockTraceDumper.Converters.Add(new TxReceiptConverter());
-        }		
+        }
 
         protected virtual IHealthHintService CreateHealthHintService() =>
             new HealthHintService(_api.ChainSpec!);
@@ -346,26 +332,25 @@ namespace Nethermind.Init.Steps
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 
         // TODO: we should not have the create header -> we should have a header that also can use the information about the transitions
-         protected virtual IHeaderValidator CreateHeaderValidator() => new HeaderValidator(
-             _api.BlockTree,
-             _api.SealValidator,
-             _api.SpecProvider,
-             _api.LogManager);
+        protected virtual IHeaderValidator CreateHeaderValidator() => new HeaderValidator(
+            _api.BlockTree,
+            _api.SealValidator,
+            _api.SpecProvider,
+            _api.LogManager);
 
         // TODO: remove from here - move to consensus?
         protected virtual BlockProcessor CreateBlockProcessor()
         {
-            if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-            if (_api.TransactionProcessor == null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
+            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
+            if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
+            if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
 
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.StateProvider!),
-                _api.StateProvider,
-                _api.StorageProvider,
+                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState!),
+                _api.WorldState,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
                 _api.LogManager);

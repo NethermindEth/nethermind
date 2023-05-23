@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -28,7 +15,7 @@ namespace Nethermind.Network.Rlpx
     {
         private readonly ILogger _logger;
         private readonly IFrameCipher _cipher;
-        private readonly IFrameMacProcessor _authenticator;
+        private readonly FrameMacProcessor _authenticator;
 
         private readonly byte[] _headerBytes = new byte[Frame.HeaderSize];
         private readonly byte[] _macBytes = new byte[Frame.MacSize];
@@ -36,60 +23,66 @@ namespace Nethermind.Network.Rlpx
         private readonly byte[] _decryptedBytes = new byte[Frame.BlockSize];
 
         private FrameDecoderState _state = FrameDecoderState.WaitingForHeader;
-        private IByteBuffer _innerBuffer;
+        private IByteBuffer? _innerBuffer;
         private int _frameSize;
         private int _remainingPayloadBlocks;
 
-        public ZeroFrameDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogManager logManager)
+        public ZeroFrameDecoder(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor, ILogManager logManager)
         {
             _cipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
             _authenticator = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
             _logger = logManager?.GetClassLogger<ZeroFrameDecoder>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
+        public override void HandlerRemoved(IChannelHandlerContext context)
+        {
+            base.HandlerRemoved(context);
+            _innerBuffer?.Release();
+        }
+
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
         {
-          
+
             // Note that ByteToMessageDecoder handles input.Release calls for us.
             // In fact, we receive here a potentially surviving _internalBuffer of the base class
             // that is being built by its cumulator.
-            
+
             // Output buffers that we create will be released by the next handler in the pipeline.
             while (input.ReadableBytes >= Frame.BlockSize)
             {
                 switch (_state)
                 {
                     case FrameDecoderState.WaitingForHeader:
-                    {
-                        ReadHeader(input);
-                        _state = FrameDecoderState.WaitingForHeaderMac;
-                        break;
-                    }
-                    case FrameDecoderState.WaitingForHeaderMac:
-                    {
-                        AuthenticateHeader(input);
-                        DecryptHeader();
-                        ReadFrameSize();
-                        AllocateFrameBuffer(context); // it will be released by the next handler in the pipeline
-                        _state = FrameDecoderState.WaitingForPayload;
-                        break;
-                    }
-                    case FrameDecoderState.WaitingForPayload:
-                    {
-                        ProcessOneBlock(input);
-                        if (_remainingPayloadBlocks == 0)
                         {
-                            _state = FrameDecoderState.WaitingForPayloadMac;
+                            ReadHeader(input);
+                            _state = FrameDecoderState.WaitingForHeaderMac;
+                            break;
                         }
-                        break;
-                    }
+                    case FrameDecoderState.WaitingForHeaderMac:
+                        {
+                            AuthenticateHeader(input);
+                            DecryptHeader();
+                            ReadFrameSize();
+                            AllocateFrameBuffer(context); // it will be released by the next handler in the pipeline
+                            _state = FrameDecoderState.WaitingForPayload;
+                            break;
+                        }
+                    case FrameDecoderState.WaitingForPayload:
+                        {
+                            ProcessOneBlock(input);
+                            if (_remainingPayloadBlocks == 0)
+                            {
+                                _state = FrameDecoderState.WaitingForPayloadMac;
+                            }
+                            break;
+                        }
                     case FrameDecoderState.WaitingForPayloadMac:
-                    {
-                        AuthenticatePayload(input);
-                        PassFrame(output);
-                        _state = FrameDecoderState.WaitingForHeader;
-                        break;
-                    }
+                        {
+                            AuthenticatePayload(input);
+                            PassFrame(output);
+                            _state = FrameDecoderState.WaitingForHeader;
+                            break;
+                        }
                     default:
                         throw new NotSupportedException($"{nameof(ZeroFrameDecoder)} does not support {_state} state.");
                 }

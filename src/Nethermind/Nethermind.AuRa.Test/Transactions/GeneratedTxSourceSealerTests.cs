@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -46,29 +32,29 @@ namespace Nethermind.AuRa.Test.Transactions
             ITimestamper timestamper = Substitute.For<ITimestamper>();
             IStateReader stateReader = Substitute.For<IStateReader>();
             Address nodeAddress = TestItem.AddressA;
-            
+
             UInt256 expectedNonce = 10;
             stateReader.GetAccount(blockHeader.StateRoot, nodeAddress).Returns(Account.TotallyEmpty.WithChangedNonce(expectedNonce));
-            
+
             ulong expectedTimeStamp = 100;
             timestamper.UnixTime.Returns(UnixTime.FromSeconds(expectedTimeStamp));
 
             int gasLimit = 200;
             ITxSource innerTxSource = Substitute.For<ITxSource>();
-            innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] {tx1, tx2});
-            
-            TxSealer txSealer = new(new Signer((ulong) chainId, Build.A.PrivateKey.TestObject, LimboLogs.Instance), timestamper);
+            innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] { tx1, tx2 });
+
+            TxSealer txSealer = new(new Signer((ulong)chainId, Build.A.PrivateKey.TestObject, LimboLogs.Instance), timestamper);
             GeneratedTxSource transactionFiller = new(innerTxSource, txSealer, stateReader, LimboLogs.Instance);
 
             Transaction[] sealedTxs = transactionFiller.GetTransactions(blockHeader, gasLimit).ToArray();
             Transaction sealedTx1 = sealedTxs.First();
             Transaction sealedTx2 = sealedTxs.Skip(1).First();
-            
+
             sealedTx1.IsSigned.Should().BeTrue();
             sealedTx1.Nonce.Should().Be(expectedNonce);
             sealedTx1.Hash.Should().Be(tx1.CalculateHash());
             sealedTx1.Timestamp.Should().Be(expectedTimeStamp);
-            
+
             sealedTx2.IsSigned.Should().BeTrue();
             sealedTx2.Nonce.Should().Be(expectedNonce + 1);
             sealedTx2.Hash.Should().NotBe(tx1.CalculateHash());

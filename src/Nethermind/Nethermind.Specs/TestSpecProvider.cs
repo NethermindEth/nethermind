@@ -1,19 +1,7 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -21,34 +9,44 @@ namespace Nethermind.Specs
 {
     public class TestSpecProvider : ISpecProvider
     {
-        private long? _theMergeBlock = null;
+        private ForkActivation? _theMergeBlock = null;
 
         public TestSpecProvider(IReleaseSpec initialSpecToReturn)
         {
             SpecToReturn = initialSpecToReturn;
             GenesisSpec = initialSpecToReturn;
         }
-        
+
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
-            if (blockNumber != null)
-                _theMergeBlock = blockNumber;
-            if (terminalTotalDifficulty != null)
+            if (blockNumber is not null)
+                _theMergeBlock = (ForkActivation)blockNumber;
+            if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 
-        public long? MergeBlockNumber => _theMergeBlock;
+        public ForkActivation? MergeBlockNumber => _theMergeBlock;
+        public ulong TimestampFork { get; set; } = ISpecProvider.TimestampForkNever;
         public UInt256? TerminalTotalDifficulty { get; set; }
 
         public IReleaseSpec GenesisSpec { get; set; }
 
-        public IReleaseSpec GetSpec(long blockNumber) => SpecToReturn;
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) => SpecToReturn;
 
         public IReleaseSpec SpecToReturn { get; set; }
 
         public long? DaoBlockNumber { get; set; }
-        public ulong ChainId { get; set; }
-        public long[] TransitionBlocks { get; set; } = new long[] {0};
+        public ulong? _networkId;
+        public ulong NetworkId { get { return _networkId ?? TestBlockchainIds.NetworkId; } set { _networkId = value; } }
+
+        public ulong? _chainId;
+        public ulong ChainId { get { return _chainId ?? TestBlockchainIds.ChainId; } set { _chainId = value; } }
+
+        public ForkActivation[] TransitionActivations { get; set; } = new ForkActivation[] { (ForkActivation)0 };
         public bool AllowTestChainOverride { get; set; } = true;
+
+        private TestSpecProvider() { }
+
+        public static readonly TestSpecProvider Instance = new();
     }
 }

@@ -1,22 +1,9 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -27,14 +14,18 @@ public class MergeSealValidator : ISealValidator
 
     public MergeSealValidator(
         IPoSSwitcher poSSwitcher,
-        ISealValidator preMergeSealValidator)
+        ISealValidator preMergeSealValidator
+    )
     {
         _poSSwitcher = poSSwitcher;
         _preMergeSealValidator = preMergeSealValidator;
     }
-    public bool ValidateParams(BlockHeader parent, BlockHeader header) => 
-        _poSSwitcher.IsPostMerge(header) || _preMergeSealValidator.ValidateParams(parent, header);
+    public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle) =>
+        _poSSwitcher.IsPostMerge(header) || _preMergeSealValidator.ValidateParams(parent, header, isUncle);
 
-    public bool ValidateSeal(BlockHeader header, bool force) => 
-        _poSSwitcher.IsPostMerge(header) || _preMergeSealValidator.ValidateSeal(header, force);
+    public bool ValidateSeal(BlockHeader header, bool force)
+    {
+        (bool isTerminal, bool isPostMerge) = _poSSwitcher.GetBlockConsensusInfo(header);
+        return isPostMerge || _preMergeSealValidator.ValidateSeal(header, force || isTerminal);
+    }
 }

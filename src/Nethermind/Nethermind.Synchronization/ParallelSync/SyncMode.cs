@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 
@@ -22,7 +9,7 @@ namespace Nethermind.Synchronization.ParallelSync
     public enum SyncMode
     {
         None = 0,
-        
+
         /// <summary>
         /// We are connected to nodes and processing based on discovery
         /// </summary>
@@ -36,7 +23,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         FastBlocks = 4,
         /// <summary>
-        /// A standard fast sync mode before the peers head - 32 (threshold). It happens after the fast blocks finishes to download from pivot downwards. By default the pivot for fast blocks is 0 so the fast blocks finish immediately. 
+        /// A standard fast sync mode before the peers head - 32 (threshold). It happens after the fast blocks finishes to download from pivot downwards. By default the pivot for fast blocks is 0 so the fast blocks finish immediately.
         /// </summary>
         FastSync = 8,
         /// <summary>
@@ -69,13 +56,17 @@ namespace Nethermind.Synchronization.ParallelSync
         SnapSync = 2048,
         /// <summary>
         /// Reverse download of headers from beacon pivot to genesis
-        /// </summary> 
+        /// </summary>
         BeaconHeaders = 4096,
+        /// <summary>
+        /// Waiting for Forkchoice message from Consensus Layer to update pivot block
+        /// </summary>
+        UpdatingPivot = 8192,
 
-        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad | 
-              FastHeaders | FastBodies | FastReceipts | SnapSync | BeaconHeaders
+        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad |
+              FastHeaders | FastBodies | FastReceipts | SnapSync | BeaconHeaders | UpdatingPivot
     }
-    
+
     public static class SyncModeExtensions
     {
         public static bool NotSyncing(this SyncMode syncMode) => syncMode == SyncMode.WaitingForBlock || syncMode == SyncMode.Disconnected;

@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -46,11 +33,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                ((IBlockTracer) blockTracer).StartNewTxTrace(Build.A.Transaction.TestObject);
-                ((IBlockTracer) blockTracer).EndTxTrace();    
+                ((IBlockTracer)blockTracer).StartNewTxTrace(Build.A.Transaction.TestObject);
+                ((IBlockTracer)blockTracer).EndTxTrace();
             }
-            
-            Assert.AreEqual(3, blockTracer.BuildResult().Count);
+
+            Assert.That(blockTracer.BuildResult().Count, Is.EqualTo(3));
         }
 
         [Test]
@@ -60,20 +47,20 @@ namespace Nethermind.Evm.Test.Tracing
             block = block.WithReplacedBody(new BlockBody(new Transaction[3], new BlockHeader[0]));
 
             GethLikeBlockTracer blockTracer = new(GethTraceOptions.Default);
-            ((IBlockTracer) blockTracer).StartNewTxTrace(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject);
-            ((IBlockTracer) blockTracer).EndTxTrace();
+            ((IBlockTracer)blockTracer).StartNewTxTrace(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+            ((IBlockTracer)blockTracer).EndTxTrace();
 
-            ((IBlockTracer) blockTracer).StartNewTxTrace(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject);
-            ((IBlockTracer) blockTracer).EndTxTrace();
+            ((IBlockTracer)blockTracer).StartNewTxTrace(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject);
+            ((IBlockTracer)blockTracer).EndTxTrace();
 
-            ((IBlockTracer) blockTracer).StartNewTxTrace(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject);
-            ((IBlockTracer) blockTracer).EndTxTrace();
+            ((IBlockTracer)blockTracer).StartNewTxTrace(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject);
+            ((IBlockTracer)blockTracer).EndTxTrace();
 
             Assert.NotNull(blockTracer.BuildResult().First(), "0");
             Assert.NotNull(blockTracer.BuildResult().Skip(1).First(), "1");
             Assert.NotNull(blockTracer.BuildResult().Last(), "2");
         }
-        
+
         [Test]
         [Ignore("It is not the actual behaviour at the moment")]
         public void Throws_when_ending_without_starting()
@@ -86,7 +73,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             GethLikeBlockTracer blockTracer1 = new(GethTraceOptions.Default);
             Assert.Throws<InvalidOperationException>(() => ((IBlockTracer)blockTracer1).EndTxTrace());
-            
+
             GethLikeBlockTracer blockTracer2 = new(GethTraceOptions.Default);
             ((IBlockTracer)blockTracer2).StartNewTxTrace(block.Transactions[0]);
             Assert.DoesNotThrow(() => ((IBlockTracer)blockTracer2).EndTxTrace());

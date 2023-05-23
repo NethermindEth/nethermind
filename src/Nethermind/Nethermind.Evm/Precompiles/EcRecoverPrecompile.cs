@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
@@ -44,30 +31,30 @@ namespace Nethermind.Evm.Precompiles
             return 3000L;
         }
 
-        private readonly EthereumEcdsa _ecdsa = new(ChainId.Mainnet, LimboLogs.Instance);
-        
+        private readonly EthereumEcdsa _ecdsa = new(BlockchainIds.Mainnet, LimboLogs.Instance);
+
         private readonly byte[] _zero31 = new byte[31];
-        
+
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.EcRecoverPrecompile++;
-            
-            Span<byte> inputDataSpan = stackalloc byte[128];
-            inputData.Span.Slice(0, Math.Min(128, inputData.Length))
-                .CopyTo(inputDataSpan.Slice(0, Math.Min(128, inputData.Length)));
 
-            Keccak hash = new(inputDataSpan.Slice(0, 32).ToArray());
+            Span<byte> inputDataSpan = stackalloc byte[128];
+            inputData.Span[..Math.Min(128, inputData.Length)]
+                .CopyTo(inputDataSpan[..Math.Min(128, inputData.Length)]);
+
+            Keccak hash = new(inputDataSpan[..32].ToArray());
             Span<byte> vBytes = inputDataSpan.Slice(32, 32);
             Span<byte> r = inputDataSpan.Slice(64, 32);
             Span<byte> s = inputDataSpan.Slice(96, 32);
 
             // TEST: CALLCODEEcrecoverV_prefixedf0_d0g0v0
             // TEST: CALLCODEEcrecoverV_prefixedf0_d1g0v0
-            if (!Bytes.AreEqual(_zero31, vBytes.Slice(0, 31)))
+            if (!Bytes.AreEqual(_zero31, vBytes[..31]))
             {
                 return (Array.Empty<byte>(), true);
             }
-            
+
             byte v = vBytes[31];
             if (v != 27 && v != 28)
             {
@@ -76,7 +63,7 @@ namespace Nethermind.Evm.Precompiles
 
             Signature signature = new(r, s, v);
             Address recovered = _ecdsa.RecoverAddress(signature, hash);
-            if (recovered == null)
+            if (recovered is null)
             {
                 return (Array.Empty<byte>(), true);
             }
@@ -86,7 +73,7 @@ namespace Nethermind.Evm.Precompiles
             {
                 result = result.PadLeft(32);
             }
-            
+
             // TODO: change recovery code to return bytes
             return (result, true);
         }

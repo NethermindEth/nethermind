@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
@@ -32,7 +18,7 @@ namespace Nethermind.State.Witnesses
                 : new WitnessingStore(@this, witnessCollector);
         }
     }
-    
+
     public class WitnessingStore : IKeyValueStoreWithBatching
     {
         private readonly IKeyValueStoreWithBatching _wrapped;
@@ -44,19 +30,26 @@ namespace Nethermind.State.Witnesses
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
         }
 
-        public byte[]? this[byte[] key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
-            get
+            get => Get(key);
+            set => Set(key, value);
+        }
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            if (key.Length != 32)
             {
-                if (key.Length != 32)
-                {
-                    throw new NotSupportedException($"{nameof(WitnessingStore)} requires 32 bytes long keys.");
-                }
-                
-                Touch(key);
-                return _wrapped[key];
+                throw new NotSupportedException($"{nameof(WitnessingStore)} requires 32 bytes long keys.");
             }
-            set => _wrapped[key] = value;
+
+            Touch(key);
+            return _wrapped.Get(key, flags);
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            _wrapped.Set(key, value, flags);
         }
 
         public IBatch StartBatch()
@@ -64,9 +57,9 @@ namespace Nethermind.State.Witnesses
             return _wrapped.StartBatch();
         }
 
-        public void Touch(byte[] key)
+        public void Touch(ReadOnlySpan<byte> key)
         {
-            _witnessCollector.Add(new Keccak(key));
+            _witnessCollector.Add(new Keccak(key.ToArray()));
         }
     }
 }

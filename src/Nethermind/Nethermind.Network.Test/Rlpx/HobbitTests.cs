@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -31,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
@@ -42,10 +30,10 @@ namespace Nethermind.Network.Test.Rlpx
         private byte[] _frame;
 
         private IFrameCipher _frameCipherA;
-        private IFrameMacProcessor _macProcessorA;
+        private FrameMacProcessor _macProcessorA;
 
         private IFrameCipher _frameCipherB;
-        private IFrameMacProcessor _macProcessorB;
+        private FrameMacProcessor _macProcessorB;
 
         [SetUp]
         public void Setup()
@@ -60,7 +48,7 @@ namespace Nethermind.Network.Test.Rlpx
 
             _frame = new byte[16 + 16 + 16 + 16];
             _frame[2] = 16; // size   
-            
+
             InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider(new ConsoleLoggerOptionsMonitor(
                 new ConsoleLoggerOptions
                 {
@@ -121,9 +109,9 @@ namespace Nethermind.Network.Test.Rlpx
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
             NewBlockMessage decodedMessage = newBlockMessageSerializer.Deserialize(decoded.Data);
-            Assert.AreEqual(newBlockMessage.Block.Transactions.Length, decodedMessage.Block.Transactions.Length);
+            Assert.That(decodedMessage.Block.Transactions.Length, Is.EqualTo(newBlockMessage.Block.Transactions.Length));
         }
-        
+
         [TestCase(StackType.Zero, StackType.Zero, true)]
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Receipts_message(StackType inbound, StackType outbound, bool framingEnabled)
@@ -133,7 +121,7 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 hashes[i] = Keccak.Compute(i.ToString());
             }
-            
+
             GetReceiptsMessage message = new(hashes);
 
             GetReceiptsMessageSerializer serializer = new();
@@ -142,9 +130,9 @@ namespace Nethermind.Network.Test.Rlpx
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
             GetReceiptsMessage decodedMessage = serializer.Deserialize(decoded.Data);
-            Assert.AreEqual(message.Hashes.Count, decodedMessage.Hashes.Count);
+            Assert.That(decodedMessage.Hashes.Count, Is.EqualTo(message.Hashes.Count));
         }
-        
+
         [TestCase(StackType.Zero, StackType.Zero, true)]
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Status_message(StackType inbound, StackType outbound, bool framingEnabled)
@@ -154,7 +142,7 @@ namespace Nethermind.Network.Test.Rlpx
             message.GenesisHash = Keccak.Zero;
             message.ProtocolVersion = 63;
             message.TotalDifficulty = 10000000000;
-            message.ChainId = 5;
+            message.NetworkId = 5;
 
             StatusMessageSerializer serializer = new();
             byte[] data = serializer.Serialize(message);
@@ -162,7 +150,7 @@ namespace Nethermind.Network.Test.Rlpx
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
             StatusMessage decodedMessage = serializer.Deserialize(decoded.Data);
-            Assert.AreEqual(message.TotalDifficulty, decodedMessage.TotalDifficulty);
+            Assert.That(decodedMessage.TotalDifficulty, Is.EqualTo(message.TotalDifficulty));
         }
 
         private Packet Run(Packet packet, StackType inbound, StackType outbound, bool framingEnabled)
@@ -193,25 +181,25 @@ namespace Nethermind.Network.Test.Rlpx
                 if (inbound == StackType.Zero)
                 {
                     ZeroPacket decodedPacket = embeddedChannel.ReadInbound<ZeroPacket>();
-                    Assert.AreEqual(packet.Data.ToHexString(), decodedPacket.Content.ReadAllHex());
-                    Assert.AreEqual(packet.PacketType, decodedPacket.PacketType);
+                    Assert.That(decodedPacket.Content.ReadAllHex(), Is.EqualTo(packet.Data.ToHexString()));
+                    Assert.That(decodedPacket.PacketType, Is.EqualTo(packet.PacketType));
                     decodedPacket.Release();
                 }
                 else // allocating
                 {
                     Packet decodedPacket = embeddedChannel.ReadInbound<Packet>();
-                    Assert.AreEqual(packet.Data.ToHexString(), decodedPacket.Data.ToHexString());
-                    Assert.AreEqual(packet.PacketType, decodedPacket.PacketType);
+                    Assert.That(decodedPacket.Data.ToHexString(), Is.EqualTo(packet.Data.ToHexString()));
+                    Assert.That(decodedPacket.PacketType, Is.EqualTo(packet.PacketType));
                 }
             }
             finally
             {
-                embeddedChannel?.Finish();    
+                embeddedChannel?.Finish();
             }
 
             return packet;
         }
-        
+
         private EmbeddedChannel BuildEmbeddedChannel(StackType inbound, StackType outbound, bool framingEnabled = true)
         {
             if (inbound != StackType.Zero ||
@@ -225,12 +213,12 @@ namespace Nethermind.Network.Test.Rlpx
             IChannelHandler encoder = new ZeroFrameEncoder(_frameCipherA, _macProcessorA, LimboLogs.Instance);
             IFramingAware splitter = new ZeroPacketSplitter(LimboLogs.Instance);
 
-            Assert.AreEqual(Frame.DefaultMaxFrameSize, splitter.MaxFrameSize, "default max frame size");
-            
+            Assert.That(splitter.MaxFrameSize, Is.EqualTo(Frame.DefaultMaxFrameSize), "default max frame size");
+
             if (!framingEnabled)
             {
                 splitter.DisableFraming();
-                Assert.AreEqual(int.MaxValue, splitter.MaxFrameSize, "max frame size when framing disabled");
+                Assert.That(splitter.MaxFrameSize, Is.EqualTo(int.MaxValue), "max frame size when framing disabled");
             }
 
             EmbeddedChannel embeddedChannel = new();
@@ -241,12 +229,12 @@ namespace Nethermind.Network.Test.Rlpx
 
             return embeddedChannel;
         }
-        
+
         public enum StackType
         {
             Zero
         }
-        
+
         private class ConsoleLoggerOptionsMonitor : IOptionsMonitor<ConsoleLoggerOptions>
         {
             public ConsoleLoggerOptionsMonitor(ConsoleLoggerOptions currentValue)
@@ -255,7 +243,7 @@ namespace Nethermind.Network.Test.Rlpx
             }
 
             public ConsoleLoggerOptions CurrentValue { get; }
-            
+
             public ConsoleLoggerOptions Get(string name) => CurrentValue;
 
             public IDisposable OnChange(Action<ConsoleLoggerOptions, string> listener)

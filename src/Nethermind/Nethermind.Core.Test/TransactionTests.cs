@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using FluentAssertions;
@@ -43,16 +30,16 @@ namespace Nethermind.Core.Test
             Assert.False(transaction.IsMessageCall, nameof(Transaction.IsMessageCall));
             Assert.True(transaction.IsContractCreation, nameof(Transaction.IsContractCreation));
         }
-        
+
         [TestCase(1, true)]
         [TestCase(300, true)]
-        public void IsEip1559_returns_expected_results(int decodedFeeCap, bool expectedIsEip1559)
+        public void Supports1559_returns_expected_results(int decodedFeeCap, bool expectedSupports1559)
         {
             Transaction transaction = new();
             transaction.DecodedMaxFeePerGas = (uint)decodedFeeCap;
             transaction.Type = TxType.EIP1559;
-            Assert.AreEqual(transaction.MaxFeePerGas, transaction.DecodedMaxFeePerGas);
-            Assert.AreEqual(expectedIsEip1559, transaction.IsEip1559);
+            Assert.That(transaction.DecodedMaxFeePerGas, Is.EqualTo(transaction.MaxFeePerGas));
+            Assert.That(transaction.Supports1559, Is.EqualTo(expectedSupports1559));
         }
     }
 }

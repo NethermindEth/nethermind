@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -52,7 +39,7 @@ namespace Nethermind.Synchronization.Peers
         public UInt256 TotalDifficulty => SyncPeer.TotalDifficulty;
 
         public long HeadNumber => SyncPeer.HeadNumber;
-        
+
         public Keccak HeadHash => SyncPeer.HeadHash;
 
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -119,7 +106,7 @@ namespace Nethermind.Synchronization.Peers
         private void WakeUp(AllocationContexts allocationContexts)
         {
             SleepingContexts ^= allocationContexts;
-            
+
             foreach (KeyValuePair<AllocationContexts, int> allocationIndex in AllocationIndexes)
             {
                 if ((allocationContexts & allocationIndex.Key) == allocationIndex.Key)
@@ -127,17 +114,17 @@ namespace Nethermind.Synchronization.Peers
                     _weaknesses[allocationIndex.Value] = 0;
                 }
             }
-            
+
             SleepingSince.TryRemove(allocationContexts, out _);
         }
-        
+
         // map from AllocationContexts single flag to index in array of _weaknesses
         private static readonly IDictionary<AllocationContexts, int> AllocationIndexes =
             FastEnum.GetValues<AllocationContexts>()
             .Where(c => c != AllocationContexts.All && c != AllocationContexts.None)
             .Select((a, i) => (a, i))
             .ToDictionary(v => v.a, v => v.i);
-        
+
         private readonly int[] _weaknesses = new int[AllocationIndexes.Count];
 
         public const int SleepThreshold = 2;
@@ -170,7 +157,7 @@ namespace Nethermind.Synchronization.Peers
         {
             return $"{((contexts & AllocationContexts.Headers) == AllocationContexts.Headers ? "H" : " ")}{((contexts & AllocationContexts.Bodies) == AllocationContexts.Bodies ? "B" : " ")}{((contexts & AllocationContexts.Receipts) == AllocationContexts.Receipts ? "R" : " ")}{((contexts & AllocationContexts.State) == AllocationContexts.State ? "N" : " ")}{((contexts & AllocationContexts.Snap) == AllocationContexts.Snap ? "S" : " ")}{((contexts & AllocationContexts.Witness) == AllocationContexts.Witness ? "W" : " ")}";
         }
-        
+
         public override string ToString() => $"[{BuildContextString(AllocatedContexts)}][{BuildContextString(SleepingContexts)}]{SyncPeer}";
     }
 }
