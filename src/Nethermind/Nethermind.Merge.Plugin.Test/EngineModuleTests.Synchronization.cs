@@ -771,7 +771,7 @@ public partial class EngineModuleTests
 
         Block blockNr1 = syncedBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
         await chain.BlockTree.SuggestBlockAsync(blockNr1, BlockTreeSuggestOptions.None);
-        chain.BlockTree.UpdateMainChain( new List<Block>() { blockNr1 }, true, true);
+        chain.BlockTree.UpdateMainChain(new List<Block>() { blockNr1 }, true, true);
 
         IEngineRpcModule rpc = CreateEngineModule(chain, syncConfig);
         Block blockBeforePivot = syncedBlockTree.FindBlock(2, BlockTreeLookupOptions.None)!;
