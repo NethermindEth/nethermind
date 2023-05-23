@@ -47,13 +47,15 @@ namespace Nethermind.Db.Test
 
             WriteOptions? options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority);
             Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeTrue();
+            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeFalse();
 
             options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority | WriteFlags.DisableWAL);
             Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeTrue();
-            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().Be(true);
+            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeTrue();
 
             options = db.WriteFlagsToWriteOptions(WriteFlags.DisableWAL);
-            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().Be(true);
+            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeFalse();
+            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeTrue();
         }
 
         [Test]
