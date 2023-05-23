@@ -16,26 +16,11 @@ namespace Nethermind.Serialization.Rlp;
 [DebuggerDisplay("{Hash} ({Number})")]
 public class ReceiptRecoveryBlock
 {
-    public ReceiptRecoveryBlock(Block block)
-    {
-        Header = block.Header;
-        _transactions = block.Transactions;
-        TransactionCount = _transactions.Length;
-    }
-
-    public ReceiptRecoveryBlock(MemoryManager<byte> memoryOwner, BlockHeader header, Memory<byte> transactionData, int transactionCount)
-    {
-        Header = header;
-        _memoryOwner = memoryOwner;
-        _transactionData = transactionData;
-        TransactionCount = transactionCount;
-    }
-
-    private MemoryManager<byte>? _memoryOwner;
-    private Memory<byte> _transactionData { get; set; }
+    private readonly MemoryManager<byte>? _memoryOwner; // Can be null if loaded without span
+    private readonly Memory<byte> _transactionData;
     private int _currentTransactionPosition = 0;
 
-    private Transaction[]? _transactions = null;
+    private readonly Transaction[]? _transactions = null;
     private int _currentTransactionIndex = 0;
 
     public BlockHeader Header { get; }
@@ -43,6 +28,21 @@ public class ReceiptRecoveryBlock
 
     // Use a buffer to avoid reallocation. Surprisingly significant. May produce incorrect transaction, but for recovery, it is correct.
     private Transaction? _txBuffer;
+
+    public ReceiptRecoveryBlock(Block block)
+    {
+        Header = block.Header;
+        _transactions = block.Transactions;
+        TransactionCount = _transactions.Length;
+    }
+
+    public ReceiptRecoveryBlock(MemoryManager<byte>? memoryOwner, BlockHeader header, Memory<byte> transactionData, int transactionCount)
+    {
+        Header = header;
+        _memoryOwner = memoryOwner;
+        _transactionData = transactionData;
+        TransactionCount = transactionCount;
+    }
 
     public Transaction GetNextTransaction()
     {
@@ -64,6 +64,6 @@ public class ReceiptRecoveryBlock
 
     public void Dispose()
     {
-        ((IMemoryOwner<byte>)_memoryOwner)?.Dispose();
+        ((IMemoryOwner<byte>?)_memoryOwner)?.Dispose();
     }
 }

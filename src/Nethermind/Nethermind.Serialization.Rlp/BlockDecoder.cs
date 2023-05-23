@@ -249,9 +249,9 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public ReceiptRecoveryBlock DecodeToReceiptRecoveryBlock(MemoryManager<byte> memory, RlpBehaviors rlpBehaviors)
+        public ReceiptRecoveryBlock DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
         {
-            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory.Memory, true);
+            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory, true);
 
             if (decoderContext.IsNextItemNull())
             {
@@ -280,7 +280,7 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(blockCheck);
             }
 
-            return new ReceiptRecoveryBlock(memory, header, transactionMemory, transactionCount);
+            return new ReceiptRecoveryBlock(memoryManager, header, transactionMemory, transactionCount);
         }
     }
 }
