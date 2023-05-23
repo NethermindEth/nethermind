@@ -388,7 +388,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(entry.Operation, Is.EqualTo("EXTCODESIZE"));
             Assert.That(entry.Stack[^1], Is.EqualTo("866833515b6d086c607f".PadLeft(64, '0')));
             Assert.That(entry.Stack.Count, Is.EqualTo(8));
-            
+
             entry = trace.Entries[^2];
             Assert.That(entry.Pc, Is.EqualTo(26));
             Assert.That(entry.Operation, Is.EqualTo("ISZERO"));
