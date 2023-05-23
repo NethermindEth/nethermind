@@ -13,6 +13,15 @@ namespace Nethermind.Serialization.Rlp
     {
         public const int MaxDelayedHashTxnSize = 32768;
         public static TxDecoder Instance = new TxDecoder();
+        public static TxDecoder InstanceWithoutLazyHash = new TxDecoder(false);
+
+        public TxDecoder() : base(true) // Rlp will try to find empty constructor.
+        {
+        }
+
+        public TxDecoder(bool lazyHash) : base(lazyHash)
+        {
+        }
 
         public int GetLength(Transaction tx)
         {
@@ -28,6 +37,12 @@ namespace Nethermind.Serialization.Rlp
         where T : Transaction, new()
     {
         private readonly AccessListDecoder _accessListDecoder = new();
+        private bool _lazyHash;
+
+        protected TxDecoder(bool lazyHash = true)
+        {
+            _lazyHash = lazyHash;
+        }
 
         public T? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -88,7 +103,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Check(lastCheck);
             }
 
-            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && (rlpBehaviors & RlpBehaviors.DisableLazyHash) == 0)
+            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 transaction.SetPreHash(transactionSequence);
@@ -286,7 +301,7 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(lastCheck);
             }
 
-            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && (rlpBehaviors & RlpBehaviors.DisableLazyHash) == 0)
+            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 transaction.SetPreHash(transactionSequence);

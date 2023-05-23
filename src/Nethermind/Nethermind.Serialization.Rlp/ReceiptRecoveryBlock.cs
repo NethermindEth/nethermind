@@ -53,7 +53,7 @@ public class ReceiptRecoveryBlock
 
         Rlp.ValueDecoderContext decoderContext = new(_transactionData, true);
         decoderContext.Position = _currentTransactionPosition;
-        TxDecoder.Instance.Decode(ref decoderContext, ref _txBuffer, RlpBehaviors.AllowUnsigned | RlpBehaviors.DisableLazyHash);
+        TxDecoder.InstanceWithoutLazyHash.Decode(ref decoderContext, ref _txBuffer, RlpBehaviors.AllowUnsigned);
         _currentTransactionPosition = decoderContext.Position;
 
         return _txBuffer;
