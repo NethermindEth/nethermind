@@ -9,7 +9,7 @@ jobs:
   chiado:
     name: "Run sync of chiado testnet"
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -107,6 +107,7 @@ jobs:
       - name: Display Docker logs        
         working-directory: sedge
         run: docker compose logs
+        if: success() || failure()
         
       - name: Verify health of a node
         working-directory: sedge
@@ -235,6 +236,7 @@ jobs:
       - name: Display Docker logs        
         working-directory: sedge
         run: docker compose logs
+        if: success() || failure()
           
       - name: Verify health of a node
         working-directory: sedge

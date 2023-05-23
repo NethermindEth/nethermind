@@ -384,7 +384,7 @@ public class AbiTests
             AbiType.Address,
             AbiType.Address);
 
-        byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.Packed, abiDef, assetId.Bytes, units, value, expiryTime, salt, Address.Zero, Address.Zero);
+        byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.Packed, abiDef, assetId.BytesToArray(), units, value, expiryTime, salt, Address.Zero, Address.Zero);
         Assert.That(encoded.Length, Is.EqualTo(108));
     }
 

@@ -1260,7 +1260,7 @@ public class VirtualMachine : IVirtualMachine
                         Address address = stack.PopAddress();
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
 
-                        if (programCounter < code.Length)
+                        if (!traceOpcodes && programCounter < code.Length)
                         {
                             bool optimizeAccess = false;
                             Instruction nextInstruction = (Instruction)code[programCounter];
@@ -1293,11 +1293,6 @@ public class VirtualMachine : IVirtualMachine
                                 // is is a common pattern to check if address is a contract
                                 // however we can just check the address's loaded CodeHash
                                 // to reduce storage access from trying to load the code
-                                if (traceOpcodes)
-                                {
-                                    EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-                                    StartInstructionTrace(Instruction.ISZERO, vmState, gasAvailable, programCounter, in stack);
-                                }
 
                                 programCounter++;
                                 // Add gas cost for ISZERO, GT, or EQ
@@ -1403,7 +1398,7 @@ public class VirtualMachine : IVirtualMachine
                         stack.PopUInt256(out UInt256 a);
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
                         Keccak blockHash = _blockhashProvider.GetBlockhash(txCtx.Header, number);
-                        stack.PushBytes(blockHash?.Bytes ?? BytesZero32);
+                        stack.PushBytes(blockHash != null ? blockHash.Bytes : BytesZero32);
 
                         if (isTrace)
                         {
@@ -1428,8 +1423,7 @@ public class VirtualMachine : IVirtualMachine
 
                         if (txCtx.Header.IsPostMerge)
                         {
-                            byte[] random = txCtx.Header.Random.Bytes;
-                            stack.PushBytes(random);
+                            stack.PushBytes(txCtx.Header.Random.Bytes);
                         }
                         else
                         {

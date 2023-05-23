@@ -133,7 +133,7 @@ namespace Nethermind.Blockchain.Test.Receipts
 
             TestMemDb blocksDb = (TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
             blocksDb.KeyWasRead(blockNumPrefixed.ToArray(), 0);
-            blocksDb.KeyWasRead(block.Hash.Bytes, 1);
+            blocksDb.KeyWasRead(block.Hash.BytesToArray(), 1);
         }
 
         [Test]

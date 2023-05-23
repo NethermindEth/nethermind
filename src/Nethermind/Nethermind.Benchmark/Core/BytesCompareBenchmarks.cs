@@ -18,11 +18,11 @@ namespace Nethermind.Benchmarks.Core
 
         private (byte[] A, byte[] B)[] _scenarios = new[]
         {
-            (Keccak.Zero.Bytes, Keccak.Zero.Bytes),
-            (Keccak.Zero.Bytes, Keccak.EmptyTreeHash.Bytes),
-            (Keccak.EmptyTreeHash.Bytes, Keccak.EmptyTreeHash.Bytes),
-            (Keccak.OfAnEmptyString.Bytes, Keccak.EmptyTreeHash.Bytes),
-            (Keccak.OfAnEmptyString.Bytes, Keccak.EmptyTreeHash.Bytes),
+            (Keccak.Zero.BytesToArray(), Keccak.Zero.BytesToArray()),
+            (Keccak.Zero.BytesToArray(), Keccak.EmptyTreeHash.BytesToArray()),
+            (Keccak.EmptyTreeHash.BytesToArray(), Keccak.EmptyTreeHash.BytesToArray()),
+            (Keccak.OfAnEmptyString.BytesToArray(), Keccak.EmptyTreeHash.BytesToArray()),
+            (Keccak.OfAnEmptyString.BytesToArray(), Keccak.EmptyTreeHash.BytesToArray()),
             (TestItem.AddressA.Bytes, TestItem.AddressB.Bytes),
         };
 

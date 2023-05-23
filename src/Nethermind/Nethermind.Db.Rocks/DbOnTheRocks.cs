@@ -514,17 +514,17 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     public WriteOptions? WriteFlagsToWriteOptions(WriteFlags flags)
     {
-        if ((flags & WriteFlags.LowPriorityAndNoWAL) != 0)
+        if ((flags & WriteFlags.LowPriorityAndNoWAL) == WriteFlags.LowPriorityAndNoWAL)
         {
             return _lowPriorityAndNoWalWrite;
         }
 
-        if ((flags & WriteFlags.DisableWAL) != 0)
+        if ((flags & WriteFlags.DisableWAL) == WriteFlags.DisableWAL)
         {
             return _noWalWrite;
         }
 
-        if ((flags & WriteFlags.LowPriority) != 0)
+        if ((flags & WriteFlags.LowPriority) == WriteFlags.LowPriority)
         {
             return _lowPriorityWriteOptions;
         }

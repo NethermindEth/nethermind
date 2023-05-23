@@ -35,7 +35,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void Report_malicious_sends_transaction([Values(true, false)] bool reportingValidator)
         {
             TestContext context = new(true);
-            byte[] proof = TestItem.KeccakA.Bytes;
+            byte[] proof = TestItem.KeccakA.BytesToArray();
             Transaction transaction = Build.A.Transaction.TestObject;
             context.ReportingValidatorContract.ReportMalicious(MaliciousMinerAddress, 5, proof).Returns(transaction);
             context.Validator.ReportMalicious(reportingValidator ? MaliciousMinerAddress : NodeAddress, 5, proof, IReportingValidator.MaliciousCause.DuplicateStep);
@@ -56,7 +56,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void Resend_malicious_transactions([Values(0, 5, 15)] int validatorsToReport, [Values(1, 4)] long blockNumber)
         {
             ReportingContractBasedValidator.Cache cache = new();
-            byte[] proof = TestItem.KeccakA.Bytes;
+            byte[] proof = TestItem.KeccakA.BytesToArray();
             Transaction transaction = Build.A.Transaction.TestObject;
             TestContext context = new(false, cache);
             for (ulong i = 5; i < 20; i++)
@@ -98,7 +98,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void Adds_transactions_to_block([Values(0, 5, 15)] int validatorsToReport, [Values(0, 2, 10, 20)] long parentBlockNumber, [Values(false, true)] bool emitInitChangeCallable)
         {
             TestContext context = new(true);
-            byte[] proof = TestItem.KeccakA.Bytes;
+            byte[] proof = TestItem.KeccakA.BytesToArray();
             Transaction transaction = Build.A.Transaction.TestObject;
             context.ContractBasedValidator.Validators = new[] { MaliciousMinerAddress, NodeAddress };
             ulong startReportBlockNumber = 5;
