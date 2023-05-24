@@ -268,7 +268,7 @@ namespace Nethermind.Evm.Test
             Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
         }
 
-        [Test]
+        [TestCase]
         public void Balance_is_not_changed_on_call_and_restore()
         {
             long gasLimit = 100000;
@@ -280,7 +280,7 @@ namespace Nethermind.Evm.Test
             _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether());
         }
 
-        [Test]
+        [TestCase]
         public void Account_is_not_created_on_call_and_restore()
         {
             long gasLimit = 100000;
@@ -297,7 +297,7 @@ namespace Nethermind.Evm.Test
             _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
         }
 
-        [Test]
+        [TestCase]
         public void Nonce_is_not_changed_on_call_and_restore()
         {
             long gasLimit = 100000;
@@ -309,7 +309,7 @@ namespace Nethermind.Evm.Test
         }
 
 
-        [Test]
+        [TestCase]
         public void Can_estimate_simple()
         {
             long gasLimit = 100000;
@@ -325,7 +325,7 @@ namespace Nethermind.Evm.Test
             estimator.Estimate(tx, block.Header, tracer).Should().Be(21000);
         }
 
-        [Test]
+        [TestCase]
         public void Can_estimate_with_refund()
         {
             byte[] initByteCode = Prepare.EvmCode
@@ -438,7 +438,7 @@ namespace Nethermind.Evm.Test
         }
 
 
-        [Test]
+        [TestCase]
         public void Can_estimate_with_stipend()
         {
             byte[] initByteCode = Prepare.EvmCode
@@ -476,7 +476,7 @@ namespace Nethermind.Evm.Test
 
 
 
-        [Test]
+        [TestCase]
         public void Can_estimate_with_stipend_and_refund()
         {
             byte[] initByteCode = Prepare.EvmCode
@@ -520,7 +520,7 @@ namespace Nethermind.Evm.Test
 
 
 
-        [Test]
+        [TestCase]
         public void Can_estimate_with_single_call()
         {
             byte[] initByteCode = Prepare.EvmCode
@@ -560,7 +560,7 @@ namespace Nethermind.Evm.Test
 
 
 
-        [Test]
+        [TestCase]
         public void Disables_Eip158_for_system_transactions()
         {
             long blockNumber = MainnetSpecProvider.SpuriousDragonBlockNumber + 1;
@@ -581,7 +581,7 @@ namespace Nethermind.Evm.Test
 
 
 
-        [Test]
+        [TestCase]
         public void Balance_is_changed_on_buildup_and_restored()
         {
             long gasLimit = 100000;
@@ -598,7 +598,7 @@ namespace Nethermind.Evm.Test
 
 
 
-        [Test]
+        [TestCase]
         public void Account_is_not_created_on_buildup_and_restore()
         {
             long gasLimit = 100000;
@@ -620,7 +620,7 @@ namespace Nethermind.Evm.Test
 
 
 
-        [Test]
+        [TestCase]
         public void Nonce_is_not_changed_on_buildup_and_restore()
         {
             long gasLimit = 100000;
@@ -636,7 +636,7 @@ namespace Nethermind.Evm.Test
 
 
 
-        [Test]
+        [TestCase]
         public void State_changed_twice_in_buildup_should_have_correct_gas_cost()
         {
             long gasLimit = 100000;
