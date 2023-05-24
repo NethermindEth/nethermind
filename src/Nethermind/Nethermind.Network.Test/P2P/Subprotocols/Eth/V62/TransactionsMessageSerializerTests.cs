@@ -116,7 +116,6 @@ public class TransactionsMessageSerializerTests
                 .TestObject
         };
 
-        // several transactions combined with ssz ones
         yield return new List<Transaction>
         {
             Build.A.Transaction

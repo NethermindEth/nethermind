@@ -540,6 +540,21 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+        public void Encode(byte[][] arrays)
+        {
+            int itemsLength = 0;
+            foreach (byte[] array in arrays)
+            {
+                itemsLength += Rlp.LengthOf(array);
+            }
+
+            StartSequence(itemsLength);
+            foreach (byte[] array in arrays)
+            {
+                Encode(array);
+            }
+        }
+
         public int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
         {
             int positionStored = Position;
@@ -1221,6 +1236,44 @@ namespace Nethermind.Serialization.Rlp
         public override string ToString()
         {
             return $"[{nameof(RlpStream)}|{Position}/{Length}]";
+        }
+
+        internal byte[][] DecodeByteArrays()
+        {
+            int length = ReadSequenceLength();
+            if (length is 0)
+            {
+                return Array.Empty<byte[]>();
+            }
+
+            int itemsCount = PeekNumberOfItemsRemaining(Position + length);
+            byte[][] result = new byte[itemsCount][];
+
+            for (int i = 0; i < itemsCount; i++)
+            {
+                result[i] = DecodeByteArray();
+            }
+
+            return result;
+        }
+
+        internal byte[] DecodeAndFlattenByteArrays(int itemLength)
+        {
+            int length = ReadSequenceLength();
+            if (length is 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            int itemsCount = PeekNumberOfItemsRemaining(Position + length);
+            byte[] result = new byte[itemsCount * itemLength];
+
+            for (int i = 0; i < itemsCount; i++)
+            {
+                DecodeByteArraySpan().CopyTo(result.AsSpan(i * itemLength, itemLength));
+            }
+
+            return result;
         }
     }
 }

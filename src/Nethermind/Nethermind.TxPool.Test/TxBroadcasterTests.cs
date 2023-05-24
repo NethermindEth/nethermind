@@ -172,9 +172,11 @@ public class TxBroadcasterTests
 
         for (int i = 0; i < addedTxsCount; i++)
         {
+            bool isBlob = i % 10 == 0;
             transactions[i] = Build.A.Transaction
                 .WithGasPrice((addedTxsCount - i - 1).GWei())
-                .WithType(i % 10 == 0 ? TxType.Blob : TxType.Legacy) //some part of txs (10%) is blob type
+                .WithType(isBlob ? TxType.Blob : TxType.Legacy) //some part of txs (10%) is blob type
+                .WithShardBlobTxTypeAndFieldsIfBlobTx()
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
 
@@ -430,7 +432,7 @@ public class TxBroadcasterTests
             Substitute.For<ILogManager>());
 
         Transaction localTx = Build.A.Transaction
-            .WithType(TxType.Blob)
+            .WithShardBlobTxTypeAndFields()
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
             .TestObject;
 

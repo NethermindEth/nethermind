@@ -278,7 +278,6 @@ public class TxValidatorTests
 
     [Timeout(Timeout.MaxTestTime)]
     [TestCase(TxType.EIP1559, false, ExpectedResult = true)]
-    [TestCase(TxType.Blob, false, ExpectedResult = false)]
     [TestCase(TxType.EIP1559, true, ExpectedResult = false)]
     [TestCase(TxType.Blob, true, ExpectedResult = true)]
     public bool MaxFeePerDataGas_should_be_set_for_blob_tx_only(TxType txType, bool isMaxFeePerDataGasSet)

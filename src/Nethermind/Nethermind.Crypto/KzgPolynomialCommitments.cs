@@ -88,11 +88,22 @@ public static class KzgPolynomialCommitments
         }
     }
 
-    public static bool AreProofsValid(byte[] blobs, byte[] commitments, byte[] proofs)
+    public static bool AreProofsValid(byte[][] blobs, byte[][] commitments, byte[][] proofs)
     {
+        byte[] flatBlobs = new byte[blobs.Length * Ckzg.Ckzg.BytesPerBlob];
+        byte[] flatCommitments = new byte[blobs.Length * Ckzg.Ckzg.BytesPerCommitment];
+        byte[] flatProofs = new byte[blobs.Length * Ckzg.Ckzg.BytesPerProof];
+
+        for (int i = 0; i < blobs.Length; i++)
+        {
+            Array.Copy(blobs[i], 0, flatBlobs, i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob);
+            Array.Copy(commitments[i], 0, flatCommitments, i * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment);
+            Array.Copy(proofs[i], 0, flatProofs, i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof);
+        }
+
         try
         {
-            return Ckzg.Ckzg.VerifyBlobKzgProofBatch(blobs, commitments, proofs, blobs.Length / Ckzg.Ckzg.BytesPerBlob,
+            return Ckzg.Ckzg.VerifyBlobKzgProofBatch(flatBlobs, flatCommitments, flatProofs, blobs.Length,
                 _ckzgSetup);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)

@@ -183,9 +183,7 @@ namespace Nethermind.Core
         public override string ToString() => ToString(string.Empty);
 
 
-        public bool IsRlpEncoded => Type is TxType.Legacy or TxType.EIP1559 or TxType.AccessList;
-
-        public bool IsSszEncoded => Type is TxType.Blob;
+        public bool HasNetworkForm => Type is TxType.Blob;
     }
 
     /// <summary>
@@ -212,15 +210,15 @@ namespace Nethermind.Core
     /// </summary>
     public class ShardBlobNetworkWrapper
     {
-        public ShardBlobNetworkWrapper(byte[] commitments, byte[] blobs, byte[] proofs)
+        public ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs)
         {
-            Commitments = commitments;
             Blobs = blobs;
+            Commitments = commitments;
             Proofs = proofs;
         }
 
-        public byte[] Commitments { get; }
-        public byte[] Blobs { get; }
-        public byte[] Proofs { get; }
+        public byte[][] Commitments { get; }
+        public byte[][] Blobs { get; }
+        public byte[][] Proofs { get; }
     }
 }

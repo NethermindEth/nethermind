@@ -1236,6 +1236,25 @@ namespace Nethermind.Serialization.Rlp
 
                 return result;
             }
+
+            internal byte[][] DecodeByteArrays()
+            {
+                int length = ReadSequenceLength();
+                if (length is 0)
+                {
+                    return Array.Empty<byte[]>();
+                }
+
+                int itemsCount = PeekNumberOfItemsRemaining(Position + length);
+                byte[][] result = new byte[itemsCount][];
+
+                for (int i = 0; i < itemsCount; i++)
+                {
+                    result[i] = DecodeByteArray();
+                }
+
+                return result;
+            }
         }
 
         public override bool Equals(object? other)
@@ -1274,6 +1293,16 @@ namespace Nethermind.Serialization.Rlp
             item.ToBigEndian(bytes);
             int length = bytes.WithoutLeadingZeros().Length;
             return length + 1;
+        }
+
+        public static int LengthOf(byte[][] arrays)
+        {
+            int contentLength = 0;
+            foreach (byte[] item in arrays)
+            {
+                contentLength += Rlp.LengthOf(item);
+            }
+            return LengthOfSequence(contentLength);
         }
 
         public static int LengthOfNonce(ulong _)

@@ -117,7 +117,9 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            for (int i = 0; i < transaction.BlobVersionedHashes!.Length; i++)
+            int blobCount = transaction.BlobVersionedHashes.Length;
+
+            for (int i = 0; i < blobCount; i++)
             {
                 if (transaction.BlobVersionedHashes[i] is null ||
                     transaction.BlobVersionedHashes![i].Length !=
@@ -131,22 +133,28 @@ namespace Nethermind.Consensus.Validators
             // Mempool version verification if presents
             if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
             {
-                int blobCount = wrapper.Blobs.Length / Ckzg.Ckzg.BytesPerBlob;
-                if (transaction.BlobVersionedHashes.Length != blobCount ||
-                    (wrapper.Commitments.Length / Ckzg.Ckzg.BytesPerCommitment) != blobCount ||
-                    (wrapper.Proofs.Length / Ckzg.Ckzg.BytesPerProof) != blobCount)
+                if (wrapper.Blobs.Length != blobCount ||
+                    wrapper.Commitments.Length != blobCount ||
+                    wrapper.Proofs.Length != blobCount)
                 {
                     return false;
                 }
 
+                for (int i = 0; i < blobCount; i++)
+                {
+                    if (wrapper.Blobs[i].Length != Ckzg.Ckzg.BytesPerBlob ||
+                        wrapper.Commitments[i].Length != Ckzg.Ckzg.BytesPerCommitment ||
+                        wrapper.Proofs[i].Length != Ckzg.Ckzg.BytesPerProof)
+                    {
+                        return false;
+                    }
+                }
+
                 Span<byte> hash = stackalloc byte[32];
-                Span<byte> commitements = wrapper.Commitments;
-                for (int i = 0, n = 0;
-                     i < transaction.BlobVersionedHashes.Length;
-                     i++, n += Ckzg.Ckzg.BytesPerCommitment)
+                for (int i = 0; i < blobCount; i++)
                 {
                     if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(
-                            commitements[n..(n + Ckzg.Ckzg.BytesPerCommitment)], hash) ||
+                            wrapper.Commitments[i].AsSpan(), hash) ||
                         !hash.SequenceEqual(transaction.BlobVersionedHashes[i]))
                     {
                         return false;
