@@ -64,10 +64,10 @@ jobs:
           bad_logs["Corrupted"]=1
       
           declare -A good_logs
-          good_logs["Valid. Result of a new payload:"]=1
-          good_logs["WaitingForBlock"]=1
+          good_logs["Valid. Result of a new payload:"]=0
       
-          declare -A found_good_logs
+          declare -A required_count
+          required_count["Valid. Result of a new payload:"]=100
       
           echo "Starting Docker logs monitoring..."
           docker logs -f sedge-execution-client | while read -r line; do
@@ -82,16 +82,26 @@ jobs:
       
             for good_log in "${!good_logs[@]}"; do
               if [[ "$line" == *"$good_log"* ]]; then
-                found_good_logs["$good_log"]=1
+                ((good_logs["$good_log"]++))
               fi
             done
       
-            # Check if all good logs are found
-            if [[ ${#good_logs[@]} -eq ${#found_good_logs[@]} ]]; then
-              echo "Node is synced."
+            # Check if all good logs have reached the required count
+            all_reached_required_count=true
+            for good_log in "${!good_logs[@]}"; do
+              if [[ ${good_logs[$good_log]} -lt ${required_count[$good_log]} ]]; then
+                all_reached_required_count=false
+                break
+              fi
+            done
+      
+            if $all_reached_required_count; then
+              echo "All required logs found."
               break
             fi
           done
+      
+          echo "Node is synced."
           
   sepolia:
     name: "Run sync of sepolia testnet"
@@ -141,6 +151,7 @@ jobs:
           
       - name: Wait for Sepolia to sync
         id: wait
+        timeout-minutes: 90
         run: |
           set +e
       
@@ -150,10 +161,10 @@ jobs:
           bad_logs["Corrupted"]=1
       
           declare -A good_logs
-          good_logs["Valid. Result of a new payload:"]=1
-          good_logs["WaitingForBlock"]=1
+          good_logs["Valid. Result of a new payload:"]=0
       
-          declare -A found_good_logs
+          declare -A required_count
+          required_count["Valid. Result of a new payload:"]=100
       
           echo "Starting Docker logs monitoring..."
           docker logs -f sedge-execution-client | while read -r line; do
@@ -168,13 +179,23 @@ jobs:
       
             for good_log in "${!good_logs[@]}"; do
               if [[ "$line" == *"$good_log"* ]]; then
-                found_good_logs["$good_log"]=1
+                ((good_logs["$good_log"]++))
               fi
             done
       
-            # Check if all good logs are found
-            if [[ ${#good_logs[@]} -eq ${#found_good_logs[@]} ]]; then
-              echo "Node is synced."
+            # Check if all good logs have reached the required count
+            all_reached_required_count=true
+            for good_log in "${!good_logs[@]}"; do
+              if [[ ${good_logs[$good_log]} -lt ${required_count[$good_log]} ]]; then
+                all_reached_required_count=false
+                break
+              fi
+            done
+      
+            if $all_reached_required_count; then
+              echo "All required logs found."
               break
             fi
           done
+      
+          echo "Node is synced."
