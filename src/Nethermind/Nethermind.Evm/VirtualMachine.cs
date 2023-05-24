@@ -231,8 +231,7 @@ public class VirtualMachine : IVirtualMachine
                         (IReadOnlyCollection<Address>)currentState.DestroyList,
                         (IReadOnlyCollection<LogEntry>)currentState.Logs,
                         callResult.ShouldRevert,
-                        // Check ShouldRevert first as it is less expensive than IsTracing
-                        isTracerConnected: callResult.ShouldRevert && _txTracer.IsTracing);
+                        isTracerConnected: _txTracer.IsTracing);
                 }
 
                 Address callCodeOwner = currentState.Env.ExecutingAccount;
@@ -565,8 +564,7 @@ public class VirtualMachine : IVirtualMachine
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        if (!UpdateGas(baseGasCost, ref gasAvailable) ||
-            !UpdateGas(dataGasCost, ref gasAvailable))
+        if (!UpdateGas(checked(baseGasCost + dataGasCost), ref gasAvailable))
         {
             Metrics.EvmExceptions++;
             throw new OutOfGasException();

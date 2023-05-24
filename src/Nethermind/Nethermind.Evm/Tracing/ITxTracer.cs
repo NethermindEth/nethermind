@@ -127,7 +127,7 @@ namespace Nethermind.Evm.Tracing
         /// </remarks>
         bool IsTracingFees { get; }
 
-        bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
+        bool IsTracing { get; }
 
         /// <summary>
         /// Transaction completed successfully
