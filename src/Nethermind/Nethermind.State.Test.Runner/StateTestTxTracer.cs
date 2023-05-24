@@ -21,19 +21,21 @@ namespace Nethermind.State.Test.Runner
         private bool _gasAlreadySetForCurrentOp;
 
         public bool IsTracingReceipt => true;
-        bool ITxTracer.IsTracingActions => false;
+        public bool IsTracingActions => false;
         public bool IsTracingOpLevelStorage => true;
         public bool IsTracingMemory => true;
         public bool IsTracingDetailedMemory { get; set; } = true;
-        bool ITxTracer.IsTracingInstructions => true;
+        public bool IsTracingInstructions => true;
         public bool IsTracingRefunds { get; } = false;
         public bool IsTracingCode => false;
         public bool IsTracingStack { get; set; } = true;
-        bool IStateTracer.IsTracingState => false;
-        bool IStorageTracer.IsTracingStorage => false;
+        public bool IsTracingState => false;
+        public bool IsTracingStorage => false;
         public bool IsTracingBlockHash { get; } = false;
         public bool IsTracingAccess { get; } = false;
         public bool IsTracingFees => false;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
+
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
