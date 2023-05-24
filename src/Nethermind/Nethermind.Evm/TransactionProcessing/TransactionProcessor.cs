@@ -485,7 +485,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             ExecutionEnvironment env = BuildExecutionEnvironmnet(tx, blk, spec, tracer, opts, effectiveGasPrice);
 
-            if (!ExecuteEVMCall(tx, blk, spec, tracer, opts, tx.GasLimit, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode))
+            long gasAvailable = tx.GasLimit - intrinsicGas;
+            if (!ExecuteEVMCall(tx, blk, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode))
                 return;
 
             if (!PayFees(tx, blk, spec, tracer, spentGas, premiumPerGas))
