@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain.Receipts
         private class RecoveryContext : IReceiptsRecovery.IRecoveryContext
         {
             private readonly IReleaseSpec _releaseSpec;
-            private readonly ReceiptRecoveryBlock _block;
+            private ReceiptRecoveryBlock _block;
             private readonly bool _forceRecoverSender;
             private readonly IEthereumEcdsa _ecdsa;
 

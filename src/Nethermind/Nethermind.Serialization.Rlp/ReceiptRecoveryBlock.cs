@@ -14,7 +14,7 @@ namespace Nethermind.Serialization.Rlp;
 /// Retain span from DB as memory and must be explicitly disposed.
 /// </summary>
 [DebuggerDisplay("{Hash} ({Number})")]
-public class ReceiptRecoveryBlock
+public struct ReceiptRecoveryBlock
 {
     private readonly MemoryManager<byte>? _memoryOwner; // Can be null if loaded without span
     private readonly Memory<byte> _transactionData;

@@ -241,8 +241,14 @@ namespace Nethermind.Blockchain.Receipts
             {
                 recoveryContextFactory = () =>
                 {
-                    ReceiptRecoveryBlock block = _blockStore.GetReceiptRecoveryBlock(blockHash);
-                    return _receiptsRecovery.CreateRecoveryContext(block);
+                    ReceiptRecoveryBlock? block = _blockStore.GetReceiptRecoveryBlock(blockHash);
+
+                    if (!block.HasValue)
+                    {
+                        throw new InvalidOperationException($"Unable to recover receipts for block {blockHash} because of missing block data.");
+                    }
+
+                    return _receiptsRecovery.CreateRecoveryContext(block.Value);
                 };
             }
 

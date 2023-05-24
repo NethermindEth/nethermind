@@ -67,7 +67,7 @@ public class BlockStore : IBlockStore
         return _blockDb.Get(blockHash, _blockDecoder, _blockCache, shouldCache);
     }
 
-    public ReceiptRecoveryBlock GetReceiptRecoveryBlock(Keccak blockHash)
+    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(Keccak blockHash)
     {
         MemoryManager<byte>? memoryOwner = null;
         Memory<byte> memory;

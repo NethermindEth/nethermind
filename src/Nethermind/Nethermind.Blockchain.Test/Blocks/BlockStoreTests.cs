@@ -77,7 +77,7 @@ public class BlockStoreTests
 
         store.Insert(block);
 
-        ReceiptRecoveryBlock? retrieved = store.GetReceiptRecoveryBlock(block.Hash);
+        ReceiptRecoveryBlock retrieved = store.GetReceiptRecoveryBlock(block.Hash).Value;
         retrieved.Should().NotBeNull();
 
         retrieved.Header.Should().BeEquivalentTo(block.Header);
