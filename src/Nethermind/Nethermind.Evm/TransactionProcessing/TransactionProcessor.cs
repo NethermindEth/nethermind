@@ -237,8 +237,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (validate && _stateProvider.IsInvalidContractSender(spec, tx.SenderAddress))
             {
-                // TraceLogInvalidTx(tx, "SENDER_IS_CONTRACT");
-                // QuickFail(tx, blk, tracer, eip658NotEnabled, "sender has deployed code");
+                TraceLogInvalidTx(tx, "SENDER_IS_CONTRACT");
+                QuickFail(tx, blk, spec, tracer, "sender has deployed code");
                 return false;
             }
 
@@ -294,6 +294,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual bool IncrementNonce(Transaction tx, BlockHeader blk, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
+            if (tx.IsSystem())
+                return true;
+
             if (tx.Nonce != _stateProvider.GetNonce(tx.SenderAddress))
             {
                 TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {_stateProvider.GetNonce(tx.SenderAddress)})");
@@ -471,10 +474,10 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!ValidateSender(tx, blk, spec, tracer, opts))
                 return;
 
-            if (!IncrementNonce(tx, blk, spec, tracer, opts))
+            if (!BuyGas(tx, blk, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment))
                 return;
 
-            if (!BuyGas(tx, blk, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment))
+            if (!IncrementNonce(tx, blk, spec, tracer, opts))
                 return;
 
             if (commit)
