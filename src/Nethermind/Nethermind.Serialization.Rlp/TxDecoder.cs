@@ -61,11 +61,10 @@ namespace Nethermind.Serialization.Rlp
             int networkWrapperCheck = 0;
             if ((rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm && transaction.HasNetworkForm)
             {
-                int networkWrapperLength = rlpStream.PeekNextRlpLength();
+                int networkWrapperLength = rlpStream.ReadSequenceLength();
                 networkWrapperCheck = rlpStream.Position + networkWrapperLength;
-                rlpStream.SkipLength();
-                (int prefixLength, int contentLength) = rlpStream.PeekPrefixAndContentLength();
-                transactionSequence = rlpStream.Peek(contentLength + prefixLength)[prefixLength..];
+                int rlpRength = rlpStream.PeekNextRlpLength();
+                transactionSequence = rlpStream.Peek(rlpRength);
             }
 
             int transactionLength = rlpStream.ReadSequenceLength();
@@ -110,9 +109,10 @@ namespace Nethermind.Serialization.Rlp
                 {
                     rlpStream.Check(networkWrapperCheck);
                 }
-            }
 
-            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
+                transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
+            }
+            else if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 transaction.SetPreHash(transactionSequence);
@@ -124,6 +124,16 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return transaction;
+        }
+
+        private static Keccak CalculateHashForNetworkPayloadForm(TxType type, Span<byte> transactionSequence)
+        {
+            KeccakHash hash = KeccakHash.Create();
+            Span<byte> txType = stackalloc byte[1];
+            txType[0] = (byte)type;
+            hash.Update(txType);
+            hash.Update(transactionSequence);
+            return new Keccak(hash.Hash);
         }
 
         private void DecodeLegacyPayloadWithoutSig(T transaction, RlpStream rlpStream)
@@ -163,16 +173,16 @@ namespace Nethermind.Serialization.Rlp
 
         private void DecodeShardBlobPayloadWithoutSig(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
         {
-            transaction.ChainId = rlpStream.DecodeULong();
-            transaction.Nonce = rlpStream.DecodeUInt256();
-            transaction.GasPrice = rlpStream.DecodeUInt256(); // gas premium
-            transaction.DecodedMaxFeePerGas = rlpStream.DecodeUInt256();
+            transaction.ChainId = rlpStream.DecodeULong(allowLeadingZeroBytes: false);
+            transaction.Nonce = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.GasPrice = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false); // gas premium
+            transaction.DecodedMaxFeePerGas = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.GasLimit = rlpStream.DecodeLong();
             transaction.To = rlpStream.DecodeAddress();
-            transaction.Value = rlpStream.DecodeUInt256();
+            transaction.Value = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.Data = rlpStream.DecodeByteArray();
             transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
-            transaction.MaxFeePerDataGas = rlpStream.DecodeUInt256();
+            transaction.MaxFeePerDataGas = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.BlobVersionedHashes = rlpStream.DecodeByteArrays();
         }
 
@@ -221,16 +231,16 @@ namespace Nethermind.Serialization.Rlp
 
         private void DecodeShardBlobPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
         {
-            transaction.ChainId = decoderContext.DecodeULong();
-            transaction.Nonce = decoderContext.DecodeUInt256();
-            transaction.GasPrice = decoderContext.DecodeUInt256(); // gas premium
-            transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
+            transaction.ChainId = decoderContext.DecodeULong(allowLeadingZeroBytes: false);
+            transaction.Nonce = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.GasPrice = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false); // gas premium
+            transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.GasLimit = decoderContext.DecodeLong();
             transaction.To = decoderContext.DecodeAddress();
-            transaction.Value = decoderContext.DecodeUInt256();
+            transaction.Value = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.Data = decoderContext.DecodeByteArray();
             transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
-            transaction.MaxFeePerDataGas = decoderContext.DecodeUInt256();
+            transaction.MaxFeePerDataGas = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays();
         }
 
@@ -330,11 +340,10 @@ namespace Nethermind.Serialization.Rlp
             int networkWrapperCheck = 0;
             if ((rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm && transaction.HasNetworkForm)
             {
-                int networkWrapperLength = decoderContext.PeekNextRlpLength();
+                int networkWrapperLength = decoderContext.ReadSequenceLength();
                 networkWrapperCheck = decoderContext.Position + networkWrapperLength;
-                decoderContext.SkipLength();
-                (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
-                transactionSequence = decoderContext.Peek(contentLength + prefixLength)[prefixLength..];
+                int rlpRength = decoderContext.PeekNextRlpLength();
+                transactionSequence = decoderContext.Peek(rlpRength);
             }
 
             int transactionLength = decoderContext.ReadSequenceLength();
@@ -379,9 +388,10 @@ namespace Nethermind.Serialization.Rlp
                 {
                     decoderContext.Check(networkWrapperCheck);
                 }
-            }
 
-            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
+                transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
+            }
+            else if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
                 transaction.SetPreHash(transactionSequence);

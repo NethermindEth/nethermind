@@ -72,6 +72,14 @@ public partial class ShardBlobTxDecoderTests
         Assert.That(decoded!.Hash, Is.EqualTo(signedHash));
         Assert.That(decodedByValueDecoderContext!.Hash, Is.EqualTo(signedHash));
 
+        if ((rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm)
+        {
+            Rlp epEncoded = _txDecoder.Encode(decoded!, rlpBehaviors ^ RlpBehaviors.InNetworkForm);
+            RlpStream epStream = new(epEncoded.Bytes);
+            Transaction? epDecoded = _txDecoder.Decode(epStream, rlpBehaviors ^ RlpBehaviors.InNetworkForm);
+            Assert.That(epDecoded!.Hash, Is.EqualTo(signedHash));
+        }
+
         if (decoded is { NetworkWrapper: ShardBlobNetworkWrapper wrapper })
         {
             Assert.That(KzgPolynomialCommitments.AreProofsValid(
