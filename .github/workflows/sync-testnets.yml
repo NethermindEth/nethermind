@@ -224,10 +224,8 @@ jobs:
       
           SYNCING_RESULT=""
           DEBUG_RESULT=""
-          while [[ "$SYNCING_RESULT" != "false" ]] || [[ "$DEBUG_RESULT" != *"WaitingForBlock"* ]]; do
-            echo "::set-output name=syncing_result_passed::$SYNCING_RESULT"
-            echo "::set-output name=debug_result_passed::$DEBUG_RESULT"
-            
+          while [[ "$SYNCING_RESULT" != "false" ]] || [[ "$DEBUG_RESULT" != *"WaitingForBlock"* ]]; do       
+          
             sleep 10
             RESPONSE_SYNCING=$(curl -s --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
             SYNCING_RESULT=$(echo $RESPONSE_SYNCING | jq .result)
@@ -236,6 +234,9 @@ jobs:
             RESPONSE_DEBUG=$(curl -s --data '{"method":"debug_getSyncStage","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
             DEBUG_RESULT=$(echo $RESPONSE_DEBUG | jq -r .result)
             echo "debug_getSyncStage endpoint response: $RESPONSE_DEBUG"
+            
+            echo "syncing_result_check=$SYNCING_RESULT" >> $GITHUB_OUTPUT
+            echo "debug_result_check=$DEBUG_RESULT" >> $GITHUB_OUTPUT
       
           done
           echo "Sedge is synced."
@@ -249,16 +250,16 @@ jobs:
         run: |
           set +e
           
-          echo "Syncing result: ${{ steps.wait.outputs.syncing_result_passed }}"
-          echo "Debug result: ${{ steps.wait.outputs.debug_result_passed }}"
-          if [[ "${{ steps.wait.outputs.syncing_result_passed }}" != "false" ]]; then
+          echo "Syncing result: ${{ steps.wait.outputs.syncing_result_check }}"
+          echo "Debug result: ${{ steps.wait.outputs.debug_result_check }}"
+          if [[ "${{ steps.wait.outputs.syncing_result_check }}" != "false" ]]; then
             echo "Error: sync check failed"
-            exit 500
+            exit 4
           fi
-          echo "${{ steps.wait.outputs.debug_result_passed }}" | grep -q "WaitingForBlock"
+          echo "${{ steps.wait.outputs.debug_result_check }}" | grep -q "WaitingForBlock"
           if [[ $? -ne 0 ]]; then
             echo "Error: debug check failed"
-            exit 500
+            exit 4
           fi
           
           dockerLogs=$(docker compose logs execution 2>/dev/null)
