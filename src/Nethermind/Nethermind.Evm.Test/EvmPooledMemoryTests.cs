@@ -65,7 +65,7 @@ namespace Nethermind.Evm.Test
         {
             const int offset = 3;
             byte[] expectedEmptyRead = new byte[32 - offset];
-            byte[] expectedKeccakRead = TestItem.KeccakA.Bytes;
+            byte[] expectedKeccakRead = TestItem.KeccakA.BytesToArray();
             EvmPooledMemory memory = new();
             memory.Save((UInt256)offset, expectedKeccakRead);
             ulong initialSize = memory.Size;
