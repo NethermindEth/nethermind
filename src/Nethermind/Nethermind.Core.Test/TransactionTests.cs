@@ -50,9 +50,11 @@ namespace Nethermind.Core.Test
         {
             subject.Should().BeEquivalentTo(
                 expectation,
-                o => o.ComparingByMembers<System.Transactions.Transaction>().Excluding((tx) => tx.Data));
-
-            subject.Data.FasterToArray().Should().BeEquivalentTo(expectation.Data.FasterToArray());
+                o => o
+                    .ComparingByMembers<System.Transactions.Transaction>()
+                    .Using<Memory<byte>>(ctx => ctx.Subject.FasterToArray().Should().BeEquivalentTo(ctx.Expectation.FasterToArray()))
+                    .WhenTypeIs<Memory<byte>>()
+                );
         }
     }
 }
