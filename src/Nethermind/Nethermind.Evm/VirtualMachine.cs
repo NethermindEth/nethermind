@@ -580,7 +580,7 @@ public class VirtualMachine : IVirtualMachine
             CallResult callResult = new(output.ToArray(), success, !success);
             return callResult;
         }
-        catch(DllNotFoundException dllImportException)
+        catch (DllNotFoundException dllImportException)
         {
             if (_logger.IsDebug) _logger.Error($"Precompiled contract ({precompile.GetType()}) dll failed to load", dllImportException);
             throw;
