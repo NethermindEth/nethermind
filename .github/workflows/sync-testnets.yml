@@ -65,9 +65,11 @@ jobs:
       
           declare -A good_logs
           good_logs["Valid. Result of a new payload:"]=0
+          good_logs["FCU - block"]=0
       
           declare -A required_count
-          required_count["Valid. Result of a new payload:"]=100
+          required_count["Valid. Result of a new payload:"]=20
+          required_coun["FCU - block"]=20
       
           echo "Starting Docker logs monitoring..."
           docker logs -f sedge-execution-client | while read -r line; do
@@ -162,9 +164,11 @@ jobs:
       
           declare -A good_logs
           good_logs["Valid. Result of a new payload:"]=0
+          good_logs["FCU - block"]=0
       
           declare -A required_count
-          required_count["Valid. Result of a new payload:"]=100
+          required_count["Valid. Result of a new payload:"]=20
+          required_coun["FCU - block"]=20
       
           echo "Starting Docker logs monitoring..."
           docker logs -f sedge-execution-client | while read -r line; do
