@@ -26,7 +26,7 @@ namespace Nethermind.Network.Test.P2P
                 // RlpLength is calculated explicitly when serializing an object by Calculate method. It's null after deserialization.
                 deserialized.Should().BeEquivalentTo(message, options => options
                     .Excluding(c => c.Name == "RlpLength")
-                    .Using<Memory<byte>>((context => context.Subject.FasterToArray().Should().BeEquivalentTo(context.Expectation.FasterToArray())))
+                    .Using<Memory<byte>>((context => context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray())))
                     .WhenTypeIs<Memory<byte>>()
                 );
 

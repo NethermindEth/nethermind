@@ -21,7 +21,7 @@ namespace Nethermind.Facade.Proxy.Models
             {
                 From = transaction.SenderAddress,
                 To = transaction.To,
-                Data = transaction.Data.FasterToArray(),
+                Data = transaction.Data.AsArray(),
                 Value = transaction.Value,
                 Gas = (UInt256)transaction.GasLimit,
                 GasPrice = transaction.GasPrice

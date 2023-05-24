@@ -10,14 +10,14 @@ public static class MemoryExtensions
     /// </summary>
     /// <param name="memory"></param>
     /// <returns></returns>
-    public static byte[]? FasterToArray(this in Memory<byte>? memory)
+    public static byte[]? AsArray(this in Memory<byte>? memory)
     {
         if (memory == null) return null;
 
-        return memory.Value.FasterToArray();
+        return memory.Value.AsArray();
     }
 
-    public static byte[] FasterToArray(this in Memory<byte> memory)
+    public static byte[] AsArray(this in Memory<byte> memory)
     {
         if (
             MemoryMarshal.TryGetArray(memory, out ArraySegment<byte> segment) &&

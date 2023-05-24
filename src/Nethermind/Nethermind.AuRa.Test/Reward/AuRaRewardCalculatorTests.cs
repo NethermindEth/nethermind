@@ -214,7 +214,7 @@ namespace Nethermind.AuRa.Test.Reward
         private bool CheckTransaction(Transaction t, ICollection<Address> addresses, byte[] transactionData) =>
             t.SenderAddress == Address.SystemUser
             && (t.To == _auraParameters.BlockRewardContractAddress || addresses.Contains(t.To))
-            && t.Data.FasterToArray() == transactionData;
+            && t.Data.AsArray() == transactionData;
 
         private byte[] SetupAbiAddresses(params BlockReward[] rewards)
         {

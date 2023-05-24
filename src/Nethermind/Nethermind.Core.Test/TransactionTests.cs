@@ -52,7 +52,7 @@ namespace Nethermind.Core.Test
                 expectation,
                 o => o
                     .ComparingByMembers<System.Transactions.Transaction>()
-                    .Using<Memory<byte>>(ctx => ctx.Subject.FasterToArray().Should().BeEquivalentTo(ctx.Expectation.FasterToArray()))
+                    .Using<Memory<byte>>(ctx => ctx.Subject.AsArray().Should().BeEquivalentTo(ctx.Expectation.AsArray()))
                     .WhenTypeIs<Memory<byte>>()
                 );
         }

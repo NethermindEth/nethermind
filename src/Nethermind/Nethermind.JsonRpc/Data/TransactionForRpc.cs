@@ -27,7 +27,7 @@ public class TransactionForRpc
         Value = transaction.Value;
         GasPrice = transaction.GasPrice;
         Gas = transaction.GasLimit;
-        Input = Data = transaction.Data.FasterToArray();
+        Input = Data = transaction.Data.AsArray();
         if (transaction.Supports1559)
         {
             GasPrice = baseFee is not null

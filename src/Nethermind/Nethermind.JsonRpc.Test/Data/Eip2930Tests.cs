@@ -204,7 +204,7 @@ namespace Nethermind.JsonRpc.Test.Data
             Transaction afterConversion = _transactionForRpc.ToTransaction();
 
             afterConversion.Should().BeEquivalentTo(_transaction, option => option.ComparingByMembers<Transaction>().Excluding(tx => tx.Data));
-            afterConversion.Data.FasterToArray().Should().BeEquivalentTo(_transaction.Data.FasterToArray());
+            afterConversion.Data.AsArray().Should().BeEquivalentTo(_transaction.Data.AsArray());
         }
     }
 }
