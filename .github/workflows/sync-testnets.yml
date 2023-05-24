@@ -185,7 +185,7 @@ jobs:
 
       - name: Wait for Sepolia to sync
         id: wait
-        timeout-minutes: 90
+        timeout-minutes: 5
         run: |
           set +e
           
