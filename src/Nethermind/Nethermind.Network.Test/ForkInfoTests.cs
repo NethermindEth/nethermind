@@ -186,7 +186,9 @@ public class ForkInfoTests
         Test(head, headTimestamp, KnownHashes.GnosisGenesis, forkHashHex, next, description, provider);
     }
 
-    [TestCase(0, 0ul, "0x50d39d7b", 0ul, "Chiado genesis")]
+    [TestCase(0L, 0UL, "0x50d39d7b", ChiadoSpecProvider.ShanghaiTimestamp, "Chiado genesis")]
+    [TestCase(3945317, ChiadoSpecProvider.ShanghaiTimestamp, "0xCC663128", 0ul, "First Shanghai timestamp")]
+    [TestCase(9945337, 9984930320ul, "0xCC663128", 0ul, "Future Shanghai timestamp")]
     public void Fork_id_and_hash_as_expected_on_chiado(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());

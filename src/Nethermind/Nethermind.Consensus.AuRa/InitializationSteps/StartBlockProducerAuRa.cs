@@ -155,7 +155,6 @@ public class StartBlockProducerAuRa
             _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
             _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
             changeableTxProcessingEnv.StateProvider,
-            changeableTxProcessingEnv.StorageProvider,
             _api.ReceiptStorage,
             _api.LogManager,
             changeableTxProcessingEnv.BlockTree,

@@ -55,8 +55,7 @@ namespace Nethermind.Init.Steps
         {
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
-            if (_api.StorageProvider is null) throw new StepDependencyException(nameof(_api.StorageProvider));
+            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
@@ -64,8 +63,7 @@ namespace Nethermind.Init.Steps
             Block genesis = new GenesisLoader(
                 _api.ChainSpec,
                 _api.SpecProvider,
-                _api.StateProvider,
-                _api.StorageProvider,
+                _api.WorldState,
                 _api.TransactionProcessor)
                 .Load();
 
@@ -96,13 +94,13 @@ namespace Nethermind.Init.Steps
         /// <param name="expectedGenesisHash"></param>
         private void ValidateGenesisHash(Keccak? expectedGenesisHash)
         {
-            if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
+            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
             BlockHeader genesis = _api.BlockTree.Genesis!;
             if (expectedGenesisHash is not null && genesis.Hash != expectedGenesisHash)
             {
-                if (_logger.IsWarn) _logger.Warn(_api.StateProvider.DumpState());
+                if (_logger.IsWarn) _logger.Warn(_api.WorldState.DumpState());
                 if (_logger.IsWarn) _logger.Warn(genesis.ToString(BlockHeader.Format.Full));
                 if (_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {genesis.Hash}");
             }

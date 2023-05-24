@@ -68,9 +68,8 @@ namespace Nethermind.Serialization.Rlp
                 transactionSequence = rlpStream.Peek(contentLength + prefixLength)[prefixLength..];
             }
 
-            int transactionLength = rlpStream.PeekNextRlpLength();
+            int transactionLength = rlpStream.ReadSequenceLength();
             int lastCheck = rlpStream.Position + transactionLength;
-            rlpStream.SkipLength();
 
             switch (transaction.Type)
             {
@@ -129,35 +128,35 @@ namespace Nethermind.Serialization.Rlp
 
         private void DecodeLegacyPayloadWithoutSig(T transaction, RlpStream rlpStream)
         {
-            transaction.Nonce = rlpStream.DecodeUInt256();
-            transaction.GasPrice = rlpStream.DecodeUInt256();
-            transaction.GasLimit = rlpStream.DecodeLong();
+            transaction.Nonce = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.GasPrice = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.GasLimit = rlpStream.DecodeLong(allowLeadingZeroBytes: false);
             transaction.To = rlpStream.DecodeAddress();
-            transaction.Value = rlpStream.DecodeUInt256();
+            transaction.Value = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.Data = rlpStream.DecodeByteArray();
         }
 
         private void DecodeAccessListPayloadWithoutSig(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
         {
-            transaction.ChainId = rlpStream.DecodeULong();
-            transaction.Nonce = rlpStream.DecodeUInt256();
-            transaction.GasPrice = rlpStream.DecodeUInt256();
-            transaction.GasLimit = rlpStream.DecodeLong();
+            transaction.ChainId = rlpStream.DecodeULong(allowLeadingZeroBytes: false);
+            transaction.Nonce = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.GasPrice = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.GasLimit = rlpStream.DecodeLong(allowLeadingZeroBytes: false);
             transaction.To = rlpStream.DecodeAddress();
-            transaction.Value = rlpStream.DecodeUInt256();
+            transaction.Value = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.Data = rlpStream.DecodeByteArray();
             transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
         }
 
         private void DecodeEip1559PayloadWithoutSig(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
         {
-            transaction.ChainId = rlpStream.DecodeULong();
-            transaction.Nonce = rlpStream.DecodeUInt256();
-            transaction.GasPrice = rlpStream.DecodeUInt256(); // gas premium
-            transaction.DecodedMaxFeePerGas = rlpStream.DecodeUInt256();
+            transaction.ChainId = rlpStream.DecodeULong(allowLeadingZeroBytes: false);
+            transaction.Nonce = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.GasPrice = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false); // gas premium
+            transaction.DecodedMaxFeePerGas = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.GasLimit = rlpStream.DecodeLong();
             transaction.To = rlpStream.DecodeAddress();
-            transaction.Value = rlpStream.DecodeUInt256();
+            transaction.Value = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.Data = rlpStream.DecodeByteArray();
             transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
         }
@@ -187,35 +186,35 @@ namespace Nethermind.Serialization.Rlp
 
         private void DecodeLegacyPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext)
         {
-            transaction.Nonce = decoderContext.DecodeUInt256();
-            transaction.GasPrice = decoderContext.DecodeUInt256();
-            transaction.GasLimit = decoderContext.DecodeLong();
+            transaction.Nonce = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.GasPrice = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.GasLimit = decoderContext.DecodeLong(allowLeadingZeroBytes: false);
             transaction.To = decoderContext.DecodeAddress();
-            transaction.Value = decoderContext.DecodeUInt256();
+            transaction.Value = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.Data = decoderContext.DecodeByteArray();
         }
 
         private void DecodeAccessListPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
         {
-            transaction.ChainId = decoderContext.DecodeULong();
-            transaction.Nonce = decoderContext.DecodeUInt256();
-            transaction.GasPrice = decoderContext.DecodeUInt256();
-            transaction.GasLimit = decoderContext.DecodeLong();
+            transaction.ChainId = decoderContext.DecodeULong(allowLeadingZeroBytes: false);
+            transaction.Nonce = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.GasPrice = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.GasLimit = decoderContext.DecodeLong(allowLeadingZeroBytes: false);
             transaction.To = decoderContext.DecodeAddress();
-            transaction.Value = decoderContext.DecodeUInt256();
+            transaction.Value = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.Data = decoderContext.DecodeByteArray();
             transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
         }
 
         private void DecodeEip1559PayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
         {
-            transaction.ChainId = decoderContext.DecodeULong();
-            transaction.Nonce = decoderContext.DecodeUInt256();
-            transaction.GasPrice = decoderContext.DecodeUInt256(); // gas premium
-            transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
-            transaction.GasLimit = decoderContext.DecodeLong();
+            transaction.ChainId = decoderContext.DecodeULong(allowLeadingZeroBytes: false);
+            transaction.Nonce = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.GasPrice = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false); // gas premium
+            transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.GasLimit = decoderContext.DecodeLong(allowLeadingZeroBytes: false);
             transaction.To = decoderContext.DecodeAddress();
-            transaction.Value = decoderContext.DecodeUInt256();
+            transaction.Value = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.Data = decoderContext.DecodeByteArray();
             transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
         }
@@ -338,9 +337,8 @@ namespace Nethermind.Serialization.Rlp
                 transactionSequence = decoderContext.Peek(contentLength + prefixLength)[prefixLength..];
             }
 
-            int transactionLength = decoderContext.PeekNextRlpLength();
+            int transactionLength = decoderContext.ReadSequenceLength();
             int lastCheck = decoderContext.Position + transactionLength;
-            decoderContext.SkipLength();
 
             switch (transaction.Type)
             {
@@ -401,7 +399,7 @@ namespace Nethermind.Serialization.Rlp
             RlpBehaviors rlpBehaviors,
             T transaction)
         {
-            ReadOnlySpan<byte> vBytes = rlpStream.DecodeByteArraySpan();
+            ReadOnlySpan<byte> vBytes = rlpStream.DecodeByteArraySpan(allowLeadingZeroBytes: false);
             ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
             ReadOnlySpan<byte> sBytes = rlpStream.DecodeByteArraySpan();
             ApplySignature(transaction, vBytes, rBytes, sBytes, rlpBehaviors);
@@ -412,7 +410,7 @@ namespace Nethermind.Serialization.Rlp
             RlpBehaviors rlpBehaviors,
             T transaction)
         {
-            ReadOnlySpan<byte> vBytes = decoderContext.DecodeByteArraySpan();
+            ReadOnlySpan<byte> vBytes = decoderContext.DecodeByteArraySpan(allowLeadingZeroBytes: false);
             ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();
             ReadOnlySpan<byte> sBytes = decoderContext.DecodeByteArraySpan();
             ApplySignature(transaction, vBytes, rBytes, sBytes, rlpBehaviors);
@@ -457,7 +455,7 @@ namespace Nethermind.Serialization.Rlp
             if (isSignatureOk)
             {
                 ulong v = vBytes.ReadEthUInt64();
-                if (v < Signature.VOffset)
+                if (transaction.Type != TxType.Legacy && v < Signature.VOffset)
                 {
                     v += Signature.VOffset;
                 }

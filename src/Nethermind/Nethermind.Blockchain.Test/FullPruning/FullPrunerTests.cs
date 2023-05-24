@@ -173,7 +173,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public IStateReader StateReader { get; }
             public FullPruner Pruner { get; }
             public MemDb TrieDb { get; }
-            public MemDb CopyDb { get; }
+            public TestMemDb CopyDb { get; }
 
             public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
 
@@ -250,6 +250,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 foreach (KeyValuePair<byte[], byte[]?> keyValuePair in TrieDb.GetAll())
                 {
                     CopyDb[keyValuePair.Key].Should().BeEquivalentTo(keyValuePair.Value);
+                    CopyDb.KeyWasWrittenWithFlags(keyValuePair.Key, WriteFlags.LowPriority | WriteFlags.DisableWAL);
                 }
             }
         }
