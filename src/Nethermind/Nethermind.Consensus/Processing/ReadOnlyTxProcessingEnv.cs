@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Processing
         public IBlockTree BlockTree { get; }
         public IReadOnlyDbProvider DbProvider { get; }
         public IBlockhashProvider BlockhashProvider { get; }
-        public IVirtualMachine Machine { get; }
+        public IVirtualMachine Machine { get; protected set; }
 
         public ReadOnlyTxProcessingEnv(
             IDbProvider? dbProvider,

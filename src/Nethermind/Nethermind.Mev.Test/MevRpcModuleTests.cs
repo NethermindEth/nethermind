@@ -70,7 +70,8 @@ namespace Nethermind.Mev.Test
 
             public static async Task<Address> Deploy(TestMevRpcBlockchain chain, string code, ulong nonce = 0, int value = 1)
             {
-                Transaction createContractTx = Build.A.Transaction.WithCode(Bytes.FromHexString(code)).WithGasLimit(LargeGasLimit).WithNonce(nonce).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
+                Transaction createContractTx = Build.A.Transaction.WithCode(Bytes.FromHexString(code))
+                    .WithGasLimit(LargeGasLimit).WithNonce(nonce).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
                 // guarantee state change 
                 await chain.AddBlock(true, createContractTx);
 

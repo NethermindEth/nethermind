@@ -21,7 +21,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
@@ -39,43 +38,6 @@ using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Eth.Multicall;
 
-public class SimplifiedBlockValidator : BlockValidator
-{
-    public override bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
-    {
-        if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
-        {
-            //Note we mutate suggested block here to allow eth_multicall enforced State Root change
-            //and still pass validation 
-            suggestedBlock.Header.StateRoot = processedBlock.Header.StateRoot;
-            suggestedBlock.Header.Hash = suggestedBlock.Header.CalculateHash();
-        }
-
-        bool isValid = processedBlock.Header.Hash == suggestedBlock.Header.Hash;
-
-        if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed) isValid = false;
-
-        if (processedBlock.Header.Bloom != suggestedBlock.Header.Bloom) isValid = false;
-
-        if (processedBlock.Header.ReceiptsRoot != suggestedBlock.Header.ReceiptsRoot) isValid = false;
-
-
-        for (int i = 0; i < processedBlock.Transactions.Length; i++)
-            if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
-                isValid = false;
-
-        return isValid;
-    }
-
-    public SimplifiedBlockValidator(ITxValidator? txValidator,
-        IHeaderValidator? headerValidator,
-        IUnclesValidator? unclesValidator,
-        ISpecProvider? specProvider,
-        ILogManager? logManager) : base(txValidator, headerValidator, unclesValidator, specProvider, logManager)
-    {
-    }
-}
-
 /// <summary>
 ///     The MultiCallBlockchainFork class enables the creation of temporary in-memory blockchain instances,
 ///     based on a base chain's state. It's useful for simulating transactions, testing,
@@ -85,18 +47,6 @@ public class SimplifiedBlockValidator : BlockValidator
 /// </summary>
 public class MultiCallBlockchainFork : IDisposable
 {
-    private BlockchainProcessor ChainProcessor { get; }
-    private BlockProcessor BlockProcessor { get; }
-
-    public IWorldState StateProvider { get; internal set; }
-    public ISpecProvider SpecProvider { get; internal set; }
-    public IBlockTree BlockTree { get; internal set; }
-    public IBlockFinder BlockFinder => BlockTree;
-    public Block? LatestBlock => BlockFinder.Head;
-
-    public EthRpcModule EthRpcModule { get; internal set; }
-    public IReleaseSpec CurrentSpec => SpecProvider.GetSpec(LatestBlock!.Header);
-
     /// <summary>
     ///     Creates a MultiCallBlockchainFork instance with the following steps:
     ///     1. Initialize MultiCallBlockchainFork object
@@ -137,7 +87,7 @@ public class MultiCallBlockchainFork : IDisposable
         //Init BlockChain
         //Writable inMemory DBs on with access to the data of existing ones (will not modify existing data)
         if (oldDbProvider == null) throw new ArgumentNullException();
-        
+
         List<byte[]>? oldStack = oldDbProvider.StateDb.GetAllValues().ToList();
         IDb inMemStateDb = new ReadOnlyDb(oldDbProvider.StateDb, true);
         IDb inMemBlockDb = new ReadOnlyDb(oldDbProvider.BlocksDb, true);
@@ -174,7 +124,7 @@ public class MultiCallBlockchainFork : IDisposable
             SpecProvider,
             NullBloomStorage.Instance,
             syncConfig,
-            LimboLogs.Instance);
+            logManager);
 
         StateProvider.StateRoot = BlockTree.Head.StateRoot;
 
@@ -182,10 +132,10 @@ public class MultiCallBlockchainFork : IDisposable
 
         TransactionComparerProvider transactionComparerProvider = new(SpecProvider, BlockTree);
 
-        EthereumEcdsa ethereumEcdsa = new(SpecProvider.ChainId, logManager);
+        EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
 
         Nethermind.TxPool.TxPool txPool = new(
-            ethereumEcdsa,
+            EthereumEcdsa,
             new ChainHeadInfoProvider(
                 SpecProvider,
                 BlockTree,
@@ -197,14 +147,14 @@ public class MultiCallBlockchainFork : IDisposable
 
         InMemoryReceiptStorage receiptStorage = new();
 
-        VirtualMachine virtualMachine = new(
+        VirtualMachine = new MultiCallVirtualMachine(
             new BlockhashProvider(BlockTree, logManager),
             SpecProvider,
             logManager);
 
         TransactionProcessor txProcessor =
-            new(SpecProvider, StateProvider, virtualMachine, logManager);
-        RecoverSignatures blockPreprocessorStep = new(ethereumEcdsa, txPool, SpecProvider, logManager);
+            new(SpecProvider, StateProvider, VirtualMachine, logManager);
+        RecoverSignatures blockPreprocessorStep = new(EthereumEcdsa, txPool, SpecProvider, logManager);
 
         HeaderValidator headerValidator = new(
             BlockTree,
@@ -212,7 +162,7 @@ public class MultiCallBlockchainFork : IDisposable
             SpecProvider,
             logManager);
 
-        SimplifiedBlockValidator blockValidator = new(new TxValidator(SpecProvider.ChainId),
+        MultiCallBlockValidator blockValidator = new(new TxValidator(SpecProvider.ChainId),
             headerValidator,
             Always.Valid,
             SpecProvider,
@@ -239,21 +189,23 @@ public class MultiCallBlockchainFork : IDisposable
         //Init RPC
         IFilterStore filterStore = new FilterStore();
         IFilterManager filterManager =
-            new FilterManager(filterStore, BlockProcessor, txPool, LimboLogs.Instance);
-        ReadOnlyTxProcessingEnv processingEnv = new(
+            new FilterManager(filterStore, BlockProcessor, txPool, logManager);
+
+        //ToDO make use of our VM!!!
+        MultiCallReadOnlyTxProcessingEnv processingEnv = new(VirtualMachine,
             new ReadOnlyDbProvider(DbProvider, false),
-            new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+            new TrieStore(DbProvider.StateDb, logManager).AsReadOnly(),
             new ReadOnlyBlockTree(BlockTree),
             SpecProvider,
-            LimboLogs.Instance);
+            logManager);
 
         BloomStorage bloomStorage =
             new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         ReceiptsRecovery receiptsRecovery =
-            new(new EthereumEcdsa(SpecProvider.ChainId, LimboLogs.Instance), SpecProvider);
+            new(new EthereumEcdsa(SpecProvider.ChainId, logManager), SpecProvider);
         IReceiptFinder receiptFinder = receiptStorage;
         LogFinder logFinder = new(BlockTree, receiptStorage, receiptStorage, bloomStorage,
-            LimboLogs.Instance, receiptsRecovery);
+            logManager, receiptsRecovery);
         ITimestamper timestamper = Timestamper.Default;
 
 
@@ -262,7 +214,7 @@ public class MultiCallBlockchainFork : IDisposable
             receiptFinder,
             filterStore,
             filterManager,
-            ethereumEcdsa,
+            EthereumEcdsa,
             timestamper,
             logFinder,
             SpecProvider,
@@ -278,10 +230,12 @@ public class MultiCallBlockchainFork : IDisposable
         NullWallet? wallet = NullWallet.Instance; // May be use one from API directly?
         ITxSigner txSigner = new WalletTxSigner(wallet, SpecProvider.ChainId);
         TxSealer txSealer = new(txSigner, timestamper);
-        TxPoolSender txSender = new(txPool, txSealer, nonceManager, ethereumEcdsa);
+        TxPoolSender txSender = new(txPool, txSealer, nonceManager, EthereumEcdsa);
+
+        JsonRpcConfig? jsonRpcConfig = new();
 
         EthRpcModule = new EthRpcModule(
-            new JsonRpcConfig(),
+            jsonRpcConfig,
             bridge,
             BlockFinder,
             stateReader,
@@ -289,12 +243,27 @@ public class MultiCallBlockchainFork : IDisposable
             txSender,
             wallet,
             receiptFinder,
-            LimboLogs.Instance,
+            logManager,
             SpecProvider,
             gasPriceOracle,
             new EthSyncingInfo(BlockTree, receiptStorage, syncConfig, new StaticSelector(SyncMode.All), logManager),
             feeHistoryOracle);
     }
+
+    private BlockchainProcessor ChainProcessor { get; }
+    private BlockProcessor BlockProcessor { get; }
+
+    public IWorldState StateProvider { get; internal set; }
+    public ISpecProvider SpecProvider { get; internal set; }
+    public IBlockTree BlockTree { get; internal set; }
+    public IBlockFinder BlockFinder => BlockTree;
+    public Block? LatestBlock => BlockFinder.Head;
+
+    public EthRpcModule EthRpcModule { get; internal set; }
+
+    public EthereumEcdsa EthereumEcdsa { get; internal set; }
+    public IReleaseSpec CurrentSpec => SpecProvider.GetSpec(LatestBlock!.Header);
+    public MultiCallVirtualMachine VirtualMachine { get; internal set; }
 
     public IDbProvider DbProvider { get; internal set; }
 
@@ -324,7 +293,7 @@ public class MultiCallBlockchainFork : IDisposable
         blockHeader.TxRoot = Keccak.EmptyTreeHash;
         blockHeader.Bloom = Bloom.Empty;
 
-        Block? block = new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
+        Block? block = new(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
 
         block = ChainProcessor.Process(block,
             ProcessingOptions.ProducingBlock,
@@ -364,15 +333,16 @@ public class MultiCallBlockchainFork : IDisposable
     /// </summary>
     /// <param name="action">An action representing the modifications to the blockchain state and storage.</param>
     public bool ForgeChainBlock(Action<IWorldState,
-        IReleaseSpec, ISpecProvider> action)
+        IReleaseSpec, ISpecProvider, MultiCallVirtualMachine> action)
     {
         //Prepare a block
         Block? newBlock = CreateBlock();
 
         action(StateProvider,
             CurrentSpec,
-            SpecProvider
-            );
+            SpecProvider,
+            VirtualMachine
+        );
 
         //Add block
         bool results = FinalizeBlock(newBlock);
