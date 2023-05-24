@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             public MultiCallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
             {
-                
+
             }
 
             public ResultWrapper<MultiCallResultModel> Execute(ulong version, MultiCallBlockStateCallsModel[] blockCalls,
@@ -112,7 +112,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 */
             }
 
-         
+
         }
 
         private class EstimateGasTxExecutor : TxExecutor<UInt256?>

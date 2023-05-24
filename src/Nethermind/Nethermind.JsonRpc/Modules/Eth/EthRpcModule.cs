@@ -373,8 +373,8 @@ public partial class EthRpcModule : IEthRpcModule
         return new MultiCallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .Execute(version, blockCalls, blockParameter);
     }
-            
-    
+
+
 
     public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter) =>
         new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)

@@ -234,7 +234,9 @@ public class EthRpcMulticallTests
         {
             SystemTransaction transaction = new()
             {
-                Data = bytes, To = address, SenderAddress = TestItem.PublicKeyB.Address
+                Data = bytes,
+                To = address,
+                SenderAddress = TestItem.PublicKeyB.Address
             };
             transaction.Hash = transaction.CalculateHash();
             TransactionForRpc transactionForRpc = new(transaction);
@@ -293,7 +295,9 @@ public class EthRpcMulticallTests
             //Generate and send transaction
             SystemTransaction systemTransactionForModifiedVM = new()
             {
-                Data = transactionData, To = contractAddress, SenderAddress = TestItem.PublicKeyB.Address
+                Data = transactionData,
+                To = contractAddress,
+                SenderAddress = TestItem.PublicKeyB.Address
             };
             systemTransactionForModifiedVM.Hash = systemTransactionForModifiedVM.CalculateHash();
             TransactionForRpc transactionForRpcOfModifiedVM = new(systemTransactionForModifiedVM);
