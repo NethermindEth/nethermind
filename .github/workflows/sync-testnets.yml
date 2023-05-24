@@ -225,6 +225,9 @@ jobs:
           SYNCING_RESULT=""
           DEBUG_RESULT=""
           while [[ "$SYNCING_RESULT" != "false" ]] || [[ "$DEBUG_RESULT" != *"WaitingForBlock"* ]]; do
+            echo "::set-output name=syncing_result_passed::$SYNCING_RESULT"
+            echo "::set-output name=debug_result_passed::$DEBUG_RESULT"
+            
             sleep 10
             RESPONSE_SYNCING=$(curl -s --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
             SYNCING_RESULT=$(echo $RESPONSE_SYNCING | jq .result)
@@ -240,13 +243,23 @@ jobs:
       - name: Display Docker logs        
         working-directory: sedge
         run: docker compose logs
-        if: steps.wait.outcome == 'success' || steps.wait.outcome == 'failure'
           
       - name: Verify health of a node
-        if: steps.wait.outcome == 'success'
         working-directory: sedge
         run: |
           set +e
+          
+          echo "Syncing result: ${{ steps.wait.outputs.syncing_result_passed }}"
+          echo "Debug result: ${{ steps.wait.outputs.debug_result_passed }}"
+          if [[ "${{ steps.wait.outputs.syncing_result_passed }}" != "false" ]]; then
+            echo "Error: sync check failed"
+            exit 500
+          fi
+          echo "${{ steps.wait.outputs.debug_result_passed }}" | grep -q "WaitingForBlock"
+          if [[ $? -ne 0 ]]; then
+            echo "Error: debug check failed"
+            exit 500
+          fi
           
           dockerLogs=$(docker compose logs execution 2>/dev/null)
 
