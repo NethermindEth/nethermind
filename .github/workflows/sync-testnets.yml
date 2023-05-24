@@ -232,7 +232,7 @@ jobs:
             echo "eth_syncing endpoint response: $RESPONSE_SYNCING"
         
             RESPONSE_DEBUG=$(curl -s --data '{"method":"debug_getSyncStage","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
-            DEBUG_RESULT=$(echo $RESPONSE_DEBUG | jq .result)
+            DEBUG_RESULT=$(echo $RESPONSE_DEBUG | jq -r .result.currentStage)
             echo "debug_getSyncStage endpoint response: $RESPONSE_DEBUG"
             
             echo "syncing_result_check=$SYNCING_RESULT" >> $GITHUB_OUTPUT
