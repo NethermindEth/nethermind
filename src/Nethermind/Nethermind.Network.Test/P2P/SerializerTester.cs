@@ -6,6 +6,7 @@ using System;
 using DotNetty.Buffers;
 using FluentAssertions;
 using FluentAssertions.Equivalency;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -27,7 +28,9 @@ namespace Nethermind.Network.Test.P2P
                 deserialized.Should().BeEquivalentTo(message, options =>
                 {
                     EquivalencyAssertionOptions<T>? excluded = options.Excluding(c => c.Name == "RlpLength");
-                    return additionallyExcluding is not null ? additionallyExcluding(excluded) : excluded;
+                    return (additionallyExcluding is not null ? additionallyExcluding(excluded) : excluded)
+                        .Using<Memory<byte>>((context => context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray())))
+                        .WhenTypeIs<Memory<byte>>();
                 });
 
                 Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");

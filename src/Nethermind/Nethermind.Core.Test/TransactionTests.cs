@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using FluentAssertions;
+using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -35,6 +38,20 @@ namespace Nethermind.Core.Test
             transaction.Type = TxType.EIP1559;
             Assert.That(transaction.DecodedMaxFeePerGas, Is.EqualTo(transaction.MaxFeePerGas));
             Assert.That(transaction.Supports1559, Is.EqualTo(expectedSupports1559));
+        }
+    }
+
+    public static class TransactionTestExtensions
+    {
+        public static void EqualToTransaction(this Transaction subject, Transaction expectation)
+        {
+            subject.Should().BeEquivalentTo(
+                expectation,
+                o => o
+                    .ComparingByMembers<System.Transactions.Transaction>()
+                    .Using<Memory<byte>>(ctx => ctx.Subject.AsArray().Should().BeEquivalentTo(ctx.Expectation.AsArray()))
+                    .WhenTypeIs<Memory<byte>>()
+                );
         }
     }
 }

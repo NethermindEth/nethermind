@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;

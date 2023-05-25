@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using FluentAssertions;
 using FluentAssertions.Numeric;
@@ -103,7 +104,7 @@ namespace Nethermind.Core.Test.Encoding
             decoded!.SenderAddress =
                 new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
-            decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
+            decoded.EqualToTransaction(testCase.Tx);
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
@@ -119,7 +120,7 @@ namespace Nethermind.Core.Test.Encoding
             decoded!.SenderAddress =
                 new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
-            decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
+            decoded.EqualToTransaction(testCase.Tx);
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]

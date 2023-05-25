@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -29,6 +30,7 @@ namespace Nethermind.Blockchain.Receipts
         private long _migratedBlockNumber;
         private readonly ReceiptArrayStorageDecoder _storageDecoder = ReceiptArrayStorageDecoder.Instance;
         private readonly IBlockTree _blockTree;
+        private readonly IBlockStore _blockStore;
         private readonly IReceiptConfig _receiptConfig;
         private readonly bool _legacyHashKey;
 
@@ -40,6 +42,7 @@ namespace Nethermind.Blockchain.Receipts
             ISpecProvider specProvider,
             IReceiptsRecovery receiptsRecovery,
             IBlockTree blockTree,
+            IBlockStore blockStore,
             IReceiptConfig receiptConfig,
             ReceiptArrayStorageDecoder? storageDecoder = null
         )
@@ -52,6 +55,7 @@ namespace Nethermind.Blockchain.Receipts
             _blocksDb = _database.GetColumnDb(ReceiptsColumns.Blocks);
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
             _storageDecoder = storageDecoder ?? ReceiptArrayStorageDecoder.Instance;
             _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
 
@@ -237,8 +241,14 @@ namespace Nethermind.Blockchain.Receipts
             {
                 recoveryContextFactory = () =>
                 {
-                    Block block = _blockTree.FindBlock(blockHash);
-                    return _receiptsRecovery.CreateRecoveryContext(block!);
+                    ReceiptRecoveryBlock? block = _blockStore.GetReceiptRecoveryBlock(blockHash);
+
+                    if (!block.HasValue)
+                    {
+                        throw new InvalidOperationException($"Unable to recover receipts for block {blockHash} because of missing block data.");
+                    }
+
+                    return _receiptsRecovery.CreateRecoveryContext(block.Value);
                 };
             }
 
