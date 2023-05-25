@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -405,6 +406,135 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             ctx.Feed.HandleResponse(request, null)
                 .Should().Be(SyncResponseHandlingResult.NotAssigned);
+        }
+
+        [Test]
+        public async Task Delete_account_when_changing_pivot_scenario_1()
+        {
+            DbContext dbContext = new(_resolverCapability, _logger, _logManager);
+
+            Account account1 = Build.An.Account.WithBalance(1).TestObject;
+            Account account2 = Build.An.Account.WithBalance(2).TestObject;
+            Account account3 = Build.An.Account.WithBalance(3).TestObject;
+
+            //Create following state tree
+            //B
+            //- - - - B - - - - - L - - - - -
+            //- - - - L - - - - - - - - L - -
+            //Deleting leaf at 5e will cause branch to be replaced with last leaf (extend key)
+
+            dbContext.RemoteStateTree.Set(TestItem.AddressA, account1);
+            dbContext.RemoteStateTree.Set(TestItem.AddressB, account2);
+            dbContext.RemoteStateTree.Set(TestItem.AddressC, account3);
+            dbContext.RemoteStateTree.Commit(0);
+
+            dbContext.CompareTrees("BEGIN");
+
+            SafeContext ctx = PrepareDownloader(dbContext);
+            await ActivateAndWait(ctx, dbContext, 1024);
+
+            dbContext.RemoteStateTree.Set(TestItem.AddressB, null);
+            dbContext.RemoteStateTree.Commit(1);
+
+            await ActivateAndWait(ctx, dbContext, 1025);
+
+            dbContext.CompareTrees("END");
+
+            Account? lac1 = dbContext.LocalStateTree.Get(TestItem.AddressB);
+            Assert.IsNull(lac1);
+        }
+
+        [Test]
+        public async Task Delete_account_when_changing_pivot_scenario_2()
+        {
+            DbContext dbContext = new(_resolverCapability, _logger, _logManager);
+
+            //Create following state tree
+            //E
+            //B - - - - - - - - - - - - - - -
+            //L L L - - - - - - - - - - - - -
+            //Deleting one leaf at does not make any changes to tree - only remove leaf data
+            Keccak[] paths = new Keccak[3];
+            paths[0] = new Keccak("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeee112233445566");
+            paths[1] = new Keccak("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeee122233445566");
+            paths[2] = new Keccak("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeee132233445566");
+
+            dbContext.RemoteStateTree.Set(paths[0], Build.An.Account.WithBalance(0).TestObject);
+            dbContext.RemoteStateTree.Set(paths[1], Build.An.Account.WithBalance(1).TestObject);
+            dbContext.RemoteStateTree.Set(paths[2], Build.An.Account.WithBalance(2).TestObject);
+            dbContext.RemoteStateTree.Commit(0);
+
+            dbContext.CompareTrees("BEGIN");
+
+            SafeContext ctx = PrepareDownloader(dbContext);
+            await ActivateAndWait(ctx, dbContext, 1024);
+
+            dbContext.RemoteStateTree.Set(paths[1], null);
+            dbContext.RemoteStateTree.Commit(1);
+
+            await ActivateAndWait(ctx, dbContext, 1025);
+
+            dbContext.CompareTrees("END");
+
+            Account?[] localAccounts = GetLocalAccounts(paths, dbContext);
+
+            Assert.IsNotNull(localAccounts[0]);
+            Assert.IsNull(localAccounts[1]);
+            Assert.IsNotNull(localAccounts[2]);
+        }
+
+        [Test]
+        public async Task Delete_account_when_changing_pivot_scenario_3()
+        {
+            DbContext dbContext = new(_resolverCapability, _logger, _logManager);
+
+            //Create following state tree
+            //E
+            //B - - - - - - - - - - - - - - -
+            //- L E - - - - - - - - - - - - - 
+            //- B - - - - - - - - - - - - - -
+            //L L - - - - - - - - - - - - - -
+            //removing last leaf will cause remaining branch to be converted to leaf and then E->L to be converted into a single leaf
+            //whole subtree needs to be cleaned
+            Keccak[] paths = new Keccak[3];
+            paths[0] = new Keccak("0xcccc100000000000000000000000000000000000000000000000000000000000");
+            paths[1] = new Keccak("0xcccc200000000000000000000000000000000000000000000000000000000000");
+            paths[2] = new Keccak("0xcccc200100000000000000000000000000000000000000000000000000000000");
+
+            dbContext.RemoteStateTree.Set(paths[0], Build.An.Account.WithBalance(0).TestObject);
+            dbContext.RemoteStateTree.Set(paths[1], Build.An.Account.WithBalance(1).TestObject);
+            dbContext.RemoteStateTree.Set(paths[2], Build.An.Account.WithBalance(2).TestObject);
+            dbContext.RemoteStateTree.Commit(0);
+
+            dbContext.CompareTrees("BEGIN");
+
+            SafeContext ctx = PrepareDownloader(dbContext);
+            await ActivateAndWait(ctx, dbContext, 1024);
+
+            dbContext.RemoteStateTree.Set(paths[2], null);
+            dbContext.RemoteStateTree.Commit(1);
+
+            await ActivateAndWait(ctx, dbContext, 1025);
+
+            dbContext.CompareTrees("END");
+
+            Account?[] localAccounts = GetLocalAccounts(paths, dbContext);
+
+            Assert.IsNotNull(localAccounts[0]);
+            Assert.IsNotNull(localAccounts[1]);
+            Assert.IsNull(localAccounts[2]);
+        }
+
+        private Account?[] GetLocalAccounts(Keccak[] paths, DbContext dbContext)
+        {
+            Account?[] accounts = new Account[paths.Length];
+            for (int i = 0; i < paths.Length; i++)
+            {
+                accounts[i] = dbContext.LocalStateTree is StateTreeByPath ?
+                        ((StateTreeByPath)dbContext.LocalStateTree).Get(paths[i]) :
+                        ((StateTree)dbContext.LocalStateTree).Get(paths[i]);
+            }
+            return accounts;
         }
 
         // [Test, Retry(5)]
