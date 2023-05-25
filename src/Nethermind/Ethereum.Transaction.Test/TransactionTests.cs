@@ -179,7 +179,7 @@ namespace Ethereum.Transaction.Test
             if (validTest != null)
             {
                 Assert.That(transaction.Value, Is.EqualTo(validTest.Value), "value");
-                Assert.That(transaction.Data.FasterToArray(), Is.EqualTo(validTest.Data), "data");
+                Assert.That(transaction.Data.AsArray(), Is.EqualTo(validTest.Data), "data");
                 Assert.That(transaction.GasLimit, Is.EqualTo(validTest.GasLimit.ToInt64(null)), "gasLimit");
                 Assert.That(transaction.GasPrice, Is.EqualTo(validTest.GasPrice), "gasPrice");
                 Assert.That(transaction.Nonce, Is.EqualTo(validTest.Nonce), "nonce");

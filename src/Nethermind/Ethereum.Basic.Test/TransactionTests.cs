@@ -42,7 +42,7 @@ namespace Ethereum.Basic.Test
             Assert.That(decodedUnsigned.Value, Is.EqualTo(test.Value), "value");
             Assert.That(decodedUnsigned.GasPrice, Is.EqualTo(test.GasPrice), "gasPrice");
             Assert.That(decodedUnsigned.GasLimit, Is.EqualTo(test.StartGas), "gasLimit");
-            Assert.That(decodedUnsigned.Data.FasterToArray(), Is.EqualTo(test.Data), "data");
+            Assert.That(decodedUnsigned.Data.AsArray(), Is.EqualTo(test.Data), "data");
             Assert.That(decodedUnsigned.To, Is.EqualTo(test.To), "to");
             Assert.That(decodedUnsigned.Nonce, Is.EqualTo(test.Nonce), "nonce");
 
