@@ -226,6 +226,10 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(ChiadoSpecProvider.Instance.TerminalTotalDifficulty));
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Chiado));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Chiado));
+
+        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp - 1)).MaxCodeSize.Should().Be(long.MaxValue);
+        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxCodeSize.Should().Be(24576L);
+        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxInitCodeSize.Should().Be(2 * 24576L);
     }
 
 
@@ -273,6 +277,8 @@ public class ChainSpecBasedSpecProviderTests
         };
 
         CompareSpecProviders(mainnet, provider, forkActivationsToTest, CompareSpecsOptions.CheckDifficultyBomb);
+        provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxCodeSize.Should().Be(24576L);
+        provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxInitCodeSize.Should().Be(2 * 24576L);
 
         Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(MainnetSpecProvider.LondonBlockNumber));
         Assert.That(provider.GetSpec((ForkActivation)4_369_999).DifficultyBombDelay, Is.EqualTo(0_000_000));
