@@ -112,7 +112,7 @@ public class ReceiptsIteratorTests
             false
         );
 
-        ReceiptsIterator iterator = new ReceiptsIterator(span, blockDb, () => recovery.CreateRecoveryContext(block), _decoder.GetRefDecoder(span));
+        ReceiptsIterator iterator = new ReceiptsIterator(span, blockDb, () => recovery.CreateRecoveryContext(new ReceiptRecoveryBlock(block)), _decoder.GetRefDecoder(span));
         return iterator;
     }
 }

@@ -8,6 +8,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -84,11 +85,11 @@ namespace Nethermind.AuRa.Test.Contract
                 Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), _block.Header, Arg.Any<ITxTracer>());
         }
 
-        private static bool IsEquivalentTo(object expected, object item)
+        private static bool IsEquivalentTo(Transaction expected, Transaction item)
         {
             try
             {
-                item.Should().BeEquivalentTo(expected);
+                item.EqualToTransaction(expected);
                 return true;
             }
             catch
