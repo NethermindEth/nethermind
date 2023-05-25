@@ -72,6 +72,8 @@ namespace Nethermind.Synchronization.FastSync
         // private LruKeyCache<Keccak> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
         private readonly HashSet<Keccak> _codesSameAsNodes = new();
         private readonly ConcurrentDictionary<Keccak, List<byte>> _additionalLeafNibbles;
+        private byte[] farRightPath = new byte[64];
+        private bool rootChanged = false;
 
         private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
@@ -435,7 +437,7 @@ namespace Nethermind.Synchronization.FastSync
             ResetStateRoot(bestSuggested.Number, bestSuggested.StateRoot!, currentState);
         }
 
-        public void ResetStateRoot(long blockNumber, Keccak stateRoot, SyncFeedState currentState)
+        public void ResetStateRoot(long blockNumber, Keccak stateRoot, SyncFeedState currentState, bool forceRootChange = false)
         {
             _syncStateLock.EnterWriteLock();
             try
@@ -457,6 +459,9 @@ namespace Nethermind.Synchronization.FastSync
                 _data.LastRequestedNodesCount = _data.RequestedNodesCount;
                 if (_rootNode != stateRoot)
                 {
+                    if (stateRoot != Keccak.EmptyTreeHash && _rootNode != Keccak.EmptyTreeHash || forceRootChange)
+                        rootChanged = true;
+
                     _branchProgress = new BranchProgress(blockNumber, _logger);
                     _blockNumber = blockNumber;
                     _rootNode = stateRoot;
@@ -683,7 +688,7 @@ namespace Nethermind.Synchronization.FastSync
                                     _stateDb.Set(syncItem.Hash, data);
                                     break;
                                 case TrieNodeResolverCapability.Path:
-                                    _stateStore.SaveNodeDirectly(0, node);
+                                    _stateStore.SaveNodeDirectly(0, node, withDelete: rootChanged);
                                     if (node.IsLeaf && _additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
                                     {
                                         // TODO: what is this for?
@@ -691,8 +696,13 @@ namespace Nethermind.Synchronization.FastSync
                                         {
                                             TrieNode clone = node.Clone();
                                             clone.PathToNode[^1] = nibble;
-                                            _stateStore.SaveNodeDirectly(0, clone);
+                                            _stateStore.SaveNodeDirectly(0, clone, withDelete: rootChanged);
                                         }
+                                    }
+                                    if (node.IsLeaf && Bytes.Comparer.Compare(node.FullPath, farRightPath) > 0)
+                                    {
+                                        Interlocked.Exchange(ref farRightPath, node.FullPath);
+                                        if (_logger.IsInfo) _logger.Info($"Far right path set to {Nibbles.ToCompactHexEncoding(farRightPath).ToHexString()}");
                                     }
                                     break;
                                 default:
@@ -742,14 +752,14 @@ namespace Nethermind.Synchronization.FastSync
                                     _stateDb.Set(syncItem.Hash, data);
                                     break;
                                 case TrieNodeResolverCapability.Path:
-                                    _stateStore.SaveNodeDirectly(0, node);
+                                    _stateStore.SaveNodeDirectly(0, node, withDelete: rootChanged);
                                     if (node.IsLeaf && _additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
                                     {
                                         foreach (byte nibble in additionalNibbles)
                                         {
                                             TrieNode clone = node.Clone();
                                             clone.PathToNode[^1] = nibble;
-                                            _stateStore.SaveNodeDirectly(0, clone);
+                                            _stateStore.SaveNodeDirectly(0, clone, withDelete: rootChanged);
                                         }
                                     }
                                     break;

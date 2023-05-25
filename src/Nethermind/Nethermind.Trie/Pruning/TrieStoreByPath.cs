@@ -230,7 +230,7 @@ namespace Nethermind.Trie.Pruning
 
             if (rlp is null)
             {
-                throw new TrieException($"Node {keyPath.ToHexString()} is missing from the DB | path.Length {path.Length} - {path.ToHexString()}");
+                throw new TrieException($"Node {keyPath.ToHexString()} is missing from the DB | path.Length {path.Length} - {Nibbles.ToCompactHexEncoding(path.ToArray()).ToHexString()}");
             }
 
             Metrics.LoadedFromDbNodesCount++;
@@ -500,12 +500,11 @@ namespace Nethermind.Trie.Pruning
 
         #endregion
 
-        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null)
+        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false)
         {
             keyValueStore ??= _keyValueStore;
 
             byte[] fullPath = trieNode.FullPath ?? throw new ArgumentNullException();
-
             byte[] pathBytes = Nibbles.NibblesToByteStorage(fullPath);
 
             if (trieNode.IsLeaf)
@@ -522,10 +521,35 @@ namespace Nethermind.Trie.Pruning
                 }
                 else
                 {
+                    if (trieNode.PathToNode.Length == 64)
+                        _logger.Info($"Save leaf node full bytes {trieNode}");
                     byte[] newPath = new byte[pathBytes.Length + 1];
                     Array.Copy(pathBytes, 0, newPath, 1, pathBytes.Length);
                     newPath[0] = PathMarker;
+                    if (withDelete)
+                        DeleteSubtree(pathToNodeNibbles, trieNode.StoreNibblePathPrefix, false, keyValueStore);
                     keyValueStore[pathToNodeBytes] = newPath;
+                }
+            }
+            if (withDelete)
+            {
+                if (trieNode.IsBranch)
+                {
+                    Span<byte> childPath = stackalloc byte[fullPath.Length + 1];
+                    trieNode.PathToNode.CopyTo(childPath);
+                    for (byte i = 0; i < 16; i++)
+                    {
+                        if (trieNode.IsChildNull(i))
+                        {
+                            _logger.Info($"Deleting child {i} of node {trieNode}");
+                            childPath[^1] = i;
+                            DeleteSubtree(childPath, trieNode.StoreNibblePathPrefix, true, keyValueStore);
+                        }
+                    }
+                }
+                if (trieNode.IsExtension)
+                {
+                    _logger.Info($"Missed extension handling {pathBytes.ToHexString()}");
                 }
             }
 
@@ -555,23 +579,71 @@ namespace Nethermind.Trie.Pruning
         public void ClearCache()
         {}
 
-        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
+        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefixNibbles)
         {
-            _keyValueStore.DeleteByPrefix(keyPrefix);
+            _keyValueStore.DeleteByPrefix(Nibbles.NibblesToByteStorage(keyPrefixNibbles.ToArray()));
         }
 
-        public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefix)
+        public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefixNibbles)
         {
-            bool addPrefixAsDeleted = _committedNodes.IsPathCached(keyPrefix);
+            bool addPrefixAsDeleted = _committedNodes.IsPathCached(keyPrefixNibbles);
             if (!addPrefixAsDeleted)
             {
-                byte[] keyPath = Nibbles.NibblesToByteStorage(keyPrefix.ToArray());
+                byte[] keyPath = Nibbles.NibblesToByteStorage(keyPrefixNibbles.ToArray());
                 byte[]? rlp = _currentBatch?[keyPath] ?? _keyValueStore[keyPath];
                 addPrefixAsDeleted &= rlp != null;
             }
 
             if (addPrefixAsDeleted)
-                _destroyPrefixes.Enqueue(keyPrefix.ToArray());
+                _destroyPrefixes.Enqueue(keyPrefixNibbles.ToArray());
+        }
+
+        public void DeleteSubtree(Span<byte> pathNibbles, Span<byte> storeNibblePrefix, bool deleteSelf, IKeyValueStore? keyValueStore)
+        {
+            keyValueStore ??= _keyValueStore;
+
+            byte[] rlp = TryLoadRlp(pathNibbles, keyValueStore);
+            if (rlp is not null)
+            {
+                TrieNode oldNode = new(NodeType.Unknown, pathNibbles[storeNibblePrefix.Length..].ToArray(), null, rlp)
+                {
+                    StoreNibblePathPrefix = storeNibblePrefix.ToArray()
+                };
+                oldNode.ResolveNode(this);
+
+                _logger.Info($"Deleting old node: path {Nibbles.ToCompactHexEncoding(pathNibbles.ToArray()).ToHexString()} | node {oldNode}");
+
+                if (oldNode.IsBranch)
+                {
+                    Span<byte> childPath = stackalloc byte[pathNibbles.Length + 1];
+                    pathNibbles.CopyTo(childPath);
+                    for (byte i = 0; i < 16; i++)
+                    {
+                        if (!oldNode.IsChildNull(i))
+                        {
+                            _logger.Info($"Deleting child {i} of node {oldNode}");
+                            childPath[^1] = i;
+                            DeleteSubtree(childPath, storeNibblePrefix, true, keyValueStore);
+                        }
+                    }
+                }
+                if (oldNode.IsLeaf)
+                {
+                    keyValueStore[Nibbles.NibblesToByteStorage(oldNode.FullPath)] = null;
+                }
+                if (oldNode.IsExtension)
+                {
+                    Span<byte> childPath = stackalloc byte[pathNibbles.Length + oldNode.Key.Length];
+                    pathNibbles.CopyTo(childPath);
+                    oldNode.Key.CopyTo(childPath[pathNibbles.Length..]);
+                    DeleteSubtree(childPath, storeNibblePrefix, true, keyValueStore);
+                }
+
+                if (deleteSelf)
+                {
+                    keyValueStore[Nibbles.NibblesToByteStorage(pathNibbles)] = null;
+                }
+            }
         }
     }
 }

@@ -842,7 +842,7 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
-        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null)
+        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false)
         {
             keyValueStore ??= _keyValueStore;
             keyValueStore[trieNode.Keccak.Bytes] = trieNode.Value;
