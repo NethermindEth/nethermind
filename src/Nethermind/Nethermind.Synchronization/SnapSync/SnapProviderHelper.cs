@@ -264,12 +264,28 @@ namespace Nethermind.Synchronization.SnapSync
             for (int i = 0; i < proofs.Length; i++)
             {
                 byte[] proof = proofs[i];
-                var node = new TrieNode(NodeType.Unknown, proof, true);
-                node.IsBoundaryProofNode = true;
-                node.ResolveNode(store);
-                node.ResolveKey(store, i == 0);
+                if (store.Capability == TrieNodeResolverCapability.Path)
+                {
+                    //a workaround to correctly resolve a node for path based store - avoids recalc of keccak for child node
+                    TrieNode node = new(NodeType.Unknown, proof, false)
+                    {
+                        IsBoundaryProofNode = true
+                    };
+                    node.ResolveNode(store);
+                    node.ResolveKey(store, i == 0);
 
-                dict[node.Keccak] = node;
+                    dict[node.Keccak] = node.Clone();
+                    dict[node.Keccak].IsBoundaryProofNode = true;
+                }
+                else
+                {
+                    TrieNode node = new(NodeType.Unknown, proof, true)
+                    {
+                        IsBoundaryProofNode = true
+                    };
+                    node.ResolveNode(store);
+                    node.ResolveKey(store, i == 0);
+                }
             }
 
             return dict;
