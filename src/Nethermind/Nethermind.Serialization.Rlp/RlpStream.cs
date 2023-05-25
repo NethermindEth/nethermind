@@ -1392,24 +1392,5 @@ namespace Nethermind.Serialization.Rlp
 
             return result;
         }
-
-        internal byte[] DecodeAndFlattenByteArrays(int itemLength)
-        {
-            int length = ReadSequenceLength();
-            if (length is 0)
-            {
-                return Array.Empty<byte>();
-            }
-
-            int itemsCount = PeekNumberOfItemsRemaining(Position + length);
-            byte[] result = new byte[itemsCount * itemLength];
-
-            for (int i = 0; i < itemsCount; i++)
-            {
-                DecodeByteArraySpan().CopyTo(result.AsSpan(i * itemLength, itemLength));
-            }
-
-            return result;
-        }
     }
 }
