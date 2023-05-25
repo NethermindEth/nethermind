@@ -489,7 +489,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!ExecuteEVMCall(tx, blk, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode))
                 return;
 
-            if (!PayFees(tx, blk, spec, tracer, spentGas, premiumPerGas))
+            if (!PayFees(tx, blk, spec, tracer, substate, spentGas, premiumPerGas, statusCode))
                 return;
 
             // Finalize
@@ -538,18 +538,26 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        protected bool PayFees(Transaction tx, BlockHeader blk, IReleaseSpec spec, ITxTracer tracer, in long spentGas, in UInt256 premiumPerGas)
+        protected bool PayFees(Transaction tx, BlockHeader blk, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
         {
-            UInt256 fees = (UInt256)spentGas * premiumPerGas;
-            UInt256 burntFees = !tx.IsFree() ? (UInt256)spentGas * blk.BaseFeePerGas : 0;
+            if (tx.IsSystem())
+                return true;
 
-            _stateProvider.AddToBalanceAndCreateIfNotExists(blk.GasBeneficiary, fees, spec);
+            bool gasBeneficiaryNotDestroyed = substate?.DestroyList.Contains(blk.GasBeneficiary) != true;
+            if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
+            {
 
-            if (spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null && !burntFees.IsZero)
-                _stateProvider.AddToBalanceAndCreateIfNotExists(spec.Eip1559FeeCollector, burntFees, spec);
+                UInt256 fees = (UInt256)spentGas * premiumPerGas;
+                UInt256 burntFees = !tx.IsFree() ? (UInt256)spentGas * blk.BaseFeePerGas : 0;
 
-            if (tracer.IsTracingFees)
-                tracer.ReportFees(fees, burntFees);
+                _stateProvider.AddToBalanceAndCreateIfNotExists(blk.GasBeneficiary, fees, spec);
+
+                if (spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null && !burntFees.IsZero)
+                    _stateProvider.AddToBalanceAndCreateIfNotExists(spec.Eip1559FeeCollector, burntFees, spec);
+
+                if (tracer.IsTracingFees)
+                    tracer.ReportFees(fees, burntFees);
+            }
 
             return true;
         }
