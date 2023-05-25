@@ -16,9 +16,9 @@ namespace Nethermind.Benchmarks.Core
 
         private byte[][] _scenarios = new byte[][]
         {
-            Keccak.Zero.Bytes,
-            Keccak.EmptyTreeHash.Bytes,
-            Keccak.OfAnEmptyString.Bytes,
+            Keccak.Zero.BytesToArray(),
+            Keccak.EmptyTreeHash.BytesToArray(),
+            Keccak.OfAnEmptyString.BytesToArray(),
             TestItem.AddressA.Bytes,
             Address.Zero.Bytes,
         };
