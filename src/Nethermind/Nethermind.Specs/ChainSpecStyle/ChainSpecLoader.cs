@@ -96,6 +96,7 @@ public class ChainSpecLoader : IChainSpecLoader
             MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000,
             MaxCodeSize = chainSpecJson.Params.MaxCodeSize,
             MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition,
+            MaxCodeSizeTransitionTimestamp = chainSpecJson.Params.MaxCodeSizeTransitionTimestamp,
             Registrar = chainSpecJson.Params.EnsRegistrar,
             ForkBlock = chainSpecJson.Params.ForkBlock,
             ForkCanonHash = chainSpecJson.Params.ForkCanonHash,
