@@ -616,7 +616,7 @@ namespace Nethermind.TxPool
         private static void AddNodeInfoEntryForTxPool()
         {
             ThisNodeInfo.AddInfo("Mem est tx   :",
-                $"{(LruCache<KeccakKey, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB"
+                $"{(LruCache<ValueKeccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB"
                     .PadLeft(8));
         }
 
