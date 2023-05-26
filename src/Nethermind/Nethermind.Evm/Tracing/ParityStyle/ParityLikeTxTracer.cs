@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
@@ -254,7 +255,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 _trace.Action.From = _tx.SenderAddress;
                 _trace.Action.To = _tx.To;
                 _trace.Action.Value = _tx.Value;
-                _trace.Action.Input = _tx.Data;
+                _trace.Action.Input = _tx.Data.AsArray();
                 _trace.Action.Gas = _tx.GasLimit;
                 _trace.Action.CallType = _tx.IsMessageCall ? "call" : "init";
                 _trace.Action.Error = error;
