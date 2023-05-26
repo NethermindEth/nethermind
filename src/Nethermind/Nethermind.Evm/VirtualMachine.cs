@@ -1,3 +1,4 @@
+
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -22,6 +23,10 @@ using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Linq;
+
+#if DEBUG
+using Nethermind.Evm.Tracing.DebugTrace;
+#endif
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -153,7 +158,7 @@ public class VirtualMachine : IVirtualMachine
 
                         if (currentState.IsTopLevel)
                         {
-                            return new TransactionSubstate(callResult.ExceptionType, _txTracer != NullTxTracer.Instance);
+                            return new TransactionSubstate(callResult.ExceptionType, _txTracer.IsTracing);
                         }
 
                         previousCallResult = StatusCode.FailureBytes;
@@ -227,7 +232,7 @@ public class VirtualMachine : IVirtualMachine
                         (IReadOnlyCollection<Address>)currentState.DestroyList,
                         (IReadOnlyCollection<LogEntry>)currentState.Logs,
                         callResult.ShouldRevert,
-                        _txTracer != NullTxTracer.Instance);
+                        isTracerConnected: _txTracer.IsTracing);
                 }
 
                 Address callCodeOwner = currentState.Env.ExecutingAccount;
@@ -344,7 +349,7 @@ public class VirtualMachine : IVirtualMachine
 
                 if (currentState.IsTopLevel)
                 {
-                    return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, _txTracer != NullTxTracer.Instance);
+                    return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, _txTracer.IsTracing);
                 }
 
                 previousCallResult = StatusCode.FailureBytes;
@@ -560,14 +565,7 @@ public class VirtualMachine : IVirtualMachine
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        //if(!UpdateGas(dataGasCost, ref gasAvailable)) return CallResult.Exception;
-        if (!UpdateGas(baseGasCost, ref gasAvailable))
-        {
-            Metrics.EvmExceptions++;
-            throw new OutOfGasException();
-        }
-
-        if (!UpdateGas(dataGasCost, ref gasAvailable))
+        if (!UpdateGas(checked(baseGasCost + dataGasCost), ref gasAvailable))
         {
             Metrics.EvmExceptions++;
             throw new OutOfGasException();
@@ -580,6 +578,11 @@ public class VirtualMachine : IVirtualMachine
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
             CallResult callResult = new(output.ToArray(), success, !success);
             return callResult;
+        }
+        catch (DllNotFoundException exception)
+        {
+            if (_logger.IsError) _logger.Error($"Failed to load one of the dependencies of {precompile.GetType()} precompile", exception);
+            throw;
         }
         catch (Exception exception)
         {
@@ -594,6 +597,10 @@ public class VirtualMachine : IVirtualMachine
     {
         bool isTrace = _logger.IsTrace;
         bool traceOpcodes = _txTracer.IsTracingInstructions;
+#if DEBUG
+        DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
+#endif
+
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
 
@@ -643,7 +650,9 @@ public class VirtualMachine : IVirtualMachine
             UInt256 localPreviousDest = previousCallOutputDestination;
             if (!UpdateMemoryCost(vmState, ref gasAvailable, in localPreviousDest, (ulong)previousCallOutput.Length))
             {
-                ThrowStackOverflowException();
+                // Never ran any instructions, so nothing to trace (or mark as end of trace)
+                traceOpcodes = false;
+                goto OutOfGas;
             }
 
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
@@ -652,12 +661,14 @@ public class VirtualMachine : IVirtualMachine
 
         while (programCounter < code.Length)
         {
+#if DEBUG
+            debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+#endif  
             Instruction instruction = (Instruction)code[programCounter];
             // Console.WriteLine(instruction);
+
             if (traceOpcodes)
-            {
                 StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
-            }
 
             programCounter++;
             switch (instruction)
@@ -1250,7 +1261,7 @@ public class VirtualMachine : IVirtualMachine
                         Address address = stack.PopAddress();
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
 
-                        if (programCounter < code.Length)
+                        if (!traceOpcodes && programCounter < code.Length)
                         {
                             bool optimizeAccess = false;
                             Instruction nextInstruction = (Instruction)code[programCounter];
@@ -1283,11 +1294,6 @@ public class VirtualMachine : IVirtualMachine
                                 // is is a common pattern to check if address is a contract
                                 // however we can just check the address's loaded CodeHash
                                 // to reduce storage access from trying to load the code
-                                if (traceOpcodes)
-                                {
-                                    EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-                                    StartInstructionTrace(Instruction.ISZERO, vmState, gasAvailable, programCounter, in stack);
-                                }
 
                                 programCounter++;
                                 // Add gas cost for ISZERO, GT, or EQ
@@ -1393,7 +1399,7 @@ public class VirtualMachine : IVirtualMachine
                         stack.PopUInt256(out UInt256 a);
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
                         Keccak blockHash = _blockhashProvider.GetBlockhash(txCtx.Header, number);
-                        stack.PushBytes(blockHash?.Bytes ?? BytesZero32);
+                        stack.PushBytes(blockHash != null ? blockHash.Bytes : BytesZero32);
 
                         if (isTrace)
                         {
@@ -1418,8 +1424,7 @@ public class VirtualMachine : IVirtualMachine
 
                         if (txCtx.Header.IsPostMerge)
                         {
-                            byte[] random = txCtx.Header.Random.Bytes;
-                            stack.PushBytes(random);
+                            stack.PushBytes(txCtx.Header.Random.Bytes);
                         }
                         else
                         {
@@ -2460,7 +2465,11 @@ public class VirtualMachine : IVirtualMachine
                     }
             }
 
-            if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+
+            if (traceOpcodes)
+            {
+                EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+            }
         }
 
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
@@ -2474,6 +2483,9 @@ OutOfGas:
         return CallResult.OutOfGasException;
 EmptyTrace:
         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+#if DEBUG
+        debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+#endif
         return CallResult.Empty;
 InvalidInstruction:
         if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.BadInstruction);
@@ -2496,14 +2508,6 @@ InvalidJumpDestination:
 AccessViolation:
         if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.AccessViolation);
         return CallResult.AccessViolationException;
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowStackOverflowException()
-        {
-            Metrics.EvmExceptions++;
-            throw new OutOfGasException();
-        }
     }
 
     static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)

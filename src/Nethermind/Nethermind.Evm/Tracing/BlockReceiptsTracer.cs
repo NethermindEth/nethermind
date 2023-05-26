@@ -11,7 +11,7 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>
+    public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
     {
         private Block _block = null!;
         public bool IsTracingReceipt => true;
@@ -28,6 +28,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingBlockHash => _currentTxTracer.IsTracingBlockHash;
         public bool IsTracingAccess => _currentTxTracer.IsTracingAccess;
         public bool IsTracingFees => _currentTxTracer.IsTracingFees;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
         private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
@@ -198,6 +199,9 @@ namespace Nethermind.Evm.Tracing
         public IReadOnlyList<TxReceipt> TxReceipts => _txReceipts;
         public TxReceipt LastReceipt => _txReceipts[^1];
         public bool IsTracingRewards => _otherTracer.IsTracingRewards;
+
+        public ITxTracer InnerTracer => _currentTxTracer;
+
         public int TakeSnapshot() => _txReceipts.Count;
         public void Restore(int snapshot)
         {

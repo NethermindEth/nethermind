@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -13,6 +15,7 @@ namespace Nethermind.Blockchain.Blocks;
 public class BlockStore : IBlockStore
 {
     private readonly IDb _blockDb;
+    private readonly IDbWithSpan? _blockDbAsSpan;
     private readonly BlockDecoder _blockDecoder = new();
     private const int CacheSize = 64;
 
@@ -22,6 +25,11 @@ public class BlockStore : IBlockStore
     public BlockStore(IDb blockDb)
     {
         _blockDb = blockDb;
+
+        if (blockDb is IDbWithSpan blockDbAsSpan)
+            _blockDbAsSpan = blockDbAsSpan;
+        else
+            _blockDbAsSpan = null;
     }
 
     public void SetMetadata(byte[] key, byte[] value)
@@ -55,7 +63,25 @@ public class BlockStore : IBlockStore
 
     public Block? Get(Keccak blockHash, bool shouldCache)
     {
+
         return _blockDb.Get(blockHash, _blockDecoder, _blockCache, shouldCache);
+    }
+
+    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(Keccak blockHash)
+    {
+        MemoryManager<byte>? memoryOwner = null;
+        Memory<byte> memory;
+        if (_blockDbAsSpan != null)
+        {
+            memoryOwner = _blockDbAsSpan.GetOwnedMemory(blockHash.Bytes);
+            memory = memoryOwner.Memory;
+        }
+        else
+        {
+            memory = _blockDb.Get(blockHash.Bytes);
+        }
+
+        return _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memory, RlpBehaviors.None);
     }
 
     public void Cache(Block block)

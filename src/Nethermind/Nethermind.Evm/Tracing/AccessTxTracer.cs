@@ -31,6 +31,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => true;
         public bool IsTracingFees => false;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
         public AccessTxTracer(params Address[] addressesToOptimize)
         {

@@ -41,6 +41,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingBlockHash => true;
         public bool IsTracingAccess => true;
         public bool IsTracingFees => true;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 

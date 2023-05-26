@@ -46,6 +46,7 @@ namespace Nethermind.Mev
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
         public bool IsTracingFees => false;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
         public void ReportCodeChange(Address address, byte[]? before, byte[]? after) { }
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }

@@ -367,5 +367,33 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(trace.Entries[5].Memory.Count, Is.EqualTo(1), "entry[5] length");
             Assert.That(trace.Entries[5].Memory[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[5][0]");
         }
+
+        [Test]
+        public void Can_trace_extcodesize_optimization()
+        {
+            // From https://github.com/NethermindEth/nethermind/issues/5717
+            byte[] code = Bytes.FromHexString("0x60246044607460d1606b60b9603369866833515b6d086c607f3b15749e4886579008320052006f");
+
+            GethLikeTxTrace trace = ExecuteAndTrace(code);
+            GethTxTraceEntry entry;
+
+            entry = trace.Entries[^3];
+            Assert.That(entry.ProgramCounter, Is.EqualTo(25));
+            Assert.That(entry.Opcode, Is.EqualTo("EXTCODESIZE"));
+            Assert.That(entry.Stack[^1], Is.EqualTo("0x866833515b6d086c607f"));
+            Assert.That(entry.Stack.Count, Is.EqualTo(8));
+
+            entry = trace.Entries[^2];
+            Assert.That(entry.ProgramCounter, Is.EqualTo(26));
+            Assert.That(entry.Opcode, Is.EqualTo("ISZERO"));
+            Assert.That(entry.Stack[^1], Is.EqualTo("0x0"));
+            Assert.That(entry.Stack.Count, Is.EqualTo(8));
+
+            entry = trace.Entries[^1];
+            Assert.That(entry.ProgramCounter, Is.EqualTo(27));
+            Assert.That(entry.Opcode, Is.EqualTo("PUSH21"));
+            Assert.That(entry.Stack[^1], Is.EqualTo("0x1"));
+            Assert.That(entry.Stack.Count, Is.EqualTo(8));
+        }
     }
 }

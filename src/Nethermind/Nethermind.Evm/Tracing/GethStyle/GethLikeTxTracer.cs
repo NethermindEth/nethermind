@@ -26,17 +26,18 @@ namespace Nethermind.Evm.Tracing.GethStyle
         bool IStateTracer.IsTracingState => false;
         bool IStorageTracer.IsTracingStorage => false;
         public bool IsTracingReceipt => true;
-        bool ITxTracer.IsTracingActions => false;
+        public bool IsTracingActions => false;
         public bool IsTracingOpLevelStorage { get; protected set; }
         public bool IsTracingMemory { get; protected set; }
         protected bool IsTracingFullMemory { get; }
-        bool ITxTracer.IsTracingInstructions => true;
+        public bool IsTracingInstructions => true;
         public bool IsTracingRefunds { get; protected set; }
         public bool IsTracingCode => false;
         public bool IsTracingStack { get; }
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
         public bool IsTracingFees => false;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingFullMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
         protected TEntry? CurrentTraceEntry { get; set; }
         protected GethLikeTxTrace Trace { get; } = new();
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using FluentAssertions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -218,6 +219,33 @@ namespace Nethermind.Core.Test
             }
 
             Assert.That(rlpBigInt.Bytes, Is.EqualTo(rlpLong.Bytes));
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void RlpContextWithSliceMemory_shouldNotCopyUnderlyingData(bool sliceValue)
+        {
+            byte[] randomBytes = new byte[100];
+            Random.Shared.NextBytes(randomBytes);
+
+            int requiredLength = Rlp.LengthOf(randomBytes) * 3;
+            RlpStream stream = new RlpStream(requiredLength);
+            stream.Encode(randomBytes);
+            stream.Encode(randomBytes);
+            stream.Encode(randomBytes);
+
+            Memory<byte> memory = stream.Data;
+            Rlp.ValueDecoderContext context = new Rlp.ValueDecoderContext(memory, sliceValue);
+
+            for (int i = 0; i < 3; i++)
+            {
+                Memory<byte>? slice = context.DecodeByteArrayMemory();
+                slice.Should().NotBeNull();
+                MemoryMarshal.TryGetArray(slice.Value, out ArraySegment<byte> segment);
+
+                bool isACopy = (segment.Offset == 0 && segment.Count == slice.Value.Length);
+                isACopy.Should().NotBe(sliceValue);
+            }
         }
     }
 }
