@@ -4,20 +4,23 @@
 
 set -e
 
-CLI_PATH=$GITHUB_WORKSPACE/nethermind/src/Nethermind/Nethermind.Cli
-OUTPUT_PATH=$GITHUB_WORKSPACE/$PUB_DIR
+output_path=$GITHUB_WORKSPACE/$PUB_DIR
 
-cd $CLI_PATH
+cd $GITHUB_WORKSPACE/nethermind/src/Nethermind/Nethermind.Cli
 
-echo "Building Nethermind CLI v$1+${2:0:8}"
+echo "Building Nethermind CLI"
 
 for rid in "linux-x64" "linux-arm64" "win-x64" "osx-x64" "osx-arm64"
 do
   echo "  Publishing for $rid"
 
-  dotnet publish -c release -r $rid -o $OUTPUT_PATH/$rid --sc true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
-
-  rm -rf $OUTPUT_PATH/$rid/*.pdb
+  dotnet publish -c release -r $rid -o $output_path/$rid --sc true \
+    -p:BuildTimestamp=$2 \
+    -p:Commit=$1 \
+    -p:DebugType=none \
+    -p:Deterministic=true \
+    -p:IncludeAllContentForSelfExtract=true \
+    -p:PublishSingleFile=true
 done
 
 echo "Build completed"

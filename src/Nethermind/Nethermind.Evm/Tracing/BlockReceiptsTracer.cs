@@ -11,7 +11,7 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>
+    public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
     {
         public BlockReceiptsTracer() { }
         public BlockReceiptsTracer(ITxTracer customTracer) => _currentTxTracer = customTracer;
@@ -201,6 +201,9 @@ namespace Nethermind.Evm.Tracing
         public IReadOnlyList<TxReceipt> TxReceipts => _txReceipts;
         public TxReceipt LastReceipt => _txReceipts[^1];
         public bool IsTracingRewards => _otherTracer.IsTracingRewards;
+
+        public ITxTracer InnerTracer => _currentTxTracer;
+
         public int TakeSnapshot() => _txReceipts.Count;
         public void Restore(int snapshot)
         {

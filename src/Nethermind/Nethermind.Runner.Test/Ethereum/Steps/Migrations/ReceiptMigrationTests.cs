@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -67,7 +68,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             context.DbProvider.ReceiptsDb.Returns(receiptColumenDb);
             receiptColumenDb.RemoveFunc = (key) =>
             {
-                if (key.Equals(lastTransaction.Bytes)) guard.Set();
+                if (Bytes.AreEqual(key, lastTransaction.Bytes)) guard.Set();
             };
 
             ReceiptMigration migration = new(context);

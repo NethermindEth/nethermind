@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
+using static Nethermind.Core.Extensions.MemoryExtensions;
 
 namespace Nethermind.Facade.Proxy.Models
 {
@@ -20,7 +21,7 @@ namespace Nethermind.Facade.Proxy.Models
             {
                 From = transaction.SenderAddress,
                 To = transaction.To,
-                Data = transaction.Data,
+                Data = transaction.Data.AsArray(),
                 Value = transaction.Value,
                 Gas = (UInt256)transaction.GasLimit,
                 GasPrice = transaction.GasPrice

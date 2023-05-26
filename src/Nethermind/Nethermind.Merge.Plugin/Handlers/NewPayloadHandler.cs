@@ -109,7 +109,13 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
         }
 
-        if (block.Header.Number <= _syncConfig.PivotNumberParsed)
+        // Imagine that node was on block X and later node was offline.
+        // Now user download new Nethermind release with sync pivot X+100 and start the node.
+        // Without hasNeverBeenInSync check user won't be able to catch up with the chain,
+        // because blocks would be ignored with this check:
+        // block.Header.Number <= _syncConfig.PivotNumberParsed
+        bool hasNeverBeenInSync = (_blockTree.Head?.Number ?? 0) == 0;
+        if (hasNeverBeenInSync && block.Header.Number <= _syncConfig.PivotNumberParsed)
         {
             if (_logger.IsInfo) _logger.Info($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
             return NewPayloadV1Result.Syncing;

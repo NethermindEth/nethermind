@@ -24,6 +24,10 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 
+#if DEBUG
+using Nethermind.Evm.Tracing.DebugTrace;
+#endif
+
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 [assembly: InternalsVisibleTo("Ethereum.Test.Base")]
 
@@ -710,6 +714,10 @@ public class VirtualMachine : IVirtualMachine
     {
         bool isTrace = _logger.IsTrace;
         bool traceOpcodes = _txTracer.IsTracingInstructions;
+#if DEBUG
+        DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
+#endif
+
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
 
@@ -836,13 +844,15 @@ public class VirtualMachine : IVirtualMachine
 
         while (programCounter < codeSection.Length)
         {
+#if DEBUG
+            debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+#endif  
             Instruction instruction = (Instruction)codeSection[programCounter];
 
             // Console.WriteLine(instruction);
+
             if (traceOpcodes)
-            {
                 StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
-            }
 
             programCounter++;
             switch (instruction)
@@ -1434,11 +1444,70 @@ public class VirtualMachine : IVirtualMachine
                     }
                 case Instruction.EXTCODESIZE:
                     {
+                        Metrics.ExtCodeSizeOpcode++;
                         long gasCost = spec.GetExtCodeCost();
                         if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
                         Address address = stack.PopAddress();
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
+
+                        if (!traceOpcodes && programCounter < codeSection.Length)
+                        {
+                            bool optimizeAccess = false;
+                            Instruction nextInstruction = (Instruction)codeSection[programCounter];
+                            // code.length is zero
+                            if (nextInstruction == Instruction.ISZERO)
+                            {
+                                optimizeAccess = true;
+                                Metrics.ExtCodeSizeOptimizedIsZero++;
+                            }
+                            // code.length > 0 || code.length == 0
+                            else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ) &&
+                                    stack.PeekUInt256IsZero())
+                            {
+                                optimizeAccess = true;
+                                stack.PopLimbo();
+                                if (nextInstruction == Instruction.GT)
+                                {
+                                    Metrics.ExtCodeSizeOptimizedGT++;
+                                }
+                                else if (nextInstruction == Instruction.EQ)
+                                {
+                                    Metrics.ExtCodeSizeOptimizedEQ++;
+                                }
+                            }
+
+                            if (optimizeAccess)
+                            {
+                                // EXTCODESIZE ISZERO/GT/EQ peephole optimization.
+                                // In solidity 0.8.1+: `return account.code.length > 0;`
+                                // is is a common pattern to check if address is a contract
+                                // however we can just check the address's loaded CodeHash
+                                // to reduce storage access from trying to load the code
+
+                                programCounter++;
+                                // Add gas cost for ISZERO, GT, or EQ
+                                if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
+
+                                // IsContract
+                                bool isCodeLengthNotZero = _state.IsContract(address);
+                                if (nextInstruction == Instruction.GT)
+                                {
+                                    // Invert, to IsNotContract
+                                    isCodeLengthNotZero = !isCodeLengthNotZero;
+                                }
+
+                                if (!isCodeLengthNotZero)
+                                {
+                                    stack.PushOne();
+                                }
+                                else
+                                {
+                                    stack.PushZero();
+                                }
+                                break;
+                            }
+                        }
 
                         byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                         UInt256 codeSize = spec.IsEofEvmModeOn && EvmObjectFormat.IsValidEof(accountCode, out _)
@@ -1526,7 +1595,7 @@ public class VirtualMachine : IVirtualMachine
                         stack.PopUInt256(out UInt256 a);
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
                         Keccak blockHash = _blockhashProvider.GetBlockhash(txCtx.Header, number);
-                        stack.PushBytes(blockHash?.Bytes ?? BytesZero32);
+                        stack.PushBytes(blockHash != null ? blockHash.Bytes : BytesZero32);
 
                         if (isTrace)
                         {
@@ -1551,8 +1620,7 @@ public class VirtualMachine : IVirtualMachine
 
                         if (txCtx.Header.IsPostMerge)
                         {
-                            byte[] random = txCtx.Header.Random.Bytes;
-                            stack.PushBytes(random);
+                            stack.PushBytes(txCtx.Header.Random.Bytes);
                         }
                         else
                         {
@@ -2898,7 +2966,11 @@ public class VirtualMachine : IVirtualMachine
                     }
             }
 
-            if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+
+            if (traceOpcodes)
+            {
+                EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+            }
         }
 
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
@@ -2912,8 +2984,11 @@ OutOfGas:
         return CallResult.OutOfGasException;
 EmptyTrace:
         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+#if DEBUG
+        debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+#endif
         return CallResult.Empty(0);
-InvalidInstruction:
+    InvalidInstruction:
         if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.BadInstruction);
         return CallResult.InvalidInstructionException;
 StaticCallViolation:
