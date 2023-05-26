@@ -27,7 +27,7 @@ namespace Nethermind.Evm
             ShouldRevert = false;
         }
 
-        public TransactionSubstate(
+        public unsafe TransactionSubstate(
             ReadOnlyMemory<byte> output,
             long refund,
             IReadOnlyCollection<Address> destroyList,
@@ -35,6 +35,8 @@ namespace Nethermind.Evm
             bool shouldRevert,
             bool isTracerConnected)
         {
+            const int revertPrefix = 4;
+
             Output = output;
             Refund = refund;
             DestroyList = destroyList;
@@ -48,18 +50,18 @@ namespace Nethermind.Evm
                     if (Output.Length > 0)
                     {
                         ReadOnlySpan<byte> span = Output.Span;
-                        if (span.Length >= 32 * 2 + 4)
+                        if (span.Length >= sizeof(UInt256) * 2 + revertPrefix)
                         {
                             try
                             {
-                                int start = (int)(new UInt256(span.Slice(4, 32), isBigEndian: true));
-                                if (start + 4 + 32 <= span.Length)
+                                int start = (int)(new UInt256(span.Slice(revertPrefix, sizeof(UInt256)), isBigEndian: true));
+                                if (start + revertPrefix + sizeof(UInt256) <= span.Length)
                                 {
-                                    int length = (int)new UInt256(span.Slice(start + 4, 32), isBigEndian: true);
-                                    if (checked(start + 4 + 32 + length) <= span.Length)
+                                    int length = (int)new UInt256(span.Slice(start + revertPrefix, sizeof(UInt256)), isBigEndian: true);
+                                    if (checked(start + revertPrefix + sizeof(UInt256) + length) <= span.Length)
                                     {
                                         Error = string.Concat("Reverted ",
-                                            span.Slice(start + 32 + 4, length).ToHexString(true));
+                                            span.Slice(start + sizeof(UInt256) + revertPrefix, length).ToHexString(true));
                                         return;
                                     }
                                 }
