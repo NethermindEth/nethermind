@@ -157,7 +157,7 @@ public class VirtualMachine : IVirtualMachine
 
                         if (currentState.IsTopLevel)
                         {
-                            return new TransactionSubstate(callResult.ExceptionType, _txTracer != NullTxTracer.Instance);
+                            return new TransactionSubstate(callResult.ExceptionType, _txTracer.IsTracing);
                         }
 
                         previousCallResult = StatusCode.FailureBytes;
@@ -231,7 +231,7 @@ public class VirtualMachine : IVirtualMachine
                         (IReadOnlyCollection<Address>)currentState.DestroyList,
                         (IReadOnlyCollection<LogEntry>)currentState.Logs,
                         callResult.ShouldRevert,
-                        _txTracer != NullTxTracer.Instance);
+                        isTracerConnected: _txTracer.IsTracing);
                 }
 
                 Address callCodeOwner = currentState.Env.ExecutingAccount;
@@ -348,7 +348,7 @@ public class VirtualMachine : IVirtualMachine
 
                 if (currentState.IsTopLevel)
                 {
-                    return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, _txTracer != NullTxTracer.Instance);
+                    return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, _txTracer.IsTracing);
                 }
 
                 previousCallResult = StatusCode.FailureBytes;
@@ -564,14 +564,7 @@ public class VirtualMachine : IVirtualMachine
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        //if(!UpdateGas(dataGasCost, ref gasAvailable)) return CallResult.Exception;
-        if (!UpdateGas(baseGasCost, ref gasAvailable))
-        {
-            Metrics.EvmExceptions++;
-            throw new OutOfGasException();
-        }
-
-        if (!UpdateGas(dataGasCost, ref gasAvailable))
+        if (!UpdateGas(checked(baseGasCost + dataGasCost), ref gasAvailable))
         {
             Metrics.EvmExceptions++;
             throw new OutOfGasException();
@@ -656,7 +649,9 @@ public class VirtualMachine : IVirtualMachine
             UInt256 localPreviousDest = previousCallOutputDestination;
             if (!UpdateMemoryCost(vmState, ref gasAvailable, in localPreviousDest, (ulong)previousCallOutput.Length))
             {
-                ThrowStackOverflowException();
+                // Never ran any instructions, so nothing to trace (or mark as end of trace)
+                traceOpcodes = false;
+                goto OutOfGas;
             }
 
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
@@ -2512,14 +2507,6 @@ InvalidJumpDestination:
 AccessViolation:
         if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.AccessViolation);
         return CallResult.AccessViolationException;
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowStackOverflowException()
-        {
-            Metrics.EvmExceptions++;
-            throw new OutOfGasException();
-        }
     }
 
     static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
