@@ -1963,7 +1963,7 @@ public class VirtualMachine : IVirtualMachine
                         Keccak[] topics = new Keccak[topicsCount];
                         for (int i = 0; i < topicsCount; i++)
                         {
-                            topics[i] = new Keccak(stack.PopBytes().ToArray());
+                            topics[i] = new Keccak(stack.PopBytes());
                         }
 
                         LogEntry logEntry = new(

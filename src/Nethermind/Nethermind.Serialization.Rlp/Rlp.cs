@@ -837,7 +837,7 @@ namespace Nethermind.Serialization.Rlp
                     return Keccak.EmptyTreeHash;
                 }
 
-                return new Keccak(keccakSpan.ToArray());
+                return new Keccak(keccakSpan);
             }
 
             public Keccak? DecodeZeroPrefixKeccak()
