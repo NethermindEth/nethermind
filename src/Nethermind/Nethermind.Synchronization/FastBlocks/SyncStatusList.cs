@@ -6,6 +6,7 @@ using System.Collections;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Synchronization.FastBlocks
@@ -15,6 +16,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private long _queueSize;
         private readonly IBlockTree _blockTree;
         private readonly FastBlockStatusList _statuses;
+        private readonly LruCache<long, BlockInfo> _cache = new(maxCapacity: 16, startCapacity: 16, "blockInfo Cache");
 
         public long LowestInsertWithoutGaps { get; private set; }
         public long QueueSize => _queueSize;
@@ -29,74 +31,59 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public void GetInfosForBatch(BlockInfo?[] blockInfos)
         {
-            using ArrayPoolList<(int collected, long currentNumber)> toSent = new(blockInfos.Length);
-
             int collected = 0;
             long currentNumber = LowestInsertWithoutGaps;
-            lock (_statuses)
-            {
-                while (collected < blockInfos.Length && currentNumber != 0)
-                {
-                    if (blockInfos[collected] is not null)
-                    {
-                        collected++;
-                        continue;
-                    }
 
-                    switch (_statuses[currentNumber])
-                    {
-                        case FastBlockStatus.Unknown:
-                            toSent.Add((collected, currentNumber));
-                            _statuses[currentNumber] = FastBlockStatus.Sent;
-                            collected++;
-                            break;
-                        case FastBlockStatus.Inserted:
-                            if (currentNumber == LowestInsertWithoutGaps)
+            while (collected < blockInfos.Length && currentNumber != 0)
+            {
+                if (blockInfos[collected] is not null)
+                {
+                    collected++;
+                    continue;
+                }
+
+                switch (_statuses[currentNumber])
+                {
+                    case FastBlockStatus.Unknown:
+                        if (!_cache.TryGet(currentNumber, out BlockInfo blockInfo))
+                        {
+                            blockInfo = _blockTree.FindCanonicalBlockInfo(currentNumber);
+                            if (blockInfo is not null)
                             {
-                                LowestInsertWithoutGaps--;
-                                _queueSize--;
+                                _cache.Set(currentNumber, blockInfo);
                             }
-                            break;
-                        case FastBlockStatus.Sent:
-                            break;
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
+                        }
 
-                    currentNumber--;
+                        blockInfos[collected] = blockInfo;
+                        _statuses[currentNumber] = FastBlockStatus.Sent;
+                        collected++;
+                        break;
+                    case FastBlockStatus.Inserted:
+                        if (currentNumber == LowestInsertWithoutGaps)
+                        {
+                            LowestInsertWithoutGaps--;
+                            Interlocked.Decrement(ref _queueSize);
+                        }
+                        break;
+                    case FastBlockStatus.Sent:
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
                 }
-            }
 
-            for (int index = 0; index < toSent.Count; index++)
-            {
-                (int collected, long currentNumber) sent = toSent[index];
-                try
-                {
-                    blockInfos[sent.collected] = _blockTree.FindCanonicalBlockInfo(sent.currentNumber);
-                }
-                catch
-                {
-                    _statuses[sent.currentNumber] = FastBlockStatus.Unknown;
-                    throw;
-                }
+                currentNumber--;
             }
         }
 
-        public void MarkInserted(in long blockNumber)
+        public void MarkInserted(long blockNumber)
         {
-            lock (_statuses)
-            {
-                _queueSize++;
-                _statuses[blockNumber] = FastBlockStatus.Inserted;
-            }
+            Interlocked.Increment(ref _queueSize);
+            _statuses[blockNumber] = FastBlockStatus.Inserted;
         }
 
-        public void MarkUnknown(in long blockNumber)
+        public void MarkUnknown(long blockNumber)
         {
-            lock (_statuses)
-            {
-                _statuses[blockNumber] = FastBlockStatus.Unknown;
-            }
+            _statuses[blockNumber] = FastBlockStatus.Unknown;
         }
     }
 }
