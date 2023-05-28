@@ -37,7 +37,8 @@ namespace Nethermind.Blockchain
 
         internal static Keccak HeadAddressInDb = Keccak.Zero;
 
-        private const int CacheSize = 64;
+        // SyncProgressResolver MaxLookupBack is 128, add 16 wiggle room
+        private const int CacheSize = 128 + 16;
 
         private readonly LruCache<KeccakKey, BlockHeader> _headerCache =
             new(CacheSize, CacheSize, "headers");
@@ -827,7 +828,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            BlockHeader? header = _headerDb.Get(blockHash, _headerDecoder, _headerCache, false);
+            BlockHeader? header = _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: false);
             if (header is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
