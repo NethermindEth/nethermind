@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 
 using DotNetty.Codecs;
 
@@ -31,7 +32,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         [Test]
         public void Can_read_back_all_set_values()
         {
-            const long length = 500;
+            const long length = 4096;
 
             FastBlockStatusList list = new(length);
             for (int i = 0; i < length; i++)
@@ -41,6 +42,25 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             for (int i = 0; i < length; i++)
             {
                 Assert.IsTrue((FastBlockStatus)(i % 3) == list[i]);
+            }
+        }
+
+        [Test]
+        public void Can_read_back_all_parallel_set_values()
+        {
+            const long length = 4096;
+
+            for (var len = 0; len < length; len++)
+            {
+                FastBlockStatusList list = new(len);
+                Parallel.For(0, len, (i) =>
+                {
+                    list[i] = (FastBlockStatus)(i % 3);
+                });
+                Parallel.For(0, len, (i) =>
+                {
+                    Assert.IsTrue((FastBlockStatus)(i % 3) == list[i]);
+                });
             }
         }
     }
