@@ -74,13 +74,13 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            int networkWrapperCheck = 0;
+            int positionAfterNetworkWrapper = 0;
             if ((rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm && transaction.HasNetworkForm)
             {
                 int networkWrapperLength = rlpStream.ReadSequenceLength();
-                networkWrapperCheck = rlpStream.Position + networkWrapperLength;
-                int rlpRength = rlpStream.PeekNextRlpLength();
-                transactionSequence = rlpStream.Peek(rlpRength);
+                positionAfterNetworkWrapper = rlpStream.Position + networkWrapperLength;
+                int rlpLength = rlpStream.PeekNextRlpLength();
+                transactionSequence = rlpStream.Peek(rlpLength);
             }
 
             int transactionLength = rlpStream.ReadSequenceLength();
@@ -123,7 +123,7 @@ namespace Nethermind.Serialization.Rlp
 
                 if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
                 {
-                    rlpStream.Check(networkWrapperCheck);
+                    rlpStream.Check(positionAfterNetworkWrapper);
                 }
 
                 transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
