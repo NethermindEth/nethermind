@@ -25,8 +25,8 @@ namespace Nethermind.Synchronization.Test.FastBlocks
 
             Assert.Throws<IndexOutOfRangeException>(() => { FastBlockStatus a = list[-1]; });
             Assert.Throws<IndexOutOfRangeException>(() => { FastBlockStatus a = list[1]; });
-            Assert.Throws<IndexOutOfRangeException>(() => { list[-1] = FastBlockStatus.Unknown; });
-            Assert.Throws<IndexOutOfRangeException>(() => { list[1] = FastBlockStatus.Unknown; });
+            Assert.Throws<IndexOutOfRangeException>(() => { list[-1] = FastBlockStatus.Pending; });
+            Assert.Throws<IndexOutOfRangeException>(() => { list[1] = FastBlockStatus.Pending; });
         }
 
         [Test]
@@ -60,6 +60,91 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 Parallel.For(0, len, (i) =>
                 {
                     Assert.IsTrue((FastBlockStatus)(i % 3) == list[i]);
+                });
+            }
+        }
+
+        [Test]
+        public void State_transitions_are_enforced()
+        {
+            const long length = 4096;
+
+            for (var len = 0; len < length; len++)
+            {
+                FastBlockStatusList list = new(len);
+                for (int i = 0; i < len; i++)
+                {
+                    list[i] = (FastBlockStatus)(i % 3);
+                }
+
+                for (int i = 0; i < len; i++)
+                {
+                    switch (list[i])
+                    {
+                        case FastBlockStatus.Pending:
+                            Assert.IsFalse(list.TryMarkPending(i));
+                            Assert.IsFalse(list.TryMarkInserted(i));
+                            Assert.IsTrue(list.TryMarkSent(i));
+                            goto case FastBlockStatus.Sent;
+
+                        case FastBlockStatus.Sent:
+                            Assert.IsFalse(list.TryMarkSent(i));
+                            Assert.IsTrue(list.TryMarkPending(i));
+                            Assert.IsTrue(list.TryMarkSent(i));
+                            Assert.IsTrue(list.TryMarkInserted(i));
+                            goto case FastBlockStatus.Inserted;
+
+                        case FastBlockStatus.Inserted:
+                            Assert.IsFalse(list.TryMarkPending(i));
+                            Assert.IsFalse(list.TryMarkSent(i));
+                            Assert.IsFalse(list.TryMarkInserted(i));
+                            break;
+
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void State_transitions_are_enforced_in_parallel()
+        {
+            const long length = 4096;
+
+            for (var len = 0; len < length; len++)
+            {
+                FastBlockStatusList list = new(len);
+                Parallel.For(0, len, (i) =>
+                {
+                    list[i] = (FastBlockStatus)(i % 3);
+                });
+                Parallel.For(0, len, (i) =>
+                {
+                    switch (list[i])
+                    {
+                        case FastBlockStatus.Pending:
+                            Assert.IsFalse(list.TryMarkPending(i));
+                            Assert.IsFalse(list.TryMarkInserted(i));
+                            Assert.IsTrue(list.TryMarkSent(i));
+                            goto case FastBlockStatus.Sent;
+
+                        case FastBlockStatus.Sent:
+                            Assert.IsFalse(list.TryMarkSent(i));
+                            Assert.IsTrue(list.TryMarkPending(i));
+                            Assert.IsTrue(list.TryMarkSent(i));
+                            Assert.IsTrue(list.TryMarkInserted(i));
+                            goto case FastBlockStatus.Inserted;
+
+                        case FastBlockStatus.Inserted:
+                            Assert.IsFalse(list.TryMarkPending(i));
+                            Assert.IsFalse(list.TryMarkSent(i));
+                            Assert.IsFalse(list.TryMarkInserted(i));
+                            break;
+
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
                 });
             }
         }

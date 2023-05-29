@@ -38,9 +38,10 @@ internal class FastBlockStatusList
             }
 
             (long q, long r) = Math.DivRem(index, 16);
+            r *= 2;
 
             int status = Volatile.Read(ref _statuses[q]);
-            return (FastBlockStatus)((status >> (int)(r * 2)) & 0b11);
+            return (FastBlockStatus)((status >> (int)r) & 0b11);
         }
         set
         {
@@ -58,7 +59,7 @@ internal class FastBlockStatusList
             {
                 int newValue = (int)((oldValue & ~(0b11 << (int)r)) | ((int)value << (int)r));
                 int currentValue = Interlocked.CompareExchange(ref status, newValue, oldValue);
-                if (currentValue == oldValue || currentValue == newValue)
+                if (currentValue == oldValue || (FastBlockStatus)((currentValue >> (int)r) & 0b11) == value)
                 {
                     // Change has happened
                     break;
@@ -67,6 +68,56 @@ internal class FastBlockStatusList
                 oldValue = currentValue;
             } while (true);
         }
+    }
+
+    public bool TryMarkSent(long index)
+    {
+        return TryAtomicChange(index, FastBlockStatus.Sent, priorState: FastBlockStatus.Pending);
+    }
+
+    public bool TryMarkInserted(long index)
+    {
+        return TryAtomicChange(index, FastBlockStatus.Inserted, priorState: FastBlockStatus.Sent);
+    }
+
+    public bool TryMarkPending(long index)
+    {
+        return TryAtomicChange(index, FastBlockStatus.Pending, priorState: FastBlockStatus.Sent);
+    }
+
+    private bool TryAtomicChange(long index, FastBlockStatus newState, FastBlockStatus priorState)
+    {
+        if ((ulong)index >= (ulong)_length)
+        {
+            ThrowIndexOutOfRange();
+        }
+
+        (long q, long r) = Math.DivRem(index, 16);
+        r *= 2;
+
+        ref int status = ref _statuses[q];
+        int oldValue = Volatile.Read(ref status);
+        do
+        {
+            if ((FastBlockStatus)((oldValue >> (int)r) & 0b11) != priorState)
+            {
+                return false;
+            }
+            int newValue = (int)((oldValue & ~(0b11 << (int)r)) | ((int)newState << (int)r));
+            int currentValue = Interlocked.CompareExchange(ref status, newValue, oldValue);
+            if (currentValue == oldValue)
+            {
+                // Change has happened
+                return true;
+            }
+            if ((FastBlockStatus)((currentValue >> (int)r) & 0b11) == newState)
+            {
+                // Change has happened but not us
+                return false;
+            }
+            // Change not done, set old value to current value
+            oldValue = currentValue;
+        } while (true);
     }
 
     [DoesNotReturn]

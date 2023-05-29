@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Collections;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
@@ -44,7 +42,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 switch (_statuses[currentNumber])
                 {
-                    case FastBlockStatus.Unknown:
+                    case FastBlockStatus.Pending:
                         if (!_cache.TryGet(currentNumber, out BlockInfo blockInfo))
                         {
                             blockInfo = _blockTree.FindCanonicalBlockInfo(currentNumber);
@@ -54,9 +52,11 @@ namespace Nethermind.Synchronization.FastBlocks
                             }
                         }
 
-                        blockInfos[collected] = blockInfo;
-                        _statuses[currentNumber] = FastBlockStatus.Sent;
-                        collected++;
+                        if (_statuses.TryMarkSent(currentNumber))
+                        {
+                            blockInfos[collected] = blockInfo;
+                            collected++;
+                        }
                         break;
                     case FastBlockStatus.Inserted:
                         if (currentNumber == LowestInsertWithoutGaps)
@@ -77,13 +77,15 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public void MarkInserted(long blockNumber)
         {
-            Interlocked.Increment(ref _queueSize);
-            _statuses[blockNumber] = FastBlockStatus.Inserted;
+            if (_statuses.TryMarkInserted(blockNumber))
+            {
+                Interlocked.Increment(ref _queueSize);
+            }
         }
 
-        public void MarkUnknown(long blockNumber)
+        public void MarkPending(long blockNumber)
         {
-            _statuses[blockNumber] = FastBlockStatus.Unknown;
+            _statuses.TryMarkPending(blockNumber);
         }
     }
 }
