@@ -1705,7 +1705,7 @@ namespace Nethermind.Blockchain
         /// <returns></returns>
         private bool ShouldCache(long number)
         {
-            return number == 0L || Head is null || number > Head.Number - CacheSize && number <= Head.Number + 1;
+            return number == 0L || Head is null || number <= Head.Number + 1;
         }
 
         public ChainLevelInfo? FindLevel(long number)
@@ -1726,7 +1726,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            Block block = _blockStore.Get(blockHash, false);
+            Block block = _blockStore.Get(blockHash, shouldCache: false);
             if (block is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;

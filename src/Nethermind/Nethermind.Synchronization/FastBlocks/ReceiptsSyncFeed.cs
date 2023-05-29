@@ -240,7 +240,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         {
                             try
                             {
-                                _receiptStorage.Insert(block, prepared);
+                                _receiptStorage.Insert(block, prepared, ensureCanonical: true);
                                 _syncStatusList.MarkInserted(block.Number);
                                 validResponsesCount++;
                             }
