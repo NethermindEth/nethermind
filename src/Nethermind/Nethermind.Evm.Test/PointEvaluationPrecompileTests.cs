@@ -19,7 +19,7 @@ namespace Nethermind.Evm.Test;
 public class PointEvaluationPrecompileTests
 {
     private static readonly byte[] _predefinedSuccessAnswer =
-        Bytes.FromHexString("001000000000000001000000fffffffffe5bfeff02a4bd5305d8a10908d83933487d9d2953a7ed73");
+        Bytes.FromHexString("000000000000000000000000000000000000000000000000000000000000100073eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001");
 
     private static readonly byte[] _predefinedFailureAnswer = Array.Empty<byte>();
 
