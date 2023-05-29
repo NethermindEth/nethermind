@@ -38,8 +38,12 @@ public class PointEvaluationPrecompile : IPrecompile
 
             ReadOnlySpan<byte> inputDataSpan = inputData.Span;
             ReadOnlySpan<byte> versionedHash = inputDataSpan[..32];
-            ReadOnlySpan<byte> z = inputDataSpan[32..64];
-            ReadOnlySpan<byte> y = inputDataSpan[64..96];
+            Span<byte> z = stackalloc byte[32];
+            inputDataSpan[32..64].CopyTo(z);
+            z.Reverse();
+            Span<byte> y = stackalloc byte[32];
+            inputDataSpan[64..96].CopyTo(y);
+            y.Reverse();
             ReadOnlySpan<byte> commitment = inputDataSpan[96..144];
             ReadOnlySpan<byte> proof = inputDataSpan[144..192];
             Span<byte> hash = stackalloc byte[32];
