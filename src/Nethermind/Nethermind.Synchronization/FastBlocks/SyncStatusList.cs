@@ -14,7 +14,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private long _queueSize;
         private readonly IBlockTree _blockTree;
         private readonly FastBlockStatusList _statuses;
-        private readonly LruCache<long, BlockInfo> _cache = new(maxCapacity: 16, startCapacity: 16, "blockInfo Cache");
+        private readonly LruCache<long, BlockInfo> _cache = new(maxCapacity: 64, startCapacity: 64, "blockInfo Cache");
 
         public long LowestInsertWithoutGaps { get; private set; }
         public long QueueSize => _queueSize;
