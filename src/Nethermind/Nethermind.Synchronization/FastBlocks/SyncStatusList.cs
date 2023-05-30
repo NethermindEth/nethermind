@@ -15,8 +15,14 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly IBlockTree _blockTree;
         private readonly FastBlockStatusList _statuses;
         private readonly LruCache<long, BlockInfo> _cache = new(maxCapacity: 64, startCapacity: 64, "blockInfo Cache");
+        private long _lowestInsertWithoutGaps;
 
-        public long LowestInsertWithoutGaps { get; private set; }
+        public long LowestInsertWithoutGaps
+        {
+            get => _lowestInsertWithoutGaps;
+            private init => _lowestInsertWithoutGaps = value;
+        }
+
         public long QueueSize => _queueSize;
 
         public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
@@ -54,10 +60,16 @@ namespace Nethermind.Synchronization.FastBlocks
                     blockInfos[collected] = blockInfo;
                     collected++;
                 }
-                else if (status == FastBlockStatus.Inserted && currentNumber == LowestInsertWithoutGaps)
+                else if (status == FastBlockStatus.Inserted)
                 {
-                    LowestInsertWithoutGaps--;
-                    Interlocked.Decrement(ref _queueSize);
+                    long l = LowestInsertWithoutGaps;
+                    if (currentNumber == l)
+                    {
+                        if (Interlocked.CompareExchange(ref _lowestInsertWithoutGaps, l - 1, l) == l)
+                        {
+                            Interlocked.Decrement(ref _queueSize);
+                        }
+                    }
                 }
 
                 currentNumber--;
