@@ -98,7 +98,7 @@ internal class FastBlockStatusList
     public bool TrySet(long index, FastBlockStatus newState, out FastBlockStatus previousValue)
     {
         GuardLength(index);
-        
+
         FastBlockStatus requiredPriorState = newState switch
         {
             FastBlockStatus.Sent => FastBlockStatus.Pending,
