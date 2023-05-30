@@ -69,7 +69,7 @@ jobs:
       
           declare -A required_count
           required_count["Valid. Result of a new payload:"]=20
-          required_coun["FCU - block"]=20
+          required_count["FCU - block"]=20
       
           echo "Starting Docker logs monitoring..."
           docker logs -f sedge-execution-client | while read -r line; do
@@ -168,7 +168,7 @@ jobs:
       
           declare -A required_count
           required_count["Valid. Result of a new payload:"]=20
-          required_coun["FCU - block"]=20
+          required_count["FCU - block"]=20
       
           echo "Starting Docker logs monitoring..."
           docker logs -f sedge-execution-client | while read -r line; do
