@@ -36,8 +36,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public void GetInfosForBatch(BlockInfo?[] blockInfos)
         {
             int collected = 0;
-            long currentNumber = LowestInsertWithoutGaps;
-
+            long currentNumber = Volatile.Read(ref _lowestInsertWithoutGaps);
             while (collected < blockInfos.Length && currentNumber != 0)
             {
                 if (blockInfos[collected] is not null)
@@ -62,10 +61,10 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else if (status == FastBlockStatus.Inserted)
                 {
-                    long l = LowestInsertWithoutGaps;
-                    if (currentNumber == l)
+                    long currentLowest = Volatile.Read(ref _lowestInsertWithoutGaps);
+                    if (currentNumber == currentLowest)
                     {
-                        if (Interlocked.CompareExchange(ref _lowestInsertWithoutGaps, l - 1, l) == l)
+                        if (Interlocked.CompareExchange(ref _lowestInsertWithoutGaps, currentLowest - 1, currentLowest) == currentLowest)
                         {
                             Interlocked.Decrement(ref _queueSize);
                         }
