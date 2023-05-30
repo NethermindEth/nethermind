@@ -28,6 +28,7 @@ public class PointEvaluationPrecompile : IPrecompile
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static bool IsValid(in ReadOnlyMemory<byte> inputData)
         {
