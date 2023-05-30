@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 namespace Nethermind.Synchronization.FastBlocks;
@@ -28,38 +30,44 @@ internal class FastBlockStatusList
         _length = length;
     }
 
+    internal FastBlockStatusList(IList<FastBlockStatus> statuses, bool parallel) : this(statuses.Count)
+    {
+        if (parallel)
+        {
+            Parallel.For(0, statuses.Count, i =>
+            {
+                this[i] = statuses[i];
+            });
+        }
+        else
+        {
+            for (int i = 0; i < statuses.Count; i++)
+            {
+                this[i] = statuses[i];
+            }
+        }
+    }
+
     public FastBlockStatus this[long index]
     {
         get
         {
-            if ((ulong)index >= (ulong)_length)
-            {
-                ThrowIndexOutOfRange();
-            }
-
-            (long q, long r) = Math.DivRem(index, 16);
-            r *= 2;
-
-            int status = Volatile.Read(ref _statuses[q]);
-            return (FastBlockStatus)((status >> (int)r) & 0b11);
+            GuardLength(index);
+            (long position, int shift) = GetValuePosition(index);
+            int status = Volatile.Read(ref _statuses[position]);
+            return DecodeValue(status, shift);
         }
-        set
+        private set
         {
-            if ((ulong)index >= (ulong)_length)
-            {
-                ThrowIndexOutOfRange();
-            }
-
-            (long q, long r) = Math.DivRem(index, 16);
-            r *= 2;
-
-            ref int status = ref _statuses[q];
+            GuardLength(index);
+            (long position, int shift) = GetValuePosition(index);
+            ref int status = ref _statuses[position];
             int oldValue = Volatile.Read(ref status);
             do
             {
-                int newValue = (int)((oldValue & ~(0b11 << (int)r)) | ((int)value << (int)r));
+                int newValue = EncodeValue(value, oldValue, shift);
                 int currentValue = Interlocked.CompareExchange(ref status, newValue, oldValue);
-                if (currentValue == oldValue || (FastBlockStatus)((currentValue >> (int)r) & 0b11) == value)
+                if (currentValue == oldValue || DecodeValue(currentValue, shift) == value)
                 {
                     // Change has happened
                     break;
@@ -70,55 +78,72 @@ internal class FastBlockStatusList
         }
     }
 
-    public bool TryMarkSent(long index)
-    {
-        return TryAtomicChange(index, FastBlockStatus.Sent, priorState: FastBlockStatus.Pending);
-    }
-
-    public bool TryMarkInserted(long index)
-    {
-        return TryAtomicChange(index, FastBlockStatus.Inserted, priorState: FastBlockStatus.Sent);
-    }
-
-    public bool TryMarkPending(long index)
-    {
-        return TryAtomicChange(index, FastBlockStatus.Pending, priorState: FastBlockStatus.Sent);
-    }
-
-    private bool TryAtomicChange(long index, FastBlockStatus newState, FastBlockStatus priorState)
+    private void GuardLength(long index)
     {
         if ((ulong)index >= (ulong)_length)
         {
             ThrowIndexOutOfRange();
         }
+    }
 
-        (long q, long r) = Math.DivRem(index, 16);
-        r *= 2;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static (long position, int shift) GetValuePosition(long index)
+    {
+        (long position, long shift) = Math.DivRem(index, 16);
+        return (position, (int)shift * 2); // 2 bits per status
+    }
 
-        ref int status = ref _statuses[q];
+    public bool TrySet(long index, FastBlockStatus newState) => TrySet(index, newState, out _);
+
+    public bool TrySet(long index, FastBlockStatus newState, out FastBlockStatus previousValue)
+    {
+        GuardLength(index);
+
+        FastBlockStatus requiredPriorState = newState switch
+        {
+            FastBlockStatus.Sent => FastBlockStatus.Pending,
+            FastBlockStatus.Inserted => FastBlockStatus.Sent,
+            FastBlockStatus.Pending => FastBlockStatus.Sent,
+            _ => throw new ArgumentOutOfRangeException(nameof(newState), newState, null)
+        };
+
+        (long position, int shift) = GetValuePosition(index);
+        ref int status = ref _statuses[position];
         int oldValue = Volatile.Read(ref status);
         do
         {
-            if ((FastBlockStatus)((oldValue >> (int)r) & 0b11) != priorState)
+            previousValue = DecodeValue(oldValue, shift);
+            if (previousValue != requiredPriorState)
             {
+                // Change not possible
                 return false;
             }
-            int newValue = (int)((oldValue & ~(0b11 << (int)r)) | ((int)newState << (int)r));
-            int currentValue = Interlocked.CompareExchange(ref status, newValue, oldValue);
-            if (currentValue == oldValue)
+
+            int newValue = EncodeValue(newState, oldValue, shift);
+            int previousValueInt = Interlocked.CompareExchange(ref status, newValue, oldValue);
+            if (previousValueInt == oldValue)
             {
                 // Change has happened
                 return true;
             }
-            if ((FastBlockStatus)((currentValue >> (int)r) & 0b11) == newState)
+
+            previousValue = DecodeValue(previousValueInt, shift);
+            if (previousValue == newState)
             {
                 // Change has happened but not us
                 return false;
             }
+
             // Change not done, set old value to current value
-            oldValue = currentValue;
+            oldValue = previousValueInt;
         } while (true);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static FastBlockStatus DecodeValue(int value, int shift) => (FastBlockStatus)((value >> shift) & 0b11);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int EncodeValue(FastBlockStatus newState, int oldValue, int shift) => (oldValue & ~(0b11 << shift)) | ((int)newState << shift);
 
     [DoesNotReturn]
     [StackTraceHidden]

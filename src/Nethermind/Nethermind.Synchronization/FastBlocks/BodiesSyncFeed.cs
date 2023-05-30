@@ -210,12 +210,12 @@ namespace Nethermind.Synchronization.FastBlocks
                             _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, InitiateDisconnectReason.InvalidTxOrUncle, "invalid tx or uncles root");
                         }
 
-                        _syncStatusList.MarkPending(blockInfo.BlockNumber);
+                        _syncStatusList.MarkPending(blockInfo);
                     }
                 }
                 else
                 {
-                    _syncStatusList.MarkPending(blockInfo.BlockNumber);
+                    _syncStatusList.MarkPending(blockInfo);
                 }
             }
 
