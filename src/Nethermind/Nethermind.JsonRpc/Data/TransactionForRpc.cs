@@ -93,6 +93,8 @@ public class TransactionForRpc
 
     public AccessListItemForRpc[]? AccessList { get; set; }
 
+
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
     public UInt256? MaxFeePerDataGas { get; set; } // eip4844
 
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]

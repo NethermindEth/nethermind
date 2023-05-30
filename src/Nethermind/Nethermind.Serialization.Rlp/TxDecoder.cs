@@ -75,7 +75,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int networkWrapperCheck = 0;
-            if ((rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm && transaction.HasNetworkForm)
+            if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && transaction.MayHaveNetworkForm)
             {
                 int networkWrapperLength = rlpStream.ReadSequenceLength();
                 networkWrapperCheck = rlpStream.Position + networkWrapperLength;
@@ -112,7 +112,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Check(lastCheck);
             }
 
-            if ((rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm && transaction.HasNetworkForm)
+            if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && transaction.MayHaveNetworkForm)
             {
                 switch (transaction.Type)
                 {
@@ -370,7 +370,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int networkWrapperCheck = 0;
-            if ((rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm && transaction.HasNetworkForm)
+            if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && transaction.MayHaveNetworkForm)
             {
                 int networkWrapperLength = decoderContext.ReadSequenceLength();
                 networkWrapperCheck = decoderContext.Position + networkWrapperLength;
@@ -407,7 +407,7 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(lastCheck);
             }
 
-            if ((rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm && transaction.HasNetworkForm)
+            if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && transaction.MayHaveNetworkForm)
             {
                 switch (transaction.Type)
                 {
@@ -542,7 +542,7 @@ namespace Nethermind.Serialization.Rlp
             bool includeSigChainIdHack = isEip155Enabled && chainId != 0 && item.Type == TxType.Legacy;
 
             int contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId,
-                (rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm);
+                (rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm);
             int sequenceLength = Rlp.LengthOfSequence(contentLength);
 
             if (item.Type != TxType.Legacy)
@@ -555,7 +555,7 @@ namespace Nethermind.Serialization.Rlp
                 stream.WriteByte((byte)item.Type);
             }
 
-            if ((rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm && item.HasNetworkForm)
+            if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && item.MayHaveNetworkForm)
             {
                 stream.StartSequence(contentLength);
                 contentLength = GetContentLength(item, forSigning, isEip155Enabled, chainId, false);
@@ -605,7 +605,7 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            if ((rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm && item.HasNetworkForm)
+            if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && item.MayHaveNetworkForm)
             {
                 switch (item.Type)
                 {
@@ -670,7 +670,7 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(item.Data)
                    + Rlp.LengthOf(item.ChainId ?? 0)
                    + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None)
-                   + Rlp.LengthOf(item.MaxFeePerDataGas.Value)
+                   + Rlp.LengthOf(item.MaxFeePerDataGas)
                    + Rlp.LengthOf(item.BlobVersionedHashes);
         }
 
@@ -739,7 +739,7 @@ namespace Nethermind.Serialization.Rlp
         public int GetLength(T tx, RlpBehaviors rlpBehaviors)
         {
             int txContentLength = GetContentLength(tx, false,
-                withNetworkWrapper: (rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm);
+                withNetworkWrapper: (rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm);
             int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 
             bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
@@ -755,7 +755,7 @@ namespace Nethermind.Serialization.Rlp
             ulong chainId = 0)
         {
             int txContentLength = GetContentLength(tx, forSigning, isEip155Enabled, chainId,
-               (rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm);
+               (rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm);
             int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
 
             bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;

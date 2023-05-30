@@ -20,7 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             nettyRlpStream.StartSequence(contentLength);
             for (int i = 0; i < message.Transactions.Count; i++)
             {
-                nettyRlpStream.Encode(message.Transactions[i], RlpBehaviors.InNetworkForm);
+                nettyRlpStream.Encode(message.Transactions[i], RlpBehaviors.InMempoolForm);
             }
         }
 
@@ -36,7 +36,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             contentLength = 0;
             for (int i = 0; i < message.Transactions.Count; i++)
             {
-                contentLength += _decoder.GetLength(message.Transactions[i], RlpBehaviors.InNetworkForm);
+                contentLength += _decoder.GetLength(message.Transactions[i], RlpBehaviors.InMempoolForm);
             }
 
             return Rlp.LengthOfSequence(contentLength);
@@ -44,7 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public Transaction[] DeserializeTxs(RlpStream rlpStream)
         {
-            return Rlp.DecodeArray<Transaction>(rlpStream, RlpBehaviors.InNetworkForm);
+            return Rlp.DecodeArray<Transaction>(rlpStream, RlpBehaviors.InMempoolForm);
         }
     }
 }

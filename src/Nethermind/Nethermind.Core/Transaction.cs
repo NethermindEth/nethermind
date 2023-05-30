@@ -111,7 +111,9 @@ namespace Nethermind.Core
         public int DataLength => Data?.Length ?? 0;
 
         public AccessList? AccessList { get; set; } // eip2930
+
         public UInt256? MaxFeePerDataGas { get; set; } // eip4844
+
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
 
         public object? NetworkWrapper { get; set; }
@@ -179,8 +181,7 @@ namespace Nethermind.Core
 
         public override string ToString() => ToString(string.Empty);
 
-
-        public bool HasNetworkForm => Type is TxType.Blob;
+        public bool MayHaveNetworkForm => Type is TxType.Blob;
     }
 
     /// <summary>
@@ -214,8 +215,8 @@ namespace Nethermind.Core
             Proofs = proofs;
         }
 
-        public byte[][] Commitments { get; }
-        public byte[][] Blobs { get; }
-        public byte[][] Proofs { get; }
+        public byte[][] Commitments { get; set; }
+        public byte[][] Blobs { get; set; }
+        public byte[][] Proofs { get; set; }
     }
 }

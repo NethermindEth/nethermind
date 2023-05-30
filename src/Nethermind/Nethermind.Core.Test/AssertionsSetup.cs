@@ -9,6 +9,9 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind;
 
+/// <summary>
+/// Global settings for the fluent assertions, works for the current assembly only.
+/// </summary>
 [SetUpFixture]
 public class AssertionsSetup
 {

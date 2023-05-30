@@ -141,7 +141,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithBlobVersionedHashes(byte[][] blobVersionedHashes)
+        public TransactionBuilder<T> WithBlobVersionedHashes(byte[][]? blobVersionedHashes)
         {
             TestObjectInternal.BlobVersionedHashes = blobVersionedHashes;
             return this;
@@ -215,6 +215,12 @@ namespace Nethermind.Core.Test.Builders
                 return WithBlobVersionedHashes(blobCount);
             }
 
+            return this;
+        }
+
+        public TransactionBuilder<T> With(Action<T> anyChange)
+        {
+            anyChange(TestObjectInternal);
             return this;
         }
 
