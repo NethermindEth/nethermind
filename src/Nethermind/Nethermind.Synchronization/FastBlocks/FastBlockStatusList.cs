@@ -77,9 +77,9 @@ internal class FastBlockStatusList
             int oldValue = Volatile.Read(ref status);
             do
             {
-                int newValue = (oldValue & ~(0b11 << (int)r)) | ((int)value << (int)r);
+                int newValue = WriteValue(value, oldValue, r);
                 int currentValue = Interlocked.CompareExchange(ref status, newValue, oldValue);
-                if (currentValue == oldValue || (FastBlockStatus)((currentValue >> (int)r) & 0b11) == value)
+                if (currentValue == oldValue || ReadValue(currentValue, r) == value)
                 {
                     // Change has happened
                     break;
@@ -94,12 +94,6 @@ internal class FastBlockStatusList
 
     public bool TrySet(long index, FastBlockStatus newState, out FastBlockStatus previousValue)
     {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static FastBlockStatus ReadValue(int value, long r) => (FastBlockStatus)((value >> (int)r) & 0b11);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static int WriteValue(FastBlockStatus newState, int oldValue, long r) => (oldValue & ~(0b11 << (int)r)) | ((int)newState << (int)r);
-
         if ((ulong)index >= (ulong)_length)
         {
             ThrowIndexOutOfRange();
@@ -145,6 +139,12 @@ internal class FastBlockStatusList
             oldValue = previousValueInt;
         } while (true);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static FastBlockStatus ReadValue(int value, long r) => (FastBlockStatus)((value >> (int)r) & 0b11);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int WriteValue(FastBlockStatus newState, int oldValue, long r) => (oldValue & ~(0b11 << (int)r)) | ((int)newState << (int)r);
 
     [DoesNotReturn]
     [StackTraceHidden]
