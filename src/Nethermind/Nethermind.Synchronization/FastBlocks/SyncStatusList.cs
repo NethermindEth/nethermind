@@ -14,7 +14,6 @@ namespace Nethermind.Synchronization.FastBlocks
         private long _queueSize;
         private readonly IBlockTree _blockTree;
         private readonly FastBlockStatusList _statuses;
-        private readonly LruCache<long, BlockInfo> _cache = new(maxCapacity: 64, startCapacity: 64, "blockInfo Cache");
 
         public long LowestInsertWithoutGaps { get; private set; }
         public long QueueSize => _queueSize;
@@ -40,35 +39,15 @@ namespace Nethermind.Synchronization.FastBlocks
                     continue;
                 }
 
-                switch (_statuses[currentNumber])
+                if (_statuses.TrySet(currentNumber, FastBlockStatus.Sent, out FastBlockStatus status))
                 {
-                    case FastBlockStatus.Pending:
-                        if (!_cache.TryGet(currentNumber, out BlockInfo blockInfo))
-                        {
-                            blockInfo = _blockTree.FindCanonicalBlockInfo(currentNumber);
-                            if (blockInfo is not null)
-                            {
-                                _cache.Set(currentNumber, blockInfo);
-                            }
-                        }
-
-                        if (_statuses.TryMarkSent(currentNumber))
-                        {
-                            blockInfos[collected] = blockInfo;
-                            collected++;
-                        }
-                        break;
-                    case FastBlockStatus.Inserted:
-                        if (currentNumber == LowestInsertWithoutGaps)
-                        {
-                            LowestInsertWithoutGaps--;
-                            Interlocked.Decrement(ref _queueSize);
-                        }
-                        break;
-                    case FastBlockStatus.Sent:
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
+                    blockInfos[collected] = _blockTree.FindCanonicalBlockInfo(currentNumber);
+                    collected++;
+                }
+                else if (status == FastBlockStatus.Inserted && currentNumber == LowestInsertWithoutGaps)
+                {
+                    LowestInsertWithoutGaps--;
+                    Interlocked.Decrement(ref _queueSize);
                 }
 
                 currentNumber--;
@@ -77,7 +56,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public void MarkInserted(long blockNumber)
         {
-            if (_statuses.TryMarkInserted(blockNumber))
+            if (_statuses.TrySet(blockNumber, FastBlockStatus.Inserted))
             {
                 Interlocked.Increment(ref _queueSize);
             }
@@ -85,7 +64,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public void MarkPending(long blockNumber)
         {
-            _statuses.TryMarkPending(blockNumber);
+            _statuses.TrySet(blockNumber, FastBlockStatus.Pending);
         }
     }
 }
