@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 AccountRangePartition partition = new AccountRangePartition();
 
-                Keccak startingPath = new Keccak(Keccak.Zero.Bytes.ToArray());
+                Keccak startingPath = new Keccak(Keccak.Zero.Bytes);
                 startingPath.Bytes[0] = curStartingPath;
 
                 partition.NextAccountPath = startingPath;
@@ -99,7 +99,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else
                 {
-                    limitPath = new Keccak(Keccak.Zero.Bytes.ToArray());
+                    limitPath = new Keccak(Keccak.Zero.Bytes);
                     limitPath.Bytes[0] = curStartingPath;
                 }
 

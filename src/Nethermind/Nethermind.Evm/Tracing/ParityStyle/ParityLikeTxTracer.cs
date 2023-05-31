@@ -78,6 +78,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
         public bool IsTracingFees => false;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
         private static string GetCallType(ExecutionType executionType)
         {

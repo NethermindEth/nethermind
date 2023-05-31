@@ -27,16 +27,17 @@ namespace Nethermind.Evm.Tracing.GethStyle
         bool IStateTracer.IsTracingState => false;
         bool IStorageTracer.IsTracingStorage => false;
         public bool IsTracingReceipt => true;
-        bool ITxTracer.IsTracingActions => false;
+        public bool IsTracingActions => false;
         public bool IsTracingOpLevelStorage { get; }
         public bool IsTracingMemory { get; }
-        bool ITxTracer.IsTracingInstructions => true;
+        public bool IsTracingInstructions => true;
         public bool IsTracingRefunds => false;
         public bool IsTracingCode => false;
         public bool IsTracingStack { get; }
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
         public bool IsTracingFees => false;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
