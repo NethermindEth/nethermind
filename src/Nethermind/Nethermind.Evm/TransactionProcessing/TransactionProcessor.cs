@@ -241,7 +241,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            UInt256 senderReservedGasPayment = noValidation ? UInt256.Zero : (ulong)gasLimit * effectiveGasPrice;
+            UInt256 senderReservedGasPayment = (ulong)gasLimit * effectiveGasPrice;
 
             if (notSystemTransaction)
             {
