@@ -88,7 +88,11 @@ jobs:
 
     - name: Creating a node with NodeName="DevNode-${{ github.actor }}-${{ env.BASE_TAG }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}"
       run: echo "NodeName='DevNode-${{ github.actor }}-${{ env.BASE_TAG }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}'"
-
+    
+    - name: Set Repo Variable
+      run: |
+        echo "REPO=$(echo $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+    
     - name: Trigger Docker Build Action with Cleaned Ref
       uses: benc-uk/workflow-dispatch@v1
       with:
@@ -96,7 +100,7 @@ jobs:
           ref: "${{ github.ref }}"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
-              "repo": "${{ github.repository }}",
+              "repo": "${{ env.REPO }}",
               "tag": "${{ env.CLEAN_REF }}",
               "dockerfile": "Dockerfile"
            }'
