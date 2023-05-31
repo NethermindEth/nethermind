@@ -2331,15 +2331,6 @@ public class VirtualMachine : IVirtualMachine
                         Address codeSource = stack.PopAddress();
                         ICodeInfo targetCodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
 
-                        if (spec.IsEofEvmModeOn
-                            && env.CodeInfo.EofVersion() > 0
-                            && targetCodeInfo is EofCodeInfo)
-                        {
-                            _returnDataBuffer = Array.Empty<byte>();
-                            stack.PushZero();
-                            break;
-                        }
-
                         // Console.WriteLine($"CALLIN {codeSource}");
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) goto OutOfGas;
 
@@ -3021,9 +3012,9 @@ public class VirtualMachine : IVirtualMachine
                             Address codeSource = stack.PopAddress();
                             ICodeInfo targetCodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
 
-                            if (spec.IsEofEvmModeOn
-                                && env.CodeInfo.EofVersion() > 0
-                                && targetCodeInfo is EofCodeInfo)
+                            if (instruction is Instruction.EOFDELEGATECALL
+                                && env.CodeInfo.IsEof()
+                                && targetCodeInfo is not EofCodeInfo)
                             {
                                 _returnDataBuffer = Array.Empty<byte>();
                                 stack.PushZero();
