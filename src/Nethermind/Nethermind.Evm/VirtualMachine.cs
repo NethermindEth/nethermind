@@ -763,8 +763,47 @@ public class VirtualMachine : IVirtualMachine
             state.GasAvailable = gas;
             state.DataStackHead = stackHead;
         }
+        EvmState ScheduleCallSubstate
+            (EvmState vmState, ExecutionEnvironment env, TxExecutionContext txCtx, EvmStack stack, long gasAvailable, int programCounter, Instruction instruction, Address codeSource, ICodeInfo targetCodeInfo, UInt256 callValue, UInt256 transferValue, Address caller, Address target, long gasLimitUl, ReadOnlyMemory<byte> callData)
+        {
+            Snapshot snapshot = _worldState.TakeSnapshot();
+            _state.SubtractFromBalance(caller, transferValue, spec);
 
-        EvmState ContinueCall(EvmStack stack, ExecutionEnvironment env, Address contractAddress, long callGas, ExecutionType executionType, UInt256 value, ReadOnlySpan<byte> bytecode)
+            ExecutionEnvironment callEnv = new(
+                txExecutionContext: env.TxExecutionContext,
+                callDepth: env.CallDepth + 1,
+                caller: caller,
+                codeSource: codeSource,
+                executingAccount: target,
+                transferValue: transferValue,
+                value: callValue,
+                inputData: callData,
+                codeInfo: targetCodeInfo
+            );
+
+            if (isTrace) _logger.Trace($"Tx call gas {gasLimitUl}");
+
+            ExecutionType executionType = GetCallExecutionType(instruction, txCtx.Header.IsPostMerge);
+            EvmState callState = new(
+                gasLimitUl,
+                callEnv,
+                executionType,
+                false,
+                snapshot,
+                (long)0,
+                (long)0,
+                instruction == Instruction.STATICCALL || vmState.IsStatic,
+                vmState,
+                false,
+                false);
+
+            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+            if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+            return callState;
+        }
+
+        EvmState ScheduleCreateSubstate
+            (EvmState vmState, ExecutionEnvironment env, EvmStack stack, Address contractAddress, UInt256 value, ReadOnlySpan<byte> bytecode, long gasAvailable, int programCounter, long callGas, ExecutionType executionType)
         {
             if (spec.UseHotAndColdStorage)
             {
@@ -814,8 +853,7 @@ public class VirtualMachine : IVirtualMachine
                 executionType,
                 false,
                 snapshot,
-                0L,
-                0L,
+                0, 0,
                 vmState.IsStatic,
                 vmState,
                 false,
@@ -2245,14 +2283,17 @@ public class VirtualMachine : IVirtualMachine
                             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
                             : ContractAddress.From(env.ExecutingAccount, salt, initCode);
 
-                        EvmState nextState = ContinueCall(
-                            stack,
+                        EvmState nextState = ScheduleCreateSubstate(
+                            vmState,
                             env,
+                            stack,
                             contractAddress,
-                            callGas,
-                            instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
                             value,
-                            initCode
+                            initCode,
+                            gasAvailable,
+                            programCounter, 
+                            callGas,
+                            instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create
                         );
 
                         if (nextState == null) break;
@@ -2803,7 +2844,6 @@ public class VirtualMachine : IVirtualMachine
                         }
                         else return CallResult.InvalidInstructionException;
                     }
-
                 case Instruction.RETURNCONTRACT:
                     {
                         if (spec.IsEofEvmModeOn && vmState.ExecutionType.IsAnyCreateEof())
@@ -2848,12 +2888,12 @@ public class VirtualMachine : IVirtualMachine
                             stack.PopUInt256(out var datasize);
 
 
-                            ReadOnlySpan<byte> initcode = ReadOnlySpan<byte>.Empty;
+                            ReadOnlySpan<byte> initCode = ReadOnlySpan<byte>.Empty;
                             int initcodeSize = 0;
                             if (currentContext is ExecutionType.Create3)
                             {
                                 (int initcodeOffset, initcodeSize) = env.CodeInfo.ContainerOffset(initCodeIdx);
-                                initcode = codeSection.Slice(initcodeOffset, initcodeSize);
+                                initCode = codeSection.Slice(initcodeOffset, initcodeSize);
                             }
                             else if (currentContext is ExecutionType.Create4)
                             {
@@ -2864,8 +2904,8 @@ public class VirtualMachine : IVirtualMachine
                                     stack.PushZero();
                                     break;
                                 }
-                                initcode = txCtx.Initcodes[initCodeIdx];
-                                initcodeSize = initcode.Length;
+                                initCode = txCtx.Initcodes[initCodeIdx];
+                                initcodeSize = initCode.Length;
                             }
 
                             long gasCost = GasCostOf.Create +
@@ -2882,7 +2922,7 @@ public class VirtualMachine : IVirtualMachine
                                 }
                             }
 
-                            if (!EvmObjectFormat.IsValidEof(initcode, out _))
+                            if (!EvmObjectFormat.IsValidEof(initCode, out _))
                             {
                                 // handle invalid Eof code
                                 _returnDataBuffer = Array.Empty<byte>();
@@ -2916,16 +2956,19 @@ public class VirtualMachine : IVirtualMachine
                                 return CallResult.OutOfGasException;
                             }
 
-                            Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initcode, env.InputData.Span);
+                            Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initCode, env.InputData.Span);
 
-                            EvmState nextState = ContinueCall(
-                                stack,
+                            EvmState nextState = ScheduleCreateSubstate(
+                                vmState,
                                 env,
+                                stack,
                                 contractAddress,
-                                callGas,
-                                currentContext,
                                 value,
-                                initcode
+                                initCode,
+                                gasAvailable,
+                                programCounter,
+                                callGas,
+                                instruction == Instruction.CREATE3 ? ExecutionType.Create3 : ExecutionType.Create4
                             );
 
                             if (nextState == null) break;
@@ -2960,6 +3003,132 @@ public class VirtualMachine : IVirtualMachine
 
                         break;
                     }
+
+
+                case Instruction.EOFCALL:
+                case Instruction.EOFDELEGATECALL:
+                case Instruction.EOFSTATICCALL:
+                    {
+                        if(spec.IsEofEvmModeOn)
+                        {
+
+                            Metrics.Calls++;
+
+                            if (instruction == Instruction.EOFDELEGATECALL && !spec.DelegateCallEnabled ||
+                                instruction == Instruction.EOFSTATICCALL && !spec.StaticCallEnabled) goto InvalidInstruction;
+
+
+                            Address codeSource = stack.PopAddress();
+                            ICodeInfo targetCodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
+
+                            if (spec.IsEofEvmModeOn
+                                && env.CodeInfo.EofVersion() > 0
+                                && targetCodeInfo is EofCodeInfo)
+                            {
+                                _returnDataBuffer = Array.Empty<byte>();
+                                stack.PushZero();
+                                break;
+                            }
+
+                            // Console.WriteLine($"CALLIN {codeSource}");
+                            if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) goto OutOfGas;
+
+                            UInt256 callValue;
+                            switch (instruction)
+                            {
+                                case Instruction.EOFSTATICCALL:
+                                    callValue = UInt256.Zero;
+                                    break;
+                                case Instruction.EOFDELEGATECALL:
+                                    callValue = env.Value;
+                                    break;
+                                default:
+                                    stack.PopUInt256(out callValue);
+                                    break;
+                            }
+
+                            UInt256 transferValue = instruction == Instruction.EOFDELEGATECALL ? UInt256.Zero : callValue;
+                            stack.PopUInt256(out UInt256 dataOffset);
+                            stack.PopUInt256(out UInt256 dataLength);
+
+                            if (vmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE) goto StaticCallViolation;
+
+                            Address caller = instruction == Instruction.EOFDELEGATECALL ? env.Caller : env.ExecutingAccount;
+                            Address target = instruction == Instruction.EOFCALL || instruction == Instruction.EOFSTATICCALL ? codeSource : env.ExecutingAccount;
+
+                            if (isTrace)
+                            {
+                                _logger.Trace($"caller {caller}");
+                                _logger.Trace($"code source {codeSource}");
+                                _logger.Trace($"target {target}");
+                                _logger.Trace($"value {callValue}");
+                                _logger.Trace($"transfer value {transferValue}");
+                            }
+
+                            long gasExtra = 0L;
+
+                            if (!transferValue.IsZero)
+                            {
+                                gasExtra += GasCostOf.CallValue;
+                            }
+
+                            if (!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(target))
+                            {
+                                gasExtra += GasCostOf.NewAccount;
+                            }
+                            else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && _state.IsDeadAccount(target))
+                            {
+                                gasExtra += GasCostOf.NewAccount;
+                            }
+
+                            if (!UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
+                                !UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength) ||
+                                !UpdateGas(gasExtra, ref gasAvailable)) goto OutOfGas;
+
+                            UInt256 gasLimit = (UInt256)(gasAvailable - gasAvailable / 64);
+
+                            if (gasLimit >= long.MaxValue) goto OutOfGas;
+
+                            long gasLimitUl = (long)gasLimit;
+                            if (!UpdateGas(gasLimitUl, ref gasAvailable)) goto OutOfGas;
+
+                            if (!transferValue.IsZero)
+                            {
+                                if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
+                                gasLimitUl += GasCostOf.CallStipend;
+                            }
+
+                            if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
+                            {
+                                _returnDataBuffer = Array.Empty<byte>();
+                                stack.PushZero();
+
+                                if (_txTracer.IsTracingInstructions)
+                                {
+                                    // very specific for Parity trace, need to find generalization - very peculiar 32 length...
+                                    ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
+                                    _txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
+                                }
+
+                                if (isTrace) _logger.Trace("FAIL - call depth");
+                                if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(gasAvailable);
+                                if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+
+                                UpdateGasUp(gasLimitUl, ref gasAvailable);
+                                if (_txTracer.IsTracingInstructions) _txTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
+                                break;
+                            }
+
+                            ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
+                            EvmState callState = ScheduleCallSubstate(vmState, env, txCtx, stack, gasAvailable, programCounter, instruction, codeSource, targetCodeInfo, callValue, transferValue, caller, target, gasLimitUl, callData);
+                            return new CallResult(callState);
+                        } else
+                        {
+                            goto InvalidInstruction;
+                        }
+                    }
+
+
                 default:
                     {
                         goto InvalidInstruction;
@@ -3017,6 +3186,8 @@ AccessViolation:
             Metrics.EvmExceptions++;
             throw new OutOfGasException();
         }
+
+        
     }
 
     private void RemoveInBetween(ref EvmStack stack, int height, int argsCount)

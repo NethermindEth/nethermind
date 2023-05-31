@@ -193,7 +193,9 @@ namespace Nethermind.Evm
         INVALID = 0xfe,
         SELFDESTRUCT = 0xff,
 
-
+        EOFCALL = 0x4a,
+        EOFSTATICCALL = 0x4b, // StaticCallEnabled
+        EOFDELEGATECALL = 0x4c, // DelegateCallEnabled
     }
 
     public static class InstructionExtensions
