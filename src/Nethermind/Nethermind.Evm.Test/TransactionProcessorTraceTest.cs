@@ -16,10 +16,11 @@ public class TransactionProcessorTraceTest : VirtualMachineTestsBase
     protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
 
-    [Test]
-    public void Traces_gas_fess_properly()
+    [TestCase(21000)]
+    [TestCase(50000)]
+    public void Traces_gas_fess_properly(long gasLimit)
     {
-        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 21000);
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, gasLimit);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.All);
         _processor.Trace(transaction, block.Header, tracer);
         var senderBalance = tracer.BuildResult().StateChanges[TestItem.AddressA].Balance;
