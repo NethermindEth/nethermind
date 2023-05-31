@@ -393,99 +393,99 @@ public class TxValidatorTests
     {
         get
         {
-            yield return new TestCaseData(Build.A.Transaction.WithShardBlobTxTypeAndFields()
-                .SignedAndResolved().TestObject)
+            KzgPolynomialCommitments.InitializeAsync().Wait();
+            static TransactionBuilder<Transaction> MakeTestObject(int blobCount= 1) => Build.A.Transaction
+                .WithChainId(TestBlockchainIds.ChainId)
+                .WithTimestamp(ulong.MaxValue)
+                .WithMaxFeePerGas(1)
+                .WithMaxFeePerDataGas(1)
+                .WithShardBlobTxTypeAndFields(blobCount);
+
+            yield return new TestCaseData(MakeTestObject().SignedAndResolved().TestObject)
             {
                 TestName = "A correct shard blob tx",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(Build.A.Transaction.WithShardBlobTxTypeAndFields()
-                .WithMaxFeePerDataGas(null)
-                .SignedAndResolved().TestObject)
-            {
-                TestName = "BlobVersionedHashes are not set",
-                ExpectedResult = false
-            };
 
-            yield return new TestCaseData(Build.A.Transaction.WithShardBlobTxTypeAndFields()
-                .WithBlobVersionedHashes(Eip4844Constants.MinBlobsPerTransaction - 1)
+            yield return new TestCaseData(MakeTestObject(0)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "BlobVersionedHashes are empty",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(Build.A.Transaction.WithShardBlobTxTypeAndFields()
-                .WithBlobVersionedHashes(Eip4844Constants.MinBlobsPerTransaction - 1)
+            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MinBlobsPerTransaction - 1)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Not enough BlobVersionedHashes",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(Build.A.Transaction.WithShardBlobTxTypeAndFields()
-                .WithBlobVersionedHashes(Eip4844Constants.MinBlobsPerTransaction)
+            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MinBlobsPerTransaction)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Bare minimum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(Build.A.Transaction.WithShardBlobTxTypeAndFields()
-                .WithBlobVersionedHashes(Eip4844Constants.MinBlobsPerTransaction + 1)
+            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MinBlobsPerTransaction + 1)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "More than minimum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(Build.A.Transaction.WithShardBlobTxTypeAndFields()
-                .WithBlobVersionedHashes(Eip4844Constants.MaxBlobsPerTransaction - 1)
+            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxBlobsPerTransaction - 1)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Less than maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(Build.A.Transaction.WithShardBlobTxTypeAndFields()
-                .WithBlobVersionedHashes(Eip4844Constants.MaxBlobsPerTransaction)
+            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxBlobsPerTransaction)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(Build.A.Transaction.WithShardBlobTxTypeAndFields()
-                .WithBlobVersionedHashes(Eip4844Constants.MaxBlobsPerTransaction + 1)
+            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxBlobsPerTransaction + 1)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Too many BlobVersionedHashes",
                 ExpectedResult = false
             };
 
-            yield return new TestCaseData(Build.A.Transaction.WithShardBlobTxTypeAndFields(1)
+            yield return new TestCaseData(MakeTestObject()
+                .WithBlobVersionedHashes(new byte[][] { MakeArray(31, KzgPolynomialCommitments.KzgBlobHashVersionV1) })
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "BlobVersionedHashes are of a wrong length",
+                ExpectedResult = false
+            };
+            yield return new TestCaseData(MakeTestObject()
                 .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs = Array.Empty<byte[]>())
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Blobs count does not match hashes count",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(Build.A.Transaction.WithShardBlobTxTypeAndFields()
+            yield return new TestCaseData(MakeTestObject()
                 .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments = Array.Empty<byte[]>())
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Commitments count does not match hashes count",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(Build.A.Transaction.WithShardBlobTxTypeAndFields()
+            yield return new TestCaseData(MakeTestObject()
                 .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs = Array.Empty<byte[]>())
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Proofs count does not match hashes count",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(Build.A.Transaction.WithShardBlobTxTypeAndFields()
+            yield return new TestCaseData(MakeTestObject()
                 .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments[0][1] ^= 0xFF)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "A commitment does not math hash",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(Build.A.Transaction.WithShardBlobTxTypeAndFields()
+            yield return new TestCaseData(MakeTestObject()
                 .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs[0][1] ^= 0xFF)
                 .SignedAndResolved().TestObject)
             {

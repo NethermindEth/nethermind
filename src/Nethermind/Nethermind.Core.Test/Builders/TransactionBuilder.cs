@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -203,6 +202,7 @@ namespace Nethermind.Core.Test.Builders
                     }
                     else
                     {
+                        TestObjectInternal.BlobVersionedHashes[i]![0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
                         wrapper.Commitments[i][0] = (byte)(i % 256);
                         wrapper.Proofs[i][0] = (byte)(i % 256);
                     }
