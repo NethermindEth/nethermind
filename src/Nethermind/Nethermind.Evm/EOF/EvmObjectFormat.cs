@@ -595,7 +595,7 @@ internal static class EvmObjectFormat
 
                         ushort initcodeSectionId = code[postInstructionByte + ONE_BYTE_LENGTH];
 
-                        if (initcodeSectionId >= header.CodeSectionsSize)
+                        if (initcodeSectionId >= header.ExtraContainersSize)
                         {
 
                             if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : CREATE3's immediate must falls within the Containers' range available, i.e : {header.CodeSectionsSize}");

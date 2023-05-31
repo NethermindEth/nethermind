@@ -2657,12 +2657,12 @@ public class VirtualMachine : IVirtualMachine
                         {
                             if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
                             var case_v = stack.PopByte();
-                            var count = codeSection[programCounter];
-                            var immediateValueSize = EvmObjectFormat.Eof1.ONE_BYTE_LENGTH + count * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH;
+                            var count = codeSection[programCounter++];
+                            var immediateValueSize = count * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH;
                             if (case_v < count)
                             {
                                 int caseOffset = codeSection.Slice(
-                                    programCounter + EvmObjectFormat.Eof1.ONE_BYTE_LENGTH + case_v * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH,
+                                    programCounter + case_v * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH,
                                     EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
                                 programCounter += caseOffset;
                             }
