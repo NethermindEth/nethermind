@@ -144,7 +144,7 @@ jobs:
       with:
           workflow: run-single-node.yml
           repo: NethermindEth/post-merge-smoke-tests
-          ref: "main"
+          ref: "add-volumes-setup"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
                      "github_username": "${{ github.actor }}",
