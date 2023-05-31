@@ -12,7 +12,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -61,11 +63,138 @@ public partial class EngineModuleTests
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
     }
 
+    [Test]
+    public async Task NewPayloadV3_should_decline_null_args()
+    {
+        MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        ExecutionPayload executionPayload = CreateBlockRequest(
+            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>());
+
+        int errorCode = (await rpcModule.engine_newPayloadV3(executionPayload, null!)).ErrorCode;
+
+        Assert.That(errorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+
+        errorCode = (await rpcModule.engine_newPayloadV3(null!, Array.Empty<byte[]>())).ErrorCode;
+
+        Assert.That(errorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+    }
+
+    [TestCaseSource(nameof(BlobVersionedHashesMatchTestSource))]
+    [TestCaseSource(nameof(BlobVersionedHashesDoNotMatchTestSource))]
+    public async Task<string> NewPayloadV3_should_verify_blob_versioned_hashes_against_transactions_ones
+        (byte[] hashesFirstBytes, byte[][] transactionsAndFirstBytesOfTheirHashes)
+    {
+        MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+
+        byte[][] blobVersionedHashes = new byte[hashesFirstBytes.Length][];
+
+
+        ulong index = 0;
+        foreach (byte hashByte in hashesFirstBytes)
+        {
+            blobVersionedHashes[index] = new byte[32];
+            blobVersionedHashes[index][0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+            blobVersionedHashes[index][1] = hashByte;
+            index++;
+        }
+
+
+        ulong txIndex = 0;
+
+        Transaction[] transactions = new Transaction[transactionsAndFirstBytesOfTheirHashes.Length];
+
+        foreach (byte[] txHashBytes in transactionsAndFirstBytesOfTheirHashes)
+        {
+            ulong txHashIndex = 0;
+            byte[][] txBlobVersionedHashes = new byte[txHashBytes.Length][];
+            foreach (byte hashByte in txHashBytes)
+            {
+                txBlobVersionedHashes[txHashIndex] = new byte[32];
+                txBlobVersionedHashes[txHashIndex][0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+                txBlobVersionedHashes[txHashIndex][1] = hashByte;
+                txHashIndex++;
+            }
+            transactions[txIndex] = Build.A.Transaction.WithNonce((ulong)txIndex)
+                .WithType(TxType.Blob)
+                .WithTimestamp(Timestamper.UnixTime.Seconds)
+                .WithTo(TestItem.AddressB)
+                .WithValue(1.GWei())
+                .WithGasPrice(1.GWei())
+                .WithMaxFeePerDataGas(1.GWei())
+                .WithChainId(chain.SpecProvider.ChainId)
+                .WithSenderAddress(TestItem.AddressA)
+                .WithBlobVersionedHashes(txBlobVersionedHashes)
+                .WithMaxFeePerGasIfSupports1559(1.GWei())
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            txIndex++;
+        }
+
+        ExecutionPayload executionPayload = CreateBlockRequest(
+            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), transactions: transactions);
+        return (await rpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes)).Data.Status;
+    }
+
+    public static IEnumerable<TestCaseData> BlobVersionedHashesMatchTestSource
+    {
+        get
+        {
+            yield return new TestCaseData(new byte[] { }, new byte[][] { })
+            {
+                ExpectedResult = PayloadStatus.Valid,
+                TestName = "Zero hashes passed, as expected",
+            };
+            yield return new TestCaseData(new byte[] { 0, 1 }, new byte[][] { new byte[] { 0, 1 } })
+            {
+                ExpectedResult = PayloadStatus.Valid,
+                TestName = "N hashes passed, as expected",
+            };
+            yield return new TestCaseData(new byte[] { 0, 1 }, new byte[][] { new byte[] { 0 }, new byte[] { 1 } })
+            {
+                ExpectedResult = PayloadStatus.Valid,
+                TestName = "N hashes passed, as expected, multiple transactions",
+            };
+        }
+    }
+
+    public static IEnumerable<TestCaseData> BlobVersionedHashesDoNotMatchTestSource
+    {
+        get
+        {
+            yield return new TestCaseData(new byte[] { }, new byte[][] { new byte[] { 0 } })
+            {
+                ExpectedResult = PayloadStatus.Invalid,
+                TestName = "Zero hashes passed, but a tx has one",
+            };
+            yield return new TestCaseData(new byte[] { 0, 1, 2 }, new byte[][] { new byte[] { 0, 2, 1 } })
+            {
+                ExpectedResult = PayloadStatus.Invalid,
+                TestName = "Order is not correct",
+            };
+            yield return new TestCaseData(new byte[] { 0, 1, 2 }, new byte[][] { new byte[] { 2 }, new byte[] { 0, 1 } })
+            {
+                ExpectedResult = PayloadStatus.Invalid,
+                TestName = "Order is not correct, multiple transactions",
+            };
+            yield return new TestCaseData(new byte[] { 0, 2 }, new byte[][] { new byte[] { 0, 1, 2 } })
+            {
+                ExpectedResult = PayloadStatus.Invalid,
+                TestName = "A hash is missing",
+            };
+            yield return new TestCaseData(new byte[] { 0, 1, 2 }, new byte[][] { new byte[] { 0, 1 } })
+            {
+                ExpectedResult = PayloadStatus.Invalid,
+                TestName = "One hash more than expected",
+            };
+        }
+    }
+
     private async Task<ExecutionPayload> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, IList<Withdrawal>? withdrawals)
     {
         ExecutionPayload executionPayload = CreateBlockRequest(
             CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0);
-        ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV3(executionPayload);
+        ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>());
 
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
 
