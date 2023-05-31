@@ -84,7 +84,7 @@ namespace Nethermind.Merge.Plugin.Test
             };
         }
 
-        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, UInt256? excessDataGas = null)
+        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, UInt256? excessDataGas = null, Transaction[]? transactions = null)
         {
             ExecutionPayload blockRequest = new()
             {
@@ -101,7 +101,7 @@ namespace Nethermind.Merge.Plugin.Test
                 ExcessDataGas = excessDataGas,
             };
 
-            blockRequest.SetTransactions(Array.Empty<Transaction>());
+            blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());
             TryCalculateHash(blockRequest, out Keccak? hash);
             blockRequest.BlockHash = hash;
             return blockRequest;
