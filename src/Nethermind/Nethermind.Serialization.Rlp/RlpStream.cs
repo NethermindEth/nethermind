@@ -537,6 +537,17 @@ namespace Nethermind.Serialization.Rlp
             Encode(input.AsSpan());
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Encode(Memory<byte>? input)
+        {
+            if (input is null)
+            {
+                WriteByte(EmptyArrayByte);
+                return;
+            }
+            Encode(input.Value.Span);
+        }
+
         public void Encode(Span<byte> input)
         {
             if (input.IsEmpty)
@@ -860,7 +871,7 @@ namespace Nethermind.Serialization.Rlp
                 return Keccak.EmptyTreeHash;
             }
 
-            return new Keccak(keccakSpan.ToArray());
+            return new Keccak(keccakSpan);
         }
 
         public ValueKeccak? DecodeValueKeccak()

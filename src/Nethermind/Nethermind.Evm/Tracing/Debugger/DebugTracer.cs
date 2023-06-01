@@ -64,7 +64,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public bool IsTracingState => ((IStateTracer)InnerTracer).IsTracingState;
 
     public bool IsTracingStorage => ((IStorageTracer)InnerTracer).IsTracingStorage;
-
+    public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
     internal Dictionary<(int depth, int pc), Func<EvmState, bool>> _breakPoints = new();
     public bool IsBreakpoitnSet(int depth, int programCounter)

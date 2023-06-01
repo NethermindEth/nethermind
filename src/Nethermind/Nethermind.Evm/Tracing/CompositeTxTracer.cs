@@ -52,6 +52,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingBlockHash { get; }
         public bool IsTracingAccess { get; }
         public bool IsTracingFees { get; }
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {

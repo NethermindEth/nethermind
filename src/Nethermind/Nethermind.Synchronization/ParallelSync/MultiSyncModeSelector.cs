@@ -298,7 +298,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool IsInAStickyFullSyncMode(Snapshot best)
         {
             long bestBlock = Math.Max(best.Processed, LastBlockThatEnabledFullSync ?? 0);
-            bool hasEverBeenInFullSync = bestBlock > _pivotNumber && best.State > _pivotNumber;
+            bool hasEverBeenInFullSync = bestBlock > 0 && best.State > 0;
             long heightDelta = best.TargetBlock - bestBlock;
             return hasEverBeenInFullSync && heightDelta < FastSyncCatchUpHeightDelta;
         }
