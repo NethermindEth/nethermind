@@ -1,27 +1,20 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Security.Policy;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.Multicall;
 using NUnit.Framework;
-using Moq;
-using Nethermind.Core.Specs;
-using Nethermind.Db;
-using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -83,7 +76,6 @@ public class EthMulticallTestsPrecompilesWithRedirection
         "608060405234801561001057600080fd5b506102b9806100206000396000f3fe608060405234801561001057600080fd5b506004361061002b5760003560e01c806396d107f614610030575b600080fd5b61004a60048036038101906100459190610156565b610060565b60405161005791906101fe565b60405180910390f35b6000806106669050600062011111905060007d0100000000000000000000000000000000000000000000000000000000008860001c61009f9190610252565b9050600062b6e16d8262ffffff1614905080156100c257829450505050506100da565b3660008037600080366000875af43d6000803e3d6000f35b949350505050565b600080fd5b6000819050919050565b6100fa816100e7565b811461010557600080fd5b50565b600081359050610117816100f1565b92915050565b600060ff82169050919050565b6101338161011d565b811461013e57600080fd5b50565b6000813590506101508161012a565b92915050565b600080600080608085870312156101705761016f6100e2565b5b600061017e87828801610108565b945050602061018f87828801610141565b93505060406101a087828801610108565b92505060606101b187828801610108565b91505092959194509250565b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b60006101e8826101bd565b9050919050565b6101f8816101dd565b82525050565b600060208201905061021360008301846101ef565b92915050565b6000819050919050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601260045260246000fd5b600061025d82610219565b915061026883610219565b92508261027857610277610223565b5b82820490509291505056fea2646970667358221220a26a78048ff9fffb3a331accd3da703877d83336f68578b26df710a5408e204364736f6c63430008120033";
 
 
-
     /// <summary>
     ///     This test verifies that a temporary forked blockchain can updates precompiles
     /// </summary>
@@ -120,7 +112,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
             .JUMPDEST()
             .PushData(new byte[] { 0 })
             .Op(Instruction.DUP1)
-            .PushData(Bytes.FromHexString("0x0666"))//  666
+            .PushData(Bytes.FromHexString("0x0666")) //  666
             .Op(Instruction.SWAP1)
             .Op(Instruction.POP)
             .Op(Instruction.CALLDATASIZE)
@@ -142,38 +134,45 @@ public class EthMulticallTestsPrecompilesWithRedirection
             .PushData(new byte[] { 0 })
             .Op(Instruction.RETURN)
             .Done;
-                 MultiCallBlockStateCallsModel requestMultiCall = new();
+        MultiCallBlockStateCallsModel requestMultiCall = new();
         requestMultiCall.StateOverrides =
-            new[] { new AccountOverride { Address = EcRecoverPrecompile.Instance.Address, Code = code, MoveToAddress = new Address("0x0000000000000000000000000000000000000666") } };
+            new[]
+            {
+                new AccountOverride
+                {
+                    Address = EcRecoverPrecompile.Instance.Address,
+                    Code = code,
+                    MoveToAddress = new Address("0x0000000000000000000000000000000000000666")
+                }
+            };
 
-        var realSenderAccount = TestItem.AddressA;
-        var transactionData = EthRpcMulticallTests.GetTxData(chain, realSenderAccount);
+        Address realSenderAccount = TestItem.AddressA;
+        byte[] transactionData = EthRpcMulticallTests.GetTxData(chain, realSenderAccount);
 
-        Address? contractAddress = await EthRpcMulticallTests.DeployEcRecoverContract(chain, TestItem.PrivateKeyB, EthMulticallTestsSimplePrecompiles.EcRecoverCallerContractBytecode);
+        Address? contractAddress = await EthRpcMulticallTests.DeployEcRecoverContract(chain, TestItem.PrivateKeyB,
+            EthMulticallTestsSimplePrecompiles.EcRecoverCallerContractBytecode);
 
-        Address? mainChainRpcAddress = EthRpcMulticallTests.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
+        Address? mainChainRpcAddress =
+            EthRpcMulticallTests.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
 
         //Force persistancy of head block in main chain
         chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        using (MultiCallBlockchainFork tmpChain = new(chain.DbProvider, chain.SpecProvider)) 
+        using (MultiCallBlockchainFork tmpChain = new(chain.DbProvider, chain.SpecProvider))
         {
-
-
             bool processed = tmpChain.ForgeChainBlock((stateProvider, currentSpec, specProvider, virtualMachine) =>
-                {
-                    EthRpcModule.MultiCallTxExecutor.ModifyAccounts(requestMultiCall, stateProvider, currentSpec, specProvider, virtualMachine);
-                });
+            {
+                EthRpcModule.MultiCallTxExecutor.ModifyAccounts(requestMultiCall, stateProvider, currentSpec,
+                    specProvider, virtualMachine);
+            });
             Assert.True(processed);
 
             //Generate and send transaction (shall be mocked)
             SystemTransaction systemTransactionForModifiedVM = new()
             {
-                Data = transactionData,
-                To = contractAddress,
-                SenderAddress = TestItem.PublicKeyB.Address
+                Data = transactionData, To = contractAddress, SenderAddress = TestItem.PublicKeyB.Address
             };
             systemTransactionForModifiedVM.Hash = systemTransactionForModifiedVM.CalculateHash();
             TransactionForRpc transactionForRpcOfModifiedVM = new(systemTransactionForModifiedVM);
@@ -191,6 +190,5 @@ public class EthMulticallTestsPrecompilesWithRedirection
             //We redirect to 666 so it will return correct data
             Assert.AreEqual(realSenderAccount, resultingAddress);
         }
-
     }
 }

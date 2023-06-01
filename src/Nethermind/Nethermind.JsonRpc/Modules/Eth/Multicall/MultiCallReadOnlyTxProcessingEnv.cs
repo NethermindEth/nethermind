@@ -19,7 +19,8 @@ internal class MultiCallReadOnlyTxProcessingEnv : ReadOnlyTxProcessingEnv
         IReadOnlyTrieStore? readOnlyTrieStore,
         IReadOnlyBlockTree? readOnlyBlockTree,
         ISpecProvider? specProvider,
-        ILogManager? logManager) : base(readOnlyDbProvider, readOnlyTrieStore, readOnlyBlockTree, specProvider, logManager)
+        ILogManager? logManager) : base(readOnlyDbProvider, readOnlyTrieStore, readOnlyBlockTree, specProvider,
+        logManager)
     {
         Machine = new MultiCallVirtualMachine(virtualMachine);
         TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, logManager);

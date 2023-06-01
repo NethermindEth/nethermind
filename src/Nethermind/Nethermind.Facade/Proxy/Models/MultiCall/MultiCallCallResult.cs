@@ -9,18 +9,13 @@ public class MultiCallCallResult
     {
         get
         {
-            if (Logs != null)
-            {
-                return ResultType.Success;
-            }
+            if (Logs != null) return ResultType.Success;
 
-            if (Return != null && Error != null)
-            {
-                return ResultType.Failure;
-            }
+            if (Return != null && Error != null) return ResultType.Failure;
             return ResultType.Invalid;
         }
     }
+
     public Log[]? Logs { get; set; }
     public string Status { get; set; }
     public byte[]? Return { get; set; }

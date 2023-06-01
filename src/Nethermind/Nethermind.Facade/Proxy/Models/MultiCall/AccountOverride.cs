@@ -4,22 +4,21 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.State.Snap;
 
 namespace Nethermind.Facade.Proxy.Models.MultiCall;
 
 public class AccountOverride
 {
-    public AccountOverrideType Type
-    {
-        get => State != null ? AccountOverrideType.AccountOverrideState : AccountOverrideType.AccountOverrideStateDiff;
-    }
+    public AccountOverrideType Type => State != null
+        ? AccountOverrideType.AccountOverrideState
+        : AccountOverrideType.AccountOverrideStateDiff;
 
     public bool IsState => Type == AccountOverrideType.AccountOverrideState;
     public bool IsStateDiff => Type == AccountOverrideType.AccountOverrideStateDiff;
 
     /// AccountOverrideState and AccountOverrideStateDiff base
     public Address Address { get; set; }
+
     public Address? MoveToAddress { get; set; }
     public UInt256 Nonce { get; set; }
 
@@ -31,5 +30,4 @@ public class AccountOverride
 
     //Storage difference for AccountOverrideStateDiff
     public Dictionary<UInt256, byte[]>? StateDiff { get; set; }
-
 }

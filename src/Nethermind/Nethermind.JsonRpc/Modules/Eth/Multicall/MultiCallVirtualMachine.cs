@@ -7,7 +7,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Eth.Multicall;
@@ -15,9 +14,9 @@ namespace Nethermind.JsonRpc.Modules.Eth.Multicall;
 public class MultiCallVirtualMachine : VirtualMachine
 {
     private readonly IBlockhashProvider? _blockhashProvider;
-    private readonly ISpecProvider? _specProvider;
     private readonly ILogManager? _logManager;
     private readonly Dictionary<Address, CodeInfo> _overloaded = new();
+    private readonly ISpecProvider? _specProvider;
 
     public MultiCallVirtualMachine(MultiCallVirtualMachine vm) :
         this(vm._blockhashProvider, vm._specProvider, vm._logManager)
@@ -35,12 +34,10 @@ public class MultiCallVirtualMachine : VirtualMachine
     }
 
 
-    public void SetOverwrite(IWorldState worldState, IReleaseSpec vmSpec, Address key, CodeInfo value, Address? redirectAddress = null)
+    public void SetOverwrite(IWorldState worldState, IReleaseSpec vmSpec, Address key, CodeInfo value,
+        Address? redirectAddress = null)
     {
-        if (redirectAddress != null)
-        {
-            _overloaded[redirectAddress] = base.GetCachedCodeInfo(worldState, key, vmSpec);
-        }
+        if (redirectAddress != null) _overloaded[redirectAddress] = base.GetCachedCodeInfo(worldState, key, vmSpec);
         _overloaded[key] = value;
     }
 
@@ -48,7 +45,6 @@ public class MultiCallVirtualMachine : VirtualMachine
     {
         if (_overloaded.TryGetValue(codeSource, out CodeInfo result))
             return result;
-        else
-            return base.GetCachedCodeInfo(worldState, codeSource, vmSpec);
+        return base.GetCachedCodeInfo(worldState, codeSource, vmSpec);
     }
 }

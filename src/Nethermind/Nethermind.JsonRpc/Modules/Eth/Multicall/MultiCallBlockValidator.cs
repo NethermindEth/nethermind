@@ -12,6 +12,14 @@ namespace Nethermind.JsonRpc.Modules.Eth.Multicall;
 
 internal class MultiCallBlockValidator : BlockValidator
 {
+    public MultiCallBlockValidator(ITxValidator? txValidator,
+        IHeaderValidator? headerValidator,
+        IUnclesValidator? unclesValidator,
+        ISpecProvider? specProvider,
+        ILogManager? logManager) : base(txValidator, headerValidator, unclesValidator, specProvider, logManager)
+    {
+    }
+
     public override bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
     {
         if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
@@ -23,13 +31,5 @@ internal class MultiCallBlockValidator : BlockValidator
         }
 
         return base.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock);
-    }
-
-    public MultiCallBlockValidator(ITxValidator? txValidator,
-        IHeaderValidator? headerValidator,
-        IUnclesValidator? unclesValidator,
-        ISpecProvider? specProvider,
-        ILogManager? logManager) : base(txValidator, headerValidator, unclesValidator, specProvider, logManager)
-    {
     }
 }
