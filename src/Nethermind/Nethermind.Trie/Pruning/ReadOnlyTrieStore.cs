@@ -25,20 +25,19 @@ namespace Nethermind.Trie.Pruning
         public TrieNode FindCachedOrUnknown(Keccak hash) =>
             _trieStore.FindCachedOrUnknown(hash, true);
 
-        public byte[] LoadRlp(Keccak hash) => _trieStore.LoadRlp(hash, _readOnlyStore);
+        public byte[] LoadRlp(Keccak hash, ReadFlags flags) => _trieStore.LoadRlp(hash, _readOnlyStore, flags);
 
         public bool IsPersisted(Keccak keccak) => _trieStore.IsPersisted(keccak);
+        public bool IsPersisted(in ValueKeccak keccak) => _trieStore.IsPersisted(keccak);
 
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
         {
             return new ReadOnlyTrieStore(_trieStore, keyValueStore);
         }
 
-        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
+        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags flags = WriteFlags.None) { }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root) { }
-
-        public void HackPersistOnShutdown() { }
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {

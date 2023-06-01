@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Precompiles
                 return 0;
             }
 
-            uint rounds = inputData.Slice(0, 4).Span.ReadEthUInt32();
+            uint rounds = inputData[..4].Span.ReadEthUInt32();
 
             return rounds;
         }

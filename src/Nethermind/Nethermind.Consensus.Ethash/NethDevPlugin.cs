@@ -43,7 +43,8 @@ namespace Nethermind.Consensus.Ethash
             {
                 return Task.FromResult((IBlockProducer)null);
             }
-            var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
+
+            var (getFromApi, _) = _nethermindApi!.ForProducer;
 
             ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
@@ -78,7 +79,6 @@ namespace Nethermind.Consensus.Ethash
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockProductionTransactionsExecutor(producerEnv, getFromApi!.SpecProvider, getFromApi.LogManager),
                 producerEnv.StateProvider,
-                producerEnv.StorageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 getFromApi.LogManager);

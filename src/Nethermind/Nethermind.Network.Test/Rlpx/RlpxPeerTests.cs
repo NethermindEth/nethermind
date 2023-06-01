@@ -26,6 +26,8 @@ namespace Nethermind.Network.Test.Rlpx
                 Substitute.For<IMessageSerializationService>(),
                 TestItem.PublicKeyA, GegAvailableLocalPort(),
                 1,
+                null,
+                2000,
                 Substitute.For<IHandshakeService>(),
                 Substitute.For<ISessionMonitor>(),
                 NullDisconnectsAnalyzer.Instance,

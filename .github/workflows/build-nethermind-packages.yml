@@ -1,11 +1,7 @@
-name: '[BUILD] Nethermind packages'
+name: Build Nethermind packages
 
 on: 
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Version tag'
-        required: true
 
 jobs:
   build:
@@ -13,81 +9,84 @@ jobs:
     runs-on: ubuntu-latest
     env: 
       PACKAGE_DIR: pkg
+      PACKAGE_RETENTION: 7
       PUB_DIR: pub
     steps:
-    - name: Check out Nethermind repository
-      uses: actions/checkout@v3
-      with:
-        submodules: recursive
-        path: nethermind
-    - name: Check out Nethermind Launcher repository
-      uses: actions/checkout@v3
-      with:
-        repository: NethermindEth/nethermind.launcher
-        path: launcher
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: 14
-    - name: Install npm packages
-      run: npm i pkg @vercel/ncc -g
-    - name: Set up .NET
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: 7
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
-    - name: Set up Docker Buildx
-      id: buildx
-      uses: docker/setup-buildx-action@v2
-    - name: Build Nethermind.Runner
-      id: build-runner
-      run: |
-        cd nethermind
-        build_timestamp=$(date '+%s')
-        commit_hash=$(git describe --always --exclude=* --abbrev=40)
-        echo "BUILD_TIMESTAMP=$build_timestamp" >> $GITHUB_OUTPUT
-        echo "COMMIT_HASH=$commit_hash" >> $GITHUB_OUTPUT
-        echo "COMMIT_HASH_SHORT=$(echo $commit_hash | awk '{print substr($0,0,8);}')" >> $GITHUB_OUTPUT
-        scripts/deployment/build-runner.sh ${{ github.event.inputs.tag }} $commit_hash $build_timestamp
-    - name: Build Nethermind.Cli
-      run: nethermind/scripts/deployment/build-cli.sh ${{ github.event.inputs.tag }} ${{ steps.build-runner.outputs.COMMIT_HASH }} ${{ steps.build-runner.outputs.BUILD_TIMESTAMP }}
-    - name: Build Nethermind.Launcher
-      run: nethermind/scripts/deployment/build-launcher.sh
-    - name: Build Nethermind.Launcher for Linux arm64
-      run: |
-        cd nethermind
-        docker buildx build --platform=linux/arm64 -t tmp-launcher -f Dockerfile.launcher . --load
-        docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
-        mv Nethermind.Launcher $GITHUB_WORKSPACE/$PUB_DIR/linux-arm64/Nethermind.Launcher
-    - name: Archive packages
-      env:
-        PACKAGE_PREFIX: nethermind-${{ github.event.inputs.tag }}-${{ steps.build-runner.outputs.COMMIT_HASH_SHORT }}
-      run: |
-        echo "PACKAGE_PREFIX=$PACKAGE_PREFIX" >> $GITHUB_ENV
-        nethermind/scripts/deployment/archive-packages.sh
-    - name: Upload Nethermind Linux x64 package
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ env.PACKAGE_PREFIX }}-linux-x64-package
-        path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-x64*
-    - name: Upload Nethermind Linux arm64 package
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ env.PACKAGE_PREFIX }}-linux-arm64-package
-        path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-arm64*
-    - name: Upload Nethermind Windows x64 package
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ env.PACKAGE_PREFIX }}-windows-x64-package
-        path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*windows-x64*
-    - name: Upload Nethermind macOS x64 package
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ env.PACKAGE_PREFIX }}-macos-x64-package
-        path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-x64*
-    - name: Upload Nethermind macOS arm64 package
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ env.PACKAGE_PREFIX }}-macos-arm64-package
-        path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-arm64*
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Check out Nethermind Launcher repository
+        uses: actions/checkout@v3
+        with:
+          repository: NethermindEth/nethermind.launcher
+          path: launcher
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 14
+      - name: Install npm packages
+        run: npm i pkg @vercel/ncc -g
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 7
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Nethermind.Runner
+        id: build-runner
+        run: |
+          cd nethermind
+          build_timestamp=$(date '+%s')
+          echo "build-timestamp=$build_timestamp" >> $GITHUB_OUTPUT
+          echo "commit-hash=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
+          scripts/deployment/build-runner.sh $GITHUB_SHA $build_timestamp
+      - name: Build Nethermind.Cli
+        run: nethermind/scripts/deployment/build-cli.sh $GITHUB_SHA ${{ steps.build-runner.outputs.build-timestamp }}
+      - name: Build Nethermind.Launcher
+        run: nethermind/scripts/deployment/build-launcher.sh
+      - name: Build Nethermind.Launcher for Linux arm64
+        run: |
+          cd nethermind
+          docker buildx build --platform=linux/arm64 -t tmp-launcher -f Dockerfile.launcher . --load
+          docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
+          mv Nethermind.Launcher $GITHUB_WORKSPACE/$PUB_DIR/linux-arm64/Nethermind.Launcher
+      - name: Archive packages
+        env:
+          PACKAGE_PREFIX: nethermind-preview-${{ steps.build-runner.outputs.commit-hash }}
+        run: |
+          echo "PACKAGE_PREFIX=$PACKAGE_PREFIX" >> $GITHUB_ENV
+          nethermind/scripts/deployment/archive-packages.sh
+      - name: Upload Nethermind Linux x64 package
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.PACKAGE_PREFIX }}-linux-x64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-x64*
+          retention-days: ${{ env.PACKAGE_RETENTION }}
+      - name: Upload Nethermind Linux arm64 package
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.PACKAGE_PREFIX }}-linux-arm64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-arm64*
+          retention-days: ${{ env.PACKAGE_RETENTION }}
+      - name: Upload Nethermind Windows x64 package
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.PACKAGE_PREFIX }}-windows-x64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*windows-x64*
+          retention-days: ${{ env.PACKAGE_RETENTION }}
+      - name: Upload Nethermind macOS x64 package
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.PACKAGE_PREFIX }}-macos-x64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-x64*
+          retention-days: ${{ env.PACKAGE_RETENTION }}
+      - name: Upload Nethermind macOS arm64 package
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.PACKAGE_PREFIX }}-macos-arm64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-arm64*
+          retention-days: ${{ env.PACKAGE_RETENTION }}

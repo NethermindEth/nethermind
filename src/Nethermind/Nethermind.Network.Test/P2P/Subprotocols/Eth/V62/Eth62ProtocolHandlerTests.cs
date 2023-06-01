@@ -16,8 +16,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
-using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -519,7 +517,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             }
 
             Transaction tx = txs[0];
-            int sizeOfOneTx = tx.GetLength(new TxDecoder());
+            int sizeOfOneTx = tx.GetLength();
             int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
             int nonFullMsgTxsCount = txCount % numberOfTxsInOneMsg;
             int messagesCount = txCount / numberOfTxsInOneMsg + (nonFullMsgTxsCount > 0 ? 1 : 0);

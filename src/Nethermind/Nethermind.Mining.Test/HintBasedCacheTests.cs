@@ -85,7 +85,7 @@ namespace Nethermind.Mining.Test
 
             await Task.WhenAll(a, b, c);
 
-            Assert.AreEqual(5, hintBasedCache.CachedEpochsCount);
+            Assert.That(hintBasedCache.CachedEpochsCount, Is.EqualTo(5));
             for (uint i = (uint)(range / Ethash.EpochLength); i < (uint)((range + 120000) / Ethash.EpochLength); i++)
             {
                 Assert.NotNull(hintBasedCache.Get(i));

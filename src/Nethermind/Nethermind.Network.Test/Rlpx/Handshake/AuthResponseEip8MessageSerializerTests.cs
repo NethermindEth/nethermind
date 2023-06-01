@@ -30,9 +30,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             byte[] data = _serializer.Serialize(before);
             AckEip8Message after = _serializer.Deserialize(data);
 
-            Assert.AreEqual(before.EphemeralPublicKey, after.EphemeralPublicKey);
+            Assert.That(after.EphemeralPublicKey, Is.EqualTo(before.EphemeralPublicKey));
             Assert.True(Bytes.AreEqual(before.Nonce, after.Nonce));
-            Assert.AreEqual(0x04, after.Version);
+            Assert.That(after.Version, Is.EqualTo(0x04));
         }
 
         [Test]

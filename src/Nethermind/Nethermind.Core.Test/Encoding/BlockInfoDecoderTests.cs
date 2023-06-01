@@ -56,8 +56,8 @@ namespace Nethermind.Core.Test.Encoding
             Assert.True(decoded.WasProcessed, "0 processed");
             Assert.True((decoded.Metadata & BlockMetadata.Finalized) == BlockMetadata.Finalized, "metadata finalized");
             Assert.True((decoded.Metadata & BlockMetadata.Invalid) == BlockMetadata.Invalid, "metadata invalid");
-            Assert.AreEqual(TestItem.KeccakA, decoded.BlockHash, "block hash");
-            Assert.AreEqual(UInt256.One, decoded.TotalDifficulty, "difficulty");
+            Assert.That(decoded.BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
+            Assert.That(decoded.TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
         }
 
         private static void RoundtripBackwardsCompatible(bool valueDecode, bool chainWithFinalization, bool isFinalized)
@@ -70,9 +70,9 @@ namespace Nethermind.Core.Test.Encoding
             BlockInfo decoded = valueDecode ? Rlp.Decode<BlockInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<BlockInfo>(rlp);
 
             Assert.True(decoded.WasProcessed, "0 processed");
-            Assert.AreEqual(chainWithFinalization && isFinalized, decoded.IsFinalized, "finalized");
-            Assert.AreEqual(TestItem.KeccakA, decoded.BlockHash, "block hash");
-            Assert.AreEqual(UInt256.One, decoded.TotalDifficulty, "difficulty");
+            Assert.That(decoded.IsFinalized, Is.EqualTo(chainWithFinalization && isFinalized), "finalized");
+            Assert.That(decoded.BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
+            Assert.That(decoded.TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
         }
 
         public static Rlp BlockInfoEncodeDeprecated(BlockInfo? item, bool chainWithFinalization)

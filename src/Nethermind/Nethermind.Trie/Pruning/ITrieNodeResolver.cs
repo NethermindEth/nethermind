@@ -22,6 +22,6 @@ namespace Nethermind.Trie.Pruning
         /// </summary>
         /// <param name="hash"></param>
         /// <returns></returns>
-        byte[]? LoadRlp(Keccak hash);
+        byte[]? LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None);
     }
 }

@@ -124,7 +124,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public void Commit(long blockNumber, bool skipRoot = false)
+        public void Commit(long blockNumber, bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
         {
             if (_currentCommit is null)
             {
@@ -143,7 +143,7 @@ namespace Nethermind.Trie
                 while (_currentCommit.TryDequeue(out NodeCommitInfo node))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
-                    TrieStore.CommitNode(blockNumber, node);
+                    TrieStore.CommitNode(blockNumber, node, writeFlags: writeFlags);
                 }
 
                 // reset objects
@@ -151,7 +151,7 @@ namespace Nethermind.Trie
                 SetRootHash(RootRef.Keccak!, true);
             }
 
-            TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef);
+            TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef, writeFlags);
             if (_logger.IsDebug) _logger.Debug($"Finished committing block {blockNumber}");
         }
 
@@ -320,7 +320,7 @@ namespace Nethermind.Trie
         }
 
         [DebuggerStepThrough]
-        public void Set(Span<byte> rawKey, byte[] value)
+        public void Set(ReadOnlySpan<byte> rawKey, byte[] value)
         {
             if (_logger.IsTrace)
                 _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
@@ -336,7 +336,7 @@ namespace Nethermind.Trie
         }
 
         [DebuggerStepThrough]
-        public void Set(Span<byte> rawKey, Rlp? value)
+        public void Set(ReadOnlySpan<byte> rawKey, Rlp? value)
         {
             Set(rawKey, value is null ? Array.Empty<byte>() : value.Bytes);
         }
@@ -362,7 +362,7 @@ namespace Nethermind.Trie
 #endif
 
             TraverseContext traverseContext =
-                new(updatePath.Slice(0, nibblesCount), updateValue, isUpdate, ignoreMissingDelete);
+                new(updatePath[..nibblesCount], updateValue, isUpdate, ignoreMissingDelete);
 
             // lazy stack cleaning after the previous update
             if (traverseContext.IsUpdate)
@@ -386,7 +386,7 @@ namespace Nethermind.Trie
                     if (traverseContext.UpdateValue is not null)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Setting new leaf node with value {traverseContext.UpdateValue}");
-                        byte[] key = updatePath.Slice(0, nibblesCount).ToArray();
+                        byte[] key = updatePath[..nibblesCount].ToArray();
                         RootRef = TrieNodeFactory.CreateLeaf(key, traverseContext.UpdateValue);
                     }
 
@@ -701,9 +701,8 @@ namespace Nethermind.Trie
                 }
 
                 int currentIndex = traverseContext.CurrentIndex + 1;
-                byte[] leafPath = traverseContext.UpdatePath.Slice(
-                    currentIndex,
-                    traverseContext.UpdatePath.Length - currentIndex).ToArray();
+                byte[] leafPath = traverseContext.UpdatePath[
+                    currentIndex..].ToArray();
                 TrieNode leaf = TrieNodeFactory.CreateLeaf(leafPath, traverseContext.UpdateValue);
                 ConnectNodes(leaf);
 
@@ -792,7 +791,7 @@ namespace Nethermind.Trie
 
             if (extensionLength != 0)
             {
-                ReadOnlySpan<byte> extensionPath = longerPath.Slice(0, extensionLength);
+                ReadOnlySpan<byte> extensionPath = longerPath[..extensionLength];
                 TrieNode extension = TrieNodeFactory.CreateExtension(extensionPath.ToArray());
                 _nodeStack.Push(new StackedNode(extension, 0));
             }
@@ -1024,15 +1023,22 @@ namespace Nethermind.Trie
                 }
             }
 
-            visitor.VisitTree(rootHash, trieVisitContext);
-
             ITrieNodeResolver resolver = TrieStore;
             if (visitor.IsFullDbScan)
             {
                 resolver = new TrieNodeResolverWithReadFlags(TrieStore, ReadFlags.HintCacheMiss);
             }
 
-            rootRef?.Accept(visitor, resolver, trieVisitContext);
+            visitor.VisitTree(rootHash, trieVisitContext);
+            if (visitingOptions.FullScanMemoryBudget != 0)
+            {
+                BatchedTrieVisitor batchedTrieVisitor = new(visitor, resolver, visitingOptions);
+                batchedTrieVisitor.Start(rootHash, trieVisitContext);
+            }
+            else
+            {
+                rootRef?.Accept(visitor, resolver, trieVisitContext);
+            }
         }
 
         [DoesNotReturn]

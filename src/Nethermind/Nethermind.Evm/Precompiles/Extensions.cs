@@ -9,8 +9,8 @@ namespace Nethermind.Evm.Precompiles
     {
         public static void PrepareEthInput(this ReadOnlyMemory<byte> inputData, Span<byte> inputDataSpan)
         {
-            inputData.Span.Slice(0, Math.Min(inputDataSpan.Length, inputData.Length))
-                .CopyTo(inputDataSpan.Slice(0, Math.Min(inputDataSpan.Length, inputData.Length)));
+            inputData.Span[..Math.Min(inputDataSpan.Length, inputData.Length)]
+                .CopyTo(inputDataSpan[..Math.Min(inputDataSpan.Length, inputData.Length)]);
         }
     }
 }

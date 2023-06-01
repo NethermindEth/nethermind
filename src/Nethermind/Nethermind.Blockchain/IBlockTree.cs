@@ -80,8 +80,6 @@ namespace Nethermind.Blockchain
         AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None);
 
-        void Insert(IEnumerable<Block> blocks);
-
         void UpdateHeadBlock(Keccak blockHash);
 
         /// <summary>
@@ -187,5 +185,7 @@ namespace Nethermind.Blockchain
         bool IsBetterThanHead(BlockHeader? header);
 
         void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
+
+        void RecalculateTreeLevels();
     }
 }

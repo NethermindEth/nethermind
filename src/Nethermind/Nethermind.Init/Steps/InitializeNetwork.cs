@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -23,7 +24,6 @@ using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Dns;
 using Nethermind.Network.Enr;
-using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
@@ -131,6 +131,7 @@ public class InitializeNetwork : IStep
         }
 
         _api.SyncModeSelector ??= CreateMultiSyncModeSelector(syncProgressResolver);
+        _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree!, _api.ReceiptStorage!, _syncConfig, _api.SyncModeSelector, _api.LogManager);
         _api.DisposeStack.Push(_api.SyncModeSelector);
 
         _api.Pivot ??= new Pivot(_syncConfig);
@@ -201,10 +202,10 @@ public class InitializeNetwork : IStep
 
         bool stateSyncFinished = _api.SyncProgressResolver.FindBestFullState() != 0;
 
-        if (_syncConfig.SnapSync || stateSyncFinished)
+        if (_syncConfig.SnapSync || stateSyncFinished || !_syncConfig.FastSync)
         {
             // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
-            // no longer available). Eth67 should be added if snap is enabled OR sync is finished
+            // no longer available). Eth67 should be added if snap is enabled OR sync is finished OR in archive nodes (no state sync)
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
         }
@@ -482,8 +483,10 @@ public class InitializeNetwork : IStep
         _api.RlpxPeer = new RlpxHost(
             _api.MessageSerializationService,
             _api.NodeKey.PublicKey,
-            _networkConfig.P2PPort,
             _networkConfig.ProcessingThreadCount,
+            _networkConfig.P2PPort,
+            _networkConfig.LocalIp,
+            _networkConfig.ConnectTimeoutMs,
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
             _api.DisconnectsAnalyzer,

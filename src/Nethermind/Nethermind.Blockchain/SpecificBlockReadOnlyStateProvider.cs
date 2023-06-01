@@ -24,13 +24,24 @@ namespace Nethermind.Blockchain
 
         public Account GetAccount(Address address) => _stateReader.GetAccount(StateRoot, address) ?? Account.TotallyEmpty;
 
+        public bool IsContract(Address address) => GetAccount(address).IsContract;
+
         public UInt256 GetNonce(Address address) => GetAccount(address).Nonce;
 
         public UInt256 GetBalance(Address address) => GetAccount(address).Balance;
 
         public Keccak? GetStorageRoot(Address address) => GetAccount(address).StorageRoot;
 
-        public byte[] GetCode(Address address) => _stateReader.GetCode(GetAccount(address).CodeHash);
+        public byte[] GetCode(Address address)
+        {
+            Account account = GetAccount(address);
+            if (!account.HasCode)
+            {
+                return Array.Empty<byte>();
+            }
+
+            return _stateReader.GetCode(account.CodeHash);
+        }
 
         public byte[] GetCode(Keccak codeHash) => _stateReader.GetCode(codeHash);
 

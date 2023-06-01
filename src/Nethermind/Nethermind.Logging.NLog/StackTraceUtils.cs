@@ -30,14 +30,14 @@ namespace Nethermind.Logging
             }
 
             Type declaringType = method.DeclaringType;
-            if (cleanAsyncMoveNext && method.Name == "MoveNext" && ((object)declaringType is not null ? declaringType.DeclaringType : null) is not null && declaringType.Name.StartsWith("<") && declaringType.Name.IndexOf('>', 1) > 1)
+            if (cleanAsyncMoveNext && method.Name == "MoveNext" && (declaringType?.DeclaringType) is not null && declaringType.Name.StartsWith("<") && declaringType.Name.IndexOf('>', 1) > 1)
                 declaringType = declaringType.DeclaringType;
             string str = includeNameSpace ? ((object)declaringType is not null ? declaringType.FullName : (string)null) : ((object)declaringType is not null ? declaringType.Name : (string)null);
             if (cleanAnonymousDelegates && str is not null)
             {
                 int length = str.IndexOf("+<>", StringComparison.Ordinal);
                 if (length >= 0)
-                    str = str.Substring(0, length);
+                    str = str[..length];
             }
 
             return str;
@@ -91,11 +91,11 @@ namespace Nethermind.Logging
             if (method is null)
                 return null;
             Type declaringType = method.DeclaringType;
-            Assembly assembly1 = (object)declaringType is not null ? declaringType.Assembly : null;
+            Assembly assembly1 = declaringType?.Assembly;
             if ((object)assembly1 is null)
             {
                 Module module = method.Module;
-                assembly1 = (object)module is not null ? module.Assembly : null;
+                assembly1 = module?.Assembly;
             }
 
             Assembly assembly2 = assembly1;

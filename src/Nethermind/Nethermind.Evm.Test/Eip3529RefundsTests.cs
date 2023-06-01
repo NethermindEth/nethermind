@@ -72,11 +72,15 @@ namespace Nethermind.Evm.Test
 
         private void Test(string codeHex, long gasUsed, long refund, byte originalValue, bool eip3529Enabled)
         {
-            TestState.CreateAccount(Recipient, 0);
-            Storage.Set(new StorageCell(Recipient, 0), new[] { originalValue });
-            Storage.Commit();
+            // the account value = 1.Ether() here because you cannot set a storageRoot for an empty account.
+            // EmptyAccount => Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString
+            // earlier it used to work - because the cache mapping address:storageTree was never cleared on account of
+            // Storage.CommitTrees() not being called. But now the WorldState.CommitTrees is called inside PrepareTx,
+            // which also calls Storage.CommitTrees, clearing the cache.
+            TestState.CreateAccount(Recipient, 1.Ether());
+            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
             TestState.Commit(eip3529Enabled ? London.Instance : Berlin.Instance);
-            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, LimboLogs.Instance);
             long blockNumber = eip3529Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, Bytes.FromHexString(codeHex));
 
@@ -84,7 +88,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
 
-            Assert.AreEqual(refund, tracer.Refund);
+            Assert.That(tracer.Refund, Is.EqualTo(refund));
             AssertGas(tracer, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / (eip3529Enabled ? RefundHelper.MaxRefundQuotientEIP3529 : RefundHelper.MaxRefundQuotient), refund));
         }
 
@@ -176,7 +180,7 @@ namespace Nethermind.Evm.Test
             _processor.Execute(tx3, block.Header, tracer);
             long expectedRefund = eip3529Enabled ? 0 : 24000;
 
-            Assert.AreEqual(expectedRefund, tracer.Refund);
+            Assert.That(tracer.Refund, Is.EqualTo(expectedRefund));
             AssertGas(tracer, gasUsedByTx3 + GasCostOf.Transaction - Math.Min((gasUsedByTx3 + GasCostOf.Transaction) / (eip3529Enabled ? RefundHelper.MaxRefundQuotientEIP3529 : RefundHelper.MaxRefundQuotient), expectedRefund));
         }
     }

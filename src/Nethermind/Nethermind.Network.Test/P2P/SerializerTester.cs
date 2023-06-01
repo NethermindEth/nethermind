@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
+using System;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -22,15 +24,19 @@ namespace Nethermind.Network.Test.P2P
                 T deserialized = serializer.Deserialize(buffer);
 
                 // RlpLength is calculated explicitly when serializing an object by Calculate method. It's null after deserialization.
-                deserialized.Should().BeEquivalentTo(message, options => options.Excluding(c => c.Name == "RlpLength"));
+                deserialized.Should().BeEquivalentTo(message, options => options
+                    .Excluding(c => c.Name == "RlpLength")
+                    .Using<Memory<byte>>((context => context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray())))
+                    .WhenTypeIs<Memory<byte>>()
+                );
 
-                Assert.AreEqual(0, buffer.ReadableBytes, "readable bytes");
+                Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");
 
                 serializer.Serialize(buffer2, deserialized);
 
                 buffer.SetReaderIndex(0);
                 string allHex = buffer.ReadAllHex();
-                Assert.AreEqual(allHex, buffer2.ReadAllHex(), "test zero");
+                Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
 
                 if (expectedData is not null)
                 {

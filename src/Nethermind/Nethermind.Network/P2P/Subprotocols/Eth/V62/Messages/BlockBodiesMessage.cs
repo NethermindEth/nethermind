@@ -20,7 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             Bodies = new BlockBody[blocks.Length];
             for (int i = 0; i < blocks.Length; i++)
             {
-                Bodies[i] = blocks[i] is null ? null : blocks[i].Body;
+                Bodies[i] = blocks[i]?.Body;
             }
         }
 

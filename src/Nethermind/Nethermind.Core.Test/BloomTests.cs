@@ -20,7 +20,7 @@ namespace Nethermind.Core.Test
             bloom.Set(Keccak.OfAnEmptyString.Bytes);
             byte[] bytes = bloom.Bytes;
             Bloom bloom2 = new(bytes);
-            Assert.AreEqual(bloom.ToString(), bloom2.ToString());
+            Assert.That(bloom2.ToString(), Is.EqualTo(bloom.ToString()));
         }
 
         [TestCase(1, 1)]

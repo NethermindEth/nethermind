@@ -63,33 +63,6 @@ configs = {
         "url": "https://rpc.exosama.com",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
-    },
-    # mev section
-    "mainnet_mev": {
-        "url": "api.etherscan.io",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
-    },
-    "goerli_mev": {
-        "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000
-    },
-    # aa section
-    "mainnet_aa": {
-        "url": "api.etherscan.io",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
-    },
-    "goerli_aa": {
-        "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000
-    },
-    "xdai_aa": {
-        "url": "https://rpc.gnosischain.com",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
     }
 }
 

@@ -12,20 +12,20 @@ cd $GITHUB_WORKSPACE/$PACKAGE_DIR
 
 for rid in "linux-x64" "linux-arm64" "windows-x64" "macos-x64" "macos-arm64"
 do
-  FILE_NAME=$(basename *$rid*)
+  file_name=$(basename *$rid*)
 
-  echo "Signing $FILE_NAME"
+  echo "Signing $file_name"
 
-  gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $FILE_NAME
+  gpg --batch --detach-sign --passphrase=$PASS --pinentry-mode loopback --armor $file_name
 
-  echo "Uploading $FILE_NAME"
+  echo "Uploading $file_name"
 
   curl https://downloads.nethermind.io/files?apikey=$DOWNLOADS_PAGE \
     -X POST \
     --fail-with-body \
     -# \
-    -F "files=@$PWD/$FILE_NAME" \
-    -F "files=@$PWD/$FILE_NAME.asc"
+    -F "files=@$PWD/$file_name" \
+    -F "files=@$PWD/$file_name.asc"
 done
 
 echo "Publishing completed"

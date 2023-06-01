@@ -20,6 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Eth;
@@ -27,34 +28,50 @@ using Nethermind.HealthChecks;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
+using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    protected virtual MergeTestBlockchain CreateBaseBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null, ILogManager? logManager = null) =>
+    [SetUp]
+    public Task Setup()
+    {
+        return KzgPolynomialCommitments.InitializeAsync();
+    }
+
+    protected virtual MergeTestBlockchain CreateBaseBlockChain(IMergeConfig? mergeConfig = null,
+        IPayloadPreparationService? mockedPayloadService = null, ILogManager? logManager = null) =>
         new(mergeConfig, mockedPayloadService, logManager);
 
-    protected async Task<MergeTestBlockchain> CreateShanghaiBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
+    protected async Task<MergeTestBlockchain> CreateShanghaiBlockChain(IMergeConfig? mergeConfig = null,
+        IPayloadPreparationService? mockedPayloadService = null)
         => await CreateBlockChain(mergeConfig, mockedPayloadService, Shanghai.Instance);
 
-    protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null, IReleaseSpec? releaseSpec = null)
-        => await CreateBaseBlockChain(mergeConfig, mockedPayloadService).Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
-    protected async Task<MergeTestBlockchain> CreateBlockChain(ISpecProvider specProvider, ILogManager? logManager = null)
+    protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig? mergeConfig = null,
+        IPayloadPreparationService? mockedPayloadService = null, IReleaseSpec? releaseSpec = null)
+        => await CreateBaseBlockChain(mergeConfig, mockedPayloadService)
+            .Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
+
+    protected async Task<MergeTestBlockchain> CreateBlockChain(ISpecProvider specProvider,
+        ILogManager? logManager = null)
         => await CreateBaseBlockChain(null, null, logManager).Build(specProvider);
 
     private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
     {
         IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
+        var synchronizationConfig = syncConfig ?? new SyncConfig();
 
-        chain.BeaconPivot = new BeaconPivot(syncConfig ?? new SyncConfig(), new MemDb(), chain.BlockTree, chain.LogManager);
+        chain.BeaconPivot = new BeaconPivot(synchronizationConfig, new MemDb(), chain.BlockTree, chain.LogManager);
         BlockCacheService blockCacheService = new();
         InvalidChainTracker.InvalidChainTracker invalidChainTracker = new(
             chain.PoSSwitcher,
@@ -62,7 +79,7 @@ public partial class EngineModuleTests
             blockCacheService,
             chain.LogManager);
         invalidChainTracker.SetupBlockchainProcessorInterceptor(chain.BlockchainProcessor);
-        chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
+        chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, synchronizationConfig, blockCacheService, chain.LogManager);
         EngineRpcCapabilitiesProvider capabilitiesProvider = new(chain.SpecProvider);
         return new EngineRpcModule(
             new GetPayloadV1Handler(
@@ -71,11 +88,14 @@ public partial class EngineModuleTests
             new GetPayloadV2Handler(
                 chain.PayloadPreparationService!,
                 chain.LogManager),
+            new GetPayloadV3Handler(
+                chain.PayloadPreparationService!,
+                chain.LogManager),
             new NewPayloadHandler(
                 chain.BlockValidator,
                 chain.BlockTree,
                 new InitConfig(),
-                new SyncConfig(),
+                synchronizationConfig,
                 chain.PoSSwitcher,
                 chain.BeaconSync,
                 chain.BeaconPivot,
@@ -103,6 +123,7 @@ public partial class EngineModuleTests
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.SpecProvider, chain.LogManager),
             chain.SpecProvider,
+            new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);
     }
 
@@ -154,7 +175,7 @@ public partial class EngineModuleTests
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
             ISyncConfig syncConfig = new SyncConfig();
-            EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, LogManager);
+            EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, new StaticSelector(SyncMode.All), LogManager);
             PostMergeBlockProducerFactory? blockProducerFactory = new(
                 SpecProvider,
                 SealEngine,
@@ -201,7 +222,6 @@ public partial class EngineModuleTests
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
-                Storage,
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
                 LogManager);

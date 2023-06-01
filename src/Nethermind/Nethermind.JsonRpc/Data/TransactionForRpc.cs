@@ -27,8 +27,8 @@ public class TransactionForRpc
         Value = transaction.Value;
         GasPrice = transaction.GasPrice;
         Gas = transaction.GasLimit;
-        Input = Data = transaction.Data;
-        if (transaction.IsEip1559)
+        Input = Data = transaction.Data.AsArray();
+        if (transaction.Supports1559)
         {
             GasPrice = baseFee is not null
                 ? transaction.CalculateEffectiveGasPrice(true, baseFee.Value)
@@ -44,7 +44,7 @@ public class TransactionForRpc
         if (signature is not null)
         {
 
-            YParity = (transaction.IsEip1559 || transaction.IsEip2930) ? signature.RecoveryId : null;
+            YParity = transaction.SupportsAccessList ? signature.RecoveryId : null;
             R = new UInt256(signature.R, true);
             S = new UInt256(signature.S, true);
             V = transaction.Type == TxType.Legacy ? (UInt256?)signature.V : (UInt256?)signature.RecoveryId;
@@ -122,12 +122,12 @@ public class TransactionForRpc
             Hash = Hash
         };
 
-        if (tx.IsEip1559)
+        if (tx.Supports1559)
         {
             tx.GasPrice = MaxPriorityFeePerGas ?? 0;
         }
 
-        if (tx.IsEip4844)
+        if (tx.SupportsBlobs)
         {
             tx.MaxFeePerDataGas = MaxFeePerDataGas;
         }
@@ -139,6 +139,8 @@ public class TransactionForRpc
 
     public T ToTransaction<T>(ulong? chainId = null) where T : Transaction, new()
     {
+        byte[]? data = Data ?? Input;
+
         T tx = new()
         {
             GasLimit = Gas ?? 0,
@@ -147,20 +149,25 @@ public class TransactionForRpc
             To = To,
             SenderAddress = From,
             Value = Value ?? 0,
-            Data = Data ?? Input,
+            Data = (Memory<byte>?)data,
             Type = Type,
             AccessList = TryGetAccessList(),
             ChainId = chainId,
             MaxFeePerDataGas = MaxFeePerDataGas,
         };
 
-        if (tx.IsEip1559)
+        if (data is null)
+        {
+            tx.Data = null; // Yes this is needed... really. Try a debugger.
+        }
+
+        if (tx.Supports1559)
         {
             tx.GasPrice = MaxPriorityFeePerGas ?? 0;
             tx.DecodedMaxFeePerGas = MaxFeePerGas ?? 0;
         }
 
-        if (tx.IsEip4844)
+        if (tx.SupportsBlobs)
         {
             tx.MaxFeePerDataGas = MaxFeePerDataGas;
         }

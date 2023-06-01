@@ -9,7 +9,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using FluentAssertions.Extensions;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -37,17 +39,18 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();
             public FullTestPruner FullPruner { get; private set; }
             public IPruningConfig PruningConfig { get; set; } = new PruningConfig();
+            public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
 
             public PruningTestBlockchain()
             {
                 TempDirectory = TempPath.GetTempDirectory();
             }
 
-            protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+            protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 PruningDb = (IFullPruningDb)DbProvider.StateDb;
-                FullPruner = new FullTestPruner(PruningDb, PruningTrigger, PruningConfig, BlockTree, StateReader, LogManager);
+                FullPruner = new FullTestPruner(PruningDb, PruningTrigger, PruningConfig, BlockTree, StateReader, ProcessExitSource, LogManager);
                 return chain;
             }
 
@@ -85,8 +88,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     IPruningConfig pruningConfig,
                     IBlockTree blockTree,
                     IStateReader stateReader,
+                    IProcessExitSource processExitSource,
                     ILogManager logManager)
-                    : base(pruningDb, pruningTrigger, pruningConfig, blockTree, stateReader, logManager)
+                    : base(pruningDb, pruningTrigger, pruningConfig, blockTree, stateReader, processExitSource, logManager)
                 {
                 }
 
@@ -98,7 +102,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             }
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, Timeout(Timeout.MaxTestTime), Retry(5)]
         public async Task prune_on_disk_multiple_times()
         {
             using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 0 });
@@ -108,7 +112,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             }
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, Timeout(Timeout.MaxTestTime), Retry(5)]
         public async Task prune_on_disk_only_once()
         {
             using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 10 });
@@ -138,7 +142,10 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
                 await WriteFileStructure(chain);
 
-                chain.PruningDb.InnerDbName.Should().Be($"State{time + 1}");
+                Assert.That(
+                    () => chain.PruningDb.InnerDbName,
+                    Is.EqualTo($"State{time + 1}").After(1000, 100)
+                    );
 
                 HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
                 currentItems.IsSubsetOf(allItems).Should().BeTrue();

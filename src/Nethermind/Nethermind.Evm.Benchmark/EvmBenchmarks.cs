@@ -30,9 +30,7 @@ namespace Nethermind.Evm.Benchmark
         private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
         private EvmState _evmState;
-        private StateProvider _stateProvider;
-        private StorageProvider _storageProvider;
-        private WorldState _worldState;
+        private WorldState _stateProvider;
 
         [GlobalSetup]
         public void GlobalSetup()
@@ -43,36 +41,32 @@ namespace Nethermind.Evm.Benchmark
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
             IKeyValueStore codeDb = new MemDb();
 
-            _stateProvider = new StateProvider(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
+            _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
-
-            _storageProvider = new StorageProvider(trieStore, _stateProvider, new OneLoggerLogManager(NullLogger.Instance));
-
-            _worldState = new WorldState(_stateProvider, _storageProvider);
 
             _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
 
             _environment = new ExecutionEnvironment
-            {
-                ExecutingAccount = Address.Zero,
-                CodeSource = Address.Zero,
-                Caller = Address.Zero,
-                CodeInfo = new CodeInfo(ByteCode),
-                Value = 0,
-                TransferValue = 0,
-                TxExecutionContext = new TxExecutionContext(_header, Address.Zero, 0, null)
-            };
+            (
+                executingAccount: Address.Zero,
+                codeSource: Address.Zero,
+                caller: Address.Zero,
+                codeInfo: new CodeInfo(ByteCode),
+                value: 0,
+                transferValue: 0,
+                txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null),
+                inputData: default
+            );
 
-            _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.Transaction, true, _worldState.TakeSnapshot(), false);
+            _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.Transaction, true, _stateProvider.TakeSnapshot(), false);
         }
 
         [Benchmark]
         public void ExecuteCode()
         {
-            _virtualMachine.Run(_evmState, _worldState, _txTracer);
+            _virtualMachine.Run(_evmState, _stateProvider, _txTracer);
             _stateProvider.Reset();
-            _storageProvider.Reset();
         }
     }
 }

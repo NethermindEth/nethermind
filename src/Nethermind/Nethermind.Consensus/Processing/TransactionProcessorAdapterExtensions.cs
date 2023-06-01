@@ -15,7 +15,7 @@ namespace Nethermind.Consensus.Processing
             Transaction currentTx,
             BlockReceiptsTracer receiptsTracer,
             ProcessingOptions processingOptions,
-            IStateProvider stateProvider)
+            IWorldState stateProvider)
         {
             if (processingOptions.ContainsFlag(ProcessingOptions.DoNotVerifyNonce))
             {

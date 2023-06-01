@@ -3,7 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using FluentAssertions;
+using FluentAssertions.Numeric;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -63,6 +67,31 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
+        [Repeat(10)] // Might wanna increase this to double check when changing logic as on lower value, it does not reproduce.
+        public void CanCorrectlyCalculateTxHash_when_called_concurrently((Transaction Tx, string Description) testCase)
+        {
+            Transaction tx = testCase.Tx;
+
+            TxDecoder decoder = new TxDecoder();
+            Rlp rlp = decoder.Encode(tx);
+
+            Keccak expectedHash = Keccak.Compute(rlp.Bytes);
+
+            Transaction decodedTx = decoder.Decode(new RlpStream(rlp.Bytes));
+
+            decodedTx.SetPreHash(rlp.Bytes);
+
+            IEnumerable<Task<AndConstraint<ComparableTypeAssertions<Keccak>>>> tasks = Enumerable
+                .Range(0, 32)
+                .Select((_) =>
+                    Task.Factory
+                        .StartNew(() => decodedTx.Hash.Should().Be(expectedHash),
+                            TaskCreationOptions.RunContinuationsAsynchronously));
+
+            Task.WaitAll(tasks.ToArray());
+        }
+
+        [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip((Transaction Tx, string Description) testCase)
         {
             RlpStream rlpStream = new RlpStream(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
@@ -71,7 +100,7 @@ namespace Nethermind.Core.Test.Encoding
             Transaction? decoded = _txDecoder.Decode(rlpStream);
             decoded!.SenderAddress = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
-            decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
+            decoded.EqualToTransaction(testCase.Tx);
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
@@ -86,7 +115,7 @@ namespace Nethermind.Core.Test.Encoding
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
             decoded!.SenderAddress = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
-            decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
+            decoded.EqualToTransaction(testCase.Tx);
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]
@@ -162,7 +191,7 @@ namespace Nethermind.Core.Test.Encoding
             Rlp encodedWithDecodedByValueDecoderContext = _txDecoder.Encode(decodedByValueDecoderContext!);
             decoded!.Hash.Should().Be(testCase.Hash);
             decoded!.Hash.Should().Be(decodedByValueDecoderContext!.Hash);
-            Assert.AreEqual(encoded.Bytes, encodedWithDecodedByValueDecoderContext.Bytes);
+            Assert.That(encodedWithDecodedByValueDecoderContext.Bytes, Is.EqualTo(encoded.Bytes));
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
@@ -170,7 +199,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             Rlp rlpStreamResult = _txDecoder.Encode(testCase.Tx, RlpBehaviors.SkipTypedWrapping);
             Rlp rlpResult = Rlp.Encode(testCase.Tx, false, true, testCase.Tx.ChainId ?? 0);
-            Assert.AreEqual(rlpResult.Bytes, rlpStreamResult.Bytes);
+            Assert.That(rlpStreamResult.Bytes, Is.EqualTo(rlpResult.Bytes));
         }
 
         public static IEnumerable<(string, Keccak)> SkipTypedWrappingTestCases()

@@ -22,8 +22,24 @@ public class TrieNodeResolverWithReadFlagsTests
         TrieNodeResolverWithReadFlags resolver = new(trieStore, theFlags);
 
         Keccak theKeccak = TestItem.KeccakA;
+        memDb[theKeccak.Bytes] = TestItem.KeccakA.BytesToArray();
         resolver.LoadRlp(theKeccak);
 
-        memDb.KeyWasReadWithFlags(theKeccak.Bytes, theFlags);
+        memDb.KeyWasReadWithFlags(theKeccak.BytesToArray(), theFlags);
+    }
+
+    [Test]
+    public void LoadRlp_combine_passed_fleag()
+    {
+        ReadFlags theFlags = ReadFlags.HintCacheMiss;
+        TestMemDb memDb = new();
+        ITrieStore trieStore = new TrieStore(memDb, LimboLogs.Instance);
+        TrieNodeResolverWithReadFlags resolver = new(trieStore, theFlags);
+
+        Keccak theKeccak = TestItem.KeccakA;
+        memDb[theKeccak.Bytes] = TestItem.KeccakA.BytesToArray();
+        resolver.LoadRlp(theKeccak, ReadFlags.HintReadAhead);
+
+        memDb.KeyWasReadWithFlags(theKeccak.BytesToArray(), theFlags | ReadFlags.HintReadAhead);
     }
 }

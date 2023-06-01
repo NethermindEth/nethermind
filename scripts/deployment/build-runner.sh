@@ -4,25 +4,30 @@
 
 set -e
 
-OUTPUT_PATH=$GITHUB_WORKSPACE/$PUB_DIR
-RUNNER_PATH=$GITHUB_WORKSPACE/nethermind/src/Nethermind/Nethermind.Runner
+output_path=$GITHUB_WORKSPACE/$PUB_DIR
 
-cd $RUNNER_PATH
+cd $GITHUB_WORKSPACE/nethermind/src/Nethermind/Nethermind.Runner
 
-echo "Building Nethermind v$1+${2:0:8}"
+echo "Building Nethermind"
 
 for rid in "linux-x64" "linux-arm64" "win-x64" "osx-x64" "osx-arm64"
 do
   echo "  Publishing for $rid"
 
-  dotnet publish -c release -r $rid -o $OUTPUT_PATH/$rid --sc true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
+  dotnet publish -c release -r $rid -o $output_path/$rid --sc true \
+    -p:BuildTimestamp=$2 \
+    -p:Commit=$1 \
+    -p:DebugType=none \
+    -p:Deterministic=true \
+    -p:IncludeAllContentForSelfExtract=true \
+    -p:PublishSingleFile=true
 
-  rm -rf $OUTPUT_PATH/$rid/*.pdb
-  rm -rf $OUTPUT_PATH/$rid/Data/*
-  rm -rf $OUTPUT_PATH/$rid/Hive
-  cp -r configs $OUTPUT_PATH/$rid
-  cp Data/static-nodes.json $OUTPUT_PATH/$rid/Data
-  mkdir $OUTPUT_PATH/$rid/keystore
+  cp -r configs $output_path/$rid
+  mkdir $output_path/$rid/keystore
 done
+
+cd ..
+mkdir $output_path/ref
+cp **/obj/release/**/refint/*.dll $output_path/ref
 
 echo "Build completed"

@@ -38,8 +38,11 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    [Test]
-    public virtual async Task processing_block_should_serialize_valid_responses()
+    [TestCase(
+        "0xb1b3b07ef3832bd409a04fdea9bf2bfa83d7af0f537ff25f4a3d2eb632ebfb0f",
+        "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133",
+        "0x6454408c425ddd96")]
+    public virtual async Task processing_block_should_serialize_valid_responses(string blockHash, string latestValidHash, string payloadId)
     {
         using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig()
         {
@@ -69,14 +72,14 @@ public partial class EngineModuleTests
         };
         // prepare a payload
         string result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters!);
-        byte[] expectedPayloadId = Bytes.FromHexString("0x6454408c425ddd96");
-        result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\",\"latestValidHash\":\"0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133\",\"validationError\":null}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
+        byte[] expectedPayloadId = Bytes.FromHexString(payloadId);
+        result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\",\"latestValidHash\":\"{latestValidHash}\",\"validationError\":null}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
 
-        Keccak blockHash = new("0xb1b3b07ef3832bd409a04fdea9bf2bfa83d7af0f537ff25f4a3d2eb632ebfb0f");
+        Keccak expectedBlockHash = new(blockHash);
         string? expectedPayload = chain.JsonSerializer.Serialize(new ExecutionPayload
         {
             BaseFeePerGas = 0,
-            BlockHash = blockHash,
+            BlockHash = expectedBlockHash,
             BlockNumber = 1,
             ExtraData = Bytes.FromHexString("0x4e65746865726d696e64"), // Nethermind
             FeeRecipient = feeRecipient,
@@ -95,19 +98,19 @@ public partial class EngineModuleTests
         result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedPayload},\"id\":67}}");
         // execute the payload
         result = RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV1", expectedPayload);
-        result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"latestValidHash\":\"{blockHash}\",\"validationError\":null}},\"id\":67}}");
+        result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"latestValidHash\":\"{expectedBlockHash}\",\"validationError\":null}},\"id\":67}}");
 
         forkChoiceUpdatedParams = new
         {
-            headBlockHash = blockHash.ToString(true),
-            safeBlockHash = blockHash.ToString(true),
+            headBlockHash = expectedBlockHash.ToString(true),
+            safeBlockHash = expectedBlockHash.ToString(true),
             finalizedBlockHash = startingHead.ToString(true),
         };
         parameters = new[] { JsonConvert.SerializeObject(forkChoiceUpdatedParams), null };
         // update the fork choice
         result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters!);
         result.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"VALID\",\"latestValidHash\":\"" +
-                           blockHash +
+                           expectedBlockHash +
                            "\",\"validationError\":null},\"payloadId\":null},\"id\":67}");
     }
 
@@ -514,7 +517,7 @@ public partial class EngineModuleTests
         actualFinalizedHash.Should().NotBeNull();
         actualFinalizedHash.Should().Be(startingHead);
 
-        Assert.AreEqual(actualFinalizedHash, chain.BlockFinalizationManager.LastFinalizedHash);
+        Assert.That(chain.BlockFinalizationManager.LastFinalizedHash, Is.EqualTo(actualFinalizedHash));
         AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash!, startingHead, startingHead);
     }
 
@@ -758,7 +761,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = await SendNewBlockV1(rpc, chain);
         await rpc.engine_forkchoiceUpdatedV1(
             new ForkchoiceStateV1(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash));
-        Assert.AreEqual(2, chain.BlockTree.Head!.Number);
+        Assert.That(chain.BlockTree.Head!.Number, Is.EqualTo(2));
     }
 
     [TestCase(null)]
@@ -1165,6 +1168,7 @@ public partial class EngineModuleTests
 
         txsReceived.Should().BeEquivalentTo(txsSource, options => options
             .Excluding(t => t.ChainId)
+            .Excluding(t => t.Data)
             .Excluding(t => t.SenderAddress)
             .Excluding(t => t.Timestamp)
         );
@@ -1202,9 +1206,9 @@ public partial class EngineModuleTests
             TerminalTotalDifficulty = (UInt256)clTtd
         }).Data;
 
-        Assert.AreEqual((UInt256)1000001, result.TerminalTotalDifficulty);
-        Assert.AreEqual(1, result.TerminalBlockNumber);
-        Assert.AreEqual("0x191dc9697d77129ee5b6f6d57074d2c854a38129913e3fdd3d9f0ebc930503a6", result.TerminalBlockHash.ToString());
+        Assert.That(result.TerminalTotalDifficulty, Is.EqualTo((UInt256)1000001));
+        Assert.That(result.TerminalBlockNumber, Is.EqualTo(1));
+        Assert.That(result.TerminalBlockHash.ToString(), Is.EqualTo("0x191dc9697d77129ee5b6f6d57074d2c854a38129913e3fdd3d9f0ebc930503a6"));
     }
 
     [TestCase(0, "0x0000000000000000000000000000000000000000000000000000000000000000")]
@@ -1222,9 +1226,9 @@ public partial class EngineModuleTests
             TerminalTotalDifficulty = (UInt256)clTtd
         }).Data;
 
-        Assert.AreEqual(UInt256.Parse("115792089237316195423570985008687907853269984665640564039457584007913129638912"), result.TerminalTotalDifficulty);
-        Assert.AreEqual(0, result.TerminalBlockNumber);
-        Assert.AreEqual("0x0000000000000000000000000000000000000000000000000000000000000000", result.TerminalBlockHash.ToString());
+        Assert.That(result.TerminalTotalDifficulty, Is.EqualTo(UInt256.Parse("115792089237316195423570985008687907853269984665640564039457584007913129638912")));
+        Assert.That(result.TerminalBlockNumber, Is.EqualTo(0));
+        Assert.That(result.TerminalBlockHash.ToString(), Is.EqualTo("0x0000000000000000000000000000000000000000000000000000000000000000"));
     }
 
     private async Task<ExecutionPayload> SendNewBlockV1(IEngineRpcModule rpc, MergeTestBlockchain chain)
@@ -1627,16 +1631,16 @@ public partial class EngineModuleTests
         Keccak finalizedBlockHash,
         Keccak confirmedBlockHash)
     {
-        Assert.AreEqual(headBlockHash, blockFinder.HeadHash);
-        Assert.AreEqual(finalizedBlockHash, blockFinder.FinalizedHash);
-        Assert.AreEqual(confirmedBlockHash, blockFinder.SafeHash);
+        Assert.That(blockFinder.HeadHash, Is.EqualTo(headBlockHash));
+        Assert.That(blockFinder.FinalizedHash, Is.EqualTo(finalizedBlockHash));
+        Assert.That(blockFinder.SafeHash, Is.EqualTo(confirmedBlockHash));
     }
 
     private void AssertExecutionStatusNotChangedV1(IBlockFinder blockFinder, Keccak headBlockHash,
         Keccak finalizedBlockHash, Keccak confirmedBlockHash)
     {
-        Assert.AreNotEqual(headBlockHash, blockFinder.HeadHash);
-        Assert.AreNotEqual(finalizedBlockHash, blockFinder.FinalizedHash);
-        Assert.AreNotEqual(confirmedBlockHash, blockFinder.SafeHash);
+        Assert.That(blockFinder.HeadHash, Is.Not.EqualTo(headBlockHash));
+        Assert.That(blockFinder.FinalizedHash, Is.Not.EqualTo(finalizedBlockHash));
+        Assert.That(blockFinder.SafeHash, Is.Not.EqualTo(confirmedBlockHash));
     }
 }

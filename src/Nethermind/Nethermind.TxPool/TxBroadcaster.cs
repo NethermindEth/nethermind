@@ -124,6 +124,12 @@ namespace Nethermind.TxPool
 
         public void BroadcastPersistentTxs()
         {
+            if (_persistentTxs.Count == 0)
+            {
+                if (_logger.IsTrace) _logger.Trace($"There is nothing to broadcast - collection of persistent txs is empty");
+                return;
+            }
+
             DateTimeOffset now = DateTimeOffset.Now;
             if (_lastPersistedTxBroadcast + _minTimeBetweenPersistedTxBroadcast > now)
             {
@@ -134,20 +140,30 @@ namespace Nethermind.TxPool
 
             if (_txPoolConfig.PeerNotificationThreshold > 0)
             {
-                IList<Transaction> persistentTxsToSend = GetPersistentTxsToSend();
+                (IList<Transaction>? transactionsToSend, IList<Transaction>? hashesToSend) = GetPersistentTxsToSend();
 
-                if (persistentTxsToSend.Count > 0)
+                if (transactionsToSend is not null)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Broadcasting {persistentTxsToSend.Count} persistent transactions to all peers.");
+                    if (_logger.IsDebug) _logger.Debug($"Broadcasting {transactionsToSend.Count} persistent transactions to all peers.");
 
                     foreach ((_, ITxPoolPeer peer) in _peers)
                     {
-                        Notify(peer, persistentTxsToSend, true);
+                        Notify(peer, transactionsToSend, true);
                     }
                 }
                 else
                 {
                     if (_logger.IsDebug) _logger.Debug($"There are currently no transactions able to broadcast.");
+                }
+
+                if (hashesToSend is not null)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Announcing {hashesToSend.Count} hashes of persistent transactions to all peers.");
+
+                    foreach ((_, ITxPoolPeer peer) in _peers)
+                    {
+                        Notify(peer, hashesToSend, false);
+                    }
                 }
             }
             else
@@ -156,16 +172,16 @@ namespace Nethermind.TxPool
             }
         }
 
-        internal IList<Transaction> GetPersistentTxsToSend()
+        internal (IList<Transaction>? TransactionsToSend, IList<Transaction>? HashesToSend) GetPersistentTxsToSend()
         {
             // PeerNotificationThreshold is a declared in config max percent of transactions in persistent broadcast,
             // which will be sent after processing of every block. numberOfPersistentTxsToBroadcast is equal to
             // PeerNotificationThreshold multiplication by number of transactions in persistent broadcast, rounded up.
             int numberOfPersistentTxsToBroadcast =
-                Math.Min(_txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1,
-                    _persistentTxs.Count);
+                Math.Min(_txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1, _persistentTxs.Count);
 
-            List<Transaction> persistentTxsToSend = new(numberOfPersistentTxsToBroadcast);
+            List<Transaction>? persistentTxsToSend = null;
+            List<Transaction>? persistentHashesToSend = null;
 
             foreach (Transaction tx in _persistentTxs.GetFirsts())
             {
@@ -174,7 +190,16 @@ namespace Nethermind.TxPool
                     if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee)
                     {
                         numberOfPersistentTxsToBroadcast--;
-                        persistentTxsToSend.Add(tx);
+                        if (tx.CanBeBroadcast())
+                        {
+                            persistentTxsToSend ??= new List<Transaction>(numberOfPersistentTxsToBroadcast);
+                            persistentTxsToSend.Add(tx);
+                        }
+                        else
+                        {
+                            persistentHashesToSend ??= new List<Transaction>(numberOfPersistentTxsToBroadcast);
+                            persistentHashesToSend.Add(tx);
+                        }
                     }
                 }
                 else
@@ -183,7 +208,7 @@ namespace Nethermind.TxPool
                 }
             }
 
-            return persistentTxsToSend;
+            return (persistentTxsToSend, persistentHashesToSend);
         }
 
         public void StopBroadcast(Keccak txHash)

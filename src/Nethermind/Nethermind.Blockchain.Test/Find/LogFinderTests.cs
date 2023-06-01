@@ -240,7 +240,7 @@ namespace Nethermind.Blockchain.Test.Find
             var logs = _logFinder.FindLogs(logFilter).ToArray();
 
             var blockNumbers = logs.Select((log) => log.BlockNumber).ToArray();
-            Assert.AreEqual(blockNumbers, expectedBlockNumbers);
+            Assert.That(expectedBlockNumbers, Is.EqualTo(blockNumbers));
         }
 
         public static IEnumerable FilterByBlocksTestsData

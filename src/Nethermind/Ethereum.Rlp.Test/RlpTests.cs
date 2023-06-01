@@ -99,31 +99,31 @@ namespace Ethereum.Rlp.Test
         [Test]
         public void TestEmpty()
         {
-            Assert.AreEqual(Nethermind.Serialization.Rlp.Rlp.OfEmptyByteArray, Nethermind.Serialization.Rlp.Rlp.Encode(new byte[0]));
-            Assert.AreEqual(Nethermind.Serialization.Rlp.Rlp.OfEmptySequence, Nethermind.Serialization.Rlp.Rlp.Encode(new Nethermind.Serialization.Rlp.Rlp[0]));
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(new byte[0]), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyByteArray));
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(new Nethermind.Serialization.Rlp.Rlp[0]), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptySequence));
         }
 
         [Test]
         public void TestCast()
         {
             byte[] expected = new byte[] { 1 };
-            Assert.AreEqual(expected, Nethermind.Serialization.Rlp.Rlp.Encode((byte)1).Bytes, "byte");
-            Assert.AreEqual(expected, Nethermind.Serialization.Rlp.Rlp.Encode((short)1).Bytes, "short");
-            Assert.AreEqual(expected, Nethermind.Serialization.Rlp.Rlp.Encode((ushort)1).Bytes, "ushort");
-            Assert.AreEqual(expected, Nethermind.Serialization.Rlp.Rlp.Encode(1).Bytes, "int");
-            Assert.AreEqual(expected, Nethermind.Serialization.Rlp.Rlp.Encode(1U).Bytes, "uint bytes");
-            Assert.AreEqual(expected, Nethermind.Serialization.Rlp.Rlp.Encode(1L).Bytes, "long bytes");
-            Assert.AreEqual(expected, Nethermind.Serialization.Rlp.Rlp.Encode(1UL).Bytes, "ulong bytes");
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((byte)1).Bytes, Is.EqualTo(expected), "byte");
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((short)1).Bytes, Is.EqualTo(expected), "short");
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((ushort)1).Bytes, Is.EqualTo(expected), "ushort");
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1).Bytes, Is.EqualTo(expected), "int");
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1U).Bytes, Is.EqualTo(expected), "uint bytes");
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1L).Bytes, Is.EqualTo(expected), "long bytes");
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1UL).Bytes, Is.EqualTo(expected), "ulong bytes");
 
             byte[] expectedNonce = new byte[] { 136, 0, 0, 0, 0, 0, 0, 0, 1 };
-            Assert.AreEqual(expectedNonce, Nethermind.Serialization.Rlp.Rlp.EncodeNonce(1UL).Bytes, "nonce bytes");
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.EncodeNonce(1UL).Bytes, Is.EqualTo(expectedNonce), "nonce bytes");
         }
 
         [Test]
         public void TestNonce()
         {
             byte[] expected = { 136, 0, 0, 0, 0, 0, 0, 0, 42 };
-            Assert.AreEqual(expected, Nethermind.Serialization.Rlp.Rlp.EncodeNonce(42UL).Bytes);
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.EncodeNonce(42UL).Bytes, Is.EqualTo(expected));
         }
 
         //[Ignore("placeholder for various rlp tests")]

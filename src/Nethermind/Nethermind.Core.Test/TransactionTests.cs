@@ -4,6 +4,7 @@
 using System;
 using FluentAssertions;
 using System.Collections.Generic;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
@@ -33,13 +34,27 @@ namespace Nethermind.Core.Test
 
         [TestCase(1, true)]
         [TestCase(300, true)]
-        public void IsEip1559_returns_expected_results(int decodedFeeCap, bool expectedIsEip1559)
+        public void Supports1559_returns_expected_results(int decodedFeeCap, bool expectedSupports1559)
         {
             Transaction transaction = new();
             transaction.DecodedMaxFeePerGas = (uint)decodedFeeCap;
             transaction.Type = TxType.EIP1559;
-            Assert.AreEqual(transaction.MaxFeePerGas, transaction.DecodedMaxFeePerGas);
-            Assert.AreEqual(expectedIsEip1559, transaction.IsEip1559);
+            Assert.That(transaction.DecodedMaxFeePerGas, Is.EqualTo(transaction.MaxFeePerGas));
+            Assert.That(transaction.Supports1559, Is.EqualTo(expectedSupports1559));
+        }
+    }
+
+    public static class TransactionTestExtensions
+    {
+        public static void EqualToTransaction(this Transaction subject, Transaction expectation)
+        {
+            subject.Should().BeEquivalentTo(
+                expectation,
+                o => o
+                    .ComparingByMembers<System.Transactions.Transaction>()
+                    .Using<Memory<byte>>(ctx => ctx.Subject.AsArray().Should().BeEquivalentTo(ctx.Expectation.AsArray()))
+                    .WhenTypeIs<Memory<byte>>()
+                );
         }
     }
 }

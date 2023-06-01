@@ -71,7 +71,7 @@ namespace Nethermind.Evm
             if (value.Span.Length != 32)
             {
                 word.Clear();
-                value.Span.CopyTo(word.Slice(0, value.Span.Length));
+                value.Span.CopyTo(word[..value.Span.Length]);
             }
             else
             {
@@ -93,7 +93,7 @@ namespace Nethermind.Evm
             if (value.Memory.Length != 32)
             {
                 word.Clear();
-                value.Memory.Span.CopyTo(word.Slice(0, value.Memory.Length));
+                value.Memory.Span.CopyTo(word[..value.Memory.Length]);
             }
             else
             {
@@ -265,6 +265,18 @@ namespace Nethermind.Evm
             }
 
             result = new UInt256(u0, u1, u2, u3);
+        }
+
+        public bool PeekUInt256IsZero()
+        {
+            int head = Head - 1;
+            if (head <= 0)
+            {
+                return false;
+            }
+
+            ref byte bytes = ref _bytes[head * 32];
+            return Unsafe.ReadUnaligned<UInt256>(ref bytes).IsZero;
         }
 
         public Address PopAddress()

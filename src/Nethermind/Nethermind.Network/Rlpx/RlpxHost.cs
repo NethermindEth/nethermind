@@ -35,6 +35,7 @@ namespace Nethermind.Network.Rlpx
         private bool _isInitialized;
         public PublicKey LocalNodeId { get; }
         public int LocalPort { get; }
+        public string? LocalIp { get; set; }
         private readonly IHandshakeService _handshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
@@ -43,11 +44,14 @@ namespace Nethermind.Network.Rlpx
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private IEventExecutorGroup _group;
         private TimeSpan _sendLatency;
+        private readonly TimeSpan _connectTimeout;
 
         public RlpxHost(IMessageSerializationService serializationService,
             PublicKey localNodeId,
             int localPort,
             int networkProcessingThread,
+            string? localIp,
+            int connectTimeoutMs,
             IHandshakeService handshakeService,
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
@@ -79,7 +83,9 @@ namespace Nethermind.Network.Rlpx
             _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
             LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
             LocalPort = localPort;
+            LocalIp = localIp;
             _sendLatency = sendLatency;
+            _connectTimeout = TimeSpan.FromMilliseconds(connectTimeoutMs);
         }
 
         public async Task Init()
@@ -110,7 +116,11 @@ namespace Nethermind.Network.Rlpx
                         InitializeChannel(ch, session);
                     }));
 
-                _bootstrapChannel = await bootstrap.BindAsync(LocalPort).ContinueWith(t =>
+                Task<IChannel> openTask = LocalIp is null
+                    ? bootstrap.BindAsync(LocalPort)
+                    : bootstrap.BindAsync(IPAddress.Parse(LocalIp), LocalPort);
+
+                _bootstrapChannel = await openTask.ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -153,7 +163,7 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap.Channel<TcpSocketChannel>();
             clientBootstrap.Option(ChannelOption.TcpNodelay, true);
             clientBootstrap.Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default);
-            clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
+            clientBootstrap.Option(ChannelOption.ConnectTimeout, _connectTimeout);
             clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
             {
                 Session session = new(LocalPort, node, ch, _disconnectsAnalyzer, _logManager);
@@ -162,7 +172,7 @@ namespace Nethermind.Network.Rlpx
 
             Task<IChannel> connectTask = clientBootstrap.ConnectAsync(node.Address);
             CancellationTokenSource delayCancellation = new();
-            Task firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(2)), delayCancellation.Token));
+            Task firstTask = await Task.WhenAny(connectTask, Task.Delay(_connectTimeout.Add(TimeSpan.FromSeconds(2)), delayCancellation.Token));
             if (firstTask != connectTask)
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connection timed out");

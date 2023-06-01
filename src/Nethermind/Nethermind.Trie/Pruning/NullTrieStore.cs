@@ -13,9 +13,9 @@ namespace Nethermind.Trie.Pruning
 
         public static NullTrieStore Instance { get; } = new();
 
-        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
+        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags flags = WriteFlags.None) { }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root) { }
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
         public void HackPersistOnShutdown() { }
 
@@ -35,15 +35,19 @@ namespace Nethermind.Trie.Pruning
             return new(NodeType.Unknown, hash);
         }
 
-        public byte[] LoadRlp(Keccak hash)
+        public byte[] LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None)
         {
             return Array.Empty<byte>();
         }
 
         public bool IsPersisted(Keccak keccak) => true;
+        public bool IsPersisted(in ValueKeccak keccak) => true;
 
         public void Dispose() { }
 
-        public byte[]? this[ReadOnlySpan<byte> key] => null;
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return null;
+        }
     }
 }
