@@ -841,7 +841,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             state[TestItem.AddressA].Nonce.Before.Should().Be(accountA.Nonce);
             state[TestItem.AddressD].Balance.Before.Should().Be(accountD.Balance);
             state[TestItem.AddressA].Balance.Before.Should().Be(accountA.Balance);
-            state[TestItem.AddressF].Balance.Before.Should().Be(accountF.Balance);
+            state[TestItem.AddressF].Balance.Before.Should().Be(null);
 
             state[TestItem.AddressA].Nonce.After.Should().Be(accountA.Nonce + 1);
             state[TestItem.AddressD].Balance.After.Should().Be(accountD.Balance + 21000 * tx.GasPrice);
