@@ -157,7 +157,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<MultiCallResultModel> eth_multicall(ulong version, MultiCallBlockStateCallsModel[] blockCalls,
+        public ResultWrapper<MultiCallBlockResult[]> eth_multicall(ulong version, MultiCallBlockStateCallsModel[] blockCalls,
             BlockParameter? blockParameter = null)
         {
             throw new NotImplementedException();

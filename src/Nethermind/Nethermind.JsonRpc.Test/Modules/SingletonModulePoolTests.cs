@@ -51,7 +51,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ISpecProvider>(),
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IGasPriceOracle>(),
-                Substitute.For<IEthSyncingInfo>());
+                Substitute.For<IEthSyncingInfo>(),
+                dbProvider);
         }
 
         [Test]

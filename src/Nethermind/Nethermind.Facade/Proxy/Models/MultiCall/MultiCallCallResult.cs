@@ -3,7 +3,7 @@
 
 namespace Nethermind.Facade.Proxy.Models.MultiCall;
 
-public class MultiCallResultModel
+public class MultiCallCallResult
 {
     public ResultType Type
     {
@@ -21,12 +21,9 @@ public class MultiCallResultModel
             return ResultType.Invalid;
         }
     }
-
+    public Log[]? Logs { get; set; }
     public string Status { get; set; }
     public byte[]? Return { get; set; }
-    public ulong? GasUsed { get; set; }
-
     public Error? Error { get; set; }
-    public Log[]? Logs { get; set; }
-
+    public ulong? GasUsed { get; set; }
 }

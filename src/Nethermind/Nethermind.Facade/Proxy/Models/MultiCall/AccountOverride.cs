@@ -20,6 +20,7 @@ public class AccountOverride
 
     /// AccountOverrideState and AccountOverrideStateDiff base
     public Address Address { get; set; }
+    public Address? MoveToAddress { get; set; }
     public UInt256 Nonce { get; set; }
 
     public UInt256 Balance { get; set; }

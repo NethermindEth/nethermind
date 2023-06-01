@@ -113,9 +113,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             await base.Build(specProvider, initialValues);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
-
+            var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
             ReadOnlyTxProcessingEnv processingEnv = new(
-                new ReadOnlyDbProvider(DbProvider, false),
+                dbProvider,
                 new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new ReadOnlyBlockTree(BlockTree),
                 SpecProvider,
@@ -146,7 +146,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SpecProvider,
                 GasPriceOracle,
                 new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, new StaticSelector(SyncMode.All), LogManager),
-                FeeHistoryOracle);
+                FeeHistoryOracle,
+                dbProvider);
 
             return this;
         }

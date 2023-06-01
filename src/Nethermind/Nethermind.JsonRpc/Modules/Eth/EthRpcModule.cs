@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
@@ -55,6 +56,8 @@ public partial class EthRpcModule : IEthRpcModule
     private readonly IEthSyncingInfo _ethSyncingInfo;
 
     private readonly IFeeHistoryOracle _feeHistoryOracle;
+    private readonly IDbProvider _dbProvider;
+
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
         RootCheckVisitor rootCheckVisitor = new();
@@ -75,7 +78,8 @@ public partial class EthRpcModule : IEthRpcModule
         ISpecProvider specProvider,
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
-        IFeeHistoryOracle feeHistoryOracle)
+        IFeeHistoryOracle feeHistoryOracle,
+        IDbProvider dbProvider)
     {
         _logger = logManager.GetClassLogger();
         _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -90,6 +94,7 @@ public partial class EthRpcModule : IEthRpcModule
         _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
         _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
         _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
+        _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider)); ;
     }
 
     public ResultWrapper<string> eth_protocolVersion()
@@ -367,10 +372,10 @@ public partial class EthRpcModule : IEthRpcModule
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter);
 
-    public ResultWrapper<MultiCallResultModel> eth_multicall(ulong version, MultiCallBlockStateCallsModel[] blockCalls,
+    public ResultWrapper<MultiCallBlockResult[]> eth_multicall(ulong version, MultiCallBlockStateCallsModel[] blockCalls,
         BlockParameter? blockParameter = null)
     {
-        return new MultiCallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
+        return new MultiCallTxExecutor(_dbProvider, _specProvider, _rpcConfig)
             .Execute(version, blockCalls, blockParameter);
     }
 

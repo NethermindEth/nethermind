@@ -2,18 +2,26 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Facade;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth.Multicall;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -84,19 +92,112 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private class MultiCallTxExecutor
+        internal class MultiCallTxExecutor
         {
-            public MultiCallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
-            {
+            private readonly IDbProvider _dbProvider;
+            private readonly ISpecProvider _specProvider;
 
+            internal static void ModifyAccounts(MultiCallBlockStateCallsModel requestBlockOne, IWorldState _stateProvider,
+      IReleaseSpec latestBlockSpec, ISpecProvider _specProvider, MultiCallVirtualMachine virtualMachine)
+            {
+                Account? acc;
+                foreach (AccountOverride accountOverride in requestBlockOne.StateOverrides)
+                {
+                    Address address = accountOverride.Address;
+                    bool accExists = _stateProvider.AccountExists(address);
+                    if (!accExists)
+                    {
+                        _stateProvider.CreateAccount(address, accountOverride.Balance, accountOverride.Nonce);
+                        acc = _stateProvider.GetAccount(address);
+                    }
+                    else
+                    {
+                        acc = _stateProvider.GetAccount(address);
+                    }
+
+                    UInt256 accBalance = acc.Balance;
+                    if (accBalance > accountOverride.Balance)
+                    {
+                        _stateProvider.SubtractFromBalance(address, accBalance - accountOverride.Balance, latestBlockSpec);
+                    }
+                    else if (accBalance < accountOverride.Nonce)
+                    {
+                        _stateProvider.AddToBalance(address, accountOverride.Balance - accBalance, latestBlockSpec);
+                    }
+
+                    UInt256 accNonce = acc.Nonce;
+                    if (accNonce > accountOverride.Nonce)
+                    {
+                        _stateProvider.DecrementNonce(address);
+                    }
+                    else if (accNonce < accountOverride.Nonce)
+                    {
+                        _stateProvider.IncrementNonce(address);
+                    }
+
+                    if (acc != null)
+                        if (accountOverride.Code is not null)
+                            virtualMachine.SetOverwrite(_stateProvider, latestBlockSpec, address, new CodeInfo(accountOverride.Code), accountOverride.MoveToAddress);
+
+
+                    if (accountOverride.State is not null)
+                    {
+                        accountOverride.State = new Dictionary<UInt256, byte[]>();
+                        foreach (KeyValuePair<UInt256, byte[]> storage in accountOverride.State)
+                            _stateProvider.Set(new StorageCell(address, storage.Key),
+                                storage.Value.WithoutLeadingZeros().ToArray());
+                    }
+
+                    if (accountOverride.StateDiff is not null)
+                    {
+                        foreach (KeyValuePair<UInt256, byte[]> storage in accountOverride.StateDiff)
+                            _stateProvider.Set(new StorageCell(address, storage.Key),
+                                storage.Value.WithoutLeadingZeros().ToArray());
+                    }
+
+                    _stateProvider.Commit(latestBlockSpec);
+                }
             }
 
-            public ResultWrapper<MultiCallResultModel> Execute(ulong version, MultiCallBlockStateCallsModel[] blockCalls,
+            public MultiCallTxExecutor(IDbProvider DbProvider, ISpecProvider specProvider, IJsonRpcConfig rpcConfig)
+            {
+                _dbProvider = DbProvider;
+                _specProvider = specProvider;
+            }
+
+            //ToDO move to exctensions
+            private static IEnumerable<UInt256> Range(UInt256 start, UInt256 end)
+            {
+                for (var i = start; i <= end; i++)
+                {
+                    yield return i;
+                }
+            }
+
+            public ResultWrapper<MultiCallBlockResult[]> Execute(ulong version, MultiCallBlockStateCallsModel[] blockCallsToProcess,
                 BlockParameter? blockParameter)
             {
+                List<MultiCallBlockStateCallsModel> blockCalls = FillInMisingBlocks(blockCallsToProcess);
+
+                using (MultiCallBlockchainFork tmpChain = new(_dbProvider, _specProvider))
+                {
+                    //TODO: remove assumption that we start from head and get back
+                    foreach (MultiCallBlockStateCallsModel blockCall in blockCalls)
+                    {
+                        bool processed = tmpChain.ForgeChainBlock((stateProvider, currentSpec, specProvider, virtualMachine) =>
+                        {
+                            ModifyAccounts(blockCall, stateProvider, currentSpec, specProvider, virtualMachine);
+                        });
+                        if (!processed)
+                        {
+                            break;
+                        }
+                    }
+                    
+                }
 
 
-                throw new NotImplementedException();
+                    throw new NotImplementedException();
 
                 /*
                 BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, token);
@@ -112,7 +213,37 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 */
             }
 
+            //Returns an ordered list of blockCallsToProcess without gaps
+            private static List<MultiCallBlockStateCallsModel> FillInMisingBlocks(MultiCallBlockStateCallsModel[] blockCallsToProcess)
+            {
+                var blockCalls = blockCallsToProcess.OrderBy(model => model.BlockOverride.Number).ToList();
 
+                // Get the lowest and highest numbers
+                var minNumber = blockCalls.First().BlockOverride.Number;
+                var maxNumber = blockCalls.Last().BlockOverride.Number;
+
+                // Generate a sequence of numbers in that range
+                var rangeNumbers = Range(minNumber, maxNumber - minNumber + 1);
+
+                // Get the list of current numbers
+                var currentNumbers = new HashSet<UInt256>(blockCalls.Select(m => m.BlockOverride.Number));
+
+                // Find which numbers are missing
+                var missingNumbers = rangeNumbers.Where(n => !currentNumbers.Contains(n));
+
+                // Fill in the gaps
+                foreach (var missingNumber in missingNumbers)
+                {
+                    blockCalls.Add(new MultiCallBlockStateCallsModel()
+                    {
+                        BlockOverride = new BlockOverride() { Number = missingNumber }
+                    });
+                }
+
+                // Sort again after filling the gaps
+                blockCalls = blockCalls.OrderBy(model => model.BlockOverride.Number).ToList();
+                return blockCalls;
+            }
         }
 
         private class EstimateGasTxExecutor : TxExecutor<UInt256?>

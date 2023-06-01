@@ -93,6 +93,7 @@ namespace Nethermind.Init.Steps
             if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
             if (_api.EthSyncingInfo is null) throw new StepDependencyException(nameof(_api.EthSyncingInfo));
             if (_api.ReadOnlyTrieStore is null) throw new StepDependencyException(nameof(_api.ReadOnlyTrieStore));
+            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
 
             EthModuleFactory ethModuleFactory = new(
                 _api.TxPool,
@@ -106,11 +107,11 @@ namespace Nethermind.Init.Steps
                 _api.SpecProvider,
                 _api.ReceiptStorage,
                 _api.GasPriceOracle,
-                _api.EthSyncingInfo);
+                _api.EthSyncingInfo,
+                _api.DbProvider);
 
             rpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
 
-            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.BlockPreprocessor is null) throw new StepDependencyException(nameof(_api.BlockPreprocessor));
             if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));

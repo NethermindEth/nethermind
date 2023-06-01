@@ -247,7 +247,8 @@ public class MultiCallBlockchainFork : IDisposable
             SpecProvider,
             gasPriceOracle,
             new EthSyncingInfo(BlockTree, receiptStorage, syncConfig, new StaticSelector(SyncMode.All), logManager),
-            feeHistoryOracle);
+            feeHistoryOracle,
+            dbProvider);
     }
 
     private BlockchainProcessor ChainProcessor { get; }
@@ -263,7 +264,7 @@ public class MultiCallBlockchainFork : IDisposable
 
     public EthereumEcdsa EthereumEcdsa { get; internal set; }
     public IReleaseSpec CurrentSpec => SpecProvider.GetSpec(LatestBlock!.Header);
-    public MultiCallVirtualMachine VirtualMachine { get; internal set; }
+    public virtual MultiCallVirtualMachine VirtualMachine { get; internal set; }
 
     public IDbProvider DbProvider { get; internal set; }
 
