@@ -333,9 +333,10 @@ namespace Nethermind.Network
 
                     if (_peerPool.ActivePeerCount < MaxActivePeers)
                     {
+                        const int TIME_WAIT = 60_000;
                         // We been though all the peers once, so wait TIME-WAIT additional delay before
                         // trying them again to avoid busy loop or exhausting sockets.
-                        await Task.Delay(60_000);
+                        await Task.Delay(TIME_WAIT);
                         _peerUpdateRequested.Set();
                     }
 
