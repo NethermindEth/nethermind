@@ -255,11 +255,11 @@ namespace Nethermind.Network.Rlpx.Handshake
             Span<byte> sharedSecret = ValueKeccak.Compute(tempConcat).BytesAsSpan;
             //            byte[] token = Keccak.Compute(sharedSecret).Bytes;
             sharedSecret.CopyTo(tempConcat.Slice(32, 32));
-            byte[] aesSecret = Keccak.Compute(tempConcat).Bytes;
+            byte[] aesSecret = Keccak.Compute(tempConcat).BytesToArray();
 
             sharedSecret.Clear();
             aesSecret.CopyTo(tempConcat.Slice(32, 32));
-            byte[] macSecret = Keccak.Compute(tempConcat).Bytes;
+            byte[] macSecret = Keccak.Compute(tempConcat).BytesToArray();
 
             ephemeralSharedSecret.Clear();
             handshake.Secrets = new EncryptionSecrets();

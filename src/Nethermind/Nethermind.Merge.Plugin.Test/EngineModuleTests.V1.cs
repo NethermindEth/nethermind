@@ -1168,6 +1168,7 @@ public partial class EngineModuleTests
 
         txsReceived.Should().BeEquivalentTo(txsSource, options => options
             .Excluding(t => t.ChainId)
+            .Excluding(t => t.Data)
             .Excluding(t => t.SenderAddress)
             .Excluding(t => t.Timestamp)
         );

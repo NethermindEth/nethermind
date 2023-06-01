@@ -16,14 +16,14 @@ namespace Nethermind.Consensus.Processing
         public class BlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
             private readonly ITransactionProcessorAdapter _transactionProcessor;
-            private readonly IStateProvider _stateProvider;
+            private readonly IWorldState _stateProvider;
 
-            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
+            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider)
                 : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
             {
             }
 
-            public BlockValidationTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IStateProvider stateProvider)
+            public BlockValidationTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IWorldState stateProvider)
             {
                 _transactionProcessor = transactionProcessor;
                 _stateProvider = stateProvider;

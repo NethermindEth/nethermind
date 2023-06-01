@@ -27,7 +27,7 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
     {
         if (flags != ReadFlags.None)
         {
-            return _baseResolver.LoadRlp(hash, flags);
+            return _baseResolver.LoadRlp(hash, flags | _defaultFlags);
         }
 
         return _baseResolver.LoadRlp(hash, _defaultFlags);

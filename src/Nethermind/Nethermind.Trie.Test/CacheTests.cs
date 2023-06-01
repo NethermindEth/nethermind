@@ -24,7 +24,7 @@ namespace Nethermind.Trie.Test
         {
             MemCountingCache cache = new(1024, string.Empty);
             cache.Set(Keccak.Zero, new byte[0]);
-            cache.MemorySize.Should().Be(376);
+            cache.MemorySize.Should().Be(344);
         }
 
         [Test]
@@ -35,7 +35,7 @@ namespace Nethermind.Trie.Test
             cache.Set(TestItem.KeccakB, new byte[0]);
             cache.Set(TestItem.KeccakC, new byte[0]);
             cache.Set(TestItem.KeccakD, new byte[0]);
-            cache.MemorySize.Should().Be(800);
+            cache.MemorySize.Should().Be(672);
         }
 
         [Test]
@@ -46,16 +46,16 @@ namespace Nethermind.Trie.Test
             cache.Set(TestItem.KeccakB, new byte[0]);
             cache.Set(TestItem.KeccakC, new byte[0]);
 
-            cache.MemorySize.Should().Be(584);
+            cache.MemorySize.Should().Be(488);
             cache.Get(TestItem.KeccakA).Should().NotBeNull();
 
             cache.Set(TestItem.KeccakD, new byte[0]);
-            cache.MemorySize.Should().Be(584);
+            cache.MemorySize.Should().Be(488);
             cache.Get(TestItem.KeccakB).Should().BeNull();
             cache.Get(TestItem.KeccakD).Should().NotBeNull();
 
             cache.Set(TestItem.KeccakE, new byte[0]);
-            cache.MemorySize.Should().Be(584);
+            cache.MemorySize.Should().Be(488);
             cache.Get(TestItem.KeccakB).Should().BeNull();
             cache.Get(TestItem.KeccakC).Should().BeNull();
             cache.Get(TestItem.KeccakE).Should().NotBeNull();
@@ -71,11 +71,11 @@ namespace Nethermind.Trie.Test
 
             cache.Set(TestItem.KeccakA, null);
 
-            cache.MemorySize.Should().Be(480);
+            cache.MemorySize.Should().Be(416);
             cache.Get(TestItem.KeccakA).Should().BeNull();
 
             cache.Set(TestItem.KeccakD, new byte[0]);
-            cache.MemorySize.Should().Be(584);
+            cache.MemorySize.Should().Be(488);
             cache.Get(TestItem.KeccakB).Should().NotBeNull();
             cache.Get(TestItem.KeccakD).Should().NotBeNull();
         }

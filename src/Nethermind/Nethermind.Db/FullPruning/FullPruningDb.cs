@@ -171,6 +171,7 @@ namespace Nethermind.Db.FullPruning
 
         private void FinishPruning()
         {
+            _pruningContext?.CloningDb?.Flush();
             IDb oldDb = Interlocked.Exchange(ref _currentDb, _pruningContext?.CloningDb);
             ClearOldDb(oldDb);
         }

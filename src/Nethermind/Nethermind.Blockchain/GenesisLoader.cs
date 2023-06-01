@@ -22,21 +22,18 @@ namespace Nethermind.Blockchain
     {
         private readonly ChainSpec _chainSpec;
         private readonly ISpecProvider _specProvider;
-        private readonly IStateProvider _stateProvider;
-        private readonly IStorageProvider _storageProvider;
+        private readonly IWorldState _stateProvider;
         private readonly ITransactionProcessor _transactionProcessor;
 
         public GenesisLoader(
             ChainSpec chainSpec,
             ISpecProvider specProvider,
-            IStateProvider stateProvider,
-            IStorageProvider storageProvider,
+            IWorldState stateProvider,
             ITransactionProcessor transactionProcessor)
         {
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
         }
 
@@ -48,10 +45,8 @@ namespace Nethermind.Blockchain
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
             _chainSpec.Allocations = null;
 
-            _storageProvider.Commit();
             _stateProvider.Commit(_specProvider.GenesisSpec, true);
 
-            _storageProvider.CommitTrees(0);
             _stateProvider.CommitTree(0);
 
             genesis.Header.StateRoot = _stateProvider.StateRoot;
@@ -68,15 +63,14 @@ namespace Nethermind.Blockchain
 
                 if (allocation.Code is not null)
                 {
-                    Keccak codeHash = _stateProvider.UpdateCode(allocation.Code);
-                    _stateProvider.UpdateCodeHash(address, codeHash, _specProvider.GenesisSpec, true);
+                    _stateProvider.InsertCode(address, allocation.Code, _specProvider.GenesisSpec, true);
                 }
 
                 if (allocation.Storage is not null)
                 {
                     foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
                     {
-                        _storageProvider.Set(new StorageCell(address, storage.Key),
+                        _stateProvider.Set(new StorageCell(address, storage.Key),
                             storage.Value.WithoutLeadingZeros().ToArray());
                     }
                 }

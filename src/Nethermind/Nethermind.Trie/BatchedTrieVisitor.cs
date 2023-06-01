@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
@@ -70,10 +71,17 @@ public class BatchedTrieVisitor
         _partitionCount = recordCount / _maxBatchSize;
         if (_partitionCount == 0) _partitionCount = 1;
 
+        long expectedDbSize = 240.GiB(); // Unpruned size
+
         // 3000 is about the num of file for state on mainnet, so we assume 4000 for an unpruned db. Multiplied by
         // a reasonable num of thread we want to confine to a file. If its too high, the overhead of looping through the
         // stack can get a bit high at the end of the visit. But then again its probably not much.
-        long maxPartitionCount = 4000 * Math.Min(4, visitingOptions.MaxDegreeOfParallelism);
+        int degreeOfParallelism = visitingOptions.MaxDegreeOfParallelism;
+        if (degreeOfParallelism == 0)
+        {
+            degreeOfParallelism = Math.Max(Environment.ProcessorCount, 1);
+        }
+        long maxPartitionCount = (expectedDbSize / 64.MiB()) * Math.Min(4, degreeOfParallelism);
 
         if (_partitionCount > maxPartitionCount)
         {
@@ -120,7 +128,13 @@ public class BatchedTrieVisitor
 
         try
         {
-            Task[]? tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
+            int degreeOfParallelism = trieVisitContext.MaxDegreeOfParallelism;
+            if (degreeOfParallelism == 0)
+            {
+                degreeOfParallelism = Math.Max(Environment.ProcessorCount, 1);
+            }
+
+            Task[]? tasks = Enumerable.Range(0, degreeOfParallelism)
                 .Select((_) => Task.Run(BatchedThread))
                 .ToArray();
 

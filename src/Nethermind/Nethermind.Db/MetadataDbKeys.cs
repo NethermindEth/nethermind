@@ -13,5 +13,6 @@ namespace Nethermind.Db
         public const int BeaconSyncPivotNumber = 6;
         public const int LowestInsertedBeaconHeaderHash = 7;
         public const int FirstPoSHash = 8;
+        public const int UpdatedPivotData = 9;
     }
 }
