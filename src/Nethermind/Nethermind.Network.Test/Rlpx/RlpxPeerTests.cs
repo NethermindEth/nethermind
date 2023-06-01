@@ -25,6 +25,7 @@ namespace Nethermind.Network.Test.Rlpx
             RlpxHost host = new(
                 Substitute.For<IMessageSerializationService>(),
                 TestItem.PublicKeyA, GegAvailableLocalPort(),
+                1,
                 Substitute.For<IHandshakeService>(),
                 Substitute.For<ISessionMonitor>(),
                 NullDisconnectsAnalyzer.Instance,
