@@ -88,5 +88,8 @@ namespace Nethermind.Network.Config
 
         [ConfigItem(DefaultValue = "2000", HiddenFromDocs = true, Description = "[TECHNICAL] Outgoing connection timeout in ms. Default is 2 seconds.")]
         int ConnectTimeoutMs { get; set; }
+
+        [ConfigItem(DefaultValue = "1", HiddenFromDocs = true, Description = "[TECHNICAL] Num of thread in final processing of network packet. Set to more than 1 if you have very fast internet.")]
+        int ProcessingThreadCount { get; set; }
     }
 }
