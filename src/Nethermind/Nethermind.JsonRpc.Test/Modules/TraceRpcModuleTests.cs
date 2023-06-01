@@ -57,7 +57,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 IRewardCalculator rewardCalculator = rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor);
 
                 RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.StateProvider);
-                ReadOnlyChainProcessingEnv chainProcessingEnv = new(
+                BlockProcessor.BlockValidationTransactionsExecutor executeBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor,
+                    txProcessingEnv.StateProvider);
+                ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor) => new(
                     txProcessingEnv,
                     Always.Valid,
                     Blockchain.BlockPreprocessorStep,
@@ -66,9 +68,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                     dbProvider,
                     Blockchain.SpecProvider,
                     Blockchain.LogManager,
-                    rpcBlockTransactionsExecutor);
+                    transactionsExecutor);
 
-                Tracer tracer = new(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor);
+                ReadOnlyChainProcessingEnv traceProcessingEnv = CreateChainProcessingEnv(rpcBlockTransactionsExecutor);
+                ReadOnlyChainProcessingEnv executeProcessingEnv = CreateChainProcessingEnv(executeBlockTransactionsExecutor);
+
+                Tracer tracer = new(txProcessingEnv.StateProvider, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor);
                 TraceRpcModule = new TraceRpcModule(receiptFinder, tracer, Blockchain.BlockFinder, JsonRpcConfig, MainnetSpecProvider.Instance, LimboLogs.Instance);
 
                 for (int i = 1; i < 10; i++)
@@ -803,6 +808,45 @@ namespace Nethermind.JsonRpc.Test.Modules
             traces.Data.ElementAt(0).Action!.From.Should().BeEquivalentTo(traces.Data.ElementAt(1).Action!.From);
             string serialized = new EthereumJsonSerializer().Serialize(traces.Data);
             Assert.That(serialized, Is.EqualTo("[{\"output\":\"0x\",\"transactionHash\":\"0x8513c9083ec27fa8e3ca7e3ffa732d61562e2d17e2e1af6e773bc810dc4c3452\",\"action\":{\"traceAddress\":[],\"callType\":\"create\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"create\",\"creationMethod\":\"create\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"gas\":\"0x9c70\",\"value\":\"0x1\",\"input\":\"0x60006000600060006000730ffd3e46594919c04bcfd4e146203c825567082861c350f1\",\"result\":{\"gasUsed\":\"0x79\",\"output\":\"0x\",\"address\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"code\":\"0x\"},\"subtraces\":[{\"traceAddress\":[0],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"gas\":\"0x9988\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]}]}},{\"output\":\"0x\",\"transactionHash\":\"0xa6a56c7927deae778a749bcdab7bbf409c0d8a5d2420021a3ba328240ae832d8\",\"action\":{\"traceAddress\":[],\"callType\":\"create\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"create\",\"creationMethod\":\"create\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"gas\":\"0x9c70\",\"value\":\"0x1\",\"input\":\"0x60006000600060006000730ffd3e46594919c04bcfd4e146203c825567082861c350f1\",\"result\":{\"gasUsed\":\"0xa3d\",\"output\":\"0x\",\"address\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"code\":\"0x\"},\"subtraces\":[{\"traceAddress\":[0],\"callType\":\"call\",\"includeInTrace\":true,\"isPrecompiled\":false,\"type\":\"call\",\"from\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"gas\":\"0x8feb\",\"value\":\"0x0\",\"input\":\"0x\",\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":[]}]}}]"));
+        }
+
+        [Test]
+        public async Task Trace_replayBlockTransactions_stateDiff()
+        {
+            Context context = new();
+            await context.Build();
+            TestRpcBlockchain blockchain = context.Blockchain;
+            UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
+            await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
+
+            Transaction tx = Build.A.Transaction.WithNonce(currentNonceAddressA++)
+                .WithValue(10)
+                .WithTo(TestItem.AddressF)
+                .WithGasLimit(50000)
+                .WithGasPrice(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+            Account accountA = blockchain.State.GetAccount(TestItem.AddressA);
+            Account accountD = blockchain.State.GetAccount(TestItem.AddressD);
+            Account accountF = blockchain.State.GetAccount(TestItem.AddressF);
+
+            string[] traceTypes = { "stateDiff" };
+
+            await blockchain.AddBlock(tx);
+
+            ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(new BlockParameter(blockchain.BlockFinder.FindLatestBlock()!.Number), traceTypes);
+            traces.Data.Should().HaveCount(1);
+            var state = traces.Data.ElementAt(0).StateChanges;
+
+            state.Count.Should().Be(3);
+            state[TestItem.AddressA].Nonce.Before.Should().Be(accountA.Nonce);
+            state[TestItem.AddressD].Balance.Before.Should().Be(accountD.Balance);
+            state[TestItem.AddressA].Balance.Before.Should().Be(accountA.Balance);
+            state[TestItem.AddressF].Balance.Before.Should().Be(accountF.Balance);
+
+            state[TestItem.AddressA].Nonce.After.Should().Be(accountA.Nonce + 1);
+            state[TestItem.AddressD].Balance.After.Should().Be(accountD.Balance + 21000 * tx.GasPrice);
+            state[TestItem.AddressA].Balance.After.Should().Be(accountA.Balance - 21000 * tx.GasPrice - tx.Value);
+            state[TestItem.AddressF].Balance.After.Should().Be(accountF.Balance + tx.Value);
         }
     }
 }

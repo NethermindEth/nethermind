@@ -18,12 +18,12 @@ public class TransactionProcessorTraceTest : VirtualMachineTestsBase
 
     [TestCase(21000)]
     [TestCase(50000)]
-    public void Traces_gas_fess_properly(long gasLimit)
+    public void Trace_should_not_charge_gas(long gasLimit)
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, gasLimit);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.All);
         _processor.Trace(transaction, block.Header, tracer);
         var senderBalance = tracer.BuildResult().StateChanges[TestItem.AddressA].Balance;
-        (senderBalance.Before - senderBalance.After).Should().Be((UInt256)21000 + transaction.Value);
+        (senderBalance.Before - senderBalance.After).Should().Be(transaction.Value);
     }
 }

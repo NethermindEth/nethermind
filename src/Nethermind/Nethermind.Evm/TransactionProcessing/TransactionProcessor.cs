@@ -276,7 +276,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 _worldState.IncrementNonce(caller);
             }
 
-            _worldState.SubtractFromBalance(caller, senderReservedGasPayment, spec);
+            // Do not charge gas if noValidation is set
+            if (!noValidation) _worldState.SubtractFromBalance(caller, senderReservedGasPayment, spec);
             if (commit)
             {
                 _worldState.Commit(spec, txTracer.IsTracingState ? txTracer : NullTxTracer.Instance);
@@ -393,7 +394,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     statusCode = StatusCode.Success;
                 }
 
-                spentGas = Refund(gasLimit, unspentGas, substate, caller, effectiveGasPrice, spec);
+                spentGas = Refund(gasLimit, unspentGas, substate, caller, effectiveGasPrice, noValidation, spec);
             }
             catch (Exception ex) when (
                 ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
@@ -453,7 +454,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    _worldState.AddToBalance(caller, senderReservedGasPayment, spec);
+                    if (!noValidation) _worldState.AddToBalance(caller, senderReservedGasPayment, spec);
                     if (notSystemTransaction)
                     {
                         _worldState.DecrementNonce(caller);
@@ -526,7 +527,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender,
-            in UInt256 gasPrice, IReleaseSpec spec)
+            in UInt256 gasPrice, bool noValidation, IReleaseSpec spec)
         {
             long spentGas = gasLimit;
             if (!substate.IsError)
@@ -539,7 +540,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (_logger.IsTrace)
                     _logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
-                _worldState.AddToBalance(sender, (ulong)(unspentGas + refund) * gasPrice, spec);
+                // If noValidation we didn't charge for gas, so do not refund
+                if (!noValidation) _worldState.AddToBalance(sender, (ulong)(unspentGas + refund) * gasPrice, spec);
                 spentGas -= refund;
             }
 
