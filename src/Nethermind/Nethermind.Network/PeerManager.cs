@@ -335,7 +335,7 @@ namespace Nethermind.Network
                     {
                         // We been though all the peers once, so slight additional delay before
                         // trying them again to avoid busy loop
-                        await Task.Delay(1000);
+                        await Task.Delay(10_000);
                         _peerUpdateRequested.Set();
                     }
 
