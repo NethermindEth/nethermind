@@ -193,11 +193,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                             break;
                         }
                     }
-                    
+
                 }
 
 
-                    throw new NotImplementedException();
+                throw new NotImplementedException();
 
                 /*
                 BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, token);

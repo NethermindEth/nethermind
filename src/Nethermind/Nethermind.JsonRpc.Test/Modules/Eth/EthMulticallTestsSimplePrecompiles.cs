@@ -100,7 +100,9 @@ contract EcrecoverProxy {
             //Generate and send transaction
             SystemTransaction systemTransactionForModifiedVM = new()
             {
-                Data = transactionData, To = contractAddress, SenderAddress = TestItem.PublicKeyB.Address
+                Data = transactionData,
+                To = contractAddress,
+                SenderAddress = TestItem.PublicKeyB.Address
             };
             systemTransactionForModifiedVM.Hash = systemTransactionForModifiedVM.CalculateHash();
             TransactionForRpc transactionForRpcOfModifiedVM = new(systemTransactionForModifiedVM);

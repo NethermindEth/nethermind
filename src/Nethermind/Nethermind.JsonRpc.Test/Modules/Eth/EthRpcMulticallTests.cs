@@ -225,7 +225,7 @@ public class EthRpcMulticallTests
 
         MultiCallBlockStateCallsModel requestBlockOne = new()
         {
-            StateOverrides = new[] { new AccountOverride { Address = TestItem.AddressA, Balance = UInt256.One }}
+            StateOverrides = new[] { new AccountOverride { Address = TestItem.AddressA, Balance = UInt256.One } }
         };
 
 
