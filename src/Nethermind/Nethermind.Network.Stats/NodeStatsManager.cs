@@ -4,10 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Timers;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
@@ -18,29 +15,12 @@ namespace Nethermind.Stats
     {
         private class NodeComparer : IEqualityComparer<Node>
         {
-            public bool Equals(Node x, Node y)
-            {
-                if (ReferenceEquals(x, null))
-                {
-                    return ReferenceEquals(y, null);
-                }
-
-                if (ReferenceEquals(y, null))
-                {
-                    return false;
-                }
-
-                return x.Id == y.Id;
-            }
-
-            public int GetHashCode(Node obj)
-            {
-                return obj?.GetHashCode() ?? 0;
-            }
+            public bool Equals(Node x, Node y) => ReferenceEquals(x, y) || x.Id == y.Id;
+            public int GetHashCode(Node obj) => obj.GetHashCode();
         }
 
         private readonly ILogger _logger;
-        private readonly ConcurrentDictionary<Node, INodeStats> _nodeStats = new ConcurrentDictionary<Node, INodeStats>(new NodeComparer());
+        private readonly ConcurrentDictionary<Node, INodeStats> _nodeStats = new(new NodeComparer());
         private readonly ITimer _cleanupTimer;
         private readonly int _maxCount;
 
@@ -56,6 +36,8 @@ namespace Nethermind.Stats
 
         private void CleanupTimerOnElapsed(object sender, EventArgs e)
         {
+            _cleanupTimer.Stop();
+
             int deleteCount = _nodeStats.Count - _maxCount;
 
             if (deleteCount > 0)
@@ -74,6 +56,8 @@ namespace Nethermind.Stats
 
                 if (_logger.IsDebug) _logger.Debug($"Removed {i} node stats.");
             }
+
+            _cleanupTimer.Start();
         }
 
         private INodeStats AddStats(Node node)

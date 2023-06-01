@@ -239,14 +239,14 @@ namespace Nethermind.Network
                         continue;
                     }
 
-                    Interlocked.Exchange(ref _tryCount, 0);
-                    Interlocked.Exchange(ref _newActiveNodes, 0);
-                    Interlocked.Exchange(ref _failedInitialConnect, 0);
-                    Interlocked.Exchange(ref _connectionRounds, 0);
+                    Volatile.Write(ref _tryCount, 0);
+                    Volatile.Write(ref _newActiveNodes, 0);
+                    Volatile.Write(ref _failedInitialConnect, 0);
+                    Volatile.Write(ref _connectionRounds, 0);
 
                     SelectAndRankCandidates();
                     List<Peer> remainingCandidates = _currentSelection.Candidates;
-                    if (!remainingCandidates.Any())
+                    if (remainingCandidates.Count == 0)
                     {
                         continue;
                     }
@@ -257,6 +257,7 @@ namespace Nethermind.Network
                     }
 
                     int currentPosition = 0;
+                    long lastMs = Environment.TickCount64;
                     while (true)
                     {
                         if (_cancellationTokenSource.IsCancellationRequested)
@@ -288,9 +289,17 @@ namespace Nethermind.Network
                         workerBlock.Complete();
 
                         // Wait for all messages to propagate through the network.
-                        workerBlock.Completion.Wait();
+                        await workerBlock.Completion;
 
                         Interlocked.Increment(ref _connectionRounds);
+
+                        long nowMs = Environment.TickCount64;
+                        long diffMs = nowMs - lastMs;
+                        if (diffMs < 50)
+                        {
+                            await Task.Delay(50 - (int)diffMs);
+                        }
+                        lastMs = nowMs;
                     }
 
                     if (_logger.IsTrace)
@@ -352,6 +361,8 @@ namespace Nethermind.Network
                         await Task.Delay(1000);
                     }
                 }
+
+                _peerUpdateTimer.Start();
             }
         }
 
@@ -416,7 +427,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                (bool Result, NodeStatsEventType? DelayReason) delayResult = _stats.IsConnectionDelayed(preCandidate.Node);
+                (bool Result, NodeStatsEventType? DelayReason) delayResult = preCandidate.Stats.IsConnectionDelayed();
                 if (delayResult.Result)
                 {
                     if (delayResult.DelayReason == NodeStatsEventType.Disconnect)
@@ -431,7 +442,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                if (_stats.FindCompatibilityValidationResult(preCandidate.Node).HasValue)
+                if (preCandidate.Stats.FailedCompatibilityValidation.HasValue)
                 {
                     _currentSelection.Incompatible.Add(preCandidate);
                     continue;
@@ -460,7 +471,11 @@ namespace Nethermind.Network
             if (_logger.IsDebug) _logger.Debug("Starting peer update timer");
 
             _peerUpdateTimer = new Timer(_networkConfig.PeersUpdateInterval);
-            _peerUpdateTimer.Elapsed += (sender, e) => { _peerUpdateRequested.Set(); };
+            _peerUpdateTimer.Elapsed += (sender, e) =>
+            {
+                _peerUpdateTimer.Stop();
+                _peerUpdateRequested.Set();
+            };
 
             _peerUpdateTimer.Start();
         }
@@ -726,7 +741,7 @@ namespace Nethermind.Network
                 return false;
             }
 
-            (bool delayed, NodeStatsEventType? reason) = _stats.IsConnectionDelayed(peer.Node);
+            (bool delayed, NodeStatsEventType? reason) = peer.Stats.IsConnectionDelayed();
             if (delayed)
             {
                 if (_logger.IsTrace) _logger.Trace($"Not connecting peer: {peer} due forced connection delay. Reason: {reason}");
@@ -818,7 +833,7 @@ namespace Nethermind.Network
             {
                 if (newSessionIsIn)
                 {
-                    _stats.ReportHandshakeEvent(peer.Node, ConnectionDirection.In);
+                    peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
                     peer.InSession = session;
                 }
                 else
@@ -846,7 +861,7 @@ namespace Nethermind.Network
                         session.InitiateDisconnect(InitiateDisconnectReason.ReplacingSessionWithOppositeDirection, "same");
                         if (newSessionIsIn)
                         {
-                            _stats.ReportHandshakeEvent(peer.Node, ConnectionDirection.In);
+                            peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
                             peer.InSession = session;
                         }
                         else
@@ -958,7 +973,7 @@ namespace Nethermind.Network
                     return;
                 }
 
-                _stats.ReportHandshakeEvent(peer.Node, ConnectionDirection.Out);
+                peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.Out);
             }
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} handshake initialized in peer manager");

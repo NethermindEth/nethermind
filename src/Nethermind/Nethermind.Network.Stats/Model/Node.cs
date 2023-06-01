@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Net;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -12,11 +11,12 @@ namespace Nethermind.Stats.Model
     /// <summary>
     /// Represents a physical network node address and attributes that we assign to it (static, bootnode, trusted, etc.)
     /// </summary>
-    public class Node : IFormattable
+    public sealed class Node : IFormattable, IEquatable<Node>
     {
         private string _clientId;
         private string _paddedHost;
         private string _paddedPort;
+        private int _hashCode;
 
         /// <summary>
         /// Node public key - same as in enode.
@@ -71,24 +71,23 @@ namespace Nethermind.Stats.Model
         public string EthDetails { get; set; }
         public long CurrentReputation { get; set; }
 
-        public Node(PublicKey id, IPEndPoint address)
-        {
-            Id = id;
-            IdHash = Keccak.Compute(Id.PrefixedBytes);
-            SetIPEndPoint(address);
-        }
-
         public Node(NetworkNode networkNode, bool isStatic = false)
             : this(networkNode.NodeId, networkNode.Host, networkNode.Port, isStatic)
         {
         }
 
         public Node(PublicKey id, string host, int port, bool isStatic = false)
+            : this(id, GetIPEndPoint(host, port), isStatic)
+        {
+        }
+
+        public Node(PublicKey id, IPEndPoint address, bool isStatic = false)
         {
             Id = id;
             IdHash = Keccak.Compute(Id.PrefixedBytes);
-            SetIPEndPoint(host, port);
+            _hashCode = id.GetHashCode();
             IsStatic = isStatic;
+            SetIPEndPoint(address);
         }
 
         private void SetIPEndPoint(IPEndPoint address)
@@ -102,9 +101,9 @@ namespace Nethermind.Stats.Model
             _paddedPort = Port.ToString().PadLeft(5, ' ');
         }
 
-        private void SetIPEndPoint(string host, int port)
+        private static IPEndPoint GetIPEndPoint(string host, int port)
         {
-            SetIPEndPoint(new IPEndPoint(IPAddress.Parse(host), port));
+            return new IPEndPoint(IPAddress.Parse(host), port);
         }
 
         public override bool Equals(object obj)
@@ -122,7 +121,7 @@ namespace Nethermind.Stats.Model
             return false;
         }
 
-        public override int GetHashCode() => HashCode.Combine(Id);
+        public override int GetHashCode() => _hashCode;
 
         public override string ToString() => ToString(Format.WithPublicKey);
 
@@ -142,14 +141,19 @@ namespace Nethermind.Stats.Model
             };
         }
 
+        public bool Equals(Node other)
+        {
+            if (ReferenceEquals(this, other)) return true;
+            if (other is null) return false;
+
+            return Id.Equals(other.Id);
+        }
+
         public static bool operator ==(Node a, Node b)
         {
-            if (ReferenceEquals(a, null))
-            {
-                return ReferenceEquals(b, null);
-            }
+            if (ReferenceEquals(a, b)) return true;
 
-            if (ReferenceEquals(b, null))
+            if (ReferenceEquals(a, null) || ReferenceEquals(b, null))
             {
                 return false;
             }
