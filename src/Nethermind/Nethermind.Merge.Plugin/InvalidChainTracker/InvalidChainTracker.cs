@@ -25,7 +25,7 @@ public class InvalidChainTracker : IInvalidChainTracker
     private readonly IBlockFinder _blockFinder;
     private readonly IBlockCacheService _blockCacheService;
     private readonly ILogger _logger;
-    private readonly LruCache<KeccakKey, Node> _tree;
+    private readonly LruCache<ValueKeccak, Node> _tree;
 
     // CompositeDisposable only available on System.Reactive. So this will do for now.
     private readonly List<Action> _disposables = new();

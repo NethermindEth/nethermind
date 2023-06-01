@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.Ethash
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
 
-        private readonly LruCache<KeccakKey, bool> _sealCache = new(2048, 2048, "ethash seals");
+        private readonly LruCache<ValueKeccak, bool> _sealCache = new(2048, 2048, "ethash seals");
         private const int SealValidationIntervalConstantComponent = 1024;
         private const long AllowedFutureBlockTimeSeconds = 15;
         private int _sealValidationInterval = SealValidationIntervalConstantComponent;
