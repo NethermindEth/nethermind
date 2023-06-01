@@ -116,7 +116,7 @@ namespace Nethermind.Evm.Test
             Test(Cancun.Instance, true);
         }
 
-        public static IEnumerable<(UInt256 parentExcessDataGas, int newBlobsCount, UInt256 expectedCost)> ExcessDataGasTestCaseSource()
+        public static IEnumerable<(ulong parentExcessDataGas, int newBlobsCount, ulong expectedCost)> ExcessDataGasTestCaseSource()
         {
             yield return (0, 0, 0);
             yield return (0, 1, 0);
@@ -129,11 +129,12 @@ namespace Nethermind.Evm.Test
         }
 
         [TestCaseSource(nameof(ExcessDataGasTestCaseSource))]
-        public void Blobs_excess_data_gas_is_calculated_correctly((UInt256 parentExcessDataGas, int newBlobsCount, UInt256 expectedCost) testCase)
+        public void Blobs_excess_data_gas_is_calculated_correctly((ulong excessDataGas, int newBlobsCount, ulong expectedCost) testCase)
         {
             void Test(IReleaseSpec spec, bool areBlobsEnabled)
             {
-                IntrinsicGasCalculator.CalculateExcessDataGas(testCase.parentExcessDataGas, testCase.newBlobsCount, spec).Should()
+                BlockHeader header = Build.A.BlockHeader.WithExcessDataGas(testCase.excessDataGas).TestObject;
+                IntrinsicGasCalculator.CalculateExcessDataGas(header, spec).Should()
                     .Be(areBlobsEnabled ? testCase.expectedCost : null);
             }
 
@@ -152,7 +153,7 @@ namespace Nethermind.Evm.Test
             Test(Cancun.Instance, true);
         }
 
-        public static IEnumerable<(Transaction tx, UInt256 parentExcessDataGas, UInt256 expectedCost)> BlobDataGasCostTestCaseSource()
+        public static IEnumerable<(Transaction tx, ulong excessDataGas, UInt256 expectedCost)> BlobDataGasCostTestCaseSource()
         {
             yield return (Build.A.Transaction.TestObject, 0, 0);
             yield return (Build.A.Transaction.TestObject, 1000, 0);
@@ -165,9 +166,10 @@ namespace Nethermind.Evm.Test
 
         [TestCaseSource(nameof(BlobDataGasCostTestCaseSource))]
         public void Blobs_intrinsic_cost_is_calculated_properly(
-            (Transaction tx, UInt256 parentExcessDataGas, UInt256 expectedCost) testCase)
+            (Transaction tx, ulong excessDataGas, UInt256 expectedCost) testCase)
         {
-            IntrinsicGasCalculator.CalculateDataGasPrice(testCase.tx, testCase.parentExcessDataGas).Should()
+            BlockHeader header = Build.A.BlockHeader.WithExcessDataGas(testCase.excessDataGas).TestObject;
+            IntrinsicGasCalculator.CalculateDataGasPrice(header, testCase.tx).Should()
                 .Be(testCase.expectedCost);
         }
     }

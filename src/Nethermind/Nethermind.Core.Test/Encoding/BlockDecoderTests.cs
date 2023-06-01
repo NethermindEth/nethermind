@@ -81,7 +81,7 @@ public class BlockDecoderTests
                 .WithTransactions(transactions)
                 .WithUncles(uncles)
                 .WithWithdrawals(8)
-                .WithExcessDataGas(UInt256.MaxValue)
+                .WithExcessDataGas(ulong.MaxValue)
                 .WithMixHash(Keccak.EmptyTreeHash)
                 .TestObject
         };

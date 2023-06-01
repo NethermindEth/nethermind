@@ -250,7 +250,6 @@ namespace Nethermind.Mev.Test
                     headerValidator,
                     Always.Valid,
                     SpecProvider,
-                    BlockTree,
                     LogManager);
             }
 

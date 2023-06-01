@@ -129,7 +129,7 @@ public class HeaderDecoderTests
     }
 
     [TestCaseSource(nameof(ExcessDataGasCaseSource))]
-    public void Can_encode_decode_with_excessDataGas(UInt256? excessDataGas)
+    public void Can_encode_decode_with_excessDataGas(ulong? excessDataGas)
     {
         BlockHeader header = Build.A.BlockHeader
             .WithTimestamp(ulong.MaxValue)
@@ -143,13 +143,13 @@ public class HeaderDecoderTests
         blockHeader.ExcessDataGas.Should().Be(excessDataGas);
     }
 
-    public static IEnumerable<UInt256?> ExcessDataGasCaseSource()
+    public static IEnumerable<ulong?> ExcessDataGasCaseSource()
     {
         yield return null;
-        yield return UInt256.Zero;
-        yield return new UInt256(1);
-        yield return UInt256.UInt128MaxValue;
-        yield return UInt256.MaxValue;
+        yield return 0ul;
+        yield return 1ul;
+        yield return ulong.MaxValue / 2;
+        yield return ulong.MaxValue;
     }
 
     [TestCase(-1)]

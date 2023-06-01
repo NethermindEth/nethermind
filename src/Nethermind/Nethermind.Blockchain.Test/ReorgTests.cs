@@ -75,7 +75,6 @@ namespace Nethermind.Blockchain.Test
                 specProvider,
                 stateProvider,
                 virtualMachine,
-                _blockTree,
                 LimboLogs.Instance);
 
             BlockProcessor blockProcessor = new(
