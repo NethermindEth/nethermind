@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
@@ -173,8 +174,10 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
+        [SkipLocalsInit]
         private unsafe Span<byte> GetReceiptData(long blockNumber, Keccak blockHash)
         {
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
             if (_legacyHashKey)
             {
                 Span<byte> receiptsData = _blocksDb.GetSpan(blockHash);
@@ -183,7 +186,6 @@ namespace Nethermind.Blockchain.Receipts
                     return receiptsData;
                 }
 
-                Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
 
 #pragma warning disable CS9080
@@ -194,7 +196,6 @@ namespace Nethermind.Blockchain.Receipts
             }
             else
             {
-                Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
 
                 Span<byte> receiptsData = _blocksDb.GetSpan(blockNumPrefixed);
@@ -258,6 +259,7 @@ namespace Nethermind.Blockchain.Receipts
             return result;
         }
 
+        [SkipLocalsInit]
         public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true)
         {
             txReceipts ??= Array.Empty<TxReceipt>();
@@ -325,24 +327,22 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsCache.Clear();
         }
 
+        [SkipLocalsInit]
         public bool HasBlock(long blockNumber, Keccak blockHash)
         {
             if (_receiptsCache.Contains(blockHash)) return true;
 
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
             if (_legacyHashKey)
             {
                 if (_blocksDb.KeyExists(blockHash)) return true;
 
-                Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
-
                 return _blocksDb.KeyExists(blockNumPrefixed);
             }
             else
             {
-                Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
-
                 return _blocksDb.KeyExists(blockNumPrefixed) || _blocksDb.KeyExists(blockHash);
             }
         }

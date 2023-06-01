@@ -537,6 +537,6 @@ namespace Nethermind.Core.Crypto
             return !(a == b);
         }
 
-        public Keccak ToKeccak() => new(Bytes.ToArray());
+        public Keccak ToKeccak() => new(Bytes);
     }
 }

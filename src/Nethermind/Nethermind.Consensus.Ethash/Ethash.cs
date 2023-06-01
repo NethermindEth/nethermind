@@ -128,7 +128,7 @@ namespace Nethermind.Consensus.Ethash
                 seed = ValueKeccak.Compute(seed.Bytes);
             }
 
-            return new Keccak(seed.Bytes.ToArray());
+            return new Keccak(seed.Bytes);
         }
 
         private readonly BigInteger _2To256 = BigInteger.Pow(2, 256);
