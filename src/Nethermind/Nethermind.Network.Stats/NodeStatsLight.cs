@@ -3,6 +3,9 @@
 
 using System;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading;
+
 using FastEnumUtility;
 using Nethermind.Stats.Model;
 
@@ -70,10 +73,7 @@ namespace Nethermind.Stats
 
         private void Increment(NodeStatsEventType nodeStatsEventType)
         {
-            lock (_statCountersArray)
-            {
-                _statCountersArray[(int)nodeStatsEventType]++;
-            }
+            Interlocked.Increment(ref _statCountersArray[(int)nodeStatsEventType]);
         }
 
         public void AddNodeStatsEvent(NodeStatsEventType nodeStatsEventType)
@@ -160,10 +160,7 @@ namespace Nethermind.Stats
 
         public bool DidEventHappen(NodeStatsEventType nodeStatsEventType)
         {
-            lock (_statCountersArray)
-            {
-                return _statCountersArray[(int)nodeStatsEventType] > 0;
-            }
+            return GetStat(nodeStatsEventType) > 0;
         }
 
         public void AddTransferSpeedCaptureEvent(TransferSpeedType transferSpeedType, long bytesPerMillisecond)
@@ -276,11 +273,7 @@ namespace Nethermind.Stats
 
         private int GetFailedConnectionDelay()
         {
-            int failedConnectionFailed;
-            lock (_statCountersArray)
-            {
-                failedConnectionFailed = _statCountersArray[(int)NodeStatsEventType.ConnectionFailed];
-            }
+            int failedConnectionFailed = GetStat(NodeStatsEventType.ConnectionFailed);
 
             if (failedConnectionFailed == 0)
             {
@@ -298,11 +291,7 @@ namespace Nethermind.Stats
         private int GetDisconnectDelay()
         {
             int disconnectDelay;
-            int disconnectCount;
-            lock (_statCountersArray)
-            {
-                disconnectCount = _statCountersArray[(int)NodeStatsEventType.Disconnect];
-            }
+            int disconnectCount = GetStat(NodeStatsEventType.Disconnect);
 
             if (disconnectCount == 0)
             {
@@ -327,24 +316,26 @@ namespace Nethermind.Stats
 
         private bool HasDisconnectedOnce => _lastLocalDisconnect.HasValue || _lastRemoteDisconnect.HasValue;
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int GetStat(NodeStatsEventType nodeStatsEventType)
+        {
+            return Volatile.Read(ref _statCountersArray[(int)nodeStatsEventType]);
+        }
+
         private long CalculateSessionReputation()
         {
             long discoveryReputation = 0;
             long rlpxReputation = 0;
-            lock (_statCountersArray)
-            {
 
-                discoveryReputation += Math.Min(_statCountersArray[(int)NodeStatsEventType.DiscoveryPingIn], 10) * (_statCountersArray[(int)NodeStatsEventType.DiscoveryPingIn] == _statCountersArray[(int)NodeStatsEventType.DiscoveryPingOut] ? 2 : 1);
-                discoveryReputation += Math.Min(_statCountersArray[(int)NodeStatsEventType.DiscoveryNeighboursIn], 10) * 2;
+            discoveryReputation += Math.Min(GetStat(NodeStatsEventType.DiscoveryPingIn), 10) * (GetStat(NodeStatsEventType.DiscoveryPingIn) == GetStat(NodeStatsEventType.DiscoveryPingOut) ? 2 : 1);
+            discoveryReputation += Math.Min(GetStat(NodeStatsEventType.DiscoveryNeighboursIn), 10) * 2;
 
-
-                rlpxReputation += Math.Min(_statCountersArray[(int)NodeStatsEventType.P2PPingIn], 10) * (_statCountersArray[(int)NodeStatsEventType.P2PPingIn] == _statCountersArray[(int)NodeStatsEventType.P2PPingOut] ? 2 : 1);
-                rlpxReputation += _statCountersArray[(int)NodeStatsEventType.HandshakeCompleted] > 0 ? 10 : 0;
-                rlpxReputation += _statCountersArray[(int)NodeStatsEventType.P2PInitialized] > 0 ? 10 : 0;
-                rlpxReputation += _statCountersArray[(int)NodeStatsEventType.Eth62Initialized] > 0 ? 20 : 0;
-                rlpxReputation += _statCountersArray[(int)NodeStatsEventType.SyncStarted] > 0 ? 1000 : 0;
-                rlpxReputation += (rlpxReputation != 0 && !HasDisconnectedOnce) ? 1 : 0;
-            }
+            rlpxReputation += Math.Min(GetStat(NodeStatsEventType.P2PPingIn), 10) * (GetStat(NodeStatsEventType.P2PPingIn) == GetStat(NodeStatsEventType.P2PPingOut) ? 2 : 1);
+            rlpxReputation += GetStat(NodeStatsEventType.HandshakeCompleted) > 0 ? 10 : 0;
+            rlpxReputation += GetStat(NodeStatsEventType.P2PInitialized) > 0 ? 10 : 0;
+            rlpxReputation += GetStat(NodeStatsEventType.Eth62Initialized) > 0 ? 20 : 0;
+            rlpxReputation += GetStat(NodeStatsEventType.SyncStarted) > 0 ? 1000 : 0;
+            rlpxReputation += (rlpxReputation != 0 && !HasDisconnectedOnce) ? 1 : 0;
 
             if (HasDisconnectedOnce)
             {

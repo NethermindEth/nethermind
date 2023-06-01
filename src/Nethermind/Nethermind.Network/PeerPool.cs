@@ -95,7 +95,7 @@ namespace Nethermind.Network
                 if (_logger.IsDebug) _logger.Debug(
                     $"Adding a {(arg.Node.IsBootnode ? "bootnode" : "stored")} candidate peer {arg.Node:s}");
             }
-            Peer peer = new(arg.Node);
+            Peer peer = new(arg.Node, _stats.GetOrAdd(arg.Node));
             if (arg.Node.IsStatic)
             {
                 arg.Statics.TryAdd(arg.Node.Id, peer);
@@ -107,7 +107,8 @@ namespace Nethermind.Network
 
         private Peer CreateNew(PublicKey key, (NetworkNode Node, ConcurrentDictionary<PublicKey, Peer> Statics) arg)
         {
-            Peer peer = new(new(arg.Node));
+            Node node = new(arg.Node);
+            Peer peer = new(node, _stats.GetOrAdd(node));
 
             PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             return peer;

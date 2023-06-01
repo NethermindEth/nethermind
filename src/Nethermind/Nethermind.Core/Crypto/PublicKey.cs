@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Extensions;
@@ -96,7 +97,17 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            return MemoryMarshal.Read<int>(Bytes);
+            byte[] bytes = Bytes;
+            long l0 = Unsafe.ReadUnaligned<long>(ref MemoryMarshal.GetArrayDataReference(bytes));
+            long l1 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long)));
+            long l2 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 2));
+            long l3 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 3));
+            long l4 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 4));
+            long l5 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 5));
+            long l6 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 6));
+            long l7 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 7));
+            l0 ^= l1 ^ l2 ^ l3 ^ l4 ^ l5 ^ l6 ^ l7;
+            return (int)(l0 ^ (l0 >> 32));
         }
 
         public override string ToString()
