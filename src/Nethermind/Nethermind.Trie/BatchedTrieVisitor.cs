@@ -112,7 +112,7 @@ public class BatchedTrieVisitor
     // Determine the locality of the key. I guess if you use paprika or something, you'd need to modify this.
     int CalculatePartitionIdx(ValueKeccak key)
     {
-        uint number = BinaryPrimitives.ReadUInt32BigEndian(key.Span);
+        uint number = BinaryPrimitives.ReadUInt32BigEndian(key.Bytes);
         return (int)(number * (ulong)_partitionCount / uint.MaxValue);
     }
 
