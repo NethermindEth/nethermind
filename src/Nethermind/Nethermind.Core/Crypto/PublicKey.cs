@@ -16,6 +16,7 @@ namespace Nethermind.Core.Crypto
         private Address? _address;
 
         private byte[]? _prefixedBytes;
+        private int _hashCode;
 
         public PublicKey(string? hexString)
             : this(Core.Extensions.Bytes.FromHexString(hexString ?? throw new ArgumentNullException(nameof(hexString))))
@@ -37,6 +38,7 @@ namespace Nethermind.Core.Crypto
             }
 
             Bytes = bytes.Slice(bytes.Length - 64, 64).ToArray();
+            _hashCode = GetHashCode(Bytes);
         }
 
         public Address Address
@@ -97,7 +99,11 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            byte[] bytes = Bytes;
+            return _hashCode;
+        }
+
+        private static int GetHashCode(byte[] bytes)
+        {
             long l0 = Unsafe.ReadUnaligned<long>(ref MemoryMarshal.GetArrayDataReference(bytes));
             long l1 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long)));
             long l2 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 2));

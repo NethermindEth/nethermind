@@ -41,7 +41,7 @@ namespace Nethermind.Stats
         private DateTime? _lastDisconnectTime;
         private DateTime? _lastFailedConnectionTime;
 
-        private (DateTimeOffset, NodeStatsEventType) _delayConnectDeadline = (DateTimeOffset.Now - TimeSpan.FromSeconds(1), NodeStatsEventType.None);
+        private (DateTime, NodeStatsEventType) _delayConnectDeadline = (DateTime.UtcNow - TimeSpan.FromSeconds(1), NodeStatsEventType.None);
 
         private static readonly Random Random = new();
 
@@ -55,11 +55,11 @@ namespace Nethermind.Stats
             Node = node;
         }
 
-        public long CurrentNodeReputation => CalculateCurrentReputation();
+        public long CurrentNodeReputation(DateTime nowUTC) => CalculateCurrentReputation(nowUTC);
 
         public long CurrentPersistedNodeReputation { get; set; }
 
-        public long NewPersistedNodeReputation => IsReputationPenalized() ? -100 : (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
+        public long NewPersistedNodeReputation(DateTime nowUTC) => IsReputationPenalized(nowUTC) ? -100 : (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
 
         public P2PNodeDetails P2PNodeDetails { get; private set; }
 
@@ -85,7 +85,7 @@ namespace Nethermind.Stats
 
             if (_statsParameters.DelayDueToEvent.TryGetValue(nodeStatsEventType, out TimeSpan delay))
             {
-                UpdateDelayConnectDeadline(delay, nodeStatsEventType);
+                UpdateDelayConnectDeadline(DateTime.UtcNow, delay, nodeStatsEventType);
             }
 
             Increment(nodeStatsEventType);
@@ -98,7 +98,8 @@ namespace Nethermind.Stats
 
         public void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason)
         {
-            _lastDisconnectTime = DateTime.UtcNow;
+            DateTime nowUTC = DateTime.UtcNow;
+            _lastDisconnectTime = nowUTC;
             if (disconnectType == DisconnectType.Local)
             {
                 _lastLocalDisconnect = disconnectReason;
@@ -112,24 +113,24 @@ namespace Nethermind.Stats
             {
                 if (_statsParameters.DelayDueToLocalDisconnect.TryGetValue(disconnectReason, out TimeSpan delay))
                 {
-                    UpdateDelayConnectDeadline(delay, NodeStatsEventType.LocalDisconnectDelay);
+                    UpdateDelayConnectDeadline(nowUTC, delay, NodeStatsEventType.LocalDisconnectDelay);
                 }
             }
             else if (disconnectType == DisconnectType.Remote)
             {
                 if (_statsParameters.DelayDueToRemoteDisconnect.TryGetValue(disconnectReason, out TimeSpan delay))
                 {
-                    UpdateDelayConnectDeadline(delay, NodeStatsEventType.RemoteDisconnectDelay);
+                    UpdateDelayConnectDeadline(nowUTC, delay, NodeStatsEventType.RemoteDisconnectDelay);
                 }
             }
 
             Increment(NodeStatsEventType.Disconnect);
         }
 
-        private void UpdateDelayConnectDeadline(TimeSpan delay, NodeStatsEventType reason)
+        private void UpdateDelayConnectDeadline(DateTime nowUTC, TimeSpan delay, NodeStatsEventType reason)
         {
-            DateTimeOffset newDeadline = DateTimeOffset.Now + delay;
-            (DateTimeOffset currentDeadline, NodeStatsEventType _) = _delayConnectDeadline;
+            DateTime newDeadline = nowUTC + delay;
+            (DateTime currentDeadline, NodeStatsEventType _) = _delayConnectDeadline;
             if (newDeadline > currentDeadline)
             {
                 _delayConnectDeadline = (newDeadline, reason);
@@ -212,20 +213,20 @@ namespace Nethermind.Stats
             });
         }
 
-        public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed()
+        public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(DateTime nowUTC)
         {
-            if (IsDelayedDueToDisconnect())
+            if (IsDelayedDueToDisconnect(nowUTC))
             {
                 return (true, NodeStatsEventType.Disconnect);
             }
 
-            if (IsDelayedDueToFailedConnection())
+            if (IsDelayedDueToFailedConnection(nowUTC))
             {
                 return (true, NodeStatsEventType.ConnectionFailed);
             }
 
-            (DateTimeOffset outgoingDelayDeadline, NodeStatsEventType reason) = _delayConnectDeadline;
-            if (outgoingDelayDeadline > DateTime.Now)
+            (DateTime outgoingDelayDeadline, NodeStatsEventType reason) = _delayConnectDeadline;
+            if (outgoingDelayDeadline > nowUTC)
             {
                 return (true, reason);
             }
@@ -233,14 +234,14 @@ namespace Nethermind.Stats
             return (false, null);
         }
 
-        private bool IsDelayedDueToDisconnect()
+        private bool IsDelayedDueToDisconnect(DateTime nowUTC)
         {
             if (!_lastDisconnectTime.HasValue)
             {
                 return false;
             }
 
-            double timePassed = DateTime.UtcNow.Subtract(_lastDisconnectTime.Value).TotalMilliseconds;
+            double timePassed = nowUTC.Subtract(_lastDisconnectTime.Value).TotalMilliseconds;
             int disconnectDelay = GetDisconnectDelay();
             if (disconnectDelay <= 500)
             {
@@ -257,14 +258,14 @@ namespace Nethermind.Stats
             return result;
         }
 
-        private bool IsDelayedDueToFailedConnection()
+        private bool IsDelayedDueToFailedConnection(DateTime nowUTC)
         {
             if (!_lastFailedConnectionTime.HasValue)
             {
                 return false;
             }
 
-            double timePassed = DateTime.UtcNow.Subtract(_lastFailedConnectionTime.Value).TotalMilliseconds;
+            double timePassed = nowUTC.Subtract(_lastFailedConnectionTime.Value).TotalMilliseconds;
             int failedConnectionDelay = GetFailedConnectionDelay();
             bool result = timePassed < failedConnectionDelay;
 
@@ -309,9 +310,9 @@ namespace Nethermind.Stats
             return disconnectDelay;
         }
 
-        private long CalculateCurrentReputation()
+        private long CalculateCurrentReputation(DateTime nowUTC)
         {
-            return IsReputationPenalized() ? -100 : CurrentPersistedNodeReputation / 2 + CalculateSessionReputation();
+            return IsReputationPenalized(nowUTC) ? -100 : CurrentPersistedNodeReputation / 2 + CalculateSessionReputation();
         }
 
         private bool HasDisconnectedOnce => _lastLocalDisconnect.HasValue || _lastRemoteDisconnect.HasValue;
@@ -374,7 +375,7 @@ namespace Nethermind.Stats
             return discoveryReputation + 100 * rlpxReputation;
         }
 
-        private bool IsReputationPenalized()
+        private bool IsReputationPenalized(DateTime nowUTC)
         {
             if (!HasDisconnectedOnce)
             {
@@ -399,7 +400,7 @@ namespace Nethermind.Stats
             {
                 if (_lastRemoteDisconnect == DisconnectReason.TooManyPeers || _lastRemoteDisconnect == DisconnectReason.AlreadyConnected)
                 {
-                    double timeFromLastDisconnect = DateTime.UtcNow.Subtract(_lastDisconnectTime ?? DateTime.MinValue).TotalMilliseconds;
+                    double timeFromLastDisconnect = nowUTC.Subtract(_lastDisconnectTime ?? DateTime.MinValue).TotalMilliseconds;
                     return timeFromLastDisconnect < _statsParameters.PenalizedReputationTooManyPeersTimeout;
                 }
 
