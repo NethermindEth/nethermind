@@ -48,8 +48,8 @@ namespace Nethermind.Network.Rlpx
 
         public RlpxHost(IMessageSerializationService serializationService,
             PublicKey localNodeId,
-            int localPort,
             int networkProcessingThread,
+            int localPort,
             string? localIp,
             int connectTimeoutMs,
             IHandshakeService handshakeService,
