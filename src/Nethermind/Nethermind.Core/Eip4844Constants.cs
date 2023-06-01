@@ -10,8 +10,8 @@ public class Eip4844Constants
 {
     public const int MinBlobsPerTransaction = 1;
 
-    public const int DataGasPerBlob = 1 << 17;
-    public const int TargetDataGasPerBlock = 1 << 18;
-    public const int MaxDataGasPerBlock = 1 << 19;
-    public const int MaxDataGasPerTransaction = MaxDataGasPerBlock;
+    public const ulong DataGasPerBlob = 1 << 17;
+    public const ulong TargetDataGasPerBlock = 1 << 18;
+    public const ulong MaxDataGasPerBlock = 1 << 19;
+    public const ulong MaxDataGasPerTransaction = MaxDataGasPerBlock;
 }

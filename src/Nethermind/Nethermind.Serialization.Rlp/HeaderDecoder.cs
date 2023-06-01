@@ -71,15 +71,16 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             }
 
-            int itemsRemaining = decoderContext.PeekNumberOfItemsRemaining(null, 2);
+            int itemsRemaining = decoderContext.PeekNumberOfItemsRemaining(null, 3);
             if (itemsRemaining > 0 &&
                 decoderContext.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
 
-                if (itemsRemaining == 2 && decoderContext.Position != headerCheck)
+                if (itemsRemaining == 3 && decoderContext.Position != headerCheck)
                 {
-                    blockHeader.ExcessDataGas = decoderContext.DecodeUInt256();
+                    blockHeader.DataGasUsed = decoderContext.DecodeULong();
+                    blockHeader.ExcessDataGas = decoderContext.DecodeULong();
                 }
             }
 
@@ -151,15 +152,16 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
             }
 
-            int itemsRemaining = rlpStream.PeekNumberOfItemsRemaining(null, 2);
+            int itemsRemaining = rlpStream.PeekNumberOfItemsRemaining(null, 3);
             if (itemsRemaining > 0 &&
                 rlpStream.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.WithdrawalsRoot = rlpStream.DecodeKeccak();
 
-                if (itemsRemaining == 2 && rlpStream.Position != headerCheck)
+                if (itemsRemaining == 3 && rlpStream.Position != headerCheck)
                 {
-                    blockHeader.ExcessDataGas = rlpStream.DecodeUInt256();
+                    blockHeader.DataGasUsed = rlpStream.DecodeUlong(allowLeadingZeroBytes: false);
+                    blockHeader.ExcessDataGas = rlpStream.DecodeUlong(allowLeadingZeroBytes: false);
                 }
             }
 
@@ -220,6 +222,11 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
             }
 
+            if (header.DataGasUsed is not null)
+            {
+                rlpStream.Encode(header.DataGasUsed.Value);
+            }
+
             if (header.ExcessDataGas is not null)
             {
                 rlpStream.Encode(header.ExcessDataGas.Value);
@@ -263,6 +270,7 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.ExtraData)
                                 + (item.BaseFeePerGas.IsZero ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
                                 + (item.WithdrawalsRoot is null && item.ExcessDataGas is null ? 0 : Rlp.LengthOfKeccakRlp)
+                                + (item.DataGasUsed is null ? 0 : Rlp.LengthOf(item.DataGasUsed.Value))
                                 + (item.ExcessDataGas is null ? 0 : Rlp.LengthOf(item.ExcessDataGas.Value));
 
             if (notForSealing)

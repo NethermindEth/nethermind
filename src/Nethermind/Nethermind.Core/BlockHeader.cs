@@ -25,7 +25,10 @@ public class BlockHeader
         long gasLimit,
         ulong timestamp,
         byte[] extraData,
-        UInt256? excessDataGas = null)
+        //ulong? excessDataGas,
+        //ulong? dataGasUsed)
+        ulong? excessDataGas = null,
+        ulong? dataGasUsed = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -36,6 +39,7 @@ public class BlockHeader
         Timestamp = timestamp;
         ExtraData = extraData;
         ExcessDataGas = excessDataGas;
+        DataGasUsed = dataGasUsed;
     }
 
     public WeakReference<BlockHeader>? MaybeParent { get; set; }
@@ -65,8 +69,8 @@ public class BlockHeader
     public long? AuRaStep { get; set; }
     public UInt256 BaseFeePerGas { get; set; }
     public Keccak? WithdrawalsRoot { get; set; }
-    public UInt256? ExcessDataGas { get; set; }
-
+    public ulong? ExcessDataGas { get; set; }
+    public ulong? DataGasUsed { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
@@ -102,6 +106,7 @@ public class BlockHeader
         if (ExcessDataGas is not null)
         {
             builder.AppendLine($"{indent}ExcessDataGas: {ExcessDataGas}");
+            builder.AppendLine($"{indent}DataGasUsed: {DataGasUsed}");
         }
         builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
         builder.AppendLine($"{indent}TotalDifficulty: {TotalDifficulty}");

@@ -179,9 +179,15 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithExcessDataGas(UInt256? excessDataGas)
+    public BlockHeaderBuilder WithExcessDataGas(ulong? excessDataGas)
     {
         TestObjectInternal.ExcessDataGas = excessDataGas;
+        return this;
+    }
+
+    public BlockHeaderBuilder WithDataGasUsed(ulong? dataGasUsed)
+    {
+        TestObjectInternal.DataGasUsed = dataGasUsed;
         return this;
     }
 }

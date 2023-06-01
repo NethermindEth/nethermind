@@ -282,7 +282,6 @@ namespace Nethermind.AccountAbstraction.Test
                     headerValidator,
                     Always.Valid,
                     SpecProvider,
-                    BlockTree,
                     LogManager);
             }
 

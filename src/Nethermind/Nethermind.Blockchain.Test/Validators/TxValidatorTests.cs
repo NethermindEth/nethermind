@@ -364,31 +364,38 @@ public class TxValidatorTests
             yield return new TestCaseData(MakeArray(0)) { TestName = "Empty hash", ExpectedResult = false };
             yield return new TestCaseData(MakeArray(1, 1))
             {
-                TestName = "Correct version, incorrect length", ExpectedResult = false
+                TestName = "Correct version, incorrect length",
+                ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(31, 1))
             {
-                TestName = "Correct version, incorrect length", ExpectedResult = false
+                TestName = "Correct version, incorrect length",
+                ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(33, 1))
             {
-                TestName = "Correct version, incorrect length", ExpectedResult = false
+                TestName = "Correct version, incorrect length",
+                ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(32, 0))
             {
-                TestName = "Incorrect version, correct length", ExpectedResult = false
+                TestName = "Incorrect version, correct length",
+                ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 - 1))
             {
-                TestName = "Incorrect version, correct length", ExpectedResult = false
+                TestName = "Incorrect version, correct length",
+                ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 + 1))
             {
-                TestName = "Incorrect version, correct length", ExpectedResult = false
+                TestName = "Incorrect version, correct length",
+                ExpectedResult = false
             };
             yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1))
             {
-                TestName = "Correct version, correct length", ExpectedResult = true
+                TestName = "Correct version, correct length",
+                ExpectedResult = true
             };
         }
     }
@@ -447,19 +454,19 @@ public class TxValidatorTests
                 TestName = "More than minimum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob - 1)
+            yield return new TestCaseData(MakeTestObject((int)(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob - 1))
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Less than maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob)
+            yield return new TestCaseData(MakeTestObject((int)(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob))
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob + 1)
+            yield return new TestCaseData(MakeTestObject((int)(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob + 1))
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Too many BlobVersionedHashes",

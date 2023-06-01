@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance);
-            TransactionProcessor transactionProcessor = new(specProvider, stateProvider, virtualMachine, _blockTree, LimboLogs.Instance);
+            TransactionProcessor transactionProcessor = new(specProvider, stateProvider, virtualMachine, LimboLogs.Instance);
 
             _poSSwitcher = Substitute.For<IPoSSwitcher>();
             BlockProcessor blockProcessor = new(
