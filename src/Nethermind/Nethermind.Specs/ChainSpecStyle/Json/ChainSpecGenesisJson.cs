@@ -23,6 +23,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
         public Keccak StateRoot { get; set; }
 
-        public UInt256? ExcessDataGas { get; set; }
+        public ulong? ExcessDataGas { get; set; }
+        public ulong? DataGasUsed { get; set; }
     }
 }

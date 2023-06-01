@@ -75,15 +75,10 @@ namespace Ethereum.Test.Base
                 specProvider,
                 _logManager);
 
-            IDb blockInfoDb = new MemDb();
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb,
-                new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, _logManager);
-
             TransactionProcessor transactionProcessor = new(
                 specProvider,
                 stateProvider,
                 virtualMachine,
-                blockTree,
                 _logManager);
 
             InitializeTestState(test, stateProvider, specProvider);

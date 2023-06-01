@@ -271,7 +271,7 @@ namespace Nethermind.Evm.Test.Tracing
 
                 VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, LimboLogs.Instance);
                 _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider,
-                    virtualMachine, NullBlockFinder.Instance, LimboLogs.Instance);
+                    virtualMachine, LimboLogs.Instance);
                 _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
 
                 tracer = new();

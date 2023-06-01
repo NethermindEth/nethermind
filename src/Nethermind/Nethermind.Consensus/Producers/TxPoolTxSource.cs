@@ -79,7 +79,8 @@ namespace Nethermind.Consensus.Producers
 
                 if (tx.SupportsBlobs)
                 {
-                    dataGasPrice ??= IntrinsicGasCalculator.GetDataGasPrice(parent.ExcessDataGas.GetValueOrDefault());
+                    dataGasPrice ??= IntrinsicGasCalculator.CalculateDataGasPricePerUnit(
+                        IntrinsicGasCalculator.CalculateExcessDataGas(parent, _specProvider.GetFinalSpec()) ?? 0);
                     int txAmountOfBlobs = tx.BlobVersionedHashes?.Length ?? 0;
                     if (dataGasPrice > tx.MaxFeePerDataGas)
                     {

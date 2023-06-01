@@ -84,7 +84,7 @@ namespace Nethermind.Merge.Plugin.Test
             };
         }
 
-        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, UInt256? excessDataGas = null, Transaction[]? transactions = null)
+        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? excessDataGas = null, ulong? dataGasUsed = null, Transaction[]? transactions = null)
         {
             ExecutionPayload blockRequest = new()
             {
@@ -99,6 +99,7 @@ namespace Nethermind.Merge.Plugin.Test
                 Timestamp = parent.Timestamp + 1,
                 Withdrawals = withdrawals,
                 ExcessDataGas = excessDataGas,
+                DataGasUsed = dataGasUsed,
             };
 
             blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());

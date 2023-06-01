@@ -50,7 +50,6 @@ namespace Nethermind.Evm.Test
         protected virtual ulong Timestamp => 0UL;
         protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber, Timestamp);
-        protected IBlockFinder BlockFinder => NullBlockFinder.Instance;
 
         protected virtual ILogManager GetLogManager()
         {
@@ -69,7 +68,7 @@ namespace Nethermind.Evm.Test
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
             Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
-            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, NullBlockFinder.Instance, logManager);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, logManager);
         }
 
         protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)

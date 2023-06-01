@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Test.Validators
             releaseSpec.MaximumUncleCount = 0;
             ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, releaseSpec));
 
-            BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, NullBlockFinder.Instance, LimboLogs.Instance);
+            BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
             bool noiseRemoved = blockValidator.ValidateSuggestedBlock(Build.A.Block.TestObject);
             Assert.True(noiseRemoved);
 

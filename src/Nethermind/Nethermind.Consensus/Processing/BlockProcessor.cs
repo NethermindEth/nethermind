@@ -238,11 +238,12 @@ public partial class BlockProcessor : IBlockProcessor
         _stateProvider.Commit(spec);
         _stateProvider.RecalculateStateRoot();
 
-        if (_specProvider.GetSpec(block.Header).IsEip4844Enabled && block.Header.Number != 0)
+        if (spec.IsEip4844Enabled && block.Header.Number != 0)
         {
+            block.Header.DataGasUsed = IntrinsicGasCalculator.CalculateDataGas(
+                block.Transactions.Sum(tx => tx.BlobVersionedHashes?.Length ?? 0));
             block.Header.ExcessDataGas = IntrinsicGasCalculator.CalculateExcessDataGas(
-                block.Header.IsGenesis ? 0 : _blockFinder.FindParentHeader(block.Header)?.ExcessDataGas,
-                block.Transactions.Sum(tx => tx.BlobVersionedHashes?.Length ?? 0), spec);
+                block.Header.IsGenesis ? null : _blockFinder.FindParentHeader(block.Header), spec);
         }
         block.Header.StateRoot = _stateProvider.StateRoot;
         block.Header.Hash = block.Header.CalculateHash();
@@ -271,7 +272,8 @@ public partial class BlockProcessor : IBlockProcessor
             bh.GasLimit,
             bh.Timestamp,
             bh.ExtraData,
-            bh.ExcessDataGas)
+            bh.ExcessDataGas,
+            bh.DataGasUsed)
         {
             Bloom = Bloom.Empty,
             Author = bh.Author,

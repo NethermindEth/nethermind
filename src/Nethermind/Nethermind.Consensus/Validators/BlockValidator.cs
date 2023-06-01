@@ -22,7 +22,6 @@ public class BlockValidator : IBlockValidator
     private readonly ITxValidator _txValidator;
     private readonly IUnclesValidator _unclesValidator;
     private readonly ISpecProvider _specProvider;
-    private readonly IBlockFinder _blockFinder;
     private readonly ILogger _logger;
 
     public BlockValidator(
@@ -30,14 +29,12 @@ public class BlockValidator : IBlockValidator
         IHeaderValidator? headerValidator,
         IUnclesValidator? unclesValidator,
         ISpecProvider? specProvider,
-        IBlockFinder? blockFinder,
         ILogManager? logManager)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
         _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
     }
 
@@ -106,7 +103,7 @@ public class BlockValidator : IBlockValidator
         if (!ValidateWithdrawals(block, spec, out _))
             return false;
 
-        if (!ValidateBlobsAndExcessDataGas(block, spec, out _))
+        if (!ValidateTransactionsDataGas(block, spec, out _))
             return false;
 
         return true;
@@ -204,46 +201,49 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
-    private bool ValidateBlobsAndExcessDataGas(Block block, IReleaseSpec spec, out string? error)
+    private bool ValidateTransactionsDataGas(Block block, IReleaseSpec spec, out string? error)
     {
-        if (spec.IsEip4844Enabled && block.ExcessDataGas is null)
+        if (!spec.IsEip4844Enabled)
         {
-            error = "ExcessDataGas field is not set.";
-            if (_logger.IsWarn) _logger.Warn(error);
-            return false;
-        }
-
-        if (!spec.IsEip4844Enabled && block.ExcessDataGas is not null)
-        {
-            error = "ExcessDataGas field should not have value.";
-            if (_logger.IsWarn) _logger.Warn(error);
-            return false;
+            error = null;
+            return true;
         }
 
         int blobsInBlock = 0;
+        UInt256? dataGasPrice = null;
         for (int txIndex = block.Transactions.Length - 1; txIndex >= 0; txIndex--)
         {
-            blobsInBlock += block.Transactions[txIndex].BlobVersionedHashes?.Length ?? 0;
+            Transaction transaction = block.Transactions[txIndex];
+            if (!transaction.SupportsBlobs)
+            {
+                continue;
+            }
+
+            if (transaction.MaxFeePerDataGas < (dataGasPrice ??= IntrinsicGasCalculator.CalculateDataGasPrice(block.Header)))
+            {
+                error = $"A transactions has unsufficient MaxFeePerDataGas {transaction.MaxFeePerDataGas} < {dataGasPrice}.";
+                if (_logger.IsWarn) _logger.Warn(error);
+                return false;
+            }
+
+            blobsInBlock += transaction.BlobVersionedHashes!.Length;
         }
 
-        if (IntrinsicGasCalculator.CalculateDataGas(blobsInBlock) > Eip4844Constants.MaxDataGasPerBlock)
+        ulong dataGasUsed = IntrinsicGasCalculator.CalculateDataGas(blobsInBlock);
+        if (dataGasUsed > Eip4844Constants.MaxDataGasPerBlock)
         {
             error = $"A block cannot have more than {Eip4844Constants.MaxDataGasPerBlock} data gas.";
             if (_logger.IsWarn) _logger.Warn(error);
             return false;
         }
 
-        UInt256? expectedExcessDataGas = IntrinsicGasCalculator.CalculateExcessDataGas(
-            (block.ParentHash is null ? null : _blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.All))
-            ?.ExcessDataGas,
-            blobsInBlock, spec);
-
-        if (block.ExcessDataGas != expectedExcessDataGas)
+        if (dataGasUsed != block.Header.DataGasUsed)
         {
-            error = $"ExcessDataGas field is incorrect: {block.ExcessDataGas}, should be {expectedExcessDataGas}.";
+            error = $"DataGasUsed does not match actuall data gas used: {block.Header.DataGasUsed} != {dataGasUsed}.";
             if (_logger.IsWarn) _logger.Warn(error);
             return false;
         }
+
         error = null;
         return true;
     }

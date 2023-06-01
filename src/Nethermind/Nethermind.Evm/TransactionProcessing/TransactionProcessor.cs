@@ -26,7 +26,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _worldState;
         private readonly IVirtualMachine _virtualMachine;
-        private readonly IParentBlockHeaderFinder _blockFinder;
 
         [Flags]
         private enum ExecutionOptions
@@ -61,14 +60,12 @@ namespace Nethermind.Evm.TransactionProcessing
             ISpecProvider? specProvider,
             IWorldState? worldState,
             IVirtualMachine? virtualMachine,
-            IParentBlockHeaderFinder? blockFinder,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
@@ -244,7 +241,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             UInt256 blobsGasCost = spec.IsEip4844Enabled
-                ? IntrinsicGasCalculator.CalculateDataGasPrice(transaction, _blockFinder.FindParentHeader(block)?.ExcessDataGas ?? 0)
+                ? IntrinsicGasCalculator.CalculateDataGasPrice(block, transaction)
                 : UInt256.Zero;
 
             UInt256 senderReservedGasPayment = (ulong)gasLimit * effectiveGasPrice + blobsGasCost;

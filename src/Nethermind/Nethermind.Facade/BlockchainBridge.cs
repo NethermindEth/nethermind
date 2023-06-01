@@ -271,8 +271,9 @@ namespace Nethermind.Facade
 
             if (releaseSpec.IsEip4844Enabled)
             {
+                callHeader.DataGasUsed = IntrinsicGasCalculator.CalculateDataGas(transaction.BlobVersionedHashes?.Length ?? 0);
                 callHeader.ExcessDataGas = treatBlockHeaderAsParentBlock
-                    ? IntrinsicGasCalculator.CalculateExcessDataGas(blockHeader.ExcessDataGas ?? 0, transaction.BlobVersionedHashes?.Length ?? 0, releaseSpec)
+                    ? IntrinsicGasCalculator.CalculateExcessDataGas(blockHeader, releaseSpec)
                     : blockHeader.ExcessDataGas;
             }
             callHeader.MixHash = blockHeader.MixHash;

@@ -94,13 +94,27 @@ public static class IntrinsicGasCalculator
         return accessListCost;
     }
 
-    public static UInt256 CalculateDataGasPrice(Transaction transaction, UInt256 parentExcessDataGas) =>
-        CalculateDataGas(transaction.BlobVersionedHashes?.Length ?? 0) * GetDataGasPrice(parentExcessDataGas);
+    public static ulong CalculateDataGas(int blobCount) => (ulong)blobCount * Eip4844Constants.DataGasPerBlob;
 
-    public static UInt256 CalculateDataGas(int blobCount) =>
-        ((ulong)blobCount * Eip4844Constants.DataGasPerBlob);
+    public static UInt256 CalculateDataGasPrice(BlockHeader header, Transaction transaction) =>
+        CalculateDataGas(transaction.BlobVersionedHashes?.Length ?? 0) * CalculateDataGasPrice(header);
 
-    public static UInt256 GetDataGasPrice(UInt256 parentExcessDataGas)
+    public static UInt256 CalculateDataGasPrice(BlockHeader header) =>
+        header.DataGasUsed.Value * CalculateDataGasPrice(header);
+
+    public static UInt256 CalculateDataGasPricePerUnit(BlockHeader header)
+    {
+        if (header.ExcessDataGas is null)
+        {
+            throw new ArgumentException(nameof(BlockHeader.ExcessDataGas));
+        }
+
+        ulong excessDataGas = header.ExcessDataGas.Value;
+
+        return CalculateDataGasPricePerUnit(header.ExcessDataGas.Value);
+    }
+
+    public static UInt256 CalculateDataGasPricePerUnit(ulong excessDataGas)
     {
         UInt256 dataGasPriceUpdateFraction = 2225652;
         UInt256 minDataGasPrice = 1L;
@@ -122,23 +136,26 @@ public static class IntrinsicGasCalculator
         }
 
         UInt256 scaleDueToParentExcessDataGas =
-            FakeExponential(minDataGasPrice, parentExcessDataGas, dataGasPriceUpdateFraction);
+            FakeExponential(minDataGasPrice, excessDataGas, dataGasPriceUpdateFraction);
         return scaleDueToParentExcessDataGas;
     }
 
-    public static UInt256? CalculateExcessDataGas(UInt256? parentExcessDataGas, int newBlobsCount,
-        IReleaseSpec releaseSpec)
+    public static ulong? CalculateExcessDataGas(BlockHeader? parentBlockHeader, IReleaseSpec releaseSpec)
     {
         if (!releaseSpec.IsEip4844Enabled)
         {
             return null;
         }
 
-        UInt256 excessDataGas = parentExcessDataGas.GetValueOrDefault();
-        UInt256 consumedGas = Eip4844Constants.DataGasPerBlob * (UInt256)newBlobsCount;
-        excessDataGas += consumedGas;
+        if (parentBlockHeader is null)
+        {
+            return 0;
+        }
+
+        ulong excessDataGas = parentBlockHeader.ExcessDataGas ?? 0;
+        excessDataGas += parentBlockHeader.DataGasUsed ?? 0;
         return excessDataGas < Eip4844Constants.TargetDataGasPerBlock
-            ? UInt256.Zero
+            ? 0
             : (excessDataGas - Eip4844Constants.TargetDataGasPerBlock);
     }
 }
