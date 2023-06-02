@@ -47,6 +47,12 @@ class Application
                 continue;
             }
 
+            if (rpc.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                _metrics.TickFailed();
+                continue;
+            }
+
             if (rpc.RootElement.TryGetProperty("response", out _))
             {
                 _metrics.TickResponses();
