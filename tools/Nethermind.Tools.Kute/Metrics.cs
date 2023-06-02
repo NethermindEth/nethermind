@@ -19,14 +19,12 @@ public class Metrics
 
     public void TickRequest(string methodName, TimeSpan runningTime)
     {
-        if (ProcessedRequests.TryGetValue(methodName, out MethodMetrics? request))
-        {
-            request.Tick(runningTime);
-        }
-        else
+        if (!ProcessedRequests.ContainsKey(methodName))
         {
             ProcessedRequests[methodName] = new MethodMetrics();
         }
+
+        ProcessedRequests[methodName].Tick(runningTime);
     }
 
     public class MethodMetrics
