@@ -279,7 +279,6 @@ public class TxValidatorTests
 
     [Timeout(Timeout.MaxTestTime)]
     [TestCase(TxType.EIP1559, false, ExpectedResult = true)]
-    [TestCase(TxType.Blob, false, ExpectedResult = false)]
     [TestCase(TxType.EIP1559, true, ExpectedResult = false)]
     [TestCase(TxType.Blob, true, ExpectedResult = true)]
     public bool MaxFeePerDataGas_should_be_set_for_blob_tx_only(TxType txType, bool isMaxFeePerDataGasSet)
@@ -304,33 +303,6 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, Cancun.Instance);
     }
 
-    [TestCase(0, ExpectedResult = false)]
-    [TestCase(Eip4844Constants.MinBlobsPerTransaction - 1, ExpectedResult = false)]
-    [TestCase(Eip4844Constants.MinBlobsPerTransaction, ExpectedResult = true)]
-    [TestCase(Eip4844Constants.MinBlobsPerTransaction + 1, ExpectedResult = true)]
-    [TestCase(Eip4844Constants.MaxBlobsPerTransaction - 1, ExpectedResult = true)]
-    [TestCase(Eip4844Constants.MaxBlobsPerTransaction, ExpectedResult = true)]
-    [TestCase(Eip4844Constants.MaxBlobsPerTransaction + 1, ExpectedResult = false)]
-    public bool Blobs_count_should_be_within_constraints(int blobsCount)
-    {
-        byte[] sigData = new byte[65];
-        sigData[31] = 1; // correct r
-        sigData[63] = 1; // correct s
-        sigData[64] = 27; // correct v
-        Signature signature = new(sigData);
-        Transaction tx = Build.A.Transaction
-            .WithType(TxType.Blob)
-            .WithTimestamp(ulong.MaxValue)
-            .WithMaxFeePerGas(1)
-            .WithMaxFeePerDataGas(1)
-            .WithBlobVersionedHashes(blobsCount)
-            .WithChainId(TestBlockchainIds.ChainId)
-            .WithSignature(signature).TestObject;
-
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        return txValidator.IsWellFormed(tx, Cancun.Instance);
-    }
-
 
     [TestCaseSource(nameof(BlobVersionedHashInvalidTestCases))]
     [TestCaseSource(nameof(BlobVersionedHashValidTestCases))]
@@ -350,6 +322,13 @@ public class TxValidatorTests
             .WithChainId(TestBlockchainIds.ChainId)
             .WithSignature(signature).TestObject;
 
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        return txValidator.IsWellFormed(tx, Cancun.Instance);
+    }
+
+    [TestCaseSource(nameof(ShardBlobTxIncorrectTransactions))]
+    public bool ShardBlobTransaction_fields_should_be_verified(Transaction tx)
+    {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         return txValidator.IsWellFormed(tx, Cancun.Instance);
     }
@@ -406,6 +385,112 @@ public class TxValidatorTests
             {
                 TestName = "Correct version, correct length",
                 ExpectedResult = true
+            };
+        }
+    }
+
+    private static IEnumerable<TestCaseData> ShardBlobTxIncorrectTransactions
+    {
+        get
+        {
+            KzgPolynomialCommitments.InitializeAsync().Wait();
+            static TransactionBuilder<Transaction> MakeTestObject(int blobCount = 1) => Build.A.Transaction
+                .WithChainId(TestBlockchainIds.ChainId)
+                .WithTimestamp(ulong.MaxValue)
+                .WithMaxFeePerGas(1)
+                .WithMaxFeePerDataGas(1)
+                .WithShardBlobTxTypeAndFields(blobCount);
+
+            yield return new TestCaseData(MakeTestObject().SignedAndResolved().TestObject)
+            {
+                TestName = "A correct shard blob tx",
+                ExpectedResult = true
+            };
+
+            yield return new TestCaseData(MakeTestObject(0)
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "BlobVersionedHashes are empty",
+                ExpectedResult = false
+            };
+            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MinBlobsPerTransaction - 1)
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "Not enough BlobVersionedHashes",
+                ExpectedResult = false
+            };
+            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MinBlobsPerTransaction)
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "Bare minimum BlobVersionedHashes",
+                ExpectedResult = true
+            };
+            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MinBlobsPerTransaction + 1)
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "More than minimum BlobVersionedHashes",
+                ExpectedResult = true
+            };
+            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxBlobsPerTransaction - 1)
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "Less than maximum BlobVersionedHashes",
+                ExpectedResult = true
+            };
+            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxBlobsPerTransaction)
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "Maximum BlobVersionedHashes",
+                ExpectedResult = true
+            };
+            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxBlobsPerTransaction + 1)
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "Too many BlobVersionedHashes",
+                ExpectedResult = false
+            };
+
+            yield return new TestCaseData(MakeTestObject()
+                .WithBlobVersionedHashes(new byte[][] { MakeArray(31, KzgPolynomialCommitments.KzgBlobHashVersionV1) })
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "BlobVersionedHashes are of a wrong length",
+                ExpectedResult = false
+            };
+            yield return new TestCaseData(MakeTestObject()
+                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs = Array.Empty<byte[]>())
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "Blobs count does not match hashes count",
+                ExpectedResult = false
+            };
+            yield return new TestCaseData(MakeTestObject()
+                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments = Array.Empty<byte[]>())
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "Commitments count does not match hashes count",
+                ExpectedResult = false
+            };
+            yield return new TestCaseData(MakeTestObject()
+                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs = Array.Empty<byte[]>())
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "Proofs count does not match hashes count",
+                ExpectedResult = false
+            };
+            yield return new TestCaseData(MakeTestObject()
+                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments[0][1] ^= 0xFF)
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "A commitment does not math hash",
+                ExpectedResult = false
+            };
+            yield return new TestCaseData(MakeTestObject()
+                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs[0][1] ^= 0xFF)
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "Proofs are not valid",
+                ExpectedResult = false
             };
         }
     }

@@ -54,9 +54,9 @@ namespace Nethermind.Serialization.Rlp
             _headerDecoder.Encode(this, value);
         }
 
-        public void Encode(Transaction value)
+        public void Encode(Transaction value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            _txDecoder.Encode(this, value);
+            _txDecoder.Encode(this, value, rlpBehaviors);
         }
 
         public void Encode(TxReceipt value)
@@ -597,6 +597,21 @@ namespace Nethermind.Serialization.Rlp
                 WriteByte(prefix);
                 WriteEncodedLength(input.Count);
                 Write(input);
+            }
+        }
+
+        public void Encode(byte[][] arrays)
+        {
+            int itemsLength = 0;
+            foreach (byte[] array in arrays)
+            {
+                itemsLength += Rlp.LengthOf(array);
+            }
+
+            StartSequence(itemsLength);
+            foreach (byte[] array in arrays)
+            {
+                Encode(array);
             }
         }
 
@@ -1357,6 +1372,25 @@ namespace Nethermind.Serialization.Rlp
         public override string ToString()
         {
             return $"[{nameof(RlpStream)}|{Position}/{Length}]";
+        }
+
+        internal byte[][] DecodeByteArrays()
+        {
+            int length = ReadSequenceLength();
+            if (length is 0)
+            {
+                return Array.Empty<byte[]>();
+            }
+
+            int itemsCount = PeekNumberOfItemsRemaining(Position + length);
+            byte[][] result = new byte[itemsCount][];
+
+            for (int i = 0; i < itemsCount; i++)
+            {
+                result[i] = DecodeByteArray();
+            }
+
+            return result;
         }
     }
 }
