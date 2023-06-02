@@ -298,7 +298,7 @@ namespace Nethermind.Network
                         Interlocked.Increment(ref _connectionRounds);
 
                         long nowMs = Environment.TickCount64;
-                        if (peersTried > 10_000)
+                        if (peersTried > 1_000)
                         {
                             peersTried = 0;
                             // Wait for sockets to clear
@@ -427,7 +427,7 @@ namespace Nethermind.Network
                 hasOnlyStaticNodes = _currentSelection.PreCandidates.Count > 0;
             }
 
-            if (!_currentSelection.PreCandidates.Any() && !hasOnlyStaticNodes)
+            if (_currentSelection.PreCandidates.Count == 0 && !hasOnlyStaticNodes)
             {
                 return;
             }
