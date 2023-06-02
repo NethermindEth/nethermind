@@ -13,10 +13,18 @@ public class JsonMetricsConsumer : IMetricsConsumer
         var metricsObject = new
         {
             metrics.TotalRunningTime,
-            metrics.Messages,
-            metrics.Failed,
-            metrics.Ignored,
-            Methods = new { metrics.Responses, metrics.Requests }
+            Messages = new
+            {
+                metrics.Failed,
+                Success = new
+                {
+                    metrics.Responses,
+                    Requests = new
+                    {
+                        Ignored = metrics.IgnoredRequests, Processed = metrics.ProcessedRequests
+                    }
+                }
+            }
         };
 
         string json = JsonSerializer.Serialize(

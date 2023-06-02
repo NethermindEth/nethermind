@@ -68,14 +68,14 @@ class Application
 
             if (_methodFilter.ShouldIgnore(methodName))
             {
-                _metrics.TickIgnored();
+                _metrics.TickIgnoredRequests();
                 continue;
             }
 
             var startMethod = Stopwatch.GetTimestamp();
             await _submitter.Submit(msg);
 
-            _metrics.TickMethod(methodName, Stopwatch.GetElapsedTime(startMethod));
+            _metrics.TickRequest(methodName, Stopwatch.GetElapsedTime(startMethod));
         }
 
         _metrics.TotalRunningTime = Stopwatch.GetElapsedTime(start);
