@@ -59,6 +59,7 @@ namespace Nethermind.Synchronization.FastSync
         private readonly IDb _codeDb;
         private readonly IDb _stateDb;
         private readonly ITrieStore _stateStore;
+        private readonly ITrieStore _storageStore;
 
         private readonly IBlockTree _blockTree;
 
@@ -80,7 +81,7 @@ namespace Nethermind.Synchronization.FastSync
         private long _blockNumber;
         private SyncMode _syncMode;
 
-        public TreeSync(SyncMode syncMode, IDb codeDb, IDb stateDb, IBlockTree blockTree, ILogManager logManager)
+        public TreeSync(SyncMode syncMode, IDb codeDb, IColumnsDb<StateColumns> stateDb, IBlockTree blockTree, ILogManager logManager)
         {
             _syncMode = syncMode;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -95,6 +96,7 @@ namespace Nethermind.Synchronization.FastSync
             _branchProgress = new BranchProgress(0, _logger);
 
             _stateStore = new TrieStoreByPath(stateDb, Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0);
+            _storageStore = new TrieStoreByPath(stateDb.GetColumnDb(StateColumns.Storage), Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0);
             //_stateStore = new TrieStore(stateDb, logManager);
             _additionalLeafNibbles = new ConcurrentDictionary<Keccak, List<byte>>();
         }
@@ -569,7 +571,7 @@ namespace Nethermind.Synchronization.FastSync
                                 storagePath[64] = 8;
                                 storagePath[65] = 0;
                                 syncItem.PathNibbles.CopyTo(storagePath.Slice(66));
-                                keyExists = _stateStore.ExistsInDB(syncItem.Hash, storagePath.ToArray());
+                                keyExists = _storageStore.ExistsInDB(syncItem.Hash, storagePath.ToArray());
                                 break;
                             case NodeDataType.None:
                             case NodeDataType.Code:
@@ -746,20 +748,20 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             Interlocked.Add(ref _data.DataSize, data.Length);
                             Interlocked.Increment(ref Metrics.SyncedStorageTrieNodes);
-                            switch (_stateStore.Capability )
+                            switch (_storageStore.Capability )
                             {
                                 case TrieNodeResolverCapability.Hash:
                                     _stateDb.Set(syncItem.Hash, data);
                                     break;
                                 case TrieNodeResolverCapability.Path:
-                                    _stateStore.SaveNodeDirectly(0, node, withDelete: rootChanged);
+                                    _storageStore.SaveNodeDirectly(0, node, withDelete: rootChanged);
                                     if (node.IsLeaf && _additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
                                     {
                                         foreach (byte nibble in additionalNibbles)
                                         {
                                             TrieNode clone = node.Clone();
                                             clone.PathToNode[^1] = nibble;
-                                            _stateStore.SaveNodeDirectly(0, clone, withDelete: rootChanged);
+                                            _storageStore.SaveNodeDirectly(0, clone, withDelete: rootChanged);
                                         }
                                     }
                                     break;

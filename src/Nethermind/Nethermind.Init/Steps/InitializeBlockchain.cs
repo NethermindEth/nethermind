@@ -145,7 +145,7 @@ namespace Nethermind.Init.Steps
                     TrieStoreByPath noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
                     IStateProvider diagStateProvider = new StateProvider(noPruningStore, codeDb, getApi.LogManager)
                     {
-                        StateRoot = new Keccak("0xbe0cd77ec842396acf53902340cb6b1570273599a26454b7ea8eb78908656b4e")
+                        StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
                     };
                     TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
                     _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
@@ -185,8 +185,10 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
+            ITrieStore storageTrieStore = new TrieStoreByPath(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), _api.LogManager);
             IStorageProvider storageProvider = setApi.StorageProvider = new StorageProvider(
-                trieStore,
+                //trieStore,
+                storageTrieStore,
                 stateProvider,
                 getApi.LogManager);
 
