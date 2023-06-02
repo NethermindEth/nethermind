@@ -3,7 +3,7 @@
 
 using System.Diagnostics;
 using System.Text.Json;
-using Nethermind.Tools.Kute.JsonRpcMessageProvider;
+using Nethermind.Tools.Kute.MessageProvider;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
 using Nethermind.Tools.Kute.MetricsConsumer;
@@ -14,13 +14,13 @@ class Application
 {
     private readonly Metrics _metrics = new();
 
-    private readonly IJsonRpcMessageProvider _msgProvider;
+    private readonly IMessageProvider<JsonElement?> _msgProvider;
     private readonly IJsonRpcSubmitter _submitter;
     private readonly IMetricsConsumer _metricsConsumer;
     private readonly IJsonRpcMethodFilter _methodFilter;
 
     public Application(
-        IJsonRpcMessageProvider msgProvider,
+        IMessageProvider<JsonElement?> msgProvider,
         IJsonRpcSubmitter submitter,
         IMetricsConsumer metricsConsumer,
         IJsonRpcMethodFilter methodFilter
@@ -36,30 +36,23 @@ class Application
     {
         var start = Stopwatch.GetTimestamp();
 
-        await foreach (var msg in _msgProvider.Messages)
+        await foreach (var jsonRpc in _msgProvider.Messages)
         {
             _metrics.TickMessages();
 
-            var rpc = JsonSerializer.Deserialize<JsonDocument>(msg);
-            if (rpc is null)
+            if (jsonRpc is null)
             {
                 _metrics.TickFailed();
                 continue;
             }
 
-            if (rpc.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                _metrics.TickFailed();
-                continue;
-            }
-
-            if (rpc.RootElement.TryGetProperty("response", out _))
+            if (jsonRpc.Value.TryGetProperty("response", out _))
             {
                 _metrics.TickResponses();
                 continue;
             }
 
-            if (!rpc.RootElement.TryGetProperty("method", out var jsonMethodField))
+            if (!jsonRpc.Value.TryGetProperty("method", out var jsonMethodField))
             {
                 _metrics.TickFailed();
                 continue;
@@ -79,7 +72,7 @@ class Application
             }
 
             var startMethod = Stopwatch.GetTimestamp();
-            await _submitter.Submit(msg);
+            await _submitter.Submit(jsonRpc.Value.GetRawText());
 
             _metrics.TickRequest(methodName, Stopwatch.GetElapsedTime(startMethod));
         }

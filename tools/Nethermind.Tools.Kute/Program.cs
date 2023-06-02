@@ -1,9 +1,10 @@
+using System.Text.Json;
 using CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Tools.Kute.Auth;
-using Nethermind.Tools.Kute.JsonRpcMessageProvider;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
+using Nethermind.Tools.Kute.MessageProvider;
 using Nethermind.Tools.Kute.MetricsConsumer;
 using Nethermind.Tools.Kute.SecretProvider;
 using Nethermind.Tools.Kute.SystemClock;
@@ -32,7 +33,10 @@ static class Program
         collection.AddSingleton<HttpClient>();
         collection.AddSingleton<ISecretProvider>(new FileSecretProvider(config.JwtSecretFilePath));
         collection.AddSingleton<IAuth, JwtAuth>();
-        collection.AddSingleton<IJsonRpcMessageProvider>(new FileJsonRpcMessageProvider(config.MessagesFilePath));
+        collection.AddSingleton<IMessageProvider<JsonElement?>>(
+            new JsonMessageProvider(
+                new FileMessageProvider(config.MessagesFilePath))
+        );
         collection.AddSingleton<IJsonRpcMethodFilter>(
             new ComposedJsonRpcMethodFilter(config.MethodFilters.Select(pattern =>
                 new PatternJsonRpcMethodFilter(pattern)))

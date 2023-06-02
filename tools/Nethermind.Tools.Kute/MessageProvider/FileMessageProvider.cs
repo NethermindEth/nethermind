@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Tools.Kute.JsonRpcMessageProvider;
+namespace Nethermind.Tools.Kute.MessageProvider;
 
-class FileJsonRpcMessageProvider : IJsonRpcMessageProvider
+public class FileMessageProvider : IMessageProvider<string>
 {
     private readonly string _filePath;
 
-    public FileJsonRpcMessageProvider(string filePath)
+    public FileMessageProvider(string filePath)
     {
         _filePath = filePath;
     }
