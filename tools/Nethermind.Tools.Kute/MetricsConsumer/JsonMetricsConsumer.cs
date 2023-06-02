@@ -16,7 +16,7 @@ public class JsonMetricsConsumer : IMetricsConsumer
             Messages = new
             {
                 metrics.Failed,
-                Success = new
+                Successes = new
                 {
                     metrics.Responses,
                     Requests = new
