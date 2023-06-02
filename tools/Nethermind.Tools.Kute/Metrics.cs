@@ -9,7 +9,7 @@ public class Metrics
     public int Failed { get; private set; }
     public int Ignored { get; private set; }
     public int Responses { get; private set; }
-    public IDictionary<string, int> Requests { get; } = new Dictionary<string, int>();
+    public IDictionary<string, MethodMetrics> Requests { get; } = new Dictionary<string, MethodMetrics>();
 
     public TimeSpan TotalRunningTime { get; set; }
 
@@ -18,15 +18,33 @@ public class Metrics
     public void TickIgnored() => Ignored++;
     public void TickResponses() => Responses++;
 
-    public void TickMethod(string methodName)
+    public void TickMethod(string methodName, TimeSpan runningTime)
     {
-        if (Requests.ContainsKey(methodName))
+        if (Requests.TryGetValue(methodName, out MethodMetrics? request))
         {
-            Requests[methodName]++;
+            request.Tick(runningTime);
         }
         else
         {
-            Requests[methodName] = 0;
+            Requests[methodName] = new MethodMetrics();
+        }
+    }
+
+    public class MethodMetrics
+    {
+        public int Count { get; private set; }
+        public TimeSpan RunningTime { get; private set; }
+
+        public MethodMetrics()
+        {
+            Count = 0;
+            RunningTime = TimeSpan.Zero;
+        }
+
+        public void Tick(TimeSpan runningTime)
+        {
+            Count++;
+            RunningTime += runningTime;
         }
     }
 }

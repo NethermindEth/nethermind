@@ -72,8 +72,10 @@ class Application
                 continue;
             }
 
-            _metrics.TickMethod(methodName);
+            var startMethod = Stopwatch.GetTimestamp();
             await _submitter.Submit(msg);
+
+            _metrics.TickMethod(methodName, Stopwatch.GetElapsedTime(startMethod));
         }
 
         _metrics.TotalRunningTime = Stopwatch.GetElapsedTime(start);

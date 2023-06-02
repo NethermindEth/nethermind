@@ -7,25 +7,33 @@ class PrettyReportMetricsConsumer : IMetricsConsumer
 {
     public void ConsumeMetrics(Metrics metrics)
     {
+        var responses = metrics.Responses;
+        var requests = metrics.Requests.Values.Select(mm => mm.Count).Sum();
+
         Console.WriteLine($"""
-        Running Time .. {metrics.TotalRunningTime.TotalMilliseconds} ms
         Results
           Messages .. {metrics.Messages}
           Failed .... {metrics.Failed}
           Ignored ... {metrics.Ignored}
-          Methods
-            Responses .. {metrics.Responses}
-            Requests ... {metrics.Requests.Values.Sum()}
+          Methods ... {responses + requests}
+            Responses .. {responses}
+            Requests ... {requests}
         """);
+
         var longestMethod = metrics.Requests.Keys
             .MaxBy(method => method.Length)?
             .Length ?? 0;
-        foreach (var (method, count) in metrics.Requests)
+        foreach (var (method, mm) in metrics.Requests)
         {
             var dots = new string('.', (2 + longestMethod - method.Length));
             Console.WriteLine($"""
-              {method} {dots} {count}
+              {method} {dots} {mm.Count} in {mm.RunningTime.TotalMilliseconds} ms
         """);
         }
+
+        Console.WriteLine($"""
+
+        Total Running Time .. {metrics.TotalRunningTime.TotalMilliseconds} ms
+        """);
     }
 }

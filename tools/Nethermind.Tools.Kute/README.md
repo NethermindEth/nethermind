@@ -56,6 +56,5 @@ Some typical usages are as follow:
 
 There are some features that we might add in the future, if they end up being required:
 
-- Per method execution time
 - Validate the responses from the Nethermind Client (a "pedantic" mode)
 - Other report outputs (ex. CSV)
