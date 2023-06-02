@@ -23,7 +23,7 @@ namespace Nethermind.Network
         private readonly Dictionary<PublicKey, NetworkNode> _nodesDict = new();
         private long _updateCounter;
         private long _removeCounter;
-        private NetworkNode[] _nodes;
+        private NetworkNode[]? _nodes;
 
         public NetworkStorage(IFullDb? fullDb, ILogManager? logManager)
         {
@@ -36,34 +36,26 @@ namespace Nethermind.Network
         public NetworkNode[] GetPersistedNodes()
         {
             NetworkNode[] nodes = _nodes;
-            return nodes is not null ? nodes : GenerateNodes();
+            return nodes ?? GenerateNodes();
         }
 
         private NetworkNode[] GenerateNodes()
         {
-            NetworkNode[] nodes;
             lock (_lock)
             {
-                nodes = _nodes;
+                NetworkNode[]? nodes = _nodes;
                 if (nodes is not null)
                 {
                     // Already updated
                     return nodes;
                 }
 
-                if (_nodesDict.Count > 0)
-                {
-                    return CopyDictToArray();
-                }
-
-                LoadFromDb();
-
                 if (_nodesDict.Count == 0)
                 {
-                    return Array.Empty<NetworkNode>();
+                    LoadFromDb();
                 }
 
-                return CopyDictToArray();
+                return _nodesDict.Count == 0 ? Array.Empty<NetworkNode>() : CopyDictToArray();
             }
         }
 
