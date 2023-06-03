@@ -205,6 +205,8 @@ namespace Nethermind.Network
 
         private async Task RunPeerUpdateLoop()
         {
+            const int TIME_WAIT = 60_000;
+
             int loopCount = 0;
             long previousActivePeersCount = 0;
             int failCount = 0;
@@ -258,6 +260,7 @@ namespace Nethermind.Network
 
                     int currentPosition = 0;
                     long lastMs = Environment.TickCount64;
+                    int peersTried = 0;
                     while (true)
                     {
                         if (_cancellationTokenSource.IsCancellationRequested)
@@ -271,6 +274,7 @@ namespace Nethermind.Network
                             break;
                         }
 
+                        peersTried += nodesToTry;
                         ActionBlock<Peer> workerBlock = new(
                             SetupOutgoingPeerConnection,
                             new ExecutionDataflowBlockOptions
@@ -294,10 +298,19 @@ namespace Nethermind.Network
                         Interlocked.Increment(ref _connectionRounds);
 
                         long nowMs = Environment.TickCount64;
-                        long diffMs = nowMs - lastMs;
-                        if (diffMs < 50)
+                        if (peersTried > 1_000)
                         {
-                            await Task.Delay(50 - (int)diffMs);
+                            peersTried = 0;
+                            // Wait for sockets to clear
+                            await Task.Delay(TIME_WAIT);
+                        }
+                        else
+                        {
+                            long diffMs = nowMs - lastMs;
+                            if (diffMs < 50)
+                            {
+                                await Task.Delay(50 - (int)diffMs);
+                            }
                         }
                         lastMs = nowMs;
                     }
@@ -333,6 +346,9 @@ namespace Nethermind.Network
 
                     if (_peerPool.ActivePeerCount < MaxActivePeers)
                     {
+                        // We been though all the peers once, so wait TIME-WAIT additional delay before
+                        // trying them again to avoid busy loop or exhausting sockets.
+                        await Task.Delay(TIME_WAIT);
                         _peerUpdateRequested.Set();
                     }
 
@@ -411,7 +427,7 @@ namespace Nethermind.Network
                 hasOnlyStaticNodes = _currentSelection.PreCandidates.Count > 0;
             }
 
-            if (!_currentSelection.PreCandidates.Any() && !hasOnlyStaticNodes)
+            if (_currentSelection.PreCandidates.Count == 0 && !hasOnlyStaticNodes)
             {
                 return;
             }
@@ -419,6 +435,7 @@ namespace Nethermind.Network
             _currentSelection.Counters[ActivePeerSelectionCounter.AllNonActiveCandidates] =
                 _currentSelection.PreCandidates.Count;
 
+            DateTime nowUTC = DateTime.UtcNow;
             foreach (Peer preCandidate in _currentSelection.PreCandidates)
             {
                 if (preCandidate.Node.Port == 0)
@@ -427,7 +444,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                (bool Result, NodeStatsEventType? DelayReason) delayResult = preCandidate.Stats.IsConnectionDelayed();
+                (bool Result, NodeStatsEventType? DelayReason) delayResult = preCandidate.Stats.IsConnectionDelayed(nowUTC);
                 if (delayResult.Result)
                 {
                     if (delayResult.DelayReason == NodeStatsEventType.Disconnect)
@@ -462,7 +479,15 @@ namespace Nethermind.Network
                 _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
             }
 
-            _stats.UpdateCurrentReputation(_currentSelection.Candidates);
+            foreach (Peer peer in _currentSelection.Candidates)
+            {
+                Node? node = peer.Node;
+
+                if (node is null) continue;
+
+                node.CurrentReputation = peer.Stats.CurrentNodeReputation(nowUTC);
+            }
+
             _currentSelection.Candidates.Sort(_peerComparer);
         }
 
@@ -741,7 +766,7 @@ namespace Nethermind.Network
                 return false;
             }
 
-            (bool delayed, NodeStatsEventType? reason) = peer.Stats.IsConnectionDelayed();
+            (bool delayed, NodeStatsEventType? reason) = peer.Stats.IsConnectionDelayed(DateTime.UtcNow);
             if (delayed)
             {
                 if (_logger.IsTrace) _logger.Trace($"Not connecting peer: {peer} due forced connection delay. Reason: {reason}");

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Stats
@@ -19,11 +21,12 @@ namespace Nethermind.Stats
 
         void AddTransferSpeedCaptureEvent(TransferSpeedType speedType, long bytesPerMillisecond);
         long? GetAverageTransferSpeed(TransferSpeedType speedType);
-        (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed();
+        (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(DateTime nowUTC);
 
-        long CurrentNodeReputation { get; }
+        long CurrentNodeReputation() => CurrentNodeReputation(DateTime.UtcNow);
+        long CurrentNodeReputation(DateTime nowUTC);
         long CurrentPersistedNodeReputation { get; set; }
-        long NewPersistedNodeReputation { get; }
+        long NewPersistedNodeReputation(DateTime nowUTC);
 
         P2PNodeDetails P2PNodeDetails { get; }
         SyncPeerNodeDetails EthNodeDetails { get; }
