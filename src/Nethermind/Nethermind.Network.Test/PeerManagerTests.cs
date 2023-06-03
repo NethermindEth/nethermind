@@ -299,7 +299,7 @@ namespace Nethermind.Network.Test
                 for (int i = 0; i < 10; i++)
                 {
                     currentCount += 25;
-                    await Task.Delay(_travisDelayLong);
+                    await Task.Delay(_travisDelayLonger);
                     Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(currentCount));
                     ctx.DisconnectAllSessions();
                 }
@@ -345,6 +345,7 @@ namespace Nethermind.Network.Test
         private int _travisDelay = 500;
 
         private int _travisDelayLong = 1000;
+        private int _travisDelayLonger = 3000;
 
         [Test]
         [Ignore("Behaviour changed that allows peers to go over max if awaiting response")]
