@@ -42,8 +42,9 @@ namespace Nethermind.Stats
 
             if (deleteCount > 0)
             {
+                DateTime utcNow = DateTime.UtcNow;
                 IEnumerable<Node> toDelete = _nodeStats
-                    .OrderBy(n => n.Value.CurrentNodeReputation)
+                    .OrderBy(n => n.Value.CurrentNodeReputation(utcNow))
                     .Select(n => n.Key)
                     .Take(_nodeStats.Count - _maxCount);
 
@@ -102,7 +103,7 @@ namespace Nethermind.Stats
         public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(Node node)
         {
             INodeStats stats = GetOrAdd(node);
-            return stats.IsConnectionDelayed();
+            return stats.IsConnectionDelayed(DateTime.UtcNow);
         }
 
         public CompatibilityValidationType? FindCompatibilityValidationResult(Node node)
@@ -114,7 +115,7 @@ namespace Nethermind.Stats
         public long GetCurrentReputation(Node node)
         {
             INodeStats stats = GetOrAdd(node);
-            return stats.CurrentNodeReputation;
+            return stats.CurrentNodeReputation(DateTime.UtcNow);
         }
 
         public void ReportP2PInitializationEvent(Node node, P2PNodeDetails p2PNodeDetails)
@@ -149,7 +150,7 @@ namespace Nethermind.Stats
         public long GetNewPersistedReputation(Node node)
         {
             INodeStats stats = GetOrAdd(node);
-            return stats.NewPersistedNodeReputation;
+            return stats.NewPersistedNodeReputation(DateTime.UtcNow);
         }
 
         public long GetCurrentPersistedReputation(Node node)

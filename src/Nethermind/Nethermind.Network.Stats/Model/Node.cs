@@ -16,7 +16,6 @@ namespace Nethermind.Stats.Model
         private string _clientId;
         private string _paddedHost;
         private string _paddedPort;
-        private int _hashCode;
 
         /// <summary>
         /// Node public key - same as in enode.
@@ -85,7 +84,6 @@ namespace Nethermind.Stats.Model
         {
             Id = id;
             IdHash = Keccak.Compute(Id.PrefixedBytes);
-            _hashCode = id.GetHashCode();
             IsStatic = isStatic;
             SetIPEndPoint(address);
         }
@@ -121,7 +119,7 @@ namespace Nethermind.Stats.Model
             return false;
         }
 
-        public override int GetHashCode() => _hashCode;
+        public override int GetHashCode() => Id.GetHashCode();
 
         public override string ToString() => ToString(Format.WithPublicKey);
 
