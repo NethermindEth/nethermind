@@ -46,8 +46,8 @@ namespace Nethermind.Evm
 
         public void SaveByte(in UInt256 location, byte value)
         {
-            CheckMemoryAccessViolation(in location, in WordSize256, out ulong newLength);
-            UpdateSize(newLength);
+            CheckMemoryAccessViolation(in location, in WordSize256);
+            UpdateSize(in location, in UInt256.One);
 
             _memory![(long)location] = value;
         }
