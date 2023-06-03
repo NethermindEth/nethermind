@@ -236,7 +236,7 @@ namespace Nethermind.Consensus.Processing
 
         private Task RunProcessing()
         {
-            TaskCompletionSource tcs = new ();
+            TaskCompletionSource tcs = new();
 
             Thread thread = new(() =>
             {
