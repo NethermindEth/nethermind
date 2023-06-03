@@ -321,10 +321,15 @@ namespace Nethermind.Evm
             return ref _bytes[Head * 32];
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Vector256<byte> PopVector256()
         {
-            return Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(PopWord256()));
+            if (Head-- == 0)
+            {
+                Metrics.EvmExceptions++;
+                ThrowEvmStackUnderflowException();
+            }
+
+            return Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * 32));
         }
 
         public Span<byte> PopWord256()
