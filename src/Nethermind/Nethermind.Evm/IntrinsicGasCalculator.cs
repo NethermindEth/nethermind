@@ -97,10 +97,10 @@ public static class IntrinsicGasCalculator
     public static ulong CalculateDataGas(int blobCount) => (ulong)blobCount * Eip4844Constants.DataGasPerBlob;
 
     public static UInt256 CalculateDataGasPrice(BlockHeader header, Transaction transaction) =>
-        CalculateDataGas(transaction.BlobVersionedHashes?.Length ?? 0) * CalculateDataGasPrice(header);
+        CalculateDataGas(transaction.BlobVersionedHashes?.Length ?? 0) * CalculateDataGasPricePerUnit(header);
 
     public static UInt256 CalculateDataGasPrice(BlockHeader header) =>
-        header.DataGasUsed.Value * CalculateDataGasPrice(header);
+        header.DataGasUsed.Value * CalculateDataGasPricePerUnit(header);
 
     public static UInt256 CalculateDataGasPricePerUnit(BlockHeader header)
     {
