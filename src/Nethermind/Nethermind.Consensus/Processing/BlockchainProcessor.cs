@@ -160,25 +160,7 @@ namespace Nethermind.Consensus.Processing
                 }
             });
 
-            _processorTask = Task.Factory.StartNew(
-                RunProcessingLoop,
-                _loopCancellationSource.Token,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", t.Exception);
-                }
-                else if (t.IsCanceled)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} stopped.");
-                }
-                else if (t.IsCompleted)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} complete.");
-                }
-            });
+            _processorTask = RunProcessing();
         }
 
         public async Task StopAsync(bool processRemainingBlocks = false)
@@ -250,6 +232,41 @@ namespace Nethermind.Consensus.Processing
                     throw;
                 }
             }
+        }
+
+        private Task RunProcessing()
+        {
+            TaskCompletionSource tcs = new ();
+
+            Thread thread = new(() =>
+            {
+                try
+                {
+                    RunProcessingLoop();
+                    if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} complete.");
+                }
+                catch (OperationCanceledException)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} stopped.");
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", ex);
+                }
+                finally
+                {
+                    tcs.SetResult();
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "Block Processor",
+                // Boost priority to make sure we process blocks as fast as possible
+                Priority = ThreadPriority.AboveNormal,
+            };
+            thread.Start();
+
+            return tcs.Task;
         }
 
         private void RunProcessingLoop()
