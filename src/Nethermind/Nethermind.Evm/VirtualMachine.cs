@@ -22,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
+using System.Runtime.Intrinsics;
 
 #if DEBUG
 using Nethermind.Evm.Tracing.DebugTrace;
@@ -35,7 +36,6 @@ public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
 
-    private bool _simdOperationsEnabled = Vector<byte>.Count == 32;
     private UInt256 P255Int = (UInt256)BigInteger.Pow(2, 255);
     private UInt256 P255 => P255Int;
     private UInt256 BigInt256 = 256;
@@ -409,11 +409,6 @@ public class VirtualMachine : IVirtualMachine
         }
 
         return cachedCodeInfo;
-    }
-
-    public void DisableSimdInstructions()
-    {
-        _simdOperationsEnabled = false;
     }
 
     private void InitializePrecompiledContracts()
@@ -881,7 +876,7 @@ public class VirtualMachine : IVirtualMachine
                             BytesMax32.AsSpan(0, position).CopyTo(b[..position]);
                         }
 
-                        stack.PushBytes(b);
+                        stack.PushWord256(b);
                         break;
                     }
                 case Instruction.LT:
@@ -990,114 +985,48 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopWord256();
-                        Span<byte> b = stack.PopWord256();
+                        Vector256<byte> aVec = stack.PopVector256();
+                        Vector256<byte> bVec = stack.PopVector256();
 
-                        if (_simdOperationsEnabled)
-                        {
-                            Vector<byte> aVec = new(a);
-                            Vector<byte> bVec = new(b);
+                        Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(stack.Register), Vector256.BitwiseAnd(aVec, bVec));
 
-                            Vector.BitwiseAnd(aVec, bVec).CopyTo(stack.Register);
-                        }
-                        else
-                        {
-                            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a);
-                            ref ulong refB = ref MemoryMarshal.AsRef<ulong>(b);
-                            ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                            refBuffer = refA & refB;
-                            Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) & Unsafe.Add(ref refB, 1);
-                            Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) & Unsafe.Add(ref refB, 2);
-                            Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) & Unsafe.Add(ref refB, 3);
-                        }
-
-                        stack.PushBytes(stack.Register);
+                        stack.PushWord256(stack.Register);
                         break;
                     }
                 case Instruction.OR:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopWord256();
-                        Span<byte> b = stack.PopWord256();
+                        Vector256<byte> aVec = stack.PopVector256();
+                        Vector256<byte> bVec = stack.PopVector256();
 
-                        if (_simdOperationsEnabled)
-                        {
-                            Vector<byte> aVec = new(a);
-                            Vector<byte> bVec = new(b);
+                        Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(stack.Register), Vector256.BitwiseOr(aVec, bVec));
 
-                            Vector.BitwiseOr(aVec, bVec).CopyTo(stack.Register);
-                        }
-                        else
-                        {
-                            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a);
-                            ref ulong refB = ref MemoryMarshal.AsRef<ulong>(b);
-                            ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                            refBuffer = refA | refB;
-                            Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) | Unsafe.Add(ref refB, 1);
-                            Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) | Unsafe.Add(ref refB, 2);
-                            Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) | Unsafe.Add(ref refB, 3);
-                        }
-
-                        stack.PushBytes(stack.Register);
+                        stack.PushWord256(stack.Register);
                         break;
                     }
                 case Instruction.XOR:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopWord256();
-                        Span<byte> b = stack.PopWord256();
+                        Vector256<byte> aVec = stack.PopVector256();
+                        Vector256<byte> bVec = stack.PopVector256();
 
-                        if (_simdOperationsEnabled)
-                        {
-                            Vector<byte> aVec = new(a);
-                            Vector<byte> bVec = new(b);
+                        Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(stack.Register), Vector256.Xor(aVec, bVec));
 
-                            Vector.Xor(aVec, bVec).CopyTo(stack.Register);
-                        }
-                        else
-                        {
-                            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a);
-                            ref ulong refB = ref MemoryMarshal.AsRef<ulong>(b);
-                            ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                            refBuffer = refA ^ refB;
-                            Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) ^ Unsafe.Add(ref refB, 1);
-                            Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) ^ Unsafe.Add(ref refB, 2);
-                            Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) ^ Unsafe.Add(ref refB, 3);
-                        }
-
-                        stack.PushBytes(stack.Register);
+                        stack.PushWord256(stack.Register);
                         break;
                     }
                 case Instruction.NOT:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopWord256();
+                        Vector256<byte> aVec = stack.PopVector256();
+                        Vector256<byte> negVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(BytesMax32));
 
-                        if (_simdOperationsEnabled)
-                        {
-                            Vector<byte> aVec = new(a);
-                            Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
+                        Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(stack.Register), Vector256.Xor(aVec, negVec));
 
-                            negVec.CopyTo(stack.Register);
-                        }
-                        else
-                        {
-                            ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
-                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                            refBuffer = ~refA;
-                            Unsafe.Add(ref refBuffer, 1) = ~Unsafe.Add(ref refA, 1);
-                            Unsafe.Add(ref refBuffer, 2) = ~Unsafe.Add(ref refA, 2);
-                            Unsafe.Add(ref refBuffer, 3) = ~Unsafe.Add(ref refA, 3);
-                        }
-
-                        stack.PushBytes(stack.Register);
+                        stack.PushWord256(stack.Register);
                         break;
                     }
                 case Instruction.BYTE:
@@ -1135,7 +1064,7 @@ public class VirtualMachine : IVirtualMachine
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in memSrc, memLength)) goto OutOfGas;
 
                         Span<byte> memData = vmState.Memory.LoadSpan(in memSrc, memLength);
-                        stack.PushBytes(ValueKeccak.Compute(memData).BytesAsSpan);
+                        stack.PushWord256(ValueKeccak.Compute(memData).BytesAsSpan);
                         break;
                     }
                 case Instruction.ADDRESS:

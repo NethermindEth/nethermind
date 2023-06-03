@@ -13,6 +13,7 @@ using Nethermind.Evm.Tracing;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Intrinsics;
 using System.Diagnostics;
+using System.Collections;
 
 namespace Nethermind.Evm
 {
@@ -40,6 +41,25 @@ namespace Nethermind.Evm
         private Span<byte> _bytes;
 
         private ITxTracer _tracer;
+
+        public void PushWord256(scoped in Span<byte> value)
+        {
+            if (value.Length != 32) ThrowArgumentOutOfRangeException();
+            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
+
+            int offset = Head * 32;
+            if (++Head >= MaxStackSize)
+            {
+                Metrics.EvmExceptions++;
+                ThrowEvmStackOverflowException();
+            }
+
+            // Direct 256bit register copy rather than invoke Memmove
+            Unsafe.WriteUnaligned(
+                ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), offset),
+                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(value))
+            );
+        }
 
         public void PushBytes(scoped in Span<byte> value)
         {
@@ -301,6 +321,12 @@ namespace Nethermind.Evm
             return ref _bytes[Head * 32];
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Vector256<byte> PopVector256()
+        {
+            return Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(PopWord256()));
+        }
+
         public Span<byte> PopWord256()
         {
             if (Head-- == 0)
@@ -424,6 +450,14 @@ namespace Nethermind.Evm
         internal static void ThrowEvmStackOverflowException()
         {
             throw new EvmStackOverflowException();
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static void ThrowArgumentOutOfRangeException()
+        {
+            Metrics.EvmExceptions++;
+            throw new ArgumentOutOfRangeException("Word size must be 32 bytes");
         }
     }
 }
