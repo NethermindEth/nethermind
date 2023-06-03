@@ -140,26 +140,7 @@ namespace Nethermind.Consensus.Processing
         public void Start()
         {
             _loopCancellationSource = new CancellationTokenSource();
-            _recoveryTask = Task.Factory.StartNew(
-                RunRecoveryLoop,
-                _loopCancellationSource.Token,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error("Sender address recovery encountered an exception.", t.Exception);
-                }
-                else if (t.IsCanceled)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Sender address recovery stopped.");
-                }
-                else if (t.IsCompleted)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Sender address recovery complete.");
-                }
-            });
-
+            _recoveryTask = RunRecovery();
             _processorTask = RunProcessing();
         }
 
@@ -180,6 +161,41 @@ namespace Nethermind.Consensus.Processing
 
             await Task.WhenAll((_recoveryTask ?? Task.CompletedTask), (_processorTask ?? Task.CompletedTask));
             if (_logger.IsInfo) _logger.Info("Blockchain Processor shutdown complete.. please wait for all components to close");
+        }
+
+        private Task RunRecovery()
+        {
+            TaskCompletionSource tcs = new();
+
+            Thread thread = new(() =>
+            {
+                try
+                {
+                    RunRecoveryLoop();
+                    if (_logger.IsDebug) _logger.Debug("Sender address recovery complete.");
+                }
+                catch (OperationCanceledException)
+                {
+                    if (_logger.IsDebug) _logger.Debug("Sender address recovery stopped.");
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsError) _logger.Error("Sender address recovery encountered an exception.", ex);
+                }
+                finally
+                {
+                    tcs.SetResult();
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "Block Recovery",
+                // Boost priority to make sure we process blocks as fast as possible
+                Priority = ThreadPriority.AboveNormal,
+            };
+            thread.Start();
+
+            return tcs.Task;
         }
 
         private void RunRecoveryLoop()
@@ -262,7 +278,7 @@ namespace Nethermind.Consensus.Processing
                 IsBackground = true,
                 Name = "Block Processor",
                 // Boost priority to make sure we process blocks as fast as possible
-                Priority = ThreadPriority.AboveNormal,
+                Priority = ThreadPriority.Highest,
             };
             thread.Start();
 
