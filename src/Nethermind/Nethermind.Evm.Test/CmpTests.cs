@@ -14,22 +14,15 @@ namespace Nethermind.Evm.Test
     [Parallelizable(ParallelScope.Self)]
     public class CmpTests : VirtualMachineTestsBase
     {
-        private readonly bool _simdDisabled;
         protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
         public CmpTests(bool simdDisabled)
         {
-            _simdDisabled = simdDisabled;
         }
 
         [Test]
         public void Gt()
         {
-            if (_simdDisabled)
-            {
-                Machine.DisableSimdInstructions();
-            }
-
             byte[] a = Bytes.FromHexString("0xf0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0ff");
             byte[] b = Bytes.FromHexString("0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
             byte[] result = Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000");
@@ -49,11 +42,6 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Lt()
         {
-            if (_simdDisabled)
-            {
-                Machine.DisableSimdInstructions();
-            }
-
             byte[] a = Bytes.FromHexString("0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
             byte[] b = Bytes.FromHexString("0xf0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0");
             byte[] result = Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000");
@@ -73,11 +61,6 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Eq()
         {
-            if (_simdDisabled)
-            {
-                Machine.DisableSimdInstructions();
-            }
-
             byte[] a = Bytes.FromHexString("0xf0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0");
             byte[] b = Bytes.FromHexString("0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
             byte[] result = Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000");
