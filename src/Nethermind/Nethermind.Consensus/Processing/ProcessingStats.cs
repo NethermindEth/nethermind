@@ -121,7 +121,7 @@ namespace Nethermind.Consensus.Processing
                     {
                         _logger.Info($"Processed   {block.Number,9}           | {chunkMs,9:N2} ms  | slot {runMs,7:N0} ms     | recv  {recoveryQueueSize,7:N0} | proc   {blockQueueSize,6:N0}");
                     }
-                    _logger.Info($"- Block{(chunkBlocks > 1 ? "s" : " ")}         {chunkMGas,7:F2} MGas   | {chunkTx,9:N2} txs | calls {chunkCalls,6:N0} ({chunkEmptyCalls,3:N0})  | sload {chunkSload,7:N0} | sstore {chunkSstore,6:N0} | creates {chunkCreates,3:N0} ({-(currentSelfDestructs - _lastSelfDestructs),3:N0})");
+                    _logger.Info($"- Block{(chunkBlocks > 1 ? "s" : " ")}         {chunkMGas,7:F2} MGas   | {chunkTx,6:N0}    txs | calls {chunkCalls,6:N0} ({chunkEmptyCalls,3:N0})  | sload {chunkSload,7:N0} | sstore {chunkSstore,6:N0} | creates {chunkCreates,3:N0} ({-(currentSelfDestructs - _lastSelfDestructs),3:N0})");
                     _logger.Info($"- Throughput     {mgasPerSecond,7:F2} MGas/s | {txps,9:F2} t/s |         {bps,7:F2} b/s");
                     _logger.Info($"- Ave Throughput {totalMgasPerSecond,7:F2} MGas/s | {totalTxPerSecond,9:F2} t/s |         {totalBlocksPerSecond,7:F2} b/s");
                 }
