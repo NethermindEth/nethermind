@@ -94,7 +94,7 @@ public class Metrics
 
     [Description("Number of calls made to addresses without code.")]
     public static long EmptyCalls { get; set; }
-    
+
     [Description("Number of contract create calls.")]
     public static long Creates { get; set; }
 }
