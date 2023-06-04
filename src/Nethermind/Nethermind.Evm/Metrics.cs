@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
+
 using Nethermind.Core.Attributes;
-using Nethermind.Int256;
+
+[assembly: InternalsVisibleTo("Nethermind.Consensus")]
 
 namespace Nethermind.Evm;
 
@@ -99,17 +102,17 @@ public class Metrics
     [Description("Number of contract create calls.")]
     public static long Creates { get; set; }
 
-    public static long Transactions { get; set; }
-    public static decimal AveGasPrice { get; set; }
-    public static decimal MinGasPrice { get; set; } = decimal.MaxValue;
-    public static decimal MaxGasPrice { get; set; }
-    public static decimal EstMedianGasPrice { get; set; }
+    internal static long Transactions { get; set; }
+    internal static decimal AveGasPrice { get; set; }
+    internal static decimal MinGasPrice { get; set; } = decimal.MaxValue;
+    internal static decimal MaxGasPrice { get; set; }
+    internal static decimal EstMedianGasPrice { get; set; }
 
-    public static long BlockTransactions { get; set; }
-    public static decimal BlockAveGasPrice { get; set; }
-    public static decimal BlockMinGasPrice { get; set; } = decimal.MaxValue;
-    public static decimal BlockMaxGasPrice { get; set; }
-    public static decimal BlockEstMedianGasPrice { get; set; }
+    internal static long BlockTransactions { get; set; }
+    internal static decimal BlockAveGasPrice { get; set; }
+    internal static decimal BlockMinGasPrice { get; set; } = decimal.MaxValue;
+    internal static decimal BlockMaxGasPrice { get; set; }
+    internal static decimal BlockEstMedianGasPrice { get; set; }
 
     public static void ResetBlockStats()
     {
