@@ -3,6 +3,7 @@
 
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
@@ -97,4 +98,25 @@ public class Metrics
 
     [Description("Number of contract create calls.")]
     public static long Creates { get; set; }
+
+    public static long Transactions { get; set; }
+    public static decimal AveGasPrice { get; set; }
+    public static decimal MinGasPrice { get; set; } = decimal.MaxValue;
+    public static decimal MaxGasPrice { get; set; }
+    public static decimal EstMedianGasPrice { get; set; }
+
+    public static long BlockTransactions { get; set; }
+    public static decimal BlockAveGasPrice { get; set; }
+    public static decimal BlockMinGasPrice { get; set; } = decimal.MaxValue;
+    public static decimal BlockMaxGasPrice { get; set; }
+    public static decimal BlockEstMedianGasPrice { get; set; }
+
+    public static void ResetBlockStats()
+    {
+        BlockTransactions = 0;
+        BlockAveGasPrice = 0m;
+        BlockMaxGasPrice = 0m;
+        BlockEstMedianGasPrice = 0m;
+        BlockMinGasPrice = decimal.MaxValue;
+    }
 }

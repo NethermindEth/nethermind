@@ -207,6 +207,36 @@ namespace Nethermind.Evm.TransactionProcessing
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, "block gas limit exceeded");
                     return;
                 }
+
+                if (executionOptions == ExecutionOptions.Commit || executionOptions == ExecutionOptions.None)
+                {
+                    decimal gasPrice = (decimal)effectiveGasPrice / 1_000_000_000m;
+                    if (Metrics.MinGasPrice > gasPrice)
+                    {
+                        Metrics.MinGasPrice = gasPrice;
+                    }
+                    if (Metrics.MaxGasPrice < gasPrice)
+                    {
+                        Metrics.MaxGasPrice = gasPrice;
+                    }
+
+                    if (Metrics.BlockMinGasPrice > gasPrice)
+                    {
+                        Metrics.BlockMinGasPrice = gasPrice;
+                    }
+                    if (Metrics.BlockMaxGasPrice < gasPrice)
+                    {
+                        Metrics.BlockMaxGasPrice = gasPrice;
+                    }
+
+                    Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
+                    Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.EstMedianGasPrice);
+                    Metrics.Transactions++;
+
+                    Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
+                    Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
+                    Metrics.BlockTransactions++;
+                }
             }
 
             if (!_worldState.AccountExists(caller))
