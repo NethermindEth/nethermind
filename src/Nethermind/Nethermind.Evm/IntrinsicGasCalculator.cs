@@ -103,7 +103,7 @@ public static class IntrinsicGasCalculator
         CalculateDataGas(transaction) * CalculateDataGasPricePerUnit(header);
 
     public static UInt256 CalculateDataGasPrice(BlockHeader header) =>
-        CalculateDataGasPricePerUnit(header);
+        header.DataGasUsed!.Value * CalculateDataGasPricePerUnit(header);
 
     private static UInt256 CalculateDataGasPricePerUnit(BlockHeader header)
     {
