@@ -166,8 +166,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ulong? dataGasUsed = null;
             if (spec.IsEip4844Enabled && tx is not null)
             {
-                 dataGasPrice = IntrinsicGasCalculator.CalculateDataGasPrice(block.Header, tx);
-                 dataGasUsed = IntrinsicGasCalculator.CalculateDataGas(tx);
+                dataGasPrice = IntrinsicGasCalculator.CalculateDataGasPrice(block.Header, tx);
+                dataGasUsed = IntrinsicGasCalculator.CalculateDataGas(tx);
             }
 
             receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt,
