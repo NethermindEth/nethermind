@@ -494,14 +494,14 @@ public partial class EthRpcModule : IEthRpcModule
 
     public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)
     {
-        (TxReceipt receipt, UInt256? effectiveGasPrice, int logIndexStart) = _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash);
+        (TxReceipt? receipt, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetReceiptAndGasInfo(txHash);
         if (receipt is null)
         {
             return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
-        return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, effectiveGasPrice, logIndexStart)));
+        return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, gasInfo, logIndexStart)));
     }
 
     public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHash, UInt256 positionIndex)

@@ -10,12 +10,12 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.Proofs;
-using Nethermind.Facade;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -155,11 +155,24 @@ namespace Nethermind.JsonRpc.Modules.Proof
             TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
             Transaction[] txs = block.Transactions;
             ReceiptWithProof receiptWithProof = new();
-            bool isEip1559Enabled = _specProvider.GetSpec(block.Header).IsEip1559Enabled;
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+            bool isEip1559Enabled = spec.IsEip1559Enabled;
             Transaction? tx = txs.FirstOrDefault(x => x.Hash == txHash);
 
             int logIndexStart = _receiptFinder.Get(block).GetBlockLogFirstIndex(receipt.Index);
-            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, tx?.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas), logIndexStart);
+            UInt256? effectiveGasPrice = tx?.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas);
+
+            UInt256? dataGasPrice = null;
+            ulong? dataGasUsed = null;
+            if (spec.IsEip4844Enabled && tx is not null)
+            {
+                 dataGasPrice = IntrinsicGasCalculator.CalculateDataGasPrice(block.Header, tx);
+                 dataGasUsed = IntrinsicGasCalculator.CalculateDataGas(tx);
+            }
+
+            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt,
+                new(effectiveGasPrice, dataGasPrice, dataGasUsed),
+                logIndexStart);
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, receipts, receipt.Index);
             receiptWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Header), receipt.Index);
 

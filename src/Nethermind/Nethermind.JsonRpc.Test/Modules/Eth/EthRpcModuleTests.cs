@@ -840,7 +840,7 @@ public partial class EthRpcModuleTests
             .WithLogs(entries).TestObject;
         TxReceipt[] receiptsTab = { receipt };
 
-        blockchainBridge.GetReceiptAndEffectiveGasPrice(Arg.Any<Keccak>()).Returns((receipt, UInt256.One, 0));
+        blockchainBridge.GetReceiptAndGasInfo(Arg.Any<Keccak>()).Returns((receipt, new(UInt256.One), 0));
         blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
         receiptFinder.Get(Arg.Any<Block>()).Returns(receiptsTab);
         receiptFinder.Get(Arg.Any<Keccak>()).Returns(receiptsTab);
@@ -903,7 +903,7 @@ public partial class EthRpcModuleTests
             Logs = logEntries
         };
 
-        blockchainBridge.GetReceiptAndEffectiveGasPrice(Arg.Any<Keccak>()).Returns((receipt2, UInt256.One, 2));
+        blockchainBridge.GetReceiptAndGasInfo(Arg.Any<Keccak>()).Returns((receipt2, new(UInt256.One), 2));
 
         TxReceipt[] receipts = { receipt1, receipt2 };
 
@@ -959,7 +959,7 @@ public partial class EthRpcModuleTests
         blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
         receiptFinder.Get(Arg.Any<Block>()).Returns(receiptsTab);
         receiptFinder.Get(Arg.Any<Keccak>()).Returns(receiptsTab);
-        blockchainBridge.GetReceiptAndEffectiveGasPrice(Arg.Any<Keccak>()).Returns((receipt, UInt256.One, 0));
+        blockchainBridge.GetReceiptAndGasInfo(Arg.Any<Keccak>()).Returns((receipt, new(UInt256.One), 0));
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).WithBlockchainBridge(blockchainBridge).Build();
         string serialized = ctx.Test.TestEthRpc("eth_getTransactionReceipt", tx.Hash!.ToString());

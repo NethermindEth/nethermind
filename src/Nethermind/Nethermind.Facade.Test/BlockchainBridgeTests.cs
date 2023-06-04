@@ -233,7 +233,7 @@ namespace Nethermind.Facade.Test
 
         [TestCase(true)]
         [TestCase(false)]
-        public void GetReceiptAndEffectiveGasPrice_returns_correct_results(bool isCanonical)
+        public void GetReceiptAndGasInfo_returns_correct_results(bool isCanonical)
         {
             Keccak txHash = TestItem.KeccakA;
             Keccak blockHash = TestItem.KeccakB;
@@ -255,8 +255,10 @@ namespace Nethermind.Facade.Test
             _receiptStorage.FindBlockHash(txHash).Returns(blockHash);
             _receiptStorage.Get(block).Returns(new[] { receipt });
 
-            (TxReceipt Receipt, UInt256? EffectiveGasPrice, int LogIndexStart) result = isCanonical ? (receipt, effectiveGasPrice, 0) : (null, null, 0);
-            _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash).Should().BeEquivalentTo(result);
+            (TxReceipt Receipt, TxGasInfo GasInfo, int LogIndexStart) result = isCanonical
+                ? (receipt, new(effectiveGasPrice), 0)
+                : (null, null, 0);
+            _blockchainBridge.GetReceiptAndGasInfo(txHash).Should().BeEquivalentTo(result);
         }
     }
 }

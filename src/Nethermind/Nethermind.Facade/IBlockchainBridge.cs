@@ -21,8 +21,8 @@ namespace Nethermind.Facade
         void RecoverTxSenders(Block block);
         Address? RecoverTxSender(Transaction tx);
         TxReceipt GetReceipt(Keccak txHash);
-        (TxReceipt Receipt, UInt256? EffectiveGasPrice, int LogIndexStart) GetReceiptAndEffectiveGasPrice(Keccak txHash);
-        (TxReceipt Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash);
+        (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Keccak txHash);
+        (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash);
         BlockchainBridge.CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
         BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
         BlockchainBridge.CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize);
@@ -44,5 +44,24 @@ namespace Nethermind.Facade
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
         void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
 
+    }
+
+    public class TxGasInfo
+    {
+        public TxGasInfo(UInt256? effectiveGasPrice, UInt256? dataGasPrice, ulong? dataGasUsed)
+        {
+            EffectiveGasPrice = effectiveGasPrice;
+            DataGasPrice = dataGasPrice;
+            DataGasUsed = dataGasUsed;
+        }
+
+        public TxGasInfo(UInt256? effectiveGasPrice)
+        {
+            EffectiveGasPrice = effectiveGasPrice;
+        }
+
+        public UInt256? EffectiveGasPrice;
+        public UInt256? DataGasPrice;
+        public ulong? DataGasUsed;
     }
 }

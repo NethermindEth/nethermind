@@ -11,6 +11,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.KeyStore;
@@ -74,10 +75,24 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
             Block block = searchResult.Object;
             TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
-            bool isEip1559Enabled = _specProvider.GetSpec(block.Header).IsEip1559Enabled;
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+            bool isEip1559Enabled = spec.IsEip1559Enabled;
             IEnumerable<ReceiptForRpc> result = receipts
                 .Zip(block.Transactions, (r, t) =>
-                    new ReceiptForRpc(t.Hash, r, t.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas), receipts.GetBlockLogFirstIndex(r.Index)));
+                {
+                    UInt256 effectiveGasPrice = t.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas);
+                    UInt256? dataGasPrice = null;
+                    ulong? dataGasUsed = null;
+                    if (spec.IsEip4844Enabled)
+                    {
+                        dataGasPrice = IntrinsicGasCalculator.CalculateDataGasPrice(block.Header, t);
+                        dataGasUsed = IntrinsicGasCalculator.CalculateDataGas(t);
+                    }
+
+                    return new ReceiptForRpc(t.Hash, r,
+                        new(effectiveGasPrice, dataGasPrice, dataGasUsed),
+                        receipts.GetBlockLogFirstIndex(r.Index));
+                });
             ReceiptForRpc[] resultAsArray = result.ToArray();
             return ResultWrapper<ReceiptForRpc[]>.Success(resultAsArray);
         }

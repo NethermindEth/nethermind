@@ -83,7 +83,7 @@ namespace Nethermind.Facade
 
         public bool IsMining { get; }
 
-        public (TxReceipt Receipt, UInt256? EffectiveGasPrice, int LogIndexStart) GetReceiptAndEffectiveGasPrice(Keccak txHash)
+        public (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Keccak txHash)
         {
             Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash is not null)
@@ -97,14 +97,22 @@ namespace Nethermind.Facade
                     Transaction tx = block.Transactions[txReceipt.Index];
                     bool is1559Enabled = _specProvider.GetSpecFor1559(block.Number).IsEip1559Enabled;
                     UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, block.Header.BaseFeePerGas);
-                    return (txReceipt, effectiveGasPrice, logIndexStart);
+                    ulong? dataGas = null;
+                    UInt256? dataGasPrice = null;
+                    if (_specProvider.GetSpec(block.Number, block.Timestamp).IsEip4844Enabled)
+                    {
+                        dataGas = IntrinsicGasCalculator.CalculateDataGas(tx);
+                        dataGasPrice = IntrinsicGasCalculator.CalculateDataGasPrice(block.Header, tx);
+                    }
+
+                    return (txReceipt, new(effectiveGasPrice, dataGasPrice, dataGas), logIndexStart);
                 }
             }
 
             return (null, null, 0);
         }
 
-        public (TxReceipt Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash)
+        public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash)
         {
             Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash is not null)
@@ -271,7 +279,7 @@ namespace Nethermind.Facade
 
             if (releaseSpec.IsEip4844Enabled)
             {
-                callHeader.DataGasUsed = IntrinsicGasCalculator.CalculateDataGas(transaction.BlobVersionedHashes?.Length ?? 0);
+                callHeader.DataGasUsed = IntrinsicGasCalculator.CalculateDataGas(transaction);
                 callHeader.ExcessDataGas = treatBlockHeaderAsParentBlock
                     ? IntrinsicGasCalculator.CalculateExcessDataGas(blockHeader, releaseSpec)
                     : blockHeader.ExcessDataGas;
