@@ -76,7 +76,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Keccak? lastValidHash))
         {
-            if (_logger.IsInfo) _logger.Info($" FCU - Invalid - {requestStr} {forkchoiceState.HeadBlockHash} is known to be a part of an invalid chain.");
+            if (_logger.IsInfo) _logger.Info($" ForkChoiceUpdate: Invalid - {requestStr} {forkchoiceState.HeadBlockHash} is known to be a part of an invalid chain.");
             return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
         }
 
@@ -145,7 +145,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Syncing;
         }
 
-        if (_logger.IsInfo) _logger.Info($"FCU - block {newHeadBlock} was processed.");
+        if (_logger.IsInfo) _logger.Info($"ForkChoiceUpdate: block {newHeadBlock} was processed.");
 
         BlockHeader? finalizedHeader = ValidateBlockHash(forkchoiceState.FinalizedBlockHash, out string? finalizationErrorMsg);
         if (finalizationErrorMsg is not null)
