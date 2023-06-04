@@ -622,6 +622,10 @@ public class VirtualMachine : IVirtualMachine
 
         if (vmState.Env.CodeInfo.MachineCode.Length == 0)
         {
+            if (!vmState.IsTopLevel)
+            {
+                Metrics.EmptyCalls++;
+            }
             goto Empty;
         }
 
@@ -1976,6 +1980,7 @@ public class VirtualMachine : IVirtualMachine
                 case Instruction.CREATE:
                 case Instruction.CREATE2:
                     {
+                        Metrics.Creates++;
                         if (!spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) goto InvalidInstruction;
 
                         if (vmState.IsStatic) goto StaticCallViolation;
@@ -2255,14 +2260,14 @@ public class VirtualMachine : IVirtualMachine
                             gasLimitUl,
                             callEnv,
                             executionType,
-                            false,
+                            isTopLevel: false,
                             snapshot,
                             (long)outputOffset,
                             (long)outputLength,
                             instruction == Instruction.STATICCALL || vmState.IsStatic,
                             vmState,
-                            false,
-                            false);
+                            isContinuation: false,
+                            isCreateOnPreExistingAccount: false);
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);

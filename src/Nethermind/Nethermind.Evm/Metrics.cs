@@ -91,4 +91,10 @@ public class Metrics
     [CounterMetric]
     [Description("Number of Point Evaluation precompile calls.")]
     public static long PointEvaluationPrecompile { get; set; }
+
+    [Description("Number of calls made to addresses without code.")]
+    public static long EmptyCalls { get; set; }
+    
+    [Description("Number of contract create calls.")]
+    public static long Creates { get; set; }
 }
