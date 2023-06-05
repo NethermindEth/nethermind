@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -284,30 +281,32 @@ namespace Nethermind.Consensus.Validators
 
         private bool ValidateDataGasFields(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec)
         {
-            if (spec.IsEip4844Enabled && header.ExcessDataGas is null)
-            {
-                if (_logger.IsWarn) _logger.Warn($"ExcessDataGas field is not set.");
-                return false;
-            }
-
             if (spec.IsEip4844Enabled && header.DataGasUsed is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"DataGasUsed field is not set.");
                 return false;
             }
 
+            if (spec.IsEip4844Enabled && header.ExcessDataGas is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"ExcessDataGas field is not set.");
+                return false;
+            }
+
             if (!spec.IsEip4844Enabled)
             {
-                if (header.ExcessDataGas is not null)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"ExcessDataGas field should not have value.");
-                    return false;
-                }
                 if (header.DataGasUsed is not null)
                 {
                     if (_logger.IsWarn) _logger.Warn($"DataGasUsed field should not have value.");
                     return false;
                 }
+
+                if (header.ExcessDataGas is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"ExcessDataGas field should not have value.");
+                    return false;
+                }
+
                 return true;
             }
 

@@ -4,11 +4,10 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Find
 {
-    public interface IBlockFinder : IParentBlockHeaderFinder
+    public interface IBlockFinder
     {
         Keccak HeadHash { get; }
 

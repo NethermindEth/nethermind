@@ -24,7 +24,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain
 {
@@ -2032,10 +2031,5 @@ namespace Nethermind.Blockchain
                 _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
             }
         }
-
-        BlockHeader? IParentBlockHeaderFinder.FindParentHeader(BlockHeader block) =>
-            this.FindParentHeader(block,
-                BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing |
-                BlockTreeLookupOptions.AllowInvalid);
     }
 }

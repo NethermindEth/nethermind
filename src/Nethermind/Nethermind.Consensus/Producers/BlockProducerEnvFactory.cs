@@ -149,7 +149,6 @@ namespace Nethermind.Consensus.Producers
                 readOnlyTxProcessingEnv.StateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                _blockTree,
                 logManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)));
 
