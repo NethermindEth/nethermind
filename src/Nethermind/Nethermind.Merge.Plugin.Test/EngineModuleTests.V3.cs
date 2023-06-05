@@ -13,6 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -61,7 +62,7 @@ public partial class EngineModuleTests
         (IEngineRpcModule rpcModule, string payloadId) = await BuildAndGetPayloadV3Result(Cancun.Instance, blobTxCount);
         var result = await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId));
         BlobsBundleV1 getPayloadResultBlobsBundle = result.Data!.BlobsBundle!;
-        Assert.That(result.Data.ExecutionPayload.DataGasUsed, Is.Not.Null);
+        Assert.That(result.Data.ExecutionPayload.DataGasUsed, Is.EqualTo(IntrinsicGasCalculator.CalculateDataGas(blobTxCount)));
         Assert.That(result.Data.ExecutionPayload.ExcessDataGas, Is.Not.Null);
         Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
