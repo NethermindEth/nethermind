@@ -99,7 +99,7 @@ namespace Nethermind.Facade
                     UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, block.Header.BaseFeePerGas);
                     ulong? dataGas = null;
                     UInt256? dataGasPrice = null;
-                    if (_specProvider.GetSpec(block.Number, block.Timestamp).IsEip4844Enabled)
+                    if (_specProvider.GetSpec(block.Header).IsEip4844Enabled)
                     {
                         dataGas = IntrinsicGasCalculator.CalculateDataGas(tx);
                         dataGasPrice = IntrinsicGasCalculator.CalculateDataGasPrice(block.Header, tx);

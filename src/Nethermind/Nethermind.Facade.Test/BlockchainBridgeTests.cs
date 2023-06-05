@@ -28,6 +28,8 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 
 namespace Nethermind.Facade.Test
 {
@@ -231,20 +233,59 @@ namespace Nethermind.Facade.Test
             _blockchainBridge.HeadBlock.Should().Be(head);
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void GetReceiptAndGasInfo_returns_correct_results(bool isCanonical)
+        [TestCase(true, true)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(false, false)]
+        public void GetReceiptAndGasInfo_returns_correct_results(bool isCanonical, bool postEip4844)
         {
             Keccak txHash = TestItem.KeccakA;
             Keccak blockHash = TestItem.KeccakB;
             UInt256 effectiveGasPrice = 123;
 
-            Transaction tx = Build.A.Transaction
-                .WithGasPrice(effectiveGasPrice)
-                .TestObject;
-            Block block = Build.A.Block
-                .WithTransactions(tx)
-                .TestObject;
+            if (postEip4844)
+            {
+                _specProvider = new CustomSpecProvider(((ForkActivation)0, Cancun.Instance));
+
+                ReadOnlyTxProcessingEnv processingEnv = new(
+                    new ReadOnlyDbProvider(_dbProvider, false),
+                    new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                    new ReadOnlyBlockTree(_blockTree),
+                    _specProvider,
+                    LimboLogs.Instance);
+
+                processingEnv.TransactionProcessor = _transactionProcessor;
+
+                _blockchainBridge = new BlockchainBridge(
+                    processingEnv,
+                    _txPool,
+                    _receiptStorage,
+                    _filterStore,
+                    _filterManager,
+                    _ethereumEcdsa,
+                    _timestamper,
+                    Substitute.For<ILogFinder>(),
+                    _specProvider,
+                    new BlocksConfig(),
+                    false);
+            }
+
+            Transaction tx = postEip4844
+                ? Build.A.Transaction
+                    .WithGasPrice(effectiveGasPrice)
+                    .WithBlobVersionedHashes(2)
+                    .TestObject
+                : Build.A.Transaction
+                    .WithGasPrice(effectiveGasPrice)
+                    .TestObject;
+            Block block = postEip4844
+                ? Build.A.Block
+                    .WithTransactions(tx)
+                    .WithExcessDataGas(2)
+                    .TestObject
+                : Build.A.Block
+                    .WithTransactions(tx)
+                    .TestObject;
             TxReceipt receipt = Build.A.Receipt
                 .WithBlockHash(blockHash)
                 .WithTransactionHash(txHash)
@@ -255,9 +296,15 @@ namespace Nethermind.Facade.Test
             _receiptStorage.FindBlockHash(txHash).Returns(blockHash);
             _receiptStorage.Get(block).Returns(new[] { receipt });
 
-            (TxReceipt Receipt, TxGasInfo GasInfo, int LogIndexStart) result = isCanonical
-                ? (receipt, new(effectiveGasPrice), 0)
-                : (null, null, 0);
+            (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) result = postEip4844
+                ? (receipt, new(effectiveGasPrice, 262144, 262144), 0)
+                : (receipt, new(effectiveGasPrice), 0);
+
+            if (!isCanonical)
+            {
+                result = (null, null, 0);
+            }
+
             _blockchainBridge.GetReceiptAndGasInfo(txHash).Should().BeEquivalentTo(result);
         }
     }

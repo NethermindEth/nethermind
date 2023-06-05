@@ -60,8 +60,8 @@ namespace Nethermind.Facade
             EffectiveGasPrice = effectiveGasPrice;
         }
 
-        public UInt256? EffectiveGasPrice;
-        public UInt256? DataGasPrice;
-        public ulong? DataGasUsed;
+        public UInt256? EffectiveGasPrice { get; private set; }
+        public UInt256? DataGasPrice { get; private set; }
+        public ulong? DataGasUsed { get; private set; }
     }
 }
