@@ -2151,11 +2151,26 @@ public class VirtualMachine : IVirtualMachine
                         if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
                             instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) goto InvalidInstruction;
 
+                        if (!UpdateGas(spec.GetCallCost(), ref gasAvailable))
+                        {
+                            goto OutOfGas;
+                        }
+
                         stack.PopUInt256(out UInt256 gasLimit);
                         Address codeSource = stack.PopAddress();
 
-                        // Console.WriteLine($"CALLIN {codeSource}");
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) goto OutOfGas;
+                        ICodeInfo targetCode = GetCachedCodeInfo(_worldState, codeSource, spec);
+
+                        if(spec.IsEofEvmModeOn && env.CodeInfo.IsEof()
+                            && !targetCode.IsEof())
+                        {
+                            _returnDataBuffer = Array.Empty<byte>();
+                            stack.PushZero();
+                            break;
+                        }
+
+                        // Console.WriteLine($"CALLIN {codeSource}");
 
                         UInt256 callValue;
                         switch (instruction)
@@ -2207,8 +2222,7 @@ public class VirtualMachine : IVirtualMachine
                             gasExtra += GasCostOf.NewAccount;
                         }
 
-                        if (!UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
-                            !UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength) ||
+                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength) ||
                             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
                             !UpdateGas(gasExtra, ref gasAvailable)) goto OutOfGas;
 
@@ -2263,7 +2277,7 @@ public class VirtualMachine : IVirtualMachine
                             transferValue: transferValue,
                             value: callValue,
                             inputData: callData,
-                            codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
+                            codeInfo: targetCode
                         );
 
                         if (isTrace) _logger.Trace($"Tx call gas {gasLimitUl}");
