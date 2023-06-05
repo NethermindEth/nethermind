@@ -4,7 +4,6 @@ on:
   push:
       branches:
         - master
-        - kch/add_commit_master_docker_build
         
   workflow_dispatch:
     inputs:
