@@ -389,7 +389,9 @@ namespace Nethermind.Network.Test
             await ctx.PeerManager.StopAsync();
             ctx.DisconnectAllSessions();
 
-            Assert.True(ctx.PeerManager.CandidatePeers.All(p => p.OutSession is null));
+            Assert.That(
+                () => ctx.PeerManager.CandidatePeers.All(p => p.OutSession is null),
+                Is.True.After(1000, 10));
         }
 
         [Test]
@@ -455,8 +457,9 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
-            await Task.Delay(_travisDelayLong);
-            ctx.PeerManager.ActivePeers.Count.Should().Be(4);
+            Assert.That(
+                () => ctx.PeerManager.ActivePeers.Count,
+                Is.EqualTo(4).After(5000, 100));
         }
 
         [Test]

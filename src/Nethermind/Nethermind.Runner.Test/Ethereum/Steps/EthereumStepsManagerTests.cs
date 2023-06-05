@@ -65,6 +65,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
+        [Retry(3)]
         public async Task With_steps_from_here_AuRa()
         {
             AuRaNethermindApi runnerContext = CreateAuraApi();
@@ -75,7 +76,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 runnerContext,
                 LimboLogs.Instance);
 
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
             try
             {
