@@ -224,7 +224,7 @@ public class BlockValidator : IBlockValidator
                 continue;
             }
 
-            if (transaction.MaxFeePerDataGas < (dataGasPrice ??= IntrinsicGasCalculator.CalculateDataGasPrice(block.Header)))
+            if (transaction.MaxFeePerDataGas < (dataGasPrice ??= IntrinsicGasCalculator.CalculateDataGasPricePerUnit(block.Header)))
             {
                 error = $"A transaction has unsufficient MaxFeePerDataGas {transaction.MaxFeePerDataGas} < {dataGasPrice}.";
                 if (_logger.IsWarn) _logger.Warn(error);
