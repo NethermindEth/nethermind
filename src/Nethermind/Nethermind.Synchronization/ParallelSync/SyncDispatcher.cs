@@ -151,11 +151,12 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (Feed.IsMultiFeed)
             {
-                // Don't free if num of concurrent processing threads is limited
-                // Otherwise, it'll keep downloading more requests.
+                // Limit multithreaded feed concurrency. Note, this also blocks freeing the allocation, which is deliberate.
+                // otherwise, we will keep spawning requests without processing it fast enough, which consume memory.
                 await _concurrentProcessingSemaphore.WaitAsync(cancellationToken);
-                Free(allocation);
             }
+
+            Free(allocation);
 
             try
             {
@@ -172,10 +173,6 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (Feed.IsMultiFeed)
                 {
                     _concurrentProcessingSemaphore.Release();
-                }
-                else
-                {
-                    Free(allocation);
                 }
             }
         }
