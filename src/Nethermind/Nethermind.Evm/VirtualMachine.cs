@@ -3169,36 +3169,6 @@ InvalidJumpDestination:
 AccessViolation:
         if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.AccessViolation);
         return CallResult.AccessViolationException;
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowStackOverflowException()
-        {
-            Metrics.EvmExceptions++;
-            throw new OutOfGasException();
-        }
-
-        
-    }
-
-    private void RemoveInBetween(ref EvmStack stack, int height, int argsCount)
-    {
-        List<UInt256> arguments = new();
-        for (int i = 0; i < argsCount; i++)
-        {
-            stack.PopUInt256(out var item);
-            arguments.Add(item);
-        }
-
-        while (stack.Head > height)
-        {
-            stack.PopUInt256(out _);
-        }
-
-        for (int i = argsCount - 1; i >= 0; i--)
-        {
-            stack.PushUInt256(arguments[i]);
-        }
     }
 
     static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
