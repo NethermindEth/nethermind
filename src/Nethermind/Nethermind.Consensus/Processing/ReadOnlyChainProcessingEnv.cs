@@ -35,7 +35,6 @@ namespace Nethermind.Consensus.Processing
             IReceiptStorage receiptStorage,
             IReadOnlyDbProvider dbProvider,
             ISpecProvider specProvider,
-            IBlockFinder blockFinder,
             ILogManager logManager,
             IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null)
         {
@@ -52,7 +51,6 @@ namespace Nethermind.Consensus.Processing
                 StateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                blockFinder,
                 logManager);
 
             _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, _txEnv.StateReader, logManager, BlockchainProcessor.Options.NoReceipts);

@@ -201,10 +201,5 @@ namespace Nethermind.Blockchain
         public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
 
         public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ForkChoiceUpdated)} calls");
-
-        BlockHeader? IParentBlockHeaderFinder.FindParentHeader(BlockHeader block) =>
-            this.FindParentHeader(block,
-                BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing |
-                BlockTreeLookupOptions.AllowInvalid);
     }
 }

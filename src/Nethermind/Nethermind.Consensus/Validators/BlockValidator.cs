@@ -210,8 +210,35 @@ public class BlockValidator : IBlockValidator
     {
         if (!spec.IsEip4844Enabled)
         {
+            if (block.Header.DataGasUsed is not null)
+            {
+                error = $"A pre-Cancun block cannot have {nameof(block.Header.DataGasUsed)} set.";
+                if (_logger.IsWarn) _logger.Warn(error);
+                return false;
+            }
+
+            if (block.Header.ExcessDataGas is not null)
+            {
+                error = $"A pre-Cancun block cannot have {nameof(block.Header.ExcessDataGas)} set.";
+                if (_logger.IsWarn) _logger.Warn(error);
+                return false;
+            }
             error = null;
             return true;
+        }
+
+        if (block.Header.DataGasUsed is null)
+        {
+            error = $"A post-Cancun block should have {nameof(block.Header.DataGasUsed)} set.";
+            if (_logger.IsWarn) _logger.Warn(error);
+            return false;
+        }
+
+        if (block.Header.ExcessDataGas is null)
+        {
+            error = $"A post-Cancun block should have {nameof(block.Header.ExcessDataGas)} set.";
+            if (_logger.IsWarn) _logger.Warn(error);
+            return false;
         }
 
         int blobsInBlock = 0;
@@ -226,7 +253,7 @@ public class BlockValidator : IBlockValidator
 
             if (transaction.MaxFeePerDataGas < (dataGasPrice ??= IntrinsicGasCalculator.CalculateDataGasPrice(block.Header)))
             {
-                error = $"A transactions has unsufficient MaxFeePerDataGas {transaction.MaxFeePerDataGas} < {dataGasPrice}.";
+                error = $"A transaction has unsufficient MaxFeePerDataGas {transaction.MaxFeePerDataGas} < {dataGasPrice}.";
                 if (_logger.IsWarn) _logger.Warn(error);
                 return false;
             }
@@ -244,7 +271,7 @@ public class BlockValidator : IBlockValidator
 
         if (dataGasUsed != block.Header.DataGasUsed)
         {
-            error = $"DataGasUsed does not match actuall data gas used: {block.Header.DataGasUsed} != {dataGasUsed}.";
+            error = $"DataGasUsed does not match actual data gas used: {block.Header.DataGasUsed} != {dataGasUsed}.";
             if (_logger.IsWarn) _logger.Warn(error);
             return false;
         }

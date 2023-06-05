@@ -77,7 +77,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 _receiptStorage,
                 _dbProvider,
                 _specProvider,
-                _blockTree,
                 _logManager,
                 transactionsExecutor);
 

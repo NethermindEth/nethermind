@@ -2032,10 +2032,5 @@ namespace Nethermind.Blockchain
                 _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
             }
         }
-
-        BlockHeader? IParentBlockHeaderFinder.FindParentHeader(BlockHeader block) =>
-            this.FindParentHeader(block,
-                BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing |
-                BlockTreeLookupOptions.AllowInvalid);
     }
 }
