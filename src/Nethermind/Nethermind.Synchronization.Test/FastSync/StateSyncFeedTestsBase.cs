@@ -114,7 +114,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
             ctx.StateSyncDispatcher =
-                new StateSyncDispatcher(ctx.Feed, ctx.Pool, new StateSyncAllocationStrategyFactory(), _logManager);
+                new StateSyncDispatcher(0, ctx.Feed, ctx.Pool, new StateSyncAllocationStrategyFactory(), _logManager);
             ctx.StateSyncDispatcher.Start(CancellationToken.None);
             return ctx;
         }

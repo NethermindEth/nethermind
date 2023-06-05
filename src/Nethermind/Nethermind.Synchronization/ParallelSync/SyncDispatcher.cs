@@ -21,7 +21,10 @@ namespace Nethermind.Synchronization.ParallelSync
         protected ISyncFeed<T> Feed { get; }
         protected ISyncPeerPool SyncPeerPool { get; }
 
+        private SemaphoreSlim _semaphore;
+
         protected SyncDispatcher(
+            int maxNumberOfProcessingThread,
             ISyncFeed<T>? syncFeed,
             ISyncPeerPool? syncPeerPool,
             IPeerAllocationStrategyFactory<T>? peerAllocationStrategy,
@@ -31,6 +34,15 @@ namespace Nethermind.Synchronization.ParallelSync
             Feed = syncFeed ?? throw new ArgumentNullException(nameof(syncFeed));
             SyncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             PeerAllocationStrategyFactory = peerAllocationStrategy ?? throw new ArgumentNullException(nameof(peerAllocationStrategy));
+
+            if (maxNumberOfProcessingThread == 0)
+            {
+                _semaphore = new SemaphoreSlim(Environment.ProcessorCount, Environment.ProcessorCount);
+            }
+            else
+            {
+                _semaphore = new SemaphoreSlim(maxNumberOfProcessingThread, maxNumberOfProcessingThread);
+            }
 
             syncFeed.StateChanged += SyncFeedOnStateChanged;
         }
@@ -137,6 +149,12 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (Logger.IsWarn) Logger.Warn($"Failure when executing request {e}");
             }
 
+            if (Feed.IsMultiFeed)
+            {
+                Free(allocation);
+                await _semaphore.WaitAsync(cancellationToken);
+            }
+
             try
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -149,7 +167,14 @@ namespace Nethermind.Synchronization.ParallelSync
             }
             finally
             {
-                Free(allocation);
+                if (Feed.IsMultiFeed)
+                {
+                    _semaphore.Release();
+                }
+                else
+                {
+                    Free(allocation);
+                }
             }
         }
 

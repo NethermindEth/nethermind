@@ -149,7 +149,7 @@ namespace Nethermind.Synchronization
         {
             TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
             _stateSyncFeed = new StateSyncFeed(_syncMode, treeSync, _logManager);
-            StateSyncDispatcher stateSyncDispatcher = new(_stateSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
+            StateSyncDispatcher stateSyncDispatcher = new(_syncConfig.MaxProcessingThread, _stateSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -166,7 +166,7 @@ namespace Nethermind.Synchronization
         private void StartSnapSyncComponents()
         {
             _snapSyncFeed = new SnapSyncFeed(_syncMode, _snapProvider, _logManager);
-            SnapSyncDispatcher dispatcher = new(_snapSyncFeed!, _syncPeerPool, new SnapSyncAllocationStrategyFactory(), _logManager);
+            SnapSyncDispatcher dispatcher = new(_syncConfig.MaxProcessingThread, _snapSyncFeed!, _syncPeerPool, new SnapSyncAllocationStrategyFactory(), _logManager);
 
             Task _ = dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
             {
@@ -186,7 +186,7 @@ namespace Nethermind.Synchronization
             FastBlocksPeerAllocationStrategyFactory fastFactory = new();
 
             _headersFeed = new HeadersSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
-            HeadersSyncDispatcher headersDispatcher = new(_headersFeed!, _syncPeerPool, fastFactory, _logManager);
+            HeadersSyncDispatcher headersDispatcher = new(_syncConfig.MaxProcessingThread, _headersFeed!, _syncPeerPool, fastFactory, _logManager);
             Task headersTask = headersDispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -204,7 +204,7 @@ namespace Nethermind.Synchronization
                 if (_syncConfig.DownloadBodiesInFastSync)
                 {
                     _bodiesFeed = new BodiesSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _specProvider, _logManager);
-                    BodiesSyncDispatcher bodiesDispatcher = new(_bodiesFeed!, _syncPeerPool, fastFactory, _logManager);
+                    BodiesSyncDispatcher bodiesDispatcher = new(_syncConfig.MaxProcessingThread, _bodiesFeed!, _syncPeerPool, fastFactory, _logManager);
                     Task bodiesTask = bodiesDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {
                         if (t.IsFaulted)
@@ -221,7 +221,7 @@ namespace Nethermind.Synchronization
                 if (_syncConfig.DownloadReceiptsInFastSync)
                 {
                     _receiptsFeed = new ReceiptsSyncFeed(_syncMode, _specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
-                    ReceiptsSyncDispatcher receiptsDispatcher = new(_receiptsFeed!, _syncPeerPool, fastFactory, _logManager);
+                    ReceiptsSyncDispatcher receiptsDispatcher = new(_syncConfig.MaxProcessingThread, _receiptsFeed!, _syncPeerPool, fastFactory, _logManager);
                     Task receiptsTask = receiptsDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {
                         if (t.IsFaulted)

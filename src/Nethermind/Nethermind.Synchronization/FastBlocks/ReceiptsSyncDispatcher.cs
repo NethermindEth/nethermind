@@ -18,11 +18,12 @@ namespace Nethermind.Synchronization.FastBlocks
     public class ReceiptsSyncDispatcher : SyncDispatcher<ReceiptsSyncBatch>
     {
         public ReceiptsSyncDispatcher(
+            int maxNumberOfProcessingThread,
             ISyncFeed<ReceiptsSyncBatch> syncFeed,
             ISyncPeerPool syncPeerPool,
             IPeerAllocationStrategyFactory<ReceiptsSyncBatch> peerAllocationStrategy,
             ILogManager logManager)
-            : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+            : base(maxNumberOfProcessingThread, syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
         }
 

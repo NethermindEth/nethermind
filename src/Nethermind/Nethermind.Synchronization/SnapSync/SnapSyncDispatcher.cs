@@ -16,8 +16,13 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncDispatcher : SyncDispatcher<SnapSyncBatch>
     {
-        public SnapSyncDispatcher(ISyncFeed<SnapSyncBatch>? syncFeed, ISyncPeerPool? syncPeerPool, IPeerAllocationStrategyFactory<SnapSyncBatch>? peerAllocationStrategy, ILogManager? logManager)
-            : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+        public SnapSyncDispatcher(
+            int maxNumberOfProcessingThread,
+            ISyncFeed<SnapSyncBatch>? syncFeed,
+            ISyncPeerPool? syncPeerPool,
+            IPeerAllocationStrategyFactory<SnapSyncBatch>? peerAllocationStrategy,
+            ILogManager? logManager)
+            : base(maxNumberOfProcessingThread, syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
         }
 
