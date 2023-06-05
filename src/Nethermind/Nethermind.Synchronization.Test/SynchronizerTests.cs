@@ -576,6 +576,12 @@ namespace Nethermind.Synchronization.Test
                 return this;
             }
 
+            public SyncingContext PeerCountEventuallyIs(long i)
+            {
+                Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(1000, 100), "peer count");
+                return this;
+            }
+
             public SyncingContext WaitAMoment()
             {
                 return Wait(Moment);
@@ -823,7 +829,7 @@ namespace Nethermind.Synchronization.Test
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
                 .WaitAMoment()
-                .PeerCountIs(0).Stop();
+                .PeerCountEventuallyIs(0).Stop();
         }
 
 
