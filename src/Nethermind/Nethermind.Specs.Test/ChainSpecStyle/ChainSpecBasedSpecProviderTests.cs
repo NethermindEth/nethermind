@@ -246,19 +246,21 @@ public class ChainSpecBasedSpecProviderTests
         {
             (ForkActivation)0,
             //(ForkActivation)1,
-            (1, ChiadoSpecProvider.ShanghaiTimestamp - 1),
-            (1, ChiadoSpecProvider.ShanghaiTimestamp),
+            (1, GnosisSpecProvider.ShanghaiTimestamp - 1),
+            (1, GnosisSpecProvider.ShanghaiTimestamp),
             (999_999_999, 999_999_999) // far in the future
         };
 
         CompareSpecProviders(gnosisSpecProvider, provider, forkActivationsToTest, CompareSpecsOptions.IsGnosis);
-        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(ChiadoSpecProvider.Instance.TerminalTotalDifficulty));
+        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(GnosisSpecProvider.Instance.TerminalTotalDifficulty));
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Gnosis));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Gnosis));
 
-        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp - 1)).MaxCodeSize.Should().Be(long.MaxValue);
-        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxCodeSize.Should().Be(24576L);
-        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxInitCodeSize.Should().Be(2 * 24576L);
+        provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp - 1)).MaxCodeSize.Should().Be(long.MaxValue);
+
+        /* ToDo uncomment when we have gnosis shapella timestamp
+        provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp)).MaxCodeSize.Should().Be(24576L);
+        provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp)).MaxInitCodeSize.Should().Be(2 * 24576L);*/
     }
 
 

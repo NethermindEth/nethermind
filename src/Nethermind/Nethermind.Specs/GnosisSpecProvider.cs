@@ -10,18 +10,24 @@ namespace Nethermind.Specs;
 
 public class GnosisSpecProvider : ISpecProvider
 {
-    public const ulong ShanghaiTimestamp = 0x646e0e4cUL;
-
     private GnosisSpecProvider() { }
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation) => forkActivation.BlockNumber switch
+    public IReleaseSpec GetSpec(ForkActivation forkActivation)
     {
-        _ => forkActivation.Timestamp switch
+        return forkActivation.BlockNumber switch
         {
-            null or < ShanghaiTimestamp => GenesisSpec,
-            _ => Shanghai.Instance
-        }
-    };
+            < ConstantinopoleBlockNumber => GenesisSpec,
+            < ConstantinopoleFixBlockNumber => Constantinople.Instance,
+            < IstanbulBlockNumber => ConstantinopleFix.Instance,
+            < BerlinBlockNumber => Istanbul.Instance,
+            < LondonBlockNumber => Berlin.Instance,
+            _ => forkActivation.Timestamp switch
+            {
+                null or < ShanghaiTimestamp => London.Instance,
+                _ => Shanghai.Instance
+            }
+        };
+    }
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
@@ -34,12 +40,19 @@ public class GnosisSpecProvider : ISpecProvider
 
     public ForkActivation? MergeBlockNumber { get; private set; }
     public ulong TimestampFork => ShanghaiTimestamp;
-    public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("231707791542740786049188744689299064356246512");
-    public IReleaseSpec GenesisSpec => London.Instance;
+    public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("8626000000000000000000058750000000000000000000");
+    public IReleaseSpec GenesisSpec => Byzantium.Instance;
     public long? DaoBlockNumber => null;
     public ulong NetworkId => BlockchainIds.Gnosis;
     public ulong ChainId => BlockchainIds.Gnosis;
     public ForkActivation[] TransitionActivations { get; }
+
+    public const long ConstantinopoleBlockNumber = 1_604_400;
+    public const long ConstantinopoleFixBlockNumber = 2_508_800;
+    public const long IstanbulBlockNumber = 7_298_030;
+    public const long BerlinBlockNumber = 16_101_500;
+    public const long LondonBlockNumber = 19_040_000;
+    public const ulong ShanghaiTimestamp = long.MaxValue;
 
     public static GnosisSpecProvider Instance { get; } = new();
 }
