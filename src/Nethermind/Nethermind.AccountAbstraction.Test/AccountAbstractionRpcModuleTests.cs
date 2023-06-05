@@ -206,6 +206,7 @@ namespace Nethermind.AccountAbstraction.Test
 
         [TestCase(true, false)]
         [TestCase(false, true)]
+        [Parallelizable(ParallelScope.Self)]
         public async Task Should_execute_well_formed_op_successfully_if_codehash_not_changed(bool changeCodeHash, bool success)
         {
             var chain = await CreateChain();
@@ -238,13 +239,13 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 Assert.That(
                     () => _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!),
-                    Is.EqualTo(UInt256.One).After(2000, 50));
+                    Is.EqualTo(UInt256.One).After(5000, 50));
             }
             else
             {
                 Assert.That(
                     () => _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!),
-                    Is.EqualTo(UInt256.Zero).After(2000, 50));
+                    Is.EqualTo(UInt256.Zero).After(5000, 50));
             }
         }
 

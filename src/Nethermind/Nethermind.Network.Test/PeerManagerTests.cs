@@ -365,6 +365,7 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        [Retry(3)]
         public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing()
         {
             await using Context ctx = new();

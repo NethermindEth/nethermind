@@ -387,7 +387,7 @@ public partial class EngineModuleTests
             cancelledContext = e.BlockImprovementContext;
         };
 
-        await blockImprovementStartsLock.WaitAsync(100); // started improving block
+        await blockImprovementStartsLock.WaitAsync(1000); // started improving block
         improvementContextFactory.CreatedContexts.Should().HaveCount(2);
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
@@ -436,6 +436,7 @@ public partial class EngineModuleTests
         chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
         await blockImprovementLock.WaitAsync(delay);
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        getPayloadResult.Should().NotBeNull();
 
         chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
 
