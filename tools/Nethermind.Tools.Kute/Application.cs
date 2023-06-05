@@ -47,7 +47,9 @@ class Application
                     break;
 
                 case JsonRpc.BatchJsonRpc batch:
+                    var startBatch = Stopwatch.GetTimestamp();
                     await _submitter.Submit(batch.ToString());
+                    _metrics.TickBatch(Stopwatch.GetElapsedTime(startBatch));
 
                     break;
 

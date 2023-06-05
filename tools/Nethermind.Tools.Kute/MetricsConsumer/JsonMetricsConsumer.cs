@@ -16,12 +16,16 @@ public class JsonMetricsConsumer : IMetricsConsumer
             Messages = new
             {
                 metrics.Failed,
-                Successes = new
+                Succeeded = new
                 {
                     metrics.Responses,
                     Requests = new
                     {
-                        Ignored = metrics.IgnoredRequests, Processed = metrics.ProcessedRequests
+                        metrics.Batches,
+                        Singles = new
+                        {
+                            Ignored = metrics.IgnoredRequests, Processed = metrics.ProcessedRequests
+                        }
                     }
                 }
             }

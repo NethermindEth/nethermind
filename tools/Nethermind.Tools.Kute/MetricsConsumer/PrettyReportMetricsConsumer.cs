@@ -12,11 +12,13 @@ class PrettyReportMetricsConsumer : IMetricsConsumer
         Results:
           Messages .. {metrics.Messages}
             Failed .. {metrics.Failed}
-            Successes
+            Succeeded
               Responses .. {metrics.Responses}
               Requests
-                Ignored .. {metrics.IgnoredRequests}
-                Processed
+                Batches .. {metrics.Batches.Count} in {metrics.Batches.RunningTime.TotalMilliseconds} ms
+                Singles
+                  Ignored .. {metrics.IgnoredRequests}
+                  Processed
         """);
 
         var longestMethod = metrics.ProcessedRequests.Keys
@@ -26,7 +28,7 @@ class PrettyReportMetricsConsumer : IMetricsConsumer
         {
             var dots = new string('.', (2 + longestMethod - method.Length));
             Console.WriteLine($"""
-                  {method} {dots} {mm.Count} in {mm.RunningTime.TotalMilliseconds} ms
+                    {method} {dots} {mm.Count} in {mm.RunningTime.TotalMilliseconds} ms
         """);
         }
     }
