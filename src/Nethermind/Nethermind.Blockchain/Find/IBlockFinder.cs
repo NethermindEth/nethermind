@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Find
 {

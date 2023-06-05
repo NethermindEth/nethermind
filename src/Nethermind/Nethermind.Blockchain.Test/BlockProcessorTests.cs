@@ -24,7 +24,6 @@ using Nethermind.JsonRpc.Test.Modules;
 using System.Threading.Tasks;
 using System.Threading;
 using FluentAssertions;
-using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;

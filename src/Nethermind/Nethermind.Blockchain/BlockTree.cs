@@ -24,7 +24,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain
 {

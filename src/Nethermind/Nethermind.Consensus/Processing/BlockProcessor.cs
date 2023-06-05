@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -246,7 +245,6 @@ public partial class BlockProcessor : IBlockProcessor
 
         _stateProvider.Commit(spec);
         _stateProvider.RecalculateStateRoot();
-
 
         block.Header.StateRoot = _stateProvider.StateRoot;
         block.Header.Hash = block.Header.CalculateHash();

@@ -6,11 +6,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
