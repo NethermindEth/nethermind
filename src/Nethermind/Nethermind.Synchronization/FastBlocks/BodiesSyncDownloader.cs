@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.FastBlocks
             Logger = logManager.GetClassLogger();
         }
 
-        async Task ISyncDownloader<BodiesSyncBatch>.Dispatch(PeerInfo peerInfo, BodiesSyncBatch batch, CancellationToken cancellationToken)
+        public async Task Dispatch(PeerInfo peerInfo, BodiesSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;

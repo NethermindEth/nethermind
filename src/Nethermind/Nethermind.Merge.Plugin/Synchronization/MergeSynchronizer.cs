@@ -82,7 +82,7 @@ public class MergeSynchronizer : Synchronizer
         FastBlocksPeerAllocationStrategyFactory fastFactory = new();
         BeaconHeadersSyncFeed beaconHeadersFeed =
             new(_poSSwitcher, _syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _invalidChainTracker, _logManager);
-        BeaconHeadersSyncDownloader beaconHeadersDownloader = new( _logManager);
+        BeaconHeadersSyncDownloader beaconHeadersDownloader = new(_logManager);
 
         SyncDispatcher<HeadersSyncBatch> dispatcher = CreateDispatcher(
             beaconHeadersFeed!,
