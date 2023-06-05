@@ -216,7 +216,7 @@ public partial class EngineModuleTests
     private async Task<ExecutionPayload> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, IList<Withdrawal>? withdrawals)
     {
         ExecutionPayload executionPayload = CreateBlockRequest(
-            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0);
+            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0, 0);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>());
 
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);

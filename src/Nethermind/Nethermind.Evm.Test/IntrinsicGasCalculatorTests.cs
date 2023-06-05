@@ -133,7 +133,9 @@ namespace Nethermind.Evm.Test
         {
             void Test(IReleaseSpec spec, bool areBlobsEnabled)
             {
-                BlockHeader header = Build.A.BlockHeader.WithExcessDataGas(testCase.excessDataGas).TestObject;
+                BlockHeader header = Build.A.BlockHeader
+                    .WithDataGasUsed(IntrinsicGasCalculator.CalculateDataGas(testCase.newBlobsCount))
+                    .WithExcessDataGas(testCase.excessDataGas).TestObject;
                 IntrinsicGasCalculator.CalculateExcessDataGas(header, spec).Should()
                     .Be(areBlobsEnabled ? testCase.expectedCost : null);
             }

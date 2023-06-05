@@ -145,6 +145,11 @@ public class BlockValidator : IBlockValidator
                 if (_logger.IsError) _logger.Error($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
             }
 
+            if (processedBlock.Header.DataGasUsed != suggestedBlock.Header.DataGasUsed)
+            {
+                if (_logger.IsError) _logger.Error($"- data gas used: expected {suggestedBlock.Header.DataGasUsed}, got {processedBlock.Header.DataGasUsed}");
+            }
+
             if (processedBlock.Header.ExcessDataGas != suggestedBlock.Header.ExcessDataGas)
             {
                 if (_logger.IsError) _logger.Error($"- excess data gas: expected {suggestedBlock.Header.ExcessDataGas}, got {processedBlock.Header.ExcessDataGas}");

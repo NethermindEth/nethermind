@@ -240,16 +240,16 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            UInt256 blobsGasCost = spec.IsEip4844Enabled
+            UInt256 dataGasPrice = spec.IsEip4844Enabled
                 ? IntrinsicGasCalculator.CalculateDataGasPrice(block, transaction)
                 : UInt256.Zero;
 
-            UInt256 senderReservedGasPayment = noValidation ? UInt256.Zero : ((ulong)gasLimit * effectiveGasPrice + blobsGasCost);
+            UInt256 senderReservedGasPayment = noValidation ? UInt256.Zero : ((ulong)gasLimit * effectiveGasPrice + dataGasPrice);
 
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _worldState.GetBalance(caller);
-                if (!noValidation && ((ulong)intrinsicGas * effectiveGasPrice + value + blobsGasCost > senderBalance ||
+                if (!noValidation && ((ulong)intrinsicGas * effectiveGasPrice + value + dataGasPrice > senderBalance ||
                                       senderReservedGasPayment + value > senderBalance))
                 {
                     TraceLogInvalidTx(transaction,
@@ -259,7 +259,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
 
                 if (!noValidation && spec.IsEip1559Enabled && !transaction.IsFree() &&
-                    (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value + blobsGasCost > senderBalance)
+                    (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value + dataGasPrice > senderBalance)
                 {
                     TraceLogInvalidTx(transaction,
                         $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");

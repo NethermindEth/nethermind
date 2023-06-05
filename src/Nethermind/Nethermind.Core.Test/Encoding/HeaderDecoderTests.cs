@@ -129,27 +129,29 @@ public class HeaderDecoderTests
     }
 
     [TestCaseSource(nameof(ExcessDataGasCaseSource))]
-    public void Can_encode_decode_with_excessDataGas(ulong? excessDataGas)
+    public void Can_encode_decode_with_excessDataGas(ulong? dataGasUsed, ulong? excessDataGas)
     {
         BlockHeader header = Build.A.BlockHeader
             .WithTimestamp(ulong.MaxValue)
             .WithBaseFee(1)
             .WithWithdrawalsRoot(Keccak.Zero)
+            .WithDataGasUsed(dataGasUsed)
             .WithExcessDataGas(excessDataGas).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
+        blockHeader.DataGasUsed.Should().Be(dataGasUsed);
         blockHeader.ExcessDataGas.Should().Be(excessDataGas);
     }
 
-    public static IEnumerable<ulong?> ExcessDataGasCaseSource()
+    public static IEnumerable<object?[]> ExcessDataGasCaseSource()
     {
-        yield return null;
-        yield return 0ul;
-        yield return 1ul;
-        yield return ulong.MaxValue / 2;
-        yield return ulong.MaxValue;
+        yield return new object[] { null, null };
+        yield return new object[] { 0ul, 0ul };
+        yield return new object[] { 1ul, 2ul };
+        yield return new object[] { ulong.MaxValue / 2, ulong.MaxValue };
+        yield return new object[] { ulong.MaxValue, ulong.MaxValue / 2 };
     }
 
     [TestCase(-1)]

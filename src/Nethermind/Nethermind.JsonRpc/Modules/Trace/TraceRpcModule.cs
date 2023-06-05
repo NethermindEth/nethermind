@@ -113,8 +113,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     header.GasLimit,
                     header.Timestamp + 1,
                     header.ExtraData,
-                    header.ExcessDataGas,
-                    header.DataGasUsed);
+                    header.DataGasUsed,
+                    header.ExcessDataGas);
 
                 header.TotalDifficulty = 2 * header.Difficulty;
                 header.BaseFeePerGas = baseFee;

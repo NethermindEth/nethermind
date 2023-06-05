@@ -25,10 +25,8 @@ public class BlockHeader
         long gasLimit,
         ulong timestamp,
         byte[] extraData,
-        //ulong? excessDataGas,
-        //ulong? dataGasUsed)
-        ulong? excessDataGas = null,
-        ulong? dataGasUsed = null)
+        ulong? dataGasUsed = null,
+        ulong? excessDataGas = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -38,8 +36,8 @@ public class BlockHeader
         GasLimit = gasLimit;
         Timestamp = timestamp;
         ExtraData = extraData;
-        ExcessDataGas = excessDataGas;
         DataGasUsed = dataGasUsed;
+        ExcessDataGas = excessDataGas;
     }
 
     public WeakReference<BlockHeader>? MaybeParent { get; set; }
@@ -103,10 +101,10 @@ public class BlockHeader
         {
             builder.AppendLine($"{indent}WithdrawalsRoot: {WithdrawalsRoot}");
         }
-        if (ExcessDataGas is not null)
+        if (DataGasUsed is not null || ExcessDataGas is not null)
         {
-            builder.AppendLine($"{indent}ExcessDataGas: {ExcessDataGas}");
             builder.AppendLine($"{indent}DataGasUsed: {DataGasUsed}");
+            builder.AppendLine($"{indent}ExcessDataGas: {ExcessDataGas}");
         }
         builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
         builder.AppendLine($"{indent}TotalDifficulty: {TotalDifficulty}");
