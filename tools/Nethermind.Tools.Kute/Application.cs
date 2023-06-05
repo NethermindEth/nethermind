@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using System.Text.Json;
 using Nethermind.Tools.Kute.MessageProvider;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
@@ -14,13 +13,13 @@ class Application
 {
     private readonly Metrics _metrics = new();
 
-    private readonly IMessageProvider<JsonElement?> _msgProvider;
+    private readonly IMessageProvider<JsonRpc?> _msgProvider;
     private readonly IJsonRpcSubmitter _submitter;
     private readonly IMetricsConsumer _metricsConsumer;
     private readonly IJsonRpcMethodFilter _methodFilter;
 
     public Application(
-        IMessageProvider<JsonElement?> msgProvider,
+        IMessageProvider<JsonRpc?> msgProvider,
         IJsonRpcSubmitter submitter,
         IMetricsConsumer metricsConsumer,
         IJsonRpcMethodFilter methodFilter
@@ -40,41 +39,46 @@ class Application
         {
             _metrics.TickMessages();
 
-            if (jsonRpc is null)
+            switch (jsonRpc)
             {
-                _metrics.TickFailed();
-                continue;
+                case null:
+                    _metrics.TickFailed();
+
+                    break;
+
+                case JsonRpc.BatchJsonRpc batch:
+                    await _submitter.Submit(batch.ToString());
+
+                    break;
+
+                case JsonRpc.SingleJsonRpc single:
+                    if (single.IsResponse)
+                    {
+                        _metrics.TickResponses();
+                        continue;
+                    }
+
+                    if (single.MethodName is null)
+                    {
+                        _metrics.TickFailed();
+                        continue;
+                    }
+
+                    if (_methodFilter.ShouldIgnore(single.MethodName))
+                    {
+                        _metrics.TickIgnoredRequests();
+                        continue;
+                    }
+
+                    var startMethod = Stopwatch.GetTimestamp();
+                    await _submitter.Submit(single.ToString());
+                    _metrics.TickRequest(single.MethodName, Stopwatch.GetElapsedTime(startMethod));
+
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(jsonRpc));
             }
-
-            if (jsonRpc.Value.TryGetProperty("response", out _))
-            {
-                _metrics.TickResponses();
-                continue;
-            }
-
-            if (!jsonRpc.Value.TryGetProperty("method", out var jsonMethodField))
-            {
-                _metrics.TickFailed();
-                continue;
-            }
-
-            var methodName = jsonMethodField.GetString();
-            if (methodName is null)
-            {
-                _metrics.TickFailed();
-                continue;
-            }
-
-            if (_methodFilter.ShouldIgnore(methodName))
-            {
-                _metrics.TickIgnoredRequests();
-                continue;
-            }
-
-            var startMethod = Stopwatch.GetTimestamp();
-            await _submitter.Submit(jsonRpc.Value.GetRawText());
-
-            _metrics.TickRequest(methodName, Stopwatch.GetElapsedTime(startMethod));
         }
 
         _metrics.TotalRunningTime = Stopwatch.GetElapsedTime(start);

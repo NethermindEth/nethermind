@@ -33,8 +33,8 @@ static class Program
         collection.AddSingleton<HttpClient>();
         collection.AddSingleton<ISecretProvider>(new FileSecretProvider(config.JwtSecretFilePath));
         collection.AddSingleton<IAuth, JwtAuth>();
-        collection.AddSingleton<IMessageProvider<JsonElement?>>(
-            new JsonMessageProvider(
+        collection.AddSingleton<IMessageProvider<JsonRpc?>>(
+            new JsonRpcMessageProvider(
                 new FileMessageProvider(config.MessagesFilePath))
         );
         collection.AddSingleton<IJsonRpcMethodFilter>(
