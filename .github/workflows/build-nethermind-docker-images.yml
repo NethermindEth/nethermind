@@ -2,15 +2,10 @@ name: '[BUILD] Docker images and publish'
 
 on:
   push:
-      branches:
-        - master
-      paths:
-        - '**.cs'
-        - '**.csproj'
-        - '**.sln'
-        - '**.config'
-        - '**.json'
-        
+    branches: [master]
+    paths:
+      - 'src/Nethermind/**'
+      
   workflow_dispatch:
     inputs:
       repo:
