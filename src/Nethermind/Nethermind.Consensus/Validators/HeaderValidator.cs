@@ -281,18 +281,6 @@ namespace Nethermind.Consensus.Validators
 
         private bool ValidateDataGasFields(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec)
         {
-            if (spec.IsEip4844Enabled && header.DataGasUsed is null)
-            {
-                if (_logger.IsWarn) _logger.Warn($"DataGasUsed field is not set.");
-                return false;
-            }
-
-            if (spec.IsEip4844Enabled && header.ExcessDataGas is null)
-            {
-                if (_logger.IsWarn) _logger.Warn($"ExcessDataGas field is not set.");
-                return false;
-            }
-
             if (!spec.IsEip4844Enabled)
             {
                 if (header.DataGasUsed is not null)
@@ -308,6 +296,18 @@ namespace Nethermind.Consensus.Validators
                 }
 
                 return true;
+            }
+
+            if (header.DataGasUsed is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"DataGasUsed field is not set.");
+                return false;
+            }
+
+            if (header.ExcessDataGas is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"ExcessDataGas field is not set.");
+                return false;
             }
 
             UInt256? expectedExcessDataGas = IntrinsicGasCalculator.CalculateExcessDataGas(parentHeader, spec);
