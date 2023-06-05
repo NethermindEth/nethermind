@@ -2657,7 +2657,7 @@ public class VirtualMachine : IVirtualMachine
                         if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.IsEof())
                         {
                             if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) goto OutOfGas;
-                            Span<byte> condition = stack.PopBytes();
+                            Span<byte> condition = stack.PopWord256();
                             short offset = codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
                             if (!condition.SequenceEqual(BytesZero32))
                             {
