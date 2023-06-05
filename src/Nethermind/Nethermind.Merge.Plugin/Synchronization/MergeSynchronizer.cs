@@ -83,7 +83,7 @@ public class MergeSynchronizer : Synchronizer
         BeaconHeadersSyncFeed beaconHeadersFeed =
             new(_poSSwitcher, _syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _invalidChainTracker, _logManager);
         BeaconHeadersSyncDispatcher beaconHeadersDispatcher =
-            new(_syncConfig.MaxProcessingThread, beaconHeadersFeed!, _syncPeerPool, fastFactory, _logManager);
+            new(_syncConfig.MaxProcessingThreads, beaconHeadersFeed!, _syncPeerPool, fastFactory, _logManager);
         beaconHeadersDispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
         {
             if (t.IsFaulted)

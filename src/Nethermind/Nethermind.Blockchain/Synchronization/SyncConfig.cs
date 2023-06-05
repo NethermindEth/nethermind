@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool BlockGossipEnabled { get; set; } = true;
         public bool NonValidatorNode { get; set; } = false;
         public ITunableDb.TuneType TuneDbMode { get; set; } = ITunableDb.TuneType.Default;
-        public int MaxProcessingThread { get; set; }
+        public int MaxProcessingThreads { get; set; }
 
         public override string ToString()
         {
