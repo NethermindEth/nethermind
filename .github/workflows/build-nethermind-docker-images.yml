@@ -4,6 +4,12 @@ on:
   push:
       branches:
         - master
+      paths:
+        - '**.cs'
+        - '**.csproj'
+        - '**.sln'
+        - '**.config'
+        - '**.json'
         
   workflow_dispatch:
     inputs:
