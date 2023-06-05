@@ -216,7 +216,7 @@ public class ChainSpecBasedSpecProviderTests
         List<ForkActivation> forkActivationsToTest = new()
         {
             (ForkActivation)0,
-            //(ForkActivation)1,
+         //   (ForkActivation)(1, null),
             (1, ChiadoSpecProvider.ShanghaiTimestamp - 1),
             (1, ChiadoSpecProvider.ShanghaiTimestamp),
             (999_999_999, 999_999_999) // far in the future
@@ -227,9 +227,25 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Chiado));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Chiado));
 
+        VerifyGnosisForkExceptions(provider, ChiadoSpecProvider.ShanghaiTimestamp);
+
         provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp - 1)).MaxCodeSize.Should().Be(long.MaxValue);
         provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxCodeSize.Should().Be(24576L);
         provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxInitCodeSize.Should().Be(2 * 24576L);
+        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).LimitCodeSize.Should().Be(true);
+    }
+
+    private void VerifyGnosisForkExceptions(ISpecProvider specProvider, ulong shanghaiTimestamp)
+    {
+        long blockNumber = GnosisSpecProvider.LondonBlockNumber + 1; // for Chiado it doesn't matter, for Gnosis we need something after LondonHardfork
+        specProvider.GetSpec((blockNumber, shanghaiTimestamp - 1)).MaxCodeSize.Should().Be(long.MaxValue);
+        specProvider.GetSpec((blockNumber, ChiadoSpecProvider.ShanghaiTimestamp)).MaxCodeSize.Should().Be(24576L);
+
+        specProvider.GetSpec((blockNumber, ChiadoSpecProvider.ShanghaiTimestamp - 1)).MaxInitCodeSize.Should().Be(0L);
+        specProvider.GetSpec((blockNumber, ChiadoSpecProvider.ShanghaiTimestamp)).MaxInitCodeSize.Should().Be(2 * 24576L);
+
+        specProvider.GetSpec((blockNumber, ChiadoSpecProvider.ShanghaiTimestamp)).LimitCodeSize.Should().Be(true);
+        specProvider.GetSpec((blockNumber, ChiadoSpecProvider.ShanghaiTimestamp)).LimitCodeSize.Should().Be(true);
     }
 
     [Test]
