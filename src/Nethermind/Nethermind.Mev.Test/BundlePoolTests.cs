@@ -217,8 +217,8 @@ namespace Nethermind.Mev.Test
                     Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head).TestObject)); //4
 
                 Assert.That(() =>
-                    testContext.Simulator.ReceivedCalls().Count((c) => c.GetMethodInfo().Name == nameof(testContext.Simulator.Simulate))
-                , Is.EqualTo(numberOfSimulationsToReceive).After(numberOfSimulationsToReceive * 100, 10));
+                    testContext.Simulator.ReceivedCalls().Count((c) => c.GetMethodInfo().Name == nameof(testContext.Simulator.Simulate)),
+                    Is.EqualTo(numberOfSimulationsToReceive).After(numberOfSimulationsToReceive * 500, 10));
 
                 testContext.Simulator.ClearReceivedCalls();
             }

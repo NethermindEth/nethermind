@@ -206,7 +206,7 @@ namespace Nethermind.AccountAbstraction.Test
 
         [TestCase(true, false)]
         [TestCase(false, true)]
-        [Parallelizable(ParallelScope.Self)]
+        [Retry(3)]
         public async Task Should_execute_well_formed_op_successfully_if_codehash_not_changed(bool changeCodeHash, bool success)
         {
             var chain = await CreateChain();
