@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
@@ -165,6 +166,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.Number = blockHeader?.Number + 1 ?? 0;
             TestObjectInternal.Header.Timestamp = blockHeader?.Timestamp + 1 ?? 0;
             TestObjectInternal.Header.ParentHash = blockHeader is null ? Keccak.Zero : blockHeader.Hash;
+            TestObjectInternal.Header.MaybeParent = blockHeader is null ? null : new WeakReference<BlockHeader>(blockHeader);
             return this;
         }
 
