@@ -348,12 +348,10 @@ namespace Nethermind.Synchronization.Test
                 {
                     SyncReport syncReport = new(SyncPeerPool, stats, syncModeSelector, syncConfig, beaconPivot, _logManager);
                     blockDownloaderFactory = new MergeBlockDownloaderFactory(
-                        0,
                         poSSwitcher,
                         beaconPivot,
                         MainnetSpecProvider.Instance,
                         BlockTree,
-                        blockCacheService,
                         NullReceiptStorage.Instance,
                         Always.Valid,
                         Always.Valid,

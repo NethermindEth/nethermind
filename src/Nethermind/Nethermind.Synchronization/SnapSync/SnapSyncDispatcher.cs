@@ -4,29 +4,23 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncDispatcher : SyncDispatcher<SnapSyncBatch>
+    public class SnapSyncDispatcher : ISyncDownloader<SnapSyncBatch>
     {
-        public SnapSyncDispatcher(
-            int maxNumberOfProcessingThread,
-            ISyncFeed<SnapSyncBatch>? syncFeed,
-            ISyncPeerPool? syncPeerPool,
-            IPeerAllocationStrategyFactory<SnapSyncBatch>? peerAllocationStrategy,
-            ILogManager? logManager)
-            : base(maxNumberOfProcessingThread, syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+        private ILogger Logger;
+
+        public SnapSyncDispatcher(ILogManager? logManager)
         {
+            Logger = logManager.GetClassLogger();
         }
 
-        protected override async Task Dispatch(PeerInfo peerInfo, SnapSyncBatch batch, CancellationToken cancellationToken)
+        public async Task Dispatch(PeerInfo peerInfo, SnapSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
 

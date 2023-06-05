@@ -10,13 +10,7 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class BeaconHeadersSyncDispatcher : HeadersSyncDispatcher
 {
-    public BeaconHeadersSyncDispatcher(
-        int maxNumberOfProcessingThread,
-        ISyncFeed<HeadersSyncBatch> syncFeed,
-        ISyncPeerPool syncPeerPool,
-        IPeerAllocationStrategyFactory<FastBlocksBatch> peerAllocationStrategy,
-        ILogManager logManager)
-        : base(maxNumberOfProcessingThread, syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+    public BeaconHeadersSyncDispatcher(ILogManager logManager) : base(logManager)
     {
     }
 }

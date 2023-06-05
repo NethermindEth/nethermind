@@ -18,19 +18,16 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.StateSync
 {
-    public class StateSyncDispatcher : SyncDispatcher<StateSyncBatch>
+    public class StateSyncDispatcher : ISyncDownloader<StateSyncBatch>
     {
-        public StateSyncDispatcher(
-            int maxNumberOfProcessingThread,
-            ISyncFeed<StateSyncBatch> syncFeed,
-            ISyncPeerPool syncPeerPool,
-            IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy,
-            ILogManager logManager)
-            : base(maxNumberOfProcessingThread, syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+        private ILogger Logger;
+
+        public StateSyncDispatcher(ILogManager logManager)
         {
+            Logger = logManager.GetClassLogger();
         }
 
-        protected override async Task Dispatch(PeerInfo peerInfo, StateSyncBatch batch, CancellationToken cancellationToken)
+        public async Task Dispatch(PeerInfo peerInfo, StateSyncBatch batch, CancellationToken cancellationToken)
         {
             if (batch?.RequestedNodes is null || batch.RequestedNodes.Count == 0)
             {

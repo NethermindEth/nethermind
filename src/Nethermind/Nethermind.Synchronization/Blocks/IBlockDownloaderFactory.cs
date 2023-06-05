@@ -57,7 +57,6 @@ namespace Nethermind.Synchronization.Blocks
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
             return new(
-                _maxNumberOfProcessingThread,
                 syncFeed,
                 _syncPeerPool,
                 _blockTree,
@@ -66,14 +65,19 @@ namespace Nethermind.Synchronization.Blocks
                 _syncReport,
                 _receiptStorage,
                 _specProvider,
-                new BlocksSyncPeerAllocationStrategyFactory(),
                 _betterPeerStrategy,
                 _logManager);
+        }
+
+        public IPeerAllocationStrategyFactory<BlocksRequest> CreateAllocationStrategyFactory()
+        {
+            return new BlocksSyncPeerAllocationStrategyFactory();
         }
     }
 
     public interface IBlockDownloaderFactory
     {
         BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed);
+        IPeerAllocationStrategyFactory<BlocksRequest> CreateAllocationStrategyFactory();
     }
 }

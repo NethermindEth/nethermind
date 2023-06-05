@@ -424,12 +424,10 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             SyncReport syncReport = new(_api.SyncPeerPool, _api.NodeStatsManager, _api.SyncModeSelector, _syncConfig, _beaconPivot, _api.LogManager);
 
             _api.BlockDownloaderFactory = new MergeBlockDownloaderFactory(
-                _syncConfig.MaxProcessingThread,
                 _poSSwitcher,
                 _beaconPivot,
                 _api.SpecProvider,
                 _api.BlockTree,
-                _blockCacheService,
                 _api.ReceiptStorage!,
                 _api.BlockValidator!,
                 _api.SealValidator!,

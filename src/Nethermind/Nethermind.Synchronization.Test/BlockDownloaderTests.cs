@@ -994,7 +994,6 @@ namespace Nethermind.Synchronization.Test
 
             private BlockDownloader _blockDownloader;
             public virtual BlockDownloader BlockDownloader => _blockDownloader ??= new BlockDownloader(
-                0,
                 Feed,
                 PeerPool,
                 BlockTree,
@@ -1003,11 +1002,25 @@ namespace Nethermind.Synchronization.Test
                 NullSyncReport.Instance,
                 ReceiptStorage,
                 SpecProvider,
-                new BlocksSyncPeerAllocationStrategyFactory(),
                 BetterPeerStrategy,
                 LimboLogs.Instance,
                 SyncBatchSize
             );
+
+            private SyncDispatcher<BlocksRequest> _dispatcher;
+            public SyncDispatcher<BlocksRequest> Dispatcher => _dispatcher ??= new SyncDispatcher<BlocksRequest>(
+                0,
+                Feed,
+                BlockDownloader,
+                PeerPool,
+                PeerAllocationStrategy,
+                LimboLogs.Instance
+            );
+
+            private IPeerAllocationStrategyFactory<BlocksRequest>? _peerAllocationStrategy;
+
+            protected virtual IPeerAllocationStrategyFactory<BlocksRequest> PeerAllocationStrategy =>
+                _peerAllocationStrategy ??= new BlocksSyncPeerAllocationStrategyFactory();
 
             public Context(BlockTree? blockTree = null)
             {

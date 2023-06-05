@@ -5,26 +5,22 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class HeadersSyncDispatcher : SyncDispatcher<HeadersSyncBatch>
+    public class HeadersSyncDispatcher : ISyncDownloader<HeadersSyncBatch>
     {
-        public HeadersSyncDispatcher(
-            int maxNumberOfProcessingThread,
-            ISyncFeed<HeadersSyncBatch> syncFeed,
-            ISyncPeerPool syncPeerPool,
-            IPeerAllocationStrategyFactory<FastBlocksBatch> peerAllocationStrategy,
-            ILogManager logManager)
-            : base(maxNumberOfProcessingThread, syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+        private ILogger Logger;
+
+        public HeadersSyncDispatcher(ILogManager logManager)
         {
+            Logger = logManager.GetClassLogger();
         }
 
-        protected override async Task Dispatch(
+        async Task ISyncDownloader<HeadersSyncBatch>.Dispatch(
             PeerInfo peerInfo,
             HeadersSyncBatch batch,
             CancellationToken cancellationToken)
