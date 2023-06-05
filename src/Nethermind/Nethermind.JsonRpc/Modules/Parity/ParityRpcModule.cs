@@ -75,15 +75,14 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
             Block block = searchResult.Object;
             TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
-            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
-            bool isEip1559Enabled = spec.IsEip1559Enabled;
+            bool isEip1559Enabled = _specProvider.GetSpec(block.Header).IsEip1559Enabled;
             IEnumerable<ReceiptForRpc> result = receipts
                 .Zip(block.Transactions, (r, t) =>
                 {
                     UInt256 effectiveGasPrice = t.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas);
                     UInt256? dataGasPrice = null;
                     ulong? dataGasUsed = null;
-                    if (spec.IsEip4844Enabled)
+                    if (t.SupportsBlobs)
                     {
                         dataGasPrice = IntrinsicGasCalculator.CalculateDataGasPrice(block.Header, t);
                         dataGasUsed = IntrinsicGasCalculator.CalculateDataGas(t);

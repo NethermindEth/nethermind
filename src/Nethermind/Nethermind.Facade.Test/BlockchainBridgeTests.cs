@@ -243,36 +243,11 @@ namespace Nethermind.Facade.Test
             Keccak blockHash = TestItem.KeccakB;
             UInt256 effectiveGasPrice = 123;
 
-            if (postEip4844)
-            {
-                _specProvider = new CustomSpecProvider(((ForkActivation)0, Cancun.Instance));
-
-                ReadOnlyTxProcessingEnv processingEnv = new(
-                    new ReadOnlyDbProvider(_dbProvider, false),
-                    new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                    new ReadOnlyBlockTree(_blockTree),
-                    _specProvider,
-                    LimboLogs.Instance);
-
-                processingEnv.TransactionProcessor = _transactionProcessor;
-
-                _blockchainBridge = new BlockchainBridge(
-                    processingEnv,
-                    _txPool,
-                    _receiptStorage,
-                    _filterStore,
-                    _filterManager,
-                    _ethereumEcdsa,
-                    _timestamper,
-                    Substitute.For<ILogFinder>(),
-                    _specProvider,
-                    new BlocksConfig(),
-                    false);
-            }
-
             Transaction tx = postEip4844
                 ? Build.A.Transaction
                     .WithGasPrice(effectiveGasPrice)
+                    .WithType(TxType.Blob)
+                    .WithMaxFeePerDataGas(2)
                     .WithBlobVersionedHashes(2)
                     .TestObject
                 : Build.A.Transaction

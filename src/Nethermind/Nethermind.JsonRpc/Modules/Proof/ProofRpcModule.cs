@@ -155,8 +155,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
             Transaction[] txs = block.Transactions;
             ReceiptWithProof receiptWithProof = new();
-            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
-            bool isEip1559Enabled = spec.IsEip1559Enabled;
+            bool isEip1559Enabled = _specProvider.GetSpec(block.Header).IsEip1559Enabled;
             Transaction? tx = txs.FirstOrDefault(x => x.Hash == txHash);
 
             int logIndexStart = _receiptFinder.Get(block).GetBlockLogFirstIndex(receipt.Index);
@@ -164,7 +163,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             UInt256? dataGasPrice = null;
             ulong? dataGasUsed = null;
-            if (spec.IsEip4844Enabled && tx is not null)
+            if (tx is not null && tx.SupportsBlobs)
             {
                 dataGasPrice = IntrinsicGasCalculator.CalculateDataGasPrice(block.Header, tx);
                 dataGasUsed = IntrinsicGasCalculator.CalculateDataGas(tx);
