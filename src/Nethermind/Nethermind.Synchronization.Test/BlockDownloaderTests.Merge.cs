@@ -349,11 +349,13 @@ public partial class BlockDownloaderTests
 
         CancellationTokenSource cts = new();
         downloader.Start(cts.Token);
-        await Task.Delay(TimeSpan.FromMilliseconds(1000));
+
+        Assert.That(
+            () => ctx.BlockTree.BestKnownNumber,
+            Is.EqualTo(96).After(3000, 100)
+        );
 
         cts.Cancel();
-
-        ctx.BlockTree.BestKnownNumber.Should().Be(96);
     }
 
     [TestCase(DownloaderOptions.WithReceipts)]

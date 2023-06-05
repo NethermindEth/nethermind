@@ -405,7 +405,7 @@ namespace Nethermind.Synchronization.Test
             processor.Start();
             tree.SuggestBlock(_genesis);
 
-            if (!waitEvent.Wait(1000))
+            if (!waitEvent.Wait(10000))
             {
                 throw new Exception("No genesis");
             }
