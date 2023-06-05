@@ -32,7 +32,6 @@ public partial class BlockProcessor : IBlockProcessor
     protected readonly IWorldState _stateProvider;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IWitnessCollector _witnessCollector;
-    private readonly IBlockFinder _blockFinder;
     private readonly IWithdrawalProcessor _withdrawalProcessor;
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
@@ -54,7 +53,6 @@ public partial class BlockProcessor : IBlockProcessor
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
-        IBlockFinder? blockFinder,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null)
     {
@@ -64,7 +62,6 @@ public partial class BlockProcessor : IBlockProcessor
         _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
-        _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));

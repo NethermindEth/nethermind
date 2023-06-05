@@ -8,7 +8,7 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Find
 {
-    public interface IBlockFinder : IParentBlockHeaderFinder
+    public interface IBlockFinder
     {
         Keccak HeadHash { get; }
 

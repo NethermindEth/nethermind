@@ -14,8 +14,6 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -54,7 +52,6 @@ namespace Nethermind.Consensus.AuRa
                 stateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                blockTree,
                 logManager,
                 withdrawalProcessor)
         {
