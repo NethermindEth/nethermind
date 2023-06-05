@@ -26,7 +26,7 @@ namespace Nethermind.Trie
             get => _maxDegreeOfParallelism;
             init
             {
-                _maxDegreeOfParallelism = value == 0 ? Math.Max(Environment.ProcessorCount / 2, 1) : value;
+                _maxDegreeOfParallelism = value == 0 ? Math.Max(Environment.ProcessorCount / 4, 1) : value;
             }
         }
 
