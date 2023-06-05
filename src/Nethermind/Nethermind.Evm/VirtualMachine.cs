@@ -2329,10 +2329,10 @@ public class VirtualMachine : IVirtualMachine
 
 
                         Address codeSource = stack.PopAddress();
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) goto OutOfGas;
                         ICodeInfo targetCodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
 
                         // Console.WriteLine($"CALLIN {codeSource}");
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) goto OutOfGas;
 
                         stack.PopUInt256(out UInt256 gasLimit);
 
