@@ -1,20 +1,29 @@
 name: '[BUILD] Docker images and publish'
 
 on:
+  push:
+      branches:
+        - master
+        
   workflow_dispatch:
     inputs:
       repo:
         description: 'Docker Hub org and repo name'
-        required: false
+        required: true
         default: 'nethermindeth/nethermind'
       tag:
         description: 'Image tag'
-        required: false
+        required: true
         default: ''
       dockerfile:
         description: 'Dockerfile to use'
-        required: false
+        required: true
         default: 'Dockerfile'
+        
+env:
+  REPO: ${{ github.event.inputs.repo || 'nethermindeth/nethermind' }}
+  TAG: ${{ github.event.inputs.tag || 'master' }}
+  DOCKERFILE: ${{ github.event.inputs.dockerfile || 'Dockerfile' }}
 
 jobs:
   build-dockers:
@@ -23,32 +32,40 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
+        
       - name: Unshallow fetching
         run: git fetch --unshallow
+        
       - name: Configure settings
         id: settings
         run: |
           echo "BUILD_TIMESTAMP=$(date '+%s')" >> $GITHUB_OUTPUT
           echo "COMMIT_HASH=$(git describe --always --exclude=* --abbrev=40)" >> $GITHUB_OUTPUT
           echo "TAG_FROM_REPO=$(git describe --tags --always | cut -d- -f1)" >> $GITHUB_OUTPUT
+      
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
+      
       - name: Set up Docker Buildx
         id: buildx
         uses: docker/setup-buildx-action@v2
+      
       - name: Log in to Docker Hub
         if: success()
         run: |
           echo "${{ secrets.DOCKER_ACCESS_TOKEN }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      
       - name: Build and pushing image to Docker registry (major) / trigger DAppNode build
-        if: github.event.inputs.tag == steps.settings.outputs.TAG_FROM_REPO
+        if: env.TAG == steps.settings.outputs.TAG_FROM_REPO
         run: |
-          docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ github.event.inputs.repo }}:latest" -t "${{ github.event.inputs.repo }}:${{ github.event.inputs.tag }}" -f ${{ github.event.inputs.dockerfile }} --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} . --push
-          curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" -d '{"event_type":"dappnode","client_payload":{"tag":"${{ github.event.inputs.tag }}"}}' https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches
-      - name: Build and push image to Docker registry  (patch)
-        if: github.event.inputs.tag != steps.settings.outputs.TAG_FROM_REPO
+          docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.REPO }}:latest" -t "${{ env.REPO }}:${{ env.TAG }}" -f ${{ env.DOCKERFILE }} --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} . --push
+          curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" -d '{"event_type":"dappnode","client_payload":{"tag":"${{ env.TAG }}"}}' https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches
+      
+      - name: Build and push image to Docker registry (patch)
+        if: env.TAG != steps.settings.outputs.TAG_FROM_REPO
         run: |
-          docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ github.event.inputs.repo }}:${{ github.event.inputs.tag }}" -f ${{ github.event.inputs.dockerfile }} --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} . --push
+          docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.REPO }}:${{ env.TAG }}" -f ${{ env.DOCKERFILE }} --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} . --push
+      
       - name: Clear Docker cache
         if: always()
         run: |
