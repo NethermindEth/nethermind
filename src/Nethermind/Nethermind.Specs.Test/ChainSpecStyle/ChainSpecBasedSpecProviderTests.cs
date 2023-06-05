@@ -245,7 +245,17 @@ public class ChainSpecBasedSpecProviderTests
         List<ForkActivation> forkActivationsToTest = new()
         {
             (ForkActivation)0,
-            //(ForkActivation)1,
+            (ForkActivation)1,
+            (ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber -1),
+            (ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber),
+            (ForkActivation)(GnosisSpecProvider.ConstantinopoleFixBlockNumber -1),
+            (ForkActivation)(GnosisSpecProvider.ConstantinopoleFixBlockNumber),
+            (ForkActivation)(GnosisSpecProvider.IstanbulBlockNumber -1),
+            (ForkActivation)(GnosisSpecProvider.IstanbulBlockNumber),
+            (ForkActivation)(GnosisSpecProvider.BerlinBlockNumber -1),
+            (ForkActivation)(GnosisSpecProvider.BerlinBlockNumber),
+            (ForkActivation)(GnosisSpecProvider.LondonBlockNumber -1),
+            (ForkActivation)(GnosisSpecProvider.LondonBlockNumber),
             (1, GnosisSpecProvider.ShanghaiTimestamp - 1),
             (1, GnosisSpecProvider.ShanghaiTimestamp),
             (999_999_999, 999_999_999) // far in the future
