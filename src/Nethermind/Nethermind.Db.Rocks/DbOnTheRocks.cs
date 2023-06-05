@@ -987,7 +987,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         {
             // Depending on tune type, allow num of L0 files to grow causing compaction to occur in larger size. This
             // reduces write amplification at the expense of read response time and amplification while the tune is
-            // active. Additionally, the larger compaction causes larger spikes of IO. User may not want to enable this
+            // active. Additionally, the larger compaction causes larger spikes of IO, larger memory usage, and may temporarily
             // use up large amount of disk space. User may not want to enable this if they plan to run a validator node
             // while the node is still syncing, or run another node on the same machine. Specifying a rate limit
             // smoothens this spike somewhat by not blocking writes while allowing compaction to happen in background
