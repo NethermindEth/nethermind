@@ -53,7 +53,7 @@ public class BlockStore : IBlockStore
         // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
         using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
 
-        Span<byte> keyWithBlockNumber = stackalloc byte[8];
+        Span<byte> keyWithBlockNumber = stackalloc byte[40];
         GetBlockNumPrefixedKey(block.Number, block.Hash, keyWithBlockNumber);
 
         _blockDb.Set(keyWithBlockNumber, newRlp.AsSpan());
@@ -68,7 +68,7 @@ public class BlockStore : IBlockStore
     public void Delete(long blockNumber, Keccak blockHash)
     {
         _blockDb.Remove(blockHash.Bytes);
-        Span<byte> keyWithBlockNumber = stackalloc byte[8];
+        Span<byte> keyWithBlockNumber = stackalloc byte[40];
         GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
         _blockDb.Remove(keyWithBlockNumber);
         _blockCache.Delete(blockHash);
@@ -76,7 +76,7 @@ public class BlockStore : IBlockStore
 
     public Block? Get(long blockNumber, Keccak blockHash, bool shouldCache = false)
     {
-        Span<byte> keyWithBlockNumber = stackalloc byte[8];
+        Span<byte> keyWithBlockNumber = stackalloc byte[40];
         GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
         Block? b = _blockDb.Get(blockHash, keyWithBlockNumber, _blockDecoder, _blockCache, shouldCache);
@@ -86,7 +86,7 @@ public class BlockStore : IBlockStore
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Keccak blockHash)
     {
-        Span<byte> keyWithBlockNumber = stackalloc byte[8];
+        Span<byte> keyWithBlockNumber = stackalloc byte[40];
         GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
         MemoryManager<byte>? memoryOwner = null;
