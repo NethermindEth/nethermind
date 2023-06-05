@@ -48,6 +48,7 @@ namespace Nethermind.Network.Rlpx
 
         public RlpxHost(IMessageSerializationService serializationService,
             PublicKey localNodeId,
+            int networkProcessingThread,
             int localPort,
             string? localIp,
             int connectTimeoutMs,
@@ -73,7 +74,14 @@ namespace Nethermind.Network.Rlpx
             //     new LoggerFilterOptions { MinLevel = Microsoft.Extensions.Logging.LogLevel.Warning });
             // InternalLoggerFactory.DefaultFactory = loggerFactory;
 
-            _group = new SingleThreadEventLoop();
+            if (networkProcessingThread <= 1)
+            {
+                _group = new SingleThreadEventLoop();
+            }
+            else
+            {
+                _group = new MultithreadEventLoopGroup(networkProcessingThread);
+            }
             _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();

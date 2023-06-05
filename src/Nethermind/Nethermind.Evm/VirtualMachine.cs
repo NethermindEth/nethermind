@@ -64,7 +64,7 @@ public class VirtualMachine : IVirtualMachine
 
     private readonly IBlockhashProvider _blockhashProvider;
     private readonly ISpecProvider _specProvider;
-    internal static readonly LruCache<KeccakKey, ICodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
+    internal static readonly LruCache<ValueKeccak, ICodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
     private readonly ILogger _logger;
     private IWorldState _worldState;
     private IWorldState _state;
@@ -159,7 +159,7 @@ public class VirtualMachine : IVirtualMachine
 
                         if (currentState.IsTopLevel)
                         {
-                            return new TransactionSubstate(callResult.ExceptionType, _txTracer != NullTxTracer.Instance);
+                            return new TransactionSubstate(callResult.ExceptionType, _txTracer.IsTracing);
                         }
 
                         previousCallResult = StatusCode.FailureBytes;
@@ -353,7 +353,7 @@ public class VirtualMachine : IVirtualMachine
 
                 if (currentState.IsTopLevel)
                 {
-                    return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, _txTracer != NullTxTracer.Instance);
+                    return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, _txTracer.IsTracing);
                 }
 
                 previousCallResult = StatusCode.FailureBytes;
@@ -569,14 +569,7 @@ public class VirtualMachine : IVirtualMachine
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        //if(!UpdateGas(dataGasCost, ref gasAvailable)) return CallResult.Exception;
-        if (!UpdateGas(baseGasCost, ref gasAvailable))
-        {
-            Metrics.EvmExceptions++;
-            throw new OutOfGasException();
-        }
-
-        if (!UpdateGas(dataGasCost, ref gasAvailable))
+        if (!UpdateGas(checked(baseGasCost + dataGasCost), ref gasAvailable))
         {
             Metrics.EvmExceptions++;
             throw new OutOfGasException();
@@ -589,6 +582,11 @@ public class VirtualMachine : IVirtualMachine
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
             CallResult callResult = new(output.ToArray(), success, 0, !success);
             return callResult;
+        }
+        catch (DllNotFoundException exception)
+        {
+            if (_logger.IsError) _logger.Error($"Failed to load one of the dependencies of {precompile.GetType()} precompile", exception);
+            throw;
         }
         catch (Exception exception)
         {
@@ -664,7 +662,9 @@ public class VirtualMachine : IVirtualMachine
             UInt256 localPreviousDest = previousCallOutputDestination;
             if (!UpdateMemoryCost(vmState, ref gasAvailable, in localPreviousDest, (ulong)previousCallOutput.Length))
             {
-                ThrowStackOverflowException();
+                // Never ran any instructions, so nothing to trace (or mark as end of trace)
+                traceOpcodes = false;
+                goto OutOfGas;
             }
 
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
@@ -839,7 +839,7 @@ public class VirtualMachine : IVirtualMachine
                         Metrics.ModExpOpcode++;
 
                         stack.PopUInt256(out UInt256 baseInt);
-                        Span<byte> exp = stack.PopBytes();
+                        Span<byte> exp = stack.PopWord256();
 
                         int leadingZeros = exp.LeadingZerosCount();
                         if (leadingZeros != 32)
@@ -882,7 +882,7 @@ public class VirtualMachine : IVirtualMachine
 
                         int position = 31 - (int)a;
 
-                        Span<byte> b = stack.PopBytes();
+                        Span<byte> b = stack.PopWord256();
                         sbyte sign = (sbyte)b[position];
 
                         if (sign >= 0)
@@ -970,8 +970,8 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopBytes();
-                        Span<byte> b = stack.PopBytes();
+                        Span<byte> a = stack.PopWord256();
+                        Span<byte> b = stack.PopWord256();
                         if (a.SequenceEqual(b))
                         {
                             stack.PushOne();
@@ -987,7 +987,7 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopBytes();
+                        Span<byte> a = stack.PopWord256();
                         if (a.SequenceEqual(BytesZero32))
                         {
                             stack.PushOne();
@@ -1003,8 +1003,8 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopBytes();
-                        Span<byte> b = stack.PopBytes();
+                        Span<byte> a = stack.PopWord256();
+                        Span<byte> b = stack.PopWord256();
 
                         if (_simdOperationsEnabled)
                         {
@@ -1032,8 +1032,8 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopBytes();
-                        Span<byte> b = stack.PopBytes();
+                        Span<byte> a = stack.PopWord256();
+                        Span<byte> b = stack.PopWord256();
 
                         if (_simdOperationsEnabled)
                         {
@@ -1061,8 +1061,8 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopBytes();
-                        Span<byte> b = stack.PopBytes();
+                        Span<byte> a = stack.PopWord256();
+                        Span<byte> b = stack.PopWord256();
 
                         if (_simdOperationsEnabled)
                         {
@@ -1090,7 +1090,7 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopBytes();
+                        Span<byte> a = stack.PopWord256();
 
                         if (_simdOperationsEnabled)
                         {
@@ -1118,7 +1118,7 @@ public class VirtualMachine : IVirtualMachine
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out UInt256 position);
-                        Span<byte> bytes = stack.PopBytes();
+                        Span<byte> bytes = stack.PopWord256();
 
                         if (position >= BigInt32)
                         {
@@ -1542,10 +1542,10 @@ public class VirtualMachine : IVirtualMachine
 
                         stack.PopUInt256(out UInt256 memPosition);
 
-                        Span<byte> data = stack.PopBytes();
+                        Span<byte> word = stack.PopWord256();
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in memPosition, 32)) goto OutOfGas;
-                        vmState.Memory.SaveWord(in memPosition, data);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, data.SliceWithZeroPadding(0, 32, PadDirection.Left));
+                        vmState.Memory.SaveWord(in memPosition, word);
+                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, word.SliceWithZeroPadding(0, 32, PadDirection.Left));
 
                         break;
                     }
@@ -1603,7 +1603,7 @@ public class VirtualMachine : IVirtualMachine
                         }
 
                         stack.PopUInt256(out UInt256 storageIndex);
-                        Span<byte> newValue = stack.PopBytes();
+                        Span<byte> newValue = stack.PopWord256();
                         bool newIsZero = newValue.IsZero();
                         if (!newIsZero)
                         {
@@ -1767,7 +1767,7 @@ public class VirtualMachine : IVirtualMachine
                         if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out UInt256 storageIndex);
-                        Span<byte> newValue = stack.PopBytes();
+                        Span<byte> newValue = stack.PopWord256();
                         bool newIsZero = newValue.IsZero();
                         if (!newIsZero)
                         {
@@ -1802,7 +1802,7 @@ public class VirtualMachine : IVirtualMachine
                         if (!UpdateGas(GasCostOf.High, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out UInt256 jumpDest);
-                        Span<byte> condition = stack.PopBytes();
+                        Span<byte> condition = stack.PopWord256();
                         if (!condition.SequenceEqual(BytesZero32))
                         {
                             if (!Jump(jumpDest, ref programCounter, in env)) goto InvalidJumpDestination;
@@ -1979,7 +1979,7 @@ public class VirtualMachine : IVirtualMachine
                         Keccak[] topics = new Keccak[topicsCount];
                         for (int i = 0; i < topicsCount; i++)
                         {
-                            topics[i] = new Keccak(stack.PopBytes().ToArray());
+                            topics[i] = new Keccak(stack.PopWord256());
                         }
 
                         LogEntry logEntry = new(
@@ -2008,7 +2008,7 @@ public class VirtualMachine : IVirtualMachine
                         Span<byte> salt = null;
                         if (instruction == Instruction.CREATE2)
                         {
-                            salt = stack.PopBytes();
+                            salt = stack.PopWord256();
                         }
 
                         //EIP-3860
@@ -2484,7 +2484,7 @@ public class VirtualMachine : IVirtualMachine
                         if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.IsEof())
                         {
                             if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) goto OutOfGas;
-                            Span<byte> condition = stack.PopBytes();
+                            Span<byte> condition = stack.PopWord256();
                             short offset = codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
                             if (!condition.SequenceEqual(BytesZero32))
                             {
@@ -2649,14 +2649,6 @@ InvalidJumpDestination:
 AccessViolation:
         if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.AccessViolation);
         return CallResult.AccessViolationException;
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowStackOverflowException()
-        {
-            Metrics.EvmExceptions++;
-            throw new OutOfGasException();
-        }
     }
 
     private void RemoveInBetween(ref EvmStack stack, int height, int argsCount)
