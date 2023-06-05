@@ -59,8 +59,10 @@ public partial class EngineModuleTests
     public async Task PayloadV3_should_return_all_the_blobs(int blobTxCount)
     {
         (IEngineRpcModule rpcModule, string payloadId) = await BuildAndGetPayloadV3Result(Cancun.Instance, blobTxCount);
-        BlobsBundleV1 getPayloadResultBlobsBundle =
-            (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.BlobsBundle!;
+        var result = await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId));
+        BlobsBundleV1 getPayloadResultBlobsBundle = result.Data!.BlobsBundle!;
+        Assert.That(result.Data.ExecutionPayload.DataGasUsed, Is.Not.Null);
+        Assert.That(result.Data.ExecutionPayload.ExcessDataGas, Is.Not.Null);
         Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
