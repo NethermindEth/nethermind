@@ -28,8 +28,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
-using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
+using Nethermind.Evm;
 
 namespace Nethermind.Facade.Test
 {

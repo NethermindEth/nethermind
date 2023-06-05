@@ -12,7 +12,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.KeyStore;
 using Nethermind.Serialization.Rlp;
@@ -79,18 +78,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             IEnumerable<ReceiptForRpc> result = receipts
                 .Zip(block.Transactions, (r, t) =>
                 {
-                    UInt256 effectiveGasPrice = t.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas);
-                    UInt256? dataGasPrice = null;
-                    ulong? dataGasUsed = null;
-                    if (t.SupportsBlobs)
-                    {
-                        dataGasPrice = IntrinsicGasCalculator.CalculateDataGasPrice(block.Header, t);
-                        dataGasUsed = IntrinsicGasCalculator.CalculateDataGas(t);
-                    }
-
-                    return new ReceiptForRpc(t.Hash, r,
-                        new(effectiveGasPrice, dataGasPrice, dataGasUsed),
-                        receipts.GetBlockLogFirstIndex(r.Index));
+                    return new ReceiptForRpc(t.Hash, r, t.GetGasInfo(isEip1559Enabled, block.Header), receipts.GetBlockLogFirstIndex(r.Index));
                 });
             ReceiptForRpc[] resultAsArray = result.ToArray();
             return ResultWrapper<ReceiptForRpc[]>.Success(resultAsArray);

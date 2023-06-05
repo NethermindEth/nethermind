@@ -841,10 +841,9 @@ public partial class EthRpcModuleTests
             .WithLogs(entries).TestObject;
         TxReceipt[] receiptsTab = { receipt };
 
-        if (postEip4844)
-            blockchainBridge.GetReceiptAndGasInfo(Arg.Any<Keccak>()).Returns((receipt, new(UInt256.One, 2, 3), 0));
-        else
-            blockchainBridge.GetReceiptAndGasInfo(Arg.Any<Keccak>()).Returns((receipt, new(UInt256.One), 0));
+
+        blockchainBridge.GetReceiptAndGasInfo(Arg.Any<Keccak>())
+            .Returns((receipt, postEip4844 ? new(UInt256.One, 2, 3) : new(UInt256.One), 0));
         blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
         receiptFinder.Get(Arg.Any<Block>()).Returns(receiptsTab);
         receiptFinder.Get(Arg.Any<Keccak>()).Returns(receiptsTab);

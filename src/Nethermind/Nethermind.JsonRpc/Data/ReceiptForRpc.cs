@@ -4,7 +4,7 @@
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Facade;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Newtonsoft.Json;
 

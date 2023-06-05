@@ -96,16 +96,7 @@ namespace Nethermind.Facade
                     int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
                     Transaction tx = block.Transactions[txReceipt.Index];
                     bool is1559Enabled = _specProvider.GetSpecFor1559(block.Number).IsEip1559Enabled;
-                    UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, block.Header.BaseFeePerGas);
-                    ulong? dataGas = null;
-                    UInt256? dataGasPrice = null;
-                    if (tx.SupportsBlobs)
-                    {
-                        dataGas = IntrinsicGasCalculator.CalculateDataGas(tx);
-                        dataGasPrice = IntrinsicGasCalculator.CalculateDataGasPrice(block.Header, tx);
-                    }
-
-                    return (txReceipt, new(effectiveGasPrice, dataGasPrice, dataGas), logIndexStart);
+                    return (txReceipt, tx.GetGasInfo(is1559Enabled, block.Header), logIndexStart);
                 }
             }
 

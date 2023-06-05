@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -44,24 +45,5 @@ namespace Nethermind.Facade
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
         void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
 
-    }
-
-    public class TxGasInfo
-    {
-        public TxGasInfo(UInt256? effectiveGasPrice, UInt256? dataGasPrice, ulong? dataGasUsed)
-        {
-            EffectiveGasPrice = effectiveGasPrice;
-            DataGasPrice = dataGasPrice;
-            DataGasUsed = dataGasUsed;
-        }
-
-        public TxGasInfo(UInt256? effectiveGasPrice)
-        {
-            EffectiveGasPrice = effectiveGasPrice;
-        }
-
-        public UInt256? EffectiveGasPrice { get; private set; }
-        public UInt256? DataGasPrice { get; private set; }
-        public ulong? DataGasUsed { get; private set; }
     }
 }
