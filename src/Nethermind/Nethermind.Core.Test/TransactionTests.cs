@@ -3,10 +3,7 @@
 
 using System;
 using FluentAssertions;
-using System.Collections.Generic;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
-using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test

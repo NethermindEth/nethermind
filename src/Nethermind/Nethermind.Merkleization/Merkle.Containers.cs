@@ -10,18 +10,18 @@ namespace Nethermind.Merkleization
     //     public static int DepositContractTreeDepth { get; private set; }
     //     private static int JustificationBitsLength;
     //     internal static ulong MaximumDepositContracts { get; private set; }
-    //     
+    //
     //     internal static uint MaxValidatorsPerCommittee { get; private set; }
-    //     
+    //
     //     internal static uint SlotsPerEpoch { get; private set; }
     //     internal static int SlotsPerEth1VotingPeriod { get; private set; }
     //     public static int SlotsPerHistoricalRoot { get; private set; }
-    //     
+    //
     //     public static int EpochsPerHistoricalVector { get; private set; }
     //     public static int EpochsPerSlashingsVector { get; private set; }
     //     internal static ulong HistoricalRootsLimit { get; private set; }
     //     internal static ulong ValidatorRegistryLimit { get; private set; }
-    //     
+    //
     //     internal static uint MaxProposerSlashings { get; private set; }
     //     internal static uint MaxAttesterSlashings { get; private set; }
     //     internal static uint MaxAttestations { get; private set; }

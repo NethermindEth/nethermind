@@ -112,15 +112,12 @@ namespace Nethermind.Core
         public int DataLength => Data?.Length ?? 0;
 
         public AccessList? AccessList { get; set; } // eip2930
+
         public UInt256? MaxFeePerDataGas { get; set; } // eip4844
+
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
-
         public byte[]?[]? Initcodes { get; set; } //mega-eof create4 tx
-
-        // Network form of blob transaction fields
-        public byte[]? BlobKzgs { get; set; }
-        public byte[]? Blobs { get; set; }
-        public byte[]? BlobProofs { get; set; }
+        public object? NetworkWrapper { get; set; }
 
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
@@ -184,6 +181,8 @@ namespace Nethermind.Core
         }
 
         public override string ToString() => ToString(string.Empty);
+
+        public bool MayHaveNetworkForm => Type is TxType.Blob;
     }
 
     /// <summary>
@@ -203,5 +202,22 @@ namespace Nethermind.Core
     public interface ITransactionSizeCalculator
     {
         int GetLength(Transaction tx);
+    }
+
+    /// <summary>
+    /// Holds network form fields for <see cref="TxType.Blob" /> transactions
+    /// </summary>
+    public class ShardBlobNetworkWrapper
+    {
+        public ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs)
+        {
+            Blobs = blobs;
+            Commitments = commitments;
+            Proofs = proofs;
+        }
+
+        public byte[][] Commitments { get; set; }
+        public byte[][] Blobs { get; set; }
+        public byte[][] Proofs { get; set; }
     }
 }

@@ -31,6 +31,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingBlockHash => _currentTxTracer.IsTracingBlockHash;
         public bool IsTracingAccess => _currentTxTracer.IsTracingAccess;
         public bool IsTracingFees => _currentTxTracer.IsTracingFees;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
         private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 

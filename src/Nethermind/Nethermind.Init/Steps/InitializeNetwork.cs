@@ -483,6 +483,7 @@ public class InitializeNetwork : IStep
         _api.RlpxPeer = new RlpxHost(
             _api.MessageSerializationService,
             _api.NodeKey.PublicKey,
+            _networkConfig.ProcessingThreadCount,
             _networkConfig.P2PPort,
             _networkConfig.LocalIp,
             _networkConfig.ConnectTimeoutMs,

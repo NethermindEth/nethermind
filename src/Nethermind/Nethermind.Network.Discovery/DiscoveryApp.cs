@@ -500,9 +500,10 @@ public class DiscoveryApp : IDiscoveryApp
             try
             {
                 IReadOnlyCollection<INodeLifecycleManager> managers = _discoveryManager.GetNodeLifecycleManagers();
+                DateTime utcNow = DateTime.UtcNow;
                 //we need to update all notes to update reputation
                 _discoveryStorage.UpdateNodes(managers.Select(x => new NetworkNode(x.ManagedNode.Id, x.ManagedNode.Host,
-                    x.ManagedNode.Port, x.NodeStats.NewPersistedNodeReputation)).ToArray());
+                    x.ManagedNode.Port, x.NodeStats.NewPersistedNodeReputation(utcNow))).ToArray());
 
                 if (!_discoveryStorage.AnyPendingChange())
                 {

@@ -11,6 +11,7 @@ namespace Nethermind.Network.Benchmarks
 {
     public class NodeStatsCtorBenchmarks
     {
+        private DateTime _now = DateTime.UtcNow;
         private Node _node;
 
         [GlobalSetup]
@@ -35,7 +36,7 @@ namespace Nethermind.Network.Benchmarks
         public long LightRep()
         {
             NodeStatsLight stats = new NodeStatsLight(_node);
-            return stats.CurrentNodeReputation;
+            return stats.CurrentNodeReputation(_now);
         }
     }
 }

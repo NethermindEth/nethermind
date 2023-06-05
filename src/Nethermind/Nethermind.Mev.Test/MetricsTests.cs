@@ -23,6 +23,7 @@ using NSubstitute;
 namespace Nethermind.Mev.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.None)] // Metrics are global variables. Dont run with other tests.
     public class MetricsTests
     {
         [Test]
@@ -110,7 +111,7 @@ namespace Nethermind.Mev.Test
 
             deltaBundlesReceived.Should().Be(4);
             deltaValidBundlesReceived.Should().Be(2);
-            deltaBundlesSimulated.Should().Be(0); // should not simulate invalid bundle 
+            deltaBundlesSimulated.Should().Be(0); // should not simulate invalid bundle
         }
 
         [Test]
@@ -146,7 +147,7 @@ namespace Nethermind.Mev.Test
 
             deltaBundlesReceived.Should().Be(4);
             deltaValidBundlesReceived.Should().Be(1);
-            deltaBundlesSimulated.Should().Be(0); // should not simulate invalid bundle 
+            deltaBundlesSimulated.Should().Be(0); // should not simulate invalid bundle
         }
 
         [Test]
