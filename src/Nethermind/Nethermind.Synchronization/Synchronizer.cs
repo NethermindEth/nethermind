@@ -183,7 +183,7 @@ namespace Nethermind.Synchronization
             _stateSyncFeed = new StateSyncFeed(_syncMode, treeSync, _logManager);
             SyncDispatcher<StateSyncBatch> stateSyncDispatcher = CreateDispatcher(
                 _stateSyncFeed,
-                new StateSyncDispatcher(_logManager),
+                new StateSyncDownloader(_logManager),
                 new StateSyncAllocationStrategyFactory()
             );
 
@@ -205,7 +205,7 @@ namespace Nethermind.Synchronization
             _snapSyncFeed = new SnapSyncFeed(_syncMode, _snapProvider, _logManager);
             SyncDispatcher<SnapSyncBatch> dispatcher = CreateDispatcher(
                 _snapSyncFeed,
-                new SnapSyncDispatcher(_logManager),
+                new SnapSyncDownloader(_logManager),
                 new SnapSyncAllocationStrategyFactory()
             );
 
@@ -229,7 +229,7 @@ namespace Nethermind.Synchronization
             _headersFeed = new HeadersSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
             SyncDispatcher<HeadersSyncBatch> headersDispatcher = CreateDispatcher(
                 _headersFeed,
-                new HeadersSyncDispatcher(_logManager),
+                new HeadersSyncDownloader(_logManager),
                 fastFactory
             );
 
@@ -253,7 +253,7 @@ namespace Nethermind.Synchronization
 
                     SyncDispatcher<BodiesSyncBatch> bodiesDispatcher = CreateDispatcher(
                         _bodiesFeed,
-                        new BodiesSyncDispatcher(_logManager),
+                        new BodiesSyncDownloader(_logManager),
                         fastFactory
                     );
 

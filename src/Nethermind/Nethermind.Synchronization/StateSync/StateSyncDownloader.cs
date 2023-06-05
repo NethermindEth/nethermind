@@ -18,11 +18,11 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.StateSync
 {
-    public class StateSyncDispatcher : ISyncDownloader<StateSyncBatch>
+    public class StateSyncDownloader : ISyncDownloader<StateSyncBatch>
     {
         private ILogger Logger;
 
-        public StateSyncDispatcher(ILogManager logManager)
+        public StateSyncDownloader(ILogManager logManager)
         {
             Logger = logManager.GetClassLogger();
         }

@@ -8,9 +8,9 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class BeaconHeadersSyncDispatcher : HeadersSyncDispatcher
+public class BeaconHeadersSyncDownloader : HeadersSyncDownloader
 {
-    public BeaconHeadersSyncDispatcher(ILogManager logManager) : base(logManager)
+    public BeaconHeadersSyncDownloader(ILogManager logManager) : base(logManager)
     {
     }
 }

@@ -11,11 +11,11 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class HeadersSyncDispatcher : ISyncDownloader<HeadersSyncBatch>
+    public class HeadersSyncDownloader : ISyncDownloader<HeadersSyncBatch>
     {
         private ILogger Logger;
 
-        public HeadersSyncDispatcher(ILogManager logManager)
+        public HeadersSyncDownloader(ILogManager logManager)
         {
             Logger = logManager.GetClassLogger();
         }

@@ -15,11 +15,11 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class BodiesSyncDispatcher : ISyncDownloader<BodiesSyncBatch>
+    public class BodiesSyncDownloader : ISyncDownloader<BodiesSyncBatch>
     {
         private ILogger Logger;
 
-        public BodiesSyncDispatcher(ILogManager logManager)
+        public BodiesSyncDownloader(ILogManager logManager)
         {
             Logger = logManager.GetClassLogger();
         }

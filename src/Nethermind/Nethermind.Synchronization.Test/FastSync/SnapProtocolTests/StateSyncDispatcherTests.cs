@@ -48,7 +48,7 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
 
             var feed = Substitute.For<ISyncFeed<StateSyncBatch>>();
             _dispatcher =
-                new StateSyncDispatcherTester(feed, new StateSyncDispatcher(_logManager), _pool, new StateSyncAllocationStrategyFactory(), _logManager);
+                new StateSyncDispatcherTester(feed, new StateSyncDownloader(_logManager), _pool, new StateSyncAllocationStrategyFactory(), _logManager);
         }
 
         [Test]

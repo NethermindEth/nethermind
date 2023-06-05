@@ -11,11 +11,11 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncDispatcher : ISyncDownloader<SnapSyncBatch>
+    public class SnapSyncDownloader : ISyncDownloader<SnapSyncBatch>
     {
         private ILogger Logger;
 
-        public SnapSyncDispatcher(ILogManager? logManager)
+        public SnapSyncDownloader(ILogManager? logManager)
         {
             Logger = logManager.GetClassLogger();
         }
