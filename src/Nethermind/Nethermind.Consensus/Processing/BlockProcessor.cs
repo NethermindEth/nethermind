@@ -228,6 +228,18 @@ public partial class BlockProcessor : IBlockProcessor
 
         _receiptsTracer.SetOtherTracer(blockTracer);
         _receiptsTracer.StartNewBlockTrace(block);
+
+        if (spec.IsEip4844Enabled && block.Header.Number != 0)
+        {
+            block.Header.DataGasUsed = IntrinsicGasCalculator.CalculateDataGas(
+                block.Transactions.Sum(tx => tx.BlobVersionedHashes?.Length ?? 0));
+
+            if (block.Header.ExcessDataGas is null)
+            {
+                throw new ApplicationException("ExcessDataGas cannot be null");
+            }
+        }
+
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
 
         block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
@@ -238,13 +250,7 @@ public partial class BlockProcessor : IBlockProcessor
         _stateProvider.Commit(spec);
         _stateProvider.RecalculateStateRoot();
 
-        if (spec.IsEip4844Enabled && block.Header.Number != 0)
-        {
-            block.Header.DataGasUsed = IntrinsicGasCalculator.CalculateDataGas(
-                block.Transactions.Sum(tx => tx.BlobVersionedHashes?.Length ?? 0));
-            block.Header.ExcessDataGas = IntrinsicGasCalculator.CalculateExcessDataGas(
-                block.Header.IsGenesis ? null : _blockFinder.FindParentHeader(block.Header), spec);
-        }
+
         block.Header.StateRoot = _stateProvider.StateRoot;
         block.Header.Hash = block.Header.CalculateHash();
 
@@ -272,8 +278,8 @@ public partial class BlockProcessor : IBlockProcessor
             bh.GasLimit,
             bh.Timestamp,
             bh.ExtraData,
-            bh.ExcessDataGas,
-            bh.DataGasUsed)
+            bh.DataGasUsed,
+            bh.ExcessDataGas)
         {
             Bloom = Bloom.Empty,
             Author = bh.Author,

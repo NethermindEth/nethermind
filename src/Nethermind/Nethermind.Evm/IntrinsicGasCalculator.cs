@@ -109,8 +109,6 @@ public static class IntrinsicGasCalculator
             throw new ArgumentException(nameof(BlockHeader.ExcessDataGas));
         }
 
-        ulong excessDataGas = header.ExcessDataGas.Value;
-
         return CalculateDataGasPricePerUnit(header.ExcessDataGas.Value);
     }
 

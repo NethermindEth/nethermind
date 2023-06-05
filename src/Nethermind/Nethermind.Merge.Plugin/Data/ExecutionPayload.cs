@@ -127,8 +127,8 @@ public class ExecutionPayload
                 GasLimit,
                 Timestamp,
                 ExtraData,
-                ExcessDataGas,
-                DataGasUsed)
+                DataGasUsed,
+                ExcessDataGas)
             {
                 Hash = BlockHash,
                 ReceiptsRoot = ReceiptsRoot,
