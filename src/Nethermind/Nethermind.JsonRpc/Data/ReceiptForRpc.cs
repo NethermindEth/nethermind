@@ -44,7 +44,9 @@ namespace Nethermind.JsonRpc.Data
         public long BlockNumber { get; set; }
         public long CumulativeGasUsed { get; set; }
         public long GasUsed { get; set; }
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
         public ulong? DataGasUsed { get; set; }
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
         public UInt256? DataGasPrice { get; set; }
 
         public UInt256? EffectiveGasPrice { get; set; }
