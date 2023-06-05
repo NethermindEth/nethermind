@@ -141,7 +141,7 @@ public class InitializeNetwork : IStep
             SyncReport syncReport = new(_api.SyncPeerPool!, _api.NodeStatsManager!, _api.SyncModeSelector, _syncConfig, _api.Pivot, _api.LogManager);
 
             _api.BlockDownloaderFactory ??= new BlockDownloaderFactory(
-                _syncConfig.MaxProcessingThread,
+                _syncConfig.MaxProcessingThreads,
                 _api.SpecProvider!,
                 _api.BlockTree!,
                 _api.ReceiptStorage!,

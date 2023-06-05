@@ -298,7 +298,7 @@ namespace Nethermind.Synchronization
         protected SyncDispatcher<T> CreateDispatcher<T>(ISyncFeed<T> feed, ISyncDownloader<T> downloader, IPeerAllocationStrategyFactory<T> peerAllocationStrategyFactory)
         {
             return new(
-                _syncConfig.MaxProcessingThread,
+                _syncConfig.MaxProcessingThreads,
                 feed!,
                 downloader,
                 _syncPeerPool,
