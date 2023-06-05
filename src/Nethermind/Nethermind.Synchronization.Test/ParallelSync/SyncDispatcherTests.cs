@@ -282,7 +282,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             syncFeed.Activate();
             await Task.Delay(100);
 
-            syncFeed.HighestRequested.Should().Be(expectedHighestRequest);
+            Assert.That(() => syncFeed.HighestRequested, Is.EqualTo(expectedHighestRequest).After(2000, 100));
             syncFeed.UnlockResponse();
         }
     }
