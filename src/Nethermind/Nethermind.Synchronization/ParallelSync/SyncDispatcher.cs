@@ -21,7 +21,7 @@ namespace Nethermind.Synchronization.ParallelSync
         protected ISyncFeed<T> Feed { get; }
         protected ISyncPeerPool SyncPeerPool { get; }
 
-        private SemaphoreSlim _semaphore;
+        private readonly SemaphoreSlim _concurrentProcessingSemaphore;
 
         protected SyncDispatcher(
             int maxNumberOfProcessingThread,
@@ -37,11 +37,11 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (maxNumberOfProcessingThread == 0)
             {
-                _semaphore = new SemaphoreSlim(Environment.ProcessorCount, Environment.ProcessorCount);
+                _concurrentProcessingSemaphore = new SemaphoreSlim(Environment.ProcessorCount, Environment.ProcessorCount);
             }
             else
             {
-                _semaphore = new SemaphoreSlim(maxNumberOfProcessingThread, maxNumberOfProcessingThread);
+                _concurrentProcessingSemaphore = new SemaphoreSlim(maxNumberOfProcessingThread, maxNumberOfProcessingThread);
             }
 
             syncFeed.StateChanged += SyncFeedOnStateChanged;
@@ -151,8 +151,10 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (Feed.IsMultiFeed)
             {
+                // Don't free if num of concurrent processing threads is limited
+                // Otherwise, it'll keep downloading more requests.
+                await _concurrentProcessingSemaphore.WaitAsync(cancellationToken);
                 Free(allocation);
-                await _semaphore.WaitAsync(cancellationToken);
             }
 
             try
@@ -169,7 +171,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 if (Feed.IsMultiFeed)
                 {
-                    _semaphore.Release();
+                    _concurrentProcessingSemaphore.Release();
                 }
                 else
                 {
