@@ -129,16 +129,10 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public int[] Result { get; set; }
         }
 
-        private class TestDispatcher : SyncDispatcher<TestBatch>
+        private class TestDownloader : ISyncDownloader<TestBatch>
         {
-            public TestDispatcher(int maxNumberOfProcessingThread, ISyncFeed<TestBatch> syncFeed, ISyncPeerPool syncPeerPool, IPeerAllocationStrategyFactory<TestBatch> peerAllocationStrategy)
-                : base(maxNumberOfProcessingThread, syncFeed, syncPeerPool, peerAllocationStrategy, LimboLogs.Instance)
-            {
-            }
-
             private int _failureSwitch;
-
-            protected override async Task Dispatch(PeerInfo allocation, TestBatch request, CancellationToken cancellationToken)
+            public async Task Dispatch(PeerInfo peerInfo, TestBatch request, CancellationToken cancellationToken)
             {
                 if (++_failureSwitch % 2 == 0)
                 {
@@ -259,7 +253,14 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         public async Task Simple_test_sync()
         {
             TestSyncFeed syncFeed = new();
-            TestDispatcher dispatcher = new(0, syncFeed, new TestSyncPeerPool(), new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance));
+            TestDownloader downloader = new TestDownloader();
+            SyncDispatcher<TestBatch> dispatcher = new(
+                0,
+                syncFeed,
+                downloader,
+                new TestSyncPeerPool(),
+                new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+                LimboLogs.Instance);
             Task executorTask = dispatcher.Start(CancellationToken.None);
             syncFeed.Activate();
             await executorTask;
@@ -277,7 +278,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             TestSyncFeed syncFeed = new(isMultiSync, 999999);
             syncFeed.LockResponse();
-            TestDispatcher dispatcher = new(processingThread, syncFeed, new TestSyncPeerPool(peerCount), new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance));
+
+            TestDownloader downloader = new TestDownloader();
+            SyncDispatcher<TestBatch> dispatcher = new(
+                processingThread,
+                syncFeed,
+                downloader,
+                new TestSyncPeerPool(peerCount),
+                new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+                LimboLogs.Instance);
+
             Task executorTask = dispatcher.Start(CancellationToken.None);
             syncFeed.Activate();
             await Task.Delay(100);
