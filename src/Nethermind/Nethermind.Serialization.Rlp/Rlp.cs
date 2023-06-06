@@ -889,6 +889,10 @@ namespace Nethermind.Serialization.Rlp
                 else
                 {
                     ReadOnlySpan<byte> theSpan = DecodeByteArraySpan();
+                    if (theSpan.Length < 32)
+                    {
+                        buffer[..(32 - theSpan.Length)].Clear();
+                    }
                     theSpan.CopyTo(buffer[(32 - theSpan.Length)..]);
                     keccak = new KeccakStructRef(buffer);
                 }
