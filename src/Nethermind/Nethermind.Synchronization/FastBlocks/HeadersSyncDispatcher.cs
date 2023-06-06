@@ -15,11 +15,12 @@ namespace Nethermind.Synchronization.FastBlocks
     public class HeadersSyncDispatcher : SyncDispatcher<HeadersSyncBatch>
     {
         public HeadersSyncDispatcher(
+            int maxNumberOfProcessingThread,
             ISyncFeed<HeadersSyncBatch> syncFeed,
             ISyncPeerPool syncPeerPool,
             IPeerAllocationStrategyFactory<FastBlocksBatch> peerAllocationStrategy,
             ILogManager logManager)
-            : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+            : base(maxNumberOfProcessingThread, syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
         }
 

@@ -53,6 +53,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly int[] _ancestorJumps = { 1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024 };
 
         public BlockDownloader(
+            int maxNumberOfProcessingThread,
             ISyncFeed<BlocksRequest?>? feed,
             ISyncPeerPool? syncPeerPool,
             IBlockTree? blockTree,
@@ -65,7 +66,7 @@ namespace Nethermind.Synchronization.Blocks
             IBetterPeerStrategy betterPeerStrategy,
             ILogManager? logManager,
             SyncBatchSize? syncBatchSize = null)
-            : base(feed, syncPeerPool, blockSyncPeerAllocationStrategyFactory, logManager)
+            : base(maxNumberOfProcessingThread, feed, syncPeerPool, blockSyncPeerAllocationStrategyFactory, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));

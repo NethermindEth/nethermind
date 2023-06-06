@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
@@ -68,7 +69,8 @@ namespace Nethermind.Network.Test
             };
 
             var managers = nodes.Select(CreateLifecycleManager).ToArray();
-            var networkNodes = managers.Select(x => new NetworkNode(x.ManagedNode.Id, x.ManagedNode.Host, x.ManagedNode.Port, x.NodeStats.NewPersistedNodeReputation)).ToArray();
+            DateTime utcNow = DateTime.UtcNow;
+            var networkNodes = managers.Select(x => new NetworkNode(x.ManagedNode.Id, x.ManagedNode.Host, x.ManagedNode.Port, x.NodeStats.NewPersistedNodeReputation(utcNow))).ToArray();
 
 
             _storage.StartBatch();
@@ -82,7 +84,7 @@ namespace Nethermind.Network.Test
                 Assert.IsNotNull(persistedNode);
                 Assert.That(persistedNode.Port, Is.EqualTo(manager.ManagedNode.Port));
                 Assert.That(persistedNode.Host, Is.EqualTo(manager.ManagedNode.Host));
-                Assert.That(persistedNode.Reputation, Is.EqualTo(manager.NodeStats.CurrentNodeReputation));
+                Assert.That(persistedNode.Reputation, Is.EqualTo(manager.NodeStats.CurrentNodeReputation()));
             }
 
             _storage.StartBatch();
@@ -96,13 +98,14 @@ namespace Nethermind.Network.Test
                 Assert.IsNull(persistedNode);
             }
 
+            utcNow = DateTime.UtcNow;
             foreach (INodeLifecycleManager manager in managers.Skip(1))
             {
                 NetworkNode persistedNode = persistedNodes.FirstOrDefault(x => x.NodeId.Equals(manager.ManagedNode.Id));
                 Assert.IsNotNull(persistedNode);
                 Assert.That(persistedNode.Port, Is.EqualTo(manager.ManagedNode.Port));
                 Assert.That(persistedNode.Host, Is.EqualTo(manager.ManagedNode.Host));
-                Assert.That(persistedNode.Reputation, Is.EqualTo(manager.NodeStats.CurrentNodeReputation));
+                Assert.That(persistedNode.Reputation, Is.EqualTo(manager.NodeStats.CurrentNodeReputation(utcNow)));
             }
         }
 

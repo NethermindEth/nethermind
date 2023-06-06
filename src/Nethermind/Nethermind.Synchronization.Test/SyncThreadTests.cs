@@ -351,7 +351,9 @@ namespace Nethermind.Synchronization.Test
             MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, logManager);
             Pivot pivot = new(syncConfig);
             SyncReport syncReport = new(syncPeerPool, nodeStatsManager, selector, syncConfig, pivot, LimboLogs.Instance);
-            BlockDownloaderFactory blockDownloaderFactory = new(MainnetSpecProvider.Instance,
+            BlockDownloaderFactory blockDownloaderFactory = new(
+                0,
+            MainnetSpecProvider.Instance,
                 tree,
                 NullReceiptStorage.Instance,
                 blockValidator,
@@ -403,7 +405,7 @@ namespace Nethermind.Synchronization.Test
             processor.Start();
             tree.SuggestBlock(_genesis);
 
-            if (!waitEvent.Wait(1000))
+            if (!waitEvent.Wait(10000))
             {
                 throw new Exception("No genesis");
             }

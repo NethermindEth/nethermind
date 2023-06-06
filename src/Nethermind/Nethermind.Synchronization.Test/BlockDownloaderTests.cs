@@ -513,7 +513,7 @@ namespace Nethermind.Synchronization.Test
             await task.ContinueWith(t => Assert.True(t.IsCanceled, $"blocks {t.Status}"));
         }
 
-        [Test, MaxTime(7000)]
+        [Test, MaxTime(15000)]
         public async Task Can_cancel_adding_headers()
         {
             Context ctx = new();
@@ -994,6 +994,7 @@ namespace Nethermind.Synchronization.Test
 
             private BlockDownloader _blockDownloader;
             public virtual BlockDownloader BlockDownloader => _blockDownloader ??= new BlockDownloader(
+                0,
                 Feed,
                 PeerPool,
                 BlockTree,

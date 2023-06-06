@@ -140,7 +140,9 @@ public class InitializeNetwork : IStep
         {
             SyncReport syncReport = new(_api.SyncPeerPool!, _api.NodeStatsManager!, _api.SyncModeSelector, _syncConfig, _api.Pivot, _api.LogManager);
 
-            _api.BlockDownloaderFactory ??= new BlockDownloaderFactory(_api.SpecProvider!,
+            _api.BlockDownloaderFactory ??= new BlockDownloaderFactory(
+                _syncConfig.MaxProcessingThreads,
+                _api.SpecProvider!,
                 _api.BlockTree!,
                 _api.ReceiptStorage!,
                 _api.BlockValidator!,
@@ -483,6 +485,7 @@ public class InitializeNetwork : IStep
         _api.RlpxPeer = new RlpxHost(
             _api.MessageSerializationService,
             _api.NodeKey.PublicKey,
+            _networkConfig.ProcessingThreadCount,
             _networkConfig.P2PPort,
             _networkConfig.LocalIp,
             _networkConfig.ConnectTimeoutMs,

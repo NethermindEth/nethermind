@@ -20,8 +20,13 @@ namespace Nethermind.Synchronization.StateSync
 {
     public class StateSyncDispatcher : SyncDispatcher<StateSyncBatch>
     {
-        public StateSyncDispatcher(ISyncFeed<StateSyncBatch> syncFeed, ISyncPeerPool syncPeerPool, IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy, ILogManager logManager)
-            : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+        public StateSyncDispatcher(
+            int maxNumberOfProcessingThread,
+            ISyncFeed<StateSyncBatch> syncFeed,
+            ISyncPeerPool syncPeerPool,
+            IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy,
+            ILogManager logManager)
+            : base(maxNumberOfProcessingThread, syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
         }
 

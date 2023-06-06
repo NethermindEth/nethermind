@@ -348,6 +348,7 @@ namespace Nethermind.Synchronization.Test
                 {
                     SyncReport syncReport = new(SyncPeerPool, stats, syncModeSelector, syncConfig, beaconPivot, _logManager);
                     blockDownloaderFactory = new MergeBlockDownloaderFactory(
+                        0,
                         poSSwitcher,
                         beaconPivot,
                         MainnetSpecProvider.Instance,
@@ -385,6 +386,7 @@ namespace Nethermind.Synchronization.Test
                 {
                     SyncReport syncReport = new(SyncPeerPool, stats, syncModeSelector, syncConfig, pivot, _logManager);
                     blockDownloaderFactory = new BlockDownloaderFactory(
+                        0,
                         MainnetSpecProvider.Instance,
                         BlockTree,
                         NullReceiptStorage.Instance,
@@ -573,6 +575,12 @@ namespace Nethermind.Synchronization.Test
             public SyncingContext PeerCountIs(long i)
             {
                 Assert.That(SyncPeerPool.AllPeers.Count(), Is.EqualTo(i), "peer count");
+                return this;
+            }
+
+            public SyncingContext PeerCountEventuallyIs(long i)
+            {
+                Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(1000, 100), "peer count");
                 return this;
             }
 
@@ -823,7 +831,7 @@ namespace Nethermind.Synchronization.Test
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
                 .WaitAMoment()
-                .PeerCountIs(0).Stop();
+                .PeerCountEventuallyIs(0).Stop();
         }
 
 

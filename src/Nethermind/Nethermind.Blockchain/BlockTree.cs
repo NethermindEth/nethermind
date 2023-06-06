@@ -40,19 +40,17 @@ namespace Nethermind.Blockchain
         // SyncProgressResolver MaxLookupBack is 128, add 16 wiggle room
         private const int CacheSize = 128 + 16;
 
-        private readonly LruCache<KeccakKey, BlockHeader> _headerCache =
+        private readonly LruCache<ValueKeccak, BlockHeader> _headerCache =
             new(CacheSize, CacheSize, "headers");
 
         private const int BestKnownSearchLimit = 256_000_000;
-
-        private readonly object _batchInsertLock = new();
 
         private readonly IBlockStore _blockStore;
         private readonly IDb _headerDb;
         private readonly IDb _blockInfoDb;
         private readonly IDb _metadataDb;
 
-        private readonly LruCache<KeccakKey, Block> _invalidBlocks =
+        private readonly LruCache<ValueKeccak, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
 
         private readonly HeaderDecoder _headerDecoder = new();

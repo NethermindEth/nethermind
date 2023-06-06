@@ -29,7 +29,9 @@ namespace Nethermind.Serialization.Rlp
 
         public const byte EmptyArrayByte = 128;
 
-        public const byte NullObjectByte = 192;
+        public const byte NullObjectByte = 192; // use bytes to avoid stack overflow
+
+        internal const int LengthOfNull = 1;
 
         public static readonly Rlp OfEmptyByteArray = new(EmptyArrayByte);
 
@@ -39,8 +41,7 @@ namespace Nethermind.Serialization.Rlp
 
         internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
 
-        internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes); // use bytes to avoid stack overflow
-
+        internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
         static Rlp()
         {
             RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
@@ -1379,6 +1380,25 @@ namespace Nethermind.Serialization.Rlp
 
                 return result;
             }
+
+            internal byte[][] DecodeByteArrays()
+            {
+                int length = ReadSequenceLength();
+                if (length is 0)
+                {
+                    return Array.Empty<byte[]>();
+                }
+
+                int itemsCount = PeekNumberOfItemsRemaining(Position + length);
+                byte[][] result = new byte[itemsCount][];
+
+                for (int i = 0; i < itemsCount; i++)
+                {
+                    result[i] = DecodeByteArray();
+                }
+
+                return result;
+            }
         }
 
         public override bool Equals(object? other)
@@ -1406,6 +1426,11 @@ namespace Nethermind.Serialization.Rlp
             return Bytes.ToHexString(withZeroX);
         }
 
+        public static int LengthOf(UInt256? item)
+        {
+            return item is null ? LengthOfNull : LengthOf(item.Value);
+        }
+
         public static int LengthOf(UInt256 item)
         {
             if (item < 128UL)
@@ -1417,6 +1442,21 @@ namespace Nethermind.Serialization.Rlp
             item.ToBigEndian(bytes);
             int length = bytes.WithoutLeadingZeros().Length;
             return length + 1;
+        }
+
+        public static int LengthOf(byte[][]? arrays)
+        {
+            int contentLength = 0;
+            if (arrays is null)
+            {
+                return LengthOfNull;
+            }
+
+            foreach (byte[] item in arrays)
+            {
+                contentLength += Rlp.LengthOf(item);
+            }
+            return LengthOfSequence(contentLength);
         }
 
         public static int LengthOfNonce(ulong _)

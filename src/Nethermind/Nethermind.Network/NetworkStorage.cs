@@ -3,10 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
 
 using Nethermind.Config;
 using Nethermind.Core;
@@ -23,11 +20,10 @@ namespace Nethermind.Network
         private readonly object _lock = new();
         private readonly IFullDb _fullDb;
         private readonly ILogger _logger;
-        private readonly List<NetworkNode> _nodesList = new();
-        private readonly HashSet<PublicKey> _nodePublicKeys = new();
+        private readonly Dictionary<PublicKey, NetworkNode> _nodesDict = new();
         private long _updateCounter;
         private long _removeCounter;
-        private NetworkNode[] _nodes;
+        private NetworkNode[]? _nodes;
 
         public NetworkStorage(IFullDb? fullDb, ILogManager? logManager)
         {
@@ -40,53 +36,53 @@ namespace Nethermind.Network
         public NetworkNode[] GetPersistedNodes()
         {
             NetworkNode[] nodes = _nodes;
-            return nodes is not null ? nodes : GenerateNodes();
+            return nodes ?? GenerateNodes();
         }
 
         private NetworkNode[] GenerateNodes()
         {
-            NetworkNode[] nodes;
             lock (_lock)
             {
-                nodes = _nodes;
+                NetworkNode[]? nodes = _nodes;
                 if (nodes is not null)
                 {
                     // Already updated
                     return nodes;
                 }
 
-                List<NetworkNode> nodeList = _nodesList;
-                if (nodeList.Count > 0)
+                if (_nodesDict.Count == 0)
                 {
-                    return (_nodes = nodeList.ToArray());
+                    LoadFromDb();
                 }
 
-                foreach (byte[]? nodeRlp in _fullDb.Values)
-                {
-                    if (nodeRlp is null)
-                    {
-                        continue;
-                    }
+                return _nodesDict.Count == 0 ? Array.Empty<NetworkNode>() : CopyDictToArray();
+            }
+        }
 
-                    try
-                    {
-                        NetworkNode node = GetNode(nodeRlp);
-                        nodeList.Add(node);
-                        _nodePublicKeys.Add(node.NodeId);
-                    }
-                    catch (Exception e)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
-                    }
+        private NetworkNode[] CopyDictToArray()
+        {
+            NetworkNode[] nodes = new NetworkNode[_nodesDict.Count];
+            _nodesDict.Values.CopyTo(nodes, 0);
+            return (_nodes = nodes);
+        }
+
+        private void LoadFromDb()
+        {
+            foreach (byte[]? nodeRlp in _fullDb.Values)
+            {
+                if (nodeRlp is null)
+                {
+                    continue;
                 }
 
-                if (nodeList.Count == 0)
+                try
                 {
-                    return Array.Empty<NetworkNode>();
+                    NetworkNode node = GetNode(nodeRlp);
+                    _nodesDict[node.NodeId] = node;
                 }
-                else
+                catch (Exception e)
                 {
-                    return (_nodes = nodeList.ToArray());
+                    if (_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
                 }
             }
         }
@@ -95,35 +91,35 @@ namespace Nethermind.Network
         {
             lock (_lock)
             {
-                (_currentBatch ?? (IKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
-                _updateCounter++;
+                UpdateNodeImpl(node);
+            }
+        }
 
-                if (!_nodePublicKeys.Contains(node.NodeId))
-                {
-                    _nodePublicKeys.Add(node.NodeId);
-                    _nodesList.Add(node);
-                    // New node, clear the cache
-                    _nodes = null;
-                }
-                else
-                {
-                    Span<NetworkNode> span = CollectionsMarshal.AsSpan(_nodesList);
-                    for (int i = 0; i < span.Length; i++)
-                    {
-                        if (node.NodeId == span[i].NodeId)
-                        {
-                            span[i] = node;
-                        }
-                    }
-                }
+        private void UpdateNodeImpl(NetworkNode node)
+        {
+            (_currentBatch ?? (IKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
+            _updateCounter++;
+
+            if (!_nodesDict.ContainsKey(node.NodeId))
+            {
+                _nodesDict[node.NodeId] = node;
+                // New node, clear the cache
+                _nodes = null;
+            }
+            else
+            {
+                _nodesDict[node.NodeId] = node;
             }
         }
 
         public void UpdateNodes(IEnumerable<NetworkNode> nodes)
         {
-            foreach (NetworkNode node in nodes)
+            lock (_lock)
             {
-                UpdateNode(node);
+                foreach (NetworkNode node in nodes)
+                {
+                    UpdateNodeImpl(node);
+                }
             }
         }
 
@@ -139,17 +135,10 @@ namespace Nethermind.Network
         {
             lock (_lock)
             {
-                Span<NetworkNode> span = CollectionsMarshal.AsSpan(_nodesList);
-                for (int i = 0; i < span.Length; i++)
+                if (_nodesDict.Remove(nodeId))
                 {
-                    if (nodeId == span[i].NodeId)
-                    {
-                        _nodesList.RemoveAt(i);
-                        _nodePublicKeys.Remove(nodeId);
-                        // New node, clear the cache
-                        _nodes = null;
-                        return;
-                    }
+                    // Clear the cache
+                    _nodes = null;
                 }
             }
         }

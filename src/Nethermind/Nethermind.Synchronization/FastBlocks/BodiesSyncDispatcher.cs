@@ -18,11 +18,12 @@ namespace Nethermind.Synchronization.FastBlocks
     public class BodiesSyncDispatcher : SyncDispatcher<BodiesSyncBatch>
     {
         public BodiesSyncDispatcher(
+            int maxNumberOfProcessingThread,
             ISyncFeed<BodiesSyncBatch> syncFeed,
             ISyncPeerPool syncPeerPool,
             IPeerAllocationStrategyFactory<BodiesSyncBatch> peerAllocationStrategy,
             ILogManager logManager)
-            : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+            : base(maxNumberOfProcessingThread, syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
         }
 

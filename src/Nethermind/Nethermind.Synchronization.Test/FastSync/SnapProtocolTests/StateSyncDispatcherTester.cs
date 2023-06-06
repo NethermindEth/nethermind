@@ -17,10 +17,11 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
 {
     public class StateSyncDispatcherTester : StateSyncDispatcher
     {
-        public StateSyncDispatcherTester(ISyncFeed<StateSyncBatch> syncFeed,
-    ISyncPeerPool syncPeerPool,
-    IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy,
-    ILogManager logManager) : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+        public StateSyncDispatcherTester(
+            ISyncFeed<StateSyncBatch> syncFeed,
+            ISyncPeerPool syncPeerPool,
+            IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy,
+            ILogManager logManager) : base(0, syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
         }
 

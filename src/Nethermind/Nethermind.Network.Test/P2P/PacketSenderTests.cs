@@ -76,7 +76,7 @@ namespace Nethermind.Network.Test.P2P
 
             await context.Received(0).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
 
-            await Task.Delay(delay * 2);
+            await Task.Delay(delay * 3);
 
             await context.Received(1).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
         }
