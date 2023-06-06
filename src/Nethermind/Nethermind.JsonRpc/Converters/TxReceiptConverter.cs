@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc.Converters
     {
         public override void WriteJson(JsonWriter writer, TxReceipt value, JsonSerializer serializer)
         {
-            serializer.Serialize(writer, new ReceiptForRpc(value.TxHash!, value, UInt256.Zero));
+            serializer.Serialize(writer, new ReceiptForRpc(value.TxHash!, value, new(UInt256.Zero)));
         }
 
         public override TxReceipt ReadJson(JsonReader reader, Type objectType, TxReceipt existingValue, bool hasExistingValue, JsonSerializer serializer)
