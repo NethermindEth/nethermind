@@ -318,6 +318,17 @@ namespace Nethermind.Trie
                 return;
             }
 
+            Keccak = GenerateKey(tree, isRoot);
+        }
+
+        public Keccak? GenerateKey(ITrieNodeResolver tree, bool isRoot)
+        {
+            Keccak? keccak = Keccak;
+            if (keccak is not null)
+            {
+                return keccak;
+            }
+
             if (FullRlp is null || IsDirty)
             {
                 FullRlp = RlpEncode(tree);
@@ -330,8 +341,10 @@ namespace Nethermind.Trie
             if (FullRlp.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
-                Keccak = Keccak.Compute(FullRlp);
+                return Keccak.Compute(FullRlp);
             }
+
+            return null;
         }
 
         public bool TryResolveStorageRootHash(ITrieNodeResolver resolver, out Keccak? storageRootHash)
