@@ -16,10 +16,18 @@ namespace Nethermind.Blockchain.Test.Receipts;
 public class KeccaksIteratorTests
 {
     [TestCaseSource(nameof(TestKeccaks))]
-    public void TestKeccakIteratorCorrect(Keccak[] keccak)
+    public void TestKeccakIteratorDecodeCorrectly(Keccak[] keccak)
     {
         Keccak[] keccaks = new[] { TestItem.KeccakA, Keccak.Zero };
         Keccak[] decoded = EncodeDecode(keccaks);
+        decoded.Should().BeEquivalentTo(keccaks);
+    }
+
+    [TestCaseSource(nameof(TestKeccaks))]
+    public void TestKeccakIteratorDecodedCorrectlyWithReset(Keccak[] keccak)
+    {
+        Keccak[] keccaks = new[] { TestItem.KeccakA, Keccak.Zero };
+        Keccak[] decoded = EncodeDecodeReDecoded(keccaks);
         decoded.Should().BeEquivalentTo(keccaks);
     }
 
@@ -54,6 +62,42 @@ public class KeccaksIteratorTests
         KeccaksIterator iterator = new(rlpStream.Data, buffer);
 
         List<Keccak> decoded = new();
+        while (iterator.TryGetNext(out KeccakStructRef kec))
+        {
+            decoded.Add(kec.ToKeccak());
+        }
+
+        return decoded.ToArray();
+    }
+
+    private Keccak[] EncodeDecodeReDecoded(Keccak[] input)
+    {
+        int totalLength = 0;
+        foreach (Keccak keccak in input)
+        {
+            totalLength += Rlp.LengthOf(keccak.Bytes.WithoutLeadingZerosOrEmpty());
+        }
+        int sequenceLength = Rlp.LengthOfSequence(totalLength);
+
+        RlpStream rlpStream = new RlpStream(sequenceLength);
+        rlpStream.StartSequence(totalLength);
+        foreach (Keccak keccak in input)
+        {
+            rlpStream.Encode(keccak.Bytes.WithoutLeadingZerosOrEmpty());
+        }
+
+        Span<byte> buffer = stackalloc byte[32];
+        KeccaksIterator iterator = new(rlpStream.Data, buffer);
+
+        List<Keccak> decoded = new();
+        while (iterator.TryGetNext(out KeccakStructRef kec))
+        {
+            decoded.Add(kec.ToKeccak());
+        }
+
+        decoded.Clear();
+        iterator.Reset();
+
         while (iterator.TryGetNext(out KeccakStructRef kec))
         {
             decoded.Add(kec.ToKeccak());

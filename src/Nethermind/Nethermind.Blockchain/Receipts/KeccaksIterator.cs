@@ -43,7 +43,6 @@ namespace Nethermind.Blockchain.Receipts
         public void Reset()
         {
             _decoderContext.Position = _startPosition;
-            _decoderContext.ReadSequenceLength();
         }
     }
 }
