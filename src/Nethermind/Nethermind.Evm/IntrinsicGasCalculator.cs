@@ -105,7 +105,7 @@ public static class IntrinsicGasCalculator
     public static UInt256 CalculateDataGasPrice(BlockHeader header) =>
         header.DataGasUsed!.Value * CalculateDataGasPricePerUnit(header);
 
-    private static UInt256 CalculateDataGasPricePerUnit(BlockHeader header)
+    public static UInt256 CalculateDataGasPricePerUnit(BlockHeader header)
     {
         if (header.ExcessDataGas is null)
         {
