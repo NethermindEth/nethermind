@@ -48,7 +48,6 @@ namespace Nethermind.Synchronization.Blocks
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-
         }
 
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
