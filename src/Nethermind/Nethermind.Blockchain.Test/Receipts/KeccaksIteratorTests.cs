@@ -33,6 +33,7 @@ public class KeccaksIteratorTests
 
     public static IEnumerable<Keccak[]> TestKeccaks()
     {
+        yield return Array.Empty<Keccak>();
         yield return new[] { TestItem.KeccakA };
         yield return new[] { Keccak.Zero };
         yield return new[] { TestItem.KeccakA, Keccak.Zero };
