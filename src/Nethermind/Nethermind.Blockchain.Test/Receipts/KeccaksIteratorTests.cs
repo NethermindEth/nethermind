@@ -40,6 +40,10 @@ public class KeccaksIteratorTests
         yield return new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, Keccak.Zero, };
         yield return new[] { TestItem.KeccakA, new Keccak("0xffffffffffffffffffffffffffffffff00000000000000000000000000000000") };
         yield return new[] { TestItem.KeccakA, new Keccak("0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff") };
+        yield return new[] { TestItem.KeccakA, new Keccak("0xffffffffffffffffffffffffffffffff00000000000000000000000000000000"), TestItem.KeccakB };
+        yield return new[] { TestItem.KeccakA, new Keccak("0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff"), TestItem.KeccakB };
+        yield return new[] { new Keccak("0xffffffffffffffffffffffffffffffff00000000000000000000000000000000"), TestItem.KeccakB };
+        yield return new[] { new Keccak("0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff"), TestItem.KeccakB };
     }
 
     private Keccak[] EncodeDecode(Keccak[] input)
