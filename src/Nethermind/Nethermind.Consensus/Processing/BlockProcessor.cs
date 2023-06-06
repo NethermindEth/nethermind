@@ -225,18 +225,13 @@ public partial class BlockProcessor : IBlockProcessor
         _receiptsTracer.SetOtherTracer(blockTracer);
         _receiptsTracer.StartNewBlockTrace(block);
 
-        if (spec.IsEip4844Enabled && block.Header.Number != 0)
+        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
+
+        if (spec.IsEip4844Enabled)
         {
             block.Header.DataGasUsed = IntrinsicGasCalculator.CalculateDataGas(
                 block.Transactions.Sum(tx => tx.BlobVersionedHashes?.Length ?? 0));
-
-            if (block.Header.ExcessDataGas is null)
-            {
-                throw new ApplicationException("ExcessDataGas cannot be null");
-            }
         }
-
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
 
         block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);

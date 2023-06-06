@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -10,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
@@ -20,12 +22,14 @@ public class ShardBlobBlockValidatorTests
     public static bool Data_gas_fields_should_be_set(IReleaseSpec spec, ulong? dataGasUsed, ulong? excessDataGas)
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, spec));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, TestLogManager.Instance);
+        HeaderValidator headerValidator = new(Substitute.For<IBlockTree>(), Always.Valid, specProvider, TestLogManager.Instance);
+        BlockValidator blockValidator = new(Always.Valid, headerValidator, Always.Valid, specProvider, TestLogManager.Instance);
         return blockValidator.ValidateSuggestedBlock(Build.A.Block
             .WithDataGasUsed(dataGasUsed)
             .WithExcessDataGas(excessDataGas)
             .WithWithdrawalsRoot(TestItem.KeccakA)
             .WithWithdrawals(TestItem.WithdrawalA_1Eth)
+            .WithParent(Build.A.BlockHeader.TestObject)
             .TestObject);
     }
 

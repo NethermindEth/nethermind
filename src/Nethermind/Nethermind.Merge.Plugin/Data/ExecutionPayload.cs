@@ -39,6 +39,7 @@ public class ExecutionPayload
         Timestamp = block.Timestamp;
         BaseFeePerGas = block.BaseFeePerGas;
         Withdrawals = block.Withdrawals;
+        DataGasUsed = block.DataGasUsed;
         ExcessDataGas = block.ExcessDataGas;
 
         SetTransactions(block.Transactions);
@@ -84,18 +85,19 @@ public class ExecutionPayload
     public IEnumerable<Withdrawal>? Withdrawals { get; set; }
 
     /// <summary>
+    /// Gets or sets <see cref="Block.DataGasUsed"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
+    /// </summary>
+    [JsonProperty(ItemConverterType = typeof(NullableUInt256Converter), NullValueHandling = NullValueHandling.Ignore)]
+    public ulong? DataGasUsed { get; set; }
+
+    /// <summary>
     /// Gets or sets <see cref="Block.ExcessDataGas"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
     [JsonProperty(ItemConverterType = typeof(NullableUInt256Converter), NullValueHandling = NullValueHandling.Ignore)]
     public ulong? ExcessDataGas { get; set; }
 
-    /// <summary>
-    /// Gets or sets <see cref="Block.DataGasUsed"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
-    /// </summary>
-    [JsonProperty(ItemConverterType = typeof(NullableUInt256Converter), NullValueHandling = NullValueHandling.Ignore)]
-    public ulong? DataGasUsed { get; set; }
 
     /// <summary>
     /// Creates the execution block from payload.
