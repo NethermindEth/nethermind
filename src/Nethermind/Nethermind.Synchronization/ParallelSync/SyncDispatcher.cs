@@ -21,7 +21,10 @@ namespace Nethermind.Synchronization.ParallelSync
         protected ISyncFeed<T> Feed { get; }
         protected ISyncPeerPool SyncPeerPool { get; }
 
+        private readonly SemaphoreSlim _concurrentProcessingSemaphore;
+
         protected SyncDispatcher(
+            int maxNumberOfProcessingThread,
             ISyncFeed<T>? syncFeed,
             ISyncPeerPool? syncPeerPool,
             IPeerAllocationStrategyFactory<T>? peerAllocationStrategy,
@@ -31,6 +34,15 @@ namespace Nethermind.Synchronization.ParallelSync
             Feed = syncFeed ?? throw new ArgumentNullException(nameof(syncFeed));
             SyncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             PeerAllocationStrategyFactory = peerAllocationStrategy ?? throw new ArgumentNullException(nameof(peerAllocationStrategy));
+
+            if (maxNumberOfProcessingThread == 0)
+            {
+                _concurrentProcessingSemaphore = new SemaphoreSlim(Environment.ProcessorCount, Environment.ProcessorCount);
+            }
+            else
+            {
+                _concurrentProcessingSemaphore = new SemaphoreSlim(maxNumberOfProcessingThread, maxNumberOfProcessingThread);
+            }
 
             syncFeed.StateChanged += SyncFeedOnStateChanged;
         }
@@ -137,6 +149,15 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (Logger.IsWarn) Logger.Warn($"Failure when executing request {e}");
             }
 
+            if (Feed.IsMultiFeed)
+            {
+                // Limit multithreaded feed concurrency. Note, this also blocks freeing the allocation, which is deliberate.
+                // otherwise, we will keep spawning requests without processing it fast enough, which consume memory.
+                await _concurrentProcessingSemaphore.WaitAsync(cancellationToken);
+            }
+
+            Free(allocation);
+
             try
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -149,7 +170,10 @@ namespace Nethermind.Synchronization.ParallelSync
             }
             finally
             {
-                Free(allocation);
+                if (Feed.IsMultiFeed)
+                {
+                    _concurrentProcessingSemaphore.Release();
+                }
             }
         }
 

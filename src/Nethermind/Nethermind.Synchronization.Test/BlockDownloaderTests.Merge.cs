@@ -470,6 +470,7 @@ public partial class BlockDownloaderTests
             get
             {
                 return _mergeBlockDownloader ??= new(
+                    0,
                     PosSwitcher,
                     BeaconPivot,
                     Feed,

@@ -994,6 +994,7 @@ namespace Nethermind.Synchronization.Test
 
             private BlockDownloader _blockDownloader;
             public virtual BlockDownloader BlockDownloader => _blockDownloader ??= new BlockDownloader(
+                0,
                 Feed,
                 PeerPool,
                 BlockTree,

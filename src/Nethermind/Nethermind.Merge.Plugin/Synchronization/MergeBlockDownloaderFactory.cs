@@ -35,8 +35,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly ISyncReport _syncReport;
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IChainLevelHelper _chainLevelHelper;
+        private readonly int _maxNumberOfProcessingThread;
 
-        public MergeBlockDownloaderFactory(IPoSSwitcher poSSwitcher,
+        public MergeBlockDownloaderFactory(
+            int maxNumberOfProcessingThread,
+            IPoSSwitcher poSSwitcher,
             IBeaconPivot beaconPivot,
             ISpecProvider specProvider,
             IBlockTree blockTree,
@@ -51,6 +54,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ISyncProgressResolver syncProgressResolver,
             ILogManager logManager)
         {
+            _maxNumberOfProcessingThread = maxNumberOfProcessingThread;
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _beaconPivot = beaconPivot ?? throw new ArgumentNullException(nameof(beaconPivot));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -68,7 +72,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
-            return new MergeBlockDownloader(_poSSwitcher, _beaconPivot, syncFeed, _syncPeerPool, _blockTree, _blockValidator,
+            return new MergeBlockDownloader(
+                _maxNumberOfProcessingThread, _poSSwitcher, _beaconPivot, syncFeed, _syncPeerPool, _blockTree, _blockValidator,
                 _sealValidator, _syncReport, _receiptStorage, _specProvider, _betterPeerStrategy, _chainLevelHelper,
                 _syncProgressResolver, _logManager);
         }

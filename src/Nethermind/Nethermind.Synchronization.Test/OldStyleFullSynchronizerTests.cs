@@ -70,6 +70,7 @@ namespace Nethermind.Synchronization.Test
             Pivot pivot = new(syncConfig);
             SyncReport syncReport = new(_pool, stats, syncModeSelector, syncConfig, pivot, LimboLogs.Instance);
             BlockDownloaderFactory blockDownloaderFactory = new(
+                0,
                 MainnetSpecProvider.Instance,
                 _blockTree,
                 _receiptStorage,
