@@ -89,13 +89,11 @@ contract EcrecoverProxy {
         //Force persistancy of head block in main chain
         chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
-        using (MultiCallBlockchainFork tmpChain = new(chain.DbProvider, chain.SpecProvider))
+        using (MultiCallBlockchainFork tmpChain = new(chain.DbProvider, chain.SpecProvider,
+                   EthRpcModule.MultiCallTxExecutor.GetMaxGas(new JsonRpcConfig())))
         {
-            bool processed = tmpChain.ForgeChainBlock((stateProvider, currentSpec, specProvider, virtualMachine) =>
-            {
-                EthRpcModule.MultiCallTxExecutor.ModifyAccounts(requestMultiCall, stateProvider, currentSpec,
-                    specProvider, virtualMachine);
-            });
+            (bool processed, Block? _) = tmpChain.ForgeChainBlock(requestMultiCall);
+
             Assert.True(processed);
             //Generate and send transaction
             SystemTransaction systemTransactionForModifiedVM = new()

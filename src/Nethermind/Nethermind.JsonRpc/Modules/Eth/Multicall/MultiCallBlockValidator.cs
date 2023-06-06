@@ -27,6 +27,7 @@ internal class MultiCallBlockValidator : BlockValidator
             //Note we mutate suggested block here to allow eth_multicall enforced State Root change
             //and still pass validation 
             suggestedBlock.Header.StateRoot = processedBlock.Header.StateRoot;
+            suggestedBlock.Header.ReceiptsRoot = processedBlock.Header.ReceiptsRoot;
             suggestedBlock.Header.Hash = suggestedBlock.Header.CalculateHash();
         }
 

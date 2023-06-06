@@ -28,7 +28,8 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingBlockHash => _currentTxTracer.IsTracingBlockHash;
         public bool IsTracingAccess => _currentTxTracer.IsTracingAccess;
         public bool IsTracingFees => _currentTxTracer.IsTracingFees;
-        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingEventLogs;
+        public bool IsTracingEventLogs  => _currentTxTracer.IsTracingEventLogs;
 
         private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
@@ -189,6 +190,14 @@ namespace Nethermind.Evm.Tracing
             if (_currentTxTracer.IsTracingFees)
             {
                 _currentTxTracer.ReportFees(fees, burntFees);
+            }
+        }
+
+        public void ReportEvent(LogEntry logEntry)
+        {
+            if (_currentTxTracer.IsTracingEventLogs)
+            {
+                _currentTxTracer.ReportEvent(logEntry);
             }
         }
 

@@ -29,7 +29,8 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
         public bool IsTracingFees => false;
-        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingEventLogs;
+        public bool IsTracingEventLogs => false;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
             => throw new InvalidOperationException(ErrorMessage);
@@ -115,6 +116,9 @@ namespace Nethermind.Evm.Tracing
             => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportFees(UInt256 fees, UInt256 burntFees)
+            => throw new InvalidOperationException(ErrorMessage);
+
+        public void ReportEvent(LogEntry logEntry)
             => throw new InvalidOperationException(ErrorMessage);
     }
 }

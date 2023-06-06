@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -19,7 +18,6 @@ using Nethermind.Crypto;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.Multicall;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
@@ -27,11 +25,11 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NUnit.Framework;
+using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule;
 using ResultType = Nethermind.Core.ResultType;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
@@ -49,66 +47,68 @@ public class EthRpcMulticallTests
     }
 
 
-
-    public const string EcRecoverContractJsonAbi = @"[
-  {
+    public static string getEcRecoverContractJsonAbi(string name = "recover")
+    {
+        return $@"[
+  {{
     ""payable"": false,
  	""inputs"": [
-		{
+		{{
 			""internalType"": ""bytes32"",
 			""name"": ""hash"",
 			""type"": ""bytes32""
-		},
-		{
+		}},
+		{{
 			""internalType"": ""uint8"",
 			""name"": ""v"",
 			""type"": ""uint8""
-		},
-		{
+
+        }},
+		{{
 			""internalType"": ""bytes32"",
 			""name"": ""r"",
 			""type"": ""bytes32""
-		},
-		{
+		}},
+		{{
 			""internalType"": ""bytes32"",
 			""name"": ""s"",
 			""type"": ""bytes32""
-		}
+		}}
 	],
-	""name"": ""recover"",
+	""name"": ""{name}"",
 	""outputs"": [
-		{
+		{{
 			""internalType"": ""address"",
 			""name"": """",
 			""type"": ""address""
-		}
+		}}
 	],
 	""stateMutability"": ""pure"",
 	""type"": ""function""
-  }
+  }}
 ]";
+    }
 
-    public static byte[] GetTxData(TestRpcBlockchain chain, Address account)
+    public static byte[] GetTxData(TestRpcBlockchain chain, PrivateKey account, string name = "recover")
     {
         // Step 1: Take an account
         // Step 2: Hash the message
         Keccak messageHash = Keccak.Compute("Hello, world!");
         // Step 3: Sign the hash
-        Signature signature = chain.EthereumEcdsa.Sign(TestItem.PrivateKeyA, messageHash);
+        Signature signature = chain.EthereumEcdsa.Sign(account, messageHash);
 
         ulong v = signature.V;
         byte[] r = signature.R;
         byte[] s = signature.S;
 
         //Check real address
-        Address recoveredAddress = chain.EthereumEcdsa.RecoverAddress(signature, messageHash);
-        Assert.AreEqual(account, recoveredAddress);
 
-        byte[] transactionData = EthRpcMulticallTests.GenerateTransactionDataForEcRecover(messageHash, v, r, s);
+        byte[] transactionData = GenerateTransactionDataForEcRecover(messageHash, v, r, s, name);
         return transactionData;
     }
 
-    public static async Task<Address?> DeployEcRecoverContract(TestRpcBlockchain chain1, PrivateKey fromPrivateKey, string ContractBytecode)
+    public static async Task<Address?> DeployEcRecoverContract(TestRpcBlockchain chain1, PrivateKey fromPrivateKey,
+        string ContractBytecode)
     {
         byte[] bytecode = Bytes.FromHexString(ContractBytecode);
         Transaction tx = new()
@@ -141,7 +141,7 @@ public class EthRpcMulticallTests
         //Tested Alternative, often faster
         //chain1.EthereumEcdsa.Sign(TestItem.PrivateKeyB, tx, true);
         //tx.Hash = tx.CalculateHash();
-        //await chain1.AddBlock(true, tx);
+        //wait chain1.AddBlock(true, tx);
         //TxReceipt? createContractTxReceipt2 = chain1.Bridge.GetReceipt(tx.Hash);
         //createContractTxReceipt2.ContractAddress
         //    .Should().NotBeNull($"Contract transaction {tx.Hash} was not deployed.");
@@ -174,35 +174,32 @@ public class EthRpcMulticallTests
         return contractAddress1;
     }
 
-    public static byte[] GenerateTransactionDataForEcRecover(Keccak keccak, ulong @ulong, byte[] bytes1, byte[] bytes2)
+    public static byte[] GenerateTransactionDataForEcRecover(Keccak keccak, ulong @ulong, byte[] bytes1, byte[] bytes2,
+        string name = "recover")
     {
         AbiDefinitionParser parser = new();
-        AbiDefinition call = parser.Parse(EcRecoverContractJsonAbi);
-        AbiEncodingInfo functionInfo = call.GetFunction("recover").GetCallInfo();
+        AbiDefinition call = parser.Parse(getEcRecoverContractJsonAbi(name));
+        AbiEncodingInfo functionInfo = call.GetFunction(name).GetCallInfo();
         byte[] transactionData1 = AbiEncoder.Instance.Encode(functionInfo.EncodingStyle,
             functionInfo.Signature,
             keccak, @ulong, bytes1, bytes2);
         return transactionData1;
     }
 
-    public static Address? GetTransactionResultFromEcRecover(byte[] data)
+    public static Address? GetTransactionResultFromEcRecover(byte[] data, string name = "recover")
     {
         AbiDefinitionParser parser = new();
-        AbiDefinition call = parser.Parse(EcRecoverContractJsonAbi);
+        AbiDefinition call = parser.Parse(getEcRecoverContractJsonAbi(name));
         AbiEncodingInfo functionInfo = call.GetFunction("recover").GetReturnInfo();
         Address? transactionData1 = AbiEncoder.Instance.Decode(functionInfo.EncodingStyle,
             functionInfo.Signature, data).FirstOrDefault() as Address;
         return transactionData1;
     }
 
-    public static Address? MainChainTransaction(byte[] bytes, Address? toAddress, TestRpcBlockchain testRpcBlockchain, Address senderAddress)
+    public static Address? MainChainTransaction(byte[] bytes, Address? toAddress, TestRpcBlockchain testRpcBlockchain,
+        Address senderAddress)
     {
-        SystemTransaction transaction = new()
-        {
-            Data = bytes,
-            To = toAddress,
-            SenderAddress = senderAddress
-        };
+        SystemTransaction transaction = new() { Data = bytes, To = toAddress, SenderAddress = senderAddress };
         transaction.Hash = transaction.CalculateHash();
         TransactionForRpc transactionForRpc = new(transaction);
         ResultWrapper<string> mainChainResult =
@@ -210,7 +207,8 @@ public class EthRpcMulticallTests
 
         //byte[] mainChainResultBytes =
         //    Bytes.FromHexString(mainChainResult.Data).SliceWithZeroPaddingEmptyOnError(12, 20);
-        Address? mainChainRpcAddress = GetTransactionResultFromEcRecover(Bytes.FromHexString(mainChainResult.Data)); //new(mainChainResultBytes);
+        Address? mainChainRpcAddress =
+            GetTransactionResultFromEcRecover(Bytes.FromHexString(mainChainResult.Data)); //new(mainChainResultBytes);
         return mainChainRpcAddress;
     }
 
@@ -225,7 +223,7 @@ public class EthRpcMulticallTests
 
         MultiCallBlockStateCallsModel requestBlockOne = new()
         {
-            StateOverrides = new[] { new AccountOverride { Address = TestItem.AddressA, Balance = UInt256.One }}
+            StateOverrides = new[] { new AccountOverride { Address = TestItem.AddressA, Balance = UInt256.One } }
         };
 
 
@@ -239,7 +237,8 @@ public class EthRpcMulticallTests
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
 
         TrieStore tt = chain.TrieStore;
-        using (MultiCallBlockchainFork tmpChain = new(chain.DbProvider, chain.SpecProvider))
+        using (MultiCallBlockchainFork tmpChain = new(chain.DbProvider, chain.SpecProvider,
+                   MultiCallTxExecutor.GetMaxGas(new JsonRpcConfig())))
         {
             //Check if tmpChain initialised
             Assert.AreEqual(chain.BlockTree.BestKnownNumber, tmpChain.BlockTree.BestKnownNumber);
@@ -256,10 +255,8 @@ public class EthRpcMulticallTests
             UInt256 num_tmp = userBalanceBefore_fromTmp.Data.Value;
             Assert.AreEqual(userBalanceBefore_fromTmp.Data, userBalanceBefore.Data);
 
-            bool processed = tmpChain.ForgeChainBlock((stateProvider, currentSpec, specProvider, virtualMachine) =>
-            {
-                EthRpcModule.MultiCallTxExecutor.ModifyAccounts(requestBlockOne, stateProvider, currentSpec, specProvider, virtualMachine);
-            });
+            (bool processed, Block? _) = tmpChain.ForgeChainBlock(requestBlockOne);
+
 
             //Check block has been added to chain as main
             Assert.True(processed);

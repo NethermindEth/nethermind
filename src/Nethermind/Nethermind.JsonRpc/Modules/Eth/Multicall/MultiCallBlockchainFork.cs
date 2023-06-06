@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -17,14 +18,18 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Proxy.Models;
+using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -47,6 +52,13 @@ namespace Nethermind.JsonRpc.Modules.Eth.Multicall;
 /// </summary>
 public class MultiCallBlockchainFork : IDisposable
 {
+    private UInt256 _maxGas;
+
+    //todo remove public useless bridge
+    public BlockchainBridge bridge;
+
+    public InMemoryReceiptStorage receiptStorage;
+
     /// <summary>
     ///     Creates a MultiCallBlockchainFork instance with the following steps:
     ///     1. Initialize MultiCallBlockchainFork object
@@ -82,8 +94,10 @@ public class MultiCallBlockchainFork : IDisposable
     /// <param name="codeDb">Current Code database</param>
     /// <param name="specProvider">Specification provider (optional)</param>
     /// <returns>MultiCallBlockchainFork instance</returns>
-    public MultiCallBlockchainFork(IDbProvider oldDbProvider, ISpecProvider specProvider)
+    public MultiCallBlockchainFork(IDbProvider oldDbProvider, ISpecProvider specProvider, UInt256 MaxGas)
     {
+        _maxGas = MaxGas;
+        BlockTracer = new MultiCallBlockTracer();
         //Init BlockChain
         //Writable inMemory DBs on with access to the data of existing ones (will not modify existing data)
         if (oldDbProvider == null) throw new ArgumentNullException();
@@ -145,7 +159,8 @@ public class MultiCallBlockchainFork : IDisposable
             logManager,
             transactionComparerProvider.GetDefaultComparer());
 
-        InMemoryReceiptStorage receiptStorage = new();
+
+        receiptStorage = new InMemoryReceiptStorage();
 
         VirtualMachine = new MultiCallVirtualMachine(
             new BlockhashProvider(BlockTree, logManager),
@@ -186,6 +201,7 @@ public class MultiCallBlockchainFork : IDisposable
             BlockchainProcessor.Options.Default);
         ChainProcessor.Start();
 
+
         //Init RPC
         IFilterStore filterStore = new FilterStore();
         IFilterManager filterManager =
@@ -209,7 +225,7 @@ public class MultiCallBlockchainFork : IDisposable
         ITimestamper timestamper = Timestamper.Default;
 
 
-        BlockchainBridge bridge = new(processingEnv,
+        bridge = new BlockchainBridge(processingEnv,
             txPool,
             receiptFinder,
             filterStore,
@@ -251,6 +267,8 @@ public class MultiCallBlockchainFork : IDisposable
             dbProvider);
     }
 
+    public MultiCallBlockTracer BlockTracer { get; }
+
     private BlockchainProcessor ChainProcessor { get; }
     private BlockProcessor BlockProcessor { get; }
 
@@ -269,35 +287,81 @@ public class MultiCallBlockchainFork : IDisposable
     public IDbProvider DbProvider { get; internal set; }
 
     //Create a new block next to current LatestBlock (BlockFinder.Head)
-    public Block CreateBlock()
+    public Block CreateBlock(BlockOverride? desiredBlock, CallTransactionModel[] desiredTransactions)
     {
         BlockHeader? parent = LatestBlock?.Header;
         if (parent == null)
             throw new Exception("Existing header expected");
 
-        BlockHeader blockHeader = new(
-            parent.Hash,
-            Keccak.OfAnEmptySequenceRlp,
-            Address.Zero,
-            UInt256.Zero,
-            parent.Number + 1,
-            parent.GasLimit,
-            parent.Timestamp + 1,
-            Array.Empty<byte>());
+        BlockHeader blockHeader = null;
+        if (desiredBlock != null)
+        {
+            ulong time = 0;
+            if (desiredBlock.Time <= ulong.MaxValue)
+                time = (ulong)desiredBlock.Time;
+            else
+                throw new OverflowException("Time value is too large to be converted to ulong we use.");
+
+            long gasLimit = 0;
+            if (desiredBlock.GasLimit <= long.MaxValue)
+                gasLimit = (long)desiredBlock.GasLimit;
+            else
+                throw new OverflowException("GasLimit value is too large to be converted to long we use.");
+
+            long blockNumber = 0;
+            if (desiredBlock.Number <= long.MaxValue)
+                blockNumber = (long)desiredBlock.Number;
+            else
+                throw new OverflowException("Block Number value is too large to be converted to long we use.");
+
+            blockHeader = new BlockHeader(
+                parent.Hash,
+                Keccak.OfAnEmptySequenceRlp,
+                desiredBlock.FeeRecipient,
+                UInt256.Zero,
+                blockNumber,
+                gasLimit,
+                time,
+                Array.Empty<byte>());
+            blockHeader.MixHash = desiredBlock.PrevRandao;
+            blockHeader.BaseFeePerGas = desiredBlock.BaseFee;
+        }
+        else
+        {
+            blockHeader = new BlockHeader(
+                parent.Hash,
+                Keccak.OfAnEmptySequenceRlp,
+                Address.Zero,
+                UInt256.Zero,
+                parent.Number + 1,
+                parent.GasLimit,
+                parent.Timestamp + 1,
+                Array.Empty<byte>());
+            blockHeader.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, SpecProvider.GetSpec(blockHeader));
+        }
+
+        if (_maxGas <= long.MaxValue)
+            blockHeader.GasLimit =
+                (long)Math.Min((ulong)blockHeader.GasLimit, _maxGas.ToUInt64(CultureInfo.InvariantCulture));
+        else
+            _maxGas -= new UInt256((ulong)blockHeader.GasLimit);
 
         UInt256 difficulty = ConstantDifficulty.One.Calculate(blockHeader, parent);
         blockHeader.Difficulty = difficulty;
         blockHeader.TotalDifficulty = parent.TotalDifficulty + difficulty;
-        blockHeader.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, SpecProvider.GetSpec(blockHeader));
 
-        blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-        blockHeader.TxRoot = Keccak.EmptyTreeHash;
-        blockHeader.Bloom = Bloom.Empty;
+        //blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
+        //blockHeader.TxRoot = Keccak.EmptyTreeHash;
+        //blockHeader.Bloom = Bloom.Empty;
 
-        Block? block = new(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
+        List<Transaction> transactions = new();
+        if (desiredTransactions != null)
+            transactions = desiredTransactions.Select(model => model.GetTransaction()).ToList();
+
+        Block? block = new(blockHeader, transactions, Array.Empty<BlockHeader>());
 
         block = ChainProcessor.Process(block,
-            ProcessingOptions.ProducingBlock,
+            ProcessingOptions.ProducingBlock | ProcessingOptions.NoValidation,
             NullBlockTracer.Instance);
 
         return block;
@@ -314,40 +378,106 @@ public class MultiCallBlockchainFork : IDisposable
         currentBlock.Header.IsPostMerge = true; //ToDo: Seal if necessary before merge 192 BPB
         currentBlock.Header.Hash = currentBlock.Header.CalculateHash();
 
-        AddBlockResult res = BlockTree.SuggestBlock(currentBlock, BlockTreeSuggestOptions.ForceSetAsMain);
+        AddBlockResult res = BlockTree.SuggestBlock(currentBlock,
+            BlockTreeSuggestOptions.ForceSetAsMain | BlockTreeSuggestOptions.ForceDontValidateParent);
         if (res != AddBlockResult.Added) return false;
 
         //ChainProcessor uses parent.StateRoot with the Process, it gets bad on InitBranch due to _state/storage resets
+        //Block[]? blocks = BlockProcessor.Process(currentBlock.StateRoot,
+        //new List<Block> { currentBlock! },
+        //ProcessingOptions.StoreReceipts | ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce,
+        //BlockTracer);
+
         Block[]? blocks = BlockProcessor.Process(currentBlock.StateRoot,
             new List<Block> { currentBlock! },
-            ProcessingOptions.ForceProcessing,
-            new BlockReceiptsTracer());
+            ProcessingOptions.ForceProcessing |
+            ProcessingOptions.NoValidation |
+            ProcessingOptions.DoNotVerifyNonce |
+            ProcessingOptions.IgnoreParentNotOnMainChain |
+            ProcessingOptions.MarkAsProcessed |
+            ProcessingOptions.StoreReceipts
+            ,
+            BlockTracer);
 
+        //TODO: Here is a bug!
+        //TODO: It prevents block with 1+ transactions
         BlockTree.UpdateMainChain(blocks, true, true);
-
+        BlockTree.UpdateHeadBlock(BlockFinder.Head.Hash);
         return true;
+    }
+
+
+    private void ModifyAccounts(AccountOverride[] StateOverrides)
+    {
+        Account? acc;
+        if (StateOverrides == null) return;
+
+        foreach (AccountOverride accountOverride in StateOverrides)
+        {
+            Address address = accountOverride.Address;
+            bool accExists = StateProvider.AccountExists(address);
+            if (!accExists)
+            {
+                StateProvider.CreateAccount(address, accountOverride.Balance, accountOverride.Nonce);
+                acc = StateProvider.GetAccount(address);
+            }
+            else
+                acc = StateProvider.GetAccount(address);
+
+            UInt256 accBalance = acc.Balance;
+            if (accBalance > accountOverride.Balance)
+                StateProvider.SubtractFromBalance(address, accBalance - accountOverride.Balance, CurrentSpec);
+            else if (accBalance < accountOverride.Nonce)
+                StateProvider.AddToBalance(address, accountOverride.Balance - accBalance, CurrentSpec);
+
+            UInt256 accNonce = acc.Nonce;
+            if (accNonce > accountOverride.Nonce)
+                StateProvider.DecrementNonce(address);
+            else if (accNonce < accountOverride.Nonce) StateProvider.IncrementNonce(address);
+
+            if (acc != null)
+            {
+                if (accountOverride.Code is not null)
+                {
+                    VirtualMachine.SetOverwrite(StateProvider, CurrentSpec, address,
+                        new CodeInfo(accountOverride.Code), accountOverride.MoveToAddress);
+                }
+            }
+
+
+            if (accountOverride.State is not null)
+            {
+                accountOverride.State = new Dictionary<UInt256, byte[]>();
+                foreach (KeyValuePair<UInt256, byte[]> storage in accountOverride.State)
+                    StateProvider.Set(new StorageCell(address, storage.Key),
+                        storage.Value.WithoutLeadingZeros().ToArray());
+            }
+
+            if (accountOverride.StateDiff is not null)
+            {
+                foreach (KeyValuePair<UInt256, byte[]> storage in accountOverride.StateDiff)
+                    StateProvider.Set(new StorageCell(address, storage.Key),
+                        storage.Value.WithoutLeadingZeros().ToArray());
+            }
+
+            StateProvider.Commit(CurrentSpec);
+        }
     }
 
     /// <summary>
     ///     Forges a new block in the temp blockchain using the provided action to manipulate state, release spec, spec
     ///     provider, and storage provider.
     /// </summary>
-    /// <param name="action">An action representing the modifications to the blockchain state and storage.</param>
-    public bool ForgeChainBlock(Action<IWorldState,
-        IReleaseSpec, ISpecProvider, MultiCallVirtualMachine> action)
+    /// <param name="forceStateAction">An action representing the modifications to the blockchain state and storage.</param>
+    public (bool, Block? ) ForgeChainBlock(MultiCallBlockStateCallsModel blockMock)
     {
         //Prepare a block
-        Block? newBlock = CreateBlock();
-
-        action(StateProvider,
-            CurrentSpec,
-            SpecProvider,
-            VirtualMachine
-        );
+        Block? newBlock = CreateBlock(blockMock.BlockOverride, blockMock.Calls);
+        ModifyAccounts(blockMock.StateOverrides);
 
         //Add block
         bool results = FinalizeBlock(newBlock);
-        return results;
+        return (results, newBlock);
     }
 
     //For using scope guard

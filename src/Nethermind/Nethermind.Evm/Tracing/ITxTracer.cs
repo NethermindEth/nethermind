@@ -130,6 +130,15 @@ namespace Nethermind.Evm.Tracing
         bool IsTracing { get; }
 
         /// <summary>
+        /// Traces transaction logs and events
+        /// </summary>
+        /// <remarks>
+        /// Controls
+        /// - <see cref="ReportEvent"/>
+        /// </remarks>
+        bool IsTracingEventLogs { get; } 
+
+        /// <summary>
         /// Transaction completed successfully
         /// </summary>
         /// <param name="recipient">Transaction recipient</param>
@@ -430,5 +439,12 @@ namespace Nethermind.Evm.Tracing
         /// <param name="burntFees">EIP-1559 burnt fees</param>
         /// <remarks>Depends on <see cref="IsTracingFees"/></remarks>
         void ReportFees(UInt256 fees, UInt256 burntFees);
+
+
+        /// <summary>
+        /// Reports event logs of a transaction
+        /// </summary>
+        /// <param name="logEntry">log Entry created</param>
+        void ReportEvent(LogEntry logEntry);
     }
 }

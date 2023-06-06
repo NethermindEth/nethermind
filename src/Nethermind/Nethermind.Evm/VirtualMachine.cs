@@ -1971,6 +1971,10 @@ public class VirtualMachine : IVirtualMachine
                             data.ToArray(),
                             topics);
                         vmState.Logs.Add(logEntry);
+                        if (_txTracer.IsTracingEventLogs)
+                        {
+                            _txTracer.ReportEvent(logEntry);
+                        }
                         break;
                     }
                 case Instruction.CREATE:

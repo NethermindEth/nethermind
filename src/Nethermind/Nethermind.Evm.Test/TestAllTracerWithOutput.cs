@@ -25,7 +25,8 @@ namespace Nethermind.Evm.Test
         public bool IsTracingBlockHash => true;
         public bool IsTracingAccess { get; set; } = true;
         public bool IsTracingFees => true;
-        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingEventLogs;
+        public bool IsTracingEventLogs => true;
 
         public byte[] ReturnValue { get; set; }
 
@@ -169,6 +170,10 @@ namespace Nethermind.Evm.Test
         }
 
         public void ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+        }
+
+        public void ReportEvent(LogEntry logEntry)
         {
         }
     }

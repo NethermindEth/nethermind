@@ -64,7 +64,8 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public bool IsTracingState => ((IStateTracer)InnerTracer).IsTracingState;
 
     public bool IsTracingStorage => ((IStorageTracer)InnerTracer).IsTracingStorage;
-    public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
+    public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingEventLogs;
+    public bool IsTracingEventLogs => ((ITxTracer) InnerTracer).IsTracingEventLogs;
 
     internal Dictionary<(int depth, int pc), Func<EvmState, bool>> _breakPoints = new();
     public bool IsBreakpoitnSet(int depth, int programCounter)
@@ -314,6 +315,11 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportFees(UInt256 fees, UInt256 burntFees)
     {
         ((ITxTracer)InnerTracer).ReportFees(fees, burntFees);
+    }
+
+    public void ReportEvent(LogEntry logEntry)
+    {
+        ((ITxTracer)InnerTracer).ReportEvent(logEntry);
     }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)

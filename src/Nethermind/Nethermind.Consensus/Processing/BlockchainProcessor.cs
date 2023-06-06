@@ -657,7 +657,7 @@ namespace Nethermind.Consensus.Processing
         private bool RunSimpleChecksAheadOfProcessing(Block suggestedBlock, ProcessingOptions options)
         {
             /* a bit hacky way to get the invalid branch out of the processing loop */
-            if (suggestedBlock.Number != 0 &&
+            if (!options.ContainsFlag(ProcessingOptions.NoValidation) && suggestedBlock.Number != 0 &&
                 !_blockTree.IsKnownBlock(suggestedBlock.Number - 1, suggestedBlock.ParentHash))
             {
                 if (_logger.IsDebug)
