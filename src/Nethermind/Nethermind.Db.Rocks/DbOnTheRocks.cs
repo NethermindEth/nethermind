@@ -1131,12 +1131,13 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         // 4.6 TB to 0.76 TB, where even the the WAL took 0.45 TB (wal is not compressed), with peak writes of about 300MBps,
         // it may not even saturate a SATA SSD on a 1GBps internet.
 
-        // You don't want to turn this on on other DB as
+        // You don't want to turn this on on other DB as it does add an indirection which take up an additional iop.
+        // But for large values like blocks (3MB decompressed to 8MB), the response time increase is negligible.
         // However without a large buffer size, it will create tens of thousands of small files. There are
         // various workaround it, but it all increase total writes, which defeats the purpose.
         // Additionally, as the `max_bytes_for_level_base` is set to very low, existing user will suddenly
         // get a lot of compaction. So cant turn this on all the time. Turning this back off, will just put back
-        // new data to SSD files.
+        // new data to SST files.
 
         return new Dictionary<string, string>()
         {
