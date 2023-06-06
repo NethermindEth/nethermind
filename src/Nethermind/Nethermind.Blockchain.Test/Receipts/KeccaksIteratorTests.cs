@@ -28,7 +28,7 @@ public class KeccaksIteratorTests
         yield return new[] { TestItem.KeccakA };
         yield return new[] { Keccak.Zero };
         yield return new[] { TestItem.KeccakA, Keccak.Zero };
-        yield return new[] { Keccak.Zero, TestItem.KeccakA  };
+        yield return new[] { Keccak.Zero, TestItem.KeccakA };
         yield return new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, Keccak.Zero, };
         yield return new[] { TestItem.KeccakA, new Keccak("0xffffffffffffffffffffffffffffffff00000000000000000000000000000000") };
         yield return new[] { TestItem.KeccakA, new Keccak("0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff") };
