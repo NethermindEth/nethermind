@@ -9,8 +9,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -35,15 +33,12 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly ISyncReport _syncReport;
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IChainLevelHelper _chainLevelHelper;
-        private readonly int _maxNumberOfProcessingThread;
 
         public MergeBlockDownloaderFactory(
-            int maxNumberOfProcessingThread,
             IPoSSwitcher poSSwitcher,
             IBeaconPivot beaconPivot,
             ISpecProvider specProvider,
             IBlockTree blockTree,
-            IBlockCacheService blockCacheService,
             IReceiptStorage receiptStorage,
             IBlockValidator blockValidator,
             ISealValidator sealValidator,
@@ -54,7 +49,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ISyncProgressResolver syncProgressResolver,
             ILogManager logManager)
         {
-            _maxNumberOfProcessingThread = maxNumberOfProcessingThread;
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _beaconPivot = beaconPivot ?? throw new ArgumentNullException(nameof(beaconPivot));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -73,9 +67,25 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
             return new MergeBlockDownloader(
-                _maxNumberOfProcessingThread, _poSSwitcher, _beaconPivot, syncFeed, _syncPeerPool, _blockTree, _blockValidator,
-                _sealValidator, _syncReport, _receiptStorage, _specProvider, _betterPeerStrategy, _chainLevelHelper,
-                _syncProgressResolver, _logManager);
+                _poSSwitcher,
+                _beaconPivot,
+                syncFeed,
+                _syncPeerPool,
+                _blockTree,
+                _blockValidator,
+                _sealValidator,
+                _syncReport,
+                _receiptStorage,
+                _specProvider,
+                _betterPeerStrategy,
+                _chainLevelHelper,
+                _syncProgressResolver,
+                _logManager);
+        }
+
+        public IPeerAllocationStrategyFactory<BlocksRequest> CreateAllocationStrategyFactory()
+        {
+            return new MergeBlocksSyncPeerAllocationStrategyFactory(_poSSwitcher, _beaconPivot, _logManager);
         }
     }
 }

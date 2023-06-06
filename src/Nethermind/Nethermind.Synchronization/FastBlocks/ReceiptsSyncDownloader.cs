@@ -15,19 +15,16 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class ReceiptsSyncDispatcher : SyncDispatcher<ReceiptsSyncBatch>
+    public class ReceiptsSyncDispatcher : ISyncDownloader<ReceiptsSyncBatch>
     {
-        public ReceiptsSyncDispatcher(
-            int maxNumberOfProcessingThread,
-            ISyncFeed<ReceiptsSyncBatch> syncFeed,
-            ISyncPeerPool syncPeerPool,
-            IPeerAllocationStrategyFactory<ReceiptsSyncBatch> peerAllocationStrategy,
-            ILogManager logManager)
-            : base(maxNumberOfProcessingThread, syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+        private ILogger Logger;
+
+        public ReceiptsSyncDispatcher(ILogManager logManager)
         {
+            Logger = logManager.GetClassLogger();
         }
 
-        protected override async Task Dispatch(PeerInfo peerInfo, ReceiptsSyncBatch batch, CancellationToken cancellationToken)
+        public async Task Dispatch(PeerInfo peerInfo, ReceiptsSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
