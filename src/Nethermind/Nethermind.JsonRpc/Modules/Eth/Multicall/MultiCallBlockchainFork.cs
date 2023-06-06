@@ -469,7 +469,7 @@ public class MultiCallBlockchainFork : IDisposable
     ///     provider, and storage provider.
     /// </summary>
     /// <param name="forceStateAction">An action representing the modifications to the blockchain state and storage.</param>
-    public (bool, Block? ) ForgeChainBlock(MultiCallBlockStateCallsModel blockMock)
+    public (bool, Block?) ForgeChainBlock(MultiCallBlockStateCallsModel blockMock)
     {
         //Prepare a block
         Block? newBlock = CreateBlock(blockMock.BlockOverride, blockMock.Calls);

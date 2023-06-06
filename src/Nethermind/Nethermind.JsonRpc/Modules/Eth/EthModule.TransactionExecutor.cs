@@ -165,17 +165,17 @@ public partial class EthRpcModule
                             }).ToArray();
 
                             txResults.Add(new MultiCallCallResult
+                            {
+                                GasUsed = (ulong)Receipt.GasUsed,
+                                Error = new Facade.Proxy.Models.MultiCall.Error
                                 {
-                                    GasUsed = (ulong)Receipt.GasUsed,
-                                    Error = new Facade.Proxy.Models.MultiCall.Error
-                                    {
-                                        Data = (Receipt.Error.IsNullOrEmpty() ? Receipt.Error : "") ??
+                                    Data = (Receipt.Error.IsNullOrEmpty() ? Receipt.Error : "") ??
                                                string.Empty
-                                    },
-                                    Return = Receipt.ReturnValue,
-                                    Status = Receipt.StatusCode.ToString(),
-                                    Logs = logs.ToArray()
-                                }
+                                },
+                                Return = Receipt.ReturnValue,
+                                Status = Receipt.StatusCode.ToString(),
+                                Logs = logs.ToArray()
+                            }
                             );
                         }
 
@@ -224,7 +224,10 @@ public partial class EthRpcModule
                 {
                     BlockOverride = new BlockOverride
                     {
-                        Number = missingNumber, GasLimit = 5_000_000, FeeRecipient = Address.Zero, BaseFee = 0
+                        Number = missingNumber,
+                        GasLimit = 5_000_000,
+                        FeeRecipient = Address.Zero,
+                        BaseFee = 0
                     }
                 });
 

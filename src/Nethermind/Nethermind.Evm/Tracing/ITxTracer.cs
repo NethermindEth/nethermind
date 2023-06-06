@@ -136,7 +136,7 @@ namespace Nethermind.Evm.Tracing
         /// Controls
         /// - <see cref="ReportEvent"/>
         /// </remarks>
-        bool IsTracingEventLogs { get; } 
+        bool IsTracingEventLogs { get; }
 
         /// <summary>
         /// Transaction completed successfully
