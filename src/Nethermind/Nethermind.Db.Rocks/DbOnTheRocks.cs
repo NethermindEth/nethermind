@@ -1079,8 +1079,6 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             { "disable_auto_compactions", "false" },
 
             { "write_buffer_size", _perTableDbConfig.WriteBufferSize.ToString() },
-            { "min_write_buffer_to_merge", "2" },
-
             { "enable_blob_files", "false" },
 
             { "soft_pending_compaction_bytes_limit", 64.GiB().ToString() },
@@ -1144,8 +1142,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         {
             { "enable_blob_files", "true" },
             { "blob_compression_type", "kSnappyCompression" },
-            { "write_buffer_size", 128.MiB().ToString() },
-            { "min_write_buffer_to_merge", "1" },
+            { "write_buffer_size", 64.MiB().ToString() },
             { "max_bytes_for_level_base", 4.MiB().ToString() },
             { "target_file_size_base", 1.MiB().ToString() },
         };
