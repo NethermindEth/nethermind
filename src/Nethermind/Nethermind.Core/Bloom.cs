@@ -18,7 +18,7 @@ namespace Nethermind.Core
             Bytes = new byte[ByteLength];
         }
 
-        public Bloom(Bloom[] blooms) : this()
+        public Bloom(Bloom?[] blooms) : this()
         {
             for (int i = 0; i < blooms.Length; i++)
             {
@@ -26,9 +26,12 @@ namespace Nethermind.Core
             }
         }
 
-        public Bloom(LogEntry[] logEntries, Bloom? blockBloom = null)
+        public Bloom(LogEntry[]? logEntries, Bloom? blockBloom = null)
         {
             Bytes = new byte[ByteLength];
+
+            if (logEntries is null) return;
+
             Add(logEntries, blockBloom);
         }
 
@@ -125,8 +128,13 @@ namespace Nethermind.Core
             }
         }
 
-        public void Accumulate(Bloom bloom)
+        public void Accumulate(Bloom? bloom)
         {
+            if (bloom is null)
+            {
+                return;
+            }
+
             Bytes.AsSpan().Or(bloom.Bytes);
         }
 

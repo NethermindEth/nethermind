@@ -55,6 +55,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    [Obsolete]
     public async Task getPayloadV1_should_return_error_if_called_after_cleanup_timer()
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
@@ -269,6 +270,7 @@ public partial class EngineModuleTests
 
     [Test]
     [Retry(3)]
+    [Obsolete]
     public async Task consecutive_blockImprovements_should_be_disposed()
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };

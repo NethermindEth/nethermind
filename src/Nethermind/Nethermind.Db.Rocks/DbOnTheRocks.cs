@@ -617,7 +617,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         }
     }
 
-    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
     {
         if (_isDisposing)
         {
@@ -697,7 +697,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         }
     }
 
-    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAllCore(Iterator iterator)
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCore(Iterator iterator)
     {
         try
         {
@@ -718,7 +718,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
             while (iterator.Valid())
             {
-                yield return new KeyValuePair<byte[], byte[]>(iterator.Key(), iterator.Value());
+                yield return new KeyValuePair<byte[], byte[]?>(iterator.Key(), iterator.Value());
 
                 try
                 {
