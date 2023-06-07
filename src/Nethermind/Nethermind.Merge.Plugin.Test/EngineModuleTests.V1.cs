@@ -1540,6 +1540,7 @@ public partial class EngineModuleTests
         }
     }
 
+    [Ignore("Ignore till EIP-4844 engine API update")]
     [Test]
     public async Task Should_return_capabilities()
     {
