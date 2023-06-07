@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Transactions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -35,11 +36,13 @@ using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.JsonRpc.Modules.Eth.Multicall;
 
@@ -59,6 +62,8 @@ public class MultiCallBlockchainFork : IDisposable
 
     public InMemoryReceiptStorage receiptStorage;
 
+
+    //TODO: throw away and replace with ...Env related stuff based implementations (decompose, remove unused functions)
     /// <summary>
     ///     Creates a MultiCallBlockchainFork instance with the following steps:
     ///     1. Initialize MultiCallBlockchainFork object
@@ -177,7 +182,7 @@ public class MultiCallBlockchainFork : IDisposable
             SpecProvider,
             logManager);
 
-        MultiCallBlockValidator blockValidator = new(new TxValidator(SpecProvider.ChainId),
+        BlockValidator blockValidator = new(new TxValidator(SpecProvider.ChainId),
             headerValidator,
             Always.Valid,
             SpecProvider,
@@ -287,15 +292,31 @@ public class MultiCallBlockchainFork : IDisposable
     public IDbProvider DbProvider { get; internal set; }
 
     //Create a new block next to current LatestBlock (BlockFinder.Head)
-    public Block CreateBlock(BlockOverride? desiredBlock, CallTransactionModel[] desiredTransactions)
+    public Block CreateBlock(BlockOverride desiredBlock, CallTransactionModel[] desiredTransactions)
     {
-        BlockHeader? parent = LatestBlock?.Header;
-        if (parent == null)
-            throw new Exception("Existing header expected");
+        BlockHeader? parent = null;
+        if (desiredBlock.Number < LatestBlock.Number)
+        {
+            var parentBlock = BlockFinder.FindBlock((long)(desiredBlock.Number - 1));
+            if (parentBlock != null)
+            {
+                BlockTree.UpdateMainChain(new List<Block>(){ parentBlock }, true, true);
+                BlockTree.UpdateHeadBlock(parentBlock.Hash);
+                parent = parentBlock.Header;
+                StateProvider.StateRoot = parent.StateRoot;
+            }
+            else
+            {
+                throw new ArgumentException("could not find parent block and load the state");
+            }
+        }
+        else
+        {
+            parent = LatestBlock?.Header;
+        }
+
 
         BlockHeader blockHeader = null;
-        if (desiredBlock != null)
-        {
             ulong time = 0;
             if (desiredBlock.Time <= ulong.MaxValue)
                 time = (ulong)desiredBlock.Time;
@@ -325,20 +346,6 @@ public class MultiCallBlockchainFork : IDisposable
                 Array.Empty<byte>());
             blockHeader.MixHash = desiredBlock.PrevRandao;
             blockHeader.BaseFeePerGas = desiredBlock.BaseFee;
-        }
-        else
-        {
-            blockHeader = new BlockHeader(
-                parent.Hash,
-                Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                UInt256.Zero,
-                parent.Number + 1,
-                parent.GasLimit,
-                parent.Timestamp + 1,
-                Array.Empty<byte>());
-            blockHeader.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, SpecProvider.GetSpec(blockHeader));
-        }
 
         if (_maxGas <= long.MaxValue)
             blockHeader.GasLimit =
@@ -350,25 +357,17 @@ public class MultiCallBlockchainFork : IDisposable
         blockHeader.Difficulty = difficulty;
         blockHeader.TotalDifficulty = parent.TotalDifficulty + difficulty;
 
-        //blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-        //blockHeader.TxRoot = Keccak.EmptyTreeHash;
-        //blockHeader.Bloom = Bloom.Empty;
-
         List<Transaction> transactions = new();
         if (desiredTransactions != null)
             transactions = desiredTransactions.Select(model => model.GetTransaction()).ToList();
 
-        Block? block = new(blockHeader, transactions, Array.Empty<BlockHeader>());
-
-        block = ChainProcessor.Process(block,
-            ProcessingOptions.ProducingBlock | ProcessingOptions.NoValidation,
-            NullBlockTracer.Instance);
+        Block? block = new(blockHeader, transactions , Array.Empty<BlockHeader>());
 
         return block;
     }
 
     //Process Block and UpdateMainChain with it
-    public bool FinalizeBlock(Block currentBlock)
+    public Block FinalizeBlock(Block currentBlock)
     {
         StateProvider.Commit(SpecProvider.GetSpec(currentBlock.Header));
         StateProvider.CommitTree(currentBlock.Number);
@@ -378,35 +377,29 @@ public class MultiCallBlockchainFork : IDisposable
         currentBlock.Header.IsPostMerge = true; //ToDo: Seal if necessary before merge 192 BPB
         currentBlock.Header.Hash = currentBlock.Header.CalculateHash();
 
-        AddBlockResult res = BlockTree.SuggestBlock(currentBlock,
-            BlockTreeSuggestOptions.ForceSetAsMain | BlockTreeSuggestOptions.ForceDontValidateParent);
-        if (res != AddBlockResult.Added) return false;
 
-        //ChainProcessor uses parent.StateRoot with the Process, it gets bad on InitBranch due to _state/storage resets
-        //Block[]? blocks = BlockProcessor.Process(currentBlock.StateRoot,
-        //new List<Block> { currentBlock! },
-        //ProcessingOptions.StoreReceipts | ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce,
-        //BlockTracer);
-
-        Block[]? blocks = BlockProcessor.Process(currentBlock.StateRoot,
-            new List<Block> { currentBlock! },
+        var block = ChainProcessor.Process(
+            currentBlock,
             ProcessingOptions.ForceProcessing |
             ProcessingOptions.NoValidation |
             ProcessingOptions.DoNotVerifyNonce |
             ProcessingOptions.IgnoreParentNotOnMainChain |
             ProcessingOptions.MarkAsProcessed |
-            ProcessingOptions.StoreReceipts
+            ProcessingOptions.StoreReceipts 
             ,
             BlockTracer);
 
-        //TODO: Here is a bug!
-        //TODO: It prevents block with 1+ transactions
+        var blocks = new List<Block>(){ block };
+        var res = BlockTree.SuggestBlock(blocks.First(),
+            BlockTreeSuggestOptions.ForceSetAsMain | BlockTreeSuggestOptions.ForceDontValidateParent);
+
         BlockTree.UpdateMainChain(blocks, true, true);
-        BlockTree.UpdateHeadBlock(BlockFinder.Head.Hash);
-        return true;
+        BlockTree.UpdateHeadBlock(block.Hash);
+        return block;
     }
 
 
+    //Apply changes to accounts and contracts states including precompiles
     private void ModifyAccounts(AccountOverride[] StateOverrides)
     {
         Account? acc;
@@ -469,18 +462,18 @@ public class MultiCallBlockchainFork : IDisposable
     ///     provider, and storage provider.
     /// </summary>
     /// <param name="forceStateAction">An action representing the modifications to the blockchain state and storage.</param>
-    public (bool, Block?) ForgeChainBlock(MultiCallBlockStateCallsModel blockMock)
+    public Block ForgeChainBlock(MultiCallBlockStateCallsModel blockMock)
     {
-        //Prepare a block
+        //Create a block
         Block? newBlock = CreateBlock(blockMock.BlockOverride, blockMock.Calls);
+
+        //Update the state
         ModifyAccounts(blockMock.StateOverrides);
 
-        //Add block
-        bool results = FinalizeBlock(newBlock);
-        return (results, newBlock);
+        //Process transactions
+        newBlock = FinalizeBlock(newBlock);
+        return newBlock;
     }
-
-    //For using scope guard
 
     #region IDisposable
 

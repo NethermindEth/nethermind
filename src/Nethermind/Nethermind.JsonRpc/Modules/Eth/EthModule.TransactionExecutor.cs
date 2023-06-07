@@ -124,18 +124,22 @@ public partial class EthRpcModule
             List<MultiCallBlockResult> results = new();
             using (MultiCallBlockchainFork tmpChain = new(_dbProvider, _specProvider, MaxGas))
             {
-                List<MultiCallBlockStateCallsModel> blockCalls =
-                    FillInMisingBlocks(blockCallsToProcess,
-                        (ulong)tmpChain.LatestBlock
-                            .Number); // blockCallsToProcess.OrderBy(model => model.BlockOverride.Number).ToList();
-
+                List<MultiCallBlockStateCallsModel> blockCalls = blockCallsToProcess.OrderBy(model => model.BlockOverride.Number).ToList();
+                
                 tmpChain.BlockTracer.Trace = traceTransfers;
                 ulong logIndices = 0;
                 foreach (MultiCallBlockStateCallsModel blockCall in blockCalls)
                 {
-                    (bool processed, Block? block) = tmpChain.ForgeChainBlock(blockCall);
-
-                    if (!processed) break;
+                    Block ? block = null;
+                    try
+                    {
+                        block = tmpChain.ForgeChainBlock(blockCall);
+                    }
+                    catch (Exception ex)
+                    {
+                        return ResultWrapper<MultiCallBlockResult[]>.Fail(
+                            $"At block {blockCall.BlockOverride.Number} got exception: {ex.Message}");
+                    }
 
                     if (selsectResults.Contains(blockCall.BlockOverride.Number))
                     {
@@ -179,7 +183,7 @@ public partial class EthRpcModule
                             );
                         }
 
-                        MultiCallBlockResult? result = new MultiCallBlockResult
+                        MultiCallBlockResult? result = new()
                         {
                             baseFeePerGas = tmpChain.LatestBlock.BaseFeePerGas,
                             FeeRecipient = tmpChain.LatestBlock.Beneficiary,
@@ -197,44 +201,7 @@ public partial class EthRpcModule
 
             return ResultWrapper<MultiCallBlockResult[]>.Success(results.ToArray());
         }
-
-        //Returns an ordered list of blockCallsToProcess without gaps
-        private static List<MultiCallBlockStateCallsModel> FillInMisingBlocks(
-            MultiCallBlockStateCallsModel[] blockCallsToProcess, UInt256 from)
-        {
-            List<MultiCallBlockStateCallsModel>? blockCalls =
-                blockCallsToProcess.OrderBy(model => model.BlockOverride.Number).ToList();
-
-            // Get the lowest and highest numbers
-            UInt256 minNumber = from;
-            UInt256 maxNumber = blockCalls.Last().BlockOverride.Number;
-
-            // Generate a sequence of numbers in that range
-            IEnumerable<UInt256>? rangeNumbers = Range(minNumber, maxNumber - minNumber + 1);
-
-            // Get the list of current numbers
-            HashSet<UInt256>? currentNumbers = new HashSet<UInt256>(blockCalls.Select(m => m.BlockOverride.Number));
-
-            // Find which numbers are missing
-            IEnumerable<UInt256>? missingNumbers = rangeNumbers.Where(n => !currentNumbers.Contains(n));
-
-            // Fill in the gaps
-            foreach (UInt256 missingNumber in missingNumbers)
-                blockCalls.Add(new MultiCallBlockStateCallsModel
-                {
-                    BlockOverride = new BlockOverride
-                    {
-                        Number = missingNumber,
-                        GasLimit = 5_000_000,
-                        FeeRecipient = Address.Zero,
-                        BaseFee = 0
-                    }
-                });
-
-            // Sort again after filling the gaps
-            blockCalls = blockCalls.OrderBy(model => model.BlockOverride.Number).ToList();
-            return blockCalls;
-        }
+        
     }
 
     private class EstimateGasTxExecutor : TxExecutor<UInt256?>

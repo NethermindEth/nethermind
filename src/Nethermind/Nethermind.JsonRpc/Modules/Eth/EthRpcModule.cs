@@ -377,7 +377,7 @@ public partial class EthRpcModule : IEthRpcModule
         BlockParameter? blockParameter = null)
     {
         return new MultiCallTxExecutor(_dbProvider, _specProvider, _rpcConfig)
-            .Execute(version, blockCalls, blockParameter);
+            .Execute(version, blockCalls, blockParameter, true);
     }
 
 

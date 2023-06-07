@@ -109,9 +109,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
         using (MultiCallBlockchainFork tmpChain = new(chain.DbProvider, chain.SpecProvider,
                    MultiCallTxExecutor.GetMaxGas(new JsonRpcConfig())))
         {
-            (bool processed, Block? _) = tmpChain.ForgeChainBlock(requestMultiCall);
-
-            Assert.True(processed);
+            Block _ = tmpChain.ForgeChainBlock(requestMultiCall);
 
             //Generate and send transaction (shall be mocked)
             SystemTransaction systemTransactionForModifiedVM = new()

@@ -92,9 +92,8 @@ contract EcrecoverProxy {
         using (MultiCallBlockchainFork tmpChain = new(chain.DbProvider, chain.SpecProvider,
                    EthRpcModule.MultiCallTxExecutor.GetMaxGas(new JsonRpcConfig())))
         {
-            (bool processed, Block? _) = tmpChain.ForgeChainBlock(requestMultiCall);
+            Block? _ = tmpChain.ForgeChainBlock(requestMultiCall);
 
-            Assert.True(processed);
             //Generate and send transaction
             SystemTransaction systemTransactionForModifiedVM = new()
             {

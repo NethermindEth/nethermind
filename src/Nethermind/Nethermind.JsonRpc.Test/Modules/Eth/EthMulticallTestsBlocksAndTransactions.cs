@@ -37,6 +37,8 @@ public class EthMulticallTestsBlocksAndTransactions
 
     /// <summary>
     ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
+    ///     We test on blocks before current head and after it,
+    ///     Note that if we get blocks before head we set simulation start state to one of that first block
     /// </summary>
     [Test]
     public async Task Test_eth_multicall_eth_moved()
@@ -62,7 +64,7 @@ public class EthMulticallTestsBlocksAndTransactions
                 BlockOverride =
                     new BlockOverride
                     {
-                        Number = (UInt256)new decimal(chain.Bridge.HeadBlock.Number + 10),
+                        Number = (UInt256)new decimal(2), 
                         GasLimit = 5_000_000,
                         FeeRecipient = TestItem.AddressC,
                         BaseFee = 0
@@ -113,11 +115,81 @@ public class EthMulticallTestsBlocksAndTransactions
         foreach (MultiCallBlockResult blockResult in data)
         {
             Assert.AreEqual(blockResult.Calls.Length, 2);
-            foreach (MultiCallCallResult callResult in blockResult.Calls)
-            {
-                //callResult.Logs
-                //Assert.Less();
-            }
         }
+    }
+
+    /// <summary>
+    ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
+    /// </summary>
+    [Test]
+    public async Task Test_eth_multicall_transactions_forced_fail()
+    {
+        TestRpcBlockchain chain = await EthRpcMulticallTests.CreateChain();
+
+        UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
+
+        Transaction txMainnetAtoB =
+            GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+        //shall be Ok
+        Transaction txAtoB1 =
+            GetTransferTxData(nonceA + 1, chain.EthereumEcdsa, TestItem.PrivateKeyC, TestItem.AddressB, 1);
+
+        //shall fail
+        Transaction txAtoB2 =
+            GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, UInt256.MaxValue);
+
+        MultiCallBlockStateCallsModel[] requestMultiCall =
+        {
+            new()
+            {
+                BlockOverride =
+                    new BlockOverride
+                    {
+                        Number = (UInt256)new decimal(chain.Bridge.HeadBlock.Number + 10),
+                        GasLimit = 5_000_000,
+                        FeeRecipient = TestItem.AddressC,
+                        BaseFee = 0
+                    },
+                Calls = new[]
+                {
+                    CallTransactionModel.FromTransaction(txAtoB1)
+                }
+            },
+            new()
+            {
+                BlockOverride =
+                    new BlockOverride
+                    {
+                        Number = (UInt256)new decimal(123),
+                        GasLimit = 5_000_000,
+                        FeeRecipient = TestItem.AddressC,
+                        BaseFee = 0
+                    },
+                Calls = new[]
+                {
+                    CallTransactionModel.FromTransaction(txAtoB2)
+                }
+            }
+        };
+
+        //Test that transfer tx works on mainchain
+        UInt256 before = chain.State.GetAccount(TestItem.AddressA).Balance;
+        await chain.AddBlock(true, txMainnetAtoB);
+        UInt256 after = chain.State.GetAccount(TestItem.AddressA).Balance;
+        Assert.Less(after, before);
+
+        TxReceipt recept = chain.Bridge.GetReceipt(txMainnetAtoB.Hash);
+        LogEntry[]? ls = recept.Logs;
+
+        //Force persistancy of head block in main chain
+        chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
+        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
+
+        //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
+        EthRpcModule.MultiCallTxExecutor executor = new(chain.DbProvider, chain.SpecProvider, new JsonRpcConfig());
+        ResultWrapper<MultiCallBlockResult[]> result =
+            executor.Execute(1, requestMultiCall, BlockParameter.Latest, true);
+        Assert.AreEqual(ErrorCodes.InternalError, result.ErrorCode);
+        Assert.IsTrue(result.Result.Error.StartsWith("At block 123 got exception:"));
     }
 }
