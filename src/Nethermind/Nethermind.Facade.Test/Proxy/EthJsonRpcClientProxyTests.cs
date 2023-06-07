@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
@@ -9,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
+using Nethermind.Facade.Proxy.Models.MultiCall;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -82,6 +85,20 @@ namespace Nethermind.Facade.Test.Proxy
             await _proxy.eth_call(callTransaction, blockParameter);
             await _client.Received().SendAsync<byte[]>(nameof(_proxy.eth_call),
                 callTransaction, blockParameter.Type);
+        }
+
+
+        [Test]
+        public async Task eth_multicall_should_invoke_client_method()
+        {
+            var multyCallTransaction = new MultiCallBlockStateCallsModel[] { };
+            var blockParameter = BlockParameterModel.Latest;
+            var traceTransactions = true;
+            await _proxy.eth_multicall(1, multyCallTransaction, blockParameter, traceTransactions);
+
+            var calls = _client.ReceivedCalls().ToList();
+            await _client.Received().SendAsync<MultiCallBlockResult[]>(nameof(_proxy.eth_multicall),
+                (ulong)1, multyCallTransaction, blockParameter.Type, traceTransactions);
         }
 
         [Test]

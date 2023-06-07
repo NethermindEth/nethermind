@@ -40,10 +40,11 @@ namespace Nethermind.Facade.Proxy
             => _proxy.SendAsync<byte[]>(nameof(eth_call), transaction, MapBlockParameter(blockParameter));
 
         public Task<RpcResult<MultiCallBlockResult[]>> eth_multicall(ulong version, MultiCallBlockStateCallsModel[] blockCalls,
-            BlockParameterModel blockParameter = null) => _proxy.SendAsync<MultiCallBlockResult[]>(
+            BlockParameterModel blockParameter = null, bool traceTransfers = true) => _proxy.SendAsync<MultiCallBlockResult[]>(
             nameof(eth_multicall),
             version, blockCalls,
-            MapBlockParameter(blockParameter));
+            MapBlockParameter(blockParameter),
+            traceTransfers);
 
 
         public Task<RpcResult<byte[]>> eth_getCode(Address address, BlockParameterModel blockParameter = null)

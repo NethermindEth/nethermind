@@ -292,60 +292,80 @@ public class MultiCallBlockchainFork : IDisposable
     public IDbProvider DbProvider { get; internal set; }
 
     //Create a new block next to current LatestBlock (BlockFinder.Head)
-    public Block CreateBlock(BlockOverride desiredBlock, CallTransactionModel[] desiredTransactions)
+    public Block CreateBlock(BlockOverride? desiredBlock, CallTransactionModel[] desiredTransactions)
     {
         BlockHeader? parent = null;
-        if (desiredBlock.Number < LatestBlock.Number)
+        BlockHeader blockHeader = null;
+
+        if (desiredBlock == null)
         {
-            var parentBlock = BlockFinder.FindBlock((long)(desiredBlock.Number - 1));
-            if (parentBlock != null)
+            parent = LatestBlock?.Header;
+
+            blockHeader = new BlockHeader(
+                parent.Hash,
+                Keccak.OfAnEmptySequenceRlp,
+                Address.Zero,
+                UInt256.Zero,
+                parent.Number + 1,
+                parent.GasLimit,
+                parent.Timestamp + 1,
+                Array.Empty<byte>());
+            blockHeader.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, SpecProvider.GetSpec(blockHeader));
+        }
+        else
+        {
+
+            if (desiredBlock.Number < LatestBlock.Number)
             {
-                BlockTree.UpdateMainChain(new List<Block>() { parentBlock }, true, true);
-                BlockTree.UpdateHeadBlock(parentBlock.Hash);
-                parent = parentBlock.Header;
-                StateProvider.StateRoot = parent.StateRoot;
+                var parentBlock = BlockFinder.FindBlock((long)(desiredBlock.Number - 1));
+                if (parentBlock != null)
+                {
+                    BlockTree.UpdateMainChain(new List<Block>() { parentBlock }, true, true);
+                    BlockTree.UpdateHeadBlock(parentBlock.Hash);
+                    parent = parentBlock.Header;
+                    StateProvider.StateRoot = parent.StateRoot;
+                }
+                else
+                {
+                    throw new ArgumentException("could not find parent block and load the state");
+                }
             }
             else
             {
-                throw new ArgumentException("could not find parent block and load the state");
+                parent = LatestBlock?.Header;
             }
+
+
+            ulong time = 0;
+            if (desiredBlock.Time <= ulong.MaxValue)
+                time = (ulong)desiredBlock.Time;
+            else
+                throw new OverflowException("Time value is too large to be converted to ulong we use.");
+
+            long gasLimit = 0;
+            if (desiredBlock.GasLimit <= long.MaxValue)
+                gasLimit = (long)desiredBlock.GasLimit;
+            else
+                throw new OverflowException("GasLimit value is too large to be converted to long we use.");
+
+            long blockNumber = 0;
+            if (desiredBlock.Number <= long.MaxValue)
+                blockNumber = (long)desiredBlock.Number;
+            else
+                throw new OverflowException("Block Number value is too large to be converted to long we use.");
+
+            blockHeader = new BlockHeader(
+                parent.Hash,
+                Keccak.OfAnEmptySequenceRlp,
+                desiredBlock.FeeRecipient,
+                UInt256.Zero,
+                blockNumber,
+                gasLimit,
+                time,
+                Array.Empty<byte>());
+            blockHeader.MixHash = desiredBlock.PrevRandao;
+            blockHeader.BaseFeePerGas = desiredBlock.BaseFee;
         }
-        else
-        {
-            parent = LatestBlock?.Header;
-        }
-
-
-        BlockHeader blockHeader = null;
-        ulong time = 0;
-        if (desiredBlock.Time <= ulong.MaxValue)
-            time = (ulong)desiredBlock.Time;
-        else
-            throw new OverflowException("Time value is too large to be converted to ulong we use.");
-
-        long gasLimit = 0;
-        if (desiredBlock.GasLimit <= long.MaxValue)
-            gasLimit = (long)desiredBlock.GasLimit;
-        else
-            throw new OverflowException("GasLimit value is too large to be converted to long we use.");
-
-        long blockNumber = 0;
-        if (desiredBlock.Number <= long.MaxValue)
-            blockNumber = (long)desiredBlock.Number;
-        else
-            throw new OverflowException("Block Number value is too large to be converted to long we use.");
-
-        blockHeader = new BlockHeader(
-            parent.Hash,
-            Keccak.OfAnEmptySequenceRlp,
-            desiredBlock.FeeRecipient,
-            UInt256.Zero,
-            blockNumber,
-            gasLimit,
-            time,
-            Array.Empty<byte>());
-        blockHeader.MixHash = desiredBlock.PrevRandao;
-        blockHeader.BaseFeePerGas = desiredBlock.BaseFee;
 
         if (_maxGas <= long.MaxValue)
             blockHeader.GasLimit =
@@ -378,8 +398,8 @@ public class MultiCallBlockchainFork : IDisposable
         currentBlock.Header.Hash = currentBlock.Header.CalculateHash();
 
 
-        var block = ChainProcessor.Process(
-            currentBlock,
+        var blocks = BlockProcessor.Process(StateProvider.StateRoot,
+            new List<Block>() { currentBlock },
             ProcessingOptions.ForceProcessing |
             ProcessingOptions.NoValidation |
             ProcessingOptions.DoNotVerifyNonce |
@@ -388,9 +408,8 @@ public class MultiCallBlockchainFork : IDisposable
             ProcessingOptions.StoreReceipts
             ,
             BlockTracer);
-
-        var blocks = new List<Block>() { block };
-        var res = BlockTree.SuggestBlock(blocks.First(),
+        var block = blocks.First();
+        var res = BlockTree.SuggestBlock(block,
             BlockTreeSuggestOptions.ForceSetAsMain | BlockTreeSuggestOptions.ForceDontValidateParent);
 
         BlockTree.UpdateMainChain(blocks, true, true);

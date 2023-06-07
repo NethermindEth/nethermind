@@ -156,11 +156,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Executes a tx call (does not create a transaction)",
             IsSharable = false,
             ExampleResponse = "0x")]
-        ResultWrapper<MultiCallBlockResult[]> eth_multicall(
-            ulong version,
-            [JsonRpcParameter(ExampleValue = "[{\"stateOverrides\":[{\"nonce\":\"0x1\", \"address\": \"0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\", \"balance\": \"0xde0b6b3a7640000\", \"state\": {\"0x2292f0db49e1af24fbcac7f32b7537f334244455ad0ed0b46a78202982e7b70d\": \"0xde0b6b3a7640000\", \"0x0x877bd4632ef8c8ddc43b67e5a4511d939eadb612553c8a060670e05ebb1bb83c\": \"0xde0b6b3a7640000\"}}],\"calls\":[{\"from\":\"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"to\":\"0x6b175474e89094c44da98b954eedeac495271d0f\",\"data\":\"0x18160ddd\"}]}]")]
+        ResultWrapper<MultiCallBlockResult[]> eth_multicall(ulong version,
+            [JsonRpcParameter(ExampleValue =
+                "[{\"stateOverrides\":[{\"nonce\":\"0x1\", \"address\": \"0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\", \"balance\": \"0xde0b6b3a7640000\", \"state\": {\"0x2292f0db49e1af24fbcac7f32b7537f334244455ad0ed0b46a78202982e7b70d\": \"0xde0b6b3a7640000\", \"0x0x877bd4632ef8c8ddc43b67e5a4511d939eadb612553c8a060670e05ebb1bb83c\": \"0xde0b6b3a7640000\"}}],\"calls\":[{\"from\":\"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"to\":\"0x6b175474e89094c44da98b954eedeac495271d0f\",\"data\":\"0x18160ddd\"}]}]")]
             MultiCallBlockStateCallsModel[] blockCalls,
-            BlockParameter? blockParameter = null);
+            BlockParameter? blockParameter = null, bool traceTransfers = true);
 
 
         [JsonRpcMethod(IsImplemented = true,

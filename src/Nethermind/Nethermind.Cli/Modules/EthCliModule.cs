@@ -51,9 +51,9 @@ namespace Nethermind.Cli.Modules
 
         //TODO: add tests
         [CliFunction("eth", "multicall")]
-        public JsValue MultiCall(ulong version, object[] blockCalls, string? blockParameter = null)
+        public JsValue MultiCall(ulong version, object[] blockCalls, string? blockParameter = null, bool traceTransfers = true)
         {
-            return NodeManager.PostJint("eth_multicall", version, blockCalls, blockParameter ?? "latest").Result;
+            return NodeManager.PostJint("eth_multicall", version, blockCalls, blockParameter ?? "latest", traceTransfers).Result;
         }
 
 
