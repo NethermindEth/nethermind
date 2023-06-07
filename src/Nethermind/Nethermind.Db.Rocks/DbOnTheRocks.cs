@@ -1048,6 +1048,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 heavyWriteOption["disable_auto_compactions"] = "true";
                 ApplyOptions(heavyWriteOption);
                 break;
+            case ITunableDb.TuneType.EnableBlobFiles:
+                ApplyOptions(GetBlobFilesOptions());
+                break;
             case ITunableDb.TuneType.Default:
             default:
                 ApplyOptions(GetStandardOptions());
@@ -1072,7 +1075,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             { "level0_stop_writes_trigger", 36.ToString() },
 
             { "max_bytes_for_level_base", 256.MiB().ToString() },
+            { "target_file_size_base", 64.MiB().ToString() },
             { "disable_auto_compactions", "false" },
+
+            { "write_buffer_size", _perTableDbConfig.WriteBufferSize.ToString() },
+            { "enable_blob_files", "false" },
 
             { "soft_pending_compaction_bytes_limit", 64.GiB().ToString() },
             { "hard_pending_compaction_bytes_limit", 256.GiB().ToString() },
@@ -1113,6 +1120,32 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             // Very high, so slowdown is only triggered by file num. Make things easier to predict.
             { "soft_pending_compaction_bytes_limit", 100000.GiB().ToString() },
             { "hard_pending_compaction_bytes_limit", 100000.GiB().ToString() },
+        };
+    }
+
+    private IDictionary<string, string> GetBlobFilesOptions()
+    {
+        // Enable blob files, see: https://rocksdb.org/blog/2021/05/26/integrated-blob-db.html
+        // This is very useful for blocks, as it almost eliminate 95% of the compaction as the main db no longer
+        // store the actual data, but only points to blob files. This config reduces total blocks db writes from about
+        // 4.6 TB to 0.76 TB, where even the the WAL took 0.45 TB (wal is not compressed), with peak writes of about 300MBps,
+        // it may not even saturate a SATA SSD on a 1GBps internet.
+
+        // You don't want to turn this on on other DB as it does add an indirection which take up an additional iop.
+        // But for large values like blocks (3MB decompressed to 8MB), the response time increase is negligible.
+        // However without a large buffer size, it will create tens of thousands of small files. There are
+        // various workaround it, but it all increase total writes, which defeats the purpose.
+        // Additionally, as the `max_bytes_for_level_base` is set to very low, existing user will suddenly
+        // get a lot of compaction. So cant turn this on all the time. Turning this back off, will just put back
+        // new data to SST files.
+
+        return new Dictionary<string, string>()
+        {
+            { "enable_blob_files", "true" },
+            { "blob_compression_type", "kSnappyCompression" },
+            { "write_buffer_size", 64.MiB().ToString() },
+            { "max_bytes_for_level_base", 4.MiB().ToString() },
+            { "target_file_size_base", 1.MiB().ToString() },
         };
     }
 
