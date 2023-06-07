@@ -75,7 +75,7 @@ namespace Nethermind.Trie.Test.Pruning
             using TrieStore trieStore = new(testMemDb, No.Pruning, No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode), WriteFlags.LowPriority);
             trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode, WriteFlags.LowPriority);
-            testMemDb.KeyWasWrittenWithFlags(trieNode.Keccak.Bytes, WriteFlags.LowPriority);
+            testMemDb.KeyWasWrittenWithFlags(trieNode.Keccak.BytesToArray(), WriteFlags.LowPriority);
         }
 
         [Test]

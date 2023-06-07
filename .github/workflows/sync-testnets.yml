@@ -9,7 +9,6 @@ jobs:
   chiado:
     name: "Run sync of chiado testnet"
     runs-on: ubuntu-latest
-    timeout-minutes: 60
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -54,90 +53,61 @@ jobs:
           docker compose up -d
 
       - name: Wait for Chiado to sync
-        run: |        
-          set +e
-          
-          # Check if Docker container is running
-          MAX_RETRIES=10
-          RETRY_COUNT=0
-          while [[ ! "$(docker inspect -f '{{.State.Status}}' sedge-execution-client 2>/dev/null)" =~ "running" ]] && [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; do
-            echo "Docker container 'sedge-execution-client' is not running. Retrying in 10 seconds..."
-            let "RETRY_COUNT+=1"
-            sleep 10
-          done
-      
-          if [[ ! "$(docker inspect -f '{{.State.Status}}' sedge-execution-client 2>/dev/null)" =~ "running" ]]; then
-            echo "Error: Docker container 'sedge-execution-client' is not running after $MAX_RETRIES attempts."
-            exit 404
-          fi
-          
-          # Check readiness of the service
-          RETRY_COUNT=0
-          while [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; do
-            RESPONSE=$(curl -s --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
-            if [[ $? -eq 0 ]] && [[ -n "$RESPONSE" ]]; then
-              break
-            else
-              echo "Service not ready. Retrying in 10 seconds..."
-              let "RETRY_COUNT+=1"
-              sleep 10
-            fi
-          done
-          
-          if [[ $RETRY_COUNT -eq $MAX_RETRIES ]]; then
-            echo "Error: Service not ready after $MAX_RETRIES attempts."
-            exit 403
-          fi
-      
-          SYNCING_RESULT=""
-          DEBUG_RESULT=""
-          while [[ "$SYNCING_RESULT" != "false" ]] || [[ "$DEBUG_RESULT" != *"WaitingForBlock"* ]]; do
-            sleep 10
-            RESPONSE_SYNCING=$(curl -s --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
-            SYNCING_RESULT=$(echo $RESPONSE_SYNCING | jq .result)
-            echo "eth_syncing endpoint response: $RESPONSE_SYNCING"
-        
-            RESPONSE_DEBUG=$(curl -s --data '{"method":"debug_getSyncStage","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
-            DEBUG_RESULT=$(echo $RESPONSE_DEBUG | jq -r .result)
-            echo "debug_getSyncStage endpoint response: $RESPONSE_DEBUG"
-      
-          done
-          echo "Sedge is synced."
-                
-      - name: Display Docker logs        
-        working-directory: sedge
-        run: docker compose logs
-        
-      - name: Verify health of a node
-        working-directory: sedge
+        id: wait
+        timeout-minutes: 90
         run: |
           set +e
-          
-          dockerLogs=$(docker compose logs execution 2>/dev/null)
-
-          validLines=$(echo "$dockerLogs" | grep -E "Valid. Result of a new payload:")
-          countValid=$(if [ -z "$validLines" ]; then echo 0; else echo "$validLines" | wc -l; fi)
-          if [ $countValid -lt 1 ]; then
-            echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well."
-            exit 20
-          fi
-          
-          invalidLines=$(echo "$dockerLogs" | grep -E "Invalid|Exception")
-          countInvalid=$(if [ -z "$invalidLines" ]; then echo 0; else echo "$invalidLines" | wc -l; fi)
-          if [ $countInvalid -gt 0 ]; then
-            echo "Error: Lines found for 'Invalid' or 'Exception'"
-            echo "$invalidLines"
-            exit 30
-          fi
-          
-          # If the script reaches this point, it means there were valid lines and no invalid lines.
-          echo "Valid lines:"
-          echo "$validLines"
+      
+          declare -A bad_logs
+          bad_logs["Invalid"]=1
+          bad_logs["Exception"]=1
+          bad_logs["Corrupted"]=1
+      
+          declare -A good_logs
+          good_logs["Valid. Result of a new payload:"]=0
+          good_logs["FCU - block"]=0
+      
+          declare -A required_count
+          required_count["Valid. Result of a new payload:"]=20
+          required_count["FCU - block"]=20
+      
+          echo "Starting Docker logs monitoring..."
+          docker logs -f sedge-execution-client | while read -r line; do
+            echo "$line"
+      
+            for bad_log in "${!bad_logs[@]}"; do
+              if [[ "$line" == *"$bad_log"* ]]; then
+                echo "Error: $bad_log found in Docker logs."
+                exit 1
+              fi
+            done
+      
+            for good_log in "${!good_logs[@]}"; do
+              if [[ "$line" == *"$good_log"* ]]; then
+                ((good_logs["$good_log"]++))
+              fi
+            done
+      
+            # Check if all good logs have reached the required count
+            all_reached_required_count=true
+            for good_log in "${!good_logs[@]}"; do
+              if [[ ${good_logs[$good_log]} -lt ${required_count[$good_log]} ]]; then
+                all_reached_required_count=false
+                break
+              fi
+            done
+      
+            if $all_reached_required_count; then
+              echo "All required logs found."
+              break
+            fi
+          done
+      
+          echo "Node is synced."
           
   sepolia:
     name: "Run sync of sepolia testnet"
     runs-on: ubuntu-latest
-    timeout-minutes: 60
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -180,84 +150,56 @@ jobs:
           --cl-extra-flag checkpoint-sync-url=https://beaconstate-sepolia.chainsafe.io
           echo 'Running sedge...'
           docker compose up -d
-
+          
       - name: Wait for Sepolia to sync
+        id: wait
+        timeout-minutes: 90
         run: |
           set +e
-          
-          # Check if Docker container is running
-          MAX_RETRIES=10
-          RETRY_COUNT=0
-          while [[ ! "$(docker inspect -f '{{.State.Status}}' sedge-execution-client 2>/dev/null)" =~ "running" ]] && [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; do
-            echo "Docker container 'sedge-execution-client' is not running. Retrying in 10 seconds..."
-            let "RETRY_COUNT+=1"
-            sleep 10
-          done
       
-          if [[ ! "$(docker inspect -f '{{.State.Status}}' sedge-execution-client 2>/dev/null)" =~ "running" ]]; then
-            echo "Error: Docker container 'sedge-execution-client' is not running after $MAX_RETRIES attempts."
-            exit 404
-          fi
-          
-          # Check readiness of the service
-          RETRY_COUNT=0
-          while [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; do
-            RESPONSE=$(curl -s --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
-            if [[ $? -eq 0 ]] && [[ -n "$RESPONSE" ]]; then
+          declare -A bad_logs
+          bad_logs["Invalid"]=1
+          bad_logs["Exception"]=1
+          bad_logs["Corrupted"]=1
+      
+          declare -A good_logs
+          good_logs["Valid. Result of a new payload:"]=0
+          good_logs["FCU - block"]=0
+      
+          declare -A required_count
+          required_count["Valid. Result of a new payload:"]=20
+          required_count["FCU - block"]=20
+      
+          echo "Starting Docker logs monitoring..."
+          docker logs -f sedge-execution-client | while read -r line; do
+            echo "$line"
+      
+            for bad_log in "${!bad_logs[@]}"; do
+              if [[ "$line" == *"$bad_log"* ]]; then
+                echo "Error: $bad_log found in Docker logs."
+                exit 1
+              fi
+            done
+      
+            for good_log in "${!good_logs[@]}"; do
+              if [[ "$line" == *"$good_log"* ]]; then
+                ((good_logs["$good_log"]++))
+              fi
+            done
+      
+            # Check if all good logs have reached the required count
+            all_reached_required_count=true
+            for good_log in "${!good_logs[@]}"; do
+              if [[ ${good_logs[$good_log]} -lt ${required_count[$good_log]} ]]; then
+                all_reached_required_count=false
+                break
+              fi
+            done
+      
+            if $all_reached_required_count; then
+              echo "All required logs found."
               break
-            else
-              echo "Service not ready. Retrying in 10 seconds..."
-              let "RETRY_COUNT+=1"
-              sleep 10
             fi
           done
-          
-          if [[ $RETRY_COUNT -eq $MAX_RETRIES ]]; then
-            echo "Error: Service not ready after $MAX_RETRIES attempts."
-            exit 403
-          fi
       
-          SYNCING_RESULT=""
-          DEBUG_RESULT=""
-          while [[ "$SYNCING_RESULT" != "false" ]] || [[ "$DEBUG_RESULT" != *"WaitingForBlock"* ]]; do
-            sleep 10
-            RESPONSE_SYNCING=$(curl -s --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
-            SYNCING_RESULT=$(echo $RESPONSE_SYNCING | jq .result)
-            echo "eth_syncing endpoint response: $RESPONSE_SYNCING"
-        
-            RESPONSE_DEBUG=$(curl -s --data '{"method":"debug_getSyncStage","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545)
-            DEBUG_RESULT=$(echo $RESPONSE_DEBUG | jq -r .result)
-            echo "debug_getSyncStage endpoint response: $RESPONSE_DEBUG"
-      
-          done
-          echo "Sedge is synced."
-      
-      - name: Display Docker logs        
-        working-directory: sedge
-        run: docker compose logs
-          
-      - name: Verify health of a node
-        working-directory: sedge
-        run: |
-          set +e
-          
-          dockerLogs=$(docker compose logs execution 2>/dev/null)
-
-          validLines=$(echo "$dockerLogs" | grep -E "Valid. Result of a new payload:")
-          countValid=$(if [ -z "$validLines" ]; then echo 0; else echo "$validLines" | wc -l; fi)
-          if [ $countValid -lt 1 ]; then
-            echo "Error: No lines found for 'Valid. Result of a new payload:' - probably node is not progressing well."
-            exit 20
-          fi
-          
-          invalidLines=$(echo "$dockerLogs" | grep -E "Invalid|Exception")
-          countInvalid=$(if [ -z "$invalidLines" ]; then echo 0; else echo "$invalidLines" | wc -l; fi)
-          if [ $countInvalid -gt 0 ]; then
-            echo "Error: Lines found for 'Invalid' or 'Exception'"
-            echo "$invalidLines"
-            exit 30
-          fi
-          
-          # If the script reaches this point, it means there were valid lines and no invalid lines.
-          echo "Valid lines:"
-          echo "$validLines"
+          echo "Node is synced."

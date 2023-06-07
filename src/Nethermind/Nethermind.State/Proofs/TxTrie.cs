@@ -23,15 +23,14 @@ public class TxTrie : PatriciaTrie<Transaction>
 
     protected override void Initialize(IEnumerable<Transaction> list)
     {
-        var key = 0;
+        int key = 0;
 
         // 3% allocations (2GB) on a Goerli 3M blocks fast sync due to calling transaction encoder here
         // Avoiding it would require pooling byte arrays and passing them as Spans to temporary trees
         // a temporary trie would be a trie that exists to create a state root only and then be disposed of
-        foreach (var transaction in list)
+        foreach (Transaction? transaction in list)
         {
             Rlp transactionRlp = _txDecoder.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
-
             Set(Rlp.Encode(key++).Bytes, transactionRlp.Bytes);
         }
     }

@@ -514,17 +514,17 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     public WriteOptions? WriteFlagsToWriteOptions(WriteFlags flags)
     {
-        if ((flags & WriteFlags.LowPriorityAndNoWAL) != 0)
+        if ((flags & WriteFlags.LowPriorityAndNoWAL) == WriteFlags.LowPriorityAndNoWAL)
         {
             return _lowPriorityAndNoWalWrite;
         }
 
-        if ((flags & WriteFlags.DisableWAL) != 0)
+        if ((flags & WriteFlags.DisableWAL) == WriteFlags.DisableWAL)
         {
             return _noWalWrite;
         }
 
-        if ((flags & WriteFlags.LowPriority) != 0)
+        if ((flags & WriteFlags.LowPriority) == WriteFlags.LowPriority)
         {
             return _lowPriorityWriteOptions;
         }
@@ -987,22 +987,23 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         {
             // Depending on tune type, allow num of L0 files to grow causing compaction to occur in larger size. This
             // reduces write amplification at the expense of read response time and amplification while the tune is
-            // active. Additionally, the larger compaction causes larger spikes of IO. User may not want to enable this
-            // if they plan to run a validator node while the node is still syncing, or run another node on the same
-            // machine. Specifying a rate limit smoothens this spike somewhat by not blocking writes while allowing
-            // compaction to happen in background at 1/10th the specified speed (if rate limited).
+            // active. Additionally, the larger compaction causes larger spikes of IO, larger memory usage, and may temporarily
+            // use up large amount of disk space. User may not want to enable this if they plan to run a validator node
+            // while the node is still syncing, or run another node on the same machine. Specifying a rate limit
+            // smoothens this spike somewhat by not blocking writes while allowing compaction to happen in background
+            // at 1/10th the specified speed (if rate limited).
             //
-            // Read and writes written on different tune during mainnet sync in TB. StateSync omitted but included in total:
-            // +-----------------------------+--------------+--------------+---------------+--------------+
-            // | L0FileNumTarget             |  Total (R/W) |     SnapSync |     OldBodies |  OldReceipts |
-            // +-----------------------------+--------------+--------------+---------------+--------------+
-            // | 4 (Default)                 |  25.9 / 13.5 |  4.63 / 3.84 |   8.21 / 4.54 |  9.27 / 5.06 |
-            // | 64 (WriteBias)              |  22.6 / 10.8 |  5.52 / 2.56 |   6.54 / 4.00 |  7.17 / 4.19 |
-            // | 256 (HeavyWrite)            |  38.7 /  8.3 |  8.50 / 1.89 |   6.76 / 3.20 |  7.39 / 3.20 |
-            // | 512                         |  36.5 /  7.5 |  12.0 / 1.65 |   5.78 / 2.84 |  6.08 / 2.79 |
-            // | 1024 (AggressiveHeavyWrite) |  35.1 /  6.2 |  19.4 / 1.30 |   5.19 / 2.47 |  5.77 / 2.40 |
-            // | DisableCompaction           |  94.1 /  3.5 |  30.4 / 0.75 |  56.50 / 1.33 |  6.97 / 1.53 |
-            // +-----------------------------+--------------+--------------+---------------+--------------+
+            // Read and writes written on different tune during mainnet sync in TB.
+            // +-----------------------------+----------------+--------------+---------------+---------------+--------------+----------------+---------------------+
+            // | L0FileNumTarget             | Total (R/W)    | State        | Code          | Header        | Blocks       | Receipts_Blocks | Receipt_Transactions |
+            // +-----------------------------+----------------+--------------+---------------+---------------+--------------+----------------+---------------------+
+            // | 4 (Default)                 | 7.853 / 8.41   | 2.58 / 2.78  | 0.104 / 0.107 | 0.133 / 0.141 | 4.34 / 4.58  | 0.502 / 0.593  | 0.194 / 0.209       |
+            // | 4 (8GB memory hint)         | 7.875 / 8.393  | 2.40 / 2.56  | 0.103 / 0.106 | 0.114 / 0.122 | 4.51 / 4.75  | 0.556 / 0.648  | 0.192 / 0.207       |
+            // | 14                          | 7.001 / 7.514  | 2.38 / 2.54  | 0.029 / 0.032 | 0.132 / 0.141 | 4.04 / 4.27  | 0.287 / 0.378  | 0.138 / 0.153       |
+            // | 64 (WriteBias)              | 5.986 / 6.493  | 1.63 / 1.79  | 0.023 / 0.026 | 0.120 / 0.128 | 3.82 / 4.05  | 0.280 / 0.371  | 0.113 / 0.128       |
+            // | 256 (HeavyWrite)            | 4.386 / 4.895  | 1.12 / 1.28  | 0.013 / 0.016 | 0.131 / 0.140 | 2.89 / 3.12  | 0.178 / 0.270  | 0.054 / 0.069       |
+            // | 1024 (AggressiveHeavyWrite) | 2.942 / 3.452  | 0.60 / 0.76  | 0.006 / 0.009 | 0.133 / 0.142 | 2.01 / 2.24  | 0.171 / 0.263  | 0.022 / 0.038       |
+            // +-----------------------------+-----------------+--------------+---------------+--------------+--------------+----------------+---------------------+
             // Note, in practice on my machine, the reads does not reach the SSD. Read measured from SSD is much lower
             // than read measured from process. It is likely that most files are cached as I have 128GB of RAM.
             // Also notice that the heavier the tune, the higher the reads.

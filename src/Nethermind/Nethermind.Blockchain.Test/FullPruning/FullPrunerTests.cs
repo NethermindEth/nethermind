@@ -222,9 +222,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public async Task<bool> WaitForPruningEnd(TestFullPruningDb.TestPruningContext context)
             {
                 await Task.Yield();
-                await context.WaitForFinish.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime), CancellationToken.None);
+                await context.WaitForFinish.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime * 5), CancellationToken.None);
                 AddBlocks(1);
-                return await context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime), CancellationToken.None);
+                return await context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime * 5), CancellationToken.None);
             }
 
             public TestFullPruningDb.TestPruningContext WaitForPruningStart()

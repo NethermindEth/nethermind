@@ -1,11 +1,15 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Runtime.InteropServices.JavaScript;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
@@ -59,5 +63,30 @@ public class BlockStoreTests
 
         retrieved = store.Get(block.Hash, true);
         retrieved.Should().BeEquivalentTo(block);
+    }
+
+    [Test]
+    public void Test_getReceiptRecoveryBlock_produce_same_transaction_as_normal_get()
+    {
+        TestMemDb db = new TestMemDb();
+        BlockStore store = new BlockStore(db);
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTransactions(3, MainnetSpecProvider.Instance)
+            .TestObject;
+
+        store.Insert(block);
+
+        ReceiptRecoveryBlock retrieved = store.GetReceiptRecoveryBlock(block.Hash).Value;
+        retrieved.Should().NotBeNull();
+
+        retrieved.Header.Should().BeEquivalentTo(block.Header);
+        retrieved.TransactionCount.Should().Be(block.Transactions.Length);
+
+        for (int i = 0; i < retrieved.TransactionCount; i++)
+        {
+            block.Transactions[i].Data = Array.Empty<byte>();
+            retrieved.GetNextTransaction().Should().BeEquivalentTo(block.Transactions[i]);
+        }
     }
 }

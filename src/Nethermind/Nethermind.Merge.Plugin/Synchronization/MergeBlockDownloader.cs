@@ -26,7 +26,7 @@ using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Merge.Plugin.Synchronization
 {
-    public class MergeBlockDownloader : BlockDownloader
+    public class MergeBlockDownloader : BlockDownloader, ISyncDownloader<BlocksRequest>
     {
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockTree _blockTree;
@@ -40,7 +40,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly ISyncProgressResolver _syncProgressResolver;
 
-        public MergeBlockDownloader(IPoSSwitcher posSwitcher,
+        public MergeBlockDownloader(
+            IPoSSwitcher posSwitcher,
             IBeaconPivot beaconPivot,
             ISyncFeed<BlocksRequest?>? feed,
             ISyncPeerPool? syncPeerPool,
@@ -56,8 +57,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ILogManager logManager,
             SyncBatchSize? syncBatchSize = null)
             : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
-                specProvider, new MergeBlocksSyncPeerAllocationStrategyFactory(posSwitcher, beaconPivot, logManager),
-                betterPeerStrategy, logManager, syncBatchSize)
+                specProvider, betterPeerStrategy, logManager, syncBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -72,7 +72,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _logger = logManager.GetClassLogger();
         }
 
-        protected override async Task Dispatch(PeerInfo bestPeer, BlocksRequest? blocksRequest, CancellationToken cancellation)
+        public override async Task Dispatch(PeerInfo bestPeer, BlocksRequest? blocksRequest, CancellationToken cancellation)
         {
             if (_beaconPivot.BeaconPivotExists() == false && _poSSwitcher.HasEverReachedTerminalBlock() == false)
             {
@@ -84,7 +84,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
             if (blocksRequest == null)
             {
-                if (Logger.IsWarn) Logger.Warn($"NULL received for dispatch in {nameof(BlockDownloader)}");
+                if (_logger.IsWarn) _logger.Warn($"NULL received for dispatch in {nameof(BlockDownloader)}");
                 return;
             }
 

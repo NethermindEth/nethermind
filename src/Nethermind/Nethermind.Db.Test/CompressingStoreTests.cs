@@ -89,6 +89,22 @@ namespace Nethermind.Store.Test
             ctx.Wrapped[Key]!.Length.Should().Be(5);
         }
 
+        [Test]
+        public void TestTuneForwarded()
+        {
+            Context ctx = new();
+
+            if (ctx.Compressed is not ITunableDb tunable)
+            {
+                Assert.Fail("Db must me tunable");
+                return;
+            }
+
+            tunable.Tune(ITunableDb.TuneType.HeavyWrite);
+
+            ctx.Wrapped.WasTunedWith(ITunableDb.TuneType.HeavyWrite).Should().BeTrue();
+        }
+
         private class Context
         {
             public TestMemDb Wrapped { get; }

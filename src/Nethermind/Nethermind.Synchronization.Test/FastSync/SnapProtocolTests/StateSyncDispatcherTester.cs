@@ -15,13 +15,18 @@ using Nethermind.Synchronization.StateSync;
 
 namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
 {
-    public class StateSyncDispatcherTester : StateSyncDispatcher
+    public class StateSyncDispatcherTester : SyncDispatcher<StateSyncBatch>
     {
-        public StateSyncDispatcherTester(ISyncFeed<StateSyncBatch> syncFeed,
-    ISyncPeerPool syncPeerPool,
-    IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy,
-    ILogManager logManager) : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+        private readonly ISyncDownloader<StateSyncBatch> _downloader;
+
+        public StateSyncDispatcherTester(
+            ISyncFeed<StateSyncBatch> syncFeed,
+            ISyncDownloader<StateSyncBatch> downloader,
+            ISyncPeerPool syncPeerPool,
+            IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy,
+            ILogManager logManager) : base(0, syncFeed, downloader, syncPeerPool, peerAllocationStrategy, logManager)
         {
+            _downloader = downloader;
         }
 
         public async Task ExecuteDispatch(StateSyncBatch batch, int times)
@@ -30,7 +35,7 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
 
             for (int i = 0; i < times; i++)
             {
-                await base.Dispatch(allocation.Current, batch, CancellationToken.None);
+                await _downloader.Dispatch(allocation.Current, batch, CancellationToken.None);
             }
         }
     }
