@@ -146,7 +146,8 @@ namespace Nethermind.JsonRpc.Benchmark
                 specProvider,
                 gasPriceOracle,
                 ethSyncingInfo,
-                feeHistoryOracle);
+                feeHistoryOracle,
+                dbProvider);
         }
 
         [Benchmark]
