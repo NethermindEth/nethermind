@@ -41,8 +41,8 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             #endregion
 
             #region Cancun
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV3)] = spec.IsEip4844Enabled;
-            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV3)] = spec.IsEip4844Enabled;
+            // _capabilities[nameof(IEngineRpcModule.engine_getPayloadV3)] = spec.IsEip4844Enabled;
+            // _capabilities[nameof(IEngineRpcModule.engine_newPayloadV3)] = spec.IsEip4844Enabled;
             #endregion
         }
 
