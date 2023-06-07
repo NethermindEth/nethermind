@@ -300,7 +300,7 @@ public class MultiCallBlockchainFork : IDisposable
             var parentBlock = BlockFinder.FindBlock((long)(desiredBlock.Number - 1));
             if (parentBlock != null)
             {
-                BlockTree.UpdateMainChain(new List<Block>(){ parentBlock }, true, true);
+                BlockTree.UpdateMainChain(new List<Block>() { parentBlock }, true, true);
                 BlockTree.UpdateHeadBlock(parentBlock.Hash);
                 parent = parentBlock.Header;
                 StateProvider.StateRoot = parent.StateRoot;
@@ -317,35 +317,35 @@ public class MultiCallBlockchainFork : IDisposable
 
 
         BlockHeader blockHeader = null;
-            ulong time = 0;
-            if (desiredBlock.Time <= ulong.MaxValue)
-                time = (ulong)desiredBlock.Time;
-            else
-                throw new OverflowException("Time value is too large to be converted to ulong we use.");
+        ulong time = 0;
+        if (desiredBlock.Time <= ulong.MaxValue)
+            time = (ulong)desiredBlock.Time;
+        else
+            throw new OverflowException("Time value is too large to be converted to ulong we use.");
 
-            long gasLimit = 0;
-            if (desiredBlock.GasLimit <= long.MaxValue)
-                gasLimit = (long)desiredBlock.GasLimit;
-            else
-                throw new OverflowException("GasLimit value is too large to be converted to long we use.");
+        long gasLimit = 0;
+        if (desiredBlock.GasLimit <= long.MaxValue)
+            gasLimit = (long)desiredBlock.GasLimit;
+        else
+            throw new OverflowException("GasLimit value is too large to be converted to long we use.");
 
-            long blockNumber = 0;
-            if (desiredBlock.Number <= long.MaxValue)
-                blockNumber = (long)desiredBlock.Number;
-            else
-                throw new OverflowException("Block Number value is too large to be converted to long we use.");
+        long blockNumber = 0;
+        if (desiredBlock.Number <= long.MaxValue)
+            blockNumber = (long)desiredBlock.Number;
+        else
+            throw new OverflowException("Block Number value is too large to be converted to long we use.");
 
-            blockHeader = new BlockHeader(
-                parent.Hash,
-                Keccak.OfAnEmptySequenceRlp,
-                desiredBlock.FeeRecipient,
-                UInt256.Zero,
-                blockNumber,
-                gasLimit,
-                time,
-                Array.Empty<byte>());
-            blockHeader.MixHash = desiredBlock.PrevRandao;
-            blockHeader.BaseFeePerGas = desiredBlock.BaseFee;
+        blockHeader = new BlockHeader(
+            parent.Hash,
+            Keccak.OfAnEmptySequenceRlp,
+            desiredBlock.FeeRecipient,
+            UInt256.Zero,
+            blockNumber,
+            gasLimit,
+            time,
+            Array.Empty<byte>());
+        blockHeader.MixHash = desiredBlock.PrevRandao;
+        blockHeader.BaseFeePerGas = desiredBlock.BaseFee;
 
         if (_maxGas <= long.MaxValue)
             blockHeader.GasLimit =
@@ -361,7 +361,7 @@ public class MultiCallBlockchainFork : IDisposable
         if (desiredTransactions != null)
             transactions = desiredTransactions.Select(model => model.GetTransaction()).ToList();
 
-        Block? block = new(blockHeader, transactions , Array.Empty<BlockHeader>());
+        Block? block = new(blockHeader, transactions, Array.Empty<BlockHeader>());
 
         return block;
     }
@@ -385,11 +385,11 @@ public class MultiCallBlockchainFork : IDisposable
             ProcessingOptions.DoNotVerifyNonce |
             ProcessingOptions.IgnoreParentNotOnMainChain |
             ProcessingOptions.MarkAsProcessed |
-            ProcessingOptions.StoreReceipts 
+            ProcessingOptions.StoreReceipts
             ,
             BlockTracer);
 
-        var blocks = new List<Block>(){ block };
+        var blocks = new List<Block>() { block };
         var res = BlockTree.SuggestBlock(blocks.First(),
             BlockTreeSuggestOptions.ForceSetAsMain | BlockTreeSuggestOptions.ForceDontValidateParent);
 

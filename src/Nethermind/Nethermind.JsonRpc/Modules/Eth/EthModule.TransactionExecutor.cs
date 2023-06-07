@@ -125,12 +125,12 @@ public partial class EthRpcModule
             using (MultiCallBlockchainFork tmpChain = new(_dbProvider, _specProvider, MaxGas))
             {
                 List<MultiCallBlockStateCallsModel> blockCalls = blockCallsToProcess.OrderBy(model => model.BlockOverride.Number).ToList();
-                
+
                 tmpChain.BlockTracer.Trace = traceTransfers;
                 ulong logIndices = 0;
                 foreach (MultiCallBlockStateCallsModel blockCall in blockCalls)
                 {
-                    Block ? block = null;
+                    Block? block = null;
                     try
                     {
                         block = tmpChain.ForgeChainBlock(blockCall);
@@ -201,7 +201,7 @@ public partial class EthRpcModule
 
             return ResultWrapper<MultiCallBlockResult[]>.Success(results.ToArray());
         }
-        
+
     }
 
     private class EstimateGasTxExecutor : TxExecutor<UInt256?>

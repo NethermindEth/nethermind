@@ -64,7 +64,7 @@ public class EthMulticallTestsBlocksAndTransactions
                 BlockOverride =
                     new BlockOverride
                     {
-                        Number = (UInt256)new decimal(2), 
+                        Number = (UInt256)new decimal(2),
                         GasLimit = 5_000_000,
                         FeeRecipient = TestItem.AddressC,
                         BaseFee = 0

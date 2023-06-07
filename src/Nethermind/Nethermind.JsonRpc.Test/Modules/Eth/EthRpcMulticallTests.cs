@@ -255,7 +255,7 @@ public class EthRpcMulticallTests
             UInt256 num_tmp = userBalanceBefore_fromTmp.Data.Value;
             Assert.AreEqual(userBalanceBefore_fromTmp.Data, userBalanceBefore.Data);
 
-            Block? _= tmpChain.ForgeChainBlock(requestBlockOne);
+            Block? _ = tmpChain.ForgeChainBlock(requestBlockOne);
 
             //Check block has updated values in tmp chain
             ResultWrapper<UInt256?> userBalanceResult_fromTm =
