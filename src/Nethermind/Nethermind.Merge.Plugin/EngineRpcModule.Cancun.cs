@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
@@ -14,11 +16,13 @@ public partial class EngineRpcModule : IEngineRpcModule
 {
     private readonly IAsyncHandler<byte[], GetPayloadV3Result?> _getPayloadHandlerV3;
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayload executionPayload, byte[][]? blobVersionedHashes = null)
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayload executionPayload, byte[]?[]? blobVersionedHashes = null) =>
+        Validate(executionPayload, blobVersionedHashes) ?? NewPayload(executionPayload, 3);
+
+    private ResultWrapper<PayloadStatusV1>? Validate(ExecutionPayload executionPayload, byte[]?[]? blobVersionedHashes)
     {
-        if (blobVersionedHashes is null)
+        ResultWrapper<PayloadStatusV1> ErrorResult(string error)
         {
-            string error = "Blob versioned hashes must be set";
             if (_logger.IsWarn) _logger.Warn(error);
             return ResultWrapper<PayloadStatusV1>.Success(
                 new PayloadStatusV1
@@ -29,50 +33,14 @@ public partial class EngineRpcModule : IEngineRpcModule
                 });
         }
 
-        int index = 0;
+        static IEnumerable<byte[]?> FlattenHashesFromTransactions(ExecutionPayload payload) =>
+            payload.GetTransactions()
+                .Where(t => t.BlobVersionedHashes is not null)
+                .SelectMany(t => t.BlobVersionedHashes!);
 
-        foreach (Transaction tx in executionPayload.GetTransactions())
-        {
-            if (!tx.SupportsBlobs || tx.BlobVersionedHashes is null)
-            {
-                continue;
-            }
-
-            foreach (byte[]? blobVersionedHash in tx.BlobVersionedHashes)
-            {
-                if (index == blobVersionedHashes.Length
-                    || blobVersionedHash is null
-                    || blobVersionedHashes[index] is null
-                    || !blobVersionedHash.SequenceEqual(blobVersionedHashes[index]))
-                {
-                    string error = "Blob versioned hashes do not match";
-                    if (_logger.IsWarn) _logger.Warn(error);
-                    return ResultWrapper<PayloadStatusV1>.Success(
-                        new PayloadStatusV1
-                        {
-                            Status = PayloadStatus.Invalid,
-                            LatestValidHash = null,
-                            ValidationError = error
-                        });
-                }
-                index++;
-            }
-        }
-
-        if (index != blobVersionedHashes.Length)
-        {
-            string error = "Blob versioned hashes do not match";
-            if (_logger.IsWarn) _logger.Warn(error);
-            return ResultWrapper<PayloadStatusV1>.Success(
-                new PayloadStatusV1
-                {
-                    Status = PayloadStatus.Invalid,
-                    LatestValidHash = null,
-                    ValidationError = error
-                });
-        }
-
-        return NewPayload(executionPayload, 3);
+        return blobVersionedHashes is null ? ErrorResult("Blob versioned hashes must be set")
+            : !FlattenHashesFromTransactions(executionPayload).SequenceEqual(blobVersionedHashes, Bytes.NullableEqualityComparer) ? ErrorResult("Blob versioned hashes do not match")
+            : null;
     }
 
     public async Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId) =>
