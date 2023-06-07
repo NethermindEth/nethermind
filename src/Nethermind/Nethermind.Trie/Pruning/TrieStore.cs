@@ -251,6 +251,12 @@ namespace Nethermind.Trie.Pruning
                     if (!ReferenceEquals(cachedNodeCopy, node))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
+                        cachedNodeCopy.ResolveKey(this, nodeCommitInfo.IsRoot);
+                        if (node.Keccak != cachedNodeCopy.Keccak)
+                        {
+                            throw new InvalidOperationException($"The hash of replacement node {cachedNodeCopy} is not the same as the original {node}.");
+                        }
+
                         if (!nodeCommitInfo.IsRoot)
                         {
                             nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
