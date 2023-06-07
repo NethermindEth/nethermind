@@ -18,7 +18,6 @@ namespace Nethermind.Synchronization.Blocks
 {
     public class BlockDownloaderFactory : IBlockDownloaderFactory
     {
-        private readonly int _maxNumberOfProcessingThread;
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
@@ -30,7 +29,6 @@ namespace Nethermind.Synchronization.Blocks
         private readonly ISyncReport _syncReport;
 
         public BlockDownloaderFactory(
-            int maxNumberOfProcessingThread,
             ISpecProvider specProvider,
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
@@ -41,7 +39,6 @@ namespace Nethermind.Synchronization.Blocks
             ISyncReport syncReport,
             ILogManager logManager)
         {
-            _maxNumberOfProcessingThread = maxNumberOfProcessingThread;
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
@@ -51,13 +48,11 @@ namespace Nethermind.Synchronization.Blocks
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-
         }
 
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
             return new(
-                _maxNumberOfProcessingThread,
                 syncFeed,
                 _syncPeerPool,
                 _blockTree,
@@ -66,14 +61,19 @@ namespace Nethermind.Synchronization.Blocks
                 _syncReport,
                 _receiptStorage,
                 _specProvider,
-                new BlocksSyncPeerAllocationStrategyFactory(),
                 _betterPeerStrategy,
                 _logManager);
+        }
+
+        public IPeerAllocationStrategyFactory<BlocksRequest> CreateAllocationStrategyFactory()
+        {
+            return new BlocksSyncPeerAllocationStrategyFactory();
         }
     }
 
     public interface IBlockDownloaderFactory
     {
         BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed);
+        IPeerAllocationStrategyFactory<BlocksRequest> CreateAllocationStrategyFactory();
     }
 }

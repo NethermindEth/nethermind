@@ -15,19 +15,16 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class BodiesSyncDispatcher : SyncDispatcher<BodiesSyncBatch>
+    public class BodiesSyncDownloader : ISyncDownloader<BodiesSyncBatch>
     {
-        public BodiesSyncDispatcher(
-            int maxNumberOfProcessingThread,
-            ISyncFeed<BodiesSyncBatch> syncFeed,
-            ISyncPeerPool syncPeerPool,
-            IPeerAllocationStrategyFactory<BodiesSyncBatch> peerAllocationStrategy,
-            ILogManager logManager)
-            : base(maxNumberOfProcessingThread, syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+        private ILogger Logger;
+
+        public BodiesSyncDownloader(ILogManager logManager)
         {
+            Logger = logManager.GetClassLogger();
         }
 
-        protected override async Task Dispatch(PeerInfo peerInfo, BodiesSyncBatch batch, CancellationToken cancellationToken)
+        public async Task Dispatch(PeerInfo peerInfo, BodiesSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
