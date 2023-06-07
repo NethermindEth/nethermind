@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -13,6 +14,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.ByPath;
 
 namespace Nethermind.Trie.Pruning
@@ -120,6 +122,7 @@ namespace Nethermind.Trie.Pruning
 
             if (_logger.IsTrace) _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
             if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node!.IsBoundaryProofNode)
+            //if (!nodeCommitInfo.IsEmptyBlockMarker)
             {
                 TrieNode node = nodeCommitInfo.Node!;
 
@@ -521,13 +524,22 @@ namespace Nethermind.Trie.Pruning
                 }
                 else
                 {
-                    if (trieNode.PathToNode.Length == 64)
-                        _logger.Info($"Save leaf node full bytes {trieNode}");
+                    //if (trieNode.PathToNode.Length == 64)
+                    //    _logger.Info($"Save leaf node full bytes {trieNode}");
                     byte[] newPath = new byte[pathBytes.Length + 1];
                     Array.Copy(pathBytes, 0, newPath, 1, pathBytes.Length);
                     newPath[0] = PathMarker;
                     if (withDelete)
-                        DeleteSubtree(pathToNodeNibbles, trieNode.StoreNibblePathPrefix, false, keyValueStore);
+                    {
+                        DeleteSubtreeWithRangeDelete(pathToNodeNibbles, trieNode.StoreNibblePathPrefix, false, keyValueStore);
+                        //DeleteTreeVisitor deleteVistor = new(_keyValueStore, this, new DeleteTreeVisitorContext()
+                        //{
+                        //    StoreNibblePrefix = trieNode.StoreNibblePathPrefix
+                        //});
+                        //deleteVistor.DeleteSubTree(trieNode.PathToNode);
+                    }
+
+                    //_logger.Info($"Save path {trieNode.PathToNode.ToHexString()}");
                     keyValueStore[pathToNodeBytes] = newPath;
                 }
             }
@@ -536,14 +548,14 @@ namespace Nethermind.Trie.Pruning
                 if (trieNode.IsBranch)
                 {
                     Span<byte> childPath = stackalloc byte[fullPath.Length + 1];
-                    trieNode.PathToNode.CopyTo(childPath);
+                    trieNode.FullPath.CopyTo(childPath);
                     for (byte i = 0; i < 16; i++)
                     {
                         if (trieNode.IsChildNull(i))
                         {
-                            _logger.Info($"Deleting child {i} of node {trieNode}");
+                            //_logger.Info($"Deleting child {i} of node {trieNode}");
                             childPath[^1] = i;
-                            DeleteSubtree(childPath, trieNode.StoreNibblePathPrefix, true, keyValueStore);
+                            DeleteSubtreeWithRangeDelete(childPath, trieNode.StoreNibblePathPrefix, true, keyValueStore);
                         }
                     }
                 }
@@ -553,6 +565,7 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
+            //_logger.Info($"Save path {trieNode.FullPath.ToHexString()}");
             keyValueStore[pathBytes] = trieNode.FullRlp;
         }
 
@@ -579,9 +592,9 @@ namespace Nethermind.Trie.Pruning
         public void ClearCache()
         {}
 
-        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefixNibbles)
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
         {
-            _keyValueStore.DeleteByPrefix(Nibbles.NibblesToByteStorage(keyPrefixNibbles.ToArray()));
+            _keyValueStore.DeleteByRange(startKey, endKey);
         }
 
         public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefixNibbles)
@@ -596,6 +609,27 @@ namespace Nethermind.Trie.Pruning
 
             if (addPrefixAsDeleted)
                 _destroyPrefixes.Enqueue(keyPrefixNibbles.ToArray());
+        }
+
+        public void DeleteSubtreeWithRangeDelete(Span<byte> pathNibbles, Span<byte> storeNibblePrefix, bool deleteSelf, IKeyValueStore? keyValueStore)
+        {
+            if (_logger.IsInfo) _logger.Info($"Deleting all paths prefixed {pathNibbles.ToHexString()}");
+
+            if (storeNibblePrefix.Length + pathNibbles.Length == 0)
+            {
+                _keyValueStore[Nibbles.NibblesToByteStorage(pathNibbles)] = null;
+                return;
+            }
+
+            int fullKeyLength = storeNibblePrefix.Length > 0 ? 66 : 33;
+
+            (byte[] from, byte[] to) = GetDeleteKeyFromNibblePrefix(pathNibbles, fullKeyLength, 0);
+            if (_logger.IsInfo) _logger.Info($"Deleting from {from.ToHexString()} to {to.ToHexString()}");
+            _keyValueStore.DeleteByRange(from, to);
+
+            (from, to) = GetDeleteKeyFromNibblePrefix(pathNibbles, fullKeyLength, 1);
+            if (_logger.IsInfo) _logger.Info($"Deleting from {from.ToHexString()} to {to.ToHexString()}");
+            _keyValueStore.DeleteByRange(from, to);
         }
 
         public void DeleteSubtree(Span<byte> pathNibbles, Span<byte> storeNibblePrefix, bool deleteSelf, IKeyValueStore? keyValueStore)
@@ -644,6 +678,196 @@ namespace Nethermind.Trie.Pruning
                     keyValueStore[Nibbles.NibblesToByteStorage(pathNibbles)] = null;
                 }
             }
+        }
+
+        public static (byte[], byte[]) GetDeleteKeyFromNibblePrefix(Span<byte> prefix, int maxLength, int oddityOverride)
+        {
+            byte[] fromKey = new byte[maxLength];
+            byte[] toKey = new byte[maxLength];
+            Array.Fill(toKey, (byte)0xff, 1, maxLength - 1);
+
+            int oddity = prefix.Length % 2;
+
+            if (oddity == oddityOverride)
+            {
+                for (int i = 0; i < prefix.Length / 2; i++)
+                {
+                    toKey[i + 1] = fromKey[i + 1] = Nibbles.ToByte(prefix[2 * i + oddity], prefix[2 * i + 1 + oddity]);
+                }
+                if (oddity == 1)
+                {
+                    toKey[0] = fromKey[0] = Nibbles.ToByte(1, prefix[0]);
+                }
+            }
+            else if (oddity == 1 && oddityOverride == 0)
+            {
+                for (int i = 0; i < prefix.Length / 2; i++)
+                {
+                    toKey[i + 1] = fromKey[i + 1] = Nibbles.ToByte(prefix[2 * i], prefix[2 * i + 1]);
+                }
+                fromKey[prefix.Length / 2 + 1] = Nibbles.ToByte(prefix[^1], 0);
+                toKey[prefix.Length / 2 + 1] = Nibbles.ToByte(prefix[^1], 0xf);
+                //toKey[0] = fromKey[0] = 0x00;
+            }
+            else if (oddity == 0 && oddityOverride == 1)
+            {
+                for (int i = 0; i < prefix.Length / 2 - 1; i++)
+                {
+                    toKey[i + 1] = fromKey[i + 1] = Nibbles.ToByte(prefix[2 * i + oddityOverride], prefix[2 * i + 1 + oddityOverride]);
+                }
+                toKey[0] = fromKey[0] = Nibbles.ToByte(1, prefix[0]);
+
+                fromKey[prefix.Length / 2] = Nibbles.ToByte(prefix[^1], 0);
+                toKey[prefix.Length / 2] = Nibbles.ToByte(prefix[^1], 0xf);
+            }
+            return (fromKey, toKey);
+        }
+    }
+
+
+
+    public class DeleteTreeVisitorContext
+    {
+        public byte[] StoreNibblePrefix;
+        //public bool IsStorage => StoreNibblePrefix?.Length == 0;
+    }
+
+    public class DeleteTreeVisitor
+    {
+        public const byte BranchesCount = 16;
+
+        protected IKeyValueStore _keyValueStore;
+        protected DeleteTreeVisitorContext _context;
+        protected TrieStoreByPath _trieStore;
+
+        public DeleteTreeVisitor(IKeyValueStore keyValueStore, TrieStoreByPath trieStore, DeleteTreeVisitorContext context)
+        {
+            _keyValueStore = keyValueStore;
+            _context = context;
+            _trieStore = trieStore;
+        }
+
+        public void DeleteSubTree(Span<byte> pathNibbles)
+        {
+            byte[] rlp = TryLoadRlp(pathNibbles);
+            if (rlp == null)
+                return;
+
+            TrieNode oldNode = new(NodeType.Unknown, pathNibbles.ToArray(), null, rlp)
+            {
+                StoreNibblePathPrefix = _context.StoreNibblePrefix
+            };
+            oldNode.ResolveNode(_trieStore);
+            switch (oldNode.NodeType)
+            {
+                case NodeType.Branch:
+                    DeleteBranch(oldNode);
+                    break;
+                case NodeType.Leaf:
+                    DeleteLeaf(oldNode);
+                    break;
+                case NodeType.Extension:
+                    DeleteExtension(oldNode);
+                    break;
+            }
+        }
+
+        public void CleanSubTree(Span<byte> pathNibbles)
+        {
+            byte[] rlp = TryLoadRlp(pathNibbles);
+            if (rlp == null)
+                return;
+
+            TrieNode oldNode = new(NodeType.Unknown, pathNibbles.ToArray(), null, rlp)
+            {
+                StoreNibblePathPrefix = _context.StoreNibblePrefix
+            };
+            oldNode.ResolveNode(_trieStore);
+            switch (oldNode.NodeType)
+            {
+                case NodeType.Branch:
+                    DeleteBranch(oldNode);
+                    break;
+                case NodeType.Leaf:
+                    DeleteLeaf(oldNode);
+                    break;
+                case NodeType.Extension:
+                    DeleteExtension(oldNode);
+                    break;
+            }
+        }
+
+        public void DeleteLeaf(TrieNode node)
+        {
+            if (!node.IsLeaf)
+                throw new ArgumentException(null, nameof(node));
+
+            Span<byte> pathToNodeNibbles = stackalloc byte[node.StoreNibblePathPrefix.Length + node.PathToNode!.Length];
+            node.StoreNibblePathPrefix.CopyTo(pathToNodeNibbles);
+            Span<byte> pathToNodeSlice = pathToNodeNibbles.Slice(node.StoreNibblePathPrefix.Length);
+            node.PathToNode.CopyTo(pathToNodeSlice);
+            byte[] pathToNodeBytes = Nibbles.NibblesToByteStorage(pathToNodeNibbles);
+
+            _keyValueStore[pathToNodeBytes] = null;
+            _keyValueStore[Nibbles.NibblesToByteStorage(node.FullPath)] = null;
+        }
+
+        public void DeleteBranch(TrieNode node)
+        {
+            Span<byte> childPath = stackalloc byte[node.PathToNode.Length + 1];
+            for (byte i = 0; i < BranchesCount; i++)
+            {
+                node.PathToNode.CopyTo(childPath);
+
+                if (!node.IsChildNull(i))
+                {
+                    childPath[^1] = i;
+
+                    DeleteSubTree(childPath);
+                }
+
+                _keyValueStore[Nibbles.NibblesToByteStorage(node.FullPath)] = null;
+            }
+        }
+
+        public void DeleteExtension(TrieNode node)
+        {
+            Span<byte> childPath = stackalloc byte[node.PathToNode.Length + node.Key.Length];
+            node.PathToNode.CopyTo(childPath);
+            node.Key.CopyTo(childPath[node.PathToNode.Length..]);
+            DeleteSubTree(childPath);
+
+            _keyValueStore[Nibbles.NibblesToByteStorage(node.FullPath)] = null;
+        }
+
+        public void CleanBranch(TrieNode node)
+        {
+            Span<byte> childPath = stackalloc byte[node.PathToNode.Length + 1];
+            for (byte i = 0; i < BranchesCount; i++)
+            {
+                node.PathToNode.CopyTo(childPath);
+                childPath[^1] = i;
+
+                if (!node.IsChildNull(i))
+                {
+                    CleanSubTree(childPath);
+                }
+                else
+                {
+                    DeleteSubTree(childPath);
+                }
+
+                _keyValueStore[Nibbles.NibblesToByteStorage(node.FullPath)] = null;
+            }
+        }
+
+        public byte[]? TryLoadRlp(Span<byte> path)
+        {
+            byte[] keyPath = Nibbles.NibblesToByteStorage(path);
+            byte[]? rlp = _keyValueStore[keyPath];
+            if (rlp is null || rlp[0] != 128) return rlp;
+
+            return _keyValueStore[rlp.AsSpan()[1..]];
         }
     }
 }

@@ -295,7 +295,7 @@ namespace Nethermind.Db
             GC.SuppressFinalize(this);
         }
 
-        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
         {
             throw new NotImplementedException();
         }

@@ -172,7 +172,8 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             {
                 foreach (byte[] keyPrefix in prefixes)
                 {
-                    _trieStore.DeleteByPrefix(keyPrefix);
+                    (byte[] startKey, byte[] endKey) = TrieStoreByPath.GetDeleteKeyFromNibblePrefix(keyPrefix, 33, 0);
+                    _trieStore.DeleteByRange(startKey, endKey);
                 }
             }
             if (_nodesByBlock.TryRemove(blockNumber, out ConcurrentDictionary<byte[], TrieNode> nodesByPath))

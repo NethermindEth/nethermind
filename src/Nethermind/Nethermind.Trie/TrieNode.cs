@@ -367,6 +367,16 @@ namespace Nethermind.Trie
                         NodeType = NodeType.Leaf;
                         Key = key;
                         Value = _rlpStream.DecodeByteArray();
+                        if (tree?.Capability == TrieNodeResolverCapability.Path && PathToNode is not null)
+                        {
+                            //correct path to node - should avoid it?
+                            if (PathToNode.Length + Key.Length > 64)
+                            {
+                                byte[] newPathToNode = new byte[64 - Key.Length];
+                                Array.Copy(PathToNode, newPathToNode, 64 - Key.Length);
+                                PathToNode = newPathToNode;
+                            }
+                        }
                     }
                     else
                     {
@@ -551,7 +561,6 @@ namespace Nethermind.Trie
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
-
             }
             else
             {

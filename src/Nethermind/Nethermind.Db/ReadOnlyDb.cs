@@ -102,6 +102,6 @@ namespace Nethermind.Db
 
         public void DangerousReleaseMemory(in Span<byte> span) { }
 
-        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix) { }
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
     }
 }

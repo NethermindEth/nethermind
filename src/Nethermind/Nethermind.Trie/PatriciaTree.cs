@@ -397,13 +397,22 @@ namespace Nethermind.Trie
 
         public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
         {
-            return Capability switch
+            if (Capability == TrieNodeResolverCapability.Path)
             {
-                TrieNodeResolverCapability.Hash => GetInternal(rawKey, rootHash),
-                TrieNodeResolverCapability.Path => GetInternal(rawKey, rootHash),
-                // TrieNodeResolverCapability.Path => GetByPath(rawKey, rootHash),
-                _ => throw new ArgumentOutOfRangeException()
-            };
+                byte[] internalValue = GetInternal(rawKey, rootHash);
+                byte[] pathValue = GetByPath(rawKey, rootHash);
+                if (!Bytes.EqualityComparer.Equals(internalValue, pathValue))
+                    Console.WriteLine($"Difference for key: {rawKey.ToHexString()} | ST prefix: {StoreNibblePathPrefix?.ToHexString()} | internal: {internalValue?.ToHexString()} | path value: {pathValue?.ToHexString()}");
+                return pathValue;
+            }
+            return GetInternal(rawKey, rootHash);
+            //return Capability switch
+            //{
+            //    TrieNodeResolverCapability.Hash => GetInternal(rawKey, rootHash),
+            //    TrieNodeResolverCapability.Path => GetInternal(rawKey, rootHash),
+            //    //TrieNodeResolverCapability.Path => GetByPath(rawKey, rootHash),
+            //    _ => throw new ArgumentOutOfRangeException()
+            //};
         }
 
         private byte[]? GetByPath(Span<byte> rawKey, Keccak? rootHash = null)
@@ -780,7 +789,7 @@ namespace Nethermind.Trie
                 {
                     throw new InvalidOperationException($"Unknown node type {node.GetType().Name}");
                 }
-                if(Capability == TrieNodeResolverCapability.Path) _deleteNodes?.Enqueue(node.CloneNodeForDeletion());
+                //if(Capability == TrieNodeResolverCapability.Path) _deleteNodes?.Enqueue(node.CloneNodeForDeletion());
             }
 
             RootRef = nextNode;
@@ -1240,7 +1249,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions? visitingOptions = null)
+        public void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions? visitingOptions = null, ITrieNodeResolver storageTrieNodeResolver = null)
         {
             if (visitor is null) throw new ArgumentNullException(nameof(visitor));
             if (rootHash is null) throw new ArgumentNullException(nameof(rootHash));
@@ -1253,7 +1262,9 @@ namespace Nethermind.Trie
                 // but we know that we have multiple optimizations and assumptions on trees
                 ExpectAccounts = visitingOptions.ExpectAccounts,
                 MaxDegreeOfParallelism = visitingOptions.MaxDegreeOfParallelism,
-                KeepTrackOfAbsolutePath = (Capability == TrieNodeResolverCapability.Path) || visitingOptions.KeepTrackOfAbsolutePath
+                KeepTrackOfAbsolutePath = (Capability == TrieNodeResolverCapability.Path) || visitingOptions.KeepTrackOfAbsolutePath,
+                StorageTrieNodeResolver = storageTrieNodeResolver
+
             };
 
             TrieNode rootRef = null;

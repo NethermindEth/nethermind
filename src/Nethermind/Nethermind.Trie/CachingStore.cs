@@ -70,9 +70,9 @@ namespace Nethermind.Trie
             });
         }
 
-        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
         {
-            _wrappedStore.DeleteByPrefix(keyPrefix);
+            _wrappedStore.DeleteByRange(startKey, endKey);
         }
     }
 }

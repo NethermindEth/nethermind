@@ -202,7 +202,8 @@ namespace Nethermind.Trie
 
                                     using (trieVisitContext.AbsolutePathNext(new byte[]{8,0}))
                                     {
-                                        if (TryResolveStorageRoot(nodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), out TrieNode? storageRoot))
+                                        ITrieNodeResolver storageNodeResolver = trieVisitContext.StorageTrieNodeResolver ?? nodeResolver;
+                                        if (TryResolveStorageRoot(storageNodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), out TrieNode? storageRoot))
                                         {
                                             using TrieVisitContext storageTrieVisitContext = new TrieVisitContext
                                             {
@@ -217,12 +218,12 @@ namespace Nethermind.Trie
                                             storageTrieVisitContext.IsStorage = true;
                                             storageTrieVisitContext.BranchChildIndex = null;
 
-                                            storageRoot.ResolveNode(nodeResolver);
-                                            storageRoot.ResolveKey(nodeResolver, true);
+                                            storageRoot.ResolveNode(storageNodeResolver);
+                                            storageRoot.ResolveKey(storageNodeResolver, true);
                                             if (storageRoot.Keccak != account.StorageRoot)
                                                 throw new ArgumentException("Storage root not matching");
 
-                                            storageRoot!.Accept(visitor, nodeResolver, storageTrieVisitContext);
+                                            storageRoot!.Accept(visitor, storageNodeResolver, storageTrieVisitContext);
                                         }
                                         else
                                         {

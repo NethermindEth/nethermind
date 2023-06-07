@@ -70,8 +70,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles) => _trieStore.ExistsInDB(hash, nodePathNibbles);
 
-        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix) { }
-
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
         public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefix)
         {
             throw new NotImplementedException();

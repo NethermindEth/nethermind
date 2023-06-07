@@ -15,5 +15,5 @@ public interface IPatriciaTree
     void Commit(long blockNumber, bool skipRoot = false);
 
     ITrieStore TrieStore { get; }
-    void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions? visitingOptions = null);
+    void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions? visitingOptions = null, ITrieNodeResolver storageTrieNodeResolver = null);
 }

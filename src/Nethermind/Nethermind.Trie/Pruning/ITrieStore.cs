@@ -23,7 +23,7 @@ namespace Nethermind.Trie.Pruning
 
         public void ClearCache();
 
-        public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefix);
-        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix);
+        void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefix);
+        void DeleteByRange(Span<byte> startKey, Span<byte> endKey);
     }
 }

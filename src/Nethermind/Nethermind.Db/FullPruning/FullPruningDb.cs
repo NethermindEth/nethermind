@@ -279,9 +279,9 @@ namespace Nethermind.Db.FullPruning
             }
         }
 
-        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
         {
-            _currentDb.DeleteByPrefix(keyPrefix);
+            _currentDb.DeleteByRange(startKey, endKey);
         }
     }
 }

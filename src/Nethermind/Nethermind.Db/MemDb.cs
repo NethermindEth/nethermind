@@ -139,13 +139,13 @@ namespace Nethermind.Db
         {
         }
 
-        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
         {
-            List<byte[]> keys = new List<byte[]>();
-            foreach (KeyValuePair<byte[], byte[]?> kvp in _db)
+            List<byte[]> keys = new();
+            foreach (byte[] key in _db.Keys)
             {
-                if (kvp.Key.Length >= keyPrefix.Length && Bytes.AreEqual(kvp.Key.AsSpan()[0..keyPrefix.Length], keyPrefix))
-                    keys.Add(kvp.Key);
+                if (Bytes.Comparer.Compare(key, startKey) >= 0 && Bytes.Comparer.Compare(key, endKey) <= 0)
+                    keys.Add(key);
             }
             foreach (byte[] key in keys)
             {

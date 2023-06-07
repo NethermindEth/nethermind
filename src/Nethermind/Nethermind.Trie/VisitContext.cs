@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
 {
@@ -19,6 +20,8 @@ namespace Nethermind.Trie
         public bool ExpectAccounts { get; init; }
 
         public bool KeepTrackOfAbsolutePath { get; init; }
+
+        public ITrieNodeResolver StorageTrieNodeResolver { get; init; }
 
         private List<byte>? _absolutePathNibbles;
 

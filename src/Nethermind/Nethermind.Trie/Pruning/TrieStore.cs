@@ -864,9 +864,9 @@ namespace Nethermind.Trie.Pruning
                 : _currentBatch?[key] ?? _keyValueStore[key];
         }
 
-        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
         {
-            _keyValueStore.DeleteByPrefix(keyPrefix);
+            _keyValueStore.DeleteByRange(startKey, endKey);
         }
 
         public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefix)
