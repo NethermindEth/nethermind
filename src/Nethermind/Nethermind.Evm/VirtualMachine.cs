@@ -1777,7 +1777,7 @@ public class VirtualMachine : IVirtualMachine
                     }
                 case Instruction.MCOPY:
                     {
-                        if(!spec.MCopyIncluded)
+                        if (!spec.MCopyIncluded)
                         {
                             goto InvalidInstruction;
                         }

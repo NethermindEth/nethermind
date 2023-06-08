@@ -254,7 +254,7 @@ namespace Nethermind.Evm
         #endregion
 
         #region opcodes_with_3_args
-        public static Prepare MCOPY(this Prepare @this, UInt256? dst = null, UInt256? src= null, UInt256? len= null)
+        public static Prepare MCOPY(this Prepare @this, UInt256? dst = null, UInt256? src = null, UInt256? len = null)
             => @this.PushSequence(len, src, dst)
                     .Op(Instruction.MCOPY);
         public static Prepare ADDMOD(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null, UInt256? mod = null)
