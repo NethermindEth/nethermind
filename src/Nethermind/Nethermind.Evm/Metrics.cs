@@ -53,6 +53,10 @@ public class Metrics
     public static long TstoreOpcode { get; set; }
 
     [CounterMetric]
+    [Description("Number of MCOPY opcodes executed.")]
+    public static long MCopyOpcode { get; set; }
+
+    [CounterMetric]
     [Description("Number of MODEXP precompiles executed.")]
     public static long ModExpOpcode { get; set; }
 

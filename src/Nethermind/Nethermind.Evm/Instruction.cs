@@ -162,6 +162,7 @@ namespace Nethermind.Evm
         // EIP-1153
         TLOAD = 0xb3,
         TSTORE = 0xb4,
+        MCOPY = 0xb7,
 
         CREATE = 0xf0,
         CALL = 0xf1,
