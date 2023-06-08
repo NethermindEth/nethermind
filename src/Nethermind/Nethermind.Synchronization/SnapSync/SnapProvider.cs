@@ -272,56 +272,26 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void AddCodes(ValueKeccak[] requestedHashes, byte[][] codes)
         {
-            Dictionary<ValueKeccak, byte[]> dict = new();
-            for (int i = 0; i < requestedHashes.Length; i++)
-            {
-                dict[requestedHashes[i]] = null;
-            }
-
-            for (int i = 0; i < codes.Length; i++)
-            {
-                byte[] code = codes[i];
-                ValueKeccak codeHash = ValueKeccak.Compute(code);
-
-                ref byte[] slot = ref CollectionsMarshal.GetValueRefOrNullRef(dict, codeHash);
-                if (!Unsafe.IsNullRef(ref slot) && slot is null)
-                {
-                    slot = code;
-                }
-            }
-
-            List<ValueKeccak> remaining = new();
-            List<ValueKeccak> included = new();
-            foreach (KeyValuePair<ValueKeccak, byte[]> pair in dict)
-            {
-                if (pair.Value is not null)
-                {
-                    included.Add(pair.Key);
-                }
-                else
-                {
-                    remaining.Add(pair.Key);
-                }
-            }
-
-            // Sort the db insertions
-            remaining.Sort();
-            included.Sort();
+            HashSet<ValueKeccak> set = requestedHashes.ToHashSet();
 
             using (IBatch writeBatch = _dbProvider.CodeDb.StartBatch())
             {
-                foreach (ValueKeccak codeHash in included)
+                for (int i = 0; i < codes.Length; i++)
                 {
-                    byte[] code = dict[codeHash];
+                    byte[] code = codes[i];
+                    ValueKeccak codeHash = ValueKeccak.Compute(code);
 
-                    Interlocked.Add(ref Metrics.SnapStateSynced, code.Length);
-                    writeBatch[codeHash.Bytes] = code;
+                    if (set.Remove(codeHash))
+                    {
+                        Interlocked.Add(ref Metrics.SnapStateSynced, code.Length);
+                        writeBatch[codeHash.Bytes] = code;
+                    }
                 }
             }
 
             Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Length);
 
-            _progressTracker.ReportCodeRequestFinished(CollectionsMarshal.AsSpan(remaining));
+            _progressTracker.ReportCodeRequestFinished(set.ToArray());
         }
 
         public void RetryRequest(SnapSyncBatch batch)
