@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Test
         protected static PrivateKey RecipientKey { get; } = TestItem.PrivateKeyB;
         protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
-        protected virtual long BlockNumber { get; set; } = MainnetSpecProvider.ByzantiumBlockNumber;
+        protected virtual long BlockNumber { get; } = MainnetSpecProvider.ByzantiumBlockNumber;
         protected virtual ulong Timestamp => 0UL;
         protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber, Timestamp);
