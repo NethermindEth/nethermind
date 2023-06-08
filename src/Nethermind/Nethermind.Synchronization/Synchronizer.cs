@@ -22,6 +22,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization
 {
@@ -147,7 +148,7 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
+            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, TrieNodeResolverCapability.Path, _logManager);
             _stateSyncFeed = new StateSyncFeed(_syncMode, treeSync, _logManager);
             StateSyncDispatcher stateSyncDispatcher = new(_stateSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>

@@ -420,7 +420,7 @@ namespace Nethermind.Store.Test
 
             public Context()
             {
-                StateProvider = new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+                StateProvider = new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
                 StateProvider.CreateAccount(Address1, 0);
                 StateProvider.CreateAccount(Address2, 0);
                 StateProvider.Commit(Frontier.Instance);

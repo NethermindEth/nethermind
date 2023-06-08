@@ -168,6 +168,7 @@ public partial class EngineModuleTests
                 DbProvider,
                 BlockTree,
                 ReadOnlyTrieStore,
+                ReadOnlyStorageTrieStore,
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,

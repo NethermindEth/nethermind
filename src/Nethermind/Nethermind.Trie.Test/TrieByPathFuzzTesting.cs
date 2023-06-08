@@ -198,10 +198,11 @@ public class TrieByPathFuzzTesting
 
         Queue<Keccak> rootQueue = new();
 
-        MemDb memDb = new();
+        MemColumnsDb<StateColumns> memDb = new();
 
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager, lookupLimit);
-        StateProvider stateProvider = new StateProvider(trieStore, new MemDb(), _logManager);
+        using TrieStoreByPath storageTrieStore = new(memDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.EveryBlock, _logManager, lookupLimit);
+        StateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, new MemDb(), _logManager);
         StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
 
         Account[] accounts = new Account[accountsCount];
@@ -367,12 +368,13 @@ public class TrieByPathFuzzTesting
 
         Queue<Keccak> rootQueue = new();
 
-        MemDb memDb = new();
+        MemColumnsDb<StateColumns> memDb = new();
 
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager, blocksCount + 1);
+        using TrieStoreByPath storageTrieStore = new(memDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.EveryBlock, _logManager, lookupLimit);
         var codeDb = new MemDb();
-        StateProvider stateProvider = new StateProvider(trieStore, codeDb, _logManager);
-        StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
+        StateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, codeDb, _logManager);
+        StorageProvider storageProvider = new StorageProvider(storageTrieStore, stateProvider, _logManager);
 
         Account[] accounts = new Account[accountsCount];
         Address[] addresses = new Address[accountsCount];

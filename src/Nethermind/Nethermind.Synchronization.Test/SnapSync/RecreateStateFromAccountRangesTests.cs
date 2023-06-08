@@ -51,9 +51,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
             byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[0].Path.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
-            MemDb db = new();
-            TrieStoreByPath store = new(db, LimboLogs.Instance);
-            StateTreeByPath tree = new(store, LimboLogs.Instance);
+            MemColumnsDb<StateColumns> stateDb = new();
+            TrieStoreByPath store = new(stateDb, LimboLogs.Instance);
+            TrieStoreByPath storageTrieStore = new(stateDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance);
+            StateTreeByPath tree = new(store, storageTrieStore, LimboLogs.Instance);
 
             IList<TrieNode> nodes = new List<TrieNode>();
 
@@ -99,8 +100,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             tree.Commit(0);
 
             Assert.AreEqual(_inputTree.RootHash, tree.RootHash);
-            Assert.AreEqual(6, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
-            Assert.IsFalse(db.KeyExists(rootHash)); // the root node is a part of the proof nodes
+            Assert.AreEqual(6, stateDb.Keys.Count);  // we don't persist proof nodes (boundary nodes)
+            Assert.IsFalse(stateDb.KeyExists(rootHash)); // the root node is a part of the proof nodes
         }
 
         [Test]
@@ -328,7 +329,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
             byte[][] proofs = firstProof.Concat(lastProof).ToArray();
 
-            StateTreeByPath newTree = new(new TrieStoreByPath(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath newTree = new(new TrieStoreByPath(new MemDb(), LimboLogs.Instance), new TrieStoreByPath(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
 
             PathWithAccount[] receiptAccounts = TestItem.Tree.AccountsWithPaths[0..2];
 
@@ -358,7 +359,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [Test]
         public void CorrectlyDetermineMaxKeccakExist()
         {
-            StateTreeByPath tree = new StateTreeByPath(new TrieStoreByPath(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new StateTreeByPath(new TrieStoreByPath(new MemDb(), LimboLogs.Instance), new TrieStoreByPath(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
 
             PathWithAccount ac1 = new PathWithAccount(Keccak.Zero, Build.An.Account.WithBalance(1).TestObject);
             PathWithAccount ac2 = new PathWithAccount(Keccak.Compute("anything"), Build.An.Account.WithBalance(2).TestObject);
@@ -382,7 +383,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             byte[][] lastProof = CreateProofForPath(ac2.Path.Bytes, tree);
             byte[][] proofs = firstProof.Concat(lastProof).ToArray();
 
-            StateTreeByPath newTree = new(new TrieStoreByPath(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath newTree = new(new TrieStoreByPath(new MemDb(), LimboLogs.Instance), new TrieStoreByPath(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
 
             PathWithAccount[] receiptAccounts = { ac1, ac2 };
 

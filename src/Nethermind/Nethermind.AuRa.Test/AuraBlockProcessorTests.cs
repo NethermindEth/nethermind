@@ -146,10 +146,11 @@ namespace Nethermind.AuRa.Test
 
         private (AuRaBlockProcessor Processor, IStateProvider StateProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
         {
-            IDb stateDb = new MemDb();
+            MemColumnsDb<StateColumns> stateDb = new();
             IDb codeDb = new MemDb();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            TrieStoreByPath storageTrieStore = new(stateDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance);
+            IStateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             AuRaBlockProcessor processor = new AuRaBlockProcessor(
                 RinkebySpecProvider.Instance,
@@ -157,7 +158,7 @@ namespace Nethermind.AuRa.Test
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
+                new StorageProvider(storageTrieStore, stateProvider, LimboLogs.Instance),
                 NullReceiptStorage.Instance,
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),

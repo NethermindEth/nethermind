@@ -43,7 +43,7 @@ namespace Nethermind.Store.Test.SnapSync
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            MemDb db = new();
+            MemDb db = new MemColumnsDb<StateColumns>();
             TrieStore store = new(db, LimboLogs.Instance);
             StateTree tree = new(store, LimboLogs.Instance);
 
@@ -107,14 +107,14 @@ namespace Nethermind.Store.Test.SnapSync
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            MemDb db = new();
+            MemColumnsDb<StateColumns> db = new();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
-            StateTreeByPath tree = new StateTreeByPath(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new StateTreeByPath(new TrieStoreByPath(db, LimboLogs.Instance), new TrieStoreByPath(db.GetColumnDb(StateColumns.Storage), LimboLogs.Instance), LimboLogs.Instance);
             tree.RootHash = _inputTree.RootHash;
             TreeDumper dumper = new();
             tree.Accept(dumper,  _inputTree.RootHash);
@@ -138,7 +138,7 @@ namespace Nethermind.Store.Test.SnapSync
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            MemDb db = new();
+            MemDb db = new MemColumnsDb<StateColumns>();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
@@ -155,7 +155,7 @@ namespace Nethermind.Store.Test.SnapSync
         {
             Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
-            MemDb db = new();
+            MemDb db = new MemColumnsDb<StateColumns>();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
@@ -173,7 +173,7 @@ namespace Nethermind.Store.Test.SnapSync
             Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             // output state
-            MemDb db = new();
+            MemDb db = new MemColumnsDb<StateColumns>();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
@@ -223,7 +223,7 @@ namespace Nethermind.Store.Test.SnapSync
             Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             // output state
-            MemDb db = new();
+            MemDb db = new MemColumnsDb<StateColumns>();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);

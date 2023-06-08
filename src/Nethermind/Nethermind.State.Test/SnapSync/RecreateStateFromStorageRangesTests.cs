@@ -41,7 +41,7 @@ namespace Nethermind.Store.Test.SnapSync
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            MemDb db = new();
+            MemDb db = new MemColumnsDb<StateColumns>();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
@@ -61,7 +61,7 @@ namespace Nethermind.Store.Test.SnapSync
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            MemDb db = new();
+            MemDb db = new MemColumnsDb<StateColumns>();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
@@ -78,7 +78,7 @@ namespace Nethermind.Store.Test.SnapSync
         {
             Keccak rootHash = _inputStorageTree!.RootHash;   // "..."
 
-            MemDb db = new MemDb();
+            MemDb db = new MemColumnsDb<StateColumns>();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
@@ -95,7 +95,7 @@ namespace Nethermind.Store.Test.SnapSync
             Keccak rootHash = _inputStorageTree!.RootHash;   // "..."
 
             // output state
-            MemDb db = new MemDb();
+            MemDb db = new MemColumnsDb<StateColumns>();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
@@ -131,7 +131,7 @@ namespace Nethermind.Store.Test.SnapSync
             Keccak rootHash = _inputStorageTree!.RootHash;   // "..."
 
             // output state
-            MemDb db = new MemDb();
+            MemDb db = new MemColumnsDb<StateColumns>();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);

@@ -37,7 +37,7 @@ public class NonceManagerTests
         //var trieStore = new TrieStore(new MemDb(), logManager);
         var trieStore = new TrieStoreByPath(new MemDb(), logManager);
         var codeDb = new MemDb();
-        _stateProvider = new StateProvider(trieStore, codeDb, logManager);
+        _stateProvider = new StateProvider(trieStore, new TrieStoreByPath(new MemDb(), LimboLogs.Instance), codeDb, logManager);
         _blockTree = Substitute.For<IBlockTree>();
         Block block = Build.A.Block.WithNumber(0).TestObject;
         _blockTree.Head.Returns(block);

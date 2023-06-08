@@ -38,10 +38,11 @@ namespace Nethermind.Blockchain.Test
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Prepared_block_contains_author_field()
         {
-            IDb stateDb = new MemDb();
+            MemColumnsDb<StateColumns> stateDb = new();
             IDb codeDb = new MemDb();
             TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            TrieStoreByPath storageTrieStore = new(stateDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance);
+            IStateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(
                 RinkebySpecProvider.Instance,
@@ -49,7 +50,7 @@ namespace Nethermind.Blockchain.Test
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
+                new StorageProvider(storageTrieStore, stateProvider, LimboLogs.Instance),
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
@@ -68,11 +69,12 @@ namespace Nethermind.Blockchain.Test
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_store_a_witness()
         {
-            IDb stateDb = new MemDb();
+            MemColumnsDb<StateColumns> stateDb = new();
             IDb codeDb = new MemDb();
             TrieStoreByPath trieStore = new TrieStoreByPath(stateDb, LimboLogs.Instance);
+            TrieStoreByPath storageTrieStore = new(stateDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance);
 
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            IStateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
             BlockProcessor processor = new(
@@ -81,7 +83,7 @@ namespace Nethermind.Blockchain.Test
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
+                new StorageProvider(storageTrieStore, stateProvider, LimboLogs.Instance),
                 NullReceiptStorage.Instance,
                 witnessCollector,
                 LimboLogs.Instance);
@@ -100,10 +102,11 @@ namespace Nethermind.Blockchain.Test
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Recovers_state_on_cancel()
         {
-            IDb stateDb = new MemDb();
+            MemColumnsDb<StateColumns> stateDb = new();
             IDb codeDb = new MemDb();
             TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            TrieStoreByPath storageTrieStore = new(stateDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance);
+            IStateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(
                 RinkebySpecProvider.Instance,
@@ -111,7 +114,7 @@ namespace Nethermind.Blockchain.Test
                 new RewardCalculator(MainnetSpecProvider.Instance),
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
+                new StorageProvider(storageTrieStore, stateProvider, LimboLogs.Instance),
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);

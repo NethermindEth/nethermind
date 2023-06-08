@@ -36,8 +36,9 @@ public class TransactionProcessorFeeTests
         _specProvider = new TestSpecProvider(_spec);
 
         TrieStoreByPath trieStore = new(new MemDb(), LimboLogs.Instance);
+        TrieStoreByPath storageTrieStore = new(new MemDb(), LimboLogs.Instance);
 
-        _stateProvider = new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
+        _stateProvider = new StateProvider(trieStore, storageTrieStore, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);

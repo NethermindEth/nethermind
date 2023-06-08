@@ -65,7 +65,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Create_commit_reset_change_balance_get()
         {
-            MemDb db = new();
+            MemColumnsDb<StateColumns> db = new();
             Account account = new(1);
             IStateTree stateTree = _resolverCapability.CreateStateStore(db, LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
@@ -87,11 +87,13 @@ namespace Nethermind.Store.Test
         [TestCase(false, true)]
         public void Commit_with_skip_root_should_skip_root(bool skipRoot, bool hasRoot)
         {
-            MemDb db = new();
+            MemColumnsDb<StateColumns> db = new();
             ITrieStore trieStore = _resolverCapability.CreateTrieStore(db, LimboLogs.Instance);
             Account account = new(1);
 
-            IStateTree stateTree = _resolverCapability.CreateStateStore(trieStore, LimboLogs.Instance);
+            ITrieStore storagerTrieStore = _resolverCapability.CreateTrieStore(db.GetColumnDb(StateColumns.Storage), LimboLogs.Instance);
+
+            IStateTree stateTree = _resolverCapability.CreateStateStore(trieStore, storagerTrieStore, LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
             stateTree.UpdateRootHash();
             Keccak stateRoot = stateTree.RootHash;

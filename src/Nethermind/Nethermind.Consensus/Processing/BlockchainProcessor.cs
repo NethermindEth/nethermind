@@ -454,6 +454,13 @@ namespace Nethermind.Consensus.Processing
                     processingBranch.BlocksToProcess,
                     options,
                     tracer);
+
+                //IBlockTracer blockTracer = new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace);
+                //processedBlocks = _blockProcessor.Process(
+                //    processingBranch.Root,
+                //    processingBranch.BlocksToProcess,
+                //    options,
+                //    blockTracer);
             }
             catch (InvalidBlockException ex)
             {

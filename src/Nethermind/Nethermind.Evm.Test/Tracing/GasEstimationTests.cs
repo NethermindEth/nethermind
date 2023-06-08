@@ -243,9 +243,10 @@ namespace Nethermind.Evm.Test.Tracing
             public TestEnvironment()
             {
                 _specProvider = MainnetSpecProvider.Instance;
-                MemDb stateDb = new();
+                MemColumnsDb<StateColumns> stateDb = new();
                 TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
-                _stateProvider = new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
+                TrieStoreByPath storageTrieStore = new(stateDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance);
+                _stateProvider = new StateProvider(trieStore, storageTrieStore, new MemDb(), LimboLogs.Instance);
                 _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);

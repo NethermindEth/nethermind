@@ -28,6 +28,8 @@ namespace Nethermind.State
 
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
+        protected ITrieStore _storageTrieStore;
+
         static StateTreeByPath()
         {
             Span<byte> buffer = stackalloc byte[32];
@@ -47,11 +49,12 @@ namespace Nethermind.State
         }
 
         [DebuggerStepThrough]
-        public StateTreeByPath(ITrieStore? store, ILogManager? logManager)
+        public StateTreeByPath(ITrieStore? store, ITrieStore? storageStore, ILogManager? logManager)
             : base(store, Keccak.EmptyTreeHash, true, true, logManager)
         {
             if (store.Capability == TrieNodeResolverCapability.Hash) throw new ArgumentException("Only accepts by path store");
             TrieType = TrieType.State;
+            _storageTrieStore = storageStore;
         }
 
         public Account? Get(Address address, Keccak? rootHash = null)
@@ -88,7 +91,7 @@ namespace Nethermind.State
             Account? account = Get(accountAddress, root);
             if (account is null || (account.StorageRoot == Keccak.EmptyTreeHash)) return new byte[] { 0 };
 
-            StorageTree tree = new StorageTree(TrieStore, NullLogManager.Instance, accountAddress)
+            StorageTree tree = new StorageTree(_storageTrieStore, NullLogManager.Instance, accountAddress)
             {
                 RootHash = account.StorageRoot
             };

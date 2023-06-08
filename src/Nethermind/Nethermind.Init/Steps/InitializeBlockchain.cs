@@ -115,20 +115,26 @@ namespace Nethermind.Init.Steps
                     Persist.EveryBlock,
                     getApi.LogManager, 128);
 
+            ITrieStore storageTrieStore;
+            storageTrieStore = new TrieStoreByPath(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.EveryBlock, _api.LogManager, 128);
+
             TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new TrieStoreBoundaryWatcher(trieStore, _api.BlockTree!, _api.LogManager);
             getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
             getApi.DisposeStack.Push(trieStore);
 
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(setApi.MainStateDbWithCache);
+            ITrieStore readOnlyStorageTrieStore = setApi.ReadOnlyStorageTrieStore = storageTrieStore.AsReadOnly(setApi.MainStateDbWithCache);
+
 
             IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
                 trieStore,
+                storageTrieStore,
                 codeDb,
                 getApi.LogManager);
 
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(getApi.DbProvider, false);
 
-            IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
+            IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, storageTrieStore.AsReadOnly(), readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
 
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
@@ -143,7 +149,8 @@ namespace Nethermind.Init.Steps
                 {
                     _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
                     TrieStoreByPath noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
-                    IStateProvider diagStateProvider = new StateProvider(noPruningStore, codeDb, getApi.LogManager)
+                    TrieStoreByPath noPruningStorageStore = new(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.EveryBlock, getApi.LogManager);
+                    IStateProvider diagStateProvider = new StateProvider(noPruningStore, noPruningStorageStore, codeDb, getApi.LogManager)
                     {
                         StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
                     };
@@ -185,7 +192,6 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-            ITrieStore storageTrieStore = new TrieStoreByPath(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), _api.LogManager);
             IStorageProvider storageProvider = setApi.StorageProvider = new StorageProvider(
                 //trieStore,
                 storageTrieStore,

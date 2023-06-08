@@ -103,6 +103,7 @@ namespace Nethermind.AccountAbstraction.Test
                     DbProvider,
                     BlockTree,
                     ReadOnlyTrieStore,
+                    ReadOnlyStorageTrieStore,
                     SpecProvider,
                     BlockValidator,
                     NoBlockRewards.Instance,
@@ -214,7 +215,7 @@ namespace Nethermind.AccountAbstraction.Test
                     UserOperationSimulator[entryPoint] = new(
                         UserOperationTxBuilder[entryPoint],
                         ReadOnlyState,
-                        new ReadOnlyTxProcessingEnvFactory(DbProvider, ReadOnlyTrieStore, BlockTree, SpecProvider, LogManager),
+                        new ReadOnlyTxProcessingEnvFactory(DbProvider, ReadOnlyTrieStore, ReadOnlyStorageTrieStore, BlockTree, SpecProvider, LogManager),
                         EntryPointContractAbi,
                         entryPoint!,
                         WhitelistedPayamsters,

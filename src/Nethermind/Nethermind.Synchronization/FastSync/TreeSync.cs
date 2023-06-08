@@ -81,7 +81,7 @@ namespace Nethermind.Synchronization.FastSync
         private long _blockNumber;
         private SyncMode _syncMode;
 
-        public TreeSync(SyncMode syncMode, IDb codeDb, IColumnsDb<StateColumns> stateDb, IBlockTree blockTree, ILogManager logManager)
+        public TreeSync(SyncMode syncMode, IDb codeDb, IColumnsDb<StateColumns> stateDb, IBlockTree blockTree, TrieNodeResolverCapability resolverCapability, ILogManager logManager)
         {
             _syncMode = syncMode;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -95,9 +95,16 @@ namespace Nethermind.Synchronization.FastSync
             _pendingItems = new PendingSyncItems();
             _branchProgress = new BranchProgress(0, _logger);
 
-            _stateStore = new TrieStoreByPath(stateDb, Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0);
-            _storageStore = new TrieStoreByPath(stateDb.GetColumnDb(StateColumns.Storage), Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0);
-            //_stateStore = new TrieStore(stateDb, logManager);
+            if (resolverCapability == TrieNodeResolverCapability.Hash)
+            {
+                _storageStore = _stateStore = new TrieStore(stateDb, logManager);
+            }
+            else if (resolverCapability == TrieNodeResolverCapability.Path)
+            {
+                _stateStore = new TrieStoreByPath(stateDb, Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0);
+                _storageStore = new TrieStoreByPath(stateDb.GetColumnDb(StateColumns.Storage), Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0);
+            }
+
             _additionalLeafNibbles = new ConcurrentDictionary<Keccak, List<byte>>();
         }
 

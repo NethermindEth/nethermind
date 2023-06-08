@@ -787,10 +787,11 @@ public class TrieByPathWithPrefixTest
 
         Queue<Keccak> rootQueue = new();
 
-        MemDb memDb = new();
+        MemColumnsDb<StateColumns> memDb = new();
 
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager, 200);
-        StateTreeByPath patriciaTree = new(trieStore, _logManager);
+        using TrieStoreByPath strageTrieStore = new(memDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager, 200);
+        StateTreeByPath patriciaTree = new(trieStore, strageTrieStore, _logManager);
 
         byte[][] accounts = new byte[accountsCount][];
         byte[][] randomValues = new byte[uniqueValuesCount][];

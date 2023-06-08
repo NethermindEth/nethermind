@@ -36,6 +36,7 @@ namespace Nethermind.Init.Steps
             _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(_api.DbProvider!,
                 _api.BlockTree!,
                 _api.ReadOnlyTrieStore!,
+                _api.ReadOnlyStorageTrieStore!,
                 _api.SpecProvider!,
                 _api.BlockValidator!,
                 _api.RewardCalculatorSource!,

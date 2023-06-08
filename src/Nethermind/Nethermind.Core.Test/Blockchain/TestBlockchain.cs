@@ -67,8 +67,9 @@ public class TestBlockchain : IDisposable
     public IJsonSerializer JsonSerializer { get; set; } = null!;
     public IStateProvider State { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
-    public IDb StateDb => DbProvider.StateDb;
+    public IColumnsDb<StateColumns> StateDb => DbProvider.StateDb;
     public ITrieStore TrieStore { get; set; } = null!;
+    public ITrieStore StorageTrieStore { get; set; } = null!;
     public IBlockProducer BlockProducer { get; private set; } = null!;
     public IDbProvider DbProvider { get; set; } = null!;
     public ISpecProvider SpecProvider { get; set; } = null!;
@@ -101,6 +102,7 @@ public class TestBlockchain : IDisposable
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
     public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; } = null!;
+    public IReadOnlyTrieStore ReadOnlyStorageTrieStore { get; private set; } = null!;
     public ManualTimestamper Timestamper { get; protected set; } = null!;
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
@@ -115,7 +117,8 @@ public class TestBlockchain : IDisposable
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
         DbProvider = await CreateDbProvider();
         TrieStore = new TrieStoreByPath(StateDb, Trie.Pruning.No.Pruning, Persist.EveryBlock, LogManager, 0);
-        State = new StateProvider(TrieStore, DbProvider.CodeDb, LogManager);
+        StorageTrieStore = new TrieStoreByPath(StateDb.GetColumnDb(StateColumns.Storage), Trie.Pruning.No.Pruning, Persist.EveryBlock, LogManager, 0);
+        State = new StateProvider(TrieStore, StorageTrieStore, DbProvider.CodeDb, LogManager);
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
@@ -125,7 +128,7 @@ public class TestBlockchain : IDisposable
         State.UpdateCode(code);
         State.UpdateCodeHash(TestItem.AddressA, codeHash, SpecProvider.GenesisSpec);
 
-        Storage = new StorageProvider(TrieStore, State, LogManager);
+        Storage = new StorageProvider(StorageTrieStore, State, LogManager);
         Storage.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
         Storage.Commit();
 
@@ -133,7 +136,8 @@ public class TestBlockchain : IDisposable
         State.CommitTree(0);
 
         ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
-        StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
+        ReadOnlyStorageTrieStore = StorageTrieStore.AsReadOnly();
+        StateReader = new StateReader(ReadOnlyTrieStore, ReadOnlyStorageTrieStore, CodeDb, LogManager);
 
         IDb blockDb = new MemDb();
         IDb headerDb = new MemDb();
@@ -239,6 +243,7 @@ public class TestBlockchain : IDisposable
             DbProvider,
             BlockTree,
             ReadOnlyTrieStore,
+            ReadOnlyStorageTrieStore,
             SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,

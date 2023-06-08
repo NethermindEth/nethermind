@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     new(Blockchain.EthereumEcdsa, Blockchain.SpecProvider);
                 IReceiptFinder receiptFinder = new FullInfoReceiptFinder(Blockchain.ReceiptStorage, receiptsRecovery, Blockchain.BlockFinder);
                 ReadOnlyTxProcessingEnv txProcessingEnv =
-                    new(dbProvider, Blockchain.ReadOnlyTrieStore, Blockchain.BlockTree.AsReadOnly(), Blockchain.SpecProvider, Blockchain.LogManager);
+                    new(dbProvider, Blockchain.ReadOnlyTrieStore, Blockchain.ReadOnlyStorageTrieStore, Blockchain.BlockTree.AsReadOnly(), Blockchain.SpecProvider, Blockchain.LogManager);
                 RewardCalculator rewardCalculatorSource = new(Blockchain.SpecProvider);
 
                 IRewardCalculator rewardCalculator = rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor);

@@ -108,6 +108,8 @@ namespace Nethermind.Consensus.Processing
                     (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
                     processedBlocks[i] = processedBlock;
 
+                    BlockTraceDumper.LogDiagnosticTrace(blockTracer, suggestedBlocks[i].Hash, _logger);
+
                     // be cautious here as AuRa depends on processing
                     PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
                     if (notReadOnly)

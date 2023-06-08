@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
@@ -20,22 +21,22 @@ public static class TrieNodeResolverCapabilityStateExtension
         };
     }
 
-    public static IStateTree CreateStateStore(this TrieNodeResolverCapability capability, ITrieStore? store, ILogManager? logManager)
+    public static IStateTree CreateStateStore(this TrieNodeResolverCapability capability, ITrieStore? store, ITrieStore? storageStore, ILogManager? logManager)
     {
         return capability switch
         {
             TrieNodeResolverCapability.Hash => new StateTree(store, logManager),
-            TrieNodeResolverCapability.Path => new StateTreeByPath(store, logManager),
+            TrieNodeResolverCapability.Path => new StateTreeByPath(store, storageStore, logManager),
             _ => throw new ArgumentOutOfRangeException(nameof(capability), capability, null)
         };
     }
 
-    public static IStateTree CreateStateStore(this TrieNodeResolverCapability capability,  IKeyValueStoreWithBatching? db, ILogManager? logManager)
+    public static IStateTree CreateStateStore(this TrieNodeResolverCapability capability,  IColumnsDb<StateColumns>? db, ILogManager? logManager)
     {
         return capability switch
         {
             TrieNodeResolverCapability.Hash => new StateTree(capability.CreateTrieStore(db, logManager), logManager),
-            TrieNodeResolverCapability.Path => new StateTreeByPath(capability.CreateTrieStore(db, logManager), logManager),
+            TrieNodeResolverCapability.Path => new StateTreeByPath(capability.CreateTrieStore(db, logManager), capability.CreateTrieStore(db.GetColumnDb(StateColumns.Storage), logManager), logManager),
             _ => throw new ArgumentOutOfRangeException(nameof(capability), capability, null)
         };
     }

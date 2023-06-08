@@ -19,11 +19,11 @@ namespace Nethermind.State
         private readonly ILogger _logger;
         private readonly IStateTree _state;
 
-        public StateReader(ITrieStore? trieStore, IDb? codeDb, ILogManager? logManager)
+        public StateReader(ITrieStore? trieStore, ITrieStore? storageTrieStore, IDb? codeDb, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _state = trieStore.Capability == TrieNodeResolverCapability.Path ? new StateTreeByPath(trieStore, logManager) : new StateTree(trieStore, logManager);
+            _state = trieStore.Capability == TrieNodeResolverCapability.Path ? new StateTreeByPath(trieStore, storageTrieStore, logManager) : new StateTree(trieStore, logManager);
         }
 
         public Account? GetAccount(Keccak stateRoot, Address address)

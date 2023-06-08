@@ -57,10 +57,11 @@ public class GenesisLoaderTests
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, chainspecPath);
         ChainSpec chainSpec = LoadChainSpec(path);
-        IDb stateDb = new MemDb();
+        MemColumnsDb<StateColumns> stateDb = new();
         IDb codeDb = new MemDb();
         TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
-        IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+        TrieStoreByPath storageTrieStore = new(stateDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance);
+        IStateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, codeDb, LimboLogs.Instance);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Berlin.Instance);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);

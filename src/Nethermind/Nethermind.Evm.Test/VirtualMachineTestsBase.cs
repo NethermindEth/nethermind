@@ -63,10 +63,11 @@ namespace Nethermind.Evm.Test
             ILogManager logManager = GetLogManager();
 
             IDb codeDb = new MemDb();
-            _stateDb = new MemDb();
+            _stateDb = new MemColumnsDb<StateColumns>();
             ITrieStore trieStore = new TrieStoreByPath(_stateDb, logManager);
-            TestState = new StateProvider(trieStore, codeDb, logManager);
-            TestStateReader = new StateReader(trieStore, codeDb, logManager);
+            ITrieStore storageTrieStore = new TrieStoreByPath(_stateDb, logManager);
+            TestState = new StateProvider(trieStore, storageTrieStore, codeDb, logManager);
+            TestStateReader = new StateReader(trieStore, storageTrieStore, codeDb, logManager);
             Storage = new StorageProvider(trieStore, TestState, logManager);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;

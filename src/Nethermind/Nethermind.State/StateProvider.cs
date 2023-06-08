@@ -39,12 +39,12 @@ namespace Nethermind.State
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = Resettable.EmptyPosition;
 
-        public StateProvider(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+        public StateProvider(ITrieStore? trieStore, ITrieStore? storageTrieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             Debug.Assert(trieStore is not null);
-            _tree = trieStore.Capability == TrieNodeResolverCapability.Path ? new StateTreeByPath(trieStore, logManager) : new StateTree(trieStore, logManager);
+            _tree = trieStore.Capability == TrieNodeResolverCapability.Path ? new StateTreeByPath(trieStore, storageTrieStore, logManager) : new StateTree(trieStore, logManager);
         }
 
         public void Accept(ITreeVisitor? visitor, Keccak? stateRoot, VisitingOptions? visitingOptions = null)

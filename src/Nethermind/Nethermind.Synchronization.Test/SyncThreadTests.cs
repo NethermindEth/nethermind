@@ -257,12 +257,13 @@ namespace Nethermind.Synchronization.Test
             IDb headerDb = dbProvider.HeadersDb;
             IDb blockInfoDb = dbProvider.BlockInfosDb;
             IDb codeDb = dbProvider.CodeDb;
-            IDb stateDb = dbProvider.StateDb;
+            MemColumnsDb<StateColumns> stateDb = new();
 
             TrieStoreByPath trieStoreByPath = new(stateDb, LimboLogs.Instance);
+            TrieStoreByPath storageTrieStore = new(stateDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance);
 
-            StateReader stateReader = new(trieStoreByPath, codeDb, logManager);
-            StateProvider stateProvider = new(trieStoreByPath, codeDb, logManager);
+            StateReader stateReader = new(trieStoreByPath, storageTrieStore, codeDb, logManager);
+            StateProvider stateProvider = new(trieStoreByPath, storageTrieStore, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
@@ -316,8 +317,8 @@ namespace Nethermind.Synchronization.Test
             NodeStatsManager nodeStatsManager = new(timerFactory, logManager);
             SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), logManager, 25);
 
-            StateProvider devState = new(trieStoreByPath, codeDb, logManager);
-            StorageProvider devStorage = new(trieStoreByPath, devState, logManager);
+            StateProvider devState = new(trieStoreByPath, storageTrieStore, codeDb, logManager);
+            StorageProvider devStorage = new(storageTrieStore, devState, logManager);
             VirtualMachine devEvm = new(blockhashProvider, specProvider, logManager);
             TransactionProcessor devTxProcessor = new(specProvider, devState, devStorage, devEvm, logManager);
 

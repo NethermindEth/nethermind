@@ -124,6 +124,7 @@ namespace Nethermind.AccountAbstraction
             ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(
                 getFromApi.DbProvider,
                 getFromApi.ReadOnlyTrieStore,
+                getFromApi.ReadOnlyStorageTrieStore,
                 getFromApi.BlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);

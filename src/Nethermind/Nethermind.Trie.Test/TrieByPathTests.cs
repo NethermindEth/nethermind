@@ -719,10 +719,11 @@ public class TrieByPathTests
 
         Queue<Keccak> rootQueue = new();
 
-        MemDb memDb = new();
+        MemColumnsDb<StateColumns> memDb = new();
 
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager);
-        StateTreeByPath patriciaTree = new(trieStore, _logManager);
+        using TrieStoreByPath storageTrieStore = new(memDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager);
+        StateTreeByPath patriciaTree = new(trieStore, storageTrieStore, _logManager);
 
         byte[][] accounts = new byte[accountsCount][];
         byte[][] randomValues = new byte[uniqueValuesCount][];
@@ -991,10 +992,11 @@ public class TrieByPathTests
 
         Queue<Keccak> rootQueue = new();
 
-        MemDb memDb = new();
+        MemColumnsDb<StateColumns> memDb = new();
 
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        StateProvider stateProvider = new StateProvider(trieStore, new MemDb(), _logManager);
+        using TrieStoreByPath storageTrieStore = new(memDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager);
+        StateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, new MemDb(), _logManager);
         StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
 
         Account[] accounts = new Account[accountsCount];

@@ -23,6 +23,7 @@ namespace Nethermind.Synchronization.SnapSync
     {
         private readonly ObjectPool<ITrieStore> _trieStorePool;
         private readonly ObjectPool<ITrieStore> _pathBasedTrieStorePool;
+        private readonly ObjectPool<ITrieStore> _pathBasedTrieStoreStoragePool;
         private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
@@ -35,6 +36,7 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
             _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(_dbProvider.StateDb, logManager));
             _pathBasedTrieStorePool = new DefaultObjectPool<ITrieStore>(new PathBasedTrieStorePoolPolicy(_dbProvider.StateDb, logManager));
+            _pathBasedTrieStoreStoragePool = new DefaultObjectPool<ITrieStore>(new PathBasedTrieStorePoolPolicy(_dbProvider.StateDb.GetColumnDb(StateColumns.Storage), logManager));
 
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
@@ -72,9 +74,10 @@ namespace Nethermind.Synchronization.SnapSync
         public AddRangeResult AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null, Keccak hashLimit = null!)
         {
             ITrieStore store = _pathBasedTrieStorePool.Get();
+            ITrieStore storageStore = _pathBasedTrieStoreStoragePool.Get();
             try
             {
-                StateTreeByPath tree = new StateTreeByPath(store, _logManager);
+                StateTreeByPath tree = new StateTreeByPath(store, storageStore, _logManager);
 
                 if (hashLimit == null) hashLimit = Keccak.MaxValue;
 
@@ -164,7 +167,7 @@ namespace Nethermind.Synchronization.SnapSync
             if (pathWithAccount is null)
                 throw new TrieException("Not Allowed");
             Debug.Assert(pathWithAccount is not null, "path based storage need the account for the storage tree");
-            ITrieStore store = _pathBasedTrieStorePool.Get();
+            ITrieStore store = _pathBasedTrieStoreStoragePool.Get();
             StorageTree tree = new(store, _logManager, pathWithAccount.Path);
             try
             {

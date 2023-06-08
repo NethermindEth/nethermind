@@ -97,6 +97,7 @@ namespace Nethermind.Consensus.Clique
             ReadOnlyTxProcessingEnv producerEnv = new(
                 readOnlyDbProvider,
                 getFromApi.ReadOnlyTrieStore,
+                getFromApi.ReadOnlyStorageTrieStore,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
