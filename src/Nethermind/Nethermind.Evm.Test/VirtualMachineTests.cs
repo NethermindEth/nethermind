@@ -442,7 +442,7 @@ namespace Nethermind.Evm.Test
                 .MCOPY(6, 0, 6)
                 .STOP()
                 .Done;
-            GethLikeTxTrace traces = Execute(new GethLikeTxTracer(GethTraceOptions.Default), code).BuildResult();
+            GethLikeTxTrace traces = Execute(new GethLikeTxTracer(GethTraceOptions.Default), code, MainnetSpecProvider.CancunActivation).BuildResult();
 
             Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow * ((data.Length + 31) / 32) + GasCostOf.Memory * 0), "gas");
         }
@@ -456,8 +456,7 @@ namespace Nethermind.Evm.Test
                 .MCOPY(32, 0, 32)
                 .STOP()
                 .Done;
-            GethLikeTxTracer tracer = Execute(new GethLikeTxTracer(GethTraceOptions.Default), bytecode);
-            var traces = tracer.BuildResult();
+            GethLikeTxTrace traces = Execute(new GethLikeTxTracer(GethTraceOptions.Default), bytecode, MainnetSpecProvider.CancunActivation).BuildResult();
 
             var copied = traces.Entries.Last().Memory[0];
             var origin = traces.Entries.Last().Memory[1];
@@ -477,8 +476,7 @@ namespace Nethermind.Evm.Test
                 .MCOPY(1, 0, (UInt256)SLICE_SIZE)
                 .STOP()
                 .Done;
-            GethLikeTxTracer tracer = Execute(new GethLikeTxTracer(GethTraceOptions.Default), bytecode);
-            var traces = tracer.BuildResult();
+            GethLikeTxTrace traces = Execute(new GethLikeTxTracer(GethTraceOptions.Default), bytecode, MainnetSpecProvider.CancunActivation).BuildResult();
 
             var result = traces.Entries.Last().Memory[0];
 
@@ -489,18 +487,16 @@ namespace Nethermind.Evm.Test
         [Test]
         public void MCopy_twice_same_location()
         {
-            TestAllTracerWithOutput receipt = Execute(
-                (byte)Instruction.PUSH1,
-                96,
-                (byte)Instruction.PUSH1,
-                64,
-                (byte)Instruction.MSTORE,
-                (byte)Instruction.PUSH1,
-                96,
-                (byte)Instruction.PUSH1,
-                64,
-                (byte)Instruction.MSTORE);
-            Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 6 + GasCostOf.Memory * 3), "gas");
+            byte[] data = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+            byte[] bytecode = Prepare.EvmCode
+                .MSTORE(0, data)
+                .MCOPY(0, 0, 32)
+                .STOP()
+                .Done;
+            GethLikeTxTrace traces = Execute(new GethLikeTxTracer(GethTraceOptions.Default), bytecode, MainnetSpecProvider.CancunActivation).BuildResult();
+
+            Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow * ((data.Length + 31) / 32)), "gas");
+            Assert.That(traces.Entries.Last().Memory.Count, Is.EqualTo(1));
         }
 
         /// <summary>
