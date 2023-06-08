@@ -34,6 +34,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
+using Nethermind.Synchronization.Trie;
 using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -115,7 +116,7 @@ namespace Nethermind.Init.Steps
                     persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
                 }
 
-                setApi.TrieStore = trieStore = new TrieStore(
+                setApi.TrieStore = trieStore = new HealingTrieStore(
                     stateWitnessedBy,
                     Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
                     persistenceStrategy,

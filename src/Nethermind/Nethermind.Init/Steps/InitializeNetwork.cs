@@ -39,6 +39,8 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Synchronization.StateSync;
+using Nethermind.Synchronization.Trie;
 
 namespace Nethermind.Init.Steps;
 
@@ -123,6 +125,11 @@ public class InitializeNetwork : IStep
         _api.SyncPeerPool = apiSyncPeerPool;
         _api.PeerDifficultyRefreshPool = apiSyncPeerPool;
         _api.DisposeStack.Push(_api.SyncPeerPool);
+
+        if (_api.TrieStore is HealingTrieStore healingTrieStore)
+        {
+            healingTrieStore.InitializeNetwork(apiSyncPeerPool, new TrieHealingAllocationStrategyFactory(), _api.ChainHeadStateProvider!);
+        }
 
         IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
         foreach (ISynchronizationPlugin plugin in synchronizationPlugins)

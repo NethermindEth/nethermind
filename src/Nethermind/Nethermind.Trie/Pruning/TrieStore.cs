@@ -330,7 +330,7 @@ namespace Nethermind.Trie.Pruning
             return rlp;
         }
 
-        public byte[] LoadRlp(Keccak keccak, ReadFlags readFlags = ReadFlags.None) => LoadRlp(keccak, null, readFlags);
+        public virtual byte[] LoadRlp(Keccak keccak, ReadFlags readFlags = ReadFlags.None) => LoadRlp(keccak, null, readFlags);
 
         public bool IsPersisted(Keccak keccak)
         {
@@ -562,7 +562,7 @@ namespace Nethermind.Trie.Pruning
 
         #region Private
 
-        private readonly IKeyValueStoreWithBatching _keyValueStore;
+        protected readonly IKeyValueStoreWithBatching _keyValueStore;
 
         private readonly IPruningStrategy _pruningStrategy;
 
