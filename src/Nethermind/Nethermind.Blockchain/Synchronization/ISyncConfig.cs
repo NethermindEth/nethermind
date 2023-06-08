@@ -107,6 +107,9 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "[EXPERIMENTAL] Optimize db for write during sync. Significantly reduce total writes written and some sync time if you are not network limited.", DefaultValue = "Default")]
         public ITunableDb.TuneType TuneDbMode { get; set; }
 
+        [ConfigItem(Description = "[EXPERIMENTAL] Optimize db for write during sync just for blocks db. Useful for turning on blobs file.", DefaultValue = "EnableBlobFiles")]
+        ITunableDb.TuneType BlocksDbTuneDbMode { get; set; }
+
         [ConfigItem(Description = "[TECHNICAL] Specify max num of thread used for processing. Default is same as logical core count.", DefaultValue = "0")]
         public int MaxProcessingThreads { get; set; }
     }
