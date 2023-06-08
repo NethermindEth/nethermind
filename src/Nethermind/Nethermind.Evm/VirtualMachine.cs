@@ -1781,7 +1781,7 @@ public class VirtualMachine : IVirtualMachine
                         stack.PopUInt256(out UInt256 srcPosition);
                         stack.PopUInt256(out UInt256 length);
 
-                        long baseGasCost = GasCostOf.VeryLow * ((long)length + 31) / 32;
+                        long baseGasCost = GasCostOf.VeryLow * (((long)length + 31) / 32);
                         if (!UpdateGas(baseGasCost, ref gasAvailable)) goto OutOfGas;
 
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in srcPosition, length)) goto OutOfGas;
