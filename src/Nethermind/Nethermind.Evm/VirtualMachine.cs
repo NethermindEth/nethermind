@@ -1777,6 +1777,13 @@ public class VirtualMachine : IVirtualMachine
                     }
                 case Instruction.MCOPY:
                     {
+                        if(!spec.MCopyIncluded)
+                        {
+                            goto InvalidInstruction;
+                        }
+
+                        Metrics.MCopyOpcode++;
+
                         stack.PopUInt256(out UInt256 dstPosition);
                         stack.PopUInt256(out UInt256 srcPosition);
                         stack.PopUInt256(out UInt256 length);
