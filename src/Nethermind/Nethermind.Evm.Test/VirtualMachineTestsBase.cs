@@ -118,12 +118,12 @@ namespace Nethermind.Evm.Test
         protected (Block block, Transaction transaction) PrepareTx(
             long blockNumber,
             long gasLimit,
-            byte[] code = null,
-            SenderRecipientAndMiner senderRecipientAndMiner = null,
+            byte[]? code = null,
+            SenderRecipientAndMiner? senderRecipientAndMiner = null,
             int value = 1,
             long blockGasLimit = DefaultBlockGasLimit,
             ulong timestamp = 0,
-            byte[][] blobVersionedHashes = null)
+            byte[][]? blobVersionedHashes = null)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
 
