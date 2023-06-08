@@ -224,7 +224,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                         try
                         {
-                            TrieNode node = new (NodeType.Unknown, nodeData, isDirty: true);
+                            TrieNode node = new(NodeType.Unknown, nodeData, isDirty: true);
                             node.ResolveNode(store);
                             node.ResolveKey(store, true);
 
