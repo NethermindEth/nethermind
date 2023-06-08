@@ -103,7 +103,7 @@ public interface IJsonRpcConfig : IConfig
                       nameof(IEthRpcModule.eth_newBlockFilter) + ", " +
                       nameof(IEthRpcModule.eth_newPendingTransactionFilter) + ", " +
                       nameof(IEthRpcModule.eth_uninstallFilter) + ", " +
-                      nameof(IEthRpcModule.eth_call) + "). " +
+                      nameof(IEthRpcModule.eth_multicall) + "). " +
                       "This will limit load on the node CPU and IO to reasonable levels. " +
                       "If this limit is exceeded on Http calls 503 Service Unavailable will be returned along with Json RPC error. " +
                       "Defaults to number of logical processes.")]

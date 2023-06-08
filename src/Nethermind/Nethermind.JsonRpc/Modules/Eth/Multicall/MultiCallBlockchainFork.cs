@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Transactions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -25,7 +24,6 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -36,13 +34,11 @@ using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.JsonRpc.Modules.Eth.Multicall;
 
@@ -314,26 +310,21 @@ public class MultiCallBlockchainFork : IDisposable
         }
         else
         {
-
             if (desiredBlock.Number < LatestBlock.Number)
             {
-                var parentBlock = BlockFinder.FindBlock((long)(desiredBlock.Number - 1));
+                Block? parentBlock = BlockFinder.FindBlock((long)(desiredBlock.Number - 1));
                 if (parentBlock != null)
                 {
-                    BlockTree.UpdateMainChain(new List<Block>() { parentBlock }, true, true);
+                    BlockTree.UpdateMainChain(new List<Block> { parentBlock }, true, true);
                     BlockTree.UpdateHeadBlock(parentBlock.Hash);
                     parent = parentBlock.Header;
                     StateProvider.StateRoot = parent.StateRoot;
                 }
                 else
-                {
                     throw new ArgumentException("could not find parent block and load the state");
-                }
             }
             else
-            {
                 parent = LatestBlock?.Header;
-            }
 
 
             ulong time = 0;
@@ -368,8 +359,10 @@ public class MultiCallBlockchainFork : IDisposable
         }
 
         if (_maxGas <= long.MaxValue)
+        {
             blockHeader.GasLimit =
                 (long)Math.Min((ulong)blockHeader.GasLimit, _maxGas.ToUInt64(CultureInfo.InvariantCulture));
+        }
         else
             _maxGas -= new UInt256((ulong)blockHeader.GasLimit);
 
@@ -398,8 +391,8 @@ public class MultiCallBlockchainFork : IDisposable
         currentBlock.Header.Hash = currentBlock.Header.CalculateHash();
 
 
-        var blocks = BlockProcessor.Process(StateProvider.StateRoot,
-            new List<Block>() { currentBlock },
+        Block[]? blocks = BlockProcessor.Process(StateProvider.StateRoot,
+            new List<Block> { currentBlock },
             ProcessingOptions.ForceProcessing |
             ProcessingOptions.NoValidation |
             ProcessingOptions.DoNotVerifyNonce |
@@ -408,8 +401,8 @@ public class MultiCallBlockchainFork : IDisposable
             ProcessingOptions.StoreReceipts
             ,
             BlockTracer);
-        var block = blocks.First();
-        var res = BlockTree.SuggestBlock(block,
+        Block? block = blocks.First();
+        AddBlockResult res = BlockTree.SuggestBlock(block,
             BlockTreeSuggestOptions.ForceSetAsMain | BlockTreeSuggestOptions.ForceDontValidateParent);
 
         BlockTree.UpdateMainChain(blocks, true, true);

@@ -30,7 +30,7 @@ public class MultiCallBlockTracer : IBlockTracer
     {
         if (Trace && tx != null && tx.Hash != null)
         {
-            List<LogEntry>? actionsLog = new List<LogEntry>();
+            List<LogEntry>? actionsLog = new();
             TxActions[tx.Hash] = actionsLog;
             return new MultiCallTxTracer(tx, actionsLog);
         }

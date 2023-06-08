@@ -118,13 +118,22 @@ public partial class EthRpcModule
             MultiCallBlockStateCallsModel[] blockCallsToProcess,
             BlockParameter? blockParameter, bool traceTransfers)
         {
-            IEnumerable<UInt256>? selsectResults = blockCallsToProcess.Select(model => model.BlockOverride.Number);
             //Was not able to overcome all of the protections related to setting of new block as BlockTree head so will keep it fair for now
 
             List<MultiCallBlockResult> results = new();
             using (MultiCallBlockchainFork tmpChain = new(_dbProvider, _specProvider, MaxGas))
             {
-                List<MultiCallBlockStateCallsModel> blockCalls = blockCallsToProcess.OrderBy(model => model.BlockOverride.Number).ToList();
+                IEnumerable<UInt256>? selsectResults = blockCallsToProcess.Select(model =>
+                    model.BlockOverride != null
+                        ? model.BlockOverride.Number
+                        : (ulong)tmpChain.LatestBlock.Header.Number + 1);
+
+                List<MultiCallBlockStateCallsModel> blockCalls = blockCallsToProcess
+                    .OrderBy(model =>
+                        model.BlockOverride != null
+                            ? model.BlockOverride.Number
+                            : (ulong)tmpChain.LatestBlock.Header.Number + 1)
+                    .ToList();
 
                 tmpChain.BlockTracer.Trace = traceTransfers;
                 ulong logIndices = 0;
@@ -138,12 +147,12 @@ public partial class EthRpcModule
                     catch (Exception ex)
                     {
                         return ResultWrapper<MultiCallBlockResult[]>.Fail(
-                            $"At block {blockCall.BlockOverride.Number} got exception: {ex.Message}");
+                            $"At block {(blockCall.BlockOverride != null ? blockCall.BlockOverride.Number : (ulong)tmpChain.LatestBlock.Header.Number + 1)} got exception: {ex.Message}\n{ex.StackTrace}");
                     }
 
                     if (selsectResults.Contains(blockCall.BlockOverride.Number))
                     {
-                        List<MultiCallCallResult>? txResults = new List<MultiCallCallResult>();
+                        List<MultiCallCallResult>? txResults = new();
                         foreach (Transaction? tx in tmpChain.LatestBlock.Transactions)
                         {
                             TxReceipt Receipt = null;
@@ -201,7 +210,6 @@ public partial class EthRpcModule
 
             return ResultWrapper<MultiCallBlockResult[]>.Success(results.ToArray());
         }
-
     }
 
     private class EstimateGasTxExecutor : TxExecutor<UInt256?>
@@ -242,8 +250,10 @@ public partial class EthRpcModule
             BlockchainBridge.CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, _optimize);
 
             if (result.Error is null)
+            {
                 return ResultWrapper<AccessListForRpc>.Success(new AccessListForRpc(GetResultAccessList(tx, result),
                     GetResultGas(tx, result)));
+            }
 
             return result.InputError
                 ? GetInputError(result)

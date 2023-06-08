@@ -149,7 +149,7 @@ internal class MultiCallTxTracer : ITxTracer
     {
         byte[]? data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed,
             new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256), from, to, value);
-        LogEntry? result = new LogEntry(Address.Zero, data, new[] { Keccak.Zero });
+        LogEntry? result = new(Address.Zero, data, new[] { Keccak.Zero });
         _extendedLogs.Add(result);
     }
 
