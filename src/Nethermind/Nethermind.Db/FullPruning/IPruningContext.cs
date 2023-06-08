@@ -10,7 +10,7 @@ namespace Nethermind.Db.FullPruning
     /// <summary>
     /// Context of Full pruning.
     /// </summary>
-    public interface IPruningContext : IKeyValueStore, IDisposable
+    public interface IPruningContext : IKeccakValueStore, IDisposable
     {
         /// <summary>
         /// Commits pruning, marking the end of cloning state to new DB.

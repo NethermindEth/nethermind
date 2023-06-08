@@ -143,11 +143,11 @@ namespace Nethermind.Network
             }
         }
 
-        private IBatch? _currentBatch;
+        private ISpanKeyBatch? _currentBatch;
 
         public void StartBatch()
         {
-            _currentBatch = _fullDb.StartBatch();
+            _currentBatch = _fullDb.StartLargeKeyBatch();
             _updateCounter = 0;
             _removeCounter = 0;
         }

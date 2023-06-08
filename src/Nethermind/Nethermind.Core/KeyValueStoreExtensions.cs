@@ -16,5 +16,15 @@ namespace Nethermind.Core
         {
             return new FakeBatch(keyValueStore, onDispose);
         }
+
+        public static ISpanKeyBatch LikeASpanKeyBatch(this IKeyValueStoreWithBatching keyValueStore)
+        {
+            return LikeASpanKeyBatch(keyValueStore, null);
+        }
+
+        public static ISpanKeyBatch LikeASpanKeyBatch(this IKeyValueStoreWithBatching keyValueStore, Action? onDispose)
+        {
+            return new FakeBatch(keyValueStore, onDispose);
+        }
     }
 }

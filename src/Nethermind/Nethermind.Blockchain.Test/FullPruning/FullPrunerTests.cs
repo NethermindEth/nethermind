@@ -134,29 +134,29 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             TestContext test = CreateTest();
             test.WaitForPruningStart();
-            byte[] key = { 1, 2, 3 };
-            test.FullPruningDb[key] = key;
+            ValueKeccak key = ValueKeccak.OfAnEmptyString;
+            test.FullPruningDb[key] = key.ToByteArray();
             test.FullPruningDb.Context.WaitForFinish.Set();
             await test.FullPruningDb.Context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime), CancellationToken.None);
 
-            test.FullPruningDb[key].Should().BeEquivalentTo(key);
+            test.FullPruningDb[key].Should().BeEquivalentTo(key.ToByteArray());
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public async Task should_duplicate_writes_to_batches_while_pruning()
         {
             TestContext test = CreateTest();
-            byte[] key = { 0, 1, 2 };
+            ValueKeccak key = ValueKeccak.OfAnEmptyString;
             TestFullPruningDb.TestPruningContext context = test.WaitForPruningStart();
 
             using (IBatch batch = test.FullPruningDb.StartBatch())
             {
-                batch[key] = key;
+                batch[key] = key.ToByteArray();
             }
 
             await test.WaitForPruningEnd(context);
 
-            test.FullPruningDb[key].Should().BeEquivalentTo(key);
+            test.FullPruningDb[key].Should().BeEquivalentTo(key.ToByteArray());
         }
 
         private TestContext CreateTest(bool successfulPruning = true, bool clearPrunedDb = false, FullPruningCompletionBehavior completionBehavior = FullPruningCompletionBehavior.None) =>
@@ -312,18 +312,18 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     CancellationTokenSource.Dispose();
                 }
 
-                public byte[]? this[ReadOnlySpan<byte> key]
+                public byte[]? this[in ValueKeccak key]
                 {
                     get => _context[key];
                     set => _context[key] = value;
                 }
 
-                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                public void Set(in ValueKeccak key, byte[]? value, WriteFlags flags = WriteFlags.None)
                 {
                     _context.Set(key, value, flags);
                 }
 
-                public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+                public byte[]? Get(in ValueKeccak key, ReadFlags flags = ReadFlags.None)
                 {
                     return _context.Get(key, flags);
                 }

@@ -284,7 +284,7 @@ namespace Nethermind.Synchronization.SnapSync
                     if (set.Remove(codeHash))
                     {
                         Interlocked.Add(ref Metrics.SnapStateSynced, code.Length);
-                        writeBatch[codeHash.Bytes] = code;
+                        writeBatch[codeHash] = code;
                     }
                 }
             }

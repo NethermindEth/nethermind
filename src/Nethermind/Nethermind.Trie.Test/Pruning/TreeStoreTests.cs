@@ -418,26 +418,26 @@ namespace Nethermind.Trie.Test.Pruning
 
             private class BadBatch : IBatch
             {
-                private Dictionary<byte[], byte[]> _inBatched = new();
+                private Dictionary<ValueKeccak, byte[]> _inBatched = new();
 
                 public void Dispose()
                 {
                 }
 
-                public byte[]? this[ReadOnlySpan<byte> key]
+                public byte[]? this[in ValueKeccak key]
                 {
                     get => Get(key);
                     set => Set(key, value);
                 }
 
-                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                public void Set(in ValueKeccak key, byte[]? value, WriteFlags flags = WriteFlags.None)
                 {
-                    _inBatched[key.ToArray()] = value;
+                    _inBatched[key] = value;
                 }
 
-                public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+                public byte[]? Get(in ValueKeccak key, ReadFlags flags = ReadFlags.None)
                 {
-                    return _inBatched[key.ToArray()];
+                    return _inBatched[key];
                 }
             }
         }

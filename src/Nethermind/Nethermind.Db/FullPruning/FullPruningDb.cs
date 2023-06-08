@@ -6,7 +6,10 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Db.FullPruning
 {
@@ -42,13 +45,13 @@ namespace Nethermind.Db.FullPruning
 
         private IDb CreateDb(RocksDbSettings settings) => _dbFactory.CreateDb(settings);
 
-        public byte[]? this[ReadOnlySpan<byte> key]
+        public byte[]? this[in ValueKeccak key]
         {
             get => Get(key, ReadFlags.None);
             set => Set(key, value, WriteFlags.None);
         }
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        public byte[]? Get(in ValueKeccak key, ReadFlags flags = ReadFlags.None)
         {
             byte[]? value = _currentDb.Get(key, flags); // we are reading from the main DB
             if (_pruningContext?.DuplicateReads == true)
@@ -59,7 +62,7 @@ namespace Nethermind.Db.FullPruning
             return value;
         }
 
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        public void Set(in ValueKeccak key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             _currentDb.Set(key, value, flags); // we are writing to the main DB
             IDb? cloningDb = _pruningContext?.CloningDb;
@@ -67,6 +70,12 @@ namespace Nethermind.Db.FullPruning
             {
                 Duplicate(cloningDb, key, value, flags);
             }
+        }
+
+        private void Duplicate(IKeccakValueStore db, in ValueKeccak key, byte[]? value, WriteFlags flags)
+        {
+            db.Set(key, value, flags);
+            _updateDuplicateWriteMetrics?.Invoke();
         }
 
         private void Duplicate(IKeyValueStore db, ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags)
@@ -205,7 +214,7 @@ namespace Nethermind.Db.FullPruning
                 _db = db;
             }
 
-            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+            public void Set(in ValueKeccak key, byte[]? value, WriteFlags flags = WriteFlags.None)
             {
                 if (!_batches.TryDequeue(out IBatch currentBatch))
                 {
@@ -224,7 +233,7 @@ namespace Nethermind.Db.FullPruning
                 }
             }
 
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+            public byte[]? Get(in ValueKeccak key, ReadFlags flags = ReadFlags.None)
             {
                 return CloningDb.Get(key, flags);
             }
@@ -293,12 +302,12 @@ namespace Nethermind.Db.FullPruning
                 _clonedBatch.Dispose();
             }
 
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+            public byte[]? Get(in ValueKeccak key, ReadFlags flags = ReadFlags.None)
             {
                 return _batch.Get(key, flags);
             }
 
-            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+            public void Set(in ValueKeccak key, byte[]? value, WriteFlags flags = WriteFlags.None)
             {
                 _batch.Set(key, value, flags);
                 _db.Duplicate(_clonedBatch, key, value, flags);
@@ -311,6 +320,27 @@ namespace Nethermind.Db.FullPruning
             {
                 tunableDb.Tune(type);
             }
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            _currentDb.Set(key, value, flags); // we are writing to the main DB
+            IDb? cloningDb = _pruningContext?.CloningDb;
+            if (cloningDb is not null) // if pruning is in progress we are also writing to the secondary, copied DB
+            {
+                Duplicate(cloningDb, key, value, flags);
+            }
+        }
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? value = _currentDb.Get(key, flags); // we are reading from the main DB
+            if (_pruningContext?.DuplicateReads == true)
+            {
+                Duplicate(_pruningContext.CloningDb, key, value, WriteFlags.None);
+            }
+
+            return value;
         }
     }
 }

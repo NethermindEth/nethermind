@@ -5,5 +5,6 @@ using System;
 
 namespace Nethermind.Core
 {
-    public interface IBatch : IDisposable, IKeyValueStore { }
+    public interface IBatch : IDisposable, IKeccakValueStore { }
+    public interface ISpanKeyBatch : IDisposable, IKeyValueStore { }
 }

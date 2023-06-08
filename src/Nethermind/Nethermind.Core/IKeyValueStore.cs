@@ -3,9 +3,29 @@
 
 using System;
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Core
 {
-    public interface IKeyValueStore : IReadOnlyKeyValueStore
+    public interface IKeccakValueStore : IReadOnlyKeccakValueStore
+    {
+        new byte[]? this[in ValueKeccak key]
+        {
+            get => Get(key, ReadFlags.None);
+            set => Set(key, value, WriteFlags.None);
+        }
+
+        void Set(in ValueKeccak key, byte[]? value, WriteFlags flags = WriteFlags.None);
+    }
+
+    public interface IReadOnlyKeccakValueStore
+    {
+        byte[]? this[in ValueKeccak key] => Get(key, ReadFlags.None);
+
+        byte[]? Get(in ValueKeccak key, ReadFlags flags = ReadFlags.None);
+    }
+
+    public interface IKeyValueStore : IReadOnlyKeyValueStore, IKeccakValueStore
     {
         new byte[]? this[ReadOnlySpan<byte> key]
         {
@@ -14,13 +34,25 @@ namespace Nethermind.Core
         }
 
         void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None);
+
+        byte[]? IKeccakValueStore.this[in ValueKeccak key]
+        {
+            get => Get(key.Bytes, ReadFlags.None);
+            set => Set(key.Bytes, value, WriteFlags.None);
+        }
+
+        void IKeccakValueStore.Set(in ValueKeccak key, byte[]? value, WriteFlags flags) => Set(key.Bytes, value, flags);
     }
 
-    public interface IReadOnlyKeyValueStore
+    public interface IReadOnlyKeyValueStore : IReadOnlyKeccakValueStore
     {
         byte[]? this[ReadOnlySpan<byte> key] => Get(key, ReadFlags.None);
 
         byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
+
+        byte[]? IReadOnlyKeccakValueStore.this[in ValueKeccak key] => Get(key.Bytes, ReadFlags.None);
+
+        byte[]? IReadOnlyKeccakValueStore.Get(in ValueKeccak key, ReadFlags flags) => Get(key.Bytes, flags);
     }
 
     [Flags]

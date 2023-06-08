@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public interface ITrieStore : ITrieNodeResolver, IReadOnlyKeyValueStore, IDisposable
+    public interface ITrieStore : ITrieNodeResolver, IReadOnlyKeccakValueStore, IDisposable
     {
         void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
 

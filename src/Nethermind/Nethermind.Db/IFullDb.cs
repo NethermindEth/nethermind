@@ -3,6 +3,8 @@
 
 using System.Collections.Generic;
 
+using Nethermind.Core;
+
 namespace Nethermind.Db
 {
     public interface IFullDb : IDb
@@ -12,5 +14,7 @@ namespace Nethermind.Db
         ICollection<byte[]?> Values { get; }
 
         int Count { get; }
+
+        ISpanKeyBatch StartLargeKeyBatch();
     }
 }

@@ -359,14 +359,14 @@ namespace Nethermind.Blockchain.Receipts
             {
                 foreach (Transaction tx in block.Transactions)
                 {
-                    batch[tx.Hash.Bytes] = Rlp.Encode(block.Number).Bytes;
+                    batch[tx.Hash.ValueKeccak] = Rlp.Encode(block.Number).Bytes;
                 }
             }
             else
             {
                 foreach (Transaction tx in block.Transactions)
                 {
-                    batch[tx.Hash.Bytes] = block.Hash.BytesToArray();
+                    batch[tx.Hash.ValueKeccak] = block.Hash.BytesToArray();
                 }
             }
         }
@@ -376,7 +376,7 @@ namespace Nethermind.Blockchain.Receipts
             using IBatch batch = _transactionDb.StartBatch();
             foreach (Transaction tx in block.Transactions)
             {
-                batch[tx.Hash.Bytes] = null;
+                batch[tx.Hash.ValueKeccak] = null;
             }
         }
     }

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
@@ -28,7 +29,7 @@ namespace Nethermind.Db
                 _wrapped = wrapped;
             }
 
-            public byte[]? this[ReadOnlySpan<byte> key]
+            public byte[]? this[in ValueKeccak key]
             {
                 get => Decompress(_wrapped[key]);
                 set => _wrapped[key] = Compress(value);
@@ -44,13 +45,13 @@ namespace Nethermind.Db
 
                 public void Dispose() => _wrapped.Dispose();
 
-                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                public void Set(in ValueKeccak key, byte[]? value, WriteFlags flags = WriteFlags.None)
                     => _wrapped.Set(key, Compress(value), flags);
 
-                public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+                public byte[]? Get(in ValueKeccak key, ReadFlags flags = ReadFlags.None)
                     => Decompress(_wrapped.Get(key, flags));
 
-                public byte[]? this[ReadOnlySpan<byte> key]
+                public byte[]? this[in ValueKeccak key]
                 {
                     get => Decompress(_wrapped[key]);
                     set => _wrapped[key] = Compress(value);

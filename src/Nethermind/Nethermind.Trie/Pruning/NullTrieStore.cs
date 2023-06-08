@@ -45,7 +45,7 @@ namespace Nethermind.Trie.Pruning
 
         public void Dispose() { }
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        public byte[]? Get(in ValueKeccak key, ReadFlags flags = ReadFlags.None)
         {
             return null;
         }

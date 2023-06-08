@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -89,8 +90,19 @@ namespace Nethermind.Core.Crypto
                 return;
             }
 
-            Debug.Assert(bytes.Length == ValueKeccak.MemorySize);
+            if (bytes.Length != MemorySize)
+            {
+                ThrowArgumentException(bytes.Length);
+            }
+
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowArgumentException(int length)
+            {
+                throw new ArgumentException($"Keccak hash must be {MemorySize} bytes long; is {length} bytes.", nameof(bytes));
+            }
         }
 
         [DebuggerStepThrough]

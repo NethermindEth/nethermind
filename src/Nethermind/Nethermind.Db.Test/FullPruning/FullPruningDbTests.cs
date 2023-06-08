@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+
+using Nethermind.Core.Crypto;
 using Nethermind.Db.FullPruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -59,10 +61,10 @@ namespace Nethermind.Db.Test.FullPruning
         {
             TestContext test = new();
             test.FullPruningDb.TryStartPruning(out IPruningContext _);
-            byte[] key = { 1, 2 };
+            ValueKeccak key = ValueKeccak.OfAnEmptyString;
             byte[] value = { 5, 6 };
             test.FullPruningDb[key] = value;
-            test.CurrentMirrorDb[key].Should().BeEquivalentTo(value);
+            test.CurrentMirrorDb[key.Bytes].Should().BeEquivalentTo(value);
         }
 
         [Test]
@@ -70,10 +72,10 @@ namespace Nethermind.Db.Test.FullPruning
         {
             TestContext test = new();
             test.FullPruningDb.TryStartPruning(out IPruningContext context);
-            byte[] key = { 1, 2 };
+            ValueKeccak key = ValueKeccak.OfAnEmptyString;
             byte[] value = { 5, 6 };
             test.FullPruningDb[key] = value;
-            context[value] = key;
+            context[ValueKeccak.OfAnEmptySequenceRlp] = value;
             test.Metrics.Should().Be(2);
         }
 

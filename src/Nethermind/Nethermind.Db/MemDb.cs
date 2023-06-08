@@ -96,6 +96,11 @@ namespace Nethermind.Db
             return this.LikeABatch();
         }
 
+        public virtual ISpanKeyBatch StartLargeKeyBatch()
+        {
+            return this.LikeASpanKeyBatch();
+        }
+
         public ICollection<byte[]> Keys => _db.Keys;
         public ICollection<byte[]> Values => _db.Values;
 

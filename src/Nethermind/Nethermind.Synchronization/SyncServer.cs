@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
-        private readonly IReadOnlyKeyValueStore _stateDb;
+        private readonly IReadOnlyKeccakValueStore _stateDb;
         private readonly IReadOnlyKeyValueStore _codeDb;
         private readonly IWitnessRepository _witnessRepository;
         private readonly IGossipPolicy _gossipPolicy;
@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization
         private BlockHeader? _pivotHeader;
 
         public SyncServer(
-            IReadOnlyKeyValueStore stateDb,
+            IReadOnlyKeccakValueStore stateDb,
             IReadOnlyKeyValueStore codeDb,
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
@@ -402,7 +402,7 @@ namespace Nethermind.Synchronization
                 values[i] = null;
                 if ((includedTypes & NodeDataType.State) == NodeDataType.State)
                 {
-                    values[i] = _stateDb[keys[i].Bytes];
+                    values[i] = _stateDb[keys[i].ValueKeccak];
                 }
 
                 if (values[i] is null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)

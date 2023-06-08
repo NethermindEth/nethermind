@@ -107,6 +107,11 @@ namespace Nethermind.Db
             return this.LikeABatch(CommitBatch);
         }
 
+        public virtual ISpanKeyBatch StartLargeKeyBatch()
+        {
+            return this.LikeASpanKeyBatch(CommitBatch);
+        }
+
         private void CommitBatch()
         {
             if (!_hasPendingChanges)

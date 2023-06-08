@@ -12,6 +12,7 @@ using System.Threading;
 using ConcurrentCollections;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
@@ -780,7 +781,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         private WriteFlags _writeFlags = WriteFlags.None;
         private bool _isDisposed;
 
-        private SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> _batchData = new(Bytes.SpanEqualityComparer);
+        private Dictionary<ValueKeccak, (byte[]? data, ColumnFamilyHandle? cf)> _batchData = new();
 
         public RocksDbBatch(DbOnTheRocks dbOnTheRocks)
         {
@@ -809,15 +810,15 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             {
                 WriteBatch rocksBatch = new();
                 // Sort the batch by key
-                foreach (var kv in _batchData.OrderBy(i => i.Key, Bytes.Comparer))
+                foreach (var kv in _batchData.OrderBy(i => i.Key))
                 {
                     if (kv.Value.data is null)
                     {
-                        rocksBatch.Delete(kv.Key, kv.Value.cf);
+                        rocksBatch.Delete(kv.Key.Bytes, kv.Value.cf);
                     }
                     else
                     {
-                        rocksBatch.Put(kv.Key, kv.Value.data, kv.Value.cf);
+                        rocksBatch.Put(kv.Key.Bytes, kv.Value.data, kv.Value.cf);
                     }
                 }
                 // Release Dictionary early to be GC'd
@@ -834,13 +835,13 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             }
         }
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        public byte[]? Get(in ValueKeccak key, ReadFlags flags = ReadFlags.None)
         {
             // Not checking _isDisposing here as for some reason, sometimes is is read after dispose
-            return _batchData?.TryGetValue(key, out var value) ?? false ? value.data : _dbOnTheRocks.Get(key, flags);
+            return _batchData?.TryGetValue(key, out var value) ?? false ? value.data : _dbOnTheRocks.Get(key.Bytes, flags);
         }
 
-        public void Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null)
+        public void Delete(in ValueKeccak key, ColumnFamilyHandle? cf = null)
         {
             if (_isDisposed)
             {
@@ -850,7 +851,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             _batchData[key] = (null, cf);
         }
 
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, ColumnFamilyHandle? cf = null)
+        public void Set(in ValueKeccak key, byte[]? value, ColumnFamilyHandle? cf = null)
         {
             if (_isDisposed)
             {
@@ -860,7 +861,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             _batchData[key] = (value, cf);
         }
 
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        public void Set(in ValueKeccak key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             if (_isDisposed)
             {

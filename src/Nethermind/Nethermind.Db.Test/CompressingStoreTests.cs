@@ -4,6 +4,7 @@
 using System;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
@@ -22,7 +23,7 @@ namespace Nethermind.Store.Test
             ctx.Compressed[Key] = null;
 
             Assert.IsNull(ctx.Compressed[Key]);
-            Assert.IsNull(ctx.Wrapped[Key]);
+            Assert.IsNull(ctx.Wrapped[Key.Bytes]);
         }
 
         [Test]
@@ -35,7 +36,7 @@ namespace Nethermind.Store.Test
             ctx.Compressed[Key] = empty;
 
             CollectionAssert.AreEqual(empty, ctx.Compressed[Key]);
-            CollectionAssert.AreEqual(empty, ctx.Wrapped[Key]);
+            CollectionAssert.AreEqual(empty, ctx.Wrapped[Key.Bytes]);
         }
 
         [Test]
@@ -48,7 +49,7 @@ namespace Nethermind.Store.Test
             ctx.Compressed[Key] = value;
 
             CollectionAssert.AreEqual(value, ctx.Compressed[Key]);
-            CollectionAssert.AreEqual(value, ctx.Wrapped[Key]);
+            CollectionAssert.AreEqual(value, ctx.Wrapped[Key.Bytes]);
         }
 
         [Test]
@@ -60,7 +61,7 @@ namespace Nethermind.Store.Test
             ctx.Compressed[Key] = encoded.Bytes;
 
             CollectionAssert.AreEqual(encoded.Bytes, ctx.Compressed[Key]);
-            ctx.Wrapped[Key]!.Length.Should().Be(5);
+            ctx.Wrapped[Key.Bytes]!.Length.Should().Be(5);
         }
 
         [Test]
@@ -69,7 +70,7 @@ namespace Nethermind.Store.Test
             Context ctx = new();
             byte[] value = { 1, 2, 34 };
 
-            ctx.Wrapped[Key] = value;
+            ctx.Wrapped[Key.Bytes] = value;
 
             CollectionAssert.AreEqual(value, ctx.Compressed[Key]);
         }
@@ -86,7 +87,7 @@ namespace Nethermind.Store.Test
 
             CollectionAssert.AreEqual(EOABytes, ctx.Compressed[Key]);
 
-            ctx.Wrapped[Key]!.Length.Should().Be(5);
+            ctx.Wrapped[Key.Bytes]!.Length.Should().Be(5);
         }
 
         [Test]
@@ -120,6 +121,6 @@ namespace Nethermind.Store.Test
 
         private static readonly byte[] EOABytes = new AccountDecoder().Encode((Account)new(1)).Bytes;
 
-        private static readonly byte[] Key = { 1 };
+        private static readonly ValueKeccak Key = ValueKeccak.EmptyTreeHash;
     }
 }

@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+
 using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks;
@@ -78,12 +80,12 @@ public class ColumnDb : IDbWithSpan
             _underlyingBatch.Dispose();
         }
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        public byte[]? Get(in ValueKeccak key, ReadFlags flags = ReadFlags.None)
         {
             return _underlyingBatch.Get(key, flags);
         }
 
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        public void Set(in ValueKeccak key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             if (value is null)
             {

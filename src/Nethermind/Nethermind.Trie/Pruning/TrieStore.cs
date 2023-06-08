@@ -318,7 +318,7 @@ namespace Nethermind.Trie.Pruning
         public byte[] LoadRlp(Keccak keccak, IKeyValueStore? keyValueStore, ReadFlags readFlags = ReadFlags.None)
         {
             keyValueStore ??= _keyValueStore;
-            byte[]? rlp = _currentBatch?.Get(keccak.Bytes, readFlags) ?? keyValueStore.Get(keccak.Bytes, readFlags);
+            byte[]? rlp = _currentBatch?.Get(keccak.ValueKeccak, readFlags) ?? keyValueStore.Get(keccak.Bytes, readFlags);
 
             if (rlp is null)
             {
@@ -334,7 +334,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsPersisted(Keccak keccak)
         {
-            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
+            byte[]? rlp = _currentBatch?[keccak.ValueKeccak] ?? _keyValueStore[keccak.Bytes];
 
             if (rlp is null)
             {
@@ -348,7 +348,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsPersisted(in ValueKeccak keccak)
         {
-            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
+            byte[]? rlp = _currentBatch?[keccak] ?? _keyValueStore[keccak.Bytes];
 
             if (rlp is null)
             {
@@ -656,7 +656,7 @@ namespace Nethermind.Trie.Pruning
                 // to prevent it from being removed from cache and also want to have it persisted.
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                _currentBatch.Set(currentNode.Keccak.Bytes, currentNode.FullRlp, writeFlags);
+                _currentBatch.Set(currentNode.Keccak.ValueKeccak, currentNode.FullRlp, writeFlags);
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
                 PersistedNodesCount++;
@@ -786,7 +786,7 @@ namespace Nethermind.Trie.Pruning
 
         #endregion
 
-        public void PersistCache(IKeyValueStore store, CancellationToken cancellationToken)
+        public void PersistCache(IKeccakValueStore store, CancellationToken cancellationToken)
         {
             Task.Run(() =>
             {
@@ -799,7 +799,7 @@ namespace Nethermind.Trie.Pruning
                     Keccak? hash = n.Keccak;
                     if (hash is not null)
                     {
-                        store[hash.Bytes] = n.FullRlp;
+                        store[hash.ValueKeccak] = n.FullRlp;
                         int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
                         if (_logger.IsInfo && persistedNodesCount % million == 0)
                         {
@@ -822,20 +822,20 @@ namespace Nethermind.Trie.Pruning
             });
         }
 
-        public byte[]? this[ReadOnlySpan<byte> key]
+        public byte[]? this[in ValueKeccak key]
         {
             get => Get(key);
         }
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        public byte[]? Get(in ValueKeccak key, ReadFlags flags = ReadFlags.None)
         {
             return _pruningStrategy.PruningEnabled
-                   && _dirtyNodes.AllNodes.TryGetValue(new ValueKeccak(key), out TrieNode? trieNode)
+                   && _dirtyNodes.AllNodes.TryGetValue(key, out TrieNode? trieNode)
                    && trieNode is not null
                    && trieNode.NodeType != NodeType.Unknown
                    && trieNode.FullRlp is not null
                 ? trieNode.FullRlp
-                : _currentBatch?.Get(key, flags) ?? _keyValueStore.Get(key, flags);
+                : _currentBatch?.Get(key, flags) ?? _keyValueStore.Get(key.Bytes, flags);
         }
     }
 }
