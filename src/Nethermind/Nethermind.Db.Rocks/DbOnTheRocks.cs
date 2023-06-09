@@ -777,11 +777,16 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     internal class RocksDbBatch : IBatch
     {
+        const int InitialBatchSize = 300;
+        const int MaxCached = 8;
+
+        private static ConcurrentQueue<Dictionary<ValueKeccak, (byte[]? data, ColumnFamilyHandle? cf)>> s_cache = new();
+
         private readonly DbOnTheRocks _dbOnTheRocks;
         private WriteFlags _writeFlags = WriteFlags.None;
         private bool _isDisposed;
 
-        private Dictionary<ValueKeccak, (byte[]? data, ColumnFamilyHandle? cf)> _batchData = new();
+        private Dictionary<ValueKeccak, (byte[]? data, ColumnFamilyHandle? cf)> _batchData = CreateOrGetFromCache();
 
         public RocksDbBatch(DbOnTheRocks dbOnTheRocks)
         {
@@ -806,11 +811,22 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             }
             _isDisposed = true;
 
+            Dictionary<ValueKeccak, (byte[]? data, ColumnFamilyHandle? cf)> batchData = _batchData;
+            // Clear the _batchData reference so is null if Get is called.
+            _batchData = null!;
+            if (batchData.Count == 0)
+            {
+                // No data to write
+                ReturnToCache(batchData);
+                _dbOnTheRocks._currentBatches.TryRemove(this);
+                return;
+            }
+
             try
             {
                 WriteBatch rocksBatch = new();
                 // Sort the batch by key
-                foreach (var kv in _batchData.OrderBy(i => i.Key))
+                foreach (var kv in batchData.OrderBy(i => i.Key))
                 {
                     if (kv.Value.data is null)
                     {
@@ -821,8 +837,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                         rocksBatch.Put(kv.Key.Bytes, kv.Value.data, kv.Value.cf);
                     }
                 }
-                // Release Dictionary early to be GC'd
-                _batchData = null!;
+                ReturnToCache(batchData);
 
                 _dbOnTheRocks._db.Write(rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
                 _dbOnTheRocks._currentBatches.TryRemove(this);
@@ -871,6 +886,25 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             _batchData[key] = (value, null);
 
             _writeFlags = flags;
+        }
+
+        private static Dictionary<ValueKeccak, (byte[]? data, ColumnFamilyHandle? cf)> CreateOrGetFromCache()
+        {
+            if (s_cache.TryDequeue(out Dictionary<ValueKeccak, (byte[]? data, ColumnFamilyHandle? cf)>? batchData))
+            {
+                return batchData;
+            }
+
+            return new(capacity: InitialBatchSize);
+        }
+
+        private static void ReturnToCache(Dictionary<ValueKeccak, (byte[]? data, ColumnFamilyHandle? cf)> batchData)
+        {
+            if (s_cache.Count >= MaxCached) return;
+
+            batchData.Clear();
+            batchData.TrimExcess(capacity: InitialBatchSize);
+            s_cache.Enqueue(batchData);
         }
     }
 
