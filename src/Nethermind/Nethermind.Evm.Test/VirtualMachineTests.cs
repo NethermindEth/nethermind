@@ -444,7 +444,7 @@ namespace Nethermind.Evm.Test
                 .Done;
             GethLikeTxTrace traces = Execute(new GethLikeTxTracer(GethTraceOptions.Default), code, MainnetSpecProvider.CancunActivation).BuildResult();
 
-            Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow * ((data.Length + 31) / 32) + GasCostOf.Memory * 0), "gas");
+            Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32) + GasCostOf.Memory * 0), "gas");
         }
 
         [Test]
@@ -461,7 +461,7 @@ namespace Nethermind.Evm.Test
             var copied = traces.Entries.Last().Memory[0];
             var origin = traces.Entries.Last().Memory[1];
 
-            Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow * ((data.Length + 31) / 32) + GasCostOf.Memory * 1), "gas");
+            Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32) + GasCostOf.Memory * 1), "gas");
             Assert.That(origin, Is.EqualTo(copied));
         }
 
@@ -480,7 +480,7 @@ namespace Nethermind.Evm.Test
 
             var result = traces.Entries.Last().Memory[0];
 
-            Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
+            Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
             Assert.That(result, Is.EqualTo("0101020304050607080000000000000000000000000000000000000000000000"), "memory state");
         }
 
@@ -495,7 +495,7 @@ namespace Nethermind.Evm.Test
                 .Done;
             GethLikeTxTrace traces = Execute(new GethLikeTxTracer(GethTraceOptions.Default), bytecode, MainnetSpecProvider.CancunActivation).BuildResult();
 
-            Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow * ((data.Length + 31) / 32)), "gas");
+            Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32)), "gas");
             Assert.That(traces.Entries.Last().Memory.Count, Is.EqualTo(1));
         }
 
