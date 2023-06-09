@@ -1547,6 +1547,31 @@ public class VirtualMachine : IVirtualMachine
 
                         break;
                     }
+                case Instruction.MCOPY:
+                    {
+                        if (!spec.MCopyIncluded)
+                        {
+                            goto InvalidInstruction;
+                        }
+
+                        Metrics.MCopyOpcode++;
+
+                        stack.PopUInt256(out UInt256 dstPosition);
+                        stack.PopUInt256(out UInt256 srcPosition);
+                        stack.PopUInt256(out UInt256 length);
+
+                        long baseGasCost = GasCostOf.VeryLow + GasCostOf.VeryLow * (((long)length + 31) / 32);
+                        if (!UpdateGas(baseGasCost, ref gasAvailable)
+                            || !UpdateMemoryCost(vmState, ref gasAvailable, UInt256.Max(srcPosition, dstPosition), length)) goto OutOfGas;
+
+                        Span<byte> loadedData = vmState.Memory.LoadSpan(in srcPosition, length);
+                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange(srcPosition, loadedData);
+
+                        vmState.Memory.Save(in dstPosition, loadedData);
+                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dstPosition, loadedData);
+
+                        break;
+                    }
                 case Instruction.SLOAD:
                     {
                         Metrics.SloadOpcode++;
@@ -1772,32 +1797,6 @@ public class VirtualMachine : IVirtualMachine
                         {
                             _txTracer.SetOperationTransientStorage(storageCell.Address, storageIndex, newValue, currentValue);
                         }
-
-                        break;
-                    }
-                case Instruction.MCOPY:
-                    {
-                        if (!spec.MCopyIncluded)
-                        {
-                            goto InvalidInstruction;
-                        }
-
-                        Metrics.MCopyOpcode++;
-
-                        stack.PopUInt256(out UInt256 dstPosition);
-                        stack.PopUInt256(out UInt256 srcPosition);
-                        stack.PopUInt256(out UInt256 length);
-
-                        long baseGasCost = GasCostOf.VeryLow * (((long)length + 31) / 32);
-                        if (!UpdateGas(baseGasCost, ref gasAvailable)) goto OutOfGas;
-
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in srcPosition, length)) goto OutOfGas;
-                        Span<byte> loadedData = vmState.Memory.LoadSpan(in srcPosition, length);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange(srcPosition, loadedData);
-
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in dstPosition, length)) goto OutOfGas;
-                        vmState.Memory.Save(in dstPosition, loadedData);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dstPosition, loadedData);
 
                         break;
                     }
