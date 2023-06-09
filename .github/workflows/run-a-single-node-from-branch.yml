@@ -36,19 +36,32 @@ on:
         type: choice
         options:
           - default.json
+          - archiveSync.json
           - fastSync.json
           - fullSync.json
           - fuzzer.json
+      non_validator_mode:
+        description: "If checked, node will be started in NonValidator mode (OldBodies and oldReceipts will not be synced)"
+        default: true
+        type: boolean
       timeout:
         description: "Timeout in hours before triggering the deletion of smoke test instances. Maximum time of node lifetime can be 72 hours."
         default: "24"
         required: true
+      volume:
+        description: "In case custom volume size needs to be applied, put value in GB here)"
+        required: false
+        default: ""
       additional_nethermind_flags:
         description: "Provide any additional flags to the Nethermind in space-separated format. Example: \"JsonRpc.Enabled=false Sync.SnapSync=false\"."
         default: ""
         required: false
       additional_cl_flags:
         description: "Provide any additional flags to the CL client in space-separated format. Example: \"clflag1=1 clflag2=2\"."
+        default: ""
+        required: false
+      ssh_keys:
+        description: "SSH Keys to be installed in the smoke test nodes (separated by commas without space in-between commas) for example: key1,key2,key3"
         default: ""
         required: false
       
@@ -79,7 +92,11 @@ jobs:
 
     - name: Creating a node with NodeName="DevNode-${{ github.actor }}-${{ env.BASE_TAG }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}"
       run: echo "NodeName='DevNode-${{ github.actor }}-${{ env.BASE_TAG }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}'"
-
+    
+    - name: Set Repo Variable
+      run: |
+        echo "REPO=$(echo $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+    
     - name: Trigger Docker Build Action with Cleaned Ref
       uses: benc-uk/workflow-dispatch@v1
       with:
@@ -87,11 +104,15 @@ jobs:
           ref: "${{ github.ref }}"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
-              "repo": "nethermindeth/nethermind",
+              "repo": "${{ env.REPO }}",
               "tag": "${{ env.CLEAN_REF }}",
               "dockerfile": "Dockerfile"
            }'
 
+    - name: Set Repo and Org Variables
+      run: |
+        echo "ORG_NAME=$(echo $GITHUB_REPOSITORY | cut -d / -f 1)" >> $GITHUB_ENV
+        echo "REPO_NAME=$(echo $GITHUB_REPOSITORY | cut -d / -f 2)" >> $GITHUB_ENV
     - name: Wait for Docker Build Action to complete
       env:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
@@ -99,8 +120,8 @@ jobs:
         MAX_WAIT_MINUTES: '5'
         INTERVAL: '5'
         TIMEOUT: '10'
-        ORG_NAME: 'NethermindEth'
-        REPO_NAME: 'nethermind'
+        ORG_NAME: ${{ env.ORG_NAME }}
+        REPO_NAME: ${{ env.REPO_NAME }}
         REF: ${{ github.ref }}
       run: |
         chmod +x scripts/wait-for-workflow-completed.sh
@@ -140,10 +161,7 @@ jobs:
                      "nethermind_branch": "${{ env.CLEAN_REF }}",
                      "network": "${{ inputs.network }}",
                      "cl_client": "${{ inputs.cl_client }}",
-                     "cl_custom_image": "${{ inputs.cl_custom_image }}",
-                     "timeout": "${{ inputs.timeout }}",
-                     "additional_nethermind_flags": "${{ inputs.additional_nethermind_flags }}",
-                     "additional_cl_flags": "${{ inputs.additional_cl_flags }}"
+                     "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ inputs.timeout }}\", \"non_validator_mode\":${{ inputs.non_validator_mode }}, \"volume_size\":\"${{ inputs.volume }}\", \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ inputs.ssh_keys }}\"}"
                    }'
 
     - name: Wait for creation of node

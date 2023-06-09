@@ -33,9 +33,10 @@ public class NodeBucket
             lock (_nodeBucketLock)
             {
                 LinkedListNode<NodeBucketItem>? node = _items.Last;
+                DateTime utcNow = DateTime.UtcNow;
                 while (node is not null)
                 {
-                    if (!node.Value.IsBonded)
+                    if (!node.Value.IsBonded(utcNow))
                     {
                         break;
                     }
@@ -55,9 +56,10 @@ public class NodeBucket
             {
                 int result = _items.Count;
                 LinkedListNode<NodeBucketItem>? node = _items.Last;
+                DateTime utcNow = DateTime.UtcNow;
                 while (node is not null)
                 {
-                    if (node.Value.IsBonded)
+                    if (node.Value.IsBonded(utcNow))
                     {
                         break;
                     }

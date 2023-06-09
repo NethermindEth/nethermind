@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie
@@ -48,12 +46,12 @@ namespace Nethermind.Trie
         {
             if ((flags & ReadFlags.HintCacheMiss) == ReadFlags.HintCacheMiss)
             {
-                return _wrappedStore[key];
+                return _wrappedStore.Get(key, flags);
             }
 
             if (!_cache.TryGet(key, out byte[] value))
             {
-                value = _wrappedStore[key];
+                value = _wrappedStore.Get(key, flags);
                 _cache.Set(key, value);
             }
             else

@@ -175,7 +175,14 @@ namespace Nethermind.Blockchain.FullPruning
             try
             {
                 pruning.MarkStart();
-                using CopyTreeVisitor copyTreeVisitor = new(pruning, _logManager);
+
+                WriteFlags writeFlags = WriteFlags.DisableWAL;
+                if (!_pruningConfig.FullPruningDisableLowPriorityWrites)
+                {
+                    writeFlags |= WriteFlags.LowPriority;
+                }
+
+                using CopyTreeVisitor copyTreeVisitor = new(pruning, writeFlags, _logManager);
                 VisitingOptions visitingOptions = new()
                 {
                     MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,

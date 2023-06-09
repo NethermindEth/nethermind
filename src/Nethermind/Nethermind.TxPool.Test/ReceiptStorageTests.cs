@@ -3,6 +3,7 @@
 
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -28,6 +29,7 @@ namespace Nethermind.TxPool.Test
         private IReceiptFinder _receiptFinder;
         private IReceiptStorage _inMemoryStorage;
         private IBlockTree _blockTree;
+        private IBlockStore _blockStore;
 
         public ReceiptStorageTests(bool useEip2718)
         {
@@ -42,12 +44,14 @@ namespace Nethermind.TxPool.Test
             _blockTree = Build.A.BlockTree()
                 .WithBlocks(Build.A.Block.TestObject)
                 .TestObject;
+            _blockStore = Substitute.For<IBlockStore>();
             ReceiptsRecovery receiptsRecovery = new(_ethereumEcdsa, _specProvider);
             _persistentStorage = new PersistentReceiptStorage(
                 new MemColumnsDb<ReceiptsColumns>(),
                 _specProvider,
                 receiptsRecovery,
                 _blockTree,
+                _blockStore,
                 new ReceiptConfig()
             );
             _receiptFinder = new FullInfoReceiptFinder(_persistentStorage, receiptsRecovery, Substitute.For<IBlockFinder>());

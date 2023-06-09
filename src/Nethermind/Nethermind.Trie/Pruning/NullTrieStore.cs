@@ -13,9 +13,9 @@ namespace Nethermind.Trie.Pruning
 
         public static NullTrieStore Instance { get; } = new();
 
-        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
+        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags flags = WriteFlags.None) { }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root) { }
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
         public void HackPersistOnShutdown() { }
 
@@ -41,6 +41,7 @@ namespace Nethermind.Trie.Pruning
         }
 
         public bool IsPersisted(Keccak keccak) => true;
+        public bool IsPersisted(in ValueKeccak keccak) => true;
 
         public void Dispose() { }
 

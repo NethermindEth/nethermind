@@ -9,11 +9,12 @@ namespace Nethermind.Trie.Pruning
 {
     public interface ITrieStore : ITrieNodeResolver, IReadOnlyKeyValueStore, IDisposable
     {
-        void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo);
+        void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
 
-        void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root);
+        void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
 
         bool IsPersisted(Keccak keccak);
+        bool IsPersisted(in ValueKeccak keccak);
 
         IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore);
 

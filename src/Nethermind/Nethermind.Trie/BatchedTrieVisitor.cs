@@ -9,8 +9,10 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
@@ -25,7 +27,12 @@ namespace Nethermind.Trie;
 /// The working set, which is the number of Job waiting to be processed is adjusted by increasing the partition number
 /// and the max batch size (num of job to be processed on each worker visit to a partition).
 /// If the size of working set is large enough, the required data between Job in a batch is available near each other
-/// which increases cache hit. The exact minimum size of working set depends on the size of the database, which seems
+/// which increases cache hit. Additionally, by utilizing readahead flag, rocksdb can be instructed to pre-fetch a certain
+/// amount of data ahead of the current read. As the job is processed in ascending key, the next job is likely to get pre-fetched.
+/// This significantly reduce iops, and improve response time, although it might increase read amplification as some of
+/// the pre-fetched data is wasted read, but overall, it significantly improve throughput.
+///
+/// The exact minimum size of working set depends on the size of the database, which seems
 /// to increase linearly. For goerli, that seems to be 256MB, and mainnet it seems to be 1Gb. Increasing the working
 /// set decreases reads, however up to a certain point, the time taken for writes is much higher than read, so no
 /// point in increasing memory budget further. For goerli, that seems to be 3GB and for mainnet, that seems to be 8Gb.
@@ -45,6 +52,7 @@ public class BatchedTrieVisitor
     private long _queuedJobs;
     private bool _failed;
     private long _currentPointer;
+    private long _readAheadThreshold;
 
     private readonly ITrieNodeResolver _resolver;
     private readonly ITreeVisitor _visitor;
@@ -70,15 +78,17 @@ public class BatchedTrieVisitor
         _partitionCount = recordCount / _maxBatchSize;
         if (_partitionCount == 0) _partitionCount = 1;
 
-        // 3000 is about the num of file for state on mainnet, so we assume 4000 for an unpruned db. Multiplied by
-        // a reasonable num of thread we want to confine to a file. If its too high, the overhead of looping through the
-        // stack can get a bit high at the end of the visit. But then again its probably not much.
+        long expectedDbSize = 240.GiB(); // Unpruned size
+
+        // Get estimated num of file (expected db size / 64MiB), multiplied by a reasonable num of thread we want to
+        // confine to a file. If its too high, the overhead of looping through the stack can get a bit high at the end
+        // of the visit. But then again its probably not much.
         int degreeOfParallelism = visitingOptions.MaxDegreeOfParallelism;
         if (degreeOfParallelism == 0)
         {
             degreeOfParallelism = Math.Max(Environment.ProcessorCount, 1);
         }
-        long maxPartitionCount = 4000 * Math.Min(4, degreeOfParallelism);
+        long maxPartitionCount = (expectedDbSize / 64.MiB()) * Math.Min(4, degreeOfParallelism);
 
         if (_partitionCount > maxPartitionCount)
         {
@@ -86,6 +96,11 @@ public class BatchedTrieVisitor
             _maxBatchSize = (int)(recordCount / _partitionCount);
             if (_maxBatchSize == 0) _maxBatchSize = 1;
         }
+
+        // Estimated readahead threshold used to determine how many node in a partition to enable readahead.
+        long estimatedPartitionAddressSpaceSize = expectedDbSize / _partitionCount;
+        long toleratedPerNodeReadAmp = 16.KiB(); // If the estimated per-node read is above this, don't enable readahead.
+        _readAheadThreshold = estimatedPartitionAddressSpaceSize / toleratedPerNodeReadAmp;
 
         // Calculating estimated pool margin at about 5% of total working size. The working set size fluctuate a bit so
         // this is to reduce allocation.
@@ -109,7 +124,7 @@ public class BatchedTrieVisitor
     // Determine the locality of the key. I guess if you use paprika or something, you'd need to modify this.
     int CalculatePartitionIdx(ValueKeccak key)
     {
-        uint number = BinaryPrimitives.ReadUInt32BigEndian(key.Span);
+        uint number = BinaryPrimitives.ReadUInt32BigEndian(key.Bytes);
         return (int)(number * (ulong)_partitionCount / uint.MaxValue);
     }
 
@@ -303,6 +318,12 @@ public class BatchedTrieVisitor
                 .AsSpan()
                 .Sort((item1, item2) => currentBatch[item1].Item1.Keccak.CompareTo(currentBatch[item2].Item1.Keccak));
 
+            ReadFlags flags = ReadFlags.None;
+            if (resolveOrdering.Count > _readAheadThreshold)
+            {
+                flags = ReadFlags.HintReadAhead;
+            }
+
             // This loop is about 60 to 70% of the time spent. If you set very high memory budget, this drop to about 50MB.
             for (int i = 0; i < resolveOrdering.Count; i++)
             {
@@ -312,7 +333,7 @@ public class BatchedTrieVisitor
                 try
                 {
                     Keccak theKeccak = nodeToResolve.Keccak;
-                    nodeToResolve.ResolveNode(_resolver);
+                    nodeToResolve.ResolveNode(_resolver, flags);
                     nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
                 }
                 catch (TrieException)

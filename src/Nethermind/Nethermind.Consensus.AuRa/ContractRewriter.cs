@@ -18,14 +18,13 @@ public class ContractRewriter
         _contractOverrides = contractOverrides;
     }
 
-    public void RewriteContracts(long blockNumber, IStateProvider stateProvider, IReleaseSpec spec)
+    public void RewriteContracts(long blockNumber, IWorldState stateProvider, IReleaseSpec spec)
     {
         if (_contractOverrides.TryGetValue(blockNumber, out IDictionary<Address, byte[]> overrides))
         {
             foreach (KeyValuePair<Address, byte[]> contractOverride in overrides)
             {
-                Keccak codeHash = stateProvider.UpdateCode(contractOverride.Value);
-                stateProvider.UpdateCodeHash(contractOverride.Key, codeHash, spec);
+                stateProvider.InsertCode(contractOverride.Key, contractOverride.Value, spec);
             }
         }
     }

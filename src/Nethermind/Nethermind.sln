@@ -175,7 +175,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Hive", "Hive", "{C9AFA242-6
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Hive", "Nethermind.Hive\Nethermind.Hive.csproj", "{B9C52326-BC13-4C16-B440-8BD25EB23BFA}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Hive.Tests", "Nethermind.Hive.Tests\Nethermind.Hive.Tests.csproj", "{96270195-EB87-41ED-A4E2-A342C50C4CF4}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Hive.Test", "Nethermind.Hive.Test\Nethermind.Hive.Test.csproj", "{96270195-EB87-41ED-A4E2-A342C50C4CF4}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Enr", "Nethermind.Network.Enr\Nethermind.Network.Enr.csproj", "{03D72C8A-4659-4E84-9880-EC686EF25F65}"
 EndProject
@@ -199,7 +199,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "TraceStore", "TraceStore", 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc.TraceStore", "Nethermind.JsonRpc.TraceStore\Nethermind.JsonRpc.TraceStore.csproj", "{D4C5A63E-8E47-43D3-B726-B1D95591100C}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc.TraceStore.Tests", "Nethermind.JsonRpc.TraceStore.Tests\Nethermind.JsonRpc.TraceStore.Tests.csproj", "{B4A10FCA-4982-4D89-8D8C-6154882938E4}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc.TraceStore.Test", "Nethermind.JsonRpc.TraceStore.Test\Nethermind.JsonRpc.TraceStore.Test.csproj", "{B4A10FCA-4982-4D89-8D8C-6154882938E4}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "UPnP", "UPnP", "{2EDE2554-59C0-4E78-92F7-EB8077AA597D}"
 EndProject

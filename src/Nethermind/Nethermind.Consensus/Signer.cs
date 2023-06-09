@@ -38,7 +38,7 @@ namespace Nethermind.Consensus
         public Signature Sign(Keccak message)
         {
             if (!CanSign) throw new InvalidOperationException("Cannot sign without provided key.");
-            byte[] rs = SecP256k1.SignCompact(message.Bytes, _key!.KeyBytes, out int v);
+            byte[] rs = SpanSecP256k1.SignCompact(message.Bytes, _key!.KeyBytes, out int v);
             return new Signature(rs, v);
         }
 
@@ -46,7 +46,7 @@ namespace Nethermind.Consensus
         {
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);
             tx.Signature = Sign(hash);
-            tx.Signature.V = tx.Signature.V + 8 + 2 * _chainId;
+            tx.Signature.V = tx.Type == TxType.Legacy ? tx.Signature.V + 8 + 2 * _chainId : (ulong)(tx.Signature.RecoveryId + 27);
             return default;
         }
 

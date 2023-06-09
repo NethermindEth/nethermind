@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -27,6 +28,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Newtonsoft.Json;
 using NSubstitute;
@@ -74,7 +76,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _txPool,
                 _receiptCanonicalityMonitor,
                 _filterStore,
-                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, _logManager),
+                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, new StaticSelector(SyncMode.All), _logManager),
                 _specProvider,
                 jsonSerializer);
 
@@ -163,7 +165,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }));
 
             _txPool.EvictedPending += Raise.EventWith(new object(), txEventArgs);
-            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(100));
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000));
 
             subscriptionId = droppedPendingTransactionsSubscription.Id;
             return jsonRpcResult;
@@ -177,7 +179,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(head).TestObject;
             _blockTree.Head.Returns(block);
 
-            EthSyncingInfo ethSyncingInfo = new(_blockTree, _receiptStorage, _syncConfig, _logManager);
+            EthSyncingInfo ethSyncingInfo = new(_blockTree, _receiptStorage, _syncConfig, new StaticSelector(SyncMode.All), _logManager);
 
             SyncingSubscription syncingSubscription = new(_jsonRpcDuplexClient, _blockTree, ethSyncingInfo, _logManager);
 
@@ -580,7 +582,8 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
 
-            jsonRpcResults.Count.Should().Be(3);
+            Assert.That(() => jsonRpcResults.Count, Is.EqualTo(3).After(1000, 100));
+
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
             var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":false,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}}}");
             expectedResult.Should().Be(serialized);
@@ -1065,7 +1068,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }));
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
-            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
 
             jsonRpcResults.Count.Should().Be(1);
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);

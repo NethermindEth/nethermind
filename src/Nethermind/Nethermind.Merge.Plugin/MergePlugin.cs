@@ -258,7 +258,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_api.RpcModuleProvider is null) throw new ArgumentNullException(nameof(_api.RpcModuleProvider));
             if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
             if (_api.BlockchainProcessor is null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
-            if (_api.StateProvider is null) throw new ArgumentNullException(nameof(_api.StateProvider));
+            if (_api.WorldState is null) throw new ArgumentNullException(nameof(_api.WorldState));
             if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
             if (_api.EthSyncingInfo is null) throw new ArgumentNullException(nameof(_api.EthSyncingInfo));
             if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
@@ -411,6 +411,16 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.LogManager);
             _api.Pivot = _beaconPivot;
 
+            PivotUpdator pivotUpdator = new(
+                _api.BlockTree,
+                _api.SyncModeSelector,
+                _api.SyncPeerPool,
+                _syncConfig,
+                _blockCacheService,
+                _beaconSync,
+                _api.DbProvider.MetadataDb,
+                _api.LogManager);
+
             SyncReport syncReport = new(_api.SyncPeerPool, _api.NodeStatsManager, _api.SyncModeSelector, _syncConfig, _beaconPivot, _api.LogManager);
 
             _api.BlockDownloaderFactory = new MergeBlockDownloaderFactory(
@@ -418,7 +428,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _beaconPivot,
                 _api.SpecProvider,
                 _api.BlockTree,
-                _blockCacheService,
                 _api.ReceiptStorage!,
                 _api.BlockValidator!,
                 _api.SealValidator!,

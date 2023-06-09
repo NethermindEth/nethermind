@@ -10,39 +10,36 @@ namespace Nethermind.Specs;
 
 public class ChiadoSpecProvider : ISpecProvider
 {
-    public static readonly ChiadoSpecProvider Instance = new();
+    public const ulong ShanghaiTimestamp = 0x646e0e4cUL;
+
     private ChiadoSpecProvider() { }
 
-    private ForkActivation? _theMergeBlock = null;
-    private UInt256? _terminalTotalDifficulty = UInt256.Parse("231707791542740786049188744689299064356246512");
+    public IReleaseSpec GetSpec(ForkActivation forkActivation) => forkActivation.BlockNumber switch
+    {
+        _ => forkActivation.Timestamp switch
+        {
+            null or < ShanghaiTimestamp => GenesisSpec,
+            _ => Shanghai.Instance
+        }
+    };
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
         if (blockNumber is not null)
-            _theMergeBlock = (ForkActivation)blockNumber;
+            MergeBlockNumber = (ForkActivation)blockNumber;
+
         if (terminalTotalDifficulty is not null)
-            _terminalTotalDifficulty = terminalTotalDifficulty;
+            TerminalTotalDifficulty = terminalTotalDifficulty;
     }
 
-    public ForkActivation? MergeBlockNumber => _theMergeBlock;
+    public ForkActivation? MergeBlockNumber { get; private set; }
     public ulong TimestampFork => ShanghaiTimestamp;
-    public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
+    public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("231707791542740786049188744689299064356246512");
     public IReleaseSpec GenesisSpec => London.Instance;
     public long? DaoBlockNumber => null;
     public ulong NetworkId => BlockchainIds.Chiado;
     public ulong ChainId => BlockchainIds.Chiado;
     public ForkActivation[] TransitionActivations { get; }
-    public IReleaseSpec GetSpec(ForkActivation forkActivation)
-    {
-        return forkActivation.BlockNumber switch
-        {
-            _ => forkActivation.Timestamp switch
-            {
-                null or < ShanghaiTimestamp => GenesisSpec,
-                _ => Shanghai.Instance
-            }
-        };
-    }
 
-    public const ulong ShanghaiTimestamp = long.MaxValue;
+    public static ChiadoSpecProvider Instance { get; } = new();
 }

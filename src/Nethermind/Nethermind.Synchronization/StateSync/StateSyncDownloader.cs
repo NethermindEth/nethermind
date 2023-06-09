@@ -18,14 +18,16 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.StateSync
 {
-    public class StateSyncDispatcher : SyncDispatcher<StateSyncBatch>
+    public class StateSyncDownloader : ISyncDownloader<StateSyncBatch>
     {
-        public StateSyncDispatcher(ISyncFeed<StateSyncBatch> syncFeed, ISyncPeerPool syncPeerPool, IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy, ILogManager logManager)
-            : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+        private ILogger Logger;
+
+        public StateSyncDownloader(ILogManager logManager)
         {
+            Logger = logManager.GetClassLogger();
         }
 
-        protected override async Task Dispatch(PeerInfo peerInfo, StateSyncBatch batch, CancellationToken cancellationToken)
+        public async Task Dispatch(PeerInfo peerInfo, StateSyncBatch batch, CancellationToken cancellationToken)
         {
             if (batch?.RequestedNodes is null || batch.RequestedNodes.Count == 0)
             {
@@ -47,7 +49,7 @@ namespace Nethermind.Synchronization.StateSync
                 if (batch.NodeDataType == NodeDataType.Code)
                 {
                     hashList = HashList.Rent(batch.RequestedNodes);
-                    task = handler.GetByteCodes(hashList, cancellationToken);
+                    task = handler.GetByteCodes(new KeccakToValueKeccakList(hashList), cancellationToken);
                 }
                 else
                 {
@@ -194,6 +196,36 @@ namespace Nethermind.Synchronization.StateSync
             }
 
             IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
+        /// <summary>
+        /// Transition class to prevent even larger change. Need to be removed later.
+        /// </summary>
+        private sealed class KeccakToValueKeccakList : IReadOnlyList<ValueKeccak>
+        {
+            private HashList _innerList;
+
+            internal KeccakToValueKeccakList(HashList innerList)
+            {
+                _innerList = innerList;
+            }
+
+            public IEnumerator<ValueKeccak> GetEnumerator()
+            {
+                foreach (Keccak keccak in _innerList)
+                {
+                    yield return keccak;
+                }
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                return GetEnumerator();
+            }
+
+            public int Count => _innerList.Count;
+
+            public ValueKeccak this[int index] => _innerList[index];
         }
     }
 }

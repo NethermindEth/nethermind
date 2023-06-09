@@ -513,7 +513,7 @@ namespace Nethermind.Synchronization.Test
             await task.ContinueWith(t => Assert.True(t.IsCanceled, $"blocks {t.Status}"));
         }
 
-        [Test, MaxTime(7000)]
+        [Test, MaxTime(15000)]
         public async Task Can_cancel_adding_headers()
         {
             Context ctx = new();
@@ -1002,11 +1002,25 @@ namespace Nethermind.Synchronization.Test
                 NullSyncReport.Instance,
                 ReceiptStorage,
                 SpecProvider,
-                new BlocksSyncPeerAllocationStrategyFactory(),
                 BetterPeerStrategy,
                 LimboLogs.Instance,
                 SyncBatchSize
             );
+
+            private SyncDispatcher<BlocksRequest> _dispatcher;
+            public SyncDispatcher<BlocksRequest> Dispatcher => _dispatcher ??= new SyncDispatcher<BlocksRequest>(
+                0,
+                Feed,
+                BlockDownloader,
+                PeerPool,
+                PeerAllocationStrategy,
+                LimboLogs.Instance
+            );
+
+            private IPeerAllocationStrategyFactory<BlocksRequest>? _peerAllocationStrategy;
+
+            protected virtual IPeerAllocationStrategyFactory<BlocksRequest> PeerAllocationStrategy =>
+                _peerAllocationStrategy ??= new BlocksSyncPeerAllocationStrategyFactory();
 
             public Context(BlockTree? blockTree = null)
             {

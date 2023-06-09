@@ -29,9 +29,7 @@ public class MultipleUnsignedOperations
     private readonly BlockHeader _header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.MuirGlacierBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
     private readonly IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
     private EvmState _evmState;
-    private StateProvider _stateProvider;
-    private StorageProvider _storageProvider;
-    private WorldState _worldState;
+    private WorldState _stateProvider;
 
     private readonly byte[] _bytecode = Prepare.EvmCode
         .PushData(2)
@@ -73,13 +71,10 @@ public class MultipleUnsignedOperations
         TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
         IKeyValueStore codeDb = new MemDb();
 
-        _stateProvider = new StateProvider(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
+        _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
         _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
         _stateProvider.Commit(_spec);
 
-        _storageProvider = new StorageProvider(trieStore, _stateProvider, new OneLoggerLogManager(NullLogger.Instance));
-
-        _worldState = new WorldState(_stateProvider, _storageProvider);
         Console.WriteLine(MuirGlacier.Instance);
         _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
 
@@ -95,21 +90,19 @@ public class MultipleUnsignedOperations
             inputData: default
         );
 
-        _evmState = new EvmState(100_000_000L, _environment, ExecutionType.Transaction, true, _worldState.TakeSnapshot(), false);
+        _evmState = new EvmState(100_000_000L, _environment, ExecutionType.Transaction, true, _stateProvider.TakeSnapshot(), false);
     }
 
     [Benchmark]
     public void ExecuteCode()
     {
-        _virtualMachine.Run(_evmState, _worldState, _txTracer);
+        _virtualMachine.Run(_evmState, _stateProvider, _txTracer);
         _stateProvider.Reset();
-        _storageProvider.Reset();
     }
 
     [Benchmark(Baseline = true)]
     public void No_machine_running()
     {
         _stateProvider.Reset();
-        _storageProvider.Reset();
     }
 }

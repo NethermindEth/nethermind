@@ -59,7 +59,7 @@ namespace Nethermind.State.Witnesses
 
         public void Touch(ReadOnlySpan<byte> key)
         {
-            _witnessCollector.Add(new Keccak(key.ToArray()));
+            _witnessCollector.Add(new Keccak(key));
         }
     }
 }

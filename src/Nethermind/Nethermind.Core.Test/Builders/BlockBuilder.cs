@@ -167,6 +167,15 @@ namespace Nethermind.Core.Test.Builders
             return WithParent(block.Header);
         }
 
+        public BlockBuilder WithPostMergeRules()
+        {
+            TestObjectInternal.Header.Difficulty = 0;
+            TestObjectInternal.Header.UnclesHash = Keccak.OfAnEmptySequenceRlp;
+            TestObjectInternal.Header.Nonce = 0;
+            TestObjectInternal.Header.IsPostMerge = true;
+            return this;
+        }
+
         public BlockBuilder WithUncles(params Block[] uncles)
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(

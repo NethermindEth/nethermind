@@ -126,7 +126,7 @@ public class DiscoveryManager : IDiscoveryManager
             manager.OnStateChanged += ManagerOnOnStateChanged;
             if (!isPersisted)
             {
-                _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation) });
+                _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation(DateTime.UtcNow)) });
             }
 
             return manager;
@@ -280,9 +280,9 @@ public class DiscoveryManager : IDiscoveryManager
                 }
             }
         }
-
+        DateTime utcNow = DateTime.UtcNow;
         foreach ((Keccak key, INodeLifecycleManager value) in _nodeLifecycleManagers.ToArray()
-                     .OrderBy(x => x.Value.NodeStats.CurrentNodeReputation))
+                     .OrderBy(x => x.Value.NodeStats.CurrentNodeReputation(utcNow)))
         {
             if (RemoveManager((key, value.ManagedNode.Id)))
             {

@@ -14,7 +14,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong? MaxCodeSizeTransitionTimestamp { get; set; }
         public long GasLimitBoundDivisor { get; set; }
         public Address Registrar { get; set; }
-        public UInt256 AccountStartNonce { get; set; }
         public long MaximumExtraDataSize { get; set; }
         public long MinGasLimit { get; set; }
         public Keccak ForkCanonHash { get; set; }

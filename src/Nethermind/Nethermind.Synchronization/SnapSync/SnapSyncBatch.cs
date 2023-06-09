@@ -14,7 +14,7 @@ namespace Nethermind.Synchronization.SnapSync
         public StorageRange? StorageRangeRequest { get; set; }
         public SlotsAndProofs? StorageRangeResponse { get; set; }
 
-        public Keccak[]? CodesRequest { get; set; }
+        public ValueKeccak[]? CodesRequest { get; set; }
         public byte[][]? CodesResponse { get; set; }
 
         public AccountsToRefreshRequest? AccountsToRefreshRequest { get; set; }

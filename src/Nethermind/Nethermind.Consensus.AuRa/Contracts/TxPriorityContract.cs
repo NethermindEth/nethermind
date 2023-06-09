@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     /// <summary>
     /// Permission contract for <see cref="ITxPool"/> transaction ordering
-    /// <seealso cref="https://github.com/poanetwork/posdao-contracts/blob/master/contracts/TxPriority.sol"/> 
+    /// <seealso cref="https://github.com/poanetwork/posdao-contracts/blob/master/contracts/TxPriority.sol"/>
     /// </summary>
     public partial class TxPriorityContract : Contract
     {
@@ -94,7 +94,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private Destination DecodeDestination(LogEntry log, BlockHeader blockHeader) =>
             new Destination(
                 new Address(log.Topics[1]),
-                log.Topics[2].Bytes.Slice(0, 4),
+                log.Topics[2].Bytes.Slice(0, 4).ToArray(),
                 AbiType.UInt256.DecodeUInt(log.Data, 0, false).Item1,
                 DestinationSource.Contract,
                 blockHeader.Number);
