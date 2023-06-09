@@ -117,10 +117,7 @@ public static class IntrinsicGasCalculator
 
     public static UInt256 CalculateDataGasPricePerUnit(ulong excessDataGas)
     {
-        UInt256 dataGasPriceUpdateFraction = 2225652;
-        UInt256 minDataGasPrice = 1L;
-
-        UInt256 FakeExponential(UInt256 factor, UInt256 num, UInt256 denominator)
+        static UInt256 FakeExponential(UInt256 factor, UInt256 num, UInt256 denominator)
         {
             UInt256 output = UInt256.Zero;
 
@@ -137,7 +134,7 @@ public static class IntrinsicGasCalculator
         }
 
         UInt256 scaleDueToParentExcessDataGas =
-            FakeExponential(minDataGasPrice, excessDataGas, dataGasPriceUpdateFraction);
+            FakeExponential(Eip4844Constants.MinDataGasPrice, excessDataGas, Eip4844Constants.DataGasUpdateFraction);
         return scaleDueToParentExcessDataGas;
     }
 
