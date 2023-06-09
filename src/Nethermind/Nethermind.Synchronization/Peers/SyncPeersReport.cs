@@ -41,16 +41,17 @@ namespace Nethermind.Synchronization.Peers
 
         public void WriteFullReport()
         {
+            if (!_logger.IsDebug)
+            {
+                return;
+            }
+
             lock (_writeLock)
             {
-                if (!_logger.IsInfo)
-                {
-                    return;
-                }
-
                 RememberState(out bool _);
 
-                _logger.Info(MakeReportForPeer(OrderedPeers, $"Sync peers - Initialized: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}"));
+                _logger.Debug(MakeSummaryReportForPeers(_peerPool.InitializedPeers, $"Sync peers - Connected: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}"));
+                _logger.Debug(MakeReportForPeer(OrderedPeers, ""));
             }
         }
 
@@ -69,7 +70,58 @@ namespace Nethermind.Synchronization.Peers
                     return;
                 }
 
-                _logger.Info(MakeReportForPeer(OrderedPeers.Where(p => (p.AllocatedContexts & AllocationContexts.All) != AllocationContexts.None), $"Allocated sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}"));
+                var header = $"Allocated sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}";
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug(MakeReportForPeer(OrderedPeers.Where(p => (p.AllocatedContexts & AllocationContexts.All) != AllocationContexts.None), header));
+                }
+                else
+                {
+                    _logger.Info(MakeSummaryReportForPeers(_peerPool.InitializedPeers, header));
+                }
+            }
+        }
+
+        internal string? MakeSummaryReportForPeers(IEnumerable<PeerInfo> peers, string header)
+        {
+            lock (_writeLock)
+            {
+                IEnumerable<IGrouping<string, PeerInfo>> peerGroups = peers.GroupBy(peerInfo => ParseClientInfo(peerInfo.SyncPeer.ClientId));
+                float sum = peerGroups.Sum(x => x.Count());
+
+                _stringBuilder.Append(header);
+                _stringBuilder.Append(" |");
+
+                bool isFirst = true;
+                foreach (var peerGroup in peerGroups.OrderByDescending(x => x.Count()))
+                {
+                    if (isFirst)
+                    {
+                        isFirst = false;
+                    }
+                    else
+                    {
+                        _stringBuilder.Append(',');
+                    }
+                    _stringBuilder.Append($" {peerGroup.Key} ({peerGroup.Count() / sum,6:P2})");
+                }
+
+                string result = _stringBuilder.ToString();
+                _stringBuilder.Clear();
+                return result;
+            }
+        }
+
+        private string ParseClientInfo(string clientInfo)
+        {
+            int index = clientInfo.IndexOf('/');
+            if (index > 0)
+            {
+                return clientInfo[..index];
+            }
+            else
+            {
+                return "Unknown";
             }
         }
 

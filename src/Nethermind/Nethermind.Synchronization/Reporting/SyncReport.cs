@@ -75,11 +75,6 @@ namespace Nethermind.Synchronization.Reporting
 
         private void TimerOnElapsed(object? sender, EventArgs e)
         {
-            if (_reportId % SyncReportFrequency == 0)
-            {
-                WriteSyncReport();
-            }
-
             if (_reportId % SyncFullPeersReportFrequency == 0)
             {
                 _syncPeersReport.WriteFullReport();
@@ -87,6 +82,10 @@ namespace Nethermind.Synchronization.Reporting
             else if (_reportId % SyncAllocatedPeersReportFrequency == 0)
             {
                 _syncPeersReport.WriteAllocatedReport();
+            }
+            else if (_reportId % SyncReportFrequency == 0)
+            {
+                WriteSyncReport();
             }
 
             _reportId++;
@@ -174,7 +173,7 @@ namespace Nethermind.Synchronization.Reporting
             {
                 if (_reportId % PeerCountFrequency == 0)
                 {
-                    _logger.Info($"Peers | with known best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount} |");
+                    _logger.Info(_syncPeersReport.MakeSummaryReportForPeers(_syncPeerPool.InitializedPeers ,$"Peers | with known best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount}"));
                 }
             }
 
