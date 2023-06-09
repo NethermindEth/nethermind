@@ -216,7 +216,7 @@ public class BlockValidator : IBlockValidator
 
         int blobsInBlock = 0;
         UInt256? dataGasPrice = null;
-        for (int txIndex = block.Transactions.Length - 1; txIndex >= 0; txIndex--)
+        for (int txIndex = 0; txIndex < block.Transactions.Length; txIndex++)
         {
             Transaction transaction = block.Transactions[txIndex];
             if (!transaction.SupportsBlobs)

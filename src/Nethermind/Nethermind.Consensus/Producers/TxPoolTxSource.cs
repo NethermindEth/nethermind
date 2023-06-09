@@ -81,7 +81,9 @@ namespace Nethermind.Consensus.Producers
                 {
                     dataGasPrice ??= IntrinsicGasCalculator.CalculateDataGasPricePerUnit(
                         IntrinsicGasCalculator.CalculateExcessDataGas(parent, _specProvider.GetFinalSpec()) ?? 0);
+
                     int txAmountOfBlobs = tx.BlobVersionedHashes?.Length ?? 0;
+
                     if (dataGasPrice > tx.MaxFeePerDataGas)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, data gas fee is too low.");

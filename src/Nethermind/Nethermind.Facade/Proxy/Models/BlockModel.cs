@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Newtonsoft.Json;
 
 namespace Nethermind.Facade.Proxy.Models;
 
@@ -28,5 +29,12 @@ public class BlockModel<T>
     public UInt256 TotalDifficulty { get; set; }
     public List<T> Transactions { get; set; }
     public Keccak TransactionsRoot { get; set; }
-    public UInt256? ExcessDataGas { get; set; }
+
+
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    public ulong? DataGasUsed { get; set; }
+
+
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    public ulong? ExcessDataGas { get; set; }
 }

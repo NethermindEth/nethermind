@@ -67,8 +67,8 @@ public class BlockHeader
     public long? AuRaStep { get; set; }
     public UInt256 BaseFeePerGas { get; set; }
     public Keccak? WithdrawalsRoot { get; set; }
-    public ulong? ExcessDataGas { get; set; }
     public ulong? DataGasUsed { get; set; }
+    public ulong? ExcessDataGas { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);

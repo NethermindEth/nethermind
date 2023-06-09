@@ -303,12 +303,6 @@ namespace Nethermind.Consensus.Producers
             IReleaseSpec spec = _specProvider.GetSpec(header);
             header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header));
 
-            if (spec.IsEip4844Enabled)
-            {
-                header.DataGasUsed = 0;
-                header.ExcessDataGas = IntrinsicGasCalculator.CalculateExcessDataGas(parent, spec);
-            }
-
             return header;
         }
 
