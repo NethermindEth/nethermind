@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using Nethermind.Logging;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Synchronization.Peers
 {
@@ -86,7 +87,7 @@ namespace Nethermind.Synchronization.Peers
         {
             lock (_writeLock)
             {
-                IEnumerable<IGrouping<string, PeerInfo>> peerGroups = peers.GroupBy(peerInfo => ParseClientInfo(peerInfo.SyncPeer.ClientId));
+                IEnumerable<IGrouping<NodeClientType, PeerInfo>> peerGroups = peers.GroupBy(peerInfo => peerInfo.SyncPeer.ClientType);
                 float sum = peerGroups.Sum(x => x.Count());
 
                 _stringBuilder.Append(header);
@@ -109,19 +110,6 @@ namespace Nethermind.Synchronization.Peers
                 string result = _stringBuilder.ToString();
                 _stringBuilder.Clear();
                 return result;
-            }
-        }
-
-        private string ParseClientInfo(string clientInfo)
-        {
-            int index = clientInfo.IndexOf('/');
-            if (index > 0)
-            {
-                return clientInfo[..index];
-            }
-            else
-            {
-                return "Unknown";
             }
         }
 

@@ -182,6 +182,10 @@ namespace Nethermind.Stats.Model
             {
                 return NodeClientType.Nethermind;
             }
+            else if (clientId.Contains("Erigon", StringComparison.InvariantCultureIgnoreCase))
+            {
+                return NodeClientType.Erigon;
+            }
             else if (clientId.Contains("Parity", StringComparison.InvariantCultureIgnoreCase))
             {
                 return NodeClientType.Parity;

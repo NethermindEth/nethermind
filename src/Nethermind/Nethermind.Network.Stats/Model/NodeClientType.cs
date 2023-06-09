@@ -5,12 +5,13 @@ namespace Nethermind.Stats.Model
 {
     public enum NodeClientType
     {
+        Unknown = 0,
         BeSu,
         Geth,
         Nethermind,
         Parity,
         OpenEthereum,
         Trinity,
-        Unknown
+        Erigon,
     }
 }
