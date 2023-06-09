@@ -70,12 +70,22 @@ public class ExecutionPayload
 
     public ulong Timestamp { get; set; }
 
+    private byte[][] _encodedTransactions = Array.Empty<byte[]>();
+
     /// <summary>
     /// Gets or sets an array of RLP-encoded transaction where each item is a byte list (data)
     /// representing <c>TransactionType || TransactionPayload</c> or <c>LegacyTransaction</c> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-2718">EIP-2718</see>.
     /// </summary>
-    public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();
+    public byte[][] Transactions
+    {
+        get { return _encodedTransactions; }
+        set
+        {
+            _encodedTransactions = value;
+            _transactions = null;
+        }
+    }
 
     /// <summary>
     /// Gets or sets a collection of <see cref="Withdrawal"/> as defined in
@@ -153,9 +163,13 @@ public class ExecutionPayload
     /// RLP-encodes and sets the transactions specified to <see cref="Transactions"/>.
     /// </summary>
     /// <param name="transactions">An array of transactions to encode.</param>
-    public void SetTransactions(params Transaction[] transactions) => Transactions = (_transactions = transactions)
-        .Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
-        .ToArray();
+    public void SetTransactions(params Transaction[] transactions)
+    {
+        Transactions = transactions
+            .Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
+            .ToArray();
+        _transactions = transactions;
+    }
 
     public override string ToString() => $"{BlockNumber} ({BlockHash})";
 }
