@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -13,15 +12,11 @@ namespace Nethermind.TxPool.Filters
     /// </summary>
     internal sealed class BalanceZeroFilter : IIncomingTxFilter
     {
-        private readonly IChainHeadSpecProvider _specProvider;
-        private readonly IChainHeadInfoProvider _headInfo;
         private readonly bool _thereIsPriorityContract;
         private readonly ILogger _logger;
 
-        public BalanceZeroFilter(IChainHeadInfoProvider headInfo, bool thereIsPriorityContract, ILogger logger)
+        public BalanceZeroFilter(bool thereIsPriorityContract, ILogger logger)
         {
-            _specProvider = headInfo.SpecProvider;
-            _headInfo = headInfo;
             _thereIsPriorityContract = thereIsPriorityContract;
             _logger = logger;
         }
@@ -48,9 +43,8 @@ namespace Nethermind.TxPool.Filters
                     AcceptTxResult.InsufficientFunds.WithMessage($"Balance is {balance} less than sending value {tx.Value}");
             }
 
-            IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
-            UInt256 affordableGasPrice = tx.CalculateGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee);
-            if (UInt256.AddOverflow(affordableGasPrice, tx.Value, out UInt256 txCostAndValue))
+            if (UInt256.MultiplyOverflow(tx.MaxFeePerGas, (UInt256)tx.GasLimit, out UInt256 txCostAndValue) ||
+                UInt256.AddOverflow(txCostAndValue, tx.Value, out txCostAndValue))
             {
                 Metrics.PendingTransactionsBalanceBelowValue++;
                 if (_logger.IsTrace)
