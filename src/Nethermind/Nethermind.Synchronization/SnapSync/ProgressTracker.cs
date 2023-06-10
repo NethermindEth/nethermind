@@ -20,8 +20,8 @@ namespace Nethermind.Synchronization.SnapSync
     {
         private const string NO_REQUEST = "NO REQUEST";
 
-        private const int STORAGE_BATCH_SIZE = 1_200;
-        private const int CODES_BATCH_SIZE = 1_000;
+        private const int STORAGE_BATCH_SIZE = 16_384;
+        private const int CODES_BATCH_SIZE = 1_024;
         private readonly byte[] ACC_PROGRESS_KEY = Encoding.ASCII.GetBytes("AccountProgressKey");
 
         // This does not need to be a lot as it spawn other requests. In fact 8 is probably too much. It is severely
@@ -50,6 +50,10 @@ namespace Nethermind.Synchronization.SnapSync
         private ConcurrentQueue<ValueKeccak> CodesToRetrieve { get; set; } = new();
         private ConcurrentQueue<AccountWithStorageStartingHash> AccountsToRefresh { get; set; } = new();
 
+        private ConcurrentQueue<List<PathWithAccount>> _storagesToQueryCache = new();
+        private ConcurrentQueue<List<ValueKeccak>> _codesToQueryCache = new();
+
+        private int _maxToCache = Math.Max(1, Environment.ProcessorCount / 2);
 
         private readonly Pivot _pivot;
 
@@ -191,8 +195,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 Interlocked.Increment(ref _activeStorageRequests);
 
-                // TODO: optimize this
-                List<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
+                List<PathWithAccount> storagesToQuery = GetFromCacheOrCreatePathWithAccounts(STORAGE_BATCH_SIZE);
                 for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
                 {
                     storagesToQuery.Add(storage);
@@ -206,6 +209,8 @@ namespace Nethermind.Synchronization.SnapSync
                     BlockNumber = blockNumber
                 };
 
+                ReturnToCache(storagesToQuery);
+
                 LogRequest($"StoragesToRetrieve:{storagesToQuery.Count}");
 
                 request.StorageRangeRequest = storageRange;
@@ -216,17 +221,18 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 Interlocked.Increment(ref _activeCodeRequests);
 
-                // TODO: optimize this
-                List<ValueKeccak> codesToQuery = new(CODES_BATCH_SIZE);
+                List<ValueKeccak> codesToQuery = GetFromCacheOrCreateKeccakList(CODES_BATCH_SIZE);
                 for (int i = 0; i < CODES_BATCH_SIZE && CodesToRetrieve.TryDequeue(out ValueKeccak codeHash); i++)
                 {
                     codesToQuery.Add(codeHash);
                 }
-                codesToQuery.Sort();
 
                 LogRequest($"CodesToRetrieve:{codesToQuery.Count}");
 
+                codesToQuery.Sort();
                 request.CodesRequest = codesToQuery.ToArray();
+
+                ReturnToCache(codesToQuery);
 
                 return (request, false);
             }
@@ -410,6 +416,42 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             return true;
+        }
+
+        private void ReturnToCache(List<PathWithAccount> pathWithAccounts)
+        {
+            if (_storagesToQueryCache.Count >= _maxToCache) return;
+
+            pathWithAccounts.Clear();
+            _storagesToQueryCache.Enqueue(pathWithAccounts);
+        }
+
+        private List<PathWithAccount> GetFromCacheOrCreatePathWithAccounts(int capacity)
+        {
+            if (_storagesToQueryCache.TryDequeue(out List<PathWithAccount> pathWithAccounts))
+            {
+                return pathWithAccounts;
+            }
+
+            return new List<PathWithAccount>(capacity: capacity);
+        }
+
+        private List<ValueKeccak> GetFromCacheOrCreateKeccakList(int capacity)
+        {
+            if (_codesToQueryCache.TryDequeue(out List<ValueKeccak> valueKeccaks))
+            {
+                return valueKeccaks;
+            }
+
+            return new List<ValueKeccak>(capacity: capacity);
+        }
+
+        private void ReturnToCache(List<ValueKeccak> valueKeccak)
+        {
+            if (_codesToQueryCache.Count >= _maxToCache) return;
+
+            valueKeccak.Clear();
+            _codesToQueryCache.Enqueue(valueKeccak);
         }
 
         // A partition of the top level account range starting from `AccountPathStart` to `AccountPathLimit` (exclusive).
