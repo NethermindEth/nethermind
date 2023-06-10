@@ -262,6 +262,21 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
+        private void EnqueueCodeHashes(HashSet<ValueKeccak> codeHashes)
+        {
+            foreach (var hash in codeHashes)
+            {
+                CodesToRetrieve.Enqueue(hash);
+            }
+        }
+
+        public void ReportCodeRequestFinished(HashSet<ValueKeccak> codeHashes)
+        {
+            EnqueueCodeHashes(codeHashes);
+
+            Interlocked.Decrement(ref _activeCodeRequests);
+        }
+
         public void ReportCodeRequestFinished(ReadOnlySpan<ValueKeccak> codeHashes)
         {
             EnqueueCodeHashes(codeHashes);

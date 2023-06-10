@@ -291,7 +291,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Length);
 
-            _progressTracker.ReportCodeRequestFinished(set.ToArray());
+            _progressTracker.ReportCodeRequestFinished(set);
         }
 
         public void RetryRequest(SnapSyncBatch batch)
