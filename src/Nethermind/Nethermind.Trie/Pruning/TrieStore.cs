@@ -251,6 +251,12 @@ namespace Nethermind.Trie.Pruning
                     if (!ReferenceEquals(cachedNodeCopy, node))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
+                        cachedNodeCopy.ResolveKey(this, nodeCommitInfo.IsRoot);
+                        if (node.Keccak != cachedNodeCopy.Keccak)
+                        {
+                            throw new InvalidOperationException($"The hash of replacement node {cachedNodeCopy} is not the same as the original {node}.");
+                        }
+
                         if (!nodeCommitInfo.IsRoot)
                         {
                             nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
@@ -509,15 +515,16 @@ namespace Nethermind.Trie.Pruning
                 if (node.IsPersisted)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
-                    if (node.Keccak is null)
+                    Keccak? keccak = node.Keccak;
+                    if (keccak is null)
                     {
-                        node.ResolveKey(this, true); // TODO: hack
-                        if (node.Keccak != key)
+                        keccak = node.GenerateKey(this, isRoot: true);
+                        if (keccak != key)
                         {
-                            throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
+                            throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
                         }
                     }
-                    _dirtyNodes.Remove(node.Keccak);
+                    _dirtyNodes.Remove(keccak);
 
                     Metrics.PrunedPersistedNodesCount++;
                 }
