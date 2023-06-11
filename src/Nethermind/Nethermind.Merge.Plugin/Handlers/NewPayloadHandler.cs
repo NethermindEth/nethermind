@@ -209,7 +209,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return NewPayloadV1Result.Syncing;
         }
 
-        if (_logger.IsInfo) _logger.Info($"Valid. Result of {requestStr}.");
+        if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
         return NewPayloadV1Result.Valid(block.Hash);
     }
 

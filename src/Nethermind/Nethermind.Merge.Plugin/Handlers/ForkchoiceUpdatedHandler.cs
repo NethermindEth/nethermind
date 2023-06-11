@@ -145,7 +145,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Syncing;
         }
 
-        if (_logger.IsInfo) _logger.Info($"ForkChoiceUpdate: block {newHeadBlock} was processed.");
+        if (_logger.IsDebug) _logger.Debug($"ForkChoiceUpdate: block {newHeadBlock} was processed.");
 
         BlockHeader? finalizedHeader = ValidateBlockHash(forkchoiceState.FinalizedBlockHash, out string? finalizationErrorMsg);
         if (finalizationErrorMsg is not null)
@@ -232,7 +232,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock.Header, payloadAttributes);
         }
 
-        if (_logger.IsInfo) _logger.Info($"Valid. Request: {requestStr}.");
+        if (_logger.IsDebug) _logger.Debug($"Valid. Request: {requestStr}.");
 
         _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
         return ForkchoiceUpdatedV1Result.Valid(payloadId, forkchoiceState.HeadBlockHash);

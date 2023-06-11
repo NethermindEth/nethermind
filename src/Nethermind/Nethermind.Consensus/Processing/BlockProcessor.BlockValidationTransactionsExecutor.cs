@@ -34,7 +34,6 @@ namespace Nethermind.Consensus.Processing
             public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
                 Evm.Metrics.ResetBlockStats();
-
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
                     Transaction currentTx = block.Transactions[i];

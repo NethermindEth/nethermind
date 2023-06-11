@@ -54,8 +54,6 @@ namespace Nethermind.Mev
             List<BundleTransaction> bundleTransactions = new();
             Keccak? bundleHash = null;
 
-            Evm.Metrics.ResetBlockStats();
-
             foreach (Transaction currentTx in transactions)
             {
                 // if we don't accumulate bundle yet

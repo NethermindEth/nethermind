@@ -134,7 +134,7 @@ public partial class EngineModuleTests
     public void ForkchoiceV1_ToString_returns_correct_results()
     {
         ForkchoiceStateV1 forkchoiceState = new(TestItem.KeccakA, TestItem.KeccakF, TestItem.KeccakC);
-        forkchoiceState.ToString().Should().Be("ForkchoiceState: (HeadBlockHash: 0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760, SafeBlockHash: 0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72, FinalizedBlockHash: 0xe61d9a3d3848fb2cdd9a2ab61e2f21a10ea431275aed628a0557f9dee697c37a)");
+        forkchoiceState.ToString().Should().Be("ForkChoice: (Head: 0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760, Safe: 0x017e66...b18f72, Finalized: 0xe61d9a...97c37a)");
     }
 
     [Test]

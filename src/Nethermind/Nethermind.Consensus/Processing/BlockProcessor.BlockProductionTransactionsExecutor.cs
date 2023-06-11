@@ -65,8 +65,6 @@ namespace Nethermind.Consensus.Processing
             {
                 IEnumerable<Transaction> transactions = GetTransactions(block);
 
-                Evm.Metrics.ResetBlockStats();
-
                 int i = 0;
                 LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
                 foreach (Transaction currentTx in transactions)
