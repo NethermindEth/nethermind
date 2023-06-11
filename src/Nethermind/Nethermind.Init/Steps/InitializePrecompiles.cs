@@ -13,10 +13,12 @@ namespace Nethermind.Init.Steps;
 public class InitializePrecompiles : IStep
 {
     private readonly INethermindApi _api;
+    private readonly IInitConfig _initConfig;
 
     public InitializePrecompiles(INethermindApi api)
     {
         _api = api;
+        _initConfig = api.Config<IInitConfig>();
     }
 
     public async Task Execute(CancellationToken cancellationToken)
@@ -27,7 +29,7 @@ public class InitializePrecompiles : IStep
 
             try
             {
-                await KzgPolynomialCommitments.InitializeAsync(logger);
+                await KzgPolynomialCommitments.InitializeAsync(logger, _initConfig.KzgSetupPath);
             }
             catch (Exception e)
             {
