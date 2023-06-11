@@ -113,17 +113,17 @@ namespace Nethermind.Consensus.Processing
                     decimal bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1000 * 1000;
                     decimal chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000);
                     decimal runMs = (runMicroseconds == 0 ? -1 : runMicroseconds / 1000);
+                    string blockGas = Evm.Metrics.BlockMinGasPrice != decimal.MaxValue ? $" Gas gwei: {Evm.Metrics.BlockMinGasPrice:N2} .. {Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N2} ({Evm.Metrics.BlockAveGasPrice:N2}) .. {Evm.Metrics.BlockMaxGasPrice:N2}" : "";
                     if (chunkBlocks > 1)
                     {
-                        _logger.Info($"Processed   {block.Number - chunkBlocks + 1,9}...{block.Number,9} | {chunkMs,9:N2} ms  | slot {runMs,7:N0} ms     | recv  {recoveryQueueSize,7:N0} | proc   {blockQueueSize,6:N0}");
+                        _logger.Info($"Processed   {block.Number - chunkBlocks + 1,9}...{block.Number,9} | {chunkMs,9:N2} ms  | slot {runMs,7:N0} ms     |{blockGas}");
                     }
                     else
                     {
-                        _logger.Info($"Processed     {block.Number,9}           | {chunkMs,9:N2} ms  | slot {runMs,7:N0} ms     | recv  {recoveryQueueSize,7:N0} | proc   {blockQueueSize,6:N0}");
+                        _logger.Info($"Processed     {block.Number,9}           | {chunkMs,9:N2} ms  | slot {runMs,7:N0} ms     |{blockGas}");
                     }
                     _logger.Info($"- Block{(chunkBlocks > 1 ? "s" : " ")}           {chunkMGas,7:F2} MGas   | {chunkTx,6:N0}    txs | calls {chunkCalls,6:N0} ({chunkEmptyCalls,3:N0})  | sload {chunkSload,7:N0} | sstore {chunkSstore,6:N0} | create {chunkCreates,3:N0}{(currentSelfDestructs - _lastSelfDestructs > 0 ? $"({-(currentSelfDestructs - _lastSelfDestructs),3:N0})" : "")}");
-                    string blockGas = $" Gas gwei: {Evm.Metrics.BlockMinGasPrice:N2} .. {Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N2} ({Evm.Metrics.BlockAveGasPrice:N2}) .. {Evm.Metrics.BlockMaxGasPrice:N2}";
-                    _logger.Info($"- Block Throughput {mgasPerSecond,7:F2} MGas/s | {txps,9:F2} t/s |         {bps,7:F2} b/s |{(Evm.Metrics.BlockMinGasPrice != decimal.MaxValue ? blockGas : "")}");
+                    _logger.Info($"- Block Throughput {mgasPerSecond,7:F2} MGas/s | {txps,9:F2} t/s |         {bps,7:F2} b/s | recv  {recoveryQueueSize,7:N0} | proc   {blockQueueSize,6:N0}");
                     // Only output the total thoughtput in debug mode
                     _logger.Debug($"- Total Throughput {totalMgasPerSecond,7:F2} MGas/s | {totalTxPerSecond,9:F2} t/s |         {totalBlocksPerSecond,7:F2} b/s | Gas gwei: {Evm.Metrics.MinGasPrice:N2} .. {Math.Max(Evm.Metrics.MinGasPrice, Evm.Metrics.EstMedianGasPrice):N2} ({Evm.Metrics.AveGasPrice:N2}) .. {Evm.Metrics.MaxGasPrice:N2}");
                 }
