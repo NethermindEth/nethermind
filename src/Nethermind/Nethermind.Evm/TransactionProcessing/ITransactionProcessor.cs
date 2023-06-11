@@ -25,6 +25,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         /// <summary>
         /// Call transaction, no validations, commit state
+        /// Will NOT charge gas from sender account, so stateDiff will miss gas fee
         /// </summary>
         void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer);
     }
