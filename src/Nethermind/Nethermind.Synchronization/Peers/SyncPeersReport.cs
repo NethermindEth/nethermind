@@ -93,6 +93,20 @@ namespace Nethermind.Synchronization.Peers
                 _stringBuilder.Append(header);
                 _stringBuilder.Append(" |");
 
+                PeersContextCounts activeContexts = new();
+                PeersContextCounts sleepingContexts = new();
+                foreach (PeerInfo peerInfo in peers)
+                {
+                    CountContexts(peerInfo.AllocatedContexts, activeContexts);
+                    CountContexts(peerInfo.SleepingContexts, sleepingContexts);
+                }
+
+                _stringBuilder.Append(" Active: ");
+                activeContexts.AppendTo(_stringBuilder, "None");
+                _stringBuilder.Append(" | Sleeping: ");
+                activeContexts.AppendTo(_stringBuilder, "All");
+                _stringBuilder.Append(" |");
+
                 bool isFirst = true;
                 foreach (var peerGroup in peerGroups.OrderByDescending(x => x.Count()))
                 {
@@ -110,6 +124,24 @@ namespace Nethermind.Synchronization.Peers
                 string result = _stringBuilder.ToString();
                 _stringBuilder.Clear();
                 return result;
+            }
+
+            static void CountContexts(AllocationContexts contexts, PeersContextCounts contextCounts)
+            {
+                contextCounts.Total++;
+                if (contexts == AllocationContexts.None)
+                {
+                    contextCounts.None++;
+                    return;
+                }
+
+                contextCounts.Headers += contexts.HasFlag(AllocationContexts.Headers) ? 1 : 0;
+                contextCounts.Bodies += contexts.HasFlag(AllocationContexts.Bodies) ? 1 : 0;
+                contextCounts.Receipts += contexts.HasFlag(AllocationContexts.Receipts) ? 1 : 0;
+                contextCounts.Blocks += contexts.HasFlag(AllocationContexts.Blocks) ? 1 : 0;
+                contextCounts.State += contexts.HasFlag(AllocationContexts.State) ? 1 : 0;
+                contextCounts.Witness += contexts.HasFlag(AllocationContexts.Witness) ? 1 : 0;
+                contextCounts.Snap += contexts.HasFlag(AllocationContexts.Snap) ? 1 : 0;
             }
         }
 
@@ -174,6 +206,52 @@ namespace Nethermind.Synchronization.Peers
             int initializedPeerCount = _peerPool.InitializedPeersCount;
             initializedCountChanged = initializedPeerCount != _currentInitializedPeerCount;
             _currentInitializedPeerCount = initializedPeerCount;
+        }
+
+        private class PeersContextCounts
+        {
+            public int None { get; set; }
+            public int Headers { get; set; }
+            public int Bodies { get; set; }
+            public int Receipts { get; set; }
+            public int Blocks { get; set; }
+            public int State { get; set; }
+            public int Witness { get; set; }
+            public int Snap { get; set; }
+            public int Total { get; set; }
+
+            public void AppendTo(StringBuilder sb, string allText)
+            {
+                if (Total == None)
+                {
+                    sb.Append(allText);
+                    return;
+                }
+
+                bool added = false;
+
+                if (None > 0) AddComma(sb, ref added).Append(None).Append(" Not Syncing");
+                if (Headers > 0) AddComma(sb, ref added).Append(Headers).Append(" Headers");
+                if (Bodies > 0) AddComma(sb, ref added).Append(Bodies).Append(" Bodies");
+                if (Receipts > 0) AddComma(sb, ref added).Append(Receipts).Append(" Receipts");
+                if (Blocks > 0) AddComma(sb, ref added).Append(Blocks).Append(" Blocks");
+                if (State > 0) AddComma(sb, ref added).Append(State).Append(" State");
+                if (Witness > 0) AddComma(sb, ref added).Append(Witness).Append(" Witness");
+                if (Snap > 0) AddComma(sb, ref added).Append(Snap).Append(" Snap");
+
+                StringBuilder AddComma(StringBuilder sb, ref bool itemAdded)
+                {
+                    if (itemAdded)
+                    {
+                        sb.Append(", ");
+                    }
+                    else
+                    {
+                        itemAdded = true;
+                    }
+                    return sb;
+                }
+            }
         }
     }
 }
