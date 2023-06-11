@@ -20,6 +20,8 @@ namespace Nethermind.Core
 
         public Bloom(Bloom?[] blooms) : this()
         {
+            if (blooms is null) return;
+
             for (int i = 0; i < blooms.Length; i++)
             {
                 Accumulate(blooms[i]);
