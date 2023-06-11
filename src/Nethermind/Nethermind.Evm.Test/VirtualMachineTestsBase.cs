@@ -118,12 +118,12 @@ namespace Nethermind.Evm.Test
         protected (Block block, Transaction transaction) PrepareTx(
             long blockNumber,
             long gasLimit,
-            byte[] code,
-            SenderRecipientAndMiner senderRecipientAndMiner = null,
+            byte[]? code = null,
+            SenderRecipientAndMiner? senderRecipientAndMiner = null,
             int value = 1,
             long blockGasLimit = DefaultBlockGasLimit,
             ulong timestamp = 0,
-            byte[][] blobVersionedHashes = null)
+            byte[][]? blobVersionedHashes = null)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
 
@@ -140,7 +140,11 @@ namespace Nethermind.Evm.Test
                 TestState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether());
             else
                 TestState.AddToBalance(senderRecipientAndMiner.Recipient, 100.Ether(), SpecProvider.GenesisSpec);
-            TestState.InsertCode(senderRecipientAndMiner.Recipient, code, SpecProvider.GenesisSpec);
+
+            if (code is not null)
+            {
+                TestState.InsertCode(senderRecipientAndMiner.Recipient, code, SpecProvider.GenesisSpec);
+            }
 
             GetLogManager().GetClassLogger().Debug("Committing initial state");
             TestState.Commit(SpecProvider.GenesisSpec);
