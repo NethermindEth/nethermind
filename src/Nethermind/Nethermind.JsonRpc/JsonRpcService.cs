@@ -30,7 +30,7 @@ public class JsonRpcService : IJsonRpcService
 
     public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<JsonRpcService>();
         _rpcModuleProvider = rpcModuleProvider;
         _serializer = rpcModuleProvider.Serializer;
         _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? Array.Empty<string>()).ToHashSet();
@@ -248,7 +248,7 @@ public class JsonRpcService : IJsonRpcService
 
     private void LogRequest(string methodName, string?[] providedParameters, ParameterInfo[] expectedParameters)
     {
-        if (_logger.IsInfo && !_methodsLoggingFiltering.Contains(methodName))
+        if (_logger.IsDebug && !_methodsLoggingFiltering.Contains(methodName))
         {
             StringBuilder builder = new();
             builder.Append("Executing JSON RPC call ");
@@ -286,7 +286,7 @@ public class JsonRpcService : IJsonRpcService
 
             builder.Append(']');
             string log = builder.ToString();
-            _logger.Info(log);
+            _logger.Debug(log);
         }
     }
 
