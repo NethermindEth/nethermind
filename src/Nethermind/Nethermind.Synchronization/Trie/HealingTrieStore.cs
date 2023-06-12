@@ -14,6 +14,7 @@ using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -26,7 +27,6 @@ public class HealingTrieStore : TrieStore
     private IPeerAllocationStrategyFactory<StateSyncBatch>? _peerAllocationStrategyFactory;
     private IReadOnlyStateProvider? _chainHeadStateProvider;
     private readonly ILogger _logger;
-    private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(1);
 
     public HealingTrieStore(
         IKeyValueStoreWithBatching? keyValueStore,
@@ -68,20 +68,9 @@ public class HealingTrieStore : TrieStore
         if (_chainHeadStateProvider is null || _syncPeerPool is null || _peerAllocationStrategyFactory is null) return null;
 
         if (_logger.IsWarn) _logger.Warn($"Missing trie node {keccak}, trying to recover from network");
-        CancellationTokenSource cts = new(_timeout);
-
-            List<KeyRecovery> keyRecoveries = await GenerateKeyRecoveries(keccak, cts);
-            try
-            {
-                return await CheckKeyRecoveriesResults(keyRecoveries, cts);
-            }
-            finally
-            {
-                foreach (KeyRecovery keyRecovery in keyRecoveries)
-                {
-                    _syncPeerPool.Free(keyRecovery.Allocation);
-                }
-            }
+        CancellationTokenSource cts = new(Timeouts.Eth);
+        List<KeyRecovery> keyRecoveries = GenerateKeyRecoveries(keccak, cts);
+        return await CheckKeyRecoveriesResults(keyRecoveries, cts);
     }
 
     private static async Task<byte[]?> CheckKeyRecoveriesResults(List<KeyRecovery> keyRecoveries, CancellationTokenSource cts)
@@ -104,33 +93,31 @@ public class HealingTrieStore : TrieStore
         return null;
     }
 
-    private async Task<List<KeyRecovery>> GenerateKeyRecoveries(Keccak keccak, CancellationTokenSource cts)
+    private List<KeyRecovery> GenerateKeyRecoveries(Keccak keccak, CancellationTokenSource cts)
     {
         using ArrayPoolList<StateSyncItem> requestedNodes = new(1) { new StateSyncItem(keccak, null, null, NodeDataType.All) };
-        StateSyncBatch request = new(_chainHeadStateProvider!.StateRoot, NodeDataType.All, requestedNodes);
-        List<KeyRecovery> keyRecoveries = await AllocatePeers(request);
-
         using ArrayPoolList<Keccak> requestedHashes = new(1) { keccak };
+        List<KeyRecovery> keyRecoveries = AllocatePeers();
         foreach (KeyRecovery keyRecovery in keyRecoveries)
         {
-            keyRecovery.Task = RecoverRlpFromPeer(keyRecovery.Allocation, requestedHashes, cts);
+            keyRecovery.Task = RecoverRlpFromPeer(keyRecovery.Peer, requestedHashes, cts);
         }
 
         return keyRecoveries;
     }
 
-    private async Task<List<KeyRecovery>> AllocatePeers(StateSyncBatch request)
+    private List<KeyRecovery> AllocatePeers()
     {
         List<KeyRecovery> syncPeerAllocations = new(MaxPeersForRecovery);
 
-        while (syncPeerAllocations.Count < MaxPeersForRecovery)
+        foreach (PeerInfo peer in _syncPeerPool!.InitializedPeers)
         {
-            SyncPeerAllocation allocation = await _syncPeerPool!.Allocate(_peerAllocationStrategyFactory!.Create(request), AllocationContexts.State | AllocationContexts.Snap, 1);
-            if (allocation.HasPeer)
+            if (peer.CanBeAllocated(AllocationContexts.State) && peer.CanGetNodeData())
             {
-                syncPeerAllocations.Add(new KeyRecovery { Allocation = allocation });
+                syncPeerAllocations.Add(new KeyRecovery { Peer = peer });
             }
-            else
+
+            if (syncPeerAllocations.Count >= MaxPeersForRecovery)
             {
                 break;
             }
@@ -139,17 +126,17 @@ public class HealingTrieStore : TrieStore
         return syncPeerAllocations;
     }
 
-    private async Task<byte[]?> RecoverRlpFromPeer(SyncPeerAllocation allocation, IReadOnlyList<Keccak> requestedHashes, CancellationTokenSource cts)
+    private async Task<byte[]?> RecoverRlpFromPeer(PeerInfo peer, IReadOnlyList<Keccak> requestedHashes, CancellationTokenSource cts)
     {
         try
         {
-            byte[][] rlp = await allocation.Current!.SyncPeer.GetNodeData(requestedHashes, cts.Token);
+            byte[][] rlp = await peer.SyncPeer.GetNodeData(requestedHashes, cts.Token);
             return rlp.Length == 1 ? rlp[0] : null;
         }
         catch (OperationCanceledException) { }
         catch (Exception e)
         {
-            if (_logger.IsError) _logger.Error($"Could not recover {requestedHashes[1]} from {allocation.Current?.SyncPeer}", e);
+            if (_logger.IsError) _logger.Error($"Could not recover {requestedHashes[1]} from {peer.SyncPeer}", e);
         }
 
         return null;
@@ -157,7 +144,7 @@ public class HealingTrieStore : TrieStore
 
     private class KeyRecovery
     {
-        public SyncPeerAllocation Allocation { get; init; } = null!;
+        public PeerInfo Peer { get; init; } = null!;
         public Task<byte[]?>? Task { get; set; }
     }
 }
