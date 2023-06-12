@@ -277,17 +277,41 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, releaseSpec).Should().Be(expectedResult);
     }
 
+    [Test]
+    public void ShardBlobTransactions_should_have_destination_set()
+    {
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Transaction txWithoutTo = Build.A.Transaction
+            .WithType(TxType.Blob)
+            .WithTimestamp(ulong.MaxValue)
+            .WithTo(null)
+            .WithMaxFeePerGas(1)
+            .WithMaxFeePerDataGas(1)
+            .WithBlobVersionedHashes(1)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved().TestObject;
+
+        Transaction txtxWithTo = Build.A.Transaction
+            .WithType(TxType.Blob)
+            .WithTimestamp(ulong.MaxValue)
+            .WithTo(TestItem.AddressA)
+            .WithMaxFeePerGas(1)
+            .WithMaxFeePerDataGas(1)
+            .WithBlobVersionedHashes(1)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved().TestObject;
+
+        Assert.That(txValidator.IsWellFormed(txWithoutTo, Cancun.Instance), Is.False);
+        Assert.That(txValidator.IsWellFormed(txtxWithTo, Cancun.Instance));
+    }
+
     [Timeout(Timeout.MaxTestTime)]
     [TestCase(TxType.EIP1559, false, ExpectedResult = true)]
     [TestCase(TxType.EIP1559, true, ExpectedResult = false)]
     [TestCase(TxType.Blob, true, ExpectedResult = true)]
     public bool MaxFeePerDataGas_should_be_set_for_blob_tx_only(TxType txType, bool isMaxFeePerDataGasSet)
     {
-        byte[] sigData = new byte[65];
-        sigData[31] = 1; // correct r
-        sigData[63] = 1; // correct s
-        sigData[64] = 27; // correct v
-        Signature signature = new(sigData);
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
             .WithType(txType)
             .WithTimestamp(ulong.MaxValue)
@@ -295,7 +319,7 @@ public class TxValidatorTests
             .WithMaxFeePerDataGas(isMaxFeePerDataGasSet ? 1 : null)
             .WithBlobVersionedHashes(txType == TxType.Blob ? Eip4844Constants.MinBlobsPerTransaction : null)
             .WithChainId(TestBlockchainIds.ChainId)
-            .WithSignature(signature);
+            .SignedAndResolved();
 
         Transaction tx = txBuilder.TestObject;
 
@@ -308,11 +332,6 @@ public class TxValidatorTests
     [TestCaseSource(nameof(BlobVersionedHashValidTestCases))]
     public bool BlobVersionedHash_should_be_correct(byte[] hash)
     {
-        byte[] sigData = new byte[65];
-        sigData[31] = 1; // correct r
-        sigData[63] = 1; // correct s
-        sigData[64] = 27; // correct v
-        Signature signature = new(sigData);
         Transaction tx = Build.A.Transaction
             .WithType(TxType.Blob)
             .WithTimestamp(ulong.MaxValue)
@@ -320,7 +339,7 @@ public class TxValidatorTests
             .WithMaxFeePerDataGas(1)
             .WithBlobVersionedHashes(new[] { hash })
             .WithChainId(TestBlockchainIds.ChainId)
-            .WithSignature(signature).TestObject;
+            .SignedAndResolved().TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         return txValidator.IsWellFormed(tx, Cancun.Instance);
