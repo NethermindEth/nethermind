@@ -103,7 +103,6 @@ public class MultiCallBlockchainFork : IDisposable
         //Writable inMemory DBs on with access to the data of existing ones (will not modify existing data)
         if (oldDbProvider == null) throw new ArgumentNullException();
 
-        List<byte[]>? oldStack = oldDbProvider.StateDb.GetAllValues().ToList();
         IDb inMemStateDb = new ReadOnlyDb(oldDbProvider.StateDb, true);
         IDb inMemBlockDb = new ReadOnlyDb(oldDbProvider.BlocksDb, true);
         IDb inMemHeaderDb = new ReadOnlyDb(oldDbProvider.HeadersDb, true);
