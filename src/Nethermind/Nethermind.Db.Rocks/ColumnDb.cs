@@ -99,6 +99,11 @@ public class ColumnDb : IDbWithSpan
                 }
             }
         }
+
+        public void DeleteRange(byte[] startKey, byte[] endKey)
+        {
+            _underlyingBatch._rocksBatch.DeleteRange(startKey, Convert.ToUInt64(startKey.Length), endKey, Convert.ToUInt64(endKey.Length), _columnDb._columnFamily);
+        }
     }
 
     public void Remove(ReadOnlySpan<byte> key)
@@ -136,6 +141,7 @@ public class ColumnDb : IDbWithSpan
 
     public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
     {
-        throw new NotImplementedException();
+        using ColumnsDbBatch batch = new(this, (DbOnTheRocks.RocksDbBatch)_mainDb.StartBatch());
+        batch.DeleteRange(startKey.ToArray(), endKey.ToArray());
     }
 }

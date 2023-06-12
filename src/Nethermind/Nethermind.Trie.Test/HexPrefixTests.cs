@@ -129,11 +129,11 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Nibbles_encoding_decoding_for_path_based_tree()
         {
-            byte[] nibbles = Enumerable.Repeat((byte)1, 64).ToArray();
+            byte[] nibbles = Enumerable.Repeat((byte)2, 64).ToArray();
             byte[] result = Nibbles.NibblesToByteStorage(nibbles);
             Nibbles.BytesToNibblesStorage(result).Should().BeEquivalentTo(nibbles);
 
-            byte[] nibbles2 = Enumerable.Repeat((byte)1, 5).ToArray();
+            byte[] nibbles2 = Enumerable.Repeat((byte)2, 5).ToArray();
             byte[] result2 = Nibbles.NibblesToByteStorage(nibbles2);
             Nibbles.BytesToNibblesStorage(result2).Should().BeEquivalentTo(nibbles2);
         }

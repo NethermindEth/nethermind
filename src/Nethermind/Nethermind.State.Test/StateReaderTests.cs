@@ -90,7 +90,7 @@ namespace Nethermind.Store.Test
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
             StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, new MemDb(), Logger);
-            StorageProvider storageProvider = new(testCase.TrieStore, provider, Logger);
+            StorageProvider storageProvider = new(testCase.StorageTrieStore, provider, Logger);
 
             void UpdateStorageValue(byte[] newValue)
             {
@@ -208,7 +208,7 @@ namespace Nethermind.Store.Test
             StorageCell storageCell = new(_address1, UInt256.One);
 
             StateProvider state = new(testCase.TrieStore, testCase.StorageTrieStore, dbProvider.CodeDb, Logger);
-            StorageProvider storage = new(testCase.TrieStore, state, Logger);
+            StorageProvider storage = new(testCase.StorageTrieStore, state, Logger);
 
             /* to start with we need to create an account that we will be setting storage at */
             state.CreateAccount(storageCell.Address, UInt256.One);
@@ -242,7 +242,7 @@ namespace Nethermind.Store.Test
             processorStateProvider.StateRoot = state.StateRoot;
 
             StorageProvider processorStorageProvider =
-                new(testCase.TrieStore, processorStateProvider, LimboLogs.Instance);
+                new(testCase.StorageTrieStore, processorStateProvider, LimboLogs.Instance);
 
             processorStorageProvider.Set(storageCell, newValue);
             processorStorageProvider.Commit();
