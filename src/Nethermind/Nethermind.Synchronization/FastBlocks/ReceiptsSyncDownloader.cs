@@ -15,18 +15,16 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class BodiesSyncDispatcher : SyncDispatcher<BodiesSyncBatch>
+    public class ReceiptsSyncDispatcher : ISyncDownloader<ReceiptsSyncBatch>
     {
-        public BodiesSyncDispatcher(
-            ISyncFeed<BodiesSyncBatch> syncFeed,
-            ISyncPeerPool syncPeerPool,
-            IPeerAllocationStrategyFactory<BodiesSyncBatch> peerAllocationStrategy,
-            ILogManager logManager)
-            : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+        private ILogger Logger;
+
+        public ReceiptsSyncDispatcher(ILogManager logManager)
         {
+            Logger = logManager.GetClassLogger();
         }
 
-        protected override async Task Dispatch(PeerInfo peerInfo, BodiesSyncBatch batch, CancellationToken cancellationToken)
+        public async Task Dispatch(PeerInfo peerInfo, ReceiptsSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
@@ -42,13 +40,14 @@ namespace Nethermind.Synchronization.FastBlocks
 
             try
             {
-                batch.Response = await peer.GetBlockBodies(hashes, cancellationToken);
+                batch.Response = await peer.GetReceipts(hashes, cancellationToken);
             }
             catch (TimeoutException)
             {
-                if (Logger.IsDebug) Logger.Debug($"{batch} - Get block bodies timeout {batch.RequestTime:F2}");
+                if (Logger.IsDebug) Logger.Debug($"{batch} - request receipts timeout {batch.RequestTime:F2}");
                 return;
             }
+
             if (batch.RequestTime > 1000)
             {
                 if (Logger.IsDebug) Logger.Debug($"{batch} - peer is slow {batch.RequestTime:F2}");

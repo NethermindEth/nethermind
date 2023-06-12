@@ -18,7 +18,7 @@ namespace Nethermind.Db
         /// <returns>A wrapped db.</returns>
         public static IDb WithEOACompressed(this IDb @this) => new EOACompressingDb(@this);
 
-        private class EOACompressingDb : IDb
+        private class EOACompressingDb : IDb, ITunableDb
         {
             private readonly IDb _wrapped;
 
@@ -144,6 +144,12 @@ namespace Nethermind.Db
 
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
                 => Decompress(_wrapped.Get(key, flags));
+
+            public void Tune(ITunableDb.TuneType type)
+            {
+                if (_wrapped is ITunableDb tunable)
+                    tunable.Tune(type);
+            }
         }
     }
 }
