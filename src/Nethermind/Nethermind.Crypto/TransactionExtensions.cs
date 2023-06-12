@@ -9,6 +9,13 @@ namespace Nethermind.Crypto
 {
     public static class TransactionExtensions
     {
-        public static Keccak CalculateHash(this Transaction transaction) => Keccak.Compute(Rlp.Encode(transaction).Bytes);
+        private static readonly TxDecoder _txDecoder = new();
+
+        public static Keccak CalculateHash(this Transaction transaction)
+        {
+            KeccakRlpStream stream = new();
+            _txDecoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
+            return stream.GetHash();
+        }
     }
 }

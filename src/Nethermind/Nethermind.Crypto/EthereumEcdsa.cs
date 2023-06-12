@@ -104,8 +104,8 @@ namespace Nethermind.Crypto
                     chainId = tx.ChainId!.Value;
                     break;
             }
-
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
+
             return RecoverAddress(tx.Signature, hash);
         }
 

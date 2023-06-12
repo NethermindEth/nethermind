@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Tracing;
+using static Nethermind.Core.Extensions.MemoryExtensions;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Evm.TransactionProcessing
@@ -240,44 +241,45 @@ namespace Nethermind.Evm.TransactionProcessing
             premiumPerGas = UInt256.Zero;
             senderReservedGasPayment = UInt256.Zero;
 
-            if (opts.HasFlag(ExecutionOptions.NoValidation) || tx.IsSystem())
+            bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
+
+            if (!tx.IsSystem() && validate)
             {
-                _worldState.SubtractFromBalance(tx.SenderAddress, UInt256.Zero, spec);
-                return true;
+                if (!tx.TryCalculatePremiumPerGas(blk.BaseFeePerGas, out premiumPerGas))
+                {
+                    TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
+                    QuickFail(tx, blk, spec, tracer, "miner premium is negative");
+                    return false;
+                }
+
+                UInt256 senderBalance = _worldState.GetBalance(tx.SenderAddress);
+                if (UInt256.SubtractUnderflow(senderBalance, tx.Value, out UInt256 balanceLeft))
+                {
+                    TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
+                    QuickFail(tx, blk, spec, tracer, "insufficient sender balance");
+                    return false;
+                }
+
+                bool overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
+                if (spec.IsEip1559Enabled && !tx.IsFree() && (overflows || balanceLeft < maxGasFee))
+                {
+                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
+                    QuickFail(tx, blk, spec, tracer, "insufficient MaxFeePerGas for sender balance");
+                    return false;
+                }
+
+                overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
+                if (overflows || senderReservedGasPayment > balanceLeft)
+                {
+                    TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
+                    QuickFail(tx, blk, spec, tracer, "insufficient sender balance");
+                    return false;
+                }
             }
 
-            if (!tx.TryCalculatePremiumPerGas(blk.BaseFeePerGas, out premiumPerGas))
-            {
-                TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-                QuickFail(tx, blk, spec, tracer, "miner premium is negative");
-                return false;
-            }
+            if (validate)
+                _worldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
 
-            UInt256 senderBalance = _worldState.GetBalance(tx.SenderAddress);
-            if (UInt256.SubtractUnderflow(senderBalance, tx.Value, out UInt256 balanceLeft))
-            {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                QuickFail(tx, blk, spec, tracer, "insufficient sender balance");
-                return false;
-            }
-
-            bool overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
-            if (spec.IsEip1559Enabled && !tx.IsFree() && (overflows || balanceLeft < maxGasFee))
-            {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
-                QuickFail(tx, blk, spec, tracer, "insufficient MaxFeePerGas for sender balance");
-                return false;
-            }
-
-            overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
-            if (overflows || senderReservedGasPayment > balanceLeft)
-            {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                QuickFail(tx, blk, spec, tracer, "insufficient sender balance");
-                return false;
-            }
-
-            _worldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
             return true;
         }
 
@@ -308,10 +310,10 @@ namespace Nethermind.Evm.TransactionProcessing
             TxExecutionContext executionContext =
                 new(blk, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes);
 
-            CodeInfo codeInfo = tx.IsContractCreation ? new(tx.Data)
+            CodeInfo codeInfo = tx.IsContractCreation ? new(tx.Data.AsArray())
                                     : _virtualMachine.GetCachedCodeInfo(_worldState, recipient, spec);
 
-            byte[] inputData = tx.IsMessageCall ? tx.Data ?? Array.Empty<byte>() : Array.Empty<byte>();
+            byte[] inputData = tx.IsMessageCall ? tx.Data.AsArray() ?? Array.Empty<byte>() : Array.Empty<byte>();
 
             return new ExecutionEnvironment
             (
@@ -423,7 +425,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     statusCode = StatusCode.Success;
                 }
 
-                spentGas = Refund(tx.GasLimit, unspentGas, substate, tx.SenderAddress, env.TxExecutionContext.GasPrice, spec);
+                spentGas = Refund(tx.GasLimit, unspentGas, substate, tx.SenderAddress, env.TxExecutionContext.GasPrice, opts, spec);
             }
             catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
             {
@@ -490,7 +492,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    _worldState.AddToBalance(tx.SenderAddress, senderReservedGasPayment, spec);
+                    if (!opts.HasFlag(ExecutionOptions.NoValidation))
+                        _worldState.AddToBalance(tx.SenderAddress, senderReservedGasPayment, spec);
                     if (!tx.IsSystem())
                         _worldState.DecrementNonce(tx.SenderAddress);
 
@@ -588,7 +591,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender,
-            in UInt256 gasPrice, IReleaseSpec spec)
+            in UInt256 gasPrice, ExecutionOptions opts, IReleaseSpec spec)
         {
             long spentGas = gasLimit;
             if (!substate.IsError)
@@ -601,7 +604,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (_logger.IsTrace)
                     _logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
-                _worldState.AddToBalance(sender, (ulong)(unspentGas + refund) * gasPrice, spec);
+                // If noValidation we didn't charge for gas, so do not refund
+                if (!opts.HasFlag(ExecutionOptions.NoValidation))
+                    _worldState.AddToBalance(sender, (ulong)(unspentGas + refund) * gasPrice, spec);
                 spentGas -= refund;
             }
 

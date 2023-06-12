@@ -37,21 +37,20 @@ namespace Nethermind.Blockchain
 
         internal static Keccak HeadAddressInDb = Keccak.Zero;
 
-        private const int CacheSize = 64;
+        // SyncProgressResolver MaxLookupBack is 128, add 16 wiggle room
+        private const int CacheSize = 128 + 16;
 
-        private readonly LruCache<KeccakKey, BlockHeader> _headerCache =
+        private readonly LruCache<ValueKeccak, BlockHeader> _headerCache =
             new(CacheSize, CacheSize, "headers");
 
         private const int BestKnownSearchLimit = 256_000_000;
-
-        private readonly object _batchInsertLock = new();
 
         private readonly IBlockStore _blockStore;
         private readonly IDb _headerDb;
         private readonly IDb _blockInfoDb;
         private readonly IDb _metadataDb;
 
-        private readonly LruCache<KeccakKey, Block> _invalidBlocks =
+        private readonly LruCache<ValueKeccak, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
 
         private readonly HeaderDecoder _headerDecoder = new();
@@ -120,7 +119,7 @@ namespace Nethermind.Blockchain
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
             ILogManager? logManager)
-            : this(dbProvider?.BlocksDb, dbProvider?.HeadersDb, dbProvider?.BlockInfosDb, dbProvider?.MetadataDb,
+            : this(new BlockStore(dbProvider?.BlocksDb), dbProvider?.HeadersDb, dbProvider?.BlockInfosDb, dbProvider?.MetadataDb,
                 chainLevelInfoRepository, specProvider, bloomStorage, new SyncConfig(), logManager)
         {
         }
@@ -132,7 +131,7 @@ namespace Nethermind.Blockchain
             IBloomStorage? bloomStorage,
             ISyncConfig? syncConfig,
             ILogManager? logManager)
-            : this(dbProvider?.BlocksDb, dbProvider?.HeadersDb, dbProvider?.BlockInfosDb, dbProvider?.MetadataDb,
+            : this(new BlockStore(dbProvider?.BlocksDb), dbProvider?.HeadersDb, dbProvider?.BlockInfosDb, dbProvider?.MetadataDb,
                 chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager)
         {
         }
@@ -145,7 +144,7 @@ namespace Nethermind.Blockchain
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
             ILogManager? logManager)
-            : this(blockDb, headerDb, blockInfoDb, new MemDb(), chainLevelInfoRepository, specProvider, bloomStorage,
+            : this(new BlockStore(blockDb), headerDb, blockInfoDb, new MemDb(), chainLevelInfoRepository, specProvider, bloomStorage,
                 new SyncConfig(), logManager)
         {
         }
@@ -160,9 +159,24 @@ namespace Nethermind.Blockchain
             IBloomStorage? bloomStorage,
             ISyncConfig? syncConfig,
             ILogManager? logManager)
+            : this(new BlockStore(blockDb), headerDb, blockInfoDb, metadataDb, chainLevelInfoRepository, specProvider, bloomStorage,
+                syncConfig, logManager)
+        {
+        }
+
+        public BlockTree(
+            IBlockStore? blockStore,
+            IDb? headerDb,
+            IDb? blockInfoDb,
+            IDb? metadataDb,
+            IChainLevelInfoRepository? chainLevelInfoRepository,
+            ISpecProvider? specProvider,
+            IBloomStorage? bloomStorage,
+            ISyncConfig? syncConfig,
+            ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _blockStore = new BlockStore(blockDb ?? throw new ArgumentNullException(nameof(blockDb)));
+            _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
             _headerDb = headerDb ?? throw new ArgumentNullException(nameof(headerDb));
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
             _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
@@ -812,7 +826,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            BlockHeader? header = _headerDb.Get(blockHash, _headerDecoder, _headerCache, false);
+            BlockHeader? header = _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: false);
             if (header is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
@@ -1689,7 +1703,7 @@ namespace Nethermind.Blockchain
         /// <returns></returns>
         private bool ShouldCache(long number)
         {
-            return number == 0L || Head is null || number > Head.Number - CacheSize && number <= Head.Number + 1;
+            return number == 0L || Head is null || number <= Head.Number + 1;
         }
 
         public ChainLevelInfo? FindLevel(long number)
@@ -1710,7 +1724,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            Block block = _blockStore.Get(blockHash, false);
+            Block block = _blockStore.Get(blockHash, shouldCache: false);
             if (block is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;

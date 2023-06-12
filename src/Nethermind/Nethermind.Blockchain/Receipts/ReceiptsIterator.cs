@@ -111,6 +111,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 _blocksDb?.DangerousReleaseMemory(_decoderContext.Data);
             }
+            _recoveryContext?.Dispose();
         }
 
         public LogEntriesIterator IterateLogs(TxReceiptStructRef receipt)
