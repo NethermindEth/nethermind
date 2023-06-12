@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -298,13 +299,17 @@ namespace Nethermind.Init.Steps
                 IDb stateDb = api.DbProvider!.StateDb;
                 if (stateDb is IFullPruningDb fullPruningDb)
                 {
-                    IPruningTrigger? pruningTrigger = CreateAutomaticTrigger(fullPruningDb.GetPath(initConfig.BaseDbPath));
+                    string pruningDbPath = fullPruningDb.GetPath(initConfig.BaseDbPath);
+                    IPruningTrigger? pruningTrigger = CreateAutomaticTrigger(pruningDbPath);
                     if (pruningTrigger is not null)
                     {
                         api.PruningTrigger.Add(pruningTrigger);
                     }
 
-                    FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!, stateReader, api.ProcessExit!, api.LogManager);
+                    IDriveInfo drive = api.FileSystem.GetDriveInfos(pruningDbPath)[0];
+                    FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!,
+                        stateReader, api.ProcessExit!, ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
+                        drive, api.LogManager);
                     api.DisposeStack.Push(pruner);
                 }
             }
