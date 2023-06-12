@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -27,9 +28,14 @@ public class BlobsBundleV1
 
         foreach (Transaction? tx in block.Transactions)
         {
-            if (tx is not { NetworkWrapper: ShardBlobNetworkWrapper wrapper })
+            if (!tx.SupportsBlobs)
             {
                 continue;
+            }
+
+            if (tx is not { NetworkWrapper: ShardBlobNetworkWrapper wrapper })
+            {
+                throw new ArgumentException("Shard blob transaction should contain network wrapper data");
             }
 
             for (int txIndex = 0;
