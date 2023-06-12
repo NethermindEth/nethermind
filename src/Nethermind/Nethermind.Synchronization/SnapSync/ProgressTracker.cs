@@ -18,7 +18,7 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class ProgressTracker
     {
-        private const string NO_REQUEST = "NO REQUEST";
+        private const string NO_REQUEST = "Skipped Request";
 
         private const int STORAGE_BATCH_SIZE = 1_200;
         private const int CODES_BATCH_SIZE = 1_000;
