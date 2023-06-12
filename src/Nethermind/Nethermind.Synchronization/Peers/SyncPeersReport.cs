@@ -97,8 +97,8 @@ namespace Nethermind.Synchronization.Peers
                 PeersContextCounts sleepingContexts = new();
                 foreach (PeerInfo peerInfo in peers)
                 {
-                    CountContexts(peerInfo.AllocatedContexts, activeContexts);
-                    CountContexts(peerInfo.SleepingContexts, sleepingContexts);
+                    CountContexts(peerInfo.AllocatedContexts, ref activeContexts);
+                    CountContexts(peerInfo.SleepingContexts, ref sleepingContexts);
                 }
 
                 _stringBuilder.Append(" Active: ");
@@ -126,7 +126,7 @@ namespace Nethermind.Synchronization.Peers
                 return result;
             }
 
-            static void CountContexts(AllocationContexts contexts, PeersContextCounts contextCounts)
+            static void CountContexts(AllocationContexts contexts, ref PeersContextCounts contextCounts)
             {
                 contextCounts.Total++;
                 if (contexts == AllocationContexts.None)
@@ -208,7 +208,7 @@ namespace Nethermind.Synchronization.Peers
             _currentInitializedPeerCount = initializedPeerCount;
         }
 
-        private class PeersContextCounts
+        private struct PeersContextCounts
         {
             public int None { get; set; }
             public int Headers { get; set; }
