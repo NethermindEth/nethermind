@@ -35,7 +35,7 @@ namespace Nethermind.Merge.AuRa.Test;
 
 public class AuRaMergeEngineModuleTests : EngineModuleTests
 {
-    protected override MergeTestBlockchain CreateBaseBlockChain(
+    protected override MergeTestBlockchain CreateBaseBlockchain(
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,
         ILogManager? logManager = null)

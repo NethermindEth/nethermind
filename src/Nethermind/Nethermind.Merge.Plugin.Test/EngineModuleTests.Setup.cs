@@ -48,22 +48,22 @@ public partial class EngineModuleTests
         return KzgPolynomialCommitments.InitializeAsync();
     }
 
-    protected virtual MergeTestBlockchain CreateBaseBlockChain(IMergeConfig? mergeConfig = null,
+    protected virtual MergeTestBlockchain CreateBaseBlockchain(IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null, ILogManager? logManager = null) =>
         new(mergeConfig, mockedPayloadService, logManager);
 
-    protected async Task<MergeTestBlockchain> CreateBlockChain(IReleaseSpec? releaseSpec, IMergeConfig? mergeConfig = null)
-        => await CreateBlockChain(mergeConfig, null, releaseSpec);
+    protected async Task<MergeTestBlockchain> CreateBlockchain(IReleaseSpec? releaseSpec, IMergeConfig? mergeConfig = null)
+        => await CreateBlockchain(mergeConfig, null, releaseSpec);
 
 
-    protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig? mergeConfig = null,
+    protected async Task<MergeTestBlockchain> CreateBlockchain(IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null, IReleaseSpec? releaseSpec = null)
-        => await CreateBaseBlockChain(mergeConfig, mockedPayloadService)
+        => await CreateBaseBlockchain(mergeConfig, mockedPayloadService)
             .Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
-    protected async Task<MergeTestBlockchain> CreateBlockChain(ISpecProvider specProvider,
+    protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
         ILogManager? logManager = null)
-        => await CreateBaseBlockChain(null, null, logManager).Build(specProvider);
+        => await CreateBaseBlockchain(null, null, logManager).Build(specProvider);
 
     private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
     {
