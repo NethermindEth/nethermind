@@ -171,7 +171,7 @@ public partial class EngineModuleTests
     [Test]
     public virtual async Task forkchoiceUpdatedV1_should_fail_with_withdrawals()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig { TerminalTotalDifficulty = "0" });
+        using MergeTestBlockchain chain = await CreateBlockChain(null, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         var fcuState = new
         {
@@ -208,7 +208,7 @@ public partial class EngineModuleTests
         string BlockHash
         ) input)
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(null, null, input.Spec);
+        using MergeTestBlockchain chain = await CreateBlockChain(input.Spec);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         var fcuState = new
         {
@@ -536,7 +536,7 @@ public partial class EngineModuleTests
     [Test]
     public virtual async Task newPayloadV1_should_fail_with_withdrawals()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig { TerminalTotalDifficulty = "0" });
+        using MergeTestBlockchain chain = await CreateBlockChain(null, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         ExecutionPayload expectedPayload = new()
         {
@@ -575,7 +575,7 @@ public partial class EngineModuleTests
         string BlockHash
         ) input)
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(null, null, input.Spec);
+        using MergeTestBlockchain chain = await CreateBlockChain(input.Spec);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         Keccak blockHash = new(input.BlockHash);
         Keccak startingHead = chain.BlockTree.HeadHash;
@@ -636,7 +636,7 @@ public partial class EngineModuleTests
         Withdrawal[]? Withdrawals,
         bool IsValid) input)
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(null, null, input.ReleaseSpec);
+        using MergeTestBlockchain chain = await CreateBlockChain(input.ReleaseSpec);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressD, input.Withdrawals);
