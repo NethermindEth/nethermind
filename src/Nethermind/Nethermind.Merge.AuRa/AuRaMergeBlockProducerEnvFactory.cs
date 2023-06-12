@@ -79,7 +79,6 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
             TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
             readOnlyTxProcessingEnv.StateProvider,
-            readOnlyTxProcessingEnv.StorageProvider,
             receiptStorage,
             logManager,
             _blockTree,

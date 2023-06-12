@@ -4,7 +4,7 @@
 using System;
 using Nethermind.Core;
 
-namespace Nethermind.State
+namespace Nethermind.State.Tracing
 {
     public interface IStorageTracer
     {

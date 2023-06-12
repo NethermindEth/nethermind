@@ -474,7 +474,7 @@ namespace Nethermind.Serialization.Rlp
 
             byte[] result = new byte[LengthOfKeccakRlp];
             result[0] = 160;
-            Buffer.BlockCopy(keccak.Bytes, 0, result, 1, 32);
+            keccak.Bytes.CopyTo(result.AsSpan()[1..]);
             return new Rlp(result);
         }
 
@@ -1411,6 +1411,11 @@ namespace Nethermind.Serialization.Rlp
             return item is null ? 1 : 33;
         }
 
+        public static int LengthOf(in ValueKeccak? item)
+        {
+            return item is null ? 1 : 33;
+        }
+
         public static int LengthOf(Keccak[] keccaks, bool includeLengthOfSequenceStart = false)
         {
             int value = keccaks?.Length * LengthOfKeccakRlp ?? 0;
@@ -1423,7 +1428,31 @@ namespace Nethermind.Serialization.Rlp
             return value;
         }
 
+        public static int LengthOf(ValueKeccak[] keccaks, bool includeLengthOfSequenceStart = false)
+        {
+            int value = keccaks?.Length * LengthOfKeccakRlp ?? 0;
+
+            if (includeLengthOfSequenceStart)
+            {
+                value = LengthOfSequence(value);
+            }
+
+            return value;
+        }
+
         public static int LengthOf(IReadOnlyList<Keccak> keccaks, bool includeLengthOfSequenceStart = false)
+        {
+            int value = keccaks?.Count * LengthOfKeccakRlp ?? 0;
+
+            if (includeLengthOfSequenceStart)
+            {
+                value = LengthOfSequence(value);
+            }
+
+            return value;
+        }
+
+        public static int LengthOf(IReadOnlyList<ValueKeccak> keccaks, bool includeLengthOfSequenceStart = false)
         {
             int value = keccaks?.Count * LengthOfKeccakRlp ?? 0;
 

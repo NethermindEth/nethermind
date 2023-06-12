@@ -57,8 +57,16 @@ namespace Nethermind.State.Proofs
         /// Only for testing
         /// </summary>
         public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, Keccak[] keccakStorageKeys)
+            : this(hashedAddress, keccakStorageKeys.Select((keccak) => (ValueKeccak)keccak).ToArray())
         {
-            keccakStorageKeys ??= Array.Empty<Keccak>();
+        }
+
+        /// <summary>
+        /// Only for testing too
+        /// </summary>
+        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, ValueKeccak[] keccakStorageKeys)
+        {
+            keccakStorageKeys ??= Array.Empty<ValueKeccak>();
 
             _fullAccountPath = Nibbles.FromBytes(hashedAddress);
 

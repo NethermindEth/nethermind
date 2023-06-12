@@ -48,6 +48,18 @@ namespace Nethermind.Db
             }
         }
 
+        public static void Set(this IDb db, in ValueKeccak key, Span<byte> value)
+        {
+            if (db is IDbWithSpan dbWithSpan)
+            {
+                dbWithSpan.PutSpan(key.Bytes, value);
+            }
+            else
+            {
+                db[key.Bytes] = value.ToArray();
+            }
+        }
+
         public static void Set(this IDb db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
         {
             if (db is IDbWithSpan dbWithSpan)
@@ -62,7 +74,7 @@ namespace Nethermind.Db
 
         public static KeyValuePair<byte[], byte[]>[] MultiGet(this IDb db, IEnumerable<KeccakKey> keys)
         {
-            var k = keys.Select(k => k.Bytes).ToArray();
+            var k = keys.Select(k => k.Bytes.ToArray()).ToArray();
             return db[k];
         }
 

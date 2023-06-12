@@ -219,7 +219,7 @@ namespace Nethermind.Consensus.Clique
 
         private static Keccak GetSnapshotKey(Keccak blockHash)
         {
-            byte[] hashBytes = blockHash.Bytes;
+            Span<byte> hashBytes = blockHash.Bytes;
             byte[] keyBytes = new byte[hashBytes.Length];
             for (int i = 0; i < _snapshotBytes.Length; i++) keyBytes[i] = (byte)(hashBytes[i] ^ _snapshotBytes[i]);
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -187,6 +188,11 @@ namespace Nethermind.Trie
             IsDirty = isDirty;
 
             _rlpStream = rlp.AsRlpStream();
+        }
+
+        public TrieNode(NodeType nodeType, Keccak keccak, ReadOnlySpan<byte> rlp)
+            : this(nodeType, keccak, rlp.ToArray())
+        {
         }
 
         public TrieNode(NodeType nodeType, Keccak keccak, byte[] rlp)
@@ -384,6 +390,18 @@ namespace Nethermind.Trie
             SeekChild(i);
             (int _, int length) = _rlpStream!.PeekPrefixAndContentLength();
             return length == 32 ? _rlpStream.DecodeKeccak() : null;
+        }
+
+        public ValueKeccak? GetChildHashAsValueKeccak(int i)
+        {
+            if (_rlpStream is null)
+            {
+                return null;
+            }
+
+            SeekChild(i);
+            (int _, int length) = _rlpStream!.PeekPrefixAndContentLength();
+            return length == 32 ? _rlpStream.DecodeValueKeccak() : null;
         }
 
         public bool IsChildNull(int i)

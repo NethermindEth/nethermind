@@ -11,7 +11,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class CancellationTxTracer : ITxTracer
+    public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
     {
         private readonly ITxTracer _innerTracer;
         private readonly CancellationToken _token;

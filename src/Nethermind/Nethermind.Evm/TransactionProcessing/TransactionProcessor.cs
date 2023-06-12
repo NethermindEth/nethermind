@@ -15,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
+using Nethermind.State.Tracing;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Evm.TransactionProcessing
@@ -23,8 +24,6 @@ namespace Nethermind.Evm.TransactionProcessing
     {
         private readonly EthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
-        private readonly IStateProvider _stateProvider;
-        private readonly IStorageProvider _storageProvider;
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _worldState;
         private readonly IVirtualMachine _virtualMachine;
@@ -60,14 +59,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public TransactionProcessor(
             ISpecProvider? specProvider,
-            IStateProvider? stateProvider,
-            IStorageProvider? storageProvider,
-            IVirtualMachine? virtualMachine,
-            ILogManager? logManager)
-            : this(specProvider, new WorldState(stateProvider, storageProvider), virtualMachine, logManager) { }
-
-        public TransactionProcessor(
-            ISpecProvider? specProvider,
             IWorldState? worldState,
             IVirtualMachine? virtualMachine,
             ILogManager? logManager)
@@ -75,8 +66,6 @@ namespace Nethermind.Evm.TransactionProcessing
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
-            _stateProvider = worldState.StateProvider;
-            _storageProvider = worldState.StorageProvider;
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
             _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
@@ -110,15 +99,15 @@ namespace Nethermind.Evm.TransactionProcessing
 
             Address recipient = tx.To ?? ContractAddress.From(
                 tx.SenderAddress ?? Address.Zero,
-                _stateProvider.GetNonce(tx.SenderAddress ?? Address.Zero));
+                _worldState.GetNonce(tx.SenderAddress ?? Address.Zero));
 
             if (txTracer.IsTracingReceipt)
             {
                 Keccak? stateRoot = null;
                 if (!spec.IsEip658Enabled)
                 {
-                    _stateProvider.RecalculateStateRoot();
-                    stateRoot = _stateProvider.StateRoot;
+                    _worldState.RecalculateStateRoot();
+                    stateRoot = _worldState.StateRoot;
                 }
 
                 txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
@@ -200,7 +189,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             bool deleteCallerAccount = false;
 
-            if (!_stateProvider.AccountExists(tx.SenderAddress))
+            if (!_worldState.AccountExists(tx.SenderAddress))
             {
                 Address prevSender = tx.SenderAddress;
                 // hacky fix for the potential recovery issue
@@ -218,7 +207,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (!commit || noValidation || effectiveGasPrice == UInt256.Zero)
                     {
                         deleteCallerAccount = !commit || restore;
-                        _stateProvider.CreateAccount(tx.SenderAddress, UInt256.Zero);
+                        _worldState.CreateAccount(tx.SenderAddress, UInt256.Zero);
                     }
                 }
 
@@ -235,7 +224,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
 
-            if (validate && _stateProvider.IsInvalidContractSender(spec, tx.SenderAddress))
+            if (validate && _worldState.IsInvalidContractSender(spec, tx.SenderAddress))
             {
                 TraceLogInvalidTx(tx, "SENDER_IS_CONTRACT");
                 QuickFail(tx, blk, spec, tracer, "sender has deployed code");
@@ -253,7 +242,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (opts.HasFlag(ExecutionOptions.NoValidation) || tx.IsSystem())
             {
-                _stateProvider.SubtractFromBalance(tx.SenderAddress, UInt256.Zero, spec);
+                _worldState.SubtractFromBalance(tx.SenderAddress, UInt256.Zero, spec);
                 return true;
             }
 
@@ -264,7 +253,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return false;
             }
 
-            UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);
+            UInt256 senderBalance = _worldState.GetBalance(tx.SenderAddress);
             if (UInt256.SubtractUnderflow(senderBalance, tx.Value, out UInt256 balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
@@ -288,7 +277,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return false;
             }
 
-            _stateProvider.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
+            _worldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
             return true;
         }
 
@@ -297,14 +286,14 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tx.IsSystem())
                 return true;
 
-            if (tx.Nonce != _stateProvider.GetNonce(tx.SenderAddress))
+            if (tx.Nonce != _worldState.GetNonce(tx.SenderAddress))
             {
-                TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {_stateProvider.GetNonce(tx.SenderAddress)})");
+                TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {_worldState.GetNonce(tx.SenderAddress)})");
                 QuickFail(tx, blk, spec, tracer, "wrong transaction nonce");
                 return false;
             }
 
-            _stateProvider.IncrementNonce(tx.SenderAddress);
+            _worldState.IncrementNonce(tx.SenderAddress);
             return true;
         }
 
@@ -312,7 +301,7 @@ namespace Nethermind.Evm.TransactionProcessing
             Transaction tx, BlockHeader blk, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
             in UInt256 effectiveGasPrice)
         {
-            Address recipient = tx.GetRecipient(tx.IsContractCreation ? _stateProvider.GetNonce(tx.SenderAddress) : 0) ??
+            Address recipient = tx.GetRecipient(tx.IsContractCreation ? _worldState.GetNonce(tx.SenderAddress) : 0) ??
                 // this transaction is not a contract creation so it should have the recipient known and not null
                 throw new InvalidDataException("Recipient has not been resolved properly before tx execution");
 
@@ -349,7 +338,7 @@ namespace Nethermind.Evm.TransactionProcessing
             long unspentGas = gasAvailable;
 
             Snapshot snapshot = _worldState.TakeSnapshot();
-            _stateProvider.SubtractFromBalance(tx.SenderAddress, tx.Value, spec);
+            _worldState.SubtractFromBalance(tx.SenderAddress, tx.Value, spec);
 
             try
             {
@@ -414,8 +403,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                         if (unspentGas >= codeDepositGasCost)
                         {
-                            Keccak codeHash = _stateProvider.UpdateCode(substate.Output);
-                            _stateProvider.UpdateCodeHash(env.ExecutingAccount, codeHash, spec);
+                            _worldState.InsertCode(env.ExecutingAccount, substate.Output, spec);
                             unspentGas -= codeDepositGasCost;
                         }
                     }
@@ -425,8 +413,8 @@ namespace Nethermind.Evm.TransactionProcessing
                         if (_logger.IsTrace)
                             _logger.Trace($"Destroying account {toBeDestroyed}");
 
-                        _storageProvider.ClearStorage(toBeDestroyed);
-                        _stateProvider.DeleteAccount(toBeDestroyed);
+                        _worldState.ClearStorage(toBeDestroyed);
+                        _worldState.DeleteAccount(toBeDestroyed);
 
                         if (tracer.IsTracingRefunds)
                             tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
@@ -481,7 +469,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return;
 
             if (commit)
-                _stateProvider.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
+                _worldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
 
             ExecutionEnvironment env = BuildExecutionEnvironmnet(tx, blk, spec, tracer, opts, effectiveGasPrice);
 
@@ -495,25 +483,23 @@ namespace Nethermind.Evm.TransactionProcessing
             // Finalize
             if (restore)
             {
-                _storageProvider.Reset();
-                _stateProvider.Reset();
+                _worldState.Reset();
                 if (deleteCallerAccount)
                 {
-                    _stateProvider.DeleteAccount(tx.SenderAddress);
+                    _worldState.DeleteAccount(tx.SenderAddress);
                 }
                 else
                 {
-                    _stateProvider.AddToBalance(tx.SenderAddress, senderReservedGasPayment, spec);
+                    _worldState.AddToBalance(tx.SenderAddress, senderReservedGasPayment, spec);
                     if (!tx.IsSystem())
-                        _stateProvider.DecrementNonce(tx.SenderAddress);
+                        _worldState.DecrementNonce(tx.SenderAddress);
 
-                    _stateProvider.Commit(spec);
+                    _worldState.Commit(spec);
                 }
             }
             else if (commit)
             {
-                _storageProvider.Commit(tracer.IsTracingState ? tracer : NullStorageTracer.Instance);
-                _stateProvider.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance);
+                _worldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance);
             }
 
             if (tracer.IsTracingReceipt)
@@ -521,8 +507,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 Keccak stateRoot = null;
                 if (!spec.IsEip658Enabled)
                 {
-                    _stateProvider.RecalculateStateRoot();
-                    stateRoot = _stateProvider.StateRoot;
+                    _worldState.RecalculateStateRoot();
+                    stateRoot = _worldState.StateRoot;
                 }
 
                 if (statusCode == StatusCode.Failure)
@@ -550,10 +536,18 @@ namespace Nethermind.Evm.TransactionProcessing
                 UInt256 fees = (UInt256)spentGas * premiumPerGas;
                 UInt256 burntFees = !tx.IsFree() ? (UInt256)spentGas * blk.BaseFeePerGas : 0;
 
-                _stateProvider.AddToBalanceAndCreateIfNotExists(blk.GasBeneficiary, fees, spec);
+                if (_worldState.AccountExists(blk.GasBeneficiary))
+                    _worldState.AddToBalance(blk.GasBeneficiary, fees, spec);
+                else
+                    _worldState.CreateAccount(blk.GasBeneficiary, fees);
 
                 if (spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null && !burntFees.IsZero)
-                    _stateProvider.AddToBalanceAndCreateIfNotExists(spec.Eip1559FeeCollector, burntFees, spec);
+                {
+                    if (_worldState.AccountExists(blk.GasBeneficiary))
+                        _worldState.AddToBalance(blk.GasBeneficiary, fees, spec);
+                    else
+                        _worldState.CreateAccount(blk.GasBeneficiary, fees);
+                }
 
                 if (tracer.IsTracingFees)
                     tracer.ReportFees(fees, burntFees);
@@ -564,11 +558,11 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private void PrepareAccountForContractDeployment(Address contractAddress, IReleaseSpec spec)
         {
-            if (_stateProvider.AccountExists(contractAddress))
+            if (_worldState.AccountExists(contractAddress))
             {
                 CodeInfo codeInfo = _virtualMachine.GetCachedCodeInfo(_worldState, contractAddress, spec);
                 bool codeIsNotEmpty = codeInfo.MachineCode.Length != 0;
-                bool accountNonceIsNotZero = _stateProvider.GetNonce(contractAddress) != 0;
+                bool accountNonceIsNotZero = _worldState.GetNonce(contractAddress) != 0;
 
                 // TODO: verify what should happen if code info is a precompile
                 // (but this would generally be a hash collision)
@@ -583,7 +577,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
 
                 // we clean any existing storage (in case of a previously called self destruct)
-                _stateProvider.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
+                _worldState.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
             }
         }
 
@@ -607,7 +601,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (_logger.IsTrace)
                     _logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
-                _stateProvider.AddToBalance(sender, (ulong)(unspentGas + refund) * gasPrice, spec);
+                _worldState.AddToBalance(sender, (ulong)(unspentGas + refund) * gasPrice, spec);
                 spentGas -= refund;
             }
 

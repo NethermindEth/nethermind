@@ -23,9 +23,7 @@ namespace Nethermind.Mev
     // this looks super complex, hmm, is it needed?
     public class MevBlockProductionTransactionsExecutor : BlockProcessor.BlockProductionTransactionsExecutor
     {
-        private readonly IStateProvider _stateProvider;
-        private readonly IStorageProvider _storageProvider;
-        private readonly IWorldState _worldState;
+        private readonly IWorldState _stateProvider;
 
         public MevBlockProductionTransactionsExecutor(
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
@@ -34,7 +32,6 @@ namespace Nethermind.Mev
             this(
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 readOnlyTxProcessingEnv.StateProvider,
-                readOnlyTxProcessingEnv.StorageProvider,
                 specProvider,
                 logManager)
         {
@@ -42,15 +39,12 @@ namespace Nethermind.Mev
 
         private MevBlockProductionTransactionsExecutor(
             ITransactionProcessor transactionProcessor,
-            IStateProvider stateProvider,
-            IStorageProvider storageProvider,
+            IWorldState stateProvider,
             ISpecProvider specProvider,
             ILogManager logManager)
-            : base(transactionProcessor, stateProvider, storageProvider, specProvider, logManager)
+            : base(transactionProcessor, stateProvider, specProvider, logManager)
         {
             _stateProvider = stateProvider;
-            _storageProvider = storageProvider;
-            _worldState = new WorldState(stateProvider, storageProvider);
         }
 
         public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
@@ -74,7 +68,7 @@ namespace Nethermind.Mev
                     }
                     else
                     {
-                        // otherwise process transaction as usual 
+                        // otherwise process transaction as usual
                         TxAction action = ProcessTransaction(block, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions, transactionsInBlock);
                         if (action == TxAction.Stop) break;
                     }
@@ -124,7 +118,6 @@ namespace Nethermind.Mev
             }
 
             _stateProvider.Commit(spec, receiptsTracer);
-            _storageProvider.Commit(receiptsTracer);
 
             SetTransactions(block, transactionsInBlock);
             return receiptsTracer.TxReceipts.ToArray();
@@ -137,7 +130,7 @@ namespace Nethermind.Mev
             ProcessingOptions processingOptions)
         {
 
-            Snapshot snapshot = _worldState.TakeSnapshot();
+            Snapshot snapshot = _stateProvider.TakeSnapshot();
             int receiptSnapshot = receiptsTracer.TakeSnapshot();
             UInt256 initialBalance = _stateProvider.GetBalance(block.Header.GasBeneficiary!);
 
@@ -178,7 +171,7 @@ namespace Nethermind.Mev
             }
             else
             {
-                _worldState.Restore(snapshot);
+                _stateProvider.Restore(snapshot);
                 receiptsTracer.Restore(receiptSnapshot);
                 for (int index = 0; index < bundleTransactions.Count; index++)
                 {
