@@ -75,7 +75,10 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// Resolves a spec for all planned forks applied.
         /// </summary>
-        /// <returns>A spec for all planned forks applied</returns>
+        /// <returns>A spec for all planned forks applied</
+        /// The default value is long.MaxValue for block numbers and ulong.MaxValue for timestamps
+        /// for every new not yet scheduled EIP. Because of that we can't use long.MaxValue and
+        /// ulong.MaxValue for GetFinalSpec that is why we have long.MaxValue-1, ulong.MaxValue-1
         IReleaseSpec GetFinalSpec() => GetSpec(long.MaxValue-1, ulong.MaxValue-1);
     }
 }
