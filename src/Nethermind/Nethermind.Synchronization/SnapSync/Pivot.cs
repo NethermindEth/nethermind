@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void LogPivotChanged(string msg)
         {
-            _logger.Info($"SNAP - {msg} - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
+            _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
         }
 
         public void UpdateHeaderForcefully()
