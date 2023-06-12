@@ -287,7 +287,8 @@ namespace Nethermind.Evm.TransactionProcessing
             long spentGas = gasLimit;
 
             Snapshot snapshot = _worldState.TakeSnapshot();
-            _worldState.SubtractFromBalance(caller, value, spec);
+            // Fixes eth_estimateGas. If sender is systemUser subtracting value will cause InsufficientBalanceException
+            if (!noValidation || notSystemTransaction) _worldState.SubtractFromBalance(caller, value, spec);
             byte statusCode = StatusCode.Failure;
             TransactionSubstate substate = null;
 
