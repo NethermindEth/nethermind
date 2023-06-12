@@ -104,7 +104,7 @@ namespace Nethermind.Synchronization.Peers
                 _stringBuilder.Append(" Active: ");
                 activeContexts.AppendTo(_stringBuilder, "None");
                 _stringBuilder.Append(" | Sleeping: ");
-                sleepingContexts.AppendTo(_stringBuilder, activeContexts.Total != 0 ? "None" : "All");
+                sleepingContexts.AppendTo(_stringBuilder, activeContexts.Total != activeContexts.None ? "None" : "All");
                 _stringBuilder.Append(" |");
 
                 bool isFirst = true;

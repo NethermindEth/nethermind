@@ -6,7 +6,7 @@ namespace Nethermind.Stats.Model
     public enum NodeClientType
     {
         Unknown = 0,
-        BeSu,
+        Besu,
         Geth,
         Nethermind,
         Parity,
