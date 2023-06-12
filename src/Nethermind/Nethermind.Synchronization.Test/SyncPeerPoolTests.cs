@@ -118,9 +118,9 @@ namespace Nethermind.Synchronization.Test
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-            public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {
-                return Task.FromResult(Array.Empty<TxReceipt[]>());
+                return Task.FromResult(Array.Empty<TxReceipt[]?>());
             }
 
             public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
@@ -522,7 +522,7 @@ namespace Nethermind.Synchronization.Test
 
             SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-            Assert.AreNotSame(allocation1.Current, allocation2.Current, "first");
+            Assert.That(allocation2.Current, Is.Not.SameAs(allocation1.Current), "first");
             Assert.NotNull(allocation1.Current, "first A");
             Assert.NotNull(allocation2.Current, "first B");
 
@@ -533,7 +533,7 @@ namespace Nethermind.Synchronization.Test
 
             allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-            Assert.AreNotSame(allocation1.Current, allocation2.Current);
+            Assert.That(allocation2.Current, Is.Not.SameAs(allocation1.Current));
             Assert.NotNull(allocation1.Current, "second A");
             Assert.NotNull(allocation2.Current, "second B");
         }

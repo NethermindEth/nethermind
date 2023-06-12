@@ -226,7 +226,7 @@ namespace Nethermind.Blockchain.Test
                 .Where(t => t?.SenderAddress is not null)
                 .GroupBy(t => t.SenderAddress)
                 .ToDictionary(
-                    g => g.Key,
+                    g => g.Key!,
                     g => g.OrderBy(t => t, comparer).ToArray());
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
             BlocksConfig blocksConfig = new() { MinGasPrice = testCase.MinGasPriceForMining };
