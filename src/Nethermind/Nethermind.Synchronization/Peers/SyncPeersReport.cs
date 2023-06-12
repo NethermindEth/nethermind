@@ -104,7 +104,7 @@ namespace Nethermind.Synchronization.Peers
                 _stringBuilder.Append(" Active: ");
                 activeContexts.AppendTo(_stringBuilder, "None");
                 _stringBuilder.Append(" | Sleeping: ");
-                sleepingContexts.AppendTo(_stringBuilder, "All");
+                sleepingContexts.AppendTo(_stringBuilder, activeContexts.Total != 0 ? "None" : "All");
                 _stringBuilder.Append(" |");
 
                 bool isFirst = true;
@@ -230,7 +230,6 @@ namespace Nethermind.Synchronization.Peers
 
                 bool added = false;
 
-                if (None > 0) AddComma(sb, ref added).Append(None).Append(" Not Syncing");
                 if (Headers > 0) AddComma(sb, ref added).Append(Headers).Append(" Headers");
                 if (Bodies > 0) AddComma(sb, ref added).Append(Bodies).Append(" Bodies");
                 if (Receipts > 0) AddComma(sb, ref added).Append(Receipts).Append(" Receipts");
