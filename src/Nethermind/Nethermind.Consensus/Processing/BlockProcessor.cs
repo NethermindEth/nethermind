@@ -313,7 +313,14 @@ public partial class BlockProcessor : IBlockProcessor
     {
         if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
-        _stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address, reward.Value, spec);
+        if (!_stateProvider.AccountExists(reward.Address))
+        {
+            _stateProvider.CreateAccount(reward.Address, reward.Value);
+        }
+        else
+        {
+            _stateProvider.AddToBalance(reward.Address, reward.Value, spec);
+        }
     }
 
     // TODO: block processor pipeline

@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Antlr4.Runtime.Atn;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Validators;
@@ -194,7 +195,7 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public static async Task should_simulate_bundle_when_head_moves()
+        public static void should_simulate_bundle_when_head_moves()
         {
             SemaphoreSlim ss = new SemaphoreSlim(0);
             var ecdsa = Substitute.For<IEthereumEcdsa>();
@@ -210,18 +211,15 @@ namespace Nethermind.Mev.Test
                         TrustedRelays = $"{TestItem.AddressA},{TestItem.AddressB},{TestItem.AddressC}"
                     }, ecdsa: ecdsa);
 
-            async Task CheckSimulationsForBlock(int head, int numberOfSimulationsToReceive)
+            void CheckSimulationsForBlock(int head, int numberOfSimulationsToReceive)
             {
                 testContext.BlockTree.NewHeadBlock +=
                     Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head).TestObject)); //4
-                for (int i = 0; i < numberOfSimulationsToReceive; i++)
-                {
-                    await ss.WaitAsync(TimeSpan.FromMilliseconds(10));
-                }
 
-                await testContext.Simulator.Received(numberOfSimulationsToReceive).Simulate(Arg.Any<MevBundle>(),
-                    Arg.Any<BlockHeader>(),
-                    Arg.Any<CancellationToken>());
+                Assert.That(() =>
+                    testContext.Simulator.ReceivedCalls().Count((c) => c.GetMethodInfo().Name == nameof(testContext.Simulator.Simulate)),
+                    Is.EqualTo(numberOfSimulationsToReceive).After(numberOfSimulationsToReceive * 500, 10));
+
                 testContext.Simulator.ClearReceivedCalls();
             }
 
@@ -231,12 +229,12 @@ namespace Nethermind.Mev.Test
 
             int head = 4;
 
-            await CheckSimulationsForBlock(head++, 1); //4 -> 5
-            await CheckSimulationsForBlock(head++, 1); //5 -> 6
-            await CheckSimulationsForBlock(head++, 0); //6 -> 7
-            await CheckSimulationsForBlock(head++, 0); //7 -> 8
-            await CheckSimulationsForBlock(head++, 4); //8 -> 9
-            await CheckSimulationsForBlock(head, 2);
+            CheckSimulationsForBlock(head++, 1); //4 -> 5
+            CheckSimulationsForBlock(head++, 1); //5 -> 6
+            CheckSimulationsForBlock(head++, 0); //6 -> 7
+            CheckSimulationsForBlock(head++, 0); //7 -> 8
+            CheckSimulationsForBlock(head++, 4); //8 -> 9
+            CheckSimulationsForBlock(head, 2);
         }
 
         [Test]

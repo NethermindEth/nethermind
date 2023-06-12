@@ -428,7 +428,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _beaconPivot,
                 _api.SpecProvider,
                 _api.BlockTree,
-                _blockCacheService,
                 _api.ReceiptStorage!,
                 _api.BlockValidator!,
                 _api.SealValidator!,

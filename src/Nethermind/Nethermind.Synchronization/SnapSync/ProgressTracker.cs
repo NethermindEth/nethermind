@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 AccountRangePartition partition = new AccountRangePartition();
 
-                Keccak startingPath = new Keccak(Keccak.Zero.Bytes.ToArray());
+                Keccak startingPath = new Keccak(Keccak.Zero.Bytes);
                 startingPath.Bytes[0] = curStartingPath;
 
                 partition.NextAccountPath = startingPath;
@@ -99,7 +99,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else
                 {
-                    limitPath = new Keccak(Keccak.Zero.Bytes.ToArray());
+                    limitPath = new Keccak(Keccak.Zero.Bytes);
                     limitPath.Bytes[0] = curStartingPath;
                 }
 
@@ -222,6 +222,7 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     codesToQuery.Add(codeHash);
                 }
+                codesToQuery.Sort();
 
                 LogRequest($"CodesToRetrieve:{codesToQuery.Count}");
 
@@ -247,18 +248,15 @@ namespace Nethermind.Synchronization.SnapSync
             return _activeAccountRequests < _accountRangePartitionCount && NextSlotRange.Count < 10 && StoragesToRetrieve.Count < 5 * STORAGE_BATCH_SIZE && CodesToRetrieve.Count < 5 * CODES_BATCH_SIZE;
         }
 
-        public void EnqueueCodeHashes(ICollection<ValueKeccak>? codeHashes)
+        public void EnqueueCodeHashes(ReadOnlySpan<ValueKeccak> codeHashes)
         {
-            if (codeHashes is not null)
+            foreach (var hash in codeHashes)
             {
-                foreach (var hash in codeHashes)
-                {
-                    CodesToRetrieve.Enqueue(hash);
-                }
+                CodesToRetrieve.Enqueue(hash);
             }
         }
 
-        public void ReportCodeRequestFinished(ICollection<ValueKeccak> codeHashes = null)
+        public void ReportCodeRequestFinished(ReadOnlySpan<ValueKeccak> codeHashes)
         {
             EnqueueCodeHashes(codeHashes);
 
@@ -288,14 +286,11 @@ namespace Nethermind.Synchronization.SnapSync
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault() });
         }
 
-        public void ReportFullStorageRequestFinished(PathWithAccount[] storages = null)
+        public void ReportFullStorageRequestFinished(ReadOnlySpan<PathWithAccount> storages = default)
         {
-            if (storages is not null)
+            for (int index = 0; index < storages.Length; index++)
             {
-                for (int index = 0; index < storages.Length; index++)
-                {
-                    EnqueueAccountStorage(storages[index]);
-                }
+                EnqueueAccountStorage(storages[index]);
             }
 
             Interlocked.Decrement(ref _activeStorageRequests);

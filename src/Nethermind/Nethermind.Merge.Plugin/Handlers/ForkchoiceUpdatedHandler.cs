@@ -205,7 +205,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         }
 
         bool nonZeroFinalizedBlockHash = forkchoiceState.FinalizedBlockHash != Keccak.Zero;
-        // bool nonZeroSafeBlockHash = forkchoiceState.SafeBlockHash != Keccak.Zero;
         if (nonZeroFinalizedBlockHash)
         {
             _manualBlockFinalizationManager.MarkFinalized(newHeadBlock.Header, finalizedHeader!);

@@ -226,6 +226,51 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(ChiadoSpecProvider.Instance.TerminalTotalDifficulty));
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Chiado));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Chiado));
+
+        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp - 1)).MaxCodeSize.Should().Be(long.MaxValue);
+        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxCodeSize.Should().Be(24576L);
+        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxInitCodeSize.Should().Be(2 * 24576L);
+    }
+
+    [Test]
+    public void Gnosis_loads_properly()
+    {
+        ChainSpecLoader loader = new(new EthereumJsonSerializer());
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/gnosis.json");
+        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        GnosisSpecProvider gnosisSpecProvider = GnosisSpecProvider.Instance;
+
+        List<ForkActivation> forkActivationsToTest = new()
+        {
+            (ForkActivation)0,
+            (ForkActivation)1,
+            (ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber -1),
+            (ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber),
+            (ForkActivation)(GnosisSpecProvider.ConstantinopoleFixBlockNumber -1),
+            (ForkActivation)(GnosisSpecProvider.ConstantinopoleFixBlockNumber),
+            (ForkActivation)(GnosisSpecProvider.IstanbulBlockNumber -1),
+            (ForkActivation)(GnosisSpecProvider.IstanbulBlockNumber),
+            (ForkActivation)(GnosisSpecProvider.BerlinBlockNumber -1),
+            (ForkActivation)(GnosisSpecProvider.BerlinBlockNumber),
+            (ForkActivation)(GnosisSpecProvider.LondonBlockNumber -1),
+            (ForkActivation)(GnosisSpecProvider.LondonBlockNumber),
+            (1, GnosisSpecProvider.ShanghaiTimestamp - 1),
+            (1, GnosisSpecProvider.ShanghaiTimestamp),
+            (999_999_999, 999_999_999) // far in the future
+        };
+
+        CompareSpecProviders(gnosisSpecProvider, provider, forkActivationsToTest, CompareSpecsOptions.IsGnosis);
+        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(GnosisSpecProvider.Instance.TerminalTotalDifficulty));
+        Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Gnosis));
+        Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Gnosis));
+
+        provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp - 1)).MaxCodeSize.Should().Be(long.MaxValue);
+
+        /* ToDo uncomment when we have gnosis shapella timestamp
+        provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp)).MaxCodeSize.Should().Be(24576L);
+        provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp)).MaxInitCodeSize.Should().Be(2 * 24576L);*/
     }
 
 
@@ -273,6 +318,8 @@ public class ChainSpecBasedSpecProviderTests
         };
 
         CompareSpecProviders(mainnet, provider, forkActivationsToTest, CompareSpecsOptions.CheckDifficultyBomb);
+        provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxCodeSize.Should().Be(24576L);
+        provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxInitCodeSize.Should().Be(2 * 24576L);
 
         Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(MainnetSpecProvider.LondonBlockNumber));
         Assert.That(provider.GetSpec((ForkActivation)4_369_999).DifficultyBombDelay, Is.EqualTo(0_000_000));

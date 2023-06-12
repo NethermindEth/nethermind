@@ -28,6 +28,7 @@ namespace Nethermind.Evm.Tracing
         private readonly bool _isTracingBlockHash;
         private readonly bool _isTracingBlockAccess;
         private readonly bool _isTracingFees;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
         public ITxTracer InnerTracer => _innerTracer;
 

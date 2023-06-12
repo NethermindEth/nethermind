@@ -206,9 +206,10 @@ namespace Nethermind.Synchronization.FastBlocks
             bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
 
-            for (int i = 0; i < batch.Infos.Length; i++)
+            BlockInfo?[] blockInfos = batch.Infos;
+            for (int i = 0; i < blockInfos.Length; i++)
             {
-                BlockInfo? blockInfo = batch.Infos[i];
+                BlockInfo? blockInfo = blockInfos[i];
                 TxReceipt[]? receipts = (batch.Response?.Length ?? 0) <= i
                     ? null
                     : (batch.Response![i] ?? Array.Empty<TxReceipt>());
@@ -233,19 +234,19 @@ namespace Nethermind.Synchronization.FastBlocks
                                 if (_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockHash}");
                             }
 
-                            _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                            _syncStatusList.MarkPending(blockInfo);
                         }
                         else
                         {
                             try
                             {
-                                _receiptStorage.Insert(block, prepared);
+                                _receiptStorage.Insert(block, prepared, ensureCanonical: true);
                                 _syncStatusList.MarkInserted(block.Number);
                                 validResponsesCount++;
                             }
                             catch (InvalidDataException)
                             {
-                                _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                                _syncStatusList.MarkPending(blockInfo);
                             }
                         }
                     }
@@ -259,14 +260,14 @@ namespace Nethermind.Synchronization.FastBlocks
                             _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, InitiateDisconnectReason.InvalidReceiptRoot, "invalid tx or uncles root");
                         }
 
-                        _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                        _syncStatusList.MarkPending(blockInfo);
                     }
                 }
                 else
                 {
                     if (blockInfo is not null)
                     {
-                        _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                        _syncStatusList.MarkPending(blockInfo);
                     }
                 }
             }
@@ -288,18 +289,19 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void AdjustRequestSize(ReceiptsSyncBatch batch, int validResponsesCount)
         {
-            lock (_syncStatusList)
+            int currentRequestSize = Volatile.Read(ref _requestSize);
+            int requestSize = currentRequestSize;
+            if (validResponsesCount == batch.Infos.Length)
             {
-                if (validResponsesCount == batch.Infos.Length)
-                {
-                    _requestSize = Math.Min(256, _requestSize * 2);
-                }
-
-                if (validResponsesCount == 0)
-                {
-                    _requestSize = Math.Max(4, _requestSize / 2);
-                }
+                requestSize = Math.Min(256, currentRequestSize * 2);
             }
+
+            if (validResponsesCount == 0)
+            {
+                requestSize = Math.Max(4, currentRequestSize / 2);
+            }
+
+            Interlocked.CompareExchange(ref _requestSize, requestSize, currentRequestSize);
         }
     }
 }
