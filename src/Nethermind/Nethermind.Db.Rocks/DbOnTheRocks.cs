@@ -6,10 +6,12 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using ConcurrentCollections;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
@@ -617,7 +619,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         }
     }
 
-    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
     {
         if (_isDisposing)
         {
@@ -697,7 +699,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         }
     }
 
-    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAllCore(Iterator iterator)
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCore(Iterator iterator)
     {
         try
         {
@@ -718,7 +720,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
             while (iterator.Valid())
             {
-                yield return new KeyValuePair<byte[], byte[]>(iterator.Key(), iterator.Value());
+                yield return new KeyValuePair<byte[], byte[]?>(iterator.Key(), iterator.Value());
 
                 try
                 {
@@ -778,7 +780,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         private WriteFlags _writeFlags = WriteFlags.None;
         private bool _isDisposed;
 
-        internal readonly WriteBatch _rocksBatch;
+        private SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> _batchData = new(Bytes.SpanEqualityComparer);
 
         public RocksDbBatch(DbOnTheRocks dbOnTheRocks)
         {
@@ -788,8 +790,6 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             {
                 throw new ObjectDisposedException($"Attempted to create a batch on a disposed database {_dbOnTheRocks.Name}");
             }
-
-            _rocksBatch = new WriteBatch();
         }
 
         public void Dispose()
@@ -807,9 +807,25 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
             try
             {
-                _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+                WriteBatch rocksBatch = new();
+                // Sort the batch by key
+                foreach (var kv in _batchData.OrderBy(i => i.Key, Bytes.Comparer))
+                {
+                    if (kv.Value.data is null)
+                    {
+                        rocksBatch.Delete(kv.Key, kv.Value.cf);
+                    }
+                    else
+                    {
+                        rocksBatch.Put(kv.Key, kv.Value.data, kv.Value.cf);
+                    }
+                }
+                // Release Dictionary early to be GC'd
+                _batchData = null!;
+
+                _dbOnTheRocks._db.Write(rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
                 _dbOnTheRocks._currentBatches.TryRemove(this);
-                _rocksBatch.Dispose();
+                rocksBatch.Dispose();
             }
             catch (RocksDbSharpException e)
             {
@@ -821,7 +837,27 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             // Not checking _isDisposing here as for some reason, sometimes is is read after dispose
-            return _dbOnTheRocks.Get(key, flags);
+            return _batchData?.TryGetValue(key, out var value) ?? false ? value.data : _dbOnTheRocks.Get(key, flags);
+        }
+
+        public void Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null)
+        {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
+            }
+
+            _batchData[key] = (null, cf);
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, ColumnFamilyHandle? cf = null)
+        {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
+            }
+
+            _batchData[key] = (value, cf);
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -831,14 +867,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
             }
 
-            if (value is null)
-            {
-                _rocksBatch.Delete(key);
-            }
-            else
-            {
-                _rocksBatch.Put(key, value);
-            }
+            _batchData[key] = (value, null);
 
             _writeFlags = flags;
         }
@@ -1048,6 +1077,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 heavyWriteOption["disable_auto_compactions"] = "true";
                 ApplyOptions(heavyWriteOption);
                 break;
+            case ITunableDb.TuneType.EnableBlobFiles:
+                ApplyOptions(GetBlobFilesOptions());
+                break;
             case ITunableDb.TuneType.Default:
             default:
                 ApplyOptions(GetStandardOptions());
@@ -1072,7 +1104,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             { "level0_stop_writes_trigger", 36.ToString() },
 
             { "max_bytes_for_level_base", 256.MiB().ToString() },
+            { "target_file_size_base", 64.MiB().ToString() },
             { "disable_auto_compactions", "false" },
+
+            { "write_buffer_size", _perTableDbConfig.WriteBufferSize.ToString() },
+            { "enable_blob_files", "false" },
 
             { "soft_pending_compaction_bytes_limit", 64.GiB().ToString() },
             { "hard_pending_compaction_bytes_limit", 256.GiB().ToString() },
@@ -1113,6 +1149,32 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             // Very high, so slowdown is only triggered by file num. Make things easier to predict.
             { "soft_pending_compaction_bytes_limit", 100000.GiB().ToString() },
             { "hard_pending_compaction_bytes_limit", 100000.GiB().ToString() },
+        };
+    }
+
+    private IDictionary<string, string> GetBlobFilesOptions()
+    {
+        // Enable blob files, see: https://rocksdb.org/blog/2021/05/26/integrated-blob-db.html
+        // This is very useful for blocks, as it almost eliminate 95% of the compaction as the main db no longer
+        // store the actual data, but only points to blob files. This config reduces total blocks db writes from about
+        // 4.6 TB to 0.76 TB, where even the the WAL took 0.45 TB (wal is not compressed), with peak writes of about 300MBps,
+        // it may not even saturate a SATA SSD on a 1GBps internet.
+
+        // You don't want to turn this on on other DB as it does add an indirection which take up an additional iop.
+        // But for large values like blocks (3MB decompressed to 8MB), the response time increase is negligible.
+        // However without a large buffer size, it will create tens of thousands of small files. There are
+        // various workaround it, but it all increase total writes, which defeats the purpose.
+        // Additionally, as the `max_bytes_for_level_base` is set to very low, existing user will suddenly
+        // get a lot of compaction. So cant turn this on all the time. Turning this back off, will just put back
+        // new data to SST files.
+
+        return new Dictionary<string, string>()
+        {
+            { "enable_blob_files", "true" },
+            { "blob_compression_type", "kSnappyCompression" },
+            { "write_buffer_size", 64.MiB().ToString() },
+            { "max_bytes_for_level_base", 4.MiB().ToString() },
+            { "target_file_size_base", 1.MiB().ToString() },
         };
     }
 

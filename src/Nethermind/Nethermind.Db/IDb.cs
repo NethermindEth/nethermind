@@ -11,7 +11,7 @@ namespace Nethermind.Db
     {
         string Name { get; }
         KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] { get; }
-        IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false);
+        IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false);
         IEnumerable<byte[]> GetAllValues(bool ordered = false);
         void Remove(ReadOnlySpan<byte> key);
         bool KeyExists(ReadOnlySpan<byte> key);
