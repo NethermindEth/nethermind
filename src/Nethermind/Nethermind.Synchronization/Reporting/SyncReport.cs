@@ -290,7 +290,7 @@ namespace Nethermind.Synchronization.Reporting
                 return;
             }
 
-            _logger.Info($"Downloaded   {Pad(FullSyncBlocksDownloaded.CurrentValue, _blockPaddingLength)} / {Pad(FullSyncBlocksKnown, _blockPaddingLength)} ({FullSyncBlocksDownloaded.CurrentValue/(float)(FullSyncBlocksKnown + 1),8:P2}) | current {Pad(FullSyncBlocksDownloaded.CurrentPerSecond, SpeedPaddingLength)} Blk/s | total {Pad(FullSyncBlocksDownloaded.TotalPerSecond, SpeedPaddingLength)} Blk/s");
+            _logger.Info($"Downloaded   {Pad(FullSyncBlocksDownloaded.CurrentValue, _blockPaddingLength)} / {Pad(FullSyncBlocksKnown, _blockPaddingLength)} ({FullSyncBlocksDownloaded.CurrentValue / (float)(FullSyncBlocksKnown + 1),8:P2}) | current {Pad(FullSyncBlocksDownloaded.CurrentPerSecond, SpeedPaddingLength)} Blk/s | total {Pad(FullSyncBlocksDownloaded.TotalPerSecond, SpeedPaddingLength)} Blk/s");
             FullSyncBlocksDownloaded.SetMeasuringPoint();
         }
 
@@ -298,19 +298,19 @@ namespace Nethermind.Synchronization.Reporting
         {
             if ((currentSyncMode & SyncMode.FastHeaders) == SyncMode.FastHeaders)
             {
-                _logger.Info($"Old Headers  {Pad(FastBlocksHeaders.CurrentValue, _blockPaddingLength)} / {_paddedPivot} ({FastBlocksHeaders.CurrentValue/(float)(_fastBlocksPivotNumber + 1),8:P2}) | queue {Pad(HeadersInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksHeaders.CurrentPerSecond, SpeedPaddingLength)} Blk/s | total {Pad(FastBlocksHeaders.TotalPerSecond, SpeedPaddingLength)} Blk/s");
+                _logger.Info($"Old Headers  {Pad(FastBlocksHeaders.CurrentValue, _blockPaddingLength)} / {_paddedPivot} ({FastBlocksHeaders.CurrentValue / (float)(_fastBlocksPivotNumber + 1),8:P2}) | queue {Pad(HeadersInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksHeaders.CurrentPerSecond, SpeedPaddingLength)} Blk/s | total {Pad(FastBlocksHeaders.TotalPerSecond, SpeedPaddingLength)} Blk/s");
                 FastBlocksHeaders.SetMeasuringPoint();
             }
 
             if ((currentSyncMode & SyncMode.FastBodies) == SyncMode.FastBodies)
             {
-                _logger.Info($"Old Bodies   {Pad(FastBlocksBodies.CurrentValue, _blockPaddingLength)} / {_paddedAmountOfOldBodiesToDownload} ({FastBlocksBodies.CurrentValue/(float)(_amountOfBodiesToDownload + 1),8:P2}) | queue {Pad(BodiesInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksBodies.CurrentPerSecond, SpeedPaddingLength)} Blk/s | total {Pad(FastBlocksBodies.TotalPerSecond, SpeedPaddingLength)} Blk/s");
+                _logger.Info($"Old Bodies   {Pad(FastBlocksBodies.CurrentValue, _blockPaddingLength)} / {_paddedAmountOfOldBodiesToDownload} ({FastBlocksBodies.CurrentValue / (float)(_amountOfBodiesToDownload + 1),8:P2}) | queue {Pad(BodiesInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksBodies.CurrentPerSecond, SpeedPaddingLength)} Blk/s | total {Pad(FastBlocksBodies.TotalPerSecond, SpeedPaddingLength)} Blk/s");
                 FastBlocksBodies.SetMeasuringPoint();
             }
 
             if ((currentSyncMode & SyncMode.FastReceipts) == SyncMode.FastReceipts)
             {
-                _logger.Info($"Old Receipts {Pad(FastBlocksReceipts.CurrentValue, _blockPaddingLength)} / {_paddedAmountOfOldReceiptsToDownload} ({FastBlocksReceipts.CurrentValue/(float)(_amountOfReceiptsToDownload + 1),8:P2}) | queue {Pad(ReceiptsInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksReceipts.CurrentPerSecond, SpeedPaddingLength)} Blk/s | total {Pad(FastBlocksReceipts.TotalPerSecond, SpeedPaddingLength)} Blk/s");
+                _logger.Info($"Old Receipts {Pad(FastBlocksReceipts.CurrentValue, _blockPaddingLength)} / {_paddedAmountOfOldReceiptsToDownload} ({FastBlocksReceipts.CurrentValue / (float)(_amountOfReceiptsToDownload + 1),8:P2}) | queue {Pad(ReceiptsInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksReceipts.CurrentPerSecond, SpeedPaddingLength)} Blk/s | total {Pad(FastBlocksReceipts.TotalPerSecond, SpeedPaddingLength)} Blk/s");
                 FastBlocksReceipts.SetMeasuringPoint();
             }
         }

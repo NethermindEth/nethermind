@@ -128,7 +128,8 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
-                        var chunkColor = chunkMs switch {
+                        var chunkColor = chunkMs switch
+                        {
                             < 200 => greenText,
                             < 400 => whiteText,
                             < 700 => yellowText,
@@ -138,7 +139,8 @@ namespace Nethermind.Consensus.Processing
                         _logger.Info($"Processed     {block.Number,9}           | {chunkColor}{chunkMs,9:N2}{resetColor} ms  | slot {runMs,7:N0} ms     |{blockGas}");
                     }
 
-                    var mgasColor = chunkMGas switch {
+                    var mgasColor = chunkMGas switch
+                    {
                         > 25 => greenText,
                         > 15 => whiteText,
                         > 10 => yellowText,
