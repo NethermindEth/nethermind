@@ -292,7 +292,7 @@ public class TxValidatorTests
             .WithChainId(TestBlockchainIds.ChainId)
             .SignedAndResolved().TestObject;
 
-        Transaction txtxWithTo = Build.A.Transaction
+        Transaction txWithTo = Build.A.Transaction
             .WithType(TxType.Blob)
             .WithTimestamp(ulong.MaxValue)
             .WithTo(TestItem.AddressA)
@@ -303,7 +303,7 @@ public class TxValidatorTests
             .SignedAndResolved().TestObject;
 
         Assert.That(txValidator.IsWellFormed(txWithoutTo, Cancun.Instance), Is.False);
-        Assert.That(txValidator.IsWellFormed(txtxWithTo, Cancun.Instance));
+        Assert.That(txValidator.IsWellFormed(txWithTo, Cancun.Instance));
     }
 
     [Timeout(Timeout.MaxTestTime)]

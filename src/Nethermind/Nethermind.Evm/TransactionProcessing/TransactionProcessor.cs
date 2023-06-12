@@ -406,6 +406,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 _worldState.Restore(snapshot);
             }
 
+            if (_logger.IsTrace) _logger.Trace("Gas spent: " + spentGas);
+
             Address gasBeneficiary = block.GasBeneficiary;
             bool gasBeneficiaryNotDestroyed = substate?.DestroyList.Contains(gasBeneficiary) != true;
             if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)

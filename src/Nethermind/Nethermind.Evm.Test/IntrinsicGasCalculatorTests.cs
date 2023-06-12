@@ -116,28 +116,16 @@ namespace Nethermind.Evm.Test
             Test(Cancun.Instance, true);
         }
 
-        public static IEnumerable<(ulong parentExcessDataGas, int newBlobsCount, ulong expectedCost)> ExcessDataGasTestCaseSource()
-        {
-            yield return (0, 0, 0);
-            yield return (0, 1, 0);
-            yield return (0, 2, 0);
-            yield return (0, 3, Eip4844Constants.DataGasPerBlob * (3 - 2));
-            yield return (100000, 3, Eip4844Constants.DataGasPerBlob + 100000);
-            yield return (Eip4844Constants.TargetDataGasPerBlock, 1, Eip4844Constants.DataGasPerBlob * 1);
-            yield return (Eip4844Constants.TargetDataGasPerBlock, 0, 0);
-            yield return (Eip4844Constants.TargetDataGasPerBlock, 2, Eip4844Constants.DataGasPerBlob * 2);
-        }
-
         [TestCaseSource(nameof(ExcessDataGasTestCaseSource))]
-        public void Blobs_excess_data_gas_is_calculated_correctly((ulong excessDataGas, int newBlobsCount, ulong expectedCost) testCase)
+        public void Excess_data_gas_is_calculated_correctly((ulong parentExcessDataGas, int parentBlobsCount, ulong expectedExcessDataGas) testCase)
         {
             void Test(IReleaseSpec spec, bool areBlobsEnabled)
             {
-                BlockHeader header = Build.A.BlockHeader
-                    .WithDataGasUsed(IntrinsicGasCalculator.CalculateDataGas(testCase.newBlobsCount))
-                    .WithExcessDataGas(testCase.excessDataGas).TestObject;
-                IntrinsicGasCalculator.CalculateExcessDataGas(header, spec).Should()
-                    .Be(areBlobsEnabled ? testCase.expectedCost : null);
+                BlockHeader parentHeader = Build.A.BlockHeader
+                    .WithDataGasUsed(IntrinsicGasCalculator.CalculateDataGas(testCase.parentBlobsCount))
+                    .WithExcessDataGas(testCase.parentExcessDataGas).TestObject;
+                IntrinsicGasCalculator.CalculateExcessDataGas(parentHeader, spec).Should()
+                    .Be(areBlobsEnabled ? testCase.expectedExcessDataGas : null);
             }
 
             Test(Homestead.Instance, false);
@@ -155,6 +143,37 @@ namespace Nethermind.Evm.Test
             Test(Cancun.Instance, true);
         }
 
+        [TestCaseSource(nameof(BlobDataGasCostTestCaseSource))]
+        public void Blobs_intrinsic_cost_is_calculated_properly(
+            (Transaction tx, ulong excessDataGas, UInt256 expectedCost) testCase)
+        {
+            BlockHeader header = Build.A.BlockHeader.WithExcessDataGas(testCase.excessDataGas).TestObject;
+            IntrinsicGasCalculator.CalculateDataGasPrice(header, testCase.tx).Should()
+                .Be(testCase.expectedCost);
+        }
+
+        public static IEnumerable<(ulong parentExcessDataGas, int parentBlobsCount, ulong expectedExcessDataGas)> ExcessDataGasTestCaseSource()
+        {
+            yield return (0, 0, 0);
+            yield return (0, (int)(Eip4844Constants.TargetDataGasPerBlock / Eip4844Constants.DataGasPerBlob) - 1, 0);
+            yield return (0, (int)(Eip4844Constants.TargetDataGasPerBlock / Eip4844Constants.DataGasPerBlob), 0);
+            yield return (100000, (int)(Eip4844Constants.TargetDataGasPerBlock / Eip4844Constants.DataGasPerBlob), 100000);
+            yield return (0, (int)(Eip4844Constants.TargetDataGasPerBlock / Eip4844Constants.DataGasPerBlob) + 1, Eip4844Constants.DataGasPerBlob * 1);
+            yield return (Eip4844Constants.TargetDataGasPerBlock, 1, Eip4844Constants.DataGasPerBlob * 1);
+            yield return (Eip4844Constants.TargetDataGasPerBlock, 0, 0);
+            yield return (Eip4844Constants.TargetDataGasPerBlock, 2, Eip4844Constants.DataGasPerBlob * 2);
+            yield return (Eip4844Constants.MaxDataGasPerBlock, 1, Eip4844Constants.TargetDataGasPerBlock + Eip4844Constants.DataGasPerBlob * 1);
+            yield return (
+                Eip4844Constants.MaxDataGasPerBlock,
+                (int)(Eip4844Constants.TargetDataGasPerBlock / Eip4844Constants.DataGasPerBlob),
+                Eip4844Constants.MaxDataGasPerBlock);
+            yield return (
+                Eip4844Constants.MaxDataGasPerBlock,
+                (int)(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob),
+                Eip4844Constants.MaxDataGasPerBlock * 2 - Eip4844Constants.TargetDataGasPerBlock
+                );
+        }
+
         public static IEnumerable<(Transaction tx, ulong excessDataGas, UInt256 expectedCost)> BlobDataGasCostTestCaseSource()
         {
             yield return (Build.A.Transaction.TestObject, 0, 0);
@@ -164,15 +183,6 @@ namespace Nethermind.Evm.Test
             yield return (Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1).TestObject, 10000000, 2490368);
             yield return (Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject, 0, 131072000);
             yield return (Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject, 10000000, 2490368000);
-        }
-
-        [TestCaseSource(nameof(BlobDataGasCostTestCaseSource))]
-        public void Blobs_intrinsic_cost_is_calculated_properly(
-            (Transaction tx, ulong excessDataGas, UInt256 expectedCost) testCase)
-        {
-            BlockHeader header = Build.A.BlockHeader.WithExcessDataGas(testCase.excessDataGas).TestObject;
-            IntrinsicGasCalculator.CalculateDataGasPrice(header, testCase.tx).Should()
-                .Be(testCase.expectedCost);
         }
     }
 }
