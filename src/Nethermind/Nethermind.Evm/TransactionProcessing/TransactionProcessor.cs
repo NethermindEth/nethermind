@@ -546,10 +546,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null && !burntFees.IsZero)
                 {
-                    if (_worldState.AccountExists(blk.GasBeneficiary))
-                        _worldState.AddToBalance(blk.GasBeneficiary, fees, spec);
+                    if (_worldState.AccountExists(spec.Eip1559FeeCollector))
+                        _worldState.AddToBalance(spec.Eip1559FeeCollector, burntFees, spec);
                     else
-                        _worldState.CreateAccount(blk.GasBeneficiary, fees);
+                        _worldState.CreateAccount(spec.Eip1559FeeCollector, burntFees);
                 }
 
                 if (tracer.IsTracingFees)
