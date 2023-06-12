@@ -52,12 +52,9 @@ public partial class EngineModuleTests
         IPayloadPreparationService? mockedPayloadService = null, ILogManager? logManager = null) =>
         new(mergeConfig, mockedPayloadService, logManager);
 
-    protected async Task<MergeTestBlockchain> CreateBlockChain(IReleaseSpec? releaseSpec, IMergeConfig? mergeConfig = null)
-        => await CreateBlockChain(mergeConfig, null, releaseSpec);
 
-
-    protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig? mergeConfig = null,
-        IPayloadPreparationService? mockedPayloadService = null, IReleaseSpec? releaseSpec = null)
+    protected async Task<MergeTestBlockchain> CreateBlockChain(IReleaseSpec? releaseSpec = null, IMergeConfig? mergeConfig = null,
+        IPayloadPreparationService? mockedPayloadService = null)
         => await CreateBaseBlockchain(mergeConfig, mockedPayloadService)
             .Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
