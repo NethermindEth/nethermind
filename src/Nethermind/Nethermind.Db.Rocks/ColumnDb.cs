@@ -87,11 +87,11 @@ public class ColumnDb : IDbWithSpan
         {
             if (value is null)
             {
-                _underlyingBatch._rocksBatch.Delete(key, _columnDb._columnFamily);
+                _underlyingBatch.Delete(key, _columnDb._columnFamily);
             }
             else
             {
-                _underlyingBatch._rocksBatch.Put(key, value, _columnDb._columnFamily);
+                _underlyingBatch.Set(key, value, _columnDb._columnFamily);
             }
         }
     }
