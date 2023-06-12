@@ -79,6 +79,6 @@ namespace Nethermind.Core.Specs
         /// <remarks> The default value is long.MaxValue for block numbers and ulong.MaxValue for timestamps
         /// for every new not yet scheduled EIP. Because of that we can't use long.MaxValue and
         /// ulong.MaxValue for GetFinalSpec that is why we have long.MaxValue-1, ulong.MaxValue-1 </remarks>
-        IReleaseSpec GetFinalSpec() => GetSpec(long.MaxValue-1, ulong.MaxValue-1);
+        IReleaseSpec GetFinalSpec() => GetSpec(long.MaxValue - 1, ulong.MaxValue - 1);
     }
 }
