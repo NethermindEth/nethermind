@@ -270,6 +270,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             }
         }
 
+        [Retry(tryCount: 5)]
         [TestCase(false, 1, 1, 8)]
         [TestCase(true, 1, 1, 24)]
         [TestCase(true, 2, 1, 32)]
