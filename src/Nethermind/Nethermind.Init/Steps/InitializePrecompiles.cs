@@ -13,12 +13,10 @@ namespace Nethermind.Init.Steps;
 public class InitializePrecompiles : IStep
 {
     private readonly INethermindApi _api;
-    private readonly IInitConfig _initConfig;
 
     public InitializePrecompiles(INethermindApi api)
     {
         _api = api;
-        _initConfig = api.Config<IInitConfig>();
     }
 
     public async Task Execute(CancellationToken cancellationToken)
@@ -26,10 +24,11 @@ public class InitializePrecompiles : IStep
         if (_api.SpecProvider!.GetFinalSpec().IsEip4844Enabled)
         {
             ILogger logger = _api.LogManager.GetClassLogger<InitializePrecompiles>();
+            IInitConfig initConfig = _api.Config<IInitConfig>();
 
             try
             {
-                await KzgPolynomialCommitments.InitializeAsync(logger, _initConfig.KzgSetupPath);
+                await KzgPolynomialCommitments.InitializeAsync(logger, initConfig.KzgSetupPath);
             }
             catch (Exception e)
             {
