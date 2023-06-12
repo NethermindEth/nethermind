@@ -76,6 +76,6 @@ namespace Nethermind.Core.Specs
         /// Resolves a spec for all planned forks applied.
         /// </summary>
         /// <returns>A spec for all planned forks applied</returns>
-        IReleaseSpec GetFinalSpec() => GetSpec(long.MaxValue, ulong.MaxValue);
+        IReleaseSpec GetFinalSpec() => GetSpec(long.MaxValue-1, ulong.MaxValue-1);
     }
 }

@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -18,6 +19,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.HealthChecks;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -26,7 +28,10 @@ using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -1544,33 +1549,61 @@ public partial class EngineModuleTests
     [Test]
     public async Task Should_return_capabilities()
     {
-        using var chain = await CreateBlockChain();
-        var rpcModule = CreateEngineModule(chain);
-        var expected = typeof(IEngineRpcModule).GetMethods()
+        using MergeTestBlockchain chain = await CreateBlockChain(Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()
             .Select(m => m.Name)
             .Where(m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal))
             .Order();
 
-        var result = rpcModule.engine_exchangeCapabilities(expected);
+        ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(expected);
 
         result.Data.Should().BeEquivalentTo(expected);
     }
 
     [Test]
+    public void Should_return_expected_capabilities_for_mainnet()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
+        string data = File.ReadAllText(path);
+        ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
+        ChainSpec chainSpec = chainSpecLoader.Load(data);
+        ChainSpecBasedSpecProvider specProvider = new(chainSpec);
+        EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
+        ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
+        string[] result = exchangeCapabilitiesHandler.Handle(Array.Empty<string>()).Data.ToArray();
+        var expectedMethods = new string[]
+        {
+            nameof(IEngineRpcModule.engine_getPayloadV1),
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1),
+            nameof(IEngineRpcModule.engine_newPayloadV1),
+            nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1),
+
+            nameof(IEngineRpcModule.engine_getPayloadV2),
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2),
+            nameof(IEngineRpcModule.engine_newPayloadV2),
+            nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1),
+            nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)
+
+        };
+        Assert.That(result, Is.EquivalentTo(expectedMethods));
+    }
+
+    [Test]
     public async Task Should_warn_for_missing_capabilities()
     {
-        using var chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockChain();
         chain.LogManager = Substitute.For<ILogManager>();
         chain.LogManager.GetClassLogger().IsWarn.Returns(true);
 
-        var rpcModule = CreateEngineModule(chain);
-        var list = new[]
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        string[] list = new[]
         {
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1),
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)
         };
 
-        var result = rpcModule.engine_exchangeCapabilities(list);
+        ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(list);
 
         chain.LogManager.GetClassLogger().Received().Warn(
             Arg.Is<string>(a =>

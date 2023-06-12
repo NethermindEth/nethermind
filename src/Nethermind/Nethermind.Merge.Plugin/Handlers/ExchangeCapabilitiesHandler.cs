@@ -15,9 +15,8 @@ public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumer
     private readonly ILogger _logger;
     private readonly IRpcCapabilitiesProvider _engineRpcCapabilitiesProvider;
 
-    public ExchangeCapabilitiesHandler(IRpcCapabilitiesProvider engineRpcCapabilitiesProvider, ISpecProvider specProvider, ILogManager logManager)
+    public ExchangeCapabilitiesHandler(IRpcCapabilitiesProvider engineRpcCapabilitiesProvider, ILogManager logManager)
     {
-        ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(logManager);
 
         _logger = logManager.GetClassLogger();
@@ -26,17 +25,17 @@ public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumer
 
     public ResultWrapper<IEnumerable<string>> Handle(IEnumerable<string> methods)
     {
-        IReadOnlyDictionary<string, bool> capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
+        IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
         CheckCapabilities(methods, capabilities);
 
-        return ResultWrapper<IEnumerable<string>>.Success(capabilities.Keys);
+        return ResultWrapper<IEnumerable<string>>.Success(capabilities.Where(x => x.Value.Enabled).Select(x => x.Key));
     }
 
-    private void CheckCapabilities(IEnumerable<string> methods, IReadOnlyDictionary<string, bool> capabilities)
+    private void CheckCapabilities(IEnumerable<string> methods, IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities)
     {
         List<string> missing = new();
 
-        foreach (KeyValuePair<string, bool> capability in capabilities)
+        foreach (KeyValuePair<string, (bool Enabled, bool WarnIfMissing)> capability in capabilities)
         {
             bool found = false;
 
@@ -48,7 +47,7 @@ public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumer
                 }
 
             // Warn if not found and capability activated
-            if (!found && capability.Value)
+            if (!found && capability.Value is { Enabled: true, WarnIfMissing: true })
                 missing.Add(capability.Key);
         }
 

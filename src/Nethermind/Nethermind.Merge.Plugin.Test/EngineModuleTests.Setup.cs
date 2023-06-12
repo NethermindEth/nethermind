@@ -52,9 +52,8 @@ public partial class EngineModuleTests
         IPayloadPreparationService? mockedPayloadService = null, ILogManager? logManager = null) =>
         new(mergeConfig, mockedPayloadService, logManager);
 
-    protected async Task<MergeTestBlockchain> CreateShanghaiBlockChain(IMergeConfig? mergeConfig = null,
-        IPayloadPreparationService? mockedPayloadService = null)
-        => await CreateBlockChain(mergeConfig, mockedPayloadService, Shanghai.Instance);
+    protected async Task<MergeTestBlockchain> CreateBlockChain(IReleaseSpec? releaseSpec, IMergeConfig? mergeConfig = null)
+        => await CreateBlockChain(mergeConfig, null, releaseSpec);
 
 
     protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig? mergeConfig = null,
@@ -121,7 +120,7 @@ public partial class EngineModuleTests
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
-            new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.SpecProvider, chain.LogManager),
+            new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
             chain.SpecProvider,
             new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);
