@@ -58,6 +58,7 @@ public class HealingTrieStore : TrieStore
         {
             byte[]? rlp = RecoverRlpFromNetwork(keccak).GetAwaiter().GetResult();
             if (rlp is null) throw new TrieException($"Could not recover {keccak} from network", e);
+            if (_logger.IsWarn) _logger.Warn($"Recovered RLP!");
             _keyValueStore.Set(keccak.Bytes, rlp);
             return rlp;
         }
@@ -68,7 +69,7 @@ public class HealingTrieStore : TrieStore
         if (_chainHeadStateProvider is null || _syncPeerPool is null || _peerAllocationStrategyFactory is null) return null;
 
         if (_logger.IsWarn) _logger.Warn($"Missing trie node {keccak}, trying to recover from network");
-        CancellationTokenSource cts = new(Timeouts.Eth);
+        using CancellationTokenSource cts = new(Timeouts.Eth);
         List<KeyRecovery> keyRecoveries = GenerateKeyRecoveries(keccak, cts);
         return await CheckKeyRecoveriesResults(keyRecoveries, cts);
     }
@@ -98,6 +99,7 @@ public class HealingTrieStore : TrieStore
         using ArrayPoolList<StateSyncItem> requestedNodes = new(1) { new StateSyncItem(keccak, null, null, NodeDataType.All) };
         using ArrayPoolList<Keccak> requestedHashes = new(1) { keccak };
         List<KeyRecovery> keyRecoveries = AllocatePeers();
+        if (_logger.IsWarn) _logger.Warn($"Allocated {keyRecoveries.Count} peers for recovery of {keccak}");
         foreach (KeyRecovery keyRecovery in keyRecoveries)
         {
             keyRecovery.Task = RecoverRlpFromPeer(keyRecovery.Peer, requestedHashes, cts);
@@ -131,9 +133,16 @@ public class HealingTrieStore : TrieStore
         try
         {
             byte[][] rlp = await peer.SyncPeer.GetNodeData(requestedHashes, cts.Token);
-            return rlp.Length == 1 ? rlp[0] : null;
+            if (rlp.Length == 1)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Recovered RLP from peer {peer} with {rlp[0].Length} bytes");
+                return rlp[0];
+            }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cancelled recovering RLP from peer {peer}");
+        }
         catch (Exception e)
         {
             if (_logger.IsError) _logger.Error($"Could not recover {requestedHashes[1]} from {peer.SyncPeer}", e);
