@@ -240,7 +240,7 @@ public class ChainSpecBasedSpecProviderTests
         provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxInitCodeSize.Should().Be(2 * 24576L);
 
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.GenesisTimestamp, GnosisBlockTime).Should().BeTrue());
+            t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
     }
 
     [Test]
