@@ -59,7 +59,7 @@ public partial class EngineModuleTests
     public async Task getPayloadV1_should_return_error_if_called_after_cleanup_timer()
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
-        using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
+        using MergeTestBlockchain chain = await CreateBlockChain(null, mergeConfig);
         BlockImprovementContextFactory improvementContextFactory = new(chain.BlockProductionTrigger, TimeSpan.FromSeconds(1));
         TimeSpan timePerSlot = TimeSpan.FromMilliseconds(10);
         chain.PayloadPreparationService = new PayloadPreparationService(
@@ -220,7 +220,7 @@ public partial class EngineModuleTests
         IBlockProductionContext improvementContext = Substitute.For<IBlockProductionContext>();
         improvementContext.CurrentBestBlock.Returns(block);
         payloadPreparationService.GetPayload(Arg.Any<string>()).Returns(improvementContext);
-        using MergeTestBlockchain chain = await CreateBlockChain(null, payloadPreparationService);
+        using MergeTestBlockchain chain = await CreateBlockChain(null, null, payloadPreparationService);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         string result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", payload.ToHexString(true));
@@ -274,7 +274,7 @@ public partial class EngineModuleTests
     public async Task consecutive_blockImprovements_should_be_disposed()
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
-        using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
+        using MergeTestBlockchain chain = await CreateBlockChain(null, mergeConfig);
         StoringBlockImprovementContextFactory improvementContextFactory = new(new MockBlockImprovementContextFactory());
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 10 * delay;

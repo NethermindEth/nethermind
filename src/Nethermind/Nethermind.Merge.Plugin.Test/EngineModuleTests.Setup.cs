@@ -48,23 +48,19 @@ public partial class EngineModuleTests
         return KzgPolynomialCommitments.InitializeAsync();
     }
 
-    protected virtual MergeTestBlockchain CreateBaseBlockChain(IMergeConfig? mergeConfig = null,
+    protected virtual MergeTestBlockchain CreateBaseBlockchain(IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null, ILogManager? logManager = null) =>
         new(mergeConfig, mockedPayloadService, logManager);
 
-    protected async Task<MergeTestBlockchain> CreateShanghaiBlockChain(IMergeConfig? mergeConfig = null,
+
+    protected async Task<MergeTestBlockchain> CreateBlockChain(IReleaseSpec? releaseSpec = null, IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null)
-        => await CreateBlockChain(mergeConfig, mockedPayloadService, Shanghai.Instance);
-
-
-    protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig? mergeConfig = null,
-        IPayloadPreparationService? mockedPayloadService = null, IReleaseSpec? releaseSpec = null)
-        => await CreateBaseBlockChain(mergeConfig, mockedPayloadService)
+        => await CreateBaseBlockchain(mergeConfig, mockedPayloadService)
             .Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
     protected async Task<MergeTestBlockchain> CreateBlockChain(ISpecProvider specProvider,
         ILogManager? logManager = null)
-        => await CreateBaseBlockChain(null, null, logManager).Build(specProvider);
+        => await CreateBaseBlockchain(null, null, logManager).Build(specProvider);
 
     private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
     {
@@ -121,7 +117,7 @@ public partial class EngineModuleTests
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
-            new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.SpecProvider, chain.LogManager),
+            new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
             chain.SpecProvider,
             new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);

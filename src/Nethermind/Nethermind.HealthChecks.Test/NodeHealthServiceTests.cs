@@ -469,22 +469,22 @@ namespace Nethermind.HealthChecks.Test
 
         private class CustomRpcCapabilitiesProvider : IRpcCapabilitiesProvider
         {
-            private readonly Dictionary<string, bool> _capabilities = new();
+            private readonly Dictionary<string, (bool Enabled, bool WarnIfMissing)> _capabilities = new();
 
             public CustomRpcCapabilitiesProvider(IReadOnlyList<string> enabledCapabilities, IReadOnlyList<string> disabledCapabilities)
             {
                 foreach (string capability in enabledCapabilities)
                 {
-                    _capabilities[capability] = true;
+                    _capabilities[capability] = (true, true);
                 }
 
                 foreach (string capability in disabledCapabilities)
                 {
-                    _capabilities[capability] = false;
+                    _capabilities[capability] = (false, false);
                 }
             }
 
-            public IReadOnlyDictionary<string, bool> GetEngineCapabilities()
+            public IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> GetEngineCapabilities()
             {
                 return _capabilities;
             }

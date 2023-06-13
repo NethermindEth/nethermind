@@ -39,7 +39,7 @@ public partial class EngineModuleTests
         string stateRoot, string payloadId)
     {
         using MergeTestBlockchain chain =
-            await CreateShanghaiBlockChain(new MergeConfig { TerminalTotalDifficulty = "0" });
+            await CreateBlockChain(Shanghai.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
         Keccak prevRandao = Keccak.Zero;
@@ -171,7 +171,7 @@ public partial class EngineModuleTests
     [Test]
     public virtual async Task forkchoiceUpdatedV1_should_fail_with_withdrawals()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig { TerminalTotalDifficulty = "0" });
+        using MergeTestBlockchain chain = await CreateBlockChain(null, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         var fcuState = new
         {
@@ -208,7 +208,7 @@ public partial class EngineModuleTests
         string BlockHash
         ) input)
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(null, null, input.Spec);
+        using MergeTestBlockchain chain = await CreateBlockChain(input.Spec);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         var fcuState = new
         {
@@ -325,7 +325,7 @@ public partial class EngineModuleTests
         getPayloadBodiesByHashV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes(
             IList<Withdrawal> withdrawals)
     {
-        using MergeTestBlockchain chain = await CreateShanghaiBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockChain(Shanghai.Instance);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload executionPayload1 = await SendNewBlockV2(rpc, chain, withdrawals);
         Transaction[] txs = BuildTransactions(
@@ -353,7 +353,7 @@ public partial class EngineModuleTests
         getPayloadBodiesByRangeV1_should_return_payload_bodies_in_order_of_request_range_and_null_for_unknown_indexes(
             IList<Withdrawal> withdrawals)
     {
-        using MergeTestBlockchain chain = await CreateShanghaiBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockChain(Shanghai.Instance);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload executionPayload1 = await SendNewBlockV2(rpc, chain, withdrawals);
         Transaction[] txs = BuildTransactions(
@@ -427,7 +427,7 @@ public partial class EngineModuleTests
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
     public virtual async Task getPayloadBodiesByRangeV1_should_return_canonical(IList<Withdrawal> withdrawals)
     {
-        using MergeTestBlockchain chain = await CreateShanghaiBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockChain(Shanghai.Instance);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload executionPayload1 = await SendNewBlockV2(rpc, chain, withdrawals);
 
@@ -504,7 +504,7 @@ public partial class EngineModuleTests
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
         blockTree.FindBlock(Arg.Any<long>()).Returns(input.Impl);
 
-        using MergeTestBlockchain chain = await CreateShanghaiBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockChain(Shanghai.Instance);
         chain.BlockTree = blockTree;
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -523,7 +523,7 @@ public partial class EngineModuleTests
             .Returns(i => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject);
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
 
-        using MergeTestBlockchain chain = await CreateShanghaiBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockChain(Shanghai.Instance);
         chain.BlockTree = blockTree;
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -536,7 +536,7 @@ public partial class EngineModuleTests
     [Test]
     public virtual async Task newPayloadV1_should_fail_with_withdrawals()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig { TerminalTotalDifficulty = "0" });
+        using MergeTestBlockchain chain = await CreateBlockChain(null, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         ExecutionPayload expectedPayload = new()
         {
@@ -575,7 +575,7 @@ public partial class EngineModuleTests
         string BlockHash
         ) input)
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(null, null, input.Spec);
+        using MergeTestBlockchain chain = await CreateBlockChain(input.Spec);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         Keccak blockHash = new(input.BlockHash);
         Keccak startingHead = chain.BlockTree.HeadHash;
@@ -636,7 +636,7 @@ public partial class EngineModuleTests
         Withdrawal[]? Withdrawals,
         bool IsValid) input)
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(null, null, input.ReleaseSpec);
+        using MergeTestBlockchain chain = await CreateBlockChain(input.ReleaseSpec);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressD, input.Withdrawals);
@@ -652,7 +652,7 @@ public partial class EngineModuleTests
     public virtual async Task Can_apply_withdrawals_correctly(
         (Withdrawal[][] Withdrawals, (Address Account, UInt256 BalanceIncrease)[] ExpectedAccountIncrease) input)
     {
-        using MergeTestBlockchain chain = await CreateShanghaiBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockChain(Shanghai.Instance);
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         // get initial balances

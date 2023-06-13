@@ -234,7 +234,7 @@ public partial class EngineModuleTests
     private async Task<(IEngineRpcModule, string)> BuildAndGetPayloadV3Result(
         IReleaseSpec spec, int transactionCount = 0)
     {
-        MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: spec);
+        MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: spec, null);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         if (transactionCount is not 0)
         {
