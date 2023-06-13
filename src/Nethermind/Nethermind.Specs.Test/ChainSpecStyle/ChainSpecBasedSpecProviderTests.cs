@@ -143,8 +143,8 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Sepolia));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Sepolia));
 
-        ValidateSlotByTimestamp(chainSpec.ShanghaiTimestamp!.Value, SepoliaSpecProvider.BeaconChainGenesisTimestamp)
-            .Should().BeTrue();
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, SepoliaSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
     }
 
     [Test]
@@ -207,8 +207,8 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Goerli));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Goerli));
 
-        ValidateSlotByTimestamp(chainSpec.ShanghaiTimestamp!.Value, GoerliSpecProvider.BeaconChainGenesisTimestamp)
-            .Should().BeTrue();
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, GoerliSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
     }
 
     [Test]
@@ -239,8 +239,8 @@ public class ChainSpecBasedSpecProviderTests
         provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxCodeSize.Should().Be(24576L);
         provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxInitCodeSize.Should().Be(2 * 24576L);
 
-        ValidateSlotByTimestamp(chainSpec.ShanghaiTimestamp!.Value, ChiadoSpecProvider.GenesisTimestamp, GnosisBlockTime)
-            .Should().BeTrue();
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.GenesisTimestamp, GnosisBlockTime).Should().BeTrue());
     }
 
     [Test]
@@ -352,8 +352,8 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Mainnet));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Mainnet));
 
-        ValidateSlotByTimestamp(chainSpec.ShanghaiTimestamp!.Value, MainnetSpecProvider.BeaconChainGenesisTimestamp)
-            .Should().BeTrue();
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, MainnetSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
     }
 
     [Flags]
@@ -791,6 +791,13 @@ public class ChainSpecBasedSpecProviderTests
         });
         TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = true; });
     }
+
+    private static IEnumerable<ulong> GetTransitionTimestamps(ChainParameters parameters) => parameters.GetType()
+        .Properties()
+        .Where(p => p.Name.EndsWith("TransitionTimestamp", StringComparison.Ordinal))
+        .Select(p => (ulong?)p.GetValue(parameters))
+        .Where(t => t is not null)
+        .Select(t => t!.Value);
 
     /// <summary>
     /// Validates the timestamp specified by making sure the resulting slot is a multiple of 8192.
