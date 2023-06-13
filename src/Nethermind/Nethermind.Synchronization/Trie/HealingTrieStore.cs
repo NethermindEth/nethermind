@@ -106,7 +106,7 @@ public class HealingTrieStore : TrieStore
         using ArrayPoolList<StateSyncItem> requestedNodes = new(1) { new StateSyncItem(keccak, null, null, NodeDataType.All) };
         using ArrayPoolList<Keccak> requestedHashes = new(1) { keccak };
         List<KeyRecovery> keyRecoveries = AllocatePeers();
-        if (_logger.IsWarn) _logger.Warn($"Allocated {keyRecoveries.Count} peers for recovery of {keccak}");
+        if (_logger.IsWarn) _logger.Warn($"Allocated {keyRecoveries.Count} peers (out of {_syncPeerPool!.InitializedPeers.Count()} initialized peers) for recovery of {keccak}");
         foreach (KeyRecovery keyRecovery in keyRecoveries)
         {
             keyRecovery.Task = RecoverRlpFromPeer(keyRecovery.Peer, requestedHashes, cts);
