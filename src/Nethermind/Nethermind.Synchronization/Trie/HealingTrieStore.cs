@@ -81,18 +81,21 @@ public class HealingTrieStore : TrieStore
         return await CheckKeyRecoveriesResults(keyRecoveries, cts);
     }
 
-    private static async Task<byte[]?> CheckKeyRecoveriesResults(List<KeyRecovery> keyRecoveries, CancellationTokenSource cts)
+    private async Task<byte[]?> CheckKeyRecoveriesResults(List<KeyRecovery> keyRecoveries, CancellationTokenSource cts)
     {
         while (keyRecoveries.Count > 0)
         {
             Task<byte[]> task = await Task.WhenAny(keyRecoveries.Select(kr => kr.Task!));
             byte[]? result = await task;
+            int index = keyRecoveries.FindIndex(r => r.Task == task);
             if (result is null)
             {
-                keyRecoveries.RemoveAll(k => k.Task == task);
+                _logger.Warn($"Got empty response from peer {keyRecoveries[index].Peer}");
+                keyRecoveries.RemoveAt(index);
             }
             else
             {
+                _logger.Warn($"Got response from peer {keyRecoveries[index].Peer}");
                 cts.Cancel();
                 return result;
             }
