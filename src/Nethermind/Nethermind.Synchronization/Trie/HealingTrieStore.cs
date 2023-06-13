@@ -121,9 +121,14 @@ public class HealingTrieStore : TrieStore
 
         foreach (PeerInfo peer in _syncPeerPool!.InitializedPeers)
         {
-            if (peer.CanBeAllocated(AllocationContexts.State) && peer.CanGetNodeData())
+            bool canGetNodeData = peer.CanGetNodeData();
+            if (canGetNodeData)
             {
                 syncPeerAllocations.Add(new KeyRecovery { Peer = peer });
+            }
+            else
+            {
+                _logger.Warn($"Peer {peer} can not be allocated with eth{peer.SyncPeer.ProtocolVersion}");
             }
 
             if (syncPeerAllocations.Count >= MaxPeersForRecovery)

@@ -214,8 +214,8 @@ public class InitializeNetwork : IStep
         {
             // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
             // no longer available). Eth67 should be added if snap is enabled OR sync is finished OR in archive nodes (no state sync)
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+            // _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
+            // _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
 
