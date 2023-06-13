@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -24,6 +24,14 @@ namespace Nethermind.Core
         /// EIP-2718 transaction type
         /// </summary>
         public TxType Type { get; set; }
+
+        // Optimism deposit transaction fields
+        // SourceHash uniquely identifies the source of the deposit
+        public Keccak? SourceHash { get; set; }
+        // Mint is minted on L2, locked on L1, nil if no minting.
+        public UInt256? Mint { get; set; }
+        // Field indicating if this transaction is exempt from the L2 gas limit.
+        public bool IsL2SystemTransaction { get; set; }
 
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
