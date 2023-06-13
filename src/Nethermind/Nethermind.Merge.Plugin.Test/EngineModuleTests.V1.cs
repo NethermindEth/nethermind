@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -18,6 +19,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.HealthChecks;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -26,7 +28,10 @@ using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -44,7 +49,7 @@ public partial class EngineModuleTests
         "0x6454408c425ddd96")]
     public virtual async Task processing_block_should_serialize_valid_responses(string blockHash, string latestValidHash, string payloadId)
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig()
+        using MergeTestBlockchain chain = await CreateBlockChain(null, new MergeConfig()
         {
             TerminalTotalDifficulty = "0"
         });
@@ -431,7 +436,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task executePayloadV1_result_is_fail_when_blockchainprocessor_report_exception()
     {
-        using MergeTestBlockchain chain = await CreateBaseBlockChain(null, null)
+        using MergeTestBlockchain chain = await CreateBaseBlockchain(null, null)
             .Build(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
@@ -448,7 +453,7 @@ public partial class EngineModuleTests
     [TestCase(false)]
     public virtual async Task executePayloadV1_accepts_already_known_block(bool throttleBlockProcessor)
     {
-        using MergeTestBlockchain chain = await CreateBaseBlockChain()
+        using MergeTestBlockchain chain = await CreateBaseBlockchain()
             .ThrottleBlockProcessor(throttleBlockProcessor ? 100 : 0)
             .Build(new TestSingleReleaseSpecProvider(London.Instance));
 
@@ -750,7 +755,7 @@ public partial class EngineModuleTests
     public async Task Can_transition_from_PoW_chain()
     {
         using MergeTestBlockchain chain =
-            await CreateBlockChain(new MergeConfig() { TerminalTotalDifficulty = "1000001" });
+            await CreateBlockChain(null, new MergeConfig() { TerminalTotalDifficulty = "1000001" });
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         // adding PoW block
@@ -769,7 +774,7 @@ public partial class EngineModuleTests
     [TestCase(1000001)]
     public async Task executePayloadV1_should_not_accept_blocks_with_incorrect_ttd(long? terminalTotalDifficulty)
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig()
+        using MergeTestBlockchain chain = await CreateBlockChain(null, new MergeConfig()
         {
             TerminalTotalDifficulty = $"{terminalTotalDifficulty}"
         });
@@ -785,7 +790,7 @@ public partial class EngineModuleTests
     [TestCase(1000001)]
     public async Task forkchoiceUpdatedV1_should_not_accept_blocks_with_incorrect_ttd(long? terminalTotalDifficulty)
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig()
+        using MergeTestBlockchain chain = await CreateBlockChain(null, new MergeConfig()
         {
             TerminalTotalDifficulty = $"{terminalTotalDifficulty}"
         });
@@ -799,7 +804,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task executePayloadV1_on_top_of_terminal_block()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig()
+        using MergeTestBlockchain chain = await CreateBlockChain(null, new MergeConfig()
         {
             TerminalTotalDifficulty = $"{1900000}"
         });
@@ -807,10 +812,16 @@ public partial class EngineModuleTests
         Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
             .WithParent(chain.BlockTree.Head!)
             .WithNonce(0)
+            .WithDifficulty(1000000)
+            .WithTotalDifficulty(2000000L)
+            .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+        newBlock.CalculateHash();
+        Block oneMoreTerminalBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
+            .WithParent(chain.BlockTree.Head!)
+            .WithNonce(0)
             .WithDifficulty(900000)
             .WithTotalDifficulty(1900000L)
             .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
-        newBlock.CalculateHash();
 
         using SemaphoreSlim bestBlockProcessed = new(0);
         chain.BlockTree.NewHeadBlock += (s, e) =>
@@ -819,9 +830,17 @@ public partial class EngineModuleTests
                 bestBlockProcessed.Release(1);
         };
         await chain.BlockTree.SuggestBlockAsync(newBlock);
-        (await bestBlockProcessed.WaitAsync(TimeSpan.FromSeconds(1))).Should().BeTrue();
+        (await bestBlockProcessed.WaitAsync(TimeSpan.FromSeconds(5))).Should().Be(true);
 
-        ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        oneMoreTerminalBlock.CalculateHash();
+        await chain.BlockTree.SuggestBlockAsync(oneMoreTerminalBlock);
+
+        Block firstPoSBlock = Build.A.Block.WithParent(oneMoreTerminalBlock).
+            WithNumber(oneMoreTerminalBlock.Number + 1)
+            .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+            .WithDifficulty(0).WithNonce(0).TestObject;
+        firstPoSBlock.CalculateHash();
+        ExecutionPayload executionPayload = new(firstPoSBlock);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
         new ExecutionPayload(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload);
@@ -830,7 +849,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task executePayloadV1_on_top_of_not_processed_invalid_terminal_block()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig()
+        using MergeTestBlockchain chain = await CreateBlockChain(null, new MergeConfig()
         {
             TerminalTotalDifficulty = $"{1900000}"
         });
@@ -870,51 +889,6 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Invalid);
         resultWrapper.Data.LatestValidHash.Should().Be(Keccak.Zero);
-    }
-
-    [Test]
-    public async Task executePayloadV1_on_top_of_not_processed_terminal_block()
-    {
-        using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig()
-        {
-            TerminalTotalDifficulty = $"{1900000}"
-        });
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-        Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
-            .WithParent(chain.BlockTree.Head!)
-            .WithNonce(0)
-            .WithDifficulty(1000000)
-            .WithTotalDifficulty(2000000L)
-            .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
-        newBlock.CalculateHash();
-        Block oneMoreTerminalBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
-            .WithParent(chain.BlockTree.Head!)
-            .WithNonce(0)
-            .WithDifficulty(900000)
-            .WithTotalDifficulty(1900000L)
-            .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
-
-        using SemaphoreSlim bestBlockProcessed = new(0);
-        chain.BlockTree.NewHeadBlock += (s, e) =>
-        {
-            if (e.Block.Hash == newBlock!.Hash)
-                bestBlockProcessed.Release(1);
-        };
-        await chain.BlockTree.SuggestBlockAsync(newBlock);
-        (await bestBlockProcessed.WaitAsync(TimeSpan.FromSeconds(5))).Should().Be(true);
-
-        oneMoreTerminalBlock.CalculateHash();
-        await chain.BlockTree.SuggestBlockAsync(oneMoreTerminalBlock);
-
-        Block firstPoSBlock = Build.A.Block.WithParent(oneMoreTerminalBlock).
-            WithNumber(oneMoreTerminalBlock.Number + 1)
-            .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
-            .WithDifficulty(0).WithNonce(0).TestObject;
-        firstPoSBlock.CalculateHash();
-        ExecutionPayload executionPayload = new(firstPoSBlock);
-        ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
-        resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
-        new ExecutionPayload(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload);
     }
 
     [Test]
@@ -1178,7 +1152,7 @@ public partial class EngineModuleTests
     public async Task payloadV1_no_suggestedFeeRecipient_in_config()
     {
         using MergeTestBlockchain chain =
-            await CreateBlockChain(new MergeConfig() { TerminalTotalDifficulty = "0" });
+            await CreateBlockChain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
@@ -1196,7 +1170,7 @@ public partial class EngineModuleTests
     public async Task exchangeTransitionConfiguration_return_expected_results(long clTtd, string terminalBlockHash)
     {
         using MergeTestBlockchain chain =
-            await CreateBlockChain(new MergeConfig() { TerminalTotalDifficulty = "1000001", TerminalBlockHash = new Keccak("0x191dc9697d77129ee5b6f6d57074d2c854a38129913e3fdd3d9f0ebc930503a6").ToString(true), TerminalBlockNumber = 1 });
+            await CreateBlockChain(null, new MergeConfig() { TerminalTotalDifficulty = "1000001", TerminalBlockHash = new Keccak("0x191dc9697d77129ee5b6f6d57074d2c854a38129913e3fdd3d9f0ebc930503a6").ToString(true), TerminalBlockNumber = 1 });
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         TransitionConfigurationV1 result = rpc.engine_exchangeTransitionConfigurationV1(new TransitionConfigurationV1()
@@ -1216,7 +1190,7 @@ public partial class EngineModuleTests
     public async Task exchangeTransitionConfiguration_return_with_empty_Nethermind_configuration(long clTtd, string terminalBlockHash)
     {
         using MergeTestBlockchain chain =
-            await CreateBlockChain(new MergeConfig() { });
+            await CreateBlockChain(null, new MergeConfig() { });
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         TransitionConfigurationV1 result = rpc.engine_exchangeTransitionConfigurationV1(new TransitionConfigurationV1()
@@ -1276,7 +1250,7 @@ public partial class EngineModuleTests
     public async Task repeat_the_same_payload_after_fcu_should_return_valid_and_be_ignored()
     {
         using MergeTestBlockchain chain =
-            await CreateBlockChain(new MergeConfig() { TerminalTotalDifficulty = "0" });
+            await CreateBlockChain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         // Correct new payload
@@ -1303,7 +1277,7 @@ public partial class EngineModuleTests
     public async Task payloadV1_invalid_parent_hash()
     {
         using MergeTestBlockchain chain =
-            await CreateBlockChain(new MergeConfig() { TerminalTotalDifficulty = "0" });
+            await CreateBlockChain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         // Correct new payload
@@ -1372,7 +1346,7 @@ public partial class EngineModuleTests
     public async Task inconsistent_finalized_hash()
     {
         using MergeTestBlockchain chain =
-            await CreateBlockChain(new MergeConfig() { TerminalTotalDifficulty = "0" });
+            await CreateBlockChain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         ExecutionPayload blockRequestResult1 = CreateBlockRequest(
@@ -1408,7 +1382,7 @@ public partial class EngineModuleTests
     public async Task inconsistent_safe_hash()
     {
         using MergeTestBlockchain chain =
-            await CreateBlockChain(new MergeConfig() { TerminalTotalDifficulty = "0" });
+            await CreateBlockChain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         ExecutionPayload blockRequestResult1 = CreateBlockRequest(
@@ -1445,7 +1419,7 @@ public partial class EngineModuleTests
     public async Task payloadV1_latest_block_after_reorg()
     {
         using MergeTestBlockchain chain =
-            await CreateBlockChain(new MergeConfig() { TerminalTotalDifficulty = "0" });
+            await CreateBlockChain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         Keccak prevRandao1 = TestItem.KeccakA;
@@ -1544,33 +1518,61 @@ public partial class EngineModuleTests
     [Test]
     public async Task Should_return_capabilities()
     {
-        using var chain = await CreateBlockChain();
-        var rpcModule = CreateEngineModule(chain);
-        var expected = typeof(IEngineRpcModule).GetMethods()
+        using MergeTestBlockchain chain = await CreateBlockChain(Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()
             .Select(m => m.Name)
             .Where(m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal))
             .Order();
 
-        var result = rpcModule.engine_exchangeCapabilities(expected);
+        ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(expected);
 
         result.Data.Should().BeEquivalentTo(expected);
     }
 
     [Test]
+    public void Should_return_expected_capabilities_for_mainnet()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
+        string data = File.ReadAllText(path);
+        ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
+        ChainSpec chainSpec = chainSpecLoader.Load(data);
+        ChainSpecBasedSpecProvider specProvider = new(chainSpec);
+        EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
+        ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
+        string[] result = exchangeCapabilitiesHandler.Handle(Array.Empty<string>()).Data.ToArray();
+        var expectedMethods = new string[]
+        {
+            nameof(IEngineRpcModule.engine_getPayloadV1),
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1),
+            nameof(IEngineRpcModule.engine_newPayloadV1),
+            nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1),
+
+            nameof(IEngineRpcModule.engine_getPayloadV2),
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2),
+            nameof(IEngineRpcModule.engine_newPayloadV2),
+            nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1),
+            nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)
+
+        };
+        Assert.That(result, Is.EquivalentTo(expectedMethods));
+    }
+
+    [Test]
     public async Task Should_warn_for_missing_capabilities()
     {
-        using var chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockChain();
         chain.LogManager = Substitute.For<ILogManager>();
         chain.LogManager.GetClassLogger().IsWarn.Returns(true);
 
-        var rpcModule = CreateEngineModule(chain);
-        var list = new[]
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        string[] list = new[]
         {
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1),
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)
         };
 
-        var result = rpcModule.engine_exchangeCapabilities(list);
+        ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(list);
 
         chain.LogManager.GetClassLogger().Received().Warn(
             Arg.Is<string>(a =>
