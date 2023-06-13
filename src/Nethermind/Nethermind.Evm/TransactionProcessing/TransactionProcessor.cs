@@ -333,6 +333,8 @@ namespace Nethermind.Evm.TransactionProcessing
             in long gasAvailable, in ExecutionEnvironment env,
             out TransactionSubstate? substate, out long spentGas, out byte statusCode)
         {
+            bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
+
             substate = null;
             spentGas = tx.GasLimit;
             statusCode = StatusCode.Failure;
@@ -340,7 +342,11 @@ namespace Nethermind.Evm.TransactionProcessing
             long unspentGas = gasAvailable;
 
             Snapshot snapshot = _worldState.TakeSnapshot();
-            _worldState.SubtractFromBalance(tx.SenderAddress, tx.Value, spec);
+
+            // Fixes eth_estimateGas.
+            // If sender is SystemUser subtracting value will cause InsufficientBalanceException
+            if (validate || !tx.IsSystem())
+                _worldState.SubtractFromBalance(tx.SenderAddress, tx.Value, spec);
 
             try
             {
@@ -434,7 +440,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 _worldState.Restore(snapshot);
             }
 
-            if (!opts.HasFlag(ExecutionOptions.NoValidation) && !tx.IsSystem())
+            if (validate && !tx.IsSystem())
                 blk.GasUsed += spentGas;
 
             return true;

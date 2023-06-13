@@ -24,6 +24,7 @@ namespace Nethermind.Core.Extensions
     public static unsafe partial class Bytes
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
+        public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly ISpanEqualityComparer<byte> SpanEqualityComparer = new SpanBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
 
@@ -37,6 +38,19 @@ namespace Nethermind.Core.Extensions
             public override int GetHashCode(byte[] obj)
             {
                 return obj.GetSimplifiedHashCode();
+            }
+        }
+
+        private class NullableBytesEqualityComparer : EqualityComparer<byte[]?>
+        {
+            public override bool Equals(byte[]? x, byte[]? y)
+            {
+                return AreEqual(x, y);
+            }
+
+            public override int GetHashCode(byte[]? obj)
+            {
+                return obj?.GetSimplifiedHashCode() ?? 0;
             }
         }
 

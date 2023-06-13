@@ -1485,11 +1485,11 @@ public class VirtualMachine : IVirtualMachine
                         stack.PushUInt256(in baseFee);
                         break;
                     }
-                case Instruction.DATAHASH:
+                case Instruction.BLOBHASH:
                     {
                         if (!spec.IsEip4844Enabled) goto InvalidInstruction;
 
-                        if (!UpdateGas(GasCostOf.DataHash, ref gasAvailable)) goto OutOfGas;
+                        if (!UpdateGas(GasCostOf.BlobHash, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out UInt256 blobIndex);
 

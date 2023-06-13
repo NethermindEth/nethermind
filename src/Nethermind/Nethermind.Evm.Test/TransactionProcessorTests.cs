@@ -307,6 +307,27 @@ namespace Nethermind.Evm.Test
             _stateProvider.GetNonce(TestItem.PrivateKeyA.Address).Should().Be(0);
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Can_estimate_with_value(bool systemUser)
+        {
+            long gasLimit = 100000;
+            Transaction tx = Build.A.Transaction.WithValue(UInt256.MaxValue).WithGasLimit(gasLimit)
+                .WithSenderAddress(systemUser ? Address.SystemUser : TestItem.AddressA).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+
+            EstimateGasTracer tracer = new();
+            Action action = () => _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
+            if (!systemUser)
+            {
+                action.Should().Throw<InsufficientBalanceException>();
+            }
+            else
+            {
+                action.Should().NotThrow();
+                tracer.GasSpent.Should().Be(21000);
+            }
+        }
 
         [TestCase]
         public void Can_estimate_simple()

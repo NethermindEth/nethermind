@@ -63,5 +63,8 @@ namespace Nethermind.Db
                                   "'AlwaysShutdown': shuts Nethermind down once the prune completes, whether it succeeded or failed.",
             DefaultValue = "None")]
         FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; }
+
+        [ConfigItem(Description = "Enables available disk space check.", DefaultValue = "true")]
+        bool AvailableSpaceCheckEnabled { get; set; }
     }
 }
