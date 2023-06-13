@@ -262,7 +262,14 @@ namespace Nethermind.Init.Steps
 
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
-            blockchainProcessor.ProcessingQueueEmpty += (_, _) => HealingTrieStore.Throw = true;
+            int i = 0;
+            blockchainProcessor.ProcessingQueueEmpty += (_, _) =>
+            {
+                if (i++ % 10 == 0)
+                {
+                    HealingTrieStore.Throw = true;
+                }
+            };
 
             IFilterStore filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
