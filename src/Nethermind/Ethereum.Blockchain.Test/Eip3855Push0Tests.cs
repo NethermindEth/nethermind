@@ -9,7 +9,7 @@ namespace Ethereum.Blockchain.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class Eip3855Tests : GeneralStateTestBase
+public class Eip3855Push0Tests : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test)
@@ -19,7 +19,7 @@ public class Eip3855Tests : GeneralStateTestBase
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP3855");
+        var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP3855-push0");
         return (IEnumerable<GeneralStateTest>)loader.LoadTests();
     }
 }
