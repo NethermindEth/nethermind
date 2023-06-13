@@ -58,7 +58,8 @@ namespace Nethermind.Consensus.Processing
             const string orangeText = "\u001b[38;5;208m";
             const string redText = "\u001b[38;5;196m";
             const string greenText = "\u001b[92m";
-            const string greyText = "\u001b[90m";
+            const string darkGreenText = "\u001b[32m";
+            const string darkGreyText = "\u001b[90m";
 
             if (block is null)
             {
@@ -131,9 +132,10 @@ namespace Nethermind.Consensus.Processing
                         var chunkColor = chunkMs switch
                         {
                             < 200 => greenText,
-                            < 400 => whiteText,
-                            < 700 => yellowText,
-                            < 1000 => orangeText,
+                            < 300 => darkGreenText,
+                            < 500 => whiteText,
+                            < 1000 => yellowText,
+                            < 2000 => orangeText,
                             _ => redText
                         };
                         _logger.Info($"Processed            {block.Number,9}    | {chunkColor}{chunkMs,9:N2}{resetColor} ms  | slot {runMs,7:N0} ms     |{blockGas}");
@@ -141,16 +143,15 @@ namespace Nethermind.Consensus.Processing
 
                     var mgasColor = chunkMGas switch
                     {
-                        > 25 => greenText,
+                        > 28 => greenText,
+                        > 25 => darkGreenText,
                         > 15 => whiteText,
-                        > 10 => yellowText,
-                        > 6 => orangeText,
-                        _ => redText
+                        _ => resetColor
                     };
-                    _logger.Info($"- Block{(chunkBlocks > 1 ? "s" : " ")}{(chunkBlocks == 1 ? mgasColor : "")}           {chunkMGas,7:F2}{resetColor} MGas   | {chunkTx,6:N0}    txs | calls {chunkCalls,6:N0} {greyText}({chunkEmptyCalls,3:N0}){resetColor}  | sload {chunkSload,7:N0} | sstore {chunkSstore,6:N0} | create {chunkCreates,3:N0}{(currentSelfDestructs - _lastSelfDestructs > 0 ? $"{greyText}({-(currentSelfDestructs - _lastSelfDestructs),3:N0}){resetColor}" : "")}");
-                    _logger.Info($"- Block Throughput {mgasPerSecond,7:F2} MGas/s | {txps,9:F2} t/s |         {bps,7:F2} b/s | recv  {recoveryQueueSize,7:N0} | proc   {blockQueueSize,6:N0}");
+                    _logger.Info($"- Block{(chunkBlocks > 1 ? "s" : " ")}{(chunkBlocks == 1 ? mgasColor : "")}           {chunkMGas,7:F2}{resetColor} MGas   | {chunkTx,6:N0}    txs | calls {chunkCalls,6:N0} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor}  | sload {chunkSload,7:N0} | sstore {chunkSstore,6:N0} | create {chunkCreates,3:N0}{(currentSelfDestructs - _lastSelfDestructs > 0 ? $"{darkGreyText}({-(currentSelfDestructs - _lastSelfDestructs),3:N0}){resetColor}" : "")}");
+                    _logger.Info($"- Block throughput {mgasPerSecond,7:F2} MGas/s | {txps,9:F2} t/s |         {bps,7:F2} b/s | recv  {recoveryQueueSize,7:N0} | proc   {blockQueueSize,6:N0}");
                     // Only output the total throughput in debug mode
-                    _logger.Debug($"- Total Throughput {totalMgasPerSecond,7:F2} MGas/s | {totalTxPerSecond,9:F2} t/s |         {totalBlocksPerSecond,7:F2} b/s | Gas gwei: {Evm.Metrics.MinGasPrice:N2} .. {Math.Max(Evm.Metrics.MinGasPrice, Evm.Metrics.EstMedianGasPrice):N2} ({Evm.Metrics.AveGasPrice:N2}) .. {Evm.Metrics.MaxGasPrice:N2}");
+                    _logger.Debug($"- Total throughput {totalMgasPerSecond,7:F2} MGas/s | {totalTxPerSecond,9:F2} t/s |         {totalBlocksPerSecond,7:F2} b/s | Gas gwei: {Evm.Metrics.MinGasPrice:N2} .. {Math.Max(Evm.Metrics.MinGasPrice, Evm.Metrics.EstMedianGasPrice):N2} ({Evm.Metrics.AveGasPrice:N2}) .. {Evm.Metrics.MaxGasPrice:N2}");
                 }
                 if (_logger.IsTrace)
                 {
