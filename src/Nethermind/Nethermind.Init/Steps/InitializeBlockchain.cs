@@ -265,7 +265,8 @@ namespace Nethermind.Init.Steps
             int i = 0;
             blockchainProcessor.ProcessingQueueEmpty += (_, _) =>
             {
-                if (i++ % 100 == 0)
+                _logger.Warn("ProcessingQueueEmpty");
+                if (i++ % 10 == 0)
                 {
                     _logger.Warn("Will throw");
                     HealingTrieStore.Throw = true;
