@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+    <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
+    <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+  </ItemGroup>
+
+</Project>
