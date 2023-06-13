@@ -216,7 +216,7 @@ public class ChainSpecBasedSpecProviderTests
         List<ForkActivation> forkActivationsToTest = new()
         {
             (ForkActivation)0,
-         //   (ForkActivation)(1, null),
+            //(ForkActivation)(1, null),
             (1, ChiadoSpecProvider.ShanghaiTimestamp - 1),
             (1, ChiadoSpecProvider.ShanghaiTimestamp),
             (999_999_999, 999_999_999) // far in the future
