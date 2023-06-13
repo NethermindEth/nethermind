@@ -72,7 +72,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
     {
         string requestStr = payloadAttributes is null ? forkchoiceState.ToString() : $"{forkchoiceState} {payloadAttributes}";
-        if (_logger.IsInfo) _logger.Info($"Received: {requestStr}");
+        if (_logger.IsInfo) _logger.Info($"Received {requestStr}");
 
         if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Keccak? lastValidHash))
         {
@@ -213,7 +213,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         if (shouldUpdateHead)
         {
             _poSSwitcher.ForkchoiceUpdated(newHeadBlock.Header, forkchoiceState.FinalizedBlockHash);
-            if (_logger.IsInfo) _logger.Info($"Block {forkchoiceState.HeadBlockHash} was set as head.");
+            if (_logger.IsInfo) _logger.Info($"Chain head updated to {newHeadBlock.ToString(Block.Format.Short)}");
         }
 
         string? payloadId = null;

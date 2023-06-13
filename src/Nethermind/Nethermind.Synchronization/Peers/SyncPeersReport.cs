@@ -76,10 +76,6 @@ namespace Nethermind.Synchronization.Peers
                 {
                     _logger.Debug(MakeReportForPeer(OrderedPeers.Where(p => (p.AllocatedContexts & AllocationContexts.All) != AllocationContexts.None), header));
                 }
-                else
-                {
-                    _logger.Info(MakeSummaryReportForPeers(_peerPool.InitializedPeers, header));
-                }
             }
         }
 

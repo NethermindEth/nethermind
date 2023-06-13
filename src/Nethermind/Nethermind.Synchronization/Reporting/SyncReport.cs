@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.Reporting
         private const int NoProgressStateSyncReportFrequency = 30;
         private const int SyncAllocatedPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
-        private static readonly TimeSpan _defaultReportingIntervals = TimeSpan.FromSeconds(1);
+        private static readonly TimeSpan _defaultReportingIntervals = TimeSpan.FromSeconds(5);
 
 
         public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncModeSelector syncModeSelector, ISyncConfig syncConfig, IPivot pivot, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
@@ -178,7 +178,7 @@ namespace Nethermind.Synchronization.Reporting
             {
                 if (_reportId % PeerCountFrequency == 0)
                 {
-                    _logger.Info(_syncPeersReport.MakeSummaryReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | with known best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount}"));
+                    _logger.Info(_syncPeersReport.MakeSummaryReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | with best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount}"));
                 }
             }
 
