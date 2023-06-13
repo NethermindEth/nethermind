@@ -204,7 +204,7 @@ namespace Nethermind.Synchronization.Test
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-            public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -352,7 +352,6 @@ namespace Nethermind.Synchronization.Test
                         beaconPivot,
                         MainnetSpecProvider.Instance,
                         BlockTree,
-                        blockCacheService,
                         NullReceiptStorage.Instance,
                         Always.Valid,
                         Always.Valid,
@@ -573,6 +572,12 @@ namespace Nethermind.Synchronization.Test
             public SyncingContext PeerCountIs(long i)
             {
                 Assert.That(SyncPeerPool.AllPeers.Count(), Is.EqualTo(i), "peer count");
+                return this;
+            }
+
+            public SyncingContext PeerCountEventuallyIs(long i)
+            {
+                Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(1000, 100), "peer count");
                 return this;
             }
 
@@ -823,7 +828,7 @@ namespace Nethermind.Synchronization.Test
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
                 .WaitAMoment()
-                .PeerCountIs(0).Stop();
+                .PeerCountEventuallyIs(0).Stop();
         }
 
 

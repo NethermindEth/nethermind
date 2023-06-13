@@ -359,5 +359,11 @@ namespace Nethermind.Core.Test
             first.AsSpan().Or(second);
             first.Should().Equal(expected);
         }
+
+        [Test]
+        public void NullableComparision()
+        {
+            Bytes.NullableEqualityComparer.Equals(null, null).Should().BeTrue();
+        }
     }
 }

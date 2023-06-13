@@ -22,10 +22,10 @@ namespace Nethermind.Blockchain.Test
             BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
 
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
-            BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
-            Block current = Build.A.Block.WithParent(head).TestObject;
+            BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+            Block current = Build.A.Block.WithParent(head!).TestObject;
             Keccak result = provider.GetBlockhash(current.Header, chainLength - 1);
-            Assert.That(result, Is.EqualTo(head.Hash));
+            Assert.That(result, Is.EqualTo(head?.Hash));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]

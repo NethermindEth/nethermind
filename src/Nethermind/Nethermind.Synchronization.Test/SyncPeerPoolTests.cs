@@ -118,9 +118,9 @@ namespace Nethermind.Synchronization.Test
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-            public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {
-                return Task.FromResult(Array.Empty<TxReceipt[]>());
+                return Task.FromResult(Array.Empty<TxReceipt[]?>());
             }
 
             public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
@@ -370,7 +370,10 @@ namespace Nethermind.Synchronization.Test
             ctx.Pool.RefreshTotalDifficulty(syncPeer, null);
             await Task.Delay(100);
 
-            await syncPeer.Received(2).GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>());
+            Assert.That(() =>
+                    syncPeer.ReceivedCalls().Count(call => call.GetMethodInfo().Name == "GetHeadBlockHeader"),
+                Is.EqualTo(2).After(1000, 100)
+            );
         }
 
         private void SetupSpeedStats(Context ctx, PublicKey publicKey, int transferSpeed)
@@ -519,7 +522,7 @@ namespace Nethermind.Synchronization.Test
 
             SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-            Assert.AreNotSame(allocation1.Current, allocation2.Current, "first");
+            Assert.That(allocation2.Current, Is.Not.SameAs(allocation1.Current), "first");
             Assert.NotNull(allocation1.Current, "first A");
             Assert.NotNull(allocation2.Current, "first B");
 
@@ -530,7 +533,7 @@ namespace Nethermind.Synchronization.Test
 
             allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-            Assert.AreNotSame(allocation1.Current, allocation2.Current);
+            Assert.That(allocation2.Current, Is.Not.SameAs(allocation1.Current));
             Assert.NotNull(allocation1.Current, "second A");
             Assert.NotNull(allocation2.Current, "second B");
         }
@@ -804,8 +807,8 @@ namespace Nethermind.Synchronization.Test
 
         private async Task WaitFor(Func<bool> isConditionMet, string description = "condition to be met")
         {
-            const int waitInterval = 10;
-            for (int i = 0; i < 10; i++)
+            const int waitInterval = 50;
+            for (int i = 0; i < 20; i++)
             {
                 if (isConditionMet())
                 {

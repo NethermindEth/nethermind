@@ -301,7 +301,7 @@ namespace Nethermind.Evm
             return ref _bytes[Head * 32];
         }
 
-        public Span<byte> PopBytes()
+        public Span<byte> PopWord256()
         {
             if (Head-- == 0)
             {

@@ -24,10 +24,11 @@ public class InitializePrecompiles : IStep
         if (_api.SpecProvider!.GetFinalSpec().IsEip4844Enabled)
         {
             ILogger logger = _api.LogManager.GetClassLogger<InitializePrecompiles>();
+            IInitConfig initConfig = _api.Config<IInitConfig>();
 
             try
             {
-                await KzgPolynomialCommitments.InitializeAsync(logger);
+                await KzgPolynomialCommitments.InitializeAsync(logger, initConfig.KzgSetupPath);
             }
             catch (Exception e)
             {
