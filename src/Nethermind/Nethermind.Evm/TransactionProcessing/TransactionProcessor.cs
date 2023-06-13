@@ -211,23 +211,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (executionOptions == ExecutionOptions.Commit || executionOptions == ExecutionOptions.None)
                 {
                     decimal gasPrice = (decimal)effectiveGasPrice / 1_000_000_000m;
-                    if (Metrics.MinGasPrice > gasPrice)
-                    {
-                        Metrics.MinGasPrice = gasPrice;
-                    }
-                    if (Metrics.MaxGasPrice < gasPrice)
-                    {
-                        Metrics.MaxGasPrice = gasPrice;
-                    }
-
-                    if (Metrics.BlockMinGasPrice > gasPrice)
-                    {
-                        Metrics.BlockMinGasPrice = gasPrice;
-                    }
-                    if (Metrics.BlockMaxGasPrice < gasPrice)
-                    {
-                        Metrics.BlockMaxGasPrice = gasPrice;
-                    }
+                    Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
+                    Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
+                    
+                    Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
+                    Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
 
                     Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
                     Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.EstMedianGasPrice);
