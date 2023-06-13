@@ -213,7 +213,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     decimal gasPrice = (decimal)effectiveGasPrice / 1_000_000_000m;
                     Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
                     Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
-                    
+
                     Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
                     Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
 
