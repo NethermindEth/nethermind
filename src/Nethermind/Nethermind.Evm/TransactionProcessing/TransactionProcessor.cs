@@ -94,6 +94,93 @@ namespace Nethermind.Evm.TransactionProcessing
             Execute(transaction, block, txTracer, ExecutionOptions.NoValidation);
         }
 
+        protected virtual void Execute(Transaction tx, BlockHeader blk, ITxTracer tracer, ExecutionOptions opts)
+        {
+            IReleaseSpec spec = _specProvider.GetSpec(blk);
+            if (tx.IsSystem())
+                spec = new SystemTransactionReleaseSpec(spec);
+
+            // restore is CallAndRestore - previous call, we will restore state after the execution
+            bool restore = opts.HasFlag(ExecutionOptions.Restore);
+            // commit - is for standard execute, we will commit thee state after execution
+            // !commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
+            // we commit only after all block is constructed
+            bool commit = opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled;
+
+            if (!ValidateStatic(tx, blk, spec, tracer, opts, out long intrinsicGas))
+                return;
+
+            UInt256 effectiveGasPrice =
+                tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, blk.BaseFeePerGas);
+
+            bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
+
+            if (!ValidateSender(tx, blk, spec, tracer, opts))
+                return;
+
+            if (!BuyGas(tx, blk, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment))
+                return;
+
+            if (!IncrementNonce(tx, blk, spec, tracer, opts))
+                return;
+
+            if (commit)
+                _worldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
+
+            ExecutionEnvironment env = BuildExecutionEnvironmnet(tx, blk, spec, tracer, opts, effectiveGasPrice);
+
+            long gasAvailable = tx.GasLimit - intrinsicGas;
+            if (!ExecuteEVMCall(tx, blk, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode))
+                return;
+
+            if (!PayFees(tx, blk, spec, tracer, substate, spentGas, premiumPerGas, statusCode))
+                return;
+
+            // Finalize
+            if (restore)
+            {
+                _worldState.Reset();
+                if (deleteCallerAccount)
+                {
+                    _worldState.DeleteAccount(tx.SenderAddress);
+                }
+                else
+                {
+                    if (!opts.HasFlag(ExecutionOptions.NoValidation))
+                        _worldState.AddToBalance(tx.SenderAddress, senderReservedGasPayment, spec);
+                    if (!tx.IsSystem())
+                        _worldState.DecrementNonce(tx.SenderAddress);
+
+                    _worldState.Commit(spec);
+                }
+            }
+            else if (commit)
+            {
+                _worldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance);
+            }
+
+            if (tracer.IsTracingReceipt)
+            {
+                Keccak stateRoot = null;
+                if (!spec.IsEip658Enabled)
+                {
+                    _worldState.RecalculateStateRoot();
+                    stateRoot = _worldState.StateRoot;
+                }
+
+                if (statusCode == StatusCode.Failure)
+                {
+                    byte[] output = (substate?.ShouldRevert ?? false) ? substate.Output.ToArray() : Array.Empty<byte>();
+                    tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate?.Error, stateRoot);
+                }
+                else
+                {
+                    LogEntry[] logs = substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>();
+                    tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
+                }
+            }
+        }
+
         private void QuickFail(Transaction tx, BlockHeader block, IReleaseSpec spec, ITxTracer txTracer, string? reason)
         {
             block.GasUsed += tx.GasLimit;
@@ -444,93 +531,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 blk.GasUsed += spentGas;
 
             return true;
-        }
-
-        protected virtual void Execute(Transaction tx, BlockHeader blk, ITxTracer tracer, ExecutionOptions opts)
-        {
-            IReleaseSpec spec = _specProvider.GetSpec(blk);
-            if (tx.IsSystem())
-                spec = new SystemTransactionReleaseSpec(spec);
-
-            // restore is CallAndRestore - previous call, we will restore state after the execution
-            bool restore = opts.HasFlag(ExecutionOptions.Restore);
-            // commit - is for standard execute, we will commit thee state after execution
-            // !commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
-            // we commit only after all block is constructed
-            bool commit = opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled;
-
-            if (!ValidateStatic(tx, blk, spec, tracer, opts, out long intrinsicGas))
-                return;
-
-            UInt256 effectiveGasPrice =
-                tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, blk.BaseFeePerGas);
-
-            bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
-
-            if (!ValidateSender(tx, blk, spec, tracer, opts))
-                return;
-
-            if (!BuyGas(tx, blk, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment))
-                return;
-
-            if (!IncrementNonce(tx, blk, spec, tracer, opts))
-                return;
-
-            if (commit)
-                _worldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
-
-            ExecutionEnvironment env = BuildExecutionEnvironmnet(tx, blk, spec, tracer, opts, effectiveGasPrice);
-
-            long gasAvailable = tx.GasLimit - intrinsicGas;
-            if (!ExecuteEVMCall(tx, blk, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode))
-                return;
-
-            if (!PayFees(tx, blk, spec, tracer, substate, spentGas, premiumPerGas, statusCode))
-                return;
-
-            // Finalize
-            if (restore)
-            {
-                _worldState.Reset();
-                if (deleteCallerAccount)
-                {
-                    _worldState.DeleteAccount(tx.SenderAddress);
-                }
-                else
-                {
-                    if (!opts.HasFlag(ExecutionOptions.NoValidation))
-                        _worldState.AddToBalance(tx.SenderAddress, senderReservedGasPayment, spec);
-                    if (!tx.IsSystem())
-                        _worldState.DecrementNonce(tx.SenderAddress);
-
-                    _worldState.Commit(spec);
-                }
-            }
-            else if (commit)
-            {
-                _worldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance);
-            }
-
-            if (tracer.IsTracingReceipt)
-            {
-                Keccak stateRoot = null;
-                if (!spec.IsEip658Enabled)
-                {
-                    _worldState.RecalculateStateRoot();
-                    stateRoot = _worldState.StateRoot;
-                }
-
-                if (statusCode == StatusCode.Failure)
-                {
-                    byte[] output = (substate?.ShouldRevert ?? false) ? substate.Output.ToArray() : Array.Empty<byte>();
-                    tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate?.Error, stateRoot);
-                }
-                else
-                {
-                    LogEntry[] logs = substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>();
-                    tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
-                }
-            }
         }
 
         protected bool PayFees(Transaction tx, BlockHeader blk, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
