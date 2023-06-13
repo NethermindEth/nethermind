@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -16,10 +15,10 @@ public partial class EngineRpcModule : IEngineRpcModule
 {
     private readonly IAsyncHandler<byte[], GetPayloadV3Result?> _getPayloadHandlerV3;
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayload executionPayload, byte[]?[]? blobVersionedHashes = null) =>
-        Validate(executionPayload, blobVersionedHashes) ?? NewPayload(executionPayload, 3);
+    public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayload executionPayload, byte[]?[]? blobVersionedHashes = null) =>
+        (await Validate(executionPayload, blobVersionedHashes)) ?? await NewPayload(executionPayload, 3);
 
-    private ResultWrapper<PayloadStatusV1>? Validate(ExecutionPayload executionPayload, byte[]?[]? blobVersionedHashes)
+    private async Task<ResultWrapper<PayloadStatusV1>?> Validate(ExecutionPayload executionPayload, byte[]?[]? blobVersionedHashes)
     {
         ResultWrapper<PayloadStatusV1> ErrorResult(string error)
         {
@@ -38,7 +37,9 @@ public partial class EngineRpcModule : IEngineRpcModule
                 .Where(t => t.BlobVersionedHashes is not null)
                 .SelectMany(t => t.BlobVersionedHashes!);
 
-        return blobVersionedHashes is null ? ErrorResult("Blob versioned hashes must be set")
+        return blobVersionedHashes is null ?
+            !_specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp).IsEip4844Enabled ? await engine_newPayloadV2(executionPayload)
+            : ErrorResult("Blob versioned hashes must be set")
             : !FlattenHashesFromTransactions(executionPayload).SequenceEqual(blobVersionedHashes, Bytes.NullableEqualityComparer) ? ErrorResult("Blob versioned hashes do not match")
             : null;
     }

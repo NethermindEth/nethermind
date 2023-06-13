@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -365,6 +366,14 @@ public class JsonRpcService : IJsonRpcService
             if (attributeArgument.ArgumentType == typeof(byte))
             {
                 return (byte)attributeArgument.Value! == 2;
+            }
+            if (attributeArgument.ArgumentType == typeof(byte[]))
+            {
+                var args = (ReadOnlyCollection<CustomAttributeTypedArgument>)attributeArgument.Value!;
+                if (args.Count > 0 && args[0].ArgumentType == typeof(byte))
+                {
+                    return (byte)args[0].Value! == 2;
+                }
             }
         }
         return false;
