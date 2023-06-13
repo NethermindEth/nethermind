@@ -22,6 +22,8 @@ namespace Nethermind.Synchronization.Trie;
 
 public class HealingTrieStore : TrieStore
 {
+    public static bool Throw = false;
+
     private const int MaxPeersForRecovery = 8;
     private ISyncPeerPool? _syncPeerPool;
     private IPeerAllocationStrategyFactory<StateSyncBatch>? _peerAllocationStrategyFactory;
@@ -52,6 +54,11 @@ public class HealingTrieStore : TrieStore
     {
         try
         {
+            if (Throw)
+            {
+                Throw = false;
+                throw new TrieException("Artificial exception");
+            }
             return base.LoadRlp(keccak, readFlags);
         }
         catch (TrieException e)
