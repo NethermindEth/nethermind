@@ -25,19 +25,19 @@ public class CliConsole : ICliConsole
     {
         _terminal = PrepareConsoleForTerminal();
 
-        System.Console.WriteLine("**********************************************");
-        System.Console.WriteLine();
-        System.Console.WriteLine("Nethermind CLI {0}", ProductInfo.Version);
-        System.Console.WriteLine("  https://github.com/NethermindEth/nethermind");
-        System.Console.WriteLine("  https://nethermind.readthedocs.io/en/latest/");
-        System.Console.WriteLine();
-        System.Console.WriteLine("powered by:");
-        System.Console.WriteLine("  https://github.com/sebastienros/jint");
-        System.Console.WriteLine("  https://github.com/tomakita/Colorful.Console");
-        System.Console.WriteLine("  https://github.com/tonerdo/readline");
-        System.Console.WriteLine();
-        System.Console.WriteLine("**********************************************");
-        System.Console.WriteLine();
+        //System.Console.WriteLine("**********************************************");
+        //System.Console.WriteLine();
+        //System.Console.WriteLine("Nethermind CLI {0}", ProductInfo.Version);
+        //System.Console.WriteLine("  https://github.com/NethermindEth/nethermind");
+        //System.Console.WriteLine("  https://nethermind.readthedocs.io/en/latest/");
+        //System.Console.WriteLine();
+        //System.Console.WriteLine("powered by:");
+        //System.Console.WriteLine("  https://github.com/sebastienros/jint");
+        //System.Console.WriteLine("  https://github.com/tomakita/Colorful.Console");
+        //System.Console.WriteLine("  https://github.com/tonerdo/readline");
+        //System.Console.WriteLine();
+        //System.Console.WriteLine("**********************************************");
+        //System.Console.WriteLine();
     }
 
     protected Terminal GetTerminal()

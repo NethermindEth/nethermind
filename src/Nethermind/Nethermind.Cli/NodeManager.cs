@@ -63,7 +63,7 @@ namespace Nethermind.Cli
             {
                 if (_currentClient is null)
                 {
-                    _cliConsole.WriteErrorLine("[INTERNAL ERROR] JSON RPC client not set.");
+                    //_cliConsole.WriteErrorLine("[INTERNAL ERROR] JSON RPC client not set.");
                 }
                 else
                 {
@@ -115,7 +115,7 @@ namespace Nethermind.Cli
             {
                 if (_currentClient is null)
                 {
-                    _cliConsole.WriteErrorLine("[INTERNAL ERROR] JSON RPC client not set.");
+                    //_cliConsole.WriteErrorLine("[INTERNAL ERROR] JSON RPC client not set.");
                 }
                 else
                 {
