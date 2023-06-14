@@ -136,6 +136,7 @@ internal static class EvmObjectFormat
 
         internal const ushort MINIMUM_NUM_CODE_SECTIONS = 1;
         internal const ushort MAXIMUM_NUM_CODE_SECTIONS = 1024;
+        internal const ushort MAXIMUM_NUM_CONTAINER_SECTIONS = 0x00FF;
         internal const ushort RETURN_STACK_MAX_HEIGHT = MAXIMUM_NUM_CODE_SECTIONS; // the size in the type sectionn allocated to each function section
 
         internal const ushort MINIMUM_SIZE = HEADER_END_OFFSET
@@ -329,6 +330,12 @@ internal static class EvmObjectFormat
             ReadOnlySpan<byte> contractBody = container[startOffset..];
             (int typeSectionStart, ushort typeSectionSize) = header.TypeSection;
 
+            if(header.ContainerSection.Length > MAXIMUM_NUM_CONTAINER_SECTIONS)
+            {
+                // move this check where `header.ExtraContainers.Count` is parsed
+                if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : initcode Containers bount must be less than {MAXIMUM_NUM_CONTAINER_SECTIONS} but found {header.ContainerSection.Length}");
+                return false;
+            }
 
             if (contractBody.Length != calculatedCodeLength)
             {
@@ -595,7 +602,7 @@ internal static class EvmObjectFormat
 
                         ushort initcodeSectionId = code[postInstructionByte + ONE_BYTE_LENGTH];
 
-                        if (initcodeSectionId >= header.ExtraContainersSize)
+                        if (initcodeSectionId >= header.ContainerSection.Length)
                         {
 
                             if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : CREATE3's immediate must falls within the Containers' range available, i.e : {header.CodeSectionsSize}");
