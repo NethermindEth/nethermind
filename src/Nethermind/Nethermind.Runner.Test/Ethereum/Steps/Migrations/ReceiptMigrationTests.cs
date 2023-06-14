@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -67,7 +68,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             context.DbProvider.ReceiptsDb.Returns(receiptColumenDb);
             receiptColumenDb.RemoveFunc = (key) =>
             {
-                if (key.Equals(lastTransaction.Bytes)) guard.Set();
+                if (Bytes.AreEqual(key, lastTransaction.Bytes)) guard.Set();
             };
 
             ReceiptMigration migration = new(context);
@@ -121,9 +122,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 set => _outStorage.MigratedBlockNumber = value;
             }
 
-            public bool HasBlock(Keccak hash)
+            public bool HasBlock(long blockNumber, Keccak hash)
             {
-                return _outStorage.HasBlock(hash);
+                return _outStorage.HasBlock(blockNumber, hash);
             }
 
             public void EnsureCanonical(Block block)

@@ -24,6 +24,7 @@ namespace Nethermind.Core.Extensions
     public static unsafe partial class Bytes
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
+        public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly ISpanEqualityComparer<byte> SpanEqualityComparer = new SpanBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
 
@@ -37,6 +38,19 @@ namespace Nethermind.Core.Extensions
             public override int GetHashCode(byte[] obj)
             {
                 return obj.GetSimplifiedHashCode();
+            }
+        }
+
+        private class NullableBytesEqualityComparer : EqualityComparer<byte[]?>
+        {
+            public override bool Equals(byte[]? x, byte[]? y)
+            {
+                return AreEqual(x, y);
+            }
+
+            public override int GetHashCode(byte[]? obj)
+            {
+                return obj?.GetSimplifiedHashCode() ?? 0;
             }
         }
 
@@ -85,7 +99,7 @@ namespace Nethermind.Core.Extensions
                 return y.Length > x.Length ? 1 : 0;
             }
 
-            public int Compare(Span<byte> x, Span<byte> y)
+            public int Compare(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
             {
                 if (Unsafe.AreSame(ref MemoryMarshal.GetReference(x), ref MemoryMarshal.GetReference(y)) &&
                     x.Length == y.Length)
@@ -195,6 +209,12 @@ namespace Nethermind.Core.Extensions
             return bytes.AsSpan().WithoutLeadingZeros();
         }
 
+        public static Span<byte> WithoutLeadingZerosOrEmpty(this Span<byte> bytes)
+        {
+            if (bytes.IsNullOrEmpty()) return Array.Empty<byte>();
+            return bytes.WithoutLeadingZeros();
+        }
+
         public static Span<byte> WithoutLeadingZeros(this Span<byte> bytes)
         {
             if (bytes.Length == 0) return new byte[] { 0 };
@@ -274,6 +294,33 @@ namespace Nethermind.Core.Extensions
                 position += parts[i].Length;
             }
 
+            return result;
+        }
+
+        public static byte[] Concat(ReadOnlySpan<byte> part1, ReadOnlySpan<byte> part2)
+        {
+            byte[] result = new byte[part1.Length + part2.Length];
+            part1.CopyTo(result);
+            part2.CopyTo(result.AsSpan(part1.Length));
+            return result;
+        }
+
+        public static byte[] Concat(ReadOnlySpan<byte> part1, ReadOnlySpan<byte> part2, ReadOnlySpan<byte> part3)
+        {
+            byte[] result = new byte[part1.Length + part2.Length + part3.Length];
+            part1.CopyTo(result);
+            part2.CopyTo(result.AsSpan(part1.Length));
+            part3.CopyTo(result.AsSpan(part1.Length + part2.Length));
+            return result;
+        }
+
+        public static byte[] Concat(ReadOnlySpan<byte> part1, ReadOnlySpan<byte> part2, ReadOnlySpan<byte> part3, ReadOnlySpan<byte> part4)
+        {
+            byte[] result = new byte[part1.Length + part2.Length + part3.Length + part4.Length];
+            part1.CopyTo(result);
+            part2.CopyTo(result.AsSpan(part1.Length));
+            part3.CopyTo(result.AsSpan(part1.Length + part2.Length));
+            part4.CopyTo(result.AsSpan(part1.Length + part2.Length + part3.Length));
             return result;
         }
 

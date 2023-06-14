@@ -127,8 +127,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
@@ -141,7 +140,7 @@ namespace Nethermind.Evm.Test.Tracing
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
                   2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL
                     3, 3, 3, 3, 3, 3, // CREATE
-                  2, // STOP 
+                  2, // STOP
                 1, // STOP
             };
 
@@ -168,8 +167,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .PushData(SampleHexData1) // just to test if stack is restored
@@ -178,7 +176,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
-            /* depths 
+            /* depths
             {
                 1, 1, 1, 1, 1, 1, 1, 1, 1, // SAMPLE STACK + STACK FOR CALL [0..8]
                 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 // SAMPLE STACK + CALL [9..19]
@@ -213,8 +211,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .StoreDataInMemory(64, SampleHexData2.PadLeft(64, '0')) // just to test if memory is restored
@@ -223,7 +220,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
-            /* depths 
+            /* depths
             {
                 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 // MEMORY + STACK FOR CALL [0..10]
                 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 // MEMORY + CALL [11..23]
@@ -258,8 +255,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .PersistData("0x2", HexZero) // just to test if storage is restored
@@ -269,7 +265,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Done;
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
-            /* depths 
+            /* depths
             {
                 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 // 2x SSTORE + STACK FOR CALL [0..13]
                 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 // SSTORE + CALL [14..26]
@@ -376,6 +372,34 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(trace.Entries[6].Memory.Count, Is.EqualTo(2), "entry[2] length");
             Assert.That(trace.Entries[6].Memory[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[6][0]");
             Assert.That(trace.Entries[6].Memory[1], Is.EqualTo(SampleHexData2.PadLeft(64, '0')), "entry[6][1]");
+        }
+
+        [Test]
+        public void Can_trace_extcodesize_optimization()
+        {
+            // From https://github.com/NethermindEth/nethermind/issues/5717
+            byte[] code = Bytes.FromHexString("0x60246044607460d1606b60b9603369866833515b6d086c607f3b15749e4886579008320052006f");
+
+            GethLikeTxTrace trace = ExecuteAndTrace(code);
+            GethTxTraceEntry entry;
+
+            entry = trace.Entries[^3];
+            Assert.That(entry.Pc, Is.EqualTo(25));
+            Assert.That(entry.Operation, Is.EqualTo("EXTCODESIZE"));
+            Assert.That(entry.Stack[^1], Is.EqualTo("866833515b6d086c607f".PadLeft(64, '0')));
+            Assert.That(entry.Stack.Count, Is.EqualTo(8));
+
+            entry = trace.Entries[^2];
+            Assert.That(entry.Pc, Is.EqualTo(26));
+            Assert.That(entry.Operation, Is.EqualTo("ISZERO"));
+            Assert.That(entry.Stack[^1], Is.EqualTo("0".PadLeft(64, '0')));
+            Assert.That(entry.Stack.Count, Is.EqualTo(8));
+
+            entry = trace.Entries[^1];
+            Assert.That(entry.Pc, Is.EqualTo(27));
+            Assert.That(entry.Operation, Is.EqualTo("PUSH21"));
+            Assert.That(entry.Stack[^1], Is.EqualTo("1".PadLeft(64, '0')));
+            Assert.That(entry.Stack.Count, Is.EqualTo(8));
         }
     }
 }

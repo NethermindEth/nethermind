@@ -35,8 +35,11 @@ namespace Nethermind.Api
         [ConfigItem(Description = "Path to the chain definition file created by Hive for test purpouse", DefaultValue = "chainspec/test.json")]
         string HiveChainSpecPath { get; set; }
 
-        [ConfigItem(Description = "Base directoy path for all the nethermind databases.", DefaultValue = "\"db\"")]
+        [ConfigItem(Description = "Base directory path for all the nethermind databases.", DefaultValue = "\"db\"")]
         string BaseDbPath { get; set; }
+
+        [ConfigItem(Description = "Kzg trusted setup file path", DefaultValue = "null")]
+        string? KzgSetupPath { get; set; }
 
         [ConfigItem(Description = "Hash of the genesis block - if the default null value is left then the genesis block validity will not be checked which is useful for ad hoc test/private networks.", DefaultValue = "null")]
         string? GenesisHash { get; set; }

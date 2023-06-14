@@ -267,6 +267,18 @@ namespace Nethermind.Evm
             result = new UInt256(u0, u1, u2, u3);
         }
 
+        public bool PeekUInt256IsZero()
+        {
+            int head = Head - 1;
+            if (head <= 0)
+            {
+                return false;
+            }
+
+            ref byte bytes = ref _bytes[head * 32];
+            return Unsafe.ReadUnaligned<UInt256>(ref bytes).IsZero;
+        }
+
         public Address PopAddress()
         {
             if (Head-- == 0)
@@ -289,7 +301,7 @@ namespace Nethermind.Evm
             return ref _bytes[Head * 32];
         }
 
-        public Span<byte> PopBytes()
+        public Span<byte> PopWord256()
         {
             if (Head-- == 0)
             {

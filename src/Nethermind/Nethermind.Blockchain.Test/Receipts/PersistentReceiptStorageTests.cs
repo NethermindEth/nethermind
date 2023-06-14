@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Configuration;
 using System.Linq;
 using System.Threading;
-using DotNetty.Transport.Channels;
 using FluentAssertions;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -26,12 +27,14 @@ namespace Nethermind.Blockchain.Test.Receipts
     [TestFixture(false)]
     public class PersistentReceiptStorageTests
     {
-        private MemColumnsDb<ReceiptsColumns> _receiptsDb = null!;
+        private TestMemColumnsDb<ReceiptsColumns> _receiptsDb = null!;
         private ReceiptsRecovery _receiptsRecovery;
         private IBlockTree _blockTree;
+        private IBlockStore _blockStore;
         private readonly bool _useCompactReceipts;
         private ReceiptConfig _receiptConfig;
         private PersistentReceiptStorage _storage;
+        private ReceiptArrayStorageDecoder _decoder;
 
         public PersistentReceiptStorageTests(bool useCompactReceipts)
         {
@@ -45,21 +48,24 @@ namespace Nethermind.Blockchain.Test.Receipts
             EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
             _receiptConfig = new ReceiptConfig();
             _receiptsRecovery = new(ethereumEcdsa, specProvider);
-            _receiptsDb = new MemColumnsDb<ReceiptsColumns>();
+            _receiptsDb = new TestMemColumnsDb<ReceiptsColumns>();
             _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
             _blockTree = Substitute.For<IBlockTree>();
+            _blockStore = Substitute.For<IBlockStore>();
             CreateStorage();
         }
 
         private void CreateStorage()
         {
+            _decoder = new ReceiptArrayStorageDecoder(_useCompactReceipts);
             _storage = new PersistentReceiptStorage(
                 _receiptsDb,
                 MainnetSpecProvider.Instance,
                 _receiptsRecovery,
                 _blockTree,
+                _blockStore,
                 _receiptConfig,
-                new ReceiptArrayStorageDecoder(_useCompactReceipts)
+                _decoder
             )
             { MigratedBlockNumber = 0 };
         }
@@ -100,6 +106,53 @@ namespace Nethermind.Blockchain.Test.Receipts
             _storage.Get(block).Should().BeEquivalentTo(receipts);
             // second should be from cache
             _storage.Get(block).Should().BeEquivalentTo(receipts);
+        }
+
+        [Test]
+        public void Adds_should_prefix_key_with_blockNumber()
+        {
+            var (block, receipts) = InsertBlock();
+
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
+            block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
+
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[blockNumPrefixed].Should().NotBeNull();
+        }
+
+        [Test]
+        public void Adds_should_attempt_hash_key_first_if_inserted_with_hashkey()
+        {
+            var (block, receipts) = PrepareBlock();
+
+            using NettyRlpStream rlpStream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash.Bytes] = rlpStream.AsSpan().ToArray();
+
+            CreateStorage();
+            _storage.Get(block);
+
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
+            block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
+
+            TestMemDb blocksDb = (TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
+            blocksDb.KeyWasRead(blockNumPrefixed.ToArray(), 0);
+            blocksDb.KeyWasRead(block.Hash.BytesToArray(), 1);
+        }
+
+        [Test]
+        public void Should_be_able_to_get_block_with_hash_address()
+        {
+            var (block, receipts) = PrepareBlock();
+
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
+            block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
+
+            using NettyRlpStream rlpStream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash.Bytes] = rlpStream.AsSpan().ToArray();
+
+            _storage.Get(block).Length.Should().Be(receipts.Length);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -169,14 +222,14 @@ namespace Nethermind.Blockchain.Test.Receipts
         [Test, Timeout(Timeout.MaxTestTime)]
         public void HasBlock_should_returnFalseForMissingHash()
         {
-            _storage.HasBlock(Keccak.Compute("missing-value")).Should().BeFalse();
+            _storage.HasBlock(0, Keccak.Compute("missing-value")).Should().BeFalse();
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void HasBlock_should_returnTrueForKnownHash()
         {
             var (block, _) = InsertBlock();
-            _storage.HasBlock(block.Hash!).Should().BeTrue();
+            _storage.HasBlock(block.Number, block.Hash!).Should().BeTrue();
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -223,7 +276,6 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test]
-        [Ignore("Needs to be fixed, details https://github.com/NethermindEth/nethermind/pull/5621")]
         public void When_TxLookupLimitIs_NegativeOne_DoNotIndexTxHash()
         {
             _receiptConfig.TxLookupLimit = -1;
@@ -249,7 +301,6 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test]
-        [Ignore("Needs to be fixed, details https://github.com/NethermindEth/nethermind/pull/5621")]
         public void When_HeadBlockIsFarAhead_DoNotIndexTxHash()
         {
             _receiptConfig.TxLookupLimit = 1000;
@@ -261,7 +312,6 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test]
-        [Ignore("Needs to be fixed, details https://github.com/NethermindEth/nethermind/pull/5621")]
         public void When_NewHeadBlock_Remove_TxIndex_OfRemovedBlock()
         {
             CreateStorage();
@@ -312,7 +362,7 @@ namespace Nethermind.Blockchain.Test.Receipts
                 );
         }
 
-        private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
+        private (Block block, TxReceipt[] receipts) PrepareBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
         {
             block ??= Build.A.Block
                 .WithNumber(1)
@@ -340,8 +390,14 @@ namespace Nethermind.Blockchain.Test.Receipts
                 _blockTree.FindBestSuggestedHeader().Returns(farHead);
             }
             var receipts = new[] { Build.A.Receipt.WithCalculatedBloom().TestObject };
+            return (block, receipts);
+        }
+
+        private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
+        {
+            (block, TxReceipt[] receipts) = PrepareBlock(block, isFinalized, headNumber);
             _storage.Insert(block, receipts);
-            _receiptsRecovery.TryRecover(block, receipts);
+            _receiptsRecovery.TryRecover(new ReceiptRecoveryBlock(block), receipts);
 
             return (block, receipts);
         }

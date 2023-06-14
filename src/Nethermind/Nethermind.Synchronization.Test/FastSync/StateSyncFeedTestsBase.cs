@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 {
     public class StateSyncFeedTestsBase
     {
-        private const int TimeoutLength = 2000;
+        private const int TimeoutLength = 5000;
 
         protected static IBlockTree _blockTree;
         protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
@@ -113,8 +113,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
             ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
-            ctx.StateSyncDispatcher =
-                new StateSyncDispatcher(ctx.Feed, ctx.Pool, new StateSyncAllocationStrategyFactory(), _logManager);
+            ctx.Downloader = new StateSyncDownloader(_logManager);
+            ctx.StateSyncDispatcher = new SyncDispatcher<StateSyncBatch>(0, ctx.Feed, ctx.Downloader, ctx.Pool, new StateSyncAllocationStrategyFactory(), _logManager);
             ctx.StateSyncDispatcher.Start(CancellationToken.None);
             return ctx;
         }
@@ -145,7 +145,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             public ISyncPeerPool Pool;
             public TreeSync TreeFeed;
             public StateSyncFeed Feed;
-            public StateSyncDispatcher StateSyncDispatcher;
+            public StateSyncDownloader Downloader;
+            public SyncDispatcher<StateSyncBatch> StateSyncDispatcher;
         }
 
         protected class DbContext
@@ -221,6 +222,8 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         protected class SyncPeerMock : ISyncPeer
         {
+            public string Name => "Mock";
+
             public static Func<IList<Keccak>, Task<byte[][]>> NotPreimage = request =>
             {
                 var result = new byte[request.Count][];
@@ -316,7 +319,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -357,7 +360,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
             {
-                protocolHandler = null;
+                protocolHandler = null!;
                 return false;
             }
         }

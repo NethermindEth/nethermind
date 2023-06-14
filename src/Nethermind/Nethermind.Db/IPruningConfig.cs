@@ -49,6 +49,11 @@ namespace Nethermind.Db
             DefaultValue = "0")]
         int FullPruningMemoryBudgetMb { get; set; }
 
+        [ConfigItem(
+            Description = "Full pruning uses low priority writes to prevent blocking block processing. If not needed, set this to true for faster full pruning.",
+            DefaultValue = "false")]
+        bool FullPruningDisableLowPriorityWrites { get; set; }
+
         [ConfigItem(Description = "In order to not exhaust disk writes, there is a minimum delay between allowed full pruning operations.", DefaultValue = "240")]
         int FullPruningMinimumDelayHours { get; set; }
 
@@ -58,5 +63,8 @@ namespace Nethermind.Db
                                   "'AlwaysShutdown': shuts Nethermind down once the prune completes, whether it succeeded or failed.",
             DefaultValue = "None")]
         FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; }
+
+        [ConfigItem(Description = "Enables available disk space check.", DefaultValue = "true")]
+        bool AvailableSpaceCheckEnabled { get; set; }
     }
 }

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -48,8 +49,13 @@ namespace Nethermind.Init.Steps
             IChainLevelInfoRepository chainLevelInfoRepository =
                 _set.ChainLevelInfoRepository = new ChainLevelInfoRepository(_get.DbProvider!.BlockInfosDb);
 
+            IBlockStore blockStore = new BlockStore(_get.DbProvider.BlocksDb);
+
             IBlockTree blockTree = _set.BlockTree = new BlockTree(
-                _get.DbProvider,
+                blockStore,
+                _get.DbProvider.HeadersDb,
+                _get.DbProvider.BlockInfosDb,
+                _get.DbProvider.MetadataDb,
                 chainLevelInfoRepository,
                 _get.SpecProvider,
                 bloomStorage,
@@ -76,6 +82,7 @@ namespace Nethermind.Init.Steps
                     _get.SpecProvider!,
                     receiptsRecovery,
                     blockTree,
+                    blockStore,
                     receiptConfig,
                     new ReceiptArrayStorageDecoder(receiptConfig.CompactReceiptStore))
                 : NullReceiptStorage.Instance;
@@ -89,7 +96,7 @@ namespace Nethermind.Init.Steps
                 bloomStorage,
                 _get.LogManager,
                 new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider),
-                1024);
+                receiptConfig.MaxBlockDepth);
 
             _set.LogFinder = logFinder;
 

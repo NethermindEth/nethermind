@@ -64,13 +64,13 @@ namespace Nethermind.Blockchain.Find
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Hash!))
+            if (fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!))
             {
                 throw new ResourceNotFoundException($"Receipt not available for 'From' block '{fromBlock.Number}'.");
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Hash!))
+            if (toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!))
             {
                 throw new ResourceNotFoundException($"Receipt not available for 'To' block '{toBlock.Number}'.");
             }
@@ -214,7 +214,7 @@ namespace Nethermind.Blockchain.Find
         private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, CancellationToken cancellationToken)
         {
             List<FilterLog> logList = null;
-            using (iterator)
+            try
             {
                 long logIndexInBlock = 0;
                 while (iterator.TryGetNext(out var receipt))
@@ -261,6 +261,11 @@ namespace Nethermind.Blockchain.Find
                         }
                     }
                 }
+            }
+            finally
+            {
+                // Confusingly, the `using` statement causes the recovery context to be null during the dispose.
+                iterator.Dispose();
             }
 
             return logList ?? (IEnumerable<FilterLog>)Array.Empty<FilterLog>();

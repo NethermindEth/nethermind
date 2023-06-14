@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -27,16 +31,19 @@ namespace Nethermind.Blockchain.Receipts
         private long _migratedBlockNumber;
         private readonly ReceiptArrayStorageDecoder _storageDecoder = ReceiptArrayStorageDecoder.Instance;
         private readonly IBlockTree _blockTree;
+        private readonly IBlockStore _blockStore;
         private readonly IReceiptConfig _receiptConfig;
+        private readonly bool _legacyHashKey;
 
         private const int CacheSize = 64;
-        private readonly LruCache<KeccakKey, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
+        private readonly LruCache<ValueKeccak, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
         public PersistentReceiptStorage(
             IColumnsDb<ReceiptsColumns> receiptsDb,
             ISpecProvider specProvider,
             IReceiptsRecovery receiptsRecovery,
             IBlockTree blockTree,
+            IBlockStore blockStore,
             IReceiptConfig receiptConfig,
             ReceiptArrayStorageDecoder? storageDecoder = null
         )
@@ -49,6 +56,7 @@ namespace Nethermind.Blockchain.Receipts
             _blocksDb = _database.GetColumnDb(ReceiptsColumns.Blocks);
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
             _storageDecoder = storageDecoder ?? ReceiptArrayStorageDecoder.Instance;
             _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
 
@@ -56,11 +64,13 @@ namespace Nethermind.Blockchain.Receipts
             _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
 
-            if (_receiptConfig.TxLookupLimit != 0)
-                _blockTree.BlockAddedToMain += RemoveTxIndexes;
+            KeyValuePair<byte[], byte[]>? firstValue = _blocksDb.GetAll().FirstOrDefault();
+            _legacyHashKey = firstValue.HasValue && firstValue.Value.Key != null && firstValue.Value.Key.Length == Keccak.Size;
+
+            _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
         }
 
-        private void RemoveTxIndexes(object? sender, BlockReplacementEventArgs e)
+        private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
             if (e.PreviousBlock != null)
             {
@@ -95,7 +105,12 @@ namespace Nethermind.Blockchain.Receipts
         public Keccak FindBlockHash(Keccak txHash)
         {
             var blockHashData = _transactionDb.Get(txHash);
-            return blockHashData is null ? FindReceiptObsolete(txHash)?.BlockHash : new Keccak(blockHashData);
+            if (blockHashData is null) return FindReceiptObsolete(txHash)?.BlockHash;
+
+            if (blockHashData.Length == Keccak.Size) return new Keccak(blockHashData);
+
+            long blockNum = new RlpStream(blockHashData).DecodeLong();
+            return _blockTree.FindBlockHash(blockNum);
         }
 
         // Find receipt stored with old - obsolete format.
@@ -135,7 +150,8 @@ namespace Nethermind.Blockchain.Receipts
                 return receipts ?? Array.Empty<TxReceipt>();
             }
 
-            Span<byte> receiptsData = _blocksDb.GetSpan(blockHash);
+            Span<byte> receiptsData = GetReceiptData(block.Number, blockHash);
+
             try
             {
                 if (receiptsData.IsNullOrEmpty())
@@ -158,6 +174,48 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
+        [SkipLocalsInit]
+        private unsafe Span<byte> GetReceiptData(long blockNumber, Keccak blockHash)
+        {
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            if (_legacyHashKey)
+            {
+                Span<byte> receiptsData = _blocksDb.GetSpan(blockHash);
+                if (receiptsData != null)
+                {
+                    return receiptsData;
+                }
+
+                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+
+#pragma warning disable CS9080
+                receiptsData = _blocksDb.GetSpan(blockNumPrefixed);
+#pragma warning restore CS9080
+
+                return receiptsData;
+            }
+            else
+            {
+                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+
+                Span<byte> receiptsData = _blocksDb.GetSpan(blockNumPrefixed);
+                if (receiptsData.IsNull())
+                {
+                    receiptsData = _blocksDb.GetSpan(blockHash);
+                }
+
+#pragma warning disable CS9080
+                return receiptsData;
+#pragma warning restore CS9080
+            }
+        }
+
+        private static void GetBlockNumPrefixedKey(long blockNumber, Keccak blockHash, Span<byte> output)
+        {
+            blockNumber.WriteBigEndian(output);
+            blockHash!.Bytes.CopyTo(output[8..]);
+        }
+
         public TxReceipt[] Get(Keccak blockHash)
         {
             Block? block = _blockTree.FindBlock(blockHash);
@@ -176,8 +234,7 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             var result = CanGetReceiptsByHash(blockNumber);
-            var receiptsData = _blocksDb.GetSpan(blockHash);
-
+            Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
 
             Func<IReceiptsRecovery.IRecoveryContext?> recoveryContextFactory = () => null;
 
@@ -185,8 +242,14 @@ namespace Nethermind.Blockchain.Receipts
             {
                 recoveryContextFactory = () =>
                 {
-                    Block block = _blockTree.FindBlock(blockHash);
-                    return _receiptsRecovery.CreateRecoveryContext(block!);
+                    ReceiptRecoveryBlock? block = _blockStore.GetReceiptRecoveryBlock(blockHash);
+
+                    if (!block.HasValue)
+                    {
+                        throw new InvalidOperationException($"Unable to recover receipts for block {blockHash} because of missing block data.");
+                    }
+
+                    return _receiptsRecovery.CreateRecoveryContext(block.Value);
                 };
             }
 
@@ -196,6 +259,7 @@ namespace Nethermind.Blockchain.Receipts
             return result;
         }
 
+        [SkipLocalsInit]
         public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true)
         {
             txReceipts ??= Array.Empty<TxReceipt>();
@@ -216,7 +280,10 @@ namespace Nethermind.Blockchain.Receipts
 
             using (NettyRlpStream stream = _storageDecoder.EncodeToNewNettyStream(txReceipts, behaviors))
             {
-                _blocksDb.Set(block.Hash!, stream.AsSpan());
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
+
+                _blocksDb.Set(blockNumPrefixed, stream.AsSpan());
             }
 
             if (blockNumber < MigratedBlockNumber)
@@ -260,18 +327,47 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsCache.Clear();
         }
 
-        public bool HasBlock(Keccak hash)
+        [SkipLocalsInit]
+        public bool HasBlock(long blockNumber, Keccak blockHash)
         {
-            return _receiptsCache.Contains(hash) || _blocksDb.KeyExists(hash);
+            if (_receiptsCache.Contains(blockHash)) return true;
+
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            if (_legacyHashKey)
+            {
+                if (_blocksDb.KeyExists(blockHash)) return true;
+
+                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+                return _blocksDb.KeyExists(blockNumPrefixed);
+            }
+            else
+            {
+                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+                return _blocksDb.KeyExists(blockNumPrefixed) || _blocksDb.KeyExists(blockHash);
+            }
         }
 
         public void EnsureCanonical(Block block)
         {
-            TxReceipt[] receipts = Get(block);
             using IBatch batch = _transactionDb.StartBatch();
-            foreach (TxReceipt txReceipt in receipts)
+
+            long headNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
+
+            if (_receiptConfig.TxLookupLimit == -1) return;
+            if (_receiptConfig.TxLookupLimit != 0 && block.Number <= headNumber - _receiptConfig.TxLookupLimit) return;
+            if (_receiptConfig.CompactTxIndex)
             {
-                batch[txReceipt.TxHash.Bytes] = block.Hash.Bytes;
+                foreach (Transaction tx in block.Transactions)
+                {
+                    batch[tx.Hash.Bytes] = Rlp.Encode(block.Number).Bytes;
+                }
+            }
+            else
+            {
+                foreach (Transaction tx in block.Transactions)
+                {
+                    batch[tx.Hash.Bytes] = block.Hash.BytesToArray();
+                }
             }
         }
 

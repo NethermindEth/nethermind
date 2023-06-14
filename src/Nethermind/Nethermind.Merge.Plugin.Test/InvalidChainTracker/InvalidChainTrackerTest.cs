@@ -32,7 +32,6 @@ public class InvalidChainTrackerTest
 
     private List<Keccak> MakeChain(int n, bool connectInReverse = false)
     {
-        Keccak? prev = null;
         List<Keccak> hashList = new();
         for (int i = 0; i < n; i++)
         {
@@ -154,7 +153,6 @@ public class InvalidChainTrackerTest
     [TestCase(false)]
     public void givenAnInvalidBlock_whenAttachingLater_trackingShouldStillBeCorrect(bool connectInReverse)
     {
-        Keccak? lastValidHash;
         List<Keccak> mainChain = MakeChain(50, connectInReverse);
         List<Keccak> secondChain = MakeChain(50, connectInReverse);
         Keccak invalidBlockParent = Keccak.Compute(Random.Shared.NextInt64().ToString());

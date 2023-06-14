@@ -20,8 +20,7 @@ namespace Nethermind.Consensus.Processing
         public class BlockProductionTransactionsExecutor : IBlockProductionTransactionsExecutor
         {
             private readonly ITransactionProcessorAdapter _transactionProcessor;
-            private readonly IStateProvider _stateProvider;
-            private readonly IStorageProvider _storageProvider;
+            private readonly IWorldState _stateProvider;
             private readonly BlockProductionTransactionPicker _blockProductionTransactionPicker;
             private readonly ILogger _logger;
 
@@ -32,7 +31,6 @@ namespace Nethermind.Consensus.Processing
                 : this(
                     readOnlyTxProcessingEnv.TransactionProcessor,
                     readOnlyTxProcessingEnv.StateProvider,
-                    readOnlyTxProcessingEnv.StorageProvider,
                     specProvider,
                     logManager)
             {
@@ -40,14 +38,12 @@ namespace Nethermind.Consensus.Processing
 
             public BlockProductionTransactionsExecutor(
                 ITransactionProcessor transactionProcessor,
-                IStateProvider stateProvider,
-                IStorageProvider storageProvider,
+                IWorldState stateProvider,
                 ISpecProvider specProvider,
                 ILogManager logManager)
             {
                 _transactionProcessor = new BuildUpTransactionProcessorAdapter(transactionProcessor);
                 _stateProvider = stateProvider;
-                _storageProvider = storageProvider;
                 _blockProductionTransactionPicker = new BlockProductionTransactionPicker(specProvider);
                 _logger = logManager.GetClassLogger();
             }
@@ -78,7 +74,6 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 _stateProvider.Commit(spec, receiptsTracer);
-                _storageProvider.Commit(receiptsTracer);
 
                 SetTransactions(block, transactionsInBlock);
                 return receiptsTracer.TxReceipts.ToArray();

@@ -13,11 +13,9 @@ namespace Ethereum.Transition.Test;
 public class MergeToShanghaiTests : BlockchainTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
-    public Task Test(BlockchainTest test)
+    public async Task Test(BlockchainTest test)
     {
-        // ToDo Starting from the Shanghai the transition tests are not longer working on blockNumber, but timestamp, so this test needs to be fixed - Test Setup Bug
-        // await RunTest(test);
-        return Task.CompletedTask;
+        await RunTest(test);
     }
 
     public static IEnumerable<BlockchainTest> LoadTests()
