@@ -22,6 +22,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle;
 [TestFixture]
 public class ChainSpecBasedSpecProviderTests
 {
+    private const ulong GnosisBlockTime = 5;
+
     [TestCase(0, null, false)]
     [TestCase(0, 0ul, false)]
     [TestCase(0, 4660ul, false)]
@@ -136,6 +138,9 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(long.MaxValue));
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Sepolia));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Sepolia));
+
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, SepoliaSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
     }
 
     [Test]
@@ -193,6 +198,9 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(GoerliSpecProvider.Instance.TerminalTotalDifficulty));
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Goerli));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Goerli));
+
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, GoerliSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
     }
 
     [Test]
@@ -216,10 +224,10 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Chiado));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Chiado));
 
-        IReleaseSpec? preShanghaiSpec = provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp - 1));
-        IReleaseSpec? postShanghaiSpec = provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp));
+        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp - 1)).MaxCodeSize.Should().Be(long.MaxValue);
+        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxCodeSize.Should().Be(24576L);
+        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxInitCodeSize.Should().Be(2 * 24576L);
 
-        VerifyGnosisShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
     }
@@ -360,6 +368,9 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(MainnetSpecProvider.Instance.TerminalTotalDifficulty));
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Mainnet));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Mainnet));
+
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, MainnetSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
     }
 
     [Flags]
@@ -804,4 +815,21 @@ public class ChainSpecBasedSpecProviderTests
         });
         TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = true; });
     }
+
+    private static IEnumerable<ulong> GetTransitionTimestamps(ChainParameters parameters) => parameters.GetType()
+        .Properties()
+        .Where(p => p.Name.EndsWith("TransitionTimestamp", StringComparison.Ordinal))
+        .Select(p => (ulong?)p.GetValue(parameters))
+        .Where(t => t is not null)
+        .Select(t => t!.Value);
+
+    /// <summary>
+    /// Validates the timestamp specified by making sure the resulting slot is a multiple of 8192.
+    /// </summary>
+    /// <param name="timestamp">The timestamp to validate</param>
+    /// <param name="genesisTimestamp">The network's genesis timestamp</param>
+    /// <param name="blockTime">The network's block time in seconds</param>
+    /// <returns><c>true</c> if the timestamp is valid; otherwise, <c>false</c>.</returns>
+    private static bool ValidateSlotByTimestamp(ulong timestamp, ulong genesisTimestamp, ulong blockTime = 12) =>
+        timestamp > genesisTimestamp && (timestamp - genesisTimestamp) / blockTime % 0x2000 == 0;
 }
