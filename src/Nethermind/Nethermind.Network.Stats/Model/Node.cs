@@ -170,27 +170,31 @@ namespace Nethermind.Stats.Model
             {
                 return NodeClientType.Unknown;
             }
-            else if (clientId.Contains("BeSu", StringComparison.InvariantCultureIgnoreCase))
+            else if (clientId.Contains(nameof(NodeClientType.Besu), StringComparison.OrdinalIgnoreCase))
             {
-                return NodeClientType.BeSu;
+                return NodeClientType.Besu;
             }
-            else if (clientId.Contains("Geth", StringComparison.InvariantCultureIgnoreCase))
+            else if (clientId.Contains(nameof(NodeClientType.Geth), StringComparison.OrdinalIgnoreCase))
             {
                 return NodeClientType.Geth;
             }
-            else if (clientId.Contains("Nethermind", StringComparison.InvariantCultureIgnoreCase))
+            else if (clientId.Contains(nameof(NodeClientType.Nethermind), StringComparison.OrdinalIgnoreCase))
             {
                 return NodeClientType.Nethermind;
             }
-            else if (clientId.Contains("Parity", StringComparison.InvariantCultureIgnoreCase))
+            else if (clientId.Contains(nameof(NodeClientType.Erigon), StringComparison.OrdinalIgnoreCase))
+            {
+                return NodeClientType.Erigon;
+            }
+            else if (clientId.Contains(nameof(NodeClientType.Parity), StringComparison.OrdinalIgnoreCase))
             {
                 return NodeClientType.Parity;
             }
-            else if (clientId.Contains("OpenEthereum", StringComparison.InvariantCultureIgnoreCase))
+            else if (clientId.Contains(nameof(NodeClientType.OpenEthereum), StringComparison.OrdinalIgnoreCase))
             {
                 return NodeClientType.OpenEthereum;
             }
-            else if (clientId.Contains("Trinity", StringComparison.InvariantCultureIgnoreCase))
+            else if (clientId.Contains(nameof(NodeClientType.Trinity), StringComparison.OrdinalIgnoreCase))
             {
                 return NodeClientType.Trinity;
             }

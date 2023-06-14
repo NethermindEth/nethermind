@@ -619,7 +619,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         }
     }
 
-    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
     {
         if (_isDisposing)
         {
@@ -699,7 +699,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         }
     }
 
-    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAllCore(Iterator iterator)
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCore(Iterator iterator)
     {
         try
         {
@@ -720,7 +720,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
             while (iterator.Valid())
             {
-                yield return new KeyValuePair<byte[], byte[]>(iterator.Key(), iterator.Value());
+                yield return new KeyValuePair<byte[], byte[]?>(iterator.Key(), iterator.Value());
 
                 try
                 {
@@ -776,11 +776,16 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     internal class RocksDbBatch : IBatch
     {
+        private const int InitialBatchSize = 300;
+        private static readonly int MaxCached = Environment.ProcessorCount;
+
+        private static ConcurrentQueue<SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)>> s_cache = new();
+
         private readonly DbOnTheRocks _dbOnTheRocks;
         private WriteFlags _writeFlags = WriteFlags.None;
         private bool _isDisposed;
 
-        private SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> _batchData = new(Bytes.SpanEqualityComparer);
+        private SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> _batchData = CreateOrGetFromCache();
 
         public RocksDbBatch(DbOnTheRocks dbOnTheRocks)
         {
@@ -805,11 +810,22 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             }
             _isDisposed = true;
 
+            SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> batchData = _batchData;
+            // Clear the _batchData reference so is null if Get is called.
+            _batchData = null!;
+            if (batchData.Count == 0)
+            {
+                // No data to write, skip empty batches
+                ReturnToCache(batchData);
+                _dbOnTheRocks._currentBatches.TryRemove(this);
+                return;
+            }
+
             try
             {
                 WriteBatch rocksBatch = new();
                 // Sort the batch by key
-                foreach (var kv in _batchData.OrderBy(i => i.Key, Bytes.Comparer))
+                foreach (var kv in batchData.OrderBy(i => i.Key, Bytes.Comparer))
                 {
                     if (kv.Value.data is null)
                     {
@@ -820,8 +836,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                         rocksBatch.Put(kv.Key, kv.Value.data, kv.Value.cf);
                     }
                 }
-                // Release Dictionary early to be GC'd
-                _batchData = null!;
+                ReturnToCache(batchData);
 
                 _dbOnTheRocks._db.Write(rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
                 _dbOnTheRocks._currentBatches.TryRemove(this);
@@ -870,6 +885,25 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             _batchData[key] = (value, null);
 
             _writeFlags = flags;
+        }
+
+        private static SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> CreateOrGetFromCache()
+        {
+            if (s_cache.TryDequeue(out SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)>? batchData))
+            {
+                return batchData;
+            }
+
+            return new(InitialBatchSize, Bytes.SpanEqualityComparer);
+        }
+
+        private static void ReturnToCache(SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> batchData)
+        {
+            if (s_cache.Count >= MaxCached) return;
+
+            batchData.Clear();
+            batchData.TrimExcess(capacity: InitialBatchSize);
+            s_cache.Enqueue(batchData);
         }
     }
 
