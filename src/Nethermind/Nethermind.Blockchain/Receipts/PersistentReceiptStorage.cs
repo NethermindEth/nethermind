@@ -222,8 +222,7 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             var result = CanGetReceiptsByHash(blockNumber);
-            var receiptsData = _blocksDb.GetSpan(blockHash);
-
+            Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
 
             Func<IReceiptsRecovery.IRecoveryContext?> recoveryContextFactory = () => null;
 
