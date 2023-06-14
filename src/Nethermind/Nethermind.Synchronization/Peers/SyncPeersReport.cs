@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization.Peers
                 RememberState(out bool _);
 
                 _logger.Debug(MakeSummaryReportForPeers(_peerPool.InitializedPeers, $"Sync peers - Connected: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}"));
-                _logger.Debug(MakeReportForPeer(OrderedPeers, ""));
+                _logger.Debug(MakeReportForPeers(OrderedPeers, ""));
             }
         }
 
@@ -71,10 +71,10 @@ namespace Nethermind.Synchronization.Peers
                     return;
                 }
 
-                var header = $"Allocated sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}";
                 if (_logger.IsDebug)
                 {
-                    _logger.Debug(MakeReportForPeer(OrderedPeers.Where(p => (p.AllocatedContexts & AllocationContexts.All) != AllocationContexts.None), header));
+                    var header = $"Allocated sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}";
+                    _logger.Debug(MakeReportForPeers(OrderedPeers.Where(p => (p.AllocatedContexts & AllocationContexts.All) != AllocationContexts.None), header));
                 }
             }
         }
@@ -87,6 +87,20 @@ namespace Nethermind.Synchronization.Peers
                 float sum = peerGroups.Sum(x => x.Count());
 
                 _stringBuilder.Append(header);
+                _stringBuilder.Append(" |");
+                bool isFirst = true;
+                foreach (var peerGroup in peers.GroupBy(peerInfo => peerInfo.SyncPeer.Name).OrderBy(p => p.Key))
+                {
+                    if (isFirst)
+                    {
+                        isFirst = false;
+                    }
+                    else
+                    {
+                        _stringBuilder.Append(',');
+                    }
+                    _stringBuilder.Append($" {peerGroup.Key} ({peerGroup.Count() / sum,6:P2})");
+                }
                 _stringBuilder.Append(" |");
 
                 PeersContextCounts activeContexts = new();
@@ -103,7 +117,7 @@ namespace Nethermind.Synchronization.Peers
                 sleepingContexts.AppendTo(_stringBuilder, activeContexts.Total != activeContexts.None ? "None" : "All");
                 _stringBuilder.Append(" |");
 
-                bool isFirst = true;
+                isFirst = true;
                 foreach (var peerGroup in peerGroups.OrderByDescending(x => x.Count()))
                 {
                     if (isFirst)
@@ -141,7 +155,7 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        internal string? MakeReportForPeer(IEnumerable<PeerInfo> peers, string header)
+        internal string? MakeReportForPeers(IEnumerable<PeerInfo> peers, string header)
         {
             _stringBuilder.Append(header);
             bool headerAdded = false;
