@@ -145,7 +145,7 @@ namespace Nethermind.Blockchain.Receipts
                 return receipts ?? Array.Empty<TxReceipt>();
             }
 
-            Span<byte> receiptsData = _blocksDb.GetSpan(blockHash);
+            Span<byte> receiptsData = GetReceiptData(block.Number, blockHash);
             try
             {
                 if (receiptsData.IsNullOrEmpty())
@@ -165,6 +165,42 @@ namespace Nethermind.Blockchain.Receipts
             finally
             {
                 _blocksDb.DangerousReleaseMemory(receiptsData);
+            }
+        }
+
+        private unsafe Span<byte> GetReceiptData(long blockNumber, Keccak blockHash)
+        {
+            if (_legacyHashKey)
+            {
+                Span<byte> receiptsData = _blocksDb.GetSpan(blockHash);
+                if (receiptsData != null)
+                {
+                    return receiptsData;
+                }
+
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+
+#pragma warning disable CS9080
+                receiptsData = _blocksDb.GetSpan(blockNumPrefixed);
+#pragma warning restore CS9080
+
+                return receiptsData;
+            }
+            else
+            {
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+
+                Span<byte> receiptsData = _blocksDb.GetSpan(blockNumPrefixed);
+                if (receiptsData.IsNull())
+                {
+                    receiptsData = _blocksDb.GetSpan(blockHash);
+                }
+
+#pragma warning disable CS9080
+                return receiptsData;
+#pragma warning restore CS9080
             }
         }
 
@@ -226,7 +262,10 @@ namespace Nethermind.Blockchain.Receipts
 
             using (NettyRlpStream stream = _storageDecoder.EncodeToNewNettyStream(txReceipts, behaviors))
             {
-                _blocksDb.Set(block.Hash!, stream.AsSpan());
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
+
+                _blocksDb.Set(blockNumPrefixed, stream.AsSpan());
             }
 
             if (blockNumber < MigratedBlockNumber)
