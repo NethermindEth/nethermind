@@ -65,6 +65,8 @@ namespace Nethermind.Synchronization.Test
 
         private class SyncPeerMock : ISyncPeer
         {
+            public string Name => "Mock";
+
             private readonly bool _causeTimeoutOnInit;
             private readonly bool _causeTimeoutOnBlocks;
             private readonly bool _causeTimeoutOnHeaders;
