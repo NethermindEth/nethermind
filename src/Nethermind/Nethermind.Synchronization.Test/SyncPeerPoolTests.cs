@@ -51,6 +51,7 @@ namespace Nethermind.Synchronization.Test
 
         private class SimpleSyncPeerMock : ISyncPeer
         {
+            public string Name => "SimpleMock";
             public SimpleSyncPeerMock(PublicKey publicKey, string description = "simple mock")
             {
                 Node = new Node(publicKey, "127.0.0.1", 30303);
