@@ -31,5 +31,6 @@ namespace Nethermind.Db
         public bool FullPruningDisableLowPriorityWrites { get; set; } = false;
         public int FullPruningMinimumDelayHours { get; set; } = 240;
         public FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; } = FullPruningCompletionBehavior.None;
+        public bool AvailableSpaceCheckEnabled { get; set; } = true;
     }
 }

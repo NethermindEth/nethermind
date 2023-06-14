@@ -111,11 +111,11 @@ namespace Nethermind.Consensus.Validators
         {
             if (!spec.IsEofEvmModeOn) return false;
 
-            if(transaction.Initcodes?.Length >= Transaction.MaxInitcodeCount) return false;
+            if (transaction.Initcodes?.Length >= Transaction.MaxInitcodeCount) return false;
 
             foreach (var initcode in transaction.Initcodes)
             {
-                if(initcode?.Length >= Transaction.MaxInitcodeSize) return false;
+                if (initcode?.Length >= Transaction.MaxInitcodeSize) return false;
             }
             return true;
         }
@@ -129,7 +129,8 @@ namespace Nethermind.Consensus.Validators
                        transaction is not { NetworkWrapper: ShardBlobNetworkWrapper };
             }
 
-            if (transaction.MaxFeePerDataGas is null ||
+            if (transaction.To is null ||
+                transaction.MaxFeePerDataGas is null ||
                 transaction.BlobVersionedHashes is null ||
                 transaction.BlobVersionedHashes!.Length > Eip4844Constants.MaxBlobsPerTransaction ||
                 transaction.BlobVersionedHashes!.Length < Eip4844Constants.MinBlobsPerTransaction)

@@ -6,7 +6,8 @@ using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm.EOF;
 
-public struct EofHeader {
+public struct EofHeader
+{
     public required byte Version;
     public required HeaderOffsets offsets;
     public required SectionHeader TypeSection;

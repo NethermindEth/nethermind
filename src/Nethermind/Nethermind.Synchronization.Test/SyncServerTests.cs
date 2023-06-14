@@ -197,11 +197,11 @@ namespace Nethermind.Synchronization.Test
                 testSpecProvider,
                 LimboLogs.Instance);
 
-            Block remoteBestBlock = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            Block? remoteBestBlock = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
-            ctx.SyncServer.AddNewBlock(remoteBestBlock, ctx.NodeWhoSentTheBlock);
+            ctx.SyncServer.AddNewBlock(remoteBestBlock!, ctx.NodeWhoSentTheBlock);
             Assert.That(localBlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(newBestLocalBlock.Header.Hash));
-            Assert.That(localBlockTree.FindBlock(remoteBestBlock.Hash, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(remoteBestBlock.Hash));
+            Assert.That(localBlockTree.FindBlock(remoteBestBlock!.Hash, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(remoteBestBlock.Hash));
         }
 
         [TestCase(10000000)]
@@ -211,13 +211,13 @@ namespace Nethermind.Synchronization.Test
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             Context ctx = CreateMergeContext(9, (UInt256)ttd);
 
-            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
-            block.Header.TotalDifficulty *= 2;
+            Block? block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            block!.Header.TotalDifficulty *= 2;
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
             Assert.That(block.Header.Hash, Is.EqualTo(ctx.LocalBlockTree.BestSuggestedHeader!.Hash));
 
-            Block parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
+            Block? parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
             Assert.That(ctx.LocalBlockTree.BestSuggestedHeader.TotalDifficulty, Is.EqualTo(parentBlock.TotalDifficulty + block.Difficulty));
         }
 
@@ -294,7 +294,7 @@ namespace Nethermind.Synchronization.Test
             Context ctx = CreateMergeContext(10, (UInt256)ttd);
             Assert.True(terminalBlockWithHigherTotalDifficulty.IsTerminalBlock(ctx.SpecProvider));
 
-            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            Block? block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
             if (sendFakeTd)
             {
                 block.Header.TotalDifficulty *= 2;
@@ -418,13 +418,13 @@ namespace Nethermind.Synchronization.Test
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
 
-            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
-            block.Header.TotalDifficulty *= 2;
+            Block? block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            block!.Header!.TotalDifficulty *= 2;
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
             Assert.That(block.Header.Hash, Is.EqualTo(localBlockTree.BestSuggestedHeader!.Hash));
 
-            Block parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
+            Block? parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
             Assert.That(localBlockTree.BestSuggestedHeader.TotalDifficulty, Is.EqualTo(parentBlock.TotalDifficulty + block.Difficulty));
         }
 

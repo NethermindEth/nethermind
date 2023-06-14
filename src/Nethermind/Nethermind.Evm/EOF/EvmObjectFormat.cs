@@ -330,7 +330,7 @@ internal static class EvmObjectFormat
             ReadOnlySpan<byte> contractBody = container[startOffset..];
             (int typeSectionStart, ushort typeSectionSize) = header.TypeSection;
 
-            if(header.ContainerSection.Length > MAXIMUM_NUM_CONTAINER_SECTIONS)
+            if (header.ContainerSection.Length > MAXIMUM_NUM_CONTAINER_SECTIONS)
             {
                 // move this check where `header.ExtraContainers.Count` is parsed
                 if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : initcode Containers bount must be less than {MAXIMUM_NUM_CONTAINER_SECTIONS} but found {header.ContainerSection.Length}");
@@ -495,7 +495,7 @@ internal static class EvmObjectFormat
 
                         bool isTargetSectionNonReturning = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80;
 
-                        if(isNonReturning && !isTargetSectionNonReturning)
+                        if (isNonReturning && !isTargetSectionNonReturning)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : JUMPF from non returning code-sections can only call non-returning sections");
                             return false;
@@ -568,13 +568,13 @@ internal static class EvmObjectFormat
                         worklist.Enqueue(targetSectionId);
                     }
 
-                    if(opcode is Instruction.RETF && typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80)
+                    if (opcode is Instruction.RETF && typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : non returning sections are not allowed to use opcode {Instruction.RETF}");
                         return false;
-                    } 
+                    }
 
-                    if(opcode is Instruction.DATALOADN)
+                    if (opcode is Instruction.DATALOADN)
                     {
                         if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
                         {
@@ -584,7 +584,7 @@ internal static class EvmObjectFormat
 
                         ushort dataSectionOffset = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthUInt16();
 
-                        if(dataSectionOffset * 32 >= header.DataSection.Size)
+                        if (dataSectionOffset * 32 >= header.DataSection.Size)
                         {
 
                             if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : DATALOADN's immediate argument must be less than datasection.Length / 32 i.e : {header.DataSection.Size / 32}");
@@ -592,7 +592,7 @@ internal static class EvmObjectFormat
                         }
                     }
 
-                    if(opcode is Instruction.CREATE3)
+                    if (opcode is Instruction.CREATE3)
                     {
                         if (postInstructionByte + ONE_BYTE_LENGTH > code.Length)
                         {

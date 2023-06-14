@@ -69,7 +69,7 @@ namespace Nethermind.Evm
         CHAINID = 0x46, // ChainIdOpcodeEnabled
         SELFBALANCE = 0x47, // SelfBalanceOpcodeEnabled
         BASEFEE = 0x48, // BaseFeeEnabled
-        DATAHASH = 0x49,
+        BLOBHASH = 0x49, // DankshardingEnabled
 
         POP = 0x50,
         MLOAD = 0x51,
@@ -203,7 +203,7 @@ namespace Nethermind.Evm
         public static int GetImmediateCount(this Instruction instruction, bool IsEofContext, byte jumpvCount = 0)
             => instruction switch
             {
-                Instruction.CALLF or Instruction.JUMPF=> IsEofContext ? EvmObjectFormat.Eof1.TWO_BYTE_LENGTH : 0,
+                Instruction.CALLF or Instruction.JUMPF => IsEofContext ? EvmObjectFormat.Eof1.TWO_BYTE_LENGTH : 0,
                 Instruction.RJUMP or Instruction.RJUMPI => IsEofContext ? EvmObjectFormat.Eof1.TWO_BYTE_LENGTH : 0,
                 Instruction.RJUMPV => IsEofContext ? jumpvCount * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH + EvmObjectFormat.Eof1.ONE_BYTE_LENGTH : 0,
                 >= Instruction.PUSH0 and <= Instruction.PUSH32 => instruction - Instruction.PUSH0,
@@ -307,7 +307,7 @@ namespace Nethermind.Evm
             Instruction.RJUMP => (0, 0, 2),
             Instruction.RJUMPI => (1, 0, 2),
             Instruction.RJUMPV => (1, 0, 4),
-            Instruction.DATAHASH => (1, 1, 0),
+            Instruction.BLOBHASH => (1, 1, 0),
             >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, 1, instruction - Instruction.PUSH0),
             >= Instruction.DUP1 and <= Instruction.DUP16 => ((ushort)(instruction - Instruction.DUP1 + 1), (ushort)(instruction - Instruction.DUP1 + 2), 0),
             >= Instruction.SWAP1 and <= Instruction.SWAP16 => ((ushort)(instruction - Instruction.SWAP1 + 2), (ushort)(instruction - Instruction.SWAP1 + 2), 0),

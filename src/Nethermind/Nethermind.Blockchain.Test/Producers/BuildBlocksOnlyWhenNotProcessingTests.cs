@@ -33,13 +33,13 @@ namespace Nethermind.Blockchain.Test.Producers
         {
             Context context = new();
             context.BlockProcessingQueue.IsEmpty.Returns(false);
-            Task<Block> buildTask = context.MainBlockProductionTrigger.BuildBlock();
+            Task<Block?> buildTask = context.MainBlockProductionTrigger.BuildBlock();
 
             await Task.Delay(BuildBlocksOnlyWhenNotProcessing.ChainNotYetProcessedMillisecondsDelay * 2);
             buildTask.IsCanceled.Should().BeFalse();
 
             context.BlockProcessingQueue.IsEmpty.Returns(true);
-            Block block = await buildTask;
+            Block? block = await buildTask;
             block.Should().Be(context.DefaultBlock);
             context.TriggeredCount.Should().Be(1);
         }
@@ -76,10 +76,10 @@ namespace Nethermind.Blockchain.Test.Producers
             public Block DefaultBlock { get; }
             public int TriggeredCount { get; private set; }
 
-            private void OnTriggerBlockProduction(object sender, BlockProductionEventArgs e)
+            private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
             {
                 TriggeredCount++;
-                e.BlockProductionTask = Task.FromResult(DefaultBlock);
+                e.BlockProductionTask = Task.FromResult<Block?>(DefaultBlock);
             }
 
             public BuildBlocksOnlyWhenNotProcessing Trigger { get; }

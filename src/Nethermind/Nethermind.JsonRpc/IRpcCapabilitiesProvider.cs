@@ -7,5 +7,5 @@ namespace Nethermind.JsonRpc;
 
 public interface IRpcCapabilitiesProvider
 {
-    IReadOnlyDictionary<string, bool> GetEngineCapabilities();
+    IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> GetEngineCapabilities();
 }

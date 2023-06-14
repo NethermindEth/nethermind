@@ -65,7 +65,7 @@ public class VirtualMachine : IVirtualMachine
 
     private readonly IBlockhashProvider _blockhashProvider;
     private readonly ISpecProvider _specProvider;
-    private static readonly LruCache<ValueKeccak, ICodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
+    internal static readonly LruCache<ValueKeccak, ICodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
     private readonly ILogger _logger;
     private IWorldState _worldState;
     private IWorldState _state;
@@ -738,6 +738,10 @@ public class VirtualMachine : IVirtualMachine
 
         if (vmState.Env.CodeInfo.MachineCode.Length == 0)
         {
+            if (!vmState.IsTopLevel)
+            {
+                Metrics.EmptyCalls++;
+            }
             goto Empty;
         }
 
@@ -1720,11 +1724,11 @@ public class VirtualMachine : IVirtualMachine
                         stack.PushUInt256(in baseFee);
                         break;
                     }
-                case Instruction.DATAHASH:
+                case Instruction.BLOBHASH:
                     {
                         if (!spec.IsEip4844Enabled) goto InvalidInstruction;
 
-                        if (!UpdateGas(GasCostOf.DataHash, ref gasAvailable)) goto OutOfGas;
+                        if (!UpdateGas(GasCostOf.BlobHash, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out UInt256 blobIndex);
 
@@ -2212,6 +2216,7 @@ public class VirtualMachine : IVirtualMachine
                 case Instruction.CREATE:
                 case Instruction.CREATE2:
                     {
+                        Metrics.Creates++;
                         if (!spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) goto InvalidInstruction;
 
                         if (vmState.IsStatic) goto StaticCallViolation;
@@ -2291,7 +2296,7 @@ public class VirtualMachine : IVirtualMachine
                             value,
                             initCode,
                             gasAvailable,
-                            programCounter, 
+                            programCounter,
                             callGas,
                             instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create
                         );
@@ -2331,6 +2336,17 @@ public class VirtualMachine : IVirtualMachine
                         Address codeSource = stack.PopAddress();
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) goto OutOfGas;
                         ICodeInfo targetCodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
+
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) goto OutOfGas;
+                        ICodeInfo targetCode = GetCachedCodeInfo(_worldState, codeSource, spec);
+
+                        if (spec.IsEofEvmModeOn && env.CodeInfo.IsEof()
+                            && !targetCode.IsEof())
+                        {
+                            _returnDataBuffer = Array.Empty<byte>();
+                            stack.PushZero();
+                            break;
+                        }
 
                         // Console.WriteLine($"CALLIN {codeSource}");
 
@@ -2386,8 +2402,7 @@ public class VirtualMachine : IVirtualMachine
                             gasExtra += GasCostOf.NewAccount;
                         }
 
-                        if (!UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
-                            !UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength) ||
+                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength) ||
                             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
                             !UpdateGas(gasExtra, ref gasAvailable)) goto OutOfGas;
 
@@ -2458,14 +2473,14 @@ public class VirtualMachine : IVirtualMachine
                             gasLimitUl,
                             callEnv,
                             executionType,
-                            false,
+                            isTopLevel: false,
                             snapshot,
                             (long)outputOffset,
                             (long)outputLength,
                             instruction == Instruction.STATICCALL || vmState.IsStatic,
                             vmState,
-                            false,
-                            false);
+                            isContinuation: false,
+                            isCreateOnPreExistingAccount: false);
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
@@ -3000,7 +3015,7 @@ public class VirtualMachine : IVirtualMachine
                 case Instruction.EOFDELEGATECALL:
                 case Instruction.EOFSTATICCALL:
                     {
-                        if(spec.IsEofEvmModeOn)
+                        if (spec.IsEofEvmModeOn)
                         {
 
                             Metrics.Calls++;
@@ -3113,7 +3128,8 @@ public class VirtualMachine : IVirtualMachine
                             ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
                             EvmState callState = ScheduleCallSubstate(vmState, env, txCtx, stack, gasAvailable, programCounter, instruction, codeSource, targetCodeInfo, callValue, transferValue, caller, target, gasLimitUl, callData);
                             return new CallResult(callState);
-                        } else
+                        }
+                        else
                         {
                             goto InvalidInstruction;
                         }
@@ -3148,7 +3164,7 @@ EmptyTrace:
         debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
         return CallResult.Empty(0);
-    InvalidInstruction:
+InvalidInstruction:
         if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.BadInstruction);
         return CallResult.InvalidInstructionException;
 StaticCallViolation:

@@ -33,7 +33,7 @@ public class EofCodeInfo : ICodeInfo
                 typesectionSpan.Slice(TypeSectionSectionOffset + EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_OFFSET, EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_LENGTH).ReadEthUInt16()
             );
     }
-    
+
     public bool ValidateJump(int destination, bool isSubroutine)
     {
         _analyzer ??= CodeInfo.CreateAnalyzer(CodeSection);

@@ -65,6 +65,8 @@ namespace Nethermind.Synchronization.Test
 
         private class SyncPeerMock : ISyncPeer
         {
+            public string Name => "Mock";
+
             private readonly bool _causeTimeoutOnInit;
             private readonly bool _causeTimeoutOnBlocks;
             private readonly bool _causeTimeoutOnHeaders;
@@ -204,7 +206,7 @@ namespace Nethermind.Synchronization.Test
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-            public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -352,7 +354,6 @@ namespace Nethermind.Synchronization.Test
                         beaconPivot,
                         MainnetSpecProvider.Instance,
                         BlockTree,
-                        blockCacheService,
                         NullReceiptStorage.Instance,
                         Always.Valid,
                         Always.Valid,
