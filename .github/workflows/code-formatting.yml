@@ -8,6 +8,7 @@ env:
   BUILD_CONFIG: release
   DOTNET_VERSION: 7
   DOTNET_INSTALL_DIR: '~/.dotnet'
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: true
 
 jobs:
   spacing-check:
