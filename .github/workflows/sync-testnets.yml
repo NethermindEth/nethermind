@@ -68,12 +68,12 @@ jobs:
           bad_logs["Corrupted"]=1
       
           declare -A good_logs
-          good_logs["Synced chain Head to"]=0
-          good_logs["Received ForkChoice:"]=0
+          good_logs["Synced chain Head"]=0
+          good_logs["Processed"]=0
       
           declare -A required_count
-          required_count["Synced chain Head to"]=20
-          required_count["Received ForkChoice:"]=20
+          required_count["Synced chain Head"]=20
+          required_count["Processed"]=20
       
           echo "Starting Docker logs monitoring..."
           docker logs -f sedge-execution-client | while read -r line; do
@@ -167,12 +167,12 @@ jobs:
           bad_logs["Corrupted"]=1
       
           declare -A good_logs
-          good_logs["Synced chain Head to"]=0
-          good_logs["Received ForkChoice:"]=0
+          good_logs["Synced chain Head"]=0
+          good_logs["Processed"]=0
       
           declare -A required_count
-          required_count["Synced chain Head to"]=20
-          required_count["Received ForkChoice:"]=20
+          required_count["Synced chain Head"]=20
+          required_count["Processed"]=20
       
           echo "Starting Docker logs monitoring..."
           docker logs -f sedge-execution-client | while read -r line; do
