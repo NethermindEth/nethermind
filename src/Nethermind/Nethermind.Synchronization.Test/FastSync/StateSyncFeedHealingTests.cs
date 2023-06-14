@@ -153,8 +153,8 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         private static void ProcessAccountRange(StateTree remoteStateTree, StateTree localStateTree, int blockNumber, Keccak rootHash, PathWithAccount[] accounts)
         {
-            Keccak startingHash = accounts.First().Path;
-            Keccak endHash = accounts.Last().Path;
+            ValueKeccak startingHash = accounts.First().Path;
+            ValueKeccak endHash = accounts.Last().Path;
             Keccak limitHash = Keccak.MaxValue;
 
             AccountProofCollector accountProofCollector = new(startingHash.Bytes);

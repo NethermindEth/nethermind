@@ -5,6 +5,8 @@ using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Nethermind.Synchronization.ParallelSync;
+
 namespace Nethermind.Facade.Eth
 {
     [JsonConverter(typeof(SyncingResultJsonConverter))]
@@ -15,6 +17,7 @@ namespace Nethermind.Facade.Eth
         public long StartingBlock { get; set; }
         public long CurrentBlock { get; set; }
         public long HighestBlock { get; set; }
+        public SyncMode SyncMode { get; set; }
 
         public override string ToString()
         {

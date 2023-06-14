@@ -316,8 +316,8 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = BuildBlockTree();
             Block block = Build.A.Block.TestObject;
             blockTree.SuggestBlock(block);
-            Block found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None);
-            Assert.That(found.Header.CalculateHash(), Is.EqualTo(block.Hash));
+            Block? found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None);
+            Assert.That(found?.Header.CalculateHash(), Is.EqualTo(block.Hash));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -326,8 +326,8 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = BuildBlockTree();
             Block block = Build.A.Block.TestObject;
             AddToMain(blockTree, block);
-            Block found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
-            Assert.That(found.Header.CalculateHash(), Is.EqualTo(block.Hash));
+            Block? found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
+            Assert.That(found?.Header.CalculateHash(), Is.EqualTo(block.Hash));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -336,8 +336,8 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = BuildBlockTree();
             Block block = Build.A.Block.TestObject;
             AddToMain(blockTree, block);
-            Block found = ((IBlockFinder)blockTree).FindBlock(new BlockParameter(block.Hash, true));
-            Assert.That(found.Header.CalculateHash(), Is.EqualTo(block.Hash));
+            Block? found = ((IBlockFinder)blockTree).FindBlock(new BlockParameter(block.Hash, true));
+            Assert.That(found?.Header.CalculateHash(), Is.EqualTo(block.Hash));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -346,7 +346,7 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = BuildBlockTree();
             Block block = Build.A.Block.TestObject;
             blockTree.SuggestBlock(block);
-            Block found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
+            Block? found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
             Assert.IsNull(found);
         }
 
@@ -356,7 +356,7 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = BuildBlockTree();
             Block block = Build.A.Block.TestObject;
             blockTree.SuggestBlock(block);
-            Block found = ((IBlockFinder)blockTree).FindBlock(new BlockParameter(block.Hash, true));
+            Block? found = ((IBlockFinder)blockTree).FindBlock(new BlockParameter(block.Hash, true));
             Assert.IsNull(found);
         }
 
@@ -371,8 +371,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            Block found = blockTree.FindBlock(2, BlockTreeLookupOptions.None);
-            Assert.That(found.Header.CalculateHash(), Is.EqualTo(block2.Hash));
+            Block? found = blockTree.FindBlock(2, BlockTreeLookupOptions.None);
+            Assert.That(found?.Header.CalculateHash(), Is.EqualTo(block2.Hash));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -386,7 +386,7 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            Block found = blockTree.FindBlock(1920000, BlockTreeLookupOptions.None);
+            Block? found = blockTree.FindBlock(1920000, BlockTreeLookupOptions.None);
             Assert.Null(found);
         }
 
@@ -399,7 +399,7 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block0);
             AddToMain(blockTree, block1);
 
-            Block found = blockTree.FindBlock(5, BlockTreeLookupOptions.None);
+            Block? found = blockTree.FindBlock(5, BlockTreeLookupOptions.None);
             Assert.IsNull(found);
         }
 
@@ -751,9 +751,9 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             blockTree.SuggestBlock(block1B);
 
-            Block found = blockTree.FindBlock(block1B.Hash, BlockTreeLookupOptions.None);
+            Block? found = blockTree.FindBlock(block1B.Hash, BlockTreeLookupOptions.None);
 
-            Assert.That(found.Header.CalculateHash(), Is.EqualTo(block1B.Hash));
+            Assert.That(found?.Header.CalculateHash(), Is.EqualTo(block1B.Hash));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -1101,7 +1101,7 @@ namespace Nethermind.Blockchain.Test
             Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(block5.Hash), "suggested");
         }
 
-        [Test, Timeout(Timeout.MaxTestTime), TestCaseSource("SourceOfBSearchTestCases")]
+        [Test, Timeout(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
         public void Loads_lowest_inserted_header_correctly(long beginIndex, long insertedBlocks)
         {
             long? expectedResult = insertedBlocks == 0L ? (long?)null : beginIndex - insertedBlocks + 1L;
@@ -1128,7 +1128,7 @@ namespace Nethermind.Blockchain.Test
             Assert.That(loadedTree.LowestInsertedHeader?.Number, Is.EqualTo(expectedResult), "loaded tree");
         }
 
-        [Test, Timeout(Timeout.MaxTestTime), TestCaseSource("SourceOfBSearchTestCases")]
+        [Test, Timeout(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
         public void Loads_lowest_inserted_body_correctly(long beginIndex, long insertedBlocks)
         {
             // left old code to prove that it does not matter for the result nowadays
@@ -1306,7 +1306,6 @@ namespace Nethermind.Blockchain.Test
             tree.SuggestBlock(genesis);
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis));
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis.Header));
-            Assert.Throws<InvalidOperationException>(() => tree.Insert(new[] { genesis }));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -1335,33 +1334,6 @@ namespace Nethermind.Blockchain.Test
             Block A = Build.A.Block.WithParent(genesis).WithDifficulty(0).TestObject;
             tree.SuggestBlock(A).Should().Be(AddBlockResult.Added);
             tree.FindBlock(A.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(UInt256.Zero);
-        }
-
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Can_batch_insert_blocks()
-        {
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            MemDb metadataDb = new();
-
-            long pivotNumber = 5L;
-
-            SyncConfig syncConfig = new();
-            syncConfig.PivotNumber = pivotNumber.ToString();
-
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
-            tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
-
-            List<Block> blocks = new();
-            for (long i = 5; i > 0; i--)
-            {
-                Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(1L).TestObject;
-                tree.Insert(block.Header);
-                blocks.Add(block);
-            }
-
-            tree.Insert(blocks);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]

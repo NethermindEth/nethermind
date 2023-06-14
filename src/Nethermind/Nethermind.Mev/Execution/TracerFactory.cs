@@ -55,6 +55,6 @@ namespace Nethermind.Mev.Execution
         }
 
         protected virtual ITracer CreateTracer(ReadOnlyTxProcessingEnv txProcessingEnv, ReadOnlyChainProcessingEnv chainProcessingEnv) =>
-            new Tracer(txProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor, _processingOptions);
+            new Tracer(txProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor, chainProcessingEnv.ChainProcessor, _processingOptions);
     }
 }

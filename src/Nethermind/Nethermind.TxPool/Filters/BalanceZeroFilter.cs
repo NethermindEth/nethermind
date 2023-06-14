@@ -34,12 +34,30 @@ namespace Nethermind.TxPool.Filters
                     AcceptTxResult.InsufficientFunds :
                     AcceptTxResult.InsufficientFunds.WithMessage("Balance is zero, cannot pay gas");
             }
+
             if (balance < tx.Value)
             {
                 Metrics.PendingTransactionsBalanceBelowValue++;
                 return isNotLocal ?
                     AcceptTxResult.InsufficientFunds :
                     AcceptTxResult.InsufficientFunds.WithMessage($"Balance is {balance} less than sending value {tx.Value}");
+            }
+
+            if (UInt256.MultiplyOverflow(tx.MaxFeePerGas, (UInt256)tx.GasLimit, out UInt256 txCostAndValue) ||
+                UInt256.AddOverflow(txCostAndValue, tx.Value, out txCostAndValue))
+            {
+                Metrics.PendingTransactionsBalanceBelowValue++;
+                if (_logger.IsTrace)
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
+                return AcceptTxResult.Int256Overflow;
+            }
+
+            if (balance < txCostAndValue)
+            {
+                Metrics.PendingTransactionsBalanceBelowValue++;
+                return isNotLocal ?
+                    AcceptTxResult.InsufficientFunds :
+                    AcceptTxResult.InsufficientFunds.WithMessage($"Balance is {balance} less than sending value + gas {txCostAndValue}");
             }
 
             return AcceptTxResult.Accepted;

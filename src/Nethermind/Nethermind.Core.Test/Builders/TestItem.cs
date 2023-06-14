@@ -15,7 +15,7 @@ namespace Nethermind.Core.Test.Builders
 {
     public static partial class TestItem
     {
-        public static Random Random { get; } = new();
+        public static Random Random { get; } = new(1337); // 1337 - to make tests predictable, reproducible
         private static readonly AccountDecoder _accountDecoder = new();
 
         static TestItem()
@@ -27,6 +27,7 @@ namespace Nethermind.Core.Test.Builders
             PublicKeys = new PublicKey[255];
             Addresses = new Address[255];
             Keccaks = new Keccak[255];
+            ValueKeccaks = new ValueKeccak[255];
 
             for (byte i = 1; i > 0; i++) // this will wrap around
             {
@@ -36,6 +37,7 @@ namespace Nethermind.Core.Test.Builders
                 PublicKeys[i - 1] = PrivateKeys[i - 1].PublicKey;
                 Addresses[i - 1] = PublicKeys[i - 1].Address;
                 Keccaks[i - 1] = Keccak.Compute(PublicKeys[i - 1].Bytes);
+                ValueKeccaks[i - 1] = Keccaks[i - 1];
             }
         }
 
@@ -82,6 +84,7 @@ namespace Nethermind.Core.Test.Builders
         public static PublicKey[] PublicKeys;
         public static Address[] Addresses;
         public static Keccak[] Keccaks;
+        public static ValueKeccak[] ValueKeccaks;
 
         public static Address AddressA = PublicKeyA.Address;
         public static Address AddressB = PublicKeyB.Address;
@@ -151,9 +154,7 @@ namespace Nethermind.Core.Test.Builders
         {
             Account account = new(
                 (UInt256)index,
-                (UInt256)index,
-                Keccak.EmptyTreeHash,
-                Keccak.OfAnEmptyString);
+                (UInt256)index);
 
             return account;
         }

@@ -187,7 +187,7 @@ namespace Nethermind.Blockchain.Test
             MemDb stateDb = new();
             MemDb codeDb = new();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
+            WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             StateReader stateReader =
                 new(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -226,7 +226,7 @@ namespace Nethermind.Blockchain.Test
                 .Where(t => t?.SenderAddress is not null)
                 .GroupBy(t => t.SenderAddress)
                 .ToDictionary(
-                    g => g.Key,
+                    g => g.Key!,
                     g => g.OrderBy(t => t, comparer).ToArray());
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
             BlocksConfig blocksConfig = new() { MinGasPrice = testCase.MinGasPriceForMining };

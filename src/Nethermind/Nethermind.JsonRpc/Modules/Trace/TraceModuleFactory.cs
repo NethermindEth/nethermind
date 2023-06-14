@@ -66,8 +66,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     _poSSwitcher);
 
             RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.StateProvider);
+            BlockProcessor.BlockValidationTransactionsExecutor executeBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor,
+                txProcessingEnv.StateProvider);
 
-            ReadOnlyChainProcessingEnv chainProcessingEnv = new(
+            ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor) => new(
                 txProcessingEnv,
                 Always.Valid,
                 _recoveryStep,
@@ -76,9 +78,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 _dbProvider,
                 _specProvider,
                 _logManager,
-                rpcBlockTransactionsExecutor);
+                transactionsExecutor);
 
-            Tracer tracer = new(chainProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor);
+            ReadOnlyChainProcessingEnv traceProcessingEnv = CreateChainProcessingEnv(rpcBlockTransactionsExecutor);
+            ReadOnlyChainProcessingEnv executeProcessingEnv = CreateChainProcessingEnv(executeBlockTransactionsExecutor);
+
+            Tracer tracer = new(txProcessingEnv.StateProvider, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor);
 
             return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, _specProvider, _logManager);
         }

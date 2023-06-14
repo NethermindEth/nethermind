@@ -44,11 +44,14 @@ namespace Nethermind.Network.Rlpx
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private IEventExecutorGroup _group;
         private TimeSpan _sendLatency;
+        private readonly TimeSpan _connectTimeout;
 
         public RlpxHost(IMessageSerializationService serializationService,
             PublicKey localNodeId,
+            int networkProcessingThread,
             int localPort,
             string? localIp,
+            int connectTimeoutMs,
             IHandshakeService handshakeService,
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
@@ -71,7 +74,14 @@ namespace Nethermind.Network.Rlpx
             //     new LoggerFilterOptions { MinLevel = Microsoft.Extensions.Logging.LogLevel.Warning });
             // InternalLoggerFactory.DefaultFactory = loggerFactory;
 
-            _group = new SingleThreadEventLoop();
+            if (networkProcessingThread <= 1)
+            {
+                _group = new SingleThreadEventLoop();
+            }
+            else
+            {
+                _group = new MultithreadEventLoopGroup(networkProcessingThread);
+            }
             _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
@@ -82,6 +92,7 @@ namespace Nethermind.Network.Rlpx
             LocalPort = localPort;
             LocalIp = localIp;
             _sendLatency = sendLatency;
+            _connectTimeout = TimeSpan.FromMilliseconds(connectTimeoutMs);
         }
 
         public async Task Init()
@@ -159,7 +170,7 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap.Channel<TcpSocketChannel>();
             clientBootstrap.Option(ChannelOption.TcpNodelay, true);
             clientBootstrap.Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default);
-            clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
+            clientBootstrap.Option(ChannelOption.ConnectTimeout, _connectTimeout);
             clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
             {
                 Session session = new(LocalPort, node, ch, _disconnectsAnalyzer, _logManager);
@@ -168,7 +179,7 @@ namespace Nethermind.Network.Rlpx
 
             Task<IChannel> connectTask = clientBootstrap.ConnectAsync(node.Address);
             CancellationTokenSource delayCancellation = new();
-            Task firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(2)), delayCancellation.Token));
+            Task firstTask = await Task.WhenAny(connectTask, Task.Delay(_connectTimeout.Add(TimeSpan.FromSeconds(2)), delayCancellation.Token));
             if (firstTask != connectTask)
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connection timed out");

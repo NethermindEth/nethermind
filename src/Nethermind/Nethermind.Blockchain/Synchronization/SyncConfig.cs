@@ -49,6 +49,7 @@ namespace Nethermind.Blockchain.Synchronization
             get => FastSync || SnapSync ? _pivotHash : null;
             set => _pivotHash = value;
         }
+        public int MaxAttemptsToUpdatePivot { get; set; } = 900;
         public bool WitnessProtocolEnabled { get; set; } = false;
         public bool SnapSync { get; set; } = false;
         public int SnapSyncAccountRangePartitionCount { get; set; } = 8;
@@ -60,6 +61,8 @@ namespace Nethermind.Blockchain.Synchronization
         public bool BlockGossipEnabled { get; set; } = true;
         public bool NonValidatorNode { get; set; } = false;
         public ITunableDb.TuneType TuneDbMode { get; set; } = ITunableDb.TuneType.Default;
+        public ITunableDb.TuneType BlocksDbTuneDbMode { get; set; } = ITunableDb.TuneType.EnableBlobFiles;
+        public int MaxProcessingThreads { get; set; }
 
         public override string ToString()
         {

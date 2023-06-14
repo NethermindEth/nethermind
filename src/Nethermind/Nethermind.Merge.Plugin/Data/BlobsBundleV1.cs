@@ -21,33 +21,35 @@ public class BlobsBundleV1
             blobsCount += tx?.BlobVersionedHashes?.Length ?? 0;
         }
 
-        Commitments = new Memory<byte>[blobsCount];
-        Blobs = new Memory<byte>[blobsCount];
-        Proofs = new Memory<byte>[blobsCount];
-        int i = 0;
+        Commitments = new byte[blobsCount][];
+        Blobs = new byte[blobsCount][];
+        Proofs = new byte[blobsCount][];
+        int blockIndex = 0;
 
         foreach (Transaction? tx in block.Transactions)
         {
-            if (tx.Type is not TxType.Blob || tx.BlobKzgs is null || tx.Blobs is null)
+            if (!tx.SupportsBlobs)
             {
                 continue;
             }
 
-            for (int cc = 0, bc = 0, pc = 0;
-                 cc < tx.BlobKzgs.Length;
-                 i++,
-                 cc += Ckzg.Ckzg.BytesPerCommitment,
-                 bc += Ckzg.Ckzg.BytesPerBlob,
-                 pc += Ckzg.Ckzg.BytesPerProof)
+            if (tx is not { NetworkWrapper: ShardBlobNetworkWrapper wrapper })
             {
-                Commitments[i] = tx.BlobKzgs.AsMemory(cc, Ckzg.Ckzg.BytesPerCommitment);
-                Blobs[i] = tx.Blobs.AsMemory(bc, Ckzg.Ckzg.BytesPerBlob);
-                Proofs[i] = tx.BlobProofs.AsMemory(pc, Ckzg.Ckzg.BytesPerProof);
+                throw new ArgumentException("Shard blob transaction should contain network wrapper data");
+            }
+
+            for (int txIndex = 0;
+                 txIndex < wrapper.Blobs.Length;
+                 blockIndex++, txIndex++)
+            {
+                Commitments[blockIndex] = wrapper.Commitments[txIndex];
+                Blobs[blockIndex] = wrapper.Blobs[txIndex];
+                Proofs[blockIndex] = wrapper.Proofs[txIndex];
             }
         }
     }
 
-    public Memory<byte>[] Commitments { get; }
-    public Memory<byte>[] Blobs { get; }
-    public Memory<byte>[] Proofs { get; }
+    public byte[][] Commitments { get; }
+    public byte[][] Blobs { get; }
+    public byte[][] Proofs { get; }
 }

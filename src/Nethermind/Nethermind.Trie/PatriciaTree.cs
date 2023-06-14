@@ -9,6 +9,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -22,6 +23,7 @@ namespace Nethermind.Trie
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
+        private const int MaxKeyStackAlloc = 64;
         private readonly ILogger _logger;
 
         public const int OneNodeAvgMemoryEstimate = 384;
@@ -124,7 +126,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public void Commit(long blockNumber, bool skipRoot = false)
+        public void Commit(long blockNumber, bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
         {
             if (_currentCommit is null)
             {
@@ -143,7 +145,7 @@ namespace Nethermind.Trie
                 while (_currentCommit.TryDequeue(out NodeCommitInfo node))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
-                    TrieStore.CommitNode(blockNumber, node);
+                    TrieStore.CommitNode(blockNumber, node, writeFlags: writeFlags);
                 }
 
                 // reset objects
@@ -151,7 +153,7 @@ namespace Nethermind.Trie
                 SetRootHash(RootRef.Keccak!, true);
             }
 
-            TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef);
+            TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef, writeFlags);
             if (_logger.IsDebug) _logger.Debug($"Finished committing block {blockNumber}");
         }
 
@@ -298,6 +300,7 @@ namespace Nethermind.Trie
             }
         }
 
+        [SkipLocalsInit]
         [DebuggerStepThrough]
         public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
         {
@@ -305,9 +308,10 @@ namespace Nethermind.Trie
             {
                 int nibblesCount = 2 * rawKey.Length;
                 byte[] array = null;
-                Span<byte> nibbles = rawKey.Length <= 64
-                    ? stackalloc byte[nibblesCount]
-                    : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
+                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                    ? stackalloc byte[MaxKeyStackAlloc]
+                    : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
+                [..nibblesCount]; // Slice to exact size;
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
                 var result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
@@ -319,24 +323,26 @@ namespace Nethermind.Trie
             }
         }
 
+        [SkipLocalsInit]
         [DebuggerStepThrough]
-        public void Set(Span<byte> rawKey, byte[] value)
+        public void Set(ReadOnlySpan<byte> rawKey, byte[] value)
         {
             if (_logger.IsTrace)
                 _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
 
             int nibblesCount = 2 * rawKey.Length;
             byte[] array = null;
-            Span<byte> nibbles = rawKey.Length <= 64
-                ? stackalloc byte[nibblesCount]
-                : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
+            Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                ? stackalloc byte[MaxKeyStackAlloc] // Fixed size stack allocation
+                : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
+                [..nibblesCount]; // Slice to exact size
             Nibbles.BytesToNibbleBytes(rawKey, nibbles);
             Run(nibbles, nibblesCount, value, true);
             if (array is not null) ArrayPool<byte>.Shared.Return(array);
         }
 
         [DebuggerStepThrough]
-        public void Set(Span<byte> rawKey, Rlp? value)
+        public void Set(ReadOnlySpan<byte> rawKey, Rlp? value)
         {
             Set(rawKey, value is null ? Array.Empty<byte>() : value.Bytes);
         }

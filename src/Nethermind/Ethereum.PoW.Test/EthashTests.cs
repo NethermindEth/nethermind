@@ -59,7 +59,7 @@ namespace Ethereum.PoW.Test
         {
             BlockHeader blockHeader = Rlp.Decode<BlockHeader>(new Rlp(test.Header));
             Assert.That(blockHeader.Nonce, Is.EqualTo(test.Nonce), "header nonce vs test nonce");
-            Assert.That(blockHeader.MixHash.Bytes, Is.EqualTo(test.MixHash.Bytes), "header mix hash vs test mix hash");
+            Assert.That(Bytes.AreEqual(blockHeader.MixHash.Bytes, test.MixHash.Bytes), Is.True, "header mix hash vs test mix hash");
 
             Keccak headerHash = Keccak.Compute(Rlp.Encode(blockHeader, RlpBehaviors.ForSealing).Bytes);
             Assert.That(headerHash, Is.EqualTo(test.HeaderHash), "header hash");
@@ -80,13 +80,13 @@ namespace Ethereum.PoW.Test
             byte[] nonceBytes = new byte[8];
             BinaryPrimitives.WriteUInt64LittleEndian(nonceBytes, test.Nonce);
             byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.Bytes, nonceBytes)).Bytes;
-            byte[] resultHalfTest = Keccak.Compute(Bytes.Concat(headerAndNonceHashed, test.MixHash.Bytes)).Bytes;
-            Assert.That(test.Result.Bytes, Is.EqualTo(resultHalfTest), "half test");
+            Span<byte> resultHalfTest = Keccak.Compute(Bytes.Concat(headerAndNonceHashed, test.MixHash.Bytes)).Bytes;
+            Assert.That(Bytes.AreEqual(test.Result.Bytes, resultHalfTest), Is.True, "half test");
 
             // here we confirm that the whole mix hash calculation is fine
-            (byte[] mixHash, byte[] result, bool success) = ethash.Hashimoto((ulong)test.FullSize, cache, headerHash, blockHeader.MixHash, test.Nonce);
-            Assert.That(mixHash, Is.EqualTo(test.MixHash.Bytes), "mix hash");
-            Assert.That(result, Is.EqualTo(test.Result.Bytes), "result");
+            (byte[] mixHash, ValueKeccak result, bool success) = ethash.Hashimoto((ulong)test.FullSize, cache, headerHash, blockHeader.MixHash, test.Nonce);
+            Assert.That(Bytes.AreEqual(mixHash, test.MixHash.Bytes), Is.True, "mix hash");
+            Assert.That(Bytes.AreEqual(result.Bytes, test.Result.Bytes), Is.True, "result");
 
             // not that the test's result value suggests that the result of the PoW operation is not below difficulty / block is invalid...
             // Assert.True(ethash.Validate(blockHeader), "validation");

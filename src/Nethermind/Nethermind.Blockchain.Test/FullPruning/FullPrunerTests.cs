@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -173,7 +174,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public IStateReader StateReader { get; }
             public FullPruner Pruner { get; }
             public MemDb TrieDb { get; }
-            public MemDb CopyDb { get; }
+            public TestMemDb CopyDb { get; }
+            public IDriveInfo DriveInfo { get; set; } = Substitute.For<IDriveInfo>();
+            public IChainEstimations _chainEstimations = ChainSizes.UnknownChain.Instance;
 
             public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
 
@@ -201,7 +204,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
                     FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
                     FullPruningCompletionBehavior = completionBehavior
-                }, BlockTree, StateReader, ProcessExitSource, LimboLogs.Instance);
+                }, BlockTree, StateReader, ProcessExitSource, _chainEstimations, DriveInfo, LimboLogs.Instance);
             }
 
             public async Task<bool> WaitForPruning()
@@ -219,9 +222,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public async Task<bool> WaitForPruningEnd(TestFullPruningDb.TestPruningContext context)
             {
                 await Task.Yield();
-                await context.WaitForFinish.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime), CancellationToken.None);
+                await context.WaitForFinish.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime * 5), CancellationToken.None);
                 AddBlocks(1);
-                return await context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime), CancellationToken.None);
+                return await context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime * 5), CancellationToken.None);
             }
 
             public TestFullPruningDb.TestPruningContext WaitForPruningStart()
@@ -250,6 +253,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 foreach (KeyValuePair<byte[], byte[]?> keyValuePair in TrieDb.GetAll())
                 {
                     CopyDb[keyValuePair.Key].Should().BeEquivalentTo(keyValuePair.Value);
+                    CopyDb.KeyWasWrittenWithFlags(keyValuePair.Key, WriteFlags.LowPriority | WriteFlags.DisableWAL);
                 }
             }
         }

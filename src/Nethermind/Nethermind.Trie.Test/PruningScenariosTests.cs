@@ -37,9 +37,8 @@ namespace Nethermind.Trie.Test
             private long _blockNumber = 1;
             private Dictionary<string, (long blockNumber, Keccak rootHash)> _branchingPoints = new();
             private IDbProvider _dbProvider;
-            private IStateProvider _stateProvider;
+            private IWorldState _stateProvider;
             private IStateReader _stateReader;
-            private IStorageProvider _storageProvider;
             private ILogManager _logManager;
             private ILogger _logger;
             private TrieStore _trieStore;
@@ -56,8 +55,7 @@ namespace Nethermind.Trie.Test
                 _persistenceStrategy = persistenceStrategy;
                 _pruningStrategy = pruningStrategy;
                 _trieStore = new TrieStore(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);
-                _stateProvider = new StateProvider(_trieStore, _dbProvider.CodeDb, _logManager);
-                _storageProvider = new StorageProvider(_trieStore, _stateProvider, _logManager);
+                _stateProvider = new WorldState(_trieStore, _dbProvider.CodeDb, _logManager);
                 _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
             }
 
@@ -133,7 +131,7 @@ namespace Nethermind.Trie.Test
 
             public PruningContext SetStorage(int accountIndex, int storageKey, int storageValue = 1)
             {
-                _storageProvider.Set(
+                _stateProvider.Set(
                     new StorageCell(Address.FromNumber((UInt256)accountIndex), (UInt256)storageKey),
                     ((UInt256)storageValue).ToBigEndian());
                 return this;
@@ -151,7 +149,7 @@ namespace Nethermind.Trie.Test
                 _logger.Info($"READ   STORAGE {accountIndex}.{storageKey}");
                 StorageCell storageCell =
                     new(Address.FromNumber((UInt256)accountIndex), (UInt256)storageKey);
-                _storageProvider.Get(storageCell);
+                _stateProvider.Get(storageCell);
                 return this;
             }
 
@@ -178,8 +176,6 @@ namespace Nethermind.Trie.Test
 
             public PruningContext Commit()
             {
-                _storageProvider.Commit();
-                _storageProvider.CommitTrees(_blockNumber);
                 _stateProvider.Commit(MuirGlacier.Instance);
                 _stateProvider.CommitTree(_blockNumber);
                 _blockNumber++;
@@ -196,8 +192,7 @@ namespace Nethermind.Trie.Test
             {
                 _trieStore.Dispose();
                 _trieStore = new TrieStore(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);
-                _stateProvider = new StateProvider(_trieStore, _dbProvider.CodeDb, _logManager);
-                _storageProvider = new StorageProvider(_trieStore, _stateProvider, _logManager);
+                _stateProvider = new WorldState(_trieStore, _dbProvider.CodeDb, _logManager);
                 _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
                 return this;
             }
@@ -223,7 +218,7 @@ namespace Nethermind.Trie.Test
 
             public PruningContext VerifyStorageValue(int account, UInt256 index, int value)
             {
-                _storageProvider.Get(new StorageCell(Address.FromNumber((UInt256)account), index))
+                _stateProvider.Get(new StorageCell(Address.FromNumber((UInt256)account), index))
                     .Should().BeEquivalentTo(((UInt256)value).ToBigEndian());
                 return this;
             }
@@ -255,7 +250,6 @@ namespace Nethermind.Trie.Test
                 (long blockNumber, Keccak rootHash) branchPoint = _branchingPoints[name];
                 _blockNumber = branchPoint.blockNumber;
                 Keccak rootHash = branchPoint.rootHash;
-                _storageProvider.Reset();
                 _stateProvider.Reset();
                 _stateProvider.StateRoot = rootHash;
                 return this;

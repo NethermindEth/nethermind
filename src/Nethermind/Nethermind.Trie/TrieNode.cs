@@ -3,6 +3,7 @@
 
 using System;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -189,6 +190,11 @@ namespace Nethermind.Trie
             _rlpStream = rlp.AsRlpStream();
         }
 
+        public TrieNode(NodeType nodeType, Keccak keccak, ReadOnlySpan<byte> rlp)
+            : this(nodeType, keccak, rlp.ToArray())
+        {
+        }
+
         public TrieNode(NodeType nodeType, Keccak keccak, byte[] rlp)
             : this(nodeType, rlp)
         {
@@ -226,7 +232,7 @@ namespace Nethermind.Trie
         /// <summary>
         /// Highly optimized
         /// </summary>
-        public void ResolveNode(ITrieNodeResolver tree)
+        public void ResolveNode(ITrieNodeResolver tree, ReadFlags readFlags = ReadFlags.None)
         {
             try
             {
@@ -239,7 +245,7 @@ namespace Nethermind.Trie
                             throw new TrieException("Unable to resolve node without Keccak");
                         }
 
-                        FullRlp = tree.LoadRlp(Keccak);
+                        FullRlp = tree.LoadRlp(Keccak, readFlags);
                         IsPersisted = true;
 
                         if (FullRlp is null)
@@ -312,6 +318,17 @@ namespace Nethermind.Trie
                 return;
             }
 
+            Keccak = GenerateKey(tree, isRoot);
+        }
+
+        public Keccak? GenerateKey(ITrieNodeResolver tree, bool isRoot)
+        {
+            Keccak? keccak = Keccak;
+            if (keccak is not null)
+            {
+                return keccak;
+            }
+
             if (FullRlp is null || IsDirty)
             {
                 FullRlp = RlpEncode(tree);
@@ -324,8 +341,10 @@ namespace Nethermind.Trie
             if (FullRlp.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
-                Keccak = Keccak.Compute(FullRlp);
+                return Keccak.Compute(FullRlp);
             }
+
+            return null;
         }
 
         public bool TryResolveStorageRootHash(ITrieNodeResolver resolver, out Keccak? storageRootHash)
@@ -384,6 +403,24 @@ namespace Nethermind.Trie
             SeekChild(i);
             (int _, int length) = _rlpStream!.PeekPrefixAndContentLength();
             return length == 32 ? _rlpStream.DecodeKeccak() : null;
+        }
+
+        public bool GetChildHashAsValueKeccak(int i, out ValueKeccak keccak)
+        {
+            Unsafe.SkipInit(out keccak);
+            if (_rlpStream is null)
+            {
+                return false;
+            }
+
+            SeekChild(i);
+            (_, int length) = _rlpStream!.PeekPrefixAndContentLength();
+            if (length == 32 && _rlpStream.DecodeValueKeccak(out keccak))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         public bool IsChildNull(int i)

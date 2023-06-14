@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,6 +30,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         private TestMemColumnsDb<ReceiptsColumns> _receiptsDb = null!;
         private ReceiptsRecovery _receiptsRecovery;
         private IBlockTree _blockTree;
+        private IBlockStore _blockStore;
         private readonly bool _useCompactReceipts;
         private ReceiptConfig _receiptConfig;
         private PersistentReceiptStorage _storage;
@@ -49,6 +51,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             _receiptsDb = new TestMemColumnsDb<ReceiptsColumns>();
             _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
             _blockTree = Substitute.For<IBlockTree>();
+            _blockStore = Substitute.For<IBlockStore>();
             CreateStorage();
         }
 
@@ -60,6 +63,7 @@ namespace Nethermind.Blockchain.Test.Receipts
                 MainnetSpecProvider.Instance,
                 _receiptsRecovery,
                 _blockTree,
+                _blockStore,
                 _receiptConfig,
                 _decoder
             )
@@ -133,7 +137,7 @@ namespace Nethermind.Blockchain.Test.Receipts
 
             TestMemDb blocksDb = (TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
             blocksDb.KeyWasRead(blockNumPrefixed.ToArray(), 0);
-            blocksDb.KeyWasRead(block.Hash.Bytes, 1);
+            blocksDb.KeyWasRead(block.Hash.BytesToArray(), 1);
         }
 
         [Test]
@@ -393,7 +397,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         {
             (block, TxReceipt[] receipts) = PrepareBlock(block, isFinalized, headNumber);
             _storage.Insert(block, receipts);
-            _receiptsRecovery.TryRecover(block, receipts);
+            _receiptsRecovery.TryRecover(new ReceiptRecoveryBlock(block), receipts);
 
             return (block, receipts);
         }

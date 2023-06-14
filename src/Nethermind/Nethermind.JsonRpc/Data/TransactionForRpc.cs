@@ -28,7 +28,7 @@ public class TransactionForRpc
         Value = transaction.Value;
         GasPrice = transaction.GasPrice;
         Gas = transaction.GasLimit;
-        Input = Data = transaction.Data;
+        Input = Data = transaction.Data.AsArray();
         if (transaction.Supports1559)
         {
             GasPrice = baseFee is not null
@@ -40,6 +40,8 @@ public class TransactionForRpc
         ChainId = transaction.ChainId;
         Type = transaction.Type;
         AccessList = transaction.AccessList is null ? null : AccessListItemForRpc.FromAccessList(transaction.AccessList);
+        MaxFeePerDataGas = transaction.MaxFeePerDataGas;
+        BlobVersionedHashes = transaction.BlobVersionedHashes;
 
         Signature? signature = transaction.Signature;
         if (signature is not null)
@@ -91,7 +93,12 @@ public class TransactionForRpc
 
     public AccessListItemForRpc[]? AccessList { get; set; }
 
+
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
     public UInt256? MaxFeePerDataGas { get; set; } // eip4844
+
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    public byte[][]? BlobVersionedHashes { get; set; } // eip4844
 
     public UInt256? V { get; set; }
 
@@ -130,6 +137,7 @@ public class TransactionForRpc
         if (tx.SupportsBlobs)
         {
             tx.MaxFeePerDataGas = MaxFeePerDataGas;
+            tx.BlobVersionedHashes = BlobVersionedHashes;
         }
 
         return tx;
@@ -139,6 +147,8 @@ public class TransactionForRpc
 
     public T ToTransaction<T>(ulong? chainId = null) where T : Transaction, new()
     {
+        byte[]? data = Data ?? Input;
+
         T tx = new()
         {
             GasLimit = Gas ?? 0,
@@ -147,12 +157,16 @@ public class TransactionForRpc
             To = To,
             SenderAddress = From,
             Value = Value ?? 0,
-            Data = Data ?? Input,
+            Data = (Memory<byte>?)data,
             Type = Type,
             AccessList = TryGetAccessList(),
             ChainId = chainId,
-            MaxFeePerDataGas = MaxFeePerDataGas,
         };
+
+        if (data is null)
+        {
+            tx.Data = null; // Yes this is needed... really. Try a debugger.
+        }
 
         if (tx.Supports1559)
         {
@@ -163,6 +177,7 @@ public class TransactionForRpc
         if (tx.SupportsBlobs)
         {
             tx.MaxFeePerDataGas = MaxFeePerDataGas;
+            tx.BlobVersionedHashes = BlobVersionedHashes;
         }
 
         return tx;

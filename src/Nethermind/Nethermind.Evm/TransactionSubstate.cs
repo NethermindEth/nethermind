@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
@@ -26,7 +27,7 @@ namespace Nethermind.Evm
             ShouldRevert = false;
         }
 
-        public TransactionSubstate(
+        public unsafe TransactionSubstate(
             ReadOnlyMemory<byte> output,
             long refund,
             IReadOnlyCollection<Address> destroyList,
@@ -34,6 +35,8 @@ namespace Nethermind.Evm
             bool shouldRevert,
             bool isTracerConnected)
         {
+            const int revertPrefix = 4;
+
             Output = output;
             Refund = refund;
             DestroyList = destroyList;
@@ -41,38 +44,35 @@ namespace Nethermind.Evm
             ShouldRevert = shouldRevert;
             if (ShouldRevert)
             {
-                // TODO: is this invoked even if there is no tracer? why would we construct error messages then?
                 Error = Revert;
                 if (isTracerConnected)
                 {
                     if (Output.Length > 0)
                     {
-                        var span = Output.Span;
-                        if (span.Length > 32 + 4)
+                        ReadOnlySpan<byte> span = Output.Span;
+                        if (span.Length >= sizeof(UInt256) * 2 + revertPrefix)
                         {
                             try
                             {
-                                BigInteger start = span.Slice(4, 32).ToUnsignedBigInteger();
-                                BigInteger length = span.Slice((int)start + 4, 32).ToUnsignedBigInteger();
-                                Error = string.Concat("Reverted ",
-                                    Output.Slice((int)start + 32 + 4, (int)length).ToArray().ToHexString(true));
+                                int start = (int)(new UInt256(span.Slice(revertPrefix, sizeof(UInt256)), isBigEndian: true));
+                                if (start + revertPrefix + sizeof(UInt256) <= span.Length)
+                                {
+                                    int length = (int)new UInt256(span.Slice(start + revertPrefix, sizeof(UInt256)), isBigEndian: true);
+                                    if (checked(start + revertPrefix + sizeof(UInt256) + length) <= span.Length)
+                                    {
+                                        Error = string.Concat("Reverted ",
+                                            span.Slice(start + sizeof(UInt256) + revertPrefix, length).ToHexString(true));
+                                        return;
+                                    }
+                                }
                             }
-                            catch (Exception)
+                            catch
                             {
-                                try
-                                {
-                                    Error = string.Concat("Reverted ", span.ToHexString(true));
-                                }
-                                catch
-                                {
-                                    // ignore
-                                }
+                                // ignore
                             }
                         }
-                        else
-                        {
-                            Error = string.Concat("Reverted ", span.ToHexString(true));
-                        }
+
+                        Error = string.Concat("Reverted ", span.ToHexString(true));
                     }
                 }
             }

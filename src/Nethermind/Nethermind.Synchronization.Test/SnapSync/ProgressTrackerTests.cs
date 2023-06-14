@@ -59,25 +59,25 @@ public class ProgressTrackerTests
         (SnapSyncBatch request, bool finished) = progressTracker.GetNextRequest();
         request.AccountRangeRequest.Should().NotBeNull();
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(0);
-        request.AccountRangeRequest.LimitHash!.Bytes[0].Should().Be(64);
+        request.AccountRangeRequest.LimitHash.Value.Bytes[0].Should().Be(64);
         finished.Should().BeFalse();
 
         (request, finished) = progressTracker.GetNextRequest();
         request.AccountRangeRequest.Should().NotBeNull();
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(64);
-        request.AccountRangeRequest.LimitHash!.Bytes[0].Should().Be(128);
+        request.AccountRangeRequest.LimitHash.Value.Bytes[0].Should().Be(128);
         finished.Should().BeFalse();
 
         (request, finished) = progressTracker.GetNextRequest();
         request.AccountRangeRequest.Should().NotBeNull();
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(128);
-        request.AccountRangeRequest.LimitHash!.Bytes[0].Should().Be(192);
+        request.AccountRangeRequest.LimitHash.Value.Bytes[0].Should().Be(192);
         finished.Should().BeFalse();
 
         (request, finished) = progressTracker.GetNextRequest();
         request.AccountRangeRequest.Should().NotBeNull();
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(192);
-        request.AccountRangeRequest.LimitHash!.Bytes[0].Should().Be(255);
+        request.AccountRangeRequest.LimitHash.Value.Bytes[0].Should().Be(255);
         finished.Should().BeFalse();
 
         (request, finished) = progressTracker.GetNextRequest();

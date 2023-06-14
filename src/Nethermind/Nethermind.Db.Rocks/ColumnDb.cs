@@ -15,6 +15,8 @@ public class ColumnDb : IDbWithSpan
     private readonly DbOnTheRocks _mainDb;
     internal readonly ColumnFamilyHandle _columnFamily;
 
+    private DbOnTheRocks.ManagedIterators _readaheadIterators = new();
+
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
     {
         _rocksDb = rocksDb;
@@ -23,33 +25,27 @@ public class ColumnDb : IDbWithSpan
         Name = name;
     }
 
-    public void Dispose() { }
+    public void Dispose()
+    {
+        _readaheadIterators.DisposeAll();
+    }
 
     public string Name { get; }
 
     public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        UpdateReadMetrics();
-        return _rocksDb.Get(key, _columnFamily);
+        return _mainDb.GetWithColumnFamily(key, _columnFamily, _readaheadIterators, flags);
     }
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
-        UpdateWriteMetrics();
-        if (value is null)
-        {
-            _rocksDb.Remove(key, _columnFamily, _mainDb.WriteFlagsToWriteOptions(flags));
-        }
-        else
-        {
-            _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteFlagsToWriteOptions(flags));
-        }
+        _mainDb.SetWithColumnFamily(key, _columnFamily, value, flags);
     }
 
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] =>
         _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());
 
-    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
     {
         Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
         return _mainDb.GetAllCore(iterator);
@@ -91,11 +87,11 @@ public class ColumnDb : IDbWithSpan
         {
             if (value is null)
             {
-                _underlyingBatch._rocksBatch.Delete(key, _columnDb._columnFamily);
+                _underlyingBatch.Delete(key, _columnDb._columnFamily);
             }
             else
             {
-                _underlyingBatch._rocksBatch.Put(key, value, _columnDb._columnFamily);
+                _underlyingBatch.Set(key, value, _columnDb._columnFamily);
             }
         }
     }
@@ -118,11 +114,6 @@ public class ColumnDb : IDbWithSpan
     /// </summary>
     /// <exception cref="NotSupportedException"></exception>
     public void Clear() { throw new NotSupportedException(); }
-
-    private void UpdateWriteMetrics() => _mainDb.UpdateWriteMetrics();
-
-    private void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
-
     public long GetSize() => _mainDb.GetSize();
     public long GetCacheSize() => _mainDb.GetCacheSize();
     public long GetIndexSize() => _mainDb.GetIndexSize();

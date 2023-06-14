@@ -1,4 +1,4 @@
-name: 'Nethermind/Ethereum tests'
+name: Nethermind/Ethereum tests
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -9,491 +9,202 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      coverage:
+        default: false
+        description: Collect coverage
+        required: false
+        type: boolean
 
 env:
-  BUILD_CONFIG: release
+  COLLECT_COVERAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event.inputs.coverage }}
   DOTNET_VERSION: 7
-  DOTNET_INSTALL_DIR: '~/.dotnet'
+  RETENTION: 1
 
 jobs:
-  neth-tests:
-    name: 'Run Nethermind tests #1'
+  nethermind-tests:
+    name: Run ${{ matrix.project }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    continue-on-error: true
+    outputs:
+      collect_coverage: ${{ env.COLLECT_COVERAGE }}
+    strategy:
+      matrix:
+        project:
+          - Nethermind.Abi.Test
+          - Nethermind.AccountAbstraction.Test
+          - Nethermind.Api.Test
+          - Nethermind.AuRa.Test
+          - Nethermind.Blockchain.Test
+          - Nethermind.Cli.Test
+          - Nethermind.Clique.Test
+          - Nethermind.Config.Test
+          - Nethermind.Consensus.Test
+          - Nethermind.Core.Test
+          - Nethermind.Db.Test
+          - Nethermind.Ethash.Test
+          - Nethermind.EthStats.Test
+          - Nethermind.Evm.Test
+          - Nethermind.Facade.Test
+          - Nethermind.HealthChecks.Test
+          - Nethermind.Hive.Test
+          - Nethermind.JsonRpc.Test
+          - Nethermind.JsonRpc.TraceStore.Test
+          - Nethermind.KeyStore.Test
+          - Nethermind.Logging.NLog.Test
+          - Nethermind.Merge.AuRa.Test
+          - Nethermind.Merge.Plugin.Test
+          - Nethermind.Mev.Test
+          - Nethermind.Mining.Test
+          - Nethermind.Monitoring.Test
+          - Nethermind.Network.Discovery.Test
+          - Nethermind.Network.Dns.Test
+          - Nethermind.Network.Enr.Test
+          - Nethermind.Network.Test
+          - Nethermind.Overseer.Test
+          - Nethermind.Runner.Test
+          - Nethermind.Serialization.Ssz.Test
+          - Nethermind.Sockets.Test
+          - Nethermind.Specs.Test
+          - Nethermind.State.Test
+          - Nethermind.State.Test.Runner.Test
+          - Nethermind.Synchronization.Test
+          - Nethermind.Trie.Test
+          - Nethermind.TxPool.Test
+          - Nethermind.Wallet.Test
     steps:
-    - name: Cache dotnet
-      id: cache-dotnet
-      uses: actions/cache@v3
-      with:
-          path: ${{ env.DOTNET_INSTALL_DIR }}
-          key: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-          restore-keys: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-    - name: Set up .NET
-      if: ${{ steps.cache-dotnet.outputs.cache-hit != 'true' }}
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-    - name: Install Apt Packages
-      uses: awalsh128/cache-apt-pkgs-action@v1.2.4
-      with:
-          packages: libsnappy-dev libc6-dev libc6
-          version: 1.0
     - name: Check out repository
       uses: actions/checkout@v3
       with:
         submodules: true
-    - name: Cache nuget
-      id: cache-nuget
-      uses: actions/cache@v3
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-
-    - name: Nethermind.Abi.Test
-      run: dotnet test src/Nethermind/Nethermind.Abi.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Api.Test
-      run: dotnet test src/Nethermind/Nethermind.Api.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.AccountAbstraction.Test
-      run: dotnet test src/Nethermind/Nethermind.AccountAbstraction.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.AuRa.Test
-      run: dotnet test src/Nethermind/Nethermind.AuRa.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Blockchain.Test
-      run: dotnet test src/Nethermind/Nethermind.Blockchain.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.JsonRpc.TraceStore.Tests
-      run: dotnet test src/Nethermind/Nethermind.JsonRpc.TraceStore.Tests -c ${{ env.BUILD_CONFIG }}
-
-  neth-tests2:
-    name: 'Run Nethermind tests #2'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-    - name: Cache dotnet
-      id: cache-dotnet
-      uses: actions/cache@v3
-      with:
-          path: ${{ env.DOTNET_INSTALL_DIR }}
-          key: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-          restore-keys: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
     - name: Set up .NET
-      if: ${{ steps.cache-dotnet.outputs.cache-hit != 'true' }}
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
-    - name: Install Apt Packages
-      uses: awalsh128/cache-apt-pkgs-action@v1.2.4
+    - name: Install Linux packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev -y --no-install-recommends
+    - name: ${{ matrix.project }}
+      id: test
+      run: |
+        dotnet test src/Nethermind/${{ matrix.project }} -c release \
+          ${{ env.COLLECT_COVERAGE == 'true' && '-p:CollectCoverage=true -p:CoverletOutputFormat=opencover' || '' }}
+    - name: Save test outcome
+      if: success() || failure()
+      run: echo "${{ steps.test.outcome == 'success' }}," >> nethermind.outcome
+    - name: Upload test outcome
+      if: success() || failure()
+      uses: actions/upload-artifact@v3
       with:
-          packages: libsnappy-dev libc6-dev libc6
-          version: 1.0
-    - name: Check out repository
-      uses: actions/checkout@v3
+        name: ${{ matrix.project }}-outcome
+        path: nethermind.outcome
+        retention-days: ${{ env.RETENTION }}
+    - name: Upload coverage report
+      if: env.COLLECT_COVERAGE == 'true'
+      uses: actions/upload-artifact@v3
       with:
-        submodules: true
-    - name: Cache nuget
-      id: cache-nuget
-      uses: actions/cache@v3
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        name: ${{ matrix.project }}-coverage
+        path: src/Nethermind/${{ matrix.project }}/coverage.opencover.xml
+        retention-days: ${{ env.RETENTION }}
 
-    - name: Nethermind.Clique.Test
-      run: dotnet test src/Nethermind/Nethermind.Clique.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Config.Test
-      run: dotnet test src/Nethermind/Nethermind.Config.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Consensus.Test
-      run: dotnet test src/Nethermind/Nethermind.Consensus.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Core.Test
-      run: dotnet test src/Nethermind/Nethermind.Core.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Facade.Test
-      run: dotnet test src/Nethermind/Nethermind.Facade.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Logging.NLog.Test
-      run: dotnet test src/Nethermind/Nethermind.Logging.NLog.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Network.Test
-      run: dotnet test src/Nethermind/Nethermind.Network.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Network.Discovery.Test
-      run: dotnet test src/Nethermind/Nethermind.Network.Discovery.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Network.Dns.Test
-      run: dotnet test src/Nethermind/Nethermind.Network.Dns.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Network.Enr.Test
-      run: dotnet test src/Nethermind/Nethermind.Network.Enr.Test -c ${{ env.BUILD_CONFIG }}
-
-  neth-tests3:
-    name: 'Run Nethermind tests #3'
+  nethermind-tests-status:
+    name: Nethermind tests
+    needs: nethermind-tests
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
-    - name: Cache dotnet
-      id: cache-dotnet
-      uses: actions/cache@v3
-      with:
-          path: ${{ env.DOTNET_INSTALL_DIR }}
-          key: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-          restore-keys: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-    - name: Set up .NET
-      if: ${{ steps.cache-dotnet.outputs.cache-hit != 'true' }}
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-    - name: Install Apt Packages
-      uses: awalsh128/cache-apt-pkgs-action@v1.2.4
-      with:
-          packages: libsnappy-dev libc6-dev libc6
-          version: 1.0
-    - name: Check out repository
-      uses: actions/checkout@v3
-      with:
-        submodules: true
-    - name: Cache nuget
-      id: cache-nuget
-      uses: actions/cache@v3
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+    - name: Download test outcomes
+      uses: actions/download-artifact@v3
+    - name: Ensure tests passed
+      run: |
+        data=$(cat **/nethermind.outcome) && data=${data%?}
+        passed=$(echo "[$data]" | jq -r 'all')
+        [ $passed = 'true' ] && exit 0 || exit 1
 
-    - name: Nethermind.Ethash.Test
-      run: dotnet test src/Nethermind/Nethermind.Ethash.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.EthStats.Test
-      run: dotnet test src/Nethermind/Nethermind.EthStats.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Evm.Test
-      run: dotnet test src/Nethermind/Nethermind.Evm.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.HealthChecks.Test
-      run: dotnet test src/Nethermind/Nethermind.HealthChecks.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.JsonRpc.Test
-      run: dotnet test src/Nethermind/Nethermind.JsonRpc.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Merge.AuRa.Test
-      run: dotnet test src/Nethermind/Nethermind.Merge.AuRa.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Merge.Plugin.Test
-      run: dotnet test src/Nethermind/Nethermind.Merge.Plugin.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Mev.Test
-      run: dotnet test src/Nethermind/Nethermind.Mev.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Specs.Test
-      run: dotnet test src/Nethermind/Nethermind.Specs.Test -c ${{ env.BUILD_CONFIG }}
-
-  neth-tests4:
-    name: 'Run Nethermind tests #4'
+  ethereum-tests:
+    name: Run ${{ matrix.project }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    continue-on-error: true
+    strategy:
+      matrix:
+        project:
+          - Ethereum.Abi.Test
+          - Ethereum.Basic.Test
+          - Ethereum.Blockchain.Block.Legacy.Test
+          - Ethereum.Blockchain.Block.Test
+          - Ethereum.Blockchain.Legacy.Test
+          - Ethereum.Blockchain.Test
+          - Ethereum.Difficulty.Test
+          - Ethereum.HexPrefix.Test
+          - Ethereum.KeyAddress.Test
+          - Ethereum.PoW.Test
+          - Ethereum.Rlp.Test
+          - Ethereum.Transaction.Test
+          - Ethereum.Transition.Test
+          - Ethereum.Trie.Test
+          - Ethereum.VM.Test
     steps:
-    - name: Cache dotnet
-      id: cache-dotnet
-      uses: actions/cache@v3
-      with:
-          path: ${{ env.DOTNET_INSTALL_DIR }}
-          key: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-          restore-keys: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-    - name: Set up .NET
-      if: ${{ steps.cache-dotnet.outputs.cache-hit != 'true' }}
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-    - name: Install Apt Packages
-      uses: awalsh128/cache-apt-pkgs-action@v1.2.4
-      with:
-          packages: libsnappy-dev libc6-dev libc6
-          version: 1.0
-    - name: Check out repository
-      uses: actions/checkout@v3
-      with:
-        submodules: true
-    - name: Cache nuget
-      id: cache-nuget
-      uses: actions/cache@v3
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-
-    - name: Nethermind.Synchronization.Test
-      run: dotnet test src/Nethermind/Nethermind.Synchronization.Test -c ${{ env.BUILD_CONFIG }}
-
-  neth-tests5:
-    name: 'Run Nethermind tests #5'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-    - name: Cache dotnet
-      id: cache-dotnet
-      uses: actions/cache@v3
-      with:
-          path: ${{ env.DOTNET_INSTALL_DIR }}
-          key: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-          restore-keys: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-    - name: Set up .NET
-      if: ${{ steps.cache-dotnet.outputs.cache-hit != 'true' }}
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-    - name: Install Apt Packages
-      uses: awalsh128/cache-apt-pkgs-action@v1.2.4
-      with:
-          packages: libsnappy-dev libc6-dev libc6
-          version: 1.0
-    - name: Check out repository
-      uses: actions/checkout@v3
-      with:
-        submodules: true
-    - name: Cache nuget
-      id: cache-nuget
-      uses: actions/cache@v3
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-
-    - name: Nethermind.Mining.Test
-      run: dotnet test src/Nethermind/Nethermind.Mining.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Serialization.Ssz.Test
-      run: dotnet test src/Nethermind/Nethermind.Serialization.Ssz.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Sockets.Test
-      run: dotnet test src/Nethermind/Nethermind.Sockets.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.State.Test
-      run: dotnet test src/Nethermind/Nethermind.State.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Trie.Test
-      run: dotnet test src/Nethermind/Nethermind.Trie.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.TxPool.Test
-      run: dotnet test src/Nethermind/Nethermind.TxPool.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Wallet.Test
-      run: dotnet test src/Nethermind/Nethermind.Wallet.Test -c ${{ env.BUILD_CONFIG }}
-
-  neth-tests6:
-    name: 'Run Nethermind tests #6'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-    - name: Cache dotnet
-      id: cache-dotnet
-      uses: actions/cache@v3
-      with:
-          path: ${{ env.DOTNET_INSTALL_DIR }}
-          key: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-          restore-keys: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-    - name: Set up .NET
-      if: ${{ steps.cache-dotnet.outputs.cache-hit != 'true' }}
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-    - name: Install Apt Packages
-      uses: awalsh128/cache-apt-pkgs-action@v1.2.4
-      with:
-          packages: libsnappy-dev libc6-dev libc6
-          version: 1.0
-    - name: Check out repository
-      uses: actions/checkout@v3
-      with:
-        submodules: true
-    - name: Cache nuget
-      id: cache-nuget
-      uses: actions/cache@v3
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-
-    - name: Nethermind.Db.Test
-      run: dotnet test src/Nethermind/Nethermind.Db.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Hive.Tests
-      run: dotnet test src/Nethermind/Nethermind.Hive.Tests -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.KeyStore.Test
-      run: dotnet test src/Nethermind/Nethermind.KeyStore.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Monitoring.Test
-      run: dotnet test src/Nethermind/Nethermind.Monitoring.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Overseer.Test
-      run: dotnet test src/Nethermind/Nethermind.Overseer.Test -c ${{ env.BUILD_CONFIG }}
-
-  neth-runner:
-    name: Run Nethermind.Runner tests
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-    - name: Cache dotnet
-      id: cache-dotnet
-      uses: actions/cache@v3
-      with:
-          path: ${{ env.DOTNET_INSTALL_DIR }}
-          key: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-          restore-keys: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-    - name: Set up .NET
-      if: ${{ steps.cache-dotnet.outputs.cache-hit != 'true' }}
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-    - name: Install Apt Packages
-      uses: awalsh128/cache-apt-pkgs-action@v1.2.4
-      with:
-          packages: libsnappy-dev libc6-dev libc6
-          version: 1.0
-    - name: Check out repository
-      uses: actions/checkout@v3
-      with:
-        submodules: true
-    - name: Cache nuget
-      id: cache-nuget
-      uses: actions/cache@v3
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-
-    - name: Nethermind.Cli.Test
-      run: dotnet test src/Nethermind/Nethermind.Cli.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Runner.Test
-      run: dotnet test src/Nethermind/Nethermind.Runner.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.State.Test.Runner.Test
-      run: dotnet test src/Nethermind/Nethermind.State.Test.Runner.Test -c ${{ env.BUILD_CONFIG }}
-      
-  eth-tests1:
-    name: 'Run Ethereum tests #1'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-    - name: Cache dotnet
-      id: cache-dotnet
-      uses: actions/cache@v3
-      with:
-          path: ${{ env.DOTNET_INSTALL_DIR }}
-          key: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-          restore-keys: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-    - name: Set up .NET
-      if: ${{ steps.cache-dotnet.outputs.cache-hit != 'true' }}
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-    - name: Install Apt Packages
-      uses: awalsh128/cache-apt-pkgs-action@v1.2.4
-      with:
-          packages: libsnappy-dev libc6-dev libc6
-          version: 1.0
-    - name: Check out repository
-      uses: actions/checkout@v3
-      with:
-        submodules: true
-    - name: Cache nuget
-      id: cache-nuget
-      uses: actions/cache@v3
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-
-    - name: Ethereum.Blockchain.Test
-      run: dotnet test src/Nethermind/Ethereum.Blockchain.Test -c ${{ env.BUILD_CONFIG }}
-
-  eth-tests2:
-    name: 'Run Ethereum tests #2'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-    - name: Cache dotnet
-      id: cache-dotnet
-      uses: actions/cache@v3
-      with:
-          path: ${{ env.DOTNET_INSTALL_DIR }}
-          key: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-          restore-keys: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-    - name: Set up .NET
-      if: ${{ steps.cache-dotnet.outputs.cache-hit != 'true' }}
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-    - name: Install Apt Packages
-      uses: awalsh128/cache-apt-pkgs-action@v1.2.4
-      with:
-          packages: libsnappy-dev libc6-dev libc6
-          version: 1.0
     - name: Check out repository
       uses: actions/checkout@v3
       with:
         submodules: recursive
-    - name: Cache nuget
-      id: cache-nuget
-      uses: actions/cache@v3
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-
-    - name: Ethereum.Trie.Test
-      run: dotnet test src/Nethermind/Ethereum.Trie.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Ethereum.VM.Test
-      run: dotnet test src/Nethermind/Ethereum.VM.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Ethereum.Blockchain.Block.Legacy.Test
-      run: dotnet test src/Nethermind/Ethereum.Blockchain.Block.Legacy.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Ethereum.Blockchain.Legacy.Test
-      run: dotnet test src/Nethermind/Ethereum.Blockchain.Legacy.Test -c ${{ env.BUILD_CONFIG }}
-
-  eth-tests3:
-    name: 'Run Ethereum tests #3'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-    - name: Cache dotnet
-      id: cache-dotnet
-      uses: actions/cache@v3
-      with:
-          path: ${{ env.DOTNET_INSTALL_DIR }}
-          key: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-          restore-keys: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
     - name: Set up .NET
-      if: ${{ steps.cache-dotnet.outputs.cache-hit != 'true' }}
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
-    - name: Install Apt Packages
-      uses: awalsh128/cache-apt-pkgs-action@v1.2.4
+    - name: Install Linux packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev -y --no-install-recommends
+    - name: ${{ matrix.project }}
+      id: test
+      run: |
+        dotnet test src/Nethermind/${{ matrix.project }} -c release \
+          ${{ env.COLLECT_COVERAGE == 'true' && '-p:CollectCoverage=true -p:CoverletOutputFormat=opencover -p:Exclude="[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Ethereum.Test.Base]*"' || '' }}
+    - name: Save test outcome
+      if: success() || failure()
+      run: echo "${{ steps.test.outcome == 'success' }}," >> ethereum.outcome
+    - name: Upload test outcome
+      if: success() || failure()
+      uses: actions/upload-artifact@v3
       with:
-          packages: libsnappy-dev libc6-dev libc6
-          version: 1.0
-    - name: Check out repository
-      uses: actions/checkout@v3
+        name: ${{ matrix.project }}-outcome
+        path: ethereum.outcome
+        retention-days: ${{ env.RETENTION }}
+    - name: Upload coverage report
+      if: env.COLLECT_COVERAGE == 'true'
+      uses: actions/upload-artifact@v3
       with:
-        submodules: true
-    - name: Cache nuget
-      id: cache-nuget
-      uses: actions/cache@v3
-      with:
-        path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        name: ${{ matrix.project }}-coverage
+        path: src/Nethermind/${{ matrix.project }}/coverage.opencover.xml
+        retention-days: ${{ env.RETENTION }}
 
-    - name: Ethereum.Abi.Test
-      run: dotnet test src/Nethermind/Ethereum.Abi.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Ethereum.Basic.Test
-      run: dotnet test src/Nethermind/Ethereum.Basic.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Ethereum.Blockchain.Block.Test
-      run: dotnet test src/Nethermind/Ethereum.Blockchain.Block.Test -c ${{ env.BUILD_CONFIG }}     
-    - name: Ethereum.Difficulty.Test
-      run: dotnet test src/Nethermind/Ethereum.Difficulty.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Ethereum.HexPrefix.Test
-      run: dotnet test src/Nethermind/Ethereum.HexPrefix.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Ethereum.KeyAddress.Test
-      run: dotnet test src/Nethermind/Ethereum.KeyAddress.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Ethereum.PoW.Test
-      run: dotnet test src/Nethermind/Ethereum.PoW.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Ethereum.Rlp.Test
-      run: dotnet test src/Nethermind/Ethereum.Rlp.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Ethereum.Transaction.Test
-      run: dotnet test src/Nethermind/Ethereum.Transaction.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Ethereum.Transition.Test
-      run: dotnet test src/Nethermind/Ethereum.Transition.Test -c ${{ env.BUILD_CONFIG }}
+  ethereum-tests-status:
+    name: Ethereum tests
+    needs: ethereum-tests
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download test outcomes
+      uses: actions/download-artifact@v3
+    - name: Ensure tests passed
+      run: |
+        data=$(cat **/ethereum.outcome) && data=${data%?}
+        passed=$(echo "[$data]" | jq -r 'all')
+        [ $passed = 'true' ] && exit 0 || exit 1
+
+  codecov-upload:
+    name: Upload Codecov reports
+    needs: [nethermind-tests-status, ethereum-tests-status]
+    if: needs.nethermind-tests.outputs.collect_coverage == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download coverage reports
+        uses: actions/download-artifact@v3
+        with:
+          path: .coverage
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          name: codecov-nethermind
+          directory: .coverage

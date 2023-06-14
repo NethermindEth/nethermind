@@ -44,14 +44,6 @@ namespace Nethermind.Synchronization.Reporting
             _syncPeersReport = new SyncPeersReport(syncPeerPool, nodeStatsManager, logManager);
             _timer = (timerFactory ?? TimerFactory.Default).CreateTimer(_defaultReportingIntervals);
 
-            _fastBlocksPivotNumber = _syncConfig.PivotNumberParsed;
-            _blockPaddingLength = _fastBlocksPivotNumber.ToString().Length;
-            _paddedPivot = $"{Pad(_fastBlocksPivotNumber, _blockPaddingLength)}";
-            long amountOfBodiesToDownload = _fastBlocksPivotNumber - syncConfig.AncientBodiesBarrier;
-            _paddedAmountOfOldBodiesToDownload = $"{Pad(amountOfBodiesToDownload, $"{amountOfBodiesToDownload}".Length)}";
-            long amountOfReceiptsToDownload = _fastBlocksPivotNumber - syncConfig.AncientReceiptsBarrier;
-            _paddedAmountOfOldReceiptsToDownload = $"{Pad(_fastBlocksPivotNumber - syncConfig.AncientReceiptsBarrier, $"{amountOfReceiptsToDownload}".Length)}";
-
             StartTime = DateTime.UtcNow;
 
             _timer.AutoReset = false;
@@ -139,13 +131,29 @@ namespace Nethermind.Synchronization.Reporting
         }
 
         private bool _reportedFastBlocksSummary;
-        private readonly int _blockPaddingLength;
-        private readonly string _paddedPivot;
-        private readonly string _paddedAmountOfOldBodiesToDownload;
-        private readonly string _paddedAmountOfOldReceiptsToDownload;
+        private int _blockPaddingLength;
+        private string _paddedPivot;
+        private string _paddedAmountOfOldBodiesToDownload;
+        private string _paddedAmountOfOldReceiptsToDownload;
+
+        private void SetPaddedPivots()
+        {
+            _fastBlocksPivotNumber = _syncConfig.PivotNumberParsed;
+            _blockPaddingLength = _fastBlocksPivotNumber.ToString().Length;
+            _paddedPivot = $"{Pad(_fastBlocksPivotNumber, _blockPaddingLength)}";
+            long amountOfBodiesToDownload = _fastBlocksPivotNumber - _syncConfig.AncientBodiesBarrier;
+            _paddedAmountOfOldBodiesToDownload = $"{Pad(amountOfBodiesToDownload, $"{amountOfBodiesToDownload}".Length)}";
+            long amountOfReceiptsToDownload = _fastBlocksPivotNumber - _syncConfig.AncientReceiptsBarrier;
+            _paddedAmountOfOldReceiptsToDownload = $"{Pad(_fastBlocksPivotNumber - _syncConfig.AncientReceiptsBarrier, $"{amountOfReceiptsToDownload}".Length)}";
+        }
 
         private void WriteSyncReport()
         {
+            if (_fastBlocksPivotNumber != _syncConfig.PivotNumberParsed)
+            {
+                SetPaddedPivots();
+            }
+
             UpdateMetrics();
 
             if (!_logger.IsInfo)
@@ -166,7 +174,7 @@ namespace Nethermind.Synchronization.Reporting
             {
                 if (_reportId % PeerCountFrequency == 0)
                 {
-                    _logger.Info($"Peers | with known best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount} |");
+                    _logger.Info(_syncPeersReport.MakeSummaryReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | with known best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount}"));
                 }
             }
 

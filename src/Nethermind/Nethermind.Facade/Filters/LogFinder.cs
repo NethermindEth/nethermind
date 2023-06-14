@@ -214,7 +214,7 @@ namespace Nethermind.Blockchain.Find
         private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, CancellationToken cancellationToken)
         {
             List<FilterLog> logList = null;
-            using (iterator)
+            try
             {
                 long logIndexInBlock = 0;
                 while (iterator.TryGetNext(out var receipt))
@@ -261,6 +261,11 @@ namespace Nethermind.Blockchain.Find
                         }
                     }
                 }
+            }
+            finally
+            {
+                // Confusingly, the `using` statement causes the recovery context to be null during the dispose.
+                iterator.Dispose();
             }
 
             return logList ?? (IEnumerable<FilterLog>)Array.Empty<FilterLog>();

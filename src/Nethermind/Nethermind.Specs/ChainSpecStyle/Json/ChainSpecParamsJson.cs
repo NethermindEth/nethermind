@@ -51,6 +51,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
         public long? MaxCodeSizeTransition { get; set; }
 
+        public ulong? MaxCodeSizeTransitionTimestamp { get; set; }
+
         public long? Eip140Transition { get; set; }
 
         public long? Eip211Transition { get; set; }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
@@ -61,15 +62,15 @@ namespace Nethermind.Network.Test
         {
             _nodeStats = new NodeStatsLight(_node);
 
-            var isConnDelayed = _nodeStats.IsConnectionDelayed();
+            var isConnDelayed = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
             Assert.IsFalse(isConnDelayed.Result, "before disconnect");
 
             _nodeStats.AddNodeStatsDisconnectEvent(DisconnectType.Remote, DisconnectReason.Other);
-            isConnDelayed = _nodeStats.IsConnectionDelayed();
+            isConnDelayed = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
             Assert.IsTrue(isConnDelayed.Result, "just after disconnect");
             Assert.That(isConnDelayed.DelayReason, Is.EqualTo(NodeStatsEventType.Disconnect));
             await Task.Delay(125);
-            isConnDelayed = _nodeStats.IsConnectionDelayed();
+            isConnDelayed = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
             Assert.IsFalse(isConnDelayed.Result, "125ms after disconnect");
         }
 
@@ -81,11 +82,11 @@ namespace Nethermind.Network.Test
         {
             _nodeStats = new NodeStatsLight(_node);
 
-            (bool isConnDelayed, NodeStatsEventType? _) = _nodeStats.IsConnectionDelayed();
+            (bool isConnDelayed, NodeStatsEventType? _) = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
             Assert.IsFalse(isConnDelayed, "before disconnect");
 
             _nodeStats.AddNodeStatsEvent(eventType);
-            (isConnDelayed, _) = _nodeStats.IsConnectionDelayed();
+            (isConnDelayed, _) = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
             isConnDelayed.Should().Be(connectionDelayed);
         }
 
@@ -95,12 +96,12 @@ namespace Nethermind.Network.Test
         {
             _nodeStats = new NodeStatsLight(_node);
 
-            (bool isConnDelayed, NodeStatsEventType? _) = _nodeStats.IsConnectionDelayed();
+            (bool isConnDelayed, NodeStatsEventType? _) = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
             Assert.IsFalse(isConnDelayed, "before disconnect");
 
             _nodeStats.AddNodeStatsDisconnectEvent(disconnectType, reason);
             await Task.Delay(125); // Standard disconnect delay without specific handling
-            (isConnDelayed, _) = _nodeStats.IsConnectionDelayed();
+            (isConnDelayed, _) = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
             isConnDelayed.Should().Be(connectionDelayed);
         }
     }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Linq;
 using Nethermind.Core;
@@ -39,9 +40,10 @@ namespace Nethermind.Evm
             long dataCost = 0;
             if (transaction.Data is not null)
             {
+                Span<byte> data = transaction.Data.Value.Span;
                 for (int i = 0; i < transaction.DataLength; i++)
                 {
-                    dataCost += transaction.Data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
+                    dataCost += data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
                 }
             }
 

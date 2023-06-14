@@ -31,6 +31,7 @@ namespace Nethermind.Cli
             _ = app.HelpOption("-?|-h|--help");
 
             var colorSchemeOption = app.Option("-cs|--colorScheme <colorScheme>", "Color Scheme. Possible values: Basic|Dracula", CommandOptionType.SingleValue);
+            var nodeAddressOption = app.Option("-a|--address <address>", "Node Address", CommandOptionType.SingleValue);
 
             app.OnExecute(() =>
             {
@@ -54,7 +55,10 @@ namespace Nethermind.Cli
                 moduleLoader.DiscoverAndLoadModules();
                 ReadLine.AutoCompletionHandler = new AutoCompletionHandler(moduleLoader);
 
-                nodeManager.SwitchUri(new Uri("http://localhost:8545"));
+                string nodeAddress = nodeAddressOption.HasValue()
+                    ? nodeAddressOption.Value()
+                    : "http://localhost:8545";
+                nodeManager.SwitchUri(new Uri(nodeAddress));
                 historyManager.Init();
                 TestConnection(nodeManager, engine, cliConsole);
                 cliConsole.WriteLine();
