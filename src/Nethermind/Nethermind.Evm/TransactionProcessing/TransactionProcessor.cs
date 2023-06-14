@@ -565,18 +565,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 UInt256 fees = (UInt256)spentGas * premiumPerGas;
                 UInt256 burntFees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : 0;
 
-                if (_worldState.AccountExists(header.GasBeneficiary))
-                    _worldState.AddToBalance(header.GasBeneficiary, fees, spec);
-                else
-                    _worldState.CreateAccount(header.GasBeneficiary, fees);
+                _worldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary, fees, spec);
 
                 if (spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null && !burntFees.IsZero)
-                {
-                    if (_worldState.AccountExists(spec.Eip1559FeeCollector))
-                        _worldState.AddToBalance(spec.Eip1559FeeCollector, burntFees, spec);
-                    else
-                        _worldState.CreateAccount(spec.Eip1559FeeCollector, burntFees);
-                }
+                    _worldState.AddToBalanceAndCreateIfNotExists(spec.Eip1559FeeCollector, burntFees, spec); ;
 
                 if (tracer.IsTracingFees)
                     tracer.ReportFees(fees, burntFees);
