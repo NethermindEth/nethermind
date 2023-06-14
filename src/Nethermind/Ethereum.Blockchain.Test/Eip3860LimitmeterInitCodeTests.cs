@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -9,7 +9,7 @@ namespace Ethereum.Blockchain.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class Eip3651Tests : GeneralStateTestBase
+public class Eip3860LimitmeterInitCodeTests : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test)
@@ -19,7 +19,7 @@ public class Eip3651Tests : GeneralStateTestBase
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP3651");
+        var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP3860-limitmeterinitcode");
         return (IEnumerable<GeneralStateTest>)loader.LoadTests();
     }
 }

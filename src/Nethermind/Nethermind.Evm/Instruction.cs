@@ -69,7 +69,7 @@ namespace Nethermind.Evm
         CHAINID = 0x46, // ChainIdOpcodeEnabled
         SELFBALANCE = 0x47, // SelfBalanceOpcodeEnabled
         BASEFEE = 0x48, // BaseFeeEnabled
-        DATAHASH = 0x49,
+        BLOBHASH = 0x49, // DankshardingEnabled
 
         POP = 0x50,
         MLOAD = 0x51,
@@ -286,7 +286,7 @@ namespace Nethermind.Evm
             Instruction.RJUMP => (0, 0, 2),
             Instruction.RJUMPI => (1, 0, 2),
             Instruction.RJUMPV => (1, 0, 4),
-            Instruction.DATAHASH => (1, 1, 0),
+            Instruction.BLOBHASH => (1, 1, 0),
             >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, 1, instruction - Instruction.PUSH0),
             >= Instruction.DUP1 and <= Instruction.DUP16 => ((ushort)(instruction - Instruction.DUP1 + 1), (ushort)(instruction - Instruction.DUP1 + 2), 0),
             >= Instruction.SWAP1 and <= Instruction.SWAP16 => ((ushort)(instruction - Instruction.SWAP1 + 2), (ushort)(instruction - Instruction.SWAP1 + 2), 0),

@@ -889,12 +889,13 @@ namespace Nethermind.Serialization.Rlp
             return new Keccak(keccakSpan);
         }
 
-        public ValueKeccak? DecodeValueKeccak()
+        public bool DecodeValueKeccak(out ValueKeccak keccak)
         {
+            Unsafe.SkipInit(out keccak);
             int prefix = ReadByte();
             if (prefix == 128)
             {
-                return null;
+                return false;
             }
 
             if (prefix != 128 + 32)
@@ -904,7 +905,8 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Span<byte> keccakSpan = Read(32);
-            return new ValueKeccak(keccakSpan);
+            keccak = new ValueKeccak(keccakSpan);
+            return true;
         }
 
         public Keccak? DecodeZeroPrefixKeccak()

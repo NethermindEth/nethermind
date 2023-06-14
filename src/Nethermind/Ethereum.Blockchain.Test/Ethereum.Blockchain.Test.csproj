@@ -35,6 +35,7 @@
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
+    <EmbeddedResource Include="..\..\tests\GeneralStateTests\Shanghai\st*\**\*.*"/>
     <EmbeddedResource Include="..\..\tests\EipTests\BlockchainTests\StateTests\**\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

@@ -251,6 +251,12 @@ namespace Nethermind.Trie.Pruning
                     if (!ReferenceEquals(cachedNodeCopy, node))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
+                        cachedNodeCopy.ResolveKey(this, nodeCommitInfo.IsRoot);
+                        if (node.Keccak != cachedNodeCopy.Keccak)
+                        {
+                            throw new InvalidOperationException($"The hash of replacement node {cachedNodeCopy} is not the same as the original {node}.");
+                        }
+
                         if (!nodeCommitInfo.IsRoot)
                         {
                             nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
@@ -500,9 +506,8 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         private void PruneCache()
         {
-            if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+            if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()} MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
-            List<TrieNode> toRemove = new(); // TODO: resettable
 
             long newMemory = 0;
             foreach ((ValueKeccak key, TrieNode node) in _dirtyNodes.AllNodes)
@@ -510,15 +515,16 @@ namespace Nethermind.Trie.Pruning
                 if (node.IsPersisted)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
-                    if (node.Keccak is null)
+                    Keccak? keccak = node.Keccak;
+                    if (keccak is null)
                     {
-                        node.ResolveKey(this, true); // TODO: hack
-                        if (node.Keccak != key)
+                        keccak = node.GenerateKey(this, isRoot: true);
+                        if (keccak != key)
                         {
-                            throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
+                            throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
                         }
                     }
-                    toRemove.Add(node);
+                    _dirtyNodes.Remove(keccak);
 
                     Metrics.PrunedPersistedNodesCount++;
                 }
@@ -529,8 +535,7 @@ namespace Nethermind.Trie.Pruning
                     {
                         throw new InvalidOperationException($"Removed {node}");
                     }
-
-                    toRemove.Add(node);
+                    _dirtyNodes.Remove(node.Keccak);
 
                     Metrics.PrunedTransientNodesCount++;
                 }
@@ -541,23 +546,12 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            for (int index = 0; index < toRemove.Count; index++)
-            {
-                TrieNode trieNode = toRemove[index];
-                if (trieNode.Keccak is null)
-                {
-                    throw new InvalidOperationException($"{trieNode} has a null key");
-                }
-
-                _dirtyNodes.Remove(trieNode.Keccak);
-            }
-
             MemoryUsedByDirtyCache = newMemory;
             Metrics.CachedNodesCount = _dirtyNodes.Count;
 
             stopwatch.Stop();
             Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
-            if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+            if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         }
 
         /// <summary>

@@ -50,8 +50,8 @@
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.1.0" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.2" />
     <PackageVersion Include="Nito.Collections.Deque" Version="1.1.1" />
-    <PackageVersion Include="NLog" Version="5.1.2" />
-    <PackageVersion Include="NLog.Targets.Seq" Version="2.1.0" />
+    <PackageVersion Include="NLog" Version="5.2.0" />
+    <PackageVersion Include="NLog.Targets.Seq" Version="3.0.0" />
     <PackageVersion Include="NSubstitute" Version="5.0.0" />
     <PackageVersion Include="NUnit" Version="3.13.3" />
     <PackageVersion Include="NUnit.Analyzers" Version="3.6.1" />

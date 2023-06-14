@@ -207,6 +207,24 @@ namespace Nethermind.Evm.TransactionProcessing
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, "block gas limit exceeded");
                     return;
                 }
+
+                if (executionOptions == ExecutionOptions.Commit || executionOptions == ExecutionOptions.None)
+                {
+                    decimal gasPrice = (decimal)effectiveGasPrice / 1_000_000_000m;
+                    Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
+                    Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
+
+                    Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
+                    Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
+
+                    Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
+                    Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.EstMedianGasPrice);
+                    Metrics.Transactions++;
+
+                    Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
+                    Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
+                    Metrics.BlockTransactions++;
+                }
             }
 
             if (!_worldState.AccountExists(caller))
@@ -241,7 +259,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            UInt256 senderReservedGasPayment = noValidation ? UInt256.Zero : (ulong)gasLimit * effectiveGasPrice;
+            UInt256 senderReservedGasPayment = (ulong)gasLimit * effectiveGasPrice;
 
             if (notSystemTransaction)
             {
@@ -276,7 +294,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 _worldState.IncrementNonce(caller);
             }
 
-            _worldState.SubtractFromBalance(caller, senderReservedGasPayment, spec);
+            // Do not charge gas if noValidation is set
+            if (!noValidation) _worldState.SubtractFromBalance(caller, senderReservedGasPayment, spec);
             if (commit)
             {
                 _worldState.Commit(spec, txTracer.IsTracingState ? txTracer : NullTxTracer.Instance);
@@ -286,7 +305,8 @@ namespace Nethermind.Evm.TransactionProcessing
             long spentGas = gasLimit;
 
             Snapshot snapshot = _worldState.TakeSnapshot();
-            _worldState.SubtractFromBalance(caller, value, spec);
+            // Fixes eth_estimateGas. If sender is systemUser subtracting value will cause InsufficientBalanceException
+            if (!noValidation || notSystemTransaction) _worldState.SubtractFromBalance(caller, value, spec);
             byte statusCode = StatusCode.Failure;
             TransactionSubstate substate = null;
             Address? recipientOrNull = null;
@@ -393,7 +413,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     statusCode = StatusCode.Success;
                 }
 
-                spentGas = Refund(gasLimit, unspentGas, substate, caller, effectiveGasPrice, spec);
+                spentGas = Refund(gasLimit, unspentGas, substate, caller, effectiveGasPrice, noValidation, spec);
             }
             catch (Exception ex) when (
                 ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
@@ -453,7 +473,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    _worldState.AddToBalance(caller, senderReservedGasPayment, spec);
+                    if (!noValidation) _worldState.AddToBalance(caller, senderReservedGasPayment, spec);
                     if (notSystemTransaction)
                     {
                         _worldState.DecrementNonce(caller);
@@ -526,7 +546,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender,
-            in UInt256 gasPrice, IReleaseSpec spec)
+            in UInt256 gasPrice, bool noValidation, IReleaseSpec spec)
         {
             long spentGas = gasLimit;
             if (!substate.IsError)
@@ -539,7 +559,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (_logger.IsTrace)
                     _logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
-                _worldState.AddToBalance(sender, (ulong)(unspentGas + refund) * gasPrice, spec);
+                // If noValidation we didn't charge for gas, so do not refund
+                if (!noValidation) _worldState.AddToBalance(sender, (ulong)(unspentGas + refund) * gasPrice, spec);
                 spentGas -= refund;
             }
 

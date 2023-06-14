@@ -52,7 +52,7 @@ namespace Nethermind.Db
             }
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys]
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
         {
             get
             {

@@ -318,6 +318,17 @@ namespace Nethermind.Trie
                 return;
             }
 
+            Keccak = GenerateKey(tree, isRoot);
+        }
+
+        public Keccak? GenerateKey(ITrieNodeResolver tree, bool isRoot)
+        {
+            Keccak? keccak = Keccak;
+            if (keccak is not null)
+            {
+                return keccak;
+            }
+
             if (FullRlp is null || IsDirty)
             {
                 FullRlp = RlpEncode(tree);
@@ -330,8 +341,10 @@ namespace Nethermind.Trie
             if (FullRlp.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
-                Keccak = Keccak.Compute(FullRlp);
+                return Keccak.Compute(FullRlp);
             }
+
+            return null;
         }
 
         public bool TryResolveStorageRootHash(ITrieNodeResolver resolver, out Keccak? storageRootHash)
@@ -392,16 +405,22 @@ namespace Nethermind.Trie
             return length == 32 ? _rlpStream.DecodeKeccak() : null;
         }
 
-        public ValueKeccak? GetChildHashAsValueKeccak(int i)
+        public bool GetChildHashAsValueKeccak(int i, out ValueKeccak keccak)
         {
+            Unsafe.SkipInit(out keccak);
             if (_rlpStream is null)
             {
-                return null;
+                return false;
             }
 
             SeekChild(i);
-            (int _, int length) = _rlpStream!.PeekPrefixAndContentLength();
-            return length == 32 ? _rlpStream.DecodeValueKeccak() : null;
+            (_, int length) = _rlpStream!.PeekPrefixAndContentLength();
+            if (length == 32 && _rlpStream.DecodeValueKeccak(out keccak))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         public bool IsChildNull(int i)

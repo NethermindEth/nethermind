@@ -324,7 +324,7 @@ internal static class EvmObjectFormat
                 SectionHeader sectionHeader = header.CodeSections[sectionIdx];
                 (int codeSectionStartOffset, int codeSectionSize) = sectionHeader;
                 ReadOnlySpan<byte> code = container.Slice(codeSectionStartOffset, codeSectionSize);
-                if (!ValidateInstructions(sectionIdx, typesection ,code, header, validationQueue, out ushort jumpsCount))
+                if (!ValidateInstructions(sectionIdx, typesection, code, header, validationQueue, out ushort jumpsCount))
                 {
                     return false;
                 }
