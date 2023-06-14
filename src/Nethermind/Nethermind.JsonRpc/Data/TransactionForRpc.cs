@@ -93,11 +93,10 @@ public class TransactionForRpc
 
     public AccessListItemForRpc[]? AccessList { get; set; }
 
-
-    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UInt256? MaxFeePerDataGas { get; set; } // eip4844
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte[][]? BlobVersionedHashes { get; set; } // eip4844
 
     public UInt256? V { get; set; }
