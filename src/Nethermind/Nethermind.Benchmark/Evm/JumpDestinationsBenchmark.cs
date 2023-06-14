@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using BenchmarkDotNet.Attributes;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.CodeAnalysis;
+
 namespace Nethermind.Benchmarks.Evm
 {
     public class JumpDestinationsBenchmark
