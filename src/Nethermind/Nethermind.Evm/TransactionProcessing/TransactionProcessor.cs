@@ -113,6 +113,24 @@ namespace Nethermind.Evm.TransactionProcessing
             UInt256 effectiveGasPrice =
                 tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
+            if (opts == ExecutionOptions.Commit || opts == ExecutionOptions.None)
+            {
+                decimal gasPrice = (decimal)effectiveGasPrice / 1_000_000_000m;
+                Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
+                Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
+
+                Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
+                Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
+
+                Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
+                Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.EstMedianGasPrice);
+                Metrics.Transactions++;
+
+                Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
+                Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
+                Metrics.BlockTransactions++;
+            }
+
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
             if (!ValidateSender(tx, header, spec, tracer, opts))
@@ -262,24 +280,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit} - {header.GasUsed}");
                     QuickFail(tx, header, spec, tracer, "block gas limit exceeded");
                     return false;
-                }
-
-                if (executionOptions == ExecutionOptions.Commit || executionOptions == ExecutionOptions.None)
-                {
-                    decimal gasPrice = (decimal)effectiveGasPrice / 1_000_000_000m;
-                    Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
-                    Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
-
-                    Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
-                    Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
-
-                    Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
-                    Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.EstMedianGasPrice);
-                    Metrics.Transactions++;
-
-                    Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
-                    Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
-                    Metrics.BlockTransactions++;
                 }
             }
 
