@@ -5,6 +5,10 @@ on:
     branches: ["master"]
   workflow_dispatch:
 
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
+  TERM: xterm
+
 jobs:
   chiado:
     name: "Run sync of chiado testnet"
