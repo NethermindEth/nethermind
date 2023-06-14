@@ -175,7 +175,6 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public FullPruner Pruner { get; }
             public MemDb TrieDb { get; }
             public TestMemDb CopyDb { get; }
-            public IDriveInfo DriveInfo { get; set; } = Substitute.For<IDriveInfo>();
             public IChainEstimations _chainEstimations = ChainSizes.UnknownChain.Instance;
 
             public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
@@ -204,7 +203,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
                     FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
                     FullPruningCompletionBehavior = completionBehavior
-                }, BlockTree, StateReader, ProcessExitSource, _chainEstimations, DriveInfo, LimboLogs.Instance);
+                }, BlockTree, StateReader, ProcessExitSource, _chainEstimations, 0, LimboLogs.Instance);
             }
 
             public async Task<bool> WaitForPruning()
