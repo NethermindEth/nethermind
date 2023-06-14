@@ -258,8 +258,12 @@ namespace Nethermind.Evm.TransactionProcessing
                     return;
                 }
 
+                UInt256 maxDataGasPrice = spec.IsEip4844Enabled
+                ? DataGasCalculator.CalculateDataGas(transaction) * transaction.MaxFeePerDataGas.Value
+                : UInt256.Zero;
+
                 if (!noValidation && spec.IsEip1559Enabled && !transaction.IsFree() &&
-                    (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value + dataGasPrice > senderBalance)
+                    (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value + maxDataGasPrice > senderBalance)
                 {
                     TraceLogInvalidTx(transaction,
                         $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");

@@ -120,6 +120,11 @@ internal class TransactionProcessorEip4844Tests
             TestName = $"Rejected if balance is not enough due to data gas price hiking, all funds are returned",
             ExpectedResult = UInt256.Zero,
         };
+        yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.DataGasPerBlob), 1, 2ul, 0ul)
+        {
+            TestName = $"Rejected if balance does not cover {nameof(Transaction.MaxFeePerDataGas)}, all funds are returned",
+            ExpectedResult = UInt256.Zero,
+        };
     }
 
     [Test]
