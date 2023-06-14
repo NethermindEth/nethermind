@@ -22,8 +22,8 @@ namespace Nethermind.Evm
             UInt256? dataGasPrice = null;
             if (tx.SupportsBlobs)
             {
-                dataGas = IntrinsicGasCalculator.CalculateDataGas(tx);
-                dataGasPrice = IntrinsicGasCalculator.CalculateDataGasPrice(header, tx);
+                dataGas = DataGasCalculator.CalculateDataGas(tx);
+                dataGasPrice = DataGasCalculator.CalculateDataGasPrice(header, tx);
             }
 
             return new(effectiveGasPrice, dataGasPrice, dataGas);

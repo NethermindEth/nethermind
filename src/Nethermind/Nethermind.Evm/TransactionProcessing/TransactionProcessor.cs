@@ -241,7 +241,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             UInt256 dataGasPrice = spec.IsEip4844Enabled
-                ? IntrinsicGasCalculator.CalculateDataGasPrice(block, transaction)
+                ? DataGasCalculator.CalculateDataGasPrice(block, transaction)
                 : UInt256.Zero;
 
             UInt256 senderReservedGasPayment = (ulong)gasLimit * effectiveGasPrice + dataGasPrice;

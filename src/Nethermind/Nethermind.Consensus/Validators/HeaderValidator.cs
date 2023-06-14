@@ -310,7 +310,7 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            UInt256? expectedExcessDataGas = IntrinsicGasCalculator.CalculateExcessDataGas(parentHeader, spec);
+            UInt256? expectedExcessDataGas = DataGasCalculator.CalculateExcessDataGas(parentHeader, spec);
 
             if (header.ExcessDataGas != expectedExcessDataGas)
             {

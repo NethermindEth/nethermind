@@ -79,8 +79,8 @@ namespace Nethermind.Consensus.Producers
 
                 if (tx.SupportsBlobs)
                 {
-                    dataGasPrice ??= IntrinsicGasCalculator.CalculateDataGasPricePerUnit(
-                        IntrinsicGasCalculator.CalculateExcessDataGas(parent, _specProvider.GetFinalSpec()) ?? 0);
+                    dataGasPrice ??= DataGasCalculator.CalculateDataGasPricePerUnit(
+                        DataGasCalculator.CalculateExcessDataGas(parent, _specProvider.GetFinalSpec()) ?? 0);
 
                     int txAmountOfBlobs = tx.BlobVersionedHashes?.Length ?? 0;
 
@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.Producers
                         continue;
                     }
 
-                    if (IntrinsicGasCalculator.CalculateDataGas(blobsCounter + txAmountOfBlobs) >
+                    if (DataGasCalculator.CalculateDataGas(blobsCounter + txAmountOfBlobs) >
                         Eip4844Constants.MaxDataGasPerBlock)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, no more blob space.");

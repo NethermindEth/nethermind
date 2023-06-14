@@ -119,7 +119,7 @@ namespace Nethermind.Consensus.Validators
             if (transaction.To is null ||
                 transaction.MaxFeePerDataGas is null ||
                 transaction.BlobVersionedHashes is null ||
-                IntrinsicGasCalculator.CalculateDataGas(transaction.BlobVersionedHashes!.Length) > Eip4844Constants.MaxDataGasPerTransaction ||
+                DataGasCalculator.CalculateDataGas(transaction.BlobVersionedHashes!.Length) > Eip4844Constants.MaxDataGasPerTransaction ||
                 transaction.BlobVersionedHashes!.Length < Eip4844Constants.MinBlobsPerTransaction)
             {
                 return false;

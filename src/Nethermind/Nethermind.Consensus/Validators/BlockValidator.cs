@@ -224,7 +224,7 @@ public class BlockValidator : IBlockValidator
                 continue;
             }
 
-            if (transaction.MaxFeePerDataGas < (dataGasPrice ??= IntrinsicGasCalculator.CalculateDataGasPricePerUnit(block.Header)))
+            if (transaction.MaxFeePerDataGas < (dataGasPrice ??= DataGasCalculator.CalculateDataGasPricePerUnit(block.Header)))
             {
                 error = $"A transaction has unsufficient MaxFeePerDataGas {transaction.MaxFeePerDataGas} < {dataGasPrice}.";
                 if (_logger.IsWarn) _logger.Warn(error);
@@ -234,7 +234,7 @@ public class BlockValidator : IBlockValidator
             blobsInBlock += transaction.BlobVersionedHashes!.Length;
         }
 
-        ulong dataGasUsed = IntrinsicGasCalculator.CalculateDataGas(blobsInBlock);
+        ulong dataGasUsed = DataGasCalculator.CalculateDataGas(blobsInBlock);
         if (dataGasUsed > Eip4844Constants.MaxDataGasPerBlock)
         {
             error = $"A block cannot have more than {Eip4844Constants.MaxDataGasPerBlock} data gas.";

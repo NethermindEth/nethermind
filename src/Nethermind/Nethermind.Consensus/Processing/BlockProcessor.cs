@@ -229,7 +229,7 @@ public partial class BlockProcessor : IBlockProcessor
 
         if (spec.IsEip4844Enabled)
         {
-            block.Header.DataGasUsed = IntrinsicGasCalculator.CalculateDataGas(
+            block.Header.DataGasUsed = DataGasCalculator.CalculateDataGas(
                 block.Transactions.Sum(tx => tx.BlobVersionedHashes?.Length ?? 0));
         }
 
