@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -17,7 +19,7 @@ namespace Nethermind.Blockchain.Receipts
 {
     public class PersistentReceiptStorage : IReceiptStorage
     {
-        private readonly IColumnsDb<ReceiptsColumns> _database;
+      private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptsRecovery _receiptsRecovery;
         private long? _lowestInsertedReceiptBlock;
@@ -28,6 +30,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly ReceiptArrayStorageDecoder _storageDecoder = ReceiptArrayStorageDecoder.Instance;
         private readonly IBlockTree _blockTree;
         private readonly IReceiptConfig _receiptConfig;
+        private readonly bool _legacyHashKey;
 
         private const int CacheSize = 64;
         private readonly LruCache<KeccakKey, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
@@ -55,11 +58,9 @@ namespace Nethermind.Blockchain.Receipts
             byte[] lowestBytes = _database.Get(Keccak.Zero);
             _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
+
             KeyValuePair<byte[], byte[]>? firstValue = _blocksDb.GetAll().FirstOrDefault();
             _legacyHashKey = firstValue.HasValue && firstValue.Value.Key != null && firstValue.Value.Key.Length == Keccak.Size;
-
-            if (_receiptConfig.TxLookupLimit != 0)
-                _blockTree.BlockAddedToMain += RemoveTxIndexes;
 
             _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
         }
@@ -269,9 +270,32 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsCache.Clear();
         }
 
-        public bool HasBlock(Keccak hash)
+        public bool HasBlock(long blockNumber, Keccak blockHash)
         {
-            return _receiptsCache.Contains(hash) || _blocksDb.KeyExists(hash);
+            if (_receiptsCache.Contains(blockHash)) return true;
+
+            if (_legacyHashKey)
+            {
+                if (_blocksDb.KeyExists(blockHash)) return true;
+
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+
+                return _blocksDb.KeyExists(blockNumPrefixed);
+            }
+            else
+            {
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+
+                return _blocksDb.KeyExists(blockNumPrefixed) || _blocksDb.KeyExists(blockHash);
+            }
+        }
+
+        private static void GetBlockNumPrefixedKey(long blockNumber, Keccak blockHash, Span<byte> output)
+        {
+            blockNumber.WriteBigEndian(output);
+            blockHash!.Bytes.CopyTo(output[8..]);
         }
 
         public void EnsureCanonical(Block block)
