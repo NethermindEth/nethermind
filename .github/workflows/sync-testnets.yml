@@ -72,8 +72,8 @@ jobs:
           good_logs["Received ForkChoice:"]=0
       
           declare -A required_count
-          required_count["Valid. Result of a new payload:"]=20
-          required_count["FCU - block"]=20
+          required_count["Synced chain Head to"]=20
+          required_count["Received ForkChoice:"]=20
       
           echo "Starting Docker logs monitoring..."
           docker logs -f sedge-execution-client | while read -r line; do
@@ -171,8 +171,8 @@ jobs:
           good_logs["Received ForkChoice:"]=0
       
           declare -A required_count
-          required_count["Valid. Result of a new payload:"]=20
-          required_count["FCU - block"]=20
+          required_count["Synced chain Head to"]=20
+          required_count["Received ForkChoice:"]=20
       
           echo "Starting Docker logs monitoring..."
           docker logs -f sedge-execution-client | while read -r line; do
