@@ -41,7 +41,7 @@ public partial class EngineModuleTests
     public async Task GetPayloadV3_should_fail_on_unknown_payload()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         byte[] payloadId = Bytes.FromHexString("0x0");
@@ -69,7 +69,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task NewPayloadV3_should_decline_null_blobversionedhashes()
     {
-        MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         ExecutionPayload executionPayload = CreateBlockRequest(
             CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>());
@@ -88,7 +88,7 @@ public partial class EngineModuleTests
     {
         async Task<(MergeTestBlockchain blockchain, IEngineRpcModule engineRpcModule)> MockRpc()
         {
-            MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
+            MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
             IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadHandlerMock =
                 Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>();
             newPayloadHandlerMock.HandleAsync(Arg.Any<ExecutionPayload>())
@@ -234,7 +234,7 @@ public partial class EngineModuleTests
     private async Task<(IEngineRpcModule, string)> BuildAndGetPayloadV3Result(
         IReleaseSpec spec, int transactionCount = 0)
     {
-        MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: spec, null);
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec, null);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         if (transactionCount is not 0)
         {
