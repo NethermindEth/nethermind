@@ -64,8 +64,8 @@ jobs:
           bad_logs["Corrupted"]=1
       
           declare -A good_logs
-          good_logs["Valid. Result of a new payload:"]=0
-          good_logs["FCU - block"]=0
+          good_logs["Synced chain Head to"]=0
+          good_logs["Received ForkChoice:"]=0
       
           declare -A required_count
           required_count["Valid. Result of a new payload:"]=20
@@ -163,8 +163,8 @@ jobs:
           bad_logs["Corrupted"]=1
       
           declare -A good_logs
-          good_logs["Valid. Result of a new payload:"]=0
-          good_logs["FCU - block"]=0
+          good_logs["Synced chain Head to"]=0
+          good_logs["Received ForkChoice:"]=0
       
           declare -A required_count
           required_count["Valid. Result of a new payload:"]=20
