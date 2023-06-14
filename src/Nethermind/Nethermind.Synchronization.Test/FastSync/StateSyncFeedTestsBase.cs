@@ -25,6 +25,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
+using Nethermind.Trie.ByPath;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -115,7 +116,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = true;
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, dbContext.ResolverCapability, _logManager);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, dbContext.ResolverCapability, _logManager, dbContext.DbPrunner);
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
             ctx.StateSyncDispatcher =
                 new StateSyncDispatcher(ctx.Feed, ctx.Pool, new StateSyncAllocationStrategyFactory(), _logManager);
@@ -123,18 +124,20 @@ namespace Nethermind.Synchronization.Test.FastSync
             return ctx;
         }
 
-        protected async Task ActivateAndWait(SafeContext safeContext, DbContext dbContext, long blockNumber, int timeout = TimeoutLength)
+        protected async Task ActivateAndWait(SafeContext safeContext, DbContext dbContext, long blockNumber, bool withDeletion = false, int timeout = TimeoutLength)
         {
             DotNetty.Common.Concurrency.TaskCompletionSource dormantAgainSource = new DotNetty.Common.Concurrency.TaskCompletionSource();
             safeContext.Feed.StateChanged += (s, e) =>
             {
                 if (e.NewState == SyncFeedState.Dormant)
                 {
+                    if (withDeletion) dbContext.DbPrunner.EndOfCleanupRequests();
                     dormantAgainSource.TrySetResult(0);
                 }
             };
+            if (withDeletion) dbContext.DbPrunner.Start();
 
-            safeContext.TreeFeed.ResetStateRoot(blockNumber, dbContext.RemoteStateTree.RootHash, safeContext.Feed.CurrentState, true);
+            safeContext.TreeFeed.ResetStateRoot(blockNumber, dbContext.RemoteStateTree.RootHash, safeContext.Feed.CurrentState, withDeletion);
             safeContext.Feed.Activate();
             var watch = Stopwatch.StartNew();
             await Task.WhenAny(
@@ -173,7 +176,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 ResolverCapability = capability;
 
-                ITrieStore localTrieStore = capability.CreateTrieStore(LocalStateDb, logManager);
+                DbPrunner = new ByPathStateDbPrunner(LocalDb);
+
+                ITrieStore localTrieStore = capability.CreateTrieStore(LocalStateDb, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, DbPrunner);
                 ITrieStore localStorageTrieStore = capability.CreateTrieStore(LocalStateDb.GetColumnDb(StateColumns.Storage), logManager);
                 LocalStateTree = ResolverCapability switch
                 {
@@ -193,6 +198,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             public StateTree RemoteStateTree { get; }
             public IStateTree LocalStateTree { get; }
             public TrieNodeResolverCapability ResolverCapability { get; }
+
+            public ByPathStateDbPrunner DbPrunner { get; }
 
             public void CompareTrees(string stage, bool skipLogs = true)
             {

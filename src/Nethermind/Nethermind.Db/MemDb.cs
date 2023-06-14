@@ -144,7 +144,7 @@ namespace Nethermind.Db
             List<byte[]> keys = new();
             foreach (byte[] key in _db.Keys)
             {
-                if (Bytes.Comparer.Compare(key, startKey) >= 0 && Bytes.Comparer.Compare(key, endKey) <= 0)
+                if (Bytes.Comparer.Compare(key, startKey) >= 0 && Bytes.Comparer.Compare(key, endKey) < 0)
                     keys.Add(key);
             }
             foreach (byte[] key in keys)

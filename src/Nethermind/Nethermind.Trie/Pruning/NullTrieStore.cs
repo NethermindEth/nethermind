@@ -77,6 +77,11 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
+        public bool CanAccessByPath()
+        {
+            return false;
+        }
+
         public byte[]? this[ReadOnlySpan<byte> key] => null;
     }
 }

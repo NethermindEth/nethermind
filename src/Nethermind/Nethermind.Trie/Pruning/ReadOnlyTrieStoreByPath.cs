@@ -73,6 +73,8 @@ namespace Nethermind.Trie.Pruning
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
         public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefix) { }
 
+        public bool CanAccessByPath() => _trieStore.CanAccessByPath();
+
         public byte[]? this[ReadOnlySpan<byte> key] => _trieStore[key];
     }
 }

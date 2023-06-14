@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Trie.ByPath;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -58,12 +59,13 @@ namespace Nethermind.Trie.Pruning
             IKeyValueStoreWithBatching? keyValueStore,
             IPruningStrategy? pruningStrategy,
             IPersistenceStrategy? persistenceStrategy,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            ByPathStateDbPrunner dbPrunner)
         {
             return capability switch
             {
                 TrieNodeResolverCapability.Hash => new TrieStore(keyValueStore, pruningStrategy, persistenceStrategy, logManager),
-                TrieNodeResolverCapability.Path => new TrieStoreByPath(keyValueStore, pruningStrategy, persistenceStrategy, logManager, 0),
+                TrieNodeResolverCapability.Path => new TrieStoreByPath(keyValueStore, pruningStrategy, persistenceStrategy, logManager, 0, dbPrunner),
                 _ => throw new ArgumentOutOfRangeException(nameof(capability), capability, null)
             };
         }

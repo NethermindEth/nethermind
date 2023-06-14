@@ -144,7 +144,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.LocalStateTree.RootHash = dbContext.RemoteStateTree.RootHash;
 
             SafeContext ctx = PrepareDownloader(dbContext);
-            await ActivateAndWait(ctx, dbContext, 9);
+            await ActivateAndWait(ctx, dbContext, 9, true, 600000);
 
             DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 
@@ -159,7 +159,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             DbContext dbContext = new DbContext(_resolverCapability, _logger, _logManager);
 
-            int remoteTreeSize = 100;
+            int remoteTreeSize = 10000;
             int hashIndexJump = remoteTreeSize / 10;
             int pathPoolCount = 10 * remoteTreeSize;
 
@@ -256,10 +256,12 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.LocalStateTree.RootHash = dbContext.RemoteStateTree.RootHash;
 
             SafeContext ctx = PrepareDownloader(dbContext);
-            await ActivateAndWait(ctx, dbContext, 9, 120000);
+            await ActivateAndWait(ctx, dbContext, 9, true, 180000);
 
             DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
             dbContext.LocalStateTree.UpdateRootHash();
+
+            dbContext.DbPrunner.Wait();
 
             dbContext.CompareTrees("END");
 
@@ -267,6 +269,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             List<(Keccak, Account)> failedDeletions = new();
             foreach (Keccak path in deletedPaths)
             {
+                _logger.Info($"Deleted path {path}");
                 Account? remoteDeletedAccount = dbContext.RemoteStateTree.Get(path);
                 if (remoteDeletedAccount is null)
                 {
@@ -283,10 +286,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             Assert.IsEmpty(failedDeletions, "Left undeleted accounts");
 
             _logger.Info($"REQUESTED NODES TO HEAL: {data.RequestedNodesCount}");
-            //Assert.IsTrue(data.RequestedNodesCount < accounts.Count / 2);
+            Assert.IsTrue(data.RequestedNodesCount < accounts.Count / 2);
         }
 
-        [Test]
         private static void ProcessAccountRange(IStateTree remoteStateTree, IStateTree localStateTree, int blockNumber, Keccak rootHash, PathWithAccount[] accounts)
         {
             if (accounts is null || accounts.Length == 0)

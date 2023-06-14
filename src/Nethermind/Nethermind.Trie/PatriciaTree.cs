@@ -53,7 +53,7 @@ namespace Nethermind.Trie
         /// </summary>
         private readonly ConcurrentQueue<TrieNode>? _deleteNodes;
 
-        private readonly ITrieStore _trieStore;
+        protected readonly ITrieStore _trieStore;
         public TrieNodeResolverCapability Capability => _trieStore.Capability;
 
         private readonly bool _parallelBranches;
@@ -400,7 +400,7 @@ namespace Nethermind.Trie
             if (Capability == TrieNodeResolverCapability.Path)
             {
                 byte[] internalValue = GetInternal(rawKey, rootHash);
-                byte[] pathValue = GetByPath(rawKey, rootHash);
+                byte[] pathValue = _trieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash);
                 if (!Bytes.EqualityComparer.Equals(internalValue, pathValue))
                     Console.WriteLine($"Difference for key: {rawKey.ToHexString()} | ST prefix: {StoreNibblePathPrefix?.ToHexString()} | internal: {internalValue?.ToHexString()} | path value: {pathValue?.ToHexString()}");
                 return pathValue;
@@ -430,7 +430,9 @@ namespace Nethermind.Trie
             Nibbles.BytesToNibbleBytes(rawKey, nibbleBytes[StoreNibblePathPrefix.Length..]);
             TrieNode? node = TrieStore.FindCachedOrUnknown(nibbleBytes[StoreNibblePathPrefix.Length..], StoreNibblePathPrefix, rootHash);
 
-            if (node is null) return null;
+            if (node is null)
+                return null;
+
             if (node.NodeType != NodeType.Leaf)
             {
                 // if not in cached nodes - then check persisted nodes`

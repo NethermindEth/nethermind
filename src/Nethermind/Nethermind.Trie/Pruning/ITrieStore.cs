@@ -25,5 +25,7 @@ namespace Nethermind.Trie.Pruning
 
         void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefix);
         void DeleteByRange(Span<byte> startKey, Span<byte> endKey);
+
+        bool CanAccessByPath();
     }
 }

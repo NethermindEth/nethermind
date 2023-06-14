@@ -206,5 +206,25 @@ namespace Nethermind.Trie
                 ArrayPool<byte>.Shared.Return(array);
             }
         }
+
+        public static byte[] IncrementNibble(this byte[] nibbles)
+        {
+            if (nibbles.Length == 0)
+                return nibbles;
+
+            for (int i = nibbles.Length - 1; i >=0; i--)
+            {
+                if (nibbles[i] == 0x0f)
+                {
+                    continue;
+                }
+                else
+                {
+                    nibbles[i]++;
+                    break;
+                }
+            }
+            return nibbles;
+        }
     }
 }
