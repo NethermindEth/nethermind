@@ -145,7 +145,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Syncing;
         }
 
-        if (_logger.IsInfo) _logger.Info($"FCU - block {newHeadBlock} was processed.");
+        if (_logger.IsInfo) _logger.Info($"Synced. FCU - block {newHeadBlock} was processed.");
 
         BlockHeader? finalizedHeader = ValidateBlockHash(forkchoiceState.FinalizedBlockHash, out string? finalizationErrorMsg);
         if (finalizationErrorMsg is not null)
