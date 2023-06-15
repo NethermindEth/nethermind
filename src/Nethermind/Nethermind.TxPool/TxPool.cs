@@ -151,15 +151,20 @@ namespace Nethermind.TxPool
 
         internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
 
+        internal void ClearCaches()
+        {
+            _transactionSnapshot = null;
+            _accounts.ClearCache();
+            _hashCache.ClearCurrentBlockCache();
+        }
+
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             // TODO: I think this is dangerous if many blocks are processed one after another
             try
             {
                 // Clear snapshot
-                _transactionSnapshot = null;
-                _accounts.ClearCache();
-                _hashCache.ClearCurrentBlockCache();
+                ClearCaches();
                 _headBlocksChannel.Writer.TryWrite(e);
             }
             catch (Exception exception)
