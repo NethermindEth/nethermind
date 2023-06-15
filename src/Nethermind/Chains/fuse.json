@@ -1,0 +1,79 @@
+{
+  "name": "FuseNetwork",
+  "engine": {
+    "authorityRound": {
+      "params": {
+        "stepDuration": "5",
+        "blockReward": "0x0",
+        "blockRewardContractAddress": "0x63D4efeD2e3dA070247bea3073BCaB896dFF6C9B",
+        "blockRewardContractTransition": 100,
+        "validators": {
+          "multi": {
+            "0": {
+              "list": ["0xd9176e84898a0054680aec3f7c056b200c3d96c3"]
+            },
+            "100": {
+              "safeContract": "0x3014ca10b91cb3D0AD85fEf7A3Cb95BCAc9c0f79"
+            }
+          }
+        }
+      }
+    }
+  },
+  "params": {
+    "gasLimitBoundDivisor": "0x400",
+    "maximumExtraDataSize": "0x20",
+    "minGasLimit": "0x1388",
+    "networkID" : "0x07a",
+    "eip155Transition": 0,
+    "validateChainIdTransition": 0,
+    "eip140Transition": 0,
+    "eip211Transition": 0,
+    "eip214Transition": 0,
+    "eip658Transition": 0,
+    "eip150Transition": "0x0",
+    "eip160Transition": "0x0",
+    "eip161abcTransition": "0x0",
+    "eip161dTransition": "0x0",
+    "eip98Transition": "0x7fffffffffffff",
+    "eip145Transition": "0x38ada7",
+    "eip1014Transition": "0x38ada7",
+    "eip1052Transition": "0x38ada7",
+    "eip1283Transition": "0xd29240",
+    "eip1344Transition": "0xd29240",
+    "eip1706Transition": "0xd29240",
+    "eip1884Transition": "0xd29240",
+    "eip2028Transition": "0xd29240",
+    "eip2929Transition": "0xd29240",
+    "eip2930Transition": "0xd29240",
+    "maxCodeSize": 24576,
+    "maxCodeSizeTransition": "0x0"
+  },
+  "genesis": {
+    "seal": {
+      "authorityRound": {
+        "step": "0x0",
+        "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    "difficulty": "0x20000",
+    "gasLimit": "0x989680"
+  },
+  "nodes": [
+    "enode://c78e7cce5e84a3a6c723d10dc40a033ad50dbc835b3a1f1d85b1a4f299afe8e3a8112fe26b045e23370bbf22c179d0d9f6e4f8302bf72dea67fa3b684232d6eb@3.125.148.125:30303",
+    "enode://0690b49d2de17516e8776df4cd171da148769e43e9ac0c9b1ef6e9f6f6a983f5d508ce44bbb6e974c663611c3c03492cdf3d6838907e0ce392c125741912d8a5@3.121.55.130:30303",
+    "enode://7bc2e851cad345437984d6550b1b98d7029b694f2793e2c592637a793b243760060a5a3e00d6212b75f1c534a97b41d532221071242d01116e9ff3c8dcc95672@95.217.1.4:30303"
+  ],
+  "accounts": {
+      "0x0000000000000000000000000000000000000001": { "balance": "1", "builtin": { "name": "ecrecover", "pricing": { "linear": { "base": 3000, "word": 0 } } } },
+      "0x0000000000000000000000000000000000000002": { "balance": "1", "builtin": { "name": "sha256", "pricing": { "linear": { "base": 60, "word": 12 } } } },
+      "0x0000000000000000000000000000000000000003": { "balance": "1", "builtin": { "name": "ripemd160", "pricing": { "linear": { "base": 600, "word": 120 } } } },
+      "0x0000000000000000000000000000000000000004": { "balance": "1", "builtin": { "name": "identity", "pricing": { "linear": { "base": 15, "word": 3 } } } },
+      "0x0000000000000000000000000000000000000005": { "builtin": { "name": "modexp", "pricing": { "0": { "price": { "modexp": { "divisor": 20 } } }, "0xd29240": { "info": "EIP-2565: ModExp Gas Cost.", "price": { "modexp2565": {} } } } } },
+      "0x0000000000000000000000000000000000000006": { "builtin": { "name": "alt_bn128_add", "pricing": { "0": { "price": { "alt_bn128_const_operations": { "price": 500 } } }, "0xd29240": { "info": "EIP-1108 Istanbul HF", "price": { "alt_bn128_const_operations": { "price": 150 } } } } } },
+      "0x0000000000000000000000000000000000000007": { "builtin": { "name": "alt_bn128_mul", "pricing": { "0": { "price": { "alt_bn128_const_operations": { "price": 4000 } } }, "0xd29240": { "info": "EIP-1108 Istanbul HF", "price": { "alt_bn128_const_operations": { "price": 6000 } } } } } },
+      "0x0000000000000000000000000000000000000008": { "builtin": { "name": "alt_bn128_pairing", "pricing": { "0": { "price": { "alt_bn128_pairing": { "base": 100000, "pair": 80000 } } }, "0xd29240": { "info": "EIP-1108 Istanbul HF", "price": { "alt_bn128_pairing": { "base": 45000, "pair": 34000 } } } } } },
+      "0x0000000000000000000000000000000000000009": { "builtin": { "name": "blake2_f", "pricing": { "0xd29240": { "info": "EIP-152 Istanbul HF", "price": { "blake2_f": { "gas_per_round": 1 } } } } } },
+      "0xd9176e84898a0054680aec3f7c056b200c3d96c3": { "balance": "300000000000000000000000000" }
+  }
+}
