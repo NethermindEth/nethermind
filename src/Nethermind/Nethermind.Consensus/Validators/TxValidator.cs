@@ -116,7 +116,8 @@ namespace Nethermind.Consensus.Validators
                        transaction is not { NetworkWrapper: ShardBlobNetworkWrapper };
             }
 
-            if (transaction.MaxFeePerDataGas is null ||
+            if (transaction.To is null ||
+                transaction.MaxFeePerDataGas is null ||
                 transaction.BlobVersionedHashes is null ||
                 transaction.BlobVersionedHashes!.Length > Eip4844Constants.MaxBlobsPerTransaction ||
                 transaction.BlobVersionedHashes!.Length < Eip4844Constants.MinBlobsPerTransaction)

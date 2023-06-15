@@ -29,10 +29,11 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [Test]
+    [Obsolete]
     public async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay()
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
-        using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
+        using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig);
         IBoostRelay boostRelay = Substitute.For<IBoostRelay>();
         boostRelay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
             .Returns(c =>
@@ -87,11 +88,12 @@ public partial class EngineModuleTests
         "0x4ced29c819cf146b41ef448042773f958d5bbe297b0d6b82be677b65c85b436b",
         "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133")]
     [Parallelizable(ParallelScope.None)]
+    [Obsolete]
     public virtual async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http(
         string blockHash, string parentHash)
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
-        using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
+        using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig);
         IJsonSerializer serializer = chain.JsonSerializer;
 
         ulong timestamp = Timestamper.UnixTime.Seconds;
@@ -138,7 +140,7 @@ public partial class EngineModuleTests
                 BlockHash = new(expected_blockHash),
                 Transactions = Array.Empty<byte[]>()
             },
-            Profit = UInt256.Parse(expected_profit[2..], NumberStyles.HexNumber)
+            Profit = UInt256.Parse(expected_profit.AsSpan(2), NumberStyles.HexNumber)
         };
 
         mockHttp
@@ -178,10 +180,11 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    [Obsolete]
     public async Task forkchoiceUpdatedV1_should_ignore_gas_limit([Values(false, true)] bool relay)
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
-        using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
+        using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig);
         IBlockImprovementContextFactory improvementContextFactory;
         if (relay)
         {

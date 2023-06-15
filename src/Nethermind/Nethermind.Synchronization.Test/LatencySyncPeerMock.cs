@@ -22,6 +22,7 @@ namespace Nethermind.Synchronization.Test
     /// </summary>
     public class LatencySyncPeerMock : ISyncPeer
     {
+        public string Name => "Latency";
         public IBlockTree Tree { get; }
         public bool IsReported { get; set; } = false;
         public long? BusyUntil { get; set; }
@@ -94,7 +95,7 @@ namespace Nethermind.Synchronization.Test
             throw new NotImplementedException();
         }
 
-        public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+        public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
         {
             throw new NotImplementedException();
         }

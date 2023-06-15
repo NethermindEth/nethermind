@@ -10,6 +10,14 @@ namespace Nethermind.Specs;
 
 public class GnosisSpecProvider : ISpecProvider
 {
+    public const long ConstantinopoleBlockNumber = 1_604_400;
+    public const long ConstantinopoleFixBlockNumber = 2_508_800;
+    public const long IstanbulBlockNumber = 7_298_030;
+    public const long BerlinBlockNumber = 16_101_500;
+    public const long LondonBlockNumber = 19_040_000;
+    public const ulong BeaconChainGenesisTimestamp = 0x61b10dbc;
+    public const ulong ShanghaiTimestamp = long.MaxValue;
+
     private GnosisSpecProvider() { }
 
     public IReleaseSpec GetSpec(ForkActivation forkActivation)
@@ -46,13 +54,6 @@ public class GnosisSpecProvider : ISpecProvider
     public ulong NetworkId => BlockchainIds.Gnosis;
     public ulong ChainId => BlockchainIds.Gnosis;
     public ForkActivation[] TransitionActivations { get; }
-
-    public const long ConstantinopoleBlockNumber = 1_604_400;
-    public const long ConstantinopoleFixBlockNumber = 2_508_800;
-    public const long IstanbulBlockNumber = 7_298_030;
-    public const long BerlinBlockNumber = 16_101_500;
-    public const long LondonBlockNumber = 19_040_000;
-    public const ulong ShanghaiTimestamp = long.MaxValue;
 
     public static GnosisSpecProvider Instance { get; } = new();
 }
