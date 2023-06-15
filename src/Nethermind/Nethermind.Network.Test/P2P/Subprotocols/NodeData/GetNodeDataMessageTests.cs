@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Network.P2P;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.NodeData;
 using Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 using NUnit.Framework;

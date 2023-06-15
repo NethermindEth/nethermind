@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.StateSync
             else if (peer.TryGetSatelliteProtocol("nodedata", out INodeDataPeer nodeDataHandler))
             {
                 hashList = HashList.Rent(batch.RequestedNodes);
-                task = nodeDataHandler.GetNodeData(hashlist, cancellationToken);
+                task = nodeDataHandler.GetNodeData(hashList, cancellationToken);
             }
             // GETNODEDATA is not supported so we try with SNAP protocol
             else if (peer.TryGetSatelliteProtocol("snap", out ISnapSyncPeer handler))

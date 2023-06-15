@@ -22,14 +22,14 @@ public class NodeDataMessageSerializerTests
     [Test]
     public void Roundtrip()
     {
-        byte[][] data = { TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes };
+        byte[][] data = { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
         Test(data);
     }
 
     [Test]
     public void Zero_roundtrip()
     {
-        byte[][] data = { TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes };
+        byte[][] data = { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
         Test(data);
     }
 
@@ -42,7 +42,7 @@ public class NodeDataMessageSerializerTests
     [Test]
     public void Roundtrip_with_nulls()
     {
-        byte[][] data = { TestItem.KeccakA.Bytes, Array.Empty<byte>(), TestItem.KeccakC.Bytes };
+        byte[][] data = { TestItem.KeccakA.BytesToArray(), Array.Empty<byte>(), TestItem.KeccakC.BytesToArray() };
         Test(data);
     }
 }
