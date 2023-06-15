@@ -6,6 +6,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -43,7 +44,7 @@ namespace Nethermind.Core
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
-
+        private SpinLock _hashSpinLock = new();
         private Keccak? _hash;
         public Keccak? Hash
         {
@@ -51,7 +52,12 @@ namespace Nethermind.Core
             {
                 if (_hash is not null) return _hash;
 
-                lock (this)
+                bool lockTaken = false;
+                while (!lockTaken)
+                {
+                    _hashSpinLock.Enter(ref lockTaken);
+                }
+                try
                 {
                     if (_hash is not null) return _hash;
 
@@ -60,6 +66,10 @@ namespace Nethermind.Core
                         _hash = Keccak.Compute(_preHash.AsSpan());
                         ClearPreHashInternal();
                     }
+                }
+                finally
+                {
+                    _hashSpinLock.Exit();
                 }
 
                 return _hash;
@@ -74,7 +84,13 @@ namespace Nethermind.Core
         private ArraySegment<byte> _preHash;
         public void SetPreHash(ReadOnlySpan<byte> transactionSequence)
         {
-            lock (this)
+            bool lockTaken = false;
+            while (!lockTaken)
+            {
+                _hashSpinLock.Enter(ref lockTaken);
+            }
+
+            try
             {
                 // Used to delay hash generation, as may be filtered as having too low gas etc
                 _hash = null;
@@ -84,15 +100,28 @@ namespace Nethermind.Core
                 transactionSequence.CopyTo(preHash);
                 _preHash = new ArraySegment<byte>(preHash, 0, size);
             }
+            finally
+            {
+                _hashSpinLock.Exit();
+            }
         }
 
         public void ClearPreHash()
         {
             if (_preHash.Count > 0)
             {
-                lock (this)
+                bool lockTaken = false;
+                while (!lockTaken)
+                {
+                    _hashSpinLock.Enter(ref lockTaken);
+                }
+                try
                 {
                     ClearPreHashInternal();
+                }
+                finally
+                {
+                    _hashSpinLock.Exit();
                 }
             }
         }
