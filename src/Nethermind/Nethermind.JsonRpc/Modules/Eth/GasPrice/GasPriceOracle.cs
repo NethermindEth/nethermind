@@ -19,6 +19,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
         private readonly UInt256 _minGasPrice;
+        private readonly bool _UseMinGasPrice;
         internal PriceCache _gasPriceEstimation;
         internal PriceCache _maxPriorityFeePerGasEstimation;
         private UInt256 FallbackGasPrice(in UInt256? baseFeePerGas = null) => _gasPriceEstimation.LastPrice ?? GetMinimumGasPrice(baseFeePerGas ?? UInt256.Zero);
@@ -32,11 +33,13 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             IBlockFinder blockFinder,
             ISpecProvider specProvider,
             ILogManager logManager,
-            UInt256? minGasPrice = null)
+            UInt256? minGasPrice = null,
+            bool useMinGasPrice = false)
         {
             _blockFinder = blockFinder;
             _logger = logManager.GetClassLogger();
             _minGasPrice = minGasPrice ?? new BlocksConfig().MinGasPrice;
+            _UseMinGasPrice = useMinGasPrice;
             SpecProvider = specProvider;
         }
 
@@ -56,6 +59,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
             IEnumerable<UInt256> txGasPrices = GetSortedGasPricesFromRecentBlocks(headBlock.Number);
             UInt256 gasPriceEstimate = GetGasPriceAtPercentile(txGasPrices.ToList()) ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
+            if (_UseMinGasPrice == true)
+            {
+                    gasPriceEstimate = UInt256.Max(gasPriceEstimate, GetMinimumGasPrice(headBlock.BaseFeePerGas));
+            }
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
             _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
             return gasPriceEstimate!;
