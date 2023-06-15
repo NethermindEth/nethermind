@@ -117,12 +117,7 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Sepolia_loads_properly()
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/sepolia.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = LoadChainSpecFromChainFolder("sepolia");
         SepoliaSpecProvider sepolia = SepoliaSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
@@ -174,12 +169,7 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Goerli_loads_properly()
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/goerli.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = LoadChainSpecFromChainFolder("goerli");
         GoerliSpecProvider goerli = GoerliSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
@@ -206,17 +196,13 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Chiado_loads_properly()
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/chiado.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = LoadChainSpecFromChainFolder("chiado");
         ChiadoSpecProvider chiado = ChiadoSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
         {
             (ForkActivation)0,
-            //(ForkActivation)(1, null),
+            //(ForkActivation)1,
             (1, ChiadoSpecProvider.ShanghaiTimestamp - 1),
             (1, ChiadoSpecProvider.ShanghaiTimestamp),
             (999_999_999, 999_999_999) // far in the future
@@ -236,11 +222,7 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Gnosis_loads_properly()
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/gnosis.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = LoadChainSpecFromChainFolder("gnosis");
         GnosisSpecProvider gnosisSpecProvider = GnosisSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
@@ -309,12 +291,7 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Mainnet_loads_properly()
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/foundation.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = LoadChainSpecFromChainFolder("foundation");
         MainnetSpecProvider mainnet = MainnetSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
@@ -353,6 +330,7 @@ public class ChainSpecBasedSpecProviderTests
         provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxCodeSize.Should().Be(24576L);
         provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxInitCodeSize.Should().Be(2 * 24576L);
 
+        provider.GetSpec((ForkActivation)(long.MaxValue - 1)).IsEip2537Enabled.Should().BeFalse();
         Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(MainnetSpecProvider.LondonBlockNumber));
         Assert.That(provider.GetSpec((ForkActivation)4_369_999).DifficultyBombDelay, Is.EqualTo(0_000_000));
         Assert.That(provider.GetSpec((ForkActivation)4_370_000).DifficultyBombDelay, Is.EqualTo(3_000_000));
@@ -476,6 +454,15 @@ public class ChainSpecBasedSpecProviderTests
         CompareSpecProviders(ropsten, provider, forkActivationsToTest, CompareSpecsOptions.CheckDifficultyBomb);
         Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(RopstenSpecProvider.Instance.TerminalTotalDifficulty));
         Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(RopstenSpecProvider.LondonBlockNumber));
+    }
+
+    private ChainSpecBasedSpecProvider LoadChainSpecFromChainFolder(string chain)
+    {
+        ChainSpecLoader loader = new(new EthereumJsonSerializer());
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"../../../../Chains/{chain}.json");
+        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+
+        return new(chainSpec);
     }
 
     [Test]
