@@ -119,7 +119,8 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Sepolia_loads_properly()
     {
-        ChainSpecBasedSpecProvider provider = LoadChainSpecFromChainFolder("sepolia");
+        ChainSpec chainSpec = LoadChainSpecFromChainFolder("sepolia");
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
         SepoliaSpecProvider sepolia = SepoliaSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
@@ -137,6 +138,9 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(long.MaxValue));
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Sepolia));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Sepolia));
+
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, SepoliaSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
     }
 
     [Test]
@@ -171,7 +175,8 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Goerli_loads_properly()
     {
-        ChainSpecBasedSpecProvider provider = LoadChainSpecFromChainFolder("goerli");
+        ChainSpec chainSpec = LoadChainSpecFromChainFolder("goerli");
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
         GoerliSpecProvider goerli = GoerliSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
@@ -193,12 +198,16 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(GoerliSpecProvider.Instance.TerminalTotalDifficulty));
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Goerli));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Goerli));
+
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, GoerliSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
     }
 
     [Test]
     public void Chiado_loads_properly()
     {
-        ChainSpecBasedSpecProvider provider = LoadChainSpecFromChainFolder("chiado");
+        ChainSpec chainSpec = LoadChainSpecFromChainFolder("chiado");
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
         ChiadoSpecProvider chiado = ChiadoSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
@@ -226,7 +235,8 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Gnosis_loads_properly()
     {
-        ChainSpecBasedSpecProvider provider = LoadChainSpecFromChainFolder("gnosis");
+        ChainSpec chainSpec = LoadChainSpecFromChainFolder("gnosis");
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
         GnosisSpecProvider gnosisSpecProvider = GnosisSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
@@ -261,7 +271,9 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec? postShanghaiSpec = provider.GetSpec((GnosisSpecProvider.LondonBlockNumber + 1,
             GnosisSpecProvider.ShanghaiTimestamp));
 
-        VerifyGnosisPreShanghaiExceptions(preShanghaiSpec, postShanghaiSpec); */
+        VerifyGnosisPreShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue()); */
     }
 
     private void VerifyGnosisShanghaiExceptions(IReleaseSpec preShanghaiSpec, IReleaseSpec postShanghaiSpec)
@@ -297,7 +309,8 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Mainnet_loads_properly()
     {
-        ChainSpecBasedSpecProvider provider = LoadChainSpecFromChainFolder("foundation");
+        ChainSpec chainSpec = LoadChainSpecFromChainFolder("foundation");
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
         MainnetSpecProvider mainnet = MainnetSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
@@ -356,6 +369,9 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(MainnetSpecProvider.Instance.TerminalTotalDifficulty));
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Mainnet));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Mainnet));
+
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, MainnetSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
     }
 
     [Flags]
@@ -462,13 +478,11 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(RopstenSpecProvider.LondonBlockNumber));
     }
 
-    private ChainSpecBasedSpecProvider LoadChainSpecFromChainFolder(string chain)
+    private ChainSpec LoadChainSpecFromChainFolder(string chain)
     {
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"../../../../Chains/{chain}.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-
-        return new(chainSpec);
+        return loader.Load(File.ReadAllText(path));
     }
 
     [Test]
