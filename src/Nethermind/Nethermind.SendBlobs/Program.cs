@@ -19,28 +19,32 @@ string receiver = args[3];
 
 await KzgPolynomialCommitments.InitializeAsync();
 
-ulong inc = 0;
-
 PrivateKey privateKey = new(privateKeyString);
 
-ILogger logger = LimboLogs.Instance.GetLogger("send blobs");
+ILogger logger = SimpleConsoleLogManager.Instance.GetLogger("send blobs");
 ICliConsole cliConsole = new CliConsole();
 IJsonSerializer serializer = new EthereumJsonSerializer();
 ILogManager logManager = new OneLoggerLogManager(logger);
 ICliEngine engine = new CliEngine(cliConsole);
 INodeManager nodeManager = new NodeManager(engine, serializer, cliConsole, logManager);
-string nonceString = await nodeManager.Post<string>("eth_getTransactionCount", privateKey.Address, "latest") ?? "0";
 //nodeManager.SwitchUri(new Uri("https://rpc.bootnode-1.srv.4844-devnet-5.ethpandaops.io"));
 nodeManager.SwitchUri(new Uri(rpcUrl));
+
+string nonceString = await nodeManager.Post<string>("eth_getTransactionCount", privateKey.Address, "latest") ?? "0";
 ulong nonce = Convert.ToUInt64(nonceString, nonceString.StartsWith("0x") ? 16 : 10);
+
 string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
 ulong chainId = Convert.ToUInt64(chainIdString, chainIdString.StartsWith("0x") ? 16 : 10);
+
+string? gasPriceRes = await nodeManager.Post<string>("eth_gasPrice") ?? "1";
+UInt256 gasPrice = (UInt256)Convert.ToUInt64(gasPriceRes, gasPriceRes.StartsWith("0x") ? 16 : 10);
+
+string? gasPriceTipRes = await nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
+UInt256 gasPriceTip = (UInt256)Convert.ToUInt64(gasPriceTipRes, gasPriceTipRes.StartsWith("0x") ? 16 : 10);
 
 while (blobTxCount > 0)
 {
     blobTxCount--;
-    nonce++;
-    inc++;
     byte[][] blobs = new byte[1][];
     blobs[0] = new byte[Ckzg.Ckzg.BytesPerBlob];
     new Random().NextBytes(blobs[0]);
@@ -62,14 +66,14 @@ while (blobTxCount > 0)
         Type = TxType.Blob,
         ChainId = chainId,
         Nonce = nonce,
-        GasLimit = 210000,
-        GasPrice = 5000000000 + inc * 10000,
-        DecodedMaxFeePerGas = 5000000000 + inc * 10000,
-        MaxFeePerDataGas = 5000000000, // needs to be at least the min fee
+        GasLimit = GasCostOf.Transaction,
+        GasPrice = gasPrice,
+        DecodedMaxFeePerGas = gasPrice + gasPriceTip,
+        MaxFeePerDataGas = 100,
         Value = 0,
         To = new Address(receiver),
         BlobVersionedHashes = new[] { blobhash },
-        NetworkWrapper = new ShardBlobNetworkWrapper(commitments, blobs, proofs),
+        NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs),
     };
 
     await new Signer(chainId, privateKey, new OneLoggerLogManager(logger)).Sign(tx);
@@ -126,5 +130,6 @@ while (blobTxCount > 0)
     Console.WriteLine("Result:" + result);
     Console.WriteLine("Done");
 
+    nonce++;
     //await Task.Delay(5_000);
 }
