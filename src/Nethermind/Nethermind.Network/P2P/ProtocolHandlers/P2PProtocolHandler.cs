@@ -43,7 +43,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
     {
         new(Protocol.Eth, 66),
         new(Protocol.Eth, 67),
-        // new(Protocol.Eth, 68), eth68 is disabled for now, as spec has draft status and can change (https://eips.ethereum.org/EIPS/eip-5793)
+        new(Protocol.Eth, 68),
         new(Protocol.NodeData, 1),
     };
 
