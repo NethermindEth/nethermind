@@ -93,28 +93,6 @@ namespace Nethermind.Evm.TransactionProcessing
             Execute(transaction, block, txTracer, ExecutionOptions.NoValidation);
         }
 
-        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled,
-            string? reason)
-        {
-            block.GasUsed += tx.GasLimit;
-
-            Address recipient = tx.To ?? ContractAddress.From(
-                tx.SenderAddress ?? Address.Zero,
-                _worldState.GetNonce(tx.SenderAddress ?? Address.Zero));
-
-            if (txTracer.IsTracingReceipt)
-            {
-                Keccak? stateRoot = null;
-                if (eip658NotEnabled)
-                {
-                    _worldState.RecalculateStateRoot();
-                    stateRoot = _worldState.StateRoot;
-                }
-
-                txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
-            }
-        }
-
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer,
             ExecutionOptions executionOptions)
         {
@@ -512,6 +490,28 @@ namespace Nethermind.Evm.TransactionProcessing
                     txTracer.MarkAsSuccess(recipientOrNull, spentGas, substate.Output.ToArray(),
                         substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
                 }
+            }
+        }
+        
+        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled,
+            string? reason)
+        {
+            block.GasUsed += tx.GasLimit;
+
+            Address recipient = tx.To ?? ContractAddress.From(
+                tx.SenderAddress ?? Address.Zero,
+                _worldState.GetNonce(tx.SenderAddress ?? Address.Zero));
+
+            if (txTracer.IsTracingReceipt)
+            {
+                Keccak? stateRoot = null;
+                if (eip658NotEnabled)
+                {
+                    _worldState.RecalculateStateRoot();
+                    stateRoot = _worldState.StateRoot;
+                }
+
+                txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
             }
         }
 
