@@ -27,6 +27,7 @@ using Nethermind.Db.FullPruning;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -78,6 +79,7 @@ namespace Nethermind.Init.Steps
             IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
             IMiningConfig miningConfig = getApi.Config<IMiningConfig>();
+            IJsonRpcConfig jsonRpcConfig = getApi.Config<IJsonRpcConfig>();
 
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
@@ -136,7 +138,7 @@ namespace Nethermind.Init.Steps
             {
                 setApi.TrieStore = trieStore = new TrieStore(
                     stateWitnessedBy,
-                    No.Pruning,
+                    Nethermind.Trie.Pruning.No.Pruning,
                     Persist.EveryBlock,
                     getApi.LogManager);
             }
@@ -168,7 +170,7 @@ namespace Nethermind.Init.Steps
                     try
                     {
                         _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                        TrieStore noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
+                        TrieStore noPruningStore = new(stateWitnessedBy, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, getApi.LogManager);
                         IWorldState diagStateProvider = new WorldState(noPruningStore, codeDb, getApi.LogManager)
                         {
                             StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
@@ -245,7 +247,7 @@ namespace Nethermind.Init.Steps
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
 
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
-            setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
+            setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice, jsonRpcConfig.UseMinGasPriceInEstimates);
             IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new(
