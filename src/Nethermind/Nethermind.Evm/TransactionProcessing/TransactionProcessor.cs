@@ -576,6 +576,28 @@ namespace Nethermind.Evm.TransactionProcessing
 
             return true;
         }
+        
+        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled,
+            string? reason)
+        {
+            block.GasUsed += tx.GasLimit;
+
+            Address recipient = tx.To ?? ContractAddress.From(
+                tx.SenderAddress ?? Address.Zero,
+                _worldState.GetNonce(tx.SenderAddress ?? Address.Zero));
+
+            if (txTracer.IsTracingReceipt)
+            {
+                Keccak? stateRoot = null;
+                if (eip658NotEnabled)
+                {
+                    _worldState.RecalculateStateRoot();
+                    stateRoot = _worldState.StateRoot;
+                }
+
+                txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
+            }
+        }
 
         private void PrepareAccountForContractDeployment(Address contractAddress, IReleaseSpec spec)
         {
