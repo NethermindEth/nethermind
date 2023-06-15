@@ -213,7 +213,7 @@ public class ChainSpecBasedSpecProviderTests
         List<ForkActivation> forkActivationsToTest = new()
         {
             (ForkActivation)0,
-            //(ForkActivation)1,
+            (ForkActivation)(1, null),
             (1, ChiadoSpecProvider.ShanghaiTimestamp - 1),
             (1, ChiadoSpecProvider.ShanghaiTimestamp),
             (999_999_999, 999_999_999) // far in the future
@@ -298,7 +298,6 @@ public class ChainSpecBasedSpecProviderTests
             .BeFalse();
         specProvider.GetSpec((ForkActivation)GnosisSpecProvider.ConstantinopoleBlockNumber).IsEip1283Enabled.Should()
             .BeTrue();
-
         specProvider.GetSpec((ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber -1)).UseConstantinopleNetGasMetering.Should()
             .BeFalse();
         specProvider.GetSpec((ForkActivation)GnosisSpecProvider.ConstantinopoleBlockNumber).UseConstantinopleNetGasMetering.Should()
@@ -413,7 +412,6 @@ public class ChainSpecBasedSpecProviderTests
             typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
         foreach (PropertyInfo propertyInfo in propertyInfos
                      .Where(p => p.Name != nameof(IReleaseSpec.Name))
-
                      // handle mainnet specific exceptions
                      .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.MaximumExtraDataSize))
                      .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.BlockReward))
@@ -421,12 +419,10 @@ public class ChainSpecBasedSpecProviderTests
                                  p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
                      .Where(p => isMainnet || checkDifficultyBomb ||
                                  p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
-
                      // handle RLP decoders
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
                      .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp))
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip4844TransitionTimestamp))
-
                      // handle gnosis specific exceptions
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxInitCodeSize))
