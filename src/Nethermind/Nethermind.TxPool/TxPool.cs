@@ -622,7 +622,7 @@ namespace Nethermind.TxPool
         private class AccountCache : IAccountStateProvider
         {
             private readonly IAccountStateProvider _accounts;
-            private readonly LruCache<Address, Account> _cache = new(maxCapacity: 2048, "TxPool Account cache");
+            private readonly LruCache<Address, Account> _cache = new(maxCapacity: 512, "TxPool Account cache");
 
             public AccountCache(IAccountStateProvider accounts)
                 => _accounts = accounts;
