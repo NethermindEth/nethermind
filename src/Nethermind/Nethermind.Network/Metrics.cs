@@ -349,6 +349,7 @@ namespace Nethermind.Network
         //The current number of peers connected changed by threadsafe atomic increment/decrement
         public static long PeerCount;
 
+        [GaugeMetric]
         //EIP-2159: Common Prometheus Metrics Names for Clients
         [Description("The maximum number of peers this node allows to connect.")]
         [DataMember(Name = "ethereum_peer_limit")]
