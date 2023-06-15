@@ -240,7 +240,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            UInt256 dataGasPrice = spec.IsEip4844Enabled
+            UInt256 dataGasPrice = transaction.SupportsBlobs
                 ? DataGasCalculator.CalculateDataGasPrice(block, transaction)
                 : UInt256.Zero;
 
@@ -258,18 +258,30 @@ namespace Nethermind.Evm.TransactionProcessing
                     return;
                 }
 
-                UInt256 maxDataGasPrice = spec.IsEip4844Enabled
-                ? DataGasCalculator.CalculateDataGas(transaction) * transaction.MaxFeePerDataGas.Value
-                : UInt256.Zero;
-
-                if (!noValidation && spec.IsEip1559Enabled && !transaction.IsFree() &&
-                    (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value + maxDataGasPrice > senderBalance)
+                if (!noValidation && spec.IsEip1559Enabled && !transaction.IsFree())
                 {
-                    TraceLogInvalidTx(transaction,
-                        $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled,
-                        "insufficient MaxFeePerGas for sender balance");
-                    return;
+                    UInt256 maxRegularFee = (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value;
+                    if (maxRegularFee > senderBalance)
+                    {
+                        TraceLogInvalidTx(transaction,
+                            $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
+                        QuickFail(transaction, block, txTracer, eip658NotEnabled,
+                            "insufficient MaxFeePerGas for sender balance");
+                        return;
+                    }
+                    if (transaction.SupportsBlobs)
+                    {
+                        UInt256 maxDataGasPrice = DataGasCalculator.CalculateDataGas(transaction) * transaction.MaxFeePerDataGas.Value;
+
+                        if (maxRegularFee + maxDataGasPrice > senderBalance)
+                        {
+                            TraceLogInvalidTx(transaction,
+                                $"INSUFFICIENT_MAX_FEE_PER_DATA_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}, MAX_FEE_PER_DATA_GAS: {transaction.MaxFeePerDataGas}");
+                            QuickFail(transaction, block, txTracer, eip658NotEnabled,
+                                "insufficient MaxFeePerGas for sender balance");
+                            return;
+                        }
+                    }
                 }
 
                 if (transaction.Nonce != _worldState.GetNonce(caller))

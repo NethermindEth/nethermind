@@ -43,7 +43,7 @@ internal class TransactionProcessorEip4844Tests
 
     [TestCaseSource(nameof(BalanceIsAffectedByDataGasTestCaseSource))]
     [TestCaseSource(nameof(BalanceIsNotAffectedWhenNotEnoughFunds))]
-    public UInt256 Balance_is_affected_by_data_gas(UInt256 balance, int blobCount, ulong maxFeePerDataGas, ulong excessDataGas)
+    public UInt256 Balance_is_affected_by_data_gas_on_execution(UInt256 balance, int blobCount, ulong maxFeePerDataGas, ulong excessDataGas)
     {
         _stateProvider.CreateAccount(TestItem.AddressA, balance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
@@ -68,8 +68,12 @@ internal class TransactionProcessorEip4844Tests
             .WithBaseFeePerGas(1)
             .TestObject;
 
-        _transactionProcessor.Execute(blobTx, block.Header, NullTxTracer.Instance);
+        _transactionProcessor.CallAndRestore(blobTx, block.Header, NullTxTracer.Instance);
         UInt256 deltaBalance = balance - _stateProvider.GetBalance(TestItem.PrivateKeyA.Address);
+        Assert.That(deltaBalance, Is.EqualTo(UInt256.Zero));
+
+        _transactionProcessor.Execute(blobTx, block.Header, NullTxTracer.Instance);
+        deltaBalance = balance - _stateProvider.GetBalance(TestItem.PrivateKeyA.Address);
 
         return deltaBalance;
     }
@@ -125,37 +129,5 @@ internal class TransactionProcessorEip4844Tests
             TestName = $"Rejected if balance does not cover {nameof(Transaction.MaxFeePerDataGas)}, all funds are returned",
             ExpectedResult = UInt256.Zero,
         };
-    }
-
-    [Test]
-    public void Balance_is_not_changed_on_call_and_restore()
-    {
-        UInt256 initialBalance = 1.Ether();
-        _stateProvider.CreateAccount(TestItem.AddressA, initialBalance);
-        _stateProvider.Commit(_specProvider.GenesisSpec);
-        _stateProvider.CommitTree(0);
-
-        long gasLimit = GasCostOf.Transaction;
-        Transaction blobTx = Build.A.Transaction
-            .WithValue(0)
-            .WithGasPrice(1)
-            .WithMaxFeePerGas(1)
-            .WithMaxFeePerDataGas(1)
-            .WithGasLimit(gasLimit)
-            .WithShardBlobTxTypeAndFields(1)
-            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
-            .TestObject;
-
-        Block block = Build.A.Block
-            .WithNumber(1)
-            .WithTransactions(blobTx)
-            .WithGasLimit(gasLimit)
-            .WithExcessDataGas(0)
-            .WithBaseFeePerGas(1)
-            .TestObject;
-
-        _transactionProcessor.CallAndRestore(blobTx, block.Header, NullTxTracer.Instance);
-        UInt256 newBalance = _stateProvider.GetBalance(TestItem.PrivateKeyA.Address);
-        Assert.That(newBalance, Is.EqualTo(initialBalance));
     }
 }
