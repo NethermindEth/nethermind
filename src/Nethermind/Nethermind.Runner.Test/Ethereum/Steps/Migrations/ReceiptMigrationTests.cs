@@ -83,9 +83,10 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
 
             guard.WaitOne(TimeSpan.FromSeconds(1));
-            int txCount = ((migratedBlockNumber ?? chainLength) - 1 - 1) * 2;
+            int blockNum = (migratedBlockNumber ?? chainLength) - 1 - 1;
+            int txCount = blockNum * 2;
 
-            receiptColumenDb.KeyWasRemoved(_ => true, txCount);
+            receiptColumenDb.KeyWasRemoved(_ => true, txCount + blockNum);
             outMemoryReceiptStorage.Count.Should().Be(txCount);
         }
 
