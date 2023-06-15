@@ -42,7 +42,7 @@ namespace Nethermind.TxPool
 
         private readonly IChainHeadSpecProvider _specProvider;
 
-        private readonly AccountCache _accounts;
+        private readonly IAccountStateProvider _accounts;
 
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
@@ -86,7 +86,7 @@ namespace Nethermind.TxPool
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
-            _accounts = new(_headInfo.AccountStateProvider);
+            _accounts = _headInfo.AccountStateProvider;
             _specProvider = _headInfo.SpecProvider;
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
@@ -151,20 +151,14 @@ namespace Nethermind.TxPool
 
         internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
 
-        internal void ClearCaches()
-        {
-            _transactionSnapshot = null;
-            _accounts.ClearCache();
-            _hashCache.ClearCurrentBlockCache();
-        }
-
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             // TODO: I think this is dangerous if many blocks are processed one after another
             try
             {
                 // Clear snapshot
-                ClearCaches();
+                _transactionSnapshot = null;
+                _hashCache.ClearCurrentBlockCache();
                 _headBlocksChannel.Writer.TryWrite(e);
             }
             catch (Exception exception)
@@ -617,29 +611,6 @@ namespace Nethermind.TxPool
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
             _headBlocksChannel.Writer.Complete();
-        }
-
-        private class AccountCache : IAccountStateProvider
-        {
-            private readonly IAccountStateProvider _accounts;
-            private readonly LruCache<Address, Account> _cache = new(maxCapacity: 512, "TxPool Account cache");
-
-            public AccountCache(IAccountStateProvider accounts)
-                => _accounts = accounts;
-
-            public Account GetAccount(Address address)
-            {
-                if (_cache.TryGet(address, out Account? account))
-                {
-                    return account;
-                }
-
-                account = _accounts.GetAccount(address);
-                _cache.Set(address, account);
-                return account;
-            }
-
-            public void ClearCache() => _cache.Clear();
         }
 
         /// <summary>

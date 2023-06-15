@@ -280,7 +280,6 @@ namespace Nethermind.TxPool.Test
 
             // LatestPendingNonce=1, when the current nonce of the account=1 and no pending transactions
             _stateProvider.IncrementNonce(TestItem.AddressA);
-            _txPool.ClearCaches();
             latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
             Assert.That((UInt256)1, Is.EqualTo(latestNonce));
 
@@ -572,7 +571,6 @@ namespace Nethermind.TxPool.Test
                 if (i < numberOfStaleTxsInBucket)
                 {
                     _stateProvider.IncrementNonce(TestItem.AddressA);
-                    _txPool.ClearCaches();
                 }
             }
 
@@ -1052,7 +1050,6 @@ namespace Nethermind.TxPool.Test
             retrievedTransaction.Should().BeEquivalentTo(transaction);
 
             EnsureSenderBalance(transactionWithHigherFee);
-            _txPool.ClearCaches();
             _txPool.SubmitTx(transactionWithHigherFee, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             _txPool.TryGetPendingTransaction(transactionWithHigherFee.Hash, out var retrievedTransactionWithHigherFee).Should().BeTrue();
             retrievedTransactionWithHigherFee.Should().BeEquivalentTo(transactionWithHigherFee);

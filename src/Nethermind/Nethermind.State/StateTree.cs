@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -14,6 +15,7 @@ namespace Nethermind.State
 {
     public class StateTree : PatriciaTree
     {
+        private readonly LruCache<ValueKeccak, Account> _cache = new(maxCapacity: 4096, "Account cache");
         private readonly AccountDecoder _decoder = new();
 
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
@@ -46,8 +48,20 @@ namespace Nethermind.State
         [DebuggerStepThrough]
         private Account? Get(in ValueKeccak keccak, Keccak? rootHash = null)
         {
+            if (rootHash is null && _cache.TryGet(keccak, out Account? account))
+            {
+                return account;
+            }
+
             byte[]? bytes = Get(keccak.BytesAsSpan, rootHash);
-            return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
+            account = bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
+
+            if (rootHash is null && account is not null)
+            {
+                _cache.Set(keccak, account);
+            }
+
+            return account;
         }
 
         [DebuggerStepThrough]
@@ -64,6 +78,15 @@ namespace Nethermind.State
         [DebuggerStepThrough]
         public Rlp? Set(in ValueKeccak keccak, Account? account)
         {
+            if (account is not null)
+            {
+                _cache.Set(keccak, account);
+            }
+            else
+            {
+                _cache.Delete(keccak);
+            }
+
             Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
 
             Set(keccak.Bytes, rlp);
