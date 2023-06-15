@@ -82,6 +82,11 @@ namespace Nethermind.JsonRpc
         long? MaxRequestBodySize { get; set; }
 
         [ConfigItem(
+            Description = "Set a lower limit for GetGasPriceEstimate. This ensure rpc calls to eth_gasPrice are never below the limit set by MiningConfig.MinGasPrice",
+            DefaultValue = "false")]
+        bool UseMinGasPriceInEstimates { get; set; }
+
+        [ConfigItem(
             Description = "Number of concurrent instances for non-sharable calls (" +
                           nameof(IEthRpcModule.eth_call) + ", " +
                           nameof(IEthRpcModule.eth_estimateGas) + ", " +
