@@ -576,7 +576,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             return true;
         }
-        
+
         private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled,
             string? reason)
         {
