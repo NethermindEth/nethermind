@@ -37,8 +37,8 @@ public class ChainSpecBasedSpecProviderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-        var logger = Substitute.ForPartsOf<LimboTraceLogger>();
-        var logManager = Substitute.For<ILogManager>();
+        LimboTraceLogger? logger = Substitute.ForPartsOf<LimboTraceLogger>();
+        ILogManager? logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider
@@ -82,9 +82,9 @@ public class ChainSpecBasedSpecProviderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-        var logger = Substitute.For<ILogger>();
+        ILogger? logger = Substitute.For<ILogger>();
         logger.IsWarn.Returns(true);
-        var logManager = Substitute.For<ILogManager>();
+        ILogManager? logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
         ChainSpecBasedSpecProvider provider = new(chainSpec, logManager);
         ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider
@@ -227,25 +227,10 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Chiado));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Chiado));
 
-        VerifyGnosisForkExceptions(provider, ChiadoSpecProvider.ShanghaiTimestamp);
+        IReleaseSpec? preShanghaiSpec = provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp - 1));
+        IReleaseSpec? postShanghaiSpec = provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp));
 
-        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp - 1)).MaxCodeSize.Should().Be(long.MaxValue);
-        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxCodeSize.Should().Be(24576L);
-        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxInitCodeSize.Should().Be(2 * 24576L);
-        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).LimitCodeSize.Should().Be(true);
-    }
-
-    private void VerifyGnosisForkExceptions(ISpecProvider specProvider, ulong shanghaiTimestamp)
-    {
-        long blockNumber = GnosisSpecProvider.LondonBlockNumber + 1; // for Chiado it doesn't matter, for Gnosis we need something after LondonHardfork
-        specProvider.GetSpec((blockNumber, shanghaiTimestamp - 1)).MaxCodeSize.Should().Be(long.MaxValue);
-        specProvider.GetSpec((blockNumber, ChiadoSpecProvider.ShanghaiTimestamp)).MaxCodeSize.Should().Be(24576L);
-
-        specProvider.GetSpec((blockNumber, ChiadoSpecProvider.ShanghaiTimestamp - 1)).MaxInitCodeSize.Should().Be(0L);
-        specProvider.GetSpec((blockNumber, ChiadoSpecProvider.ShanghaiTimestamp)).MaxInitCodeSize.Should().Be(2 * 24576L);
-
-        specProvider.GetSpec((blockNumber, ChiadoSpecProvider.ShanghaiTimestamp)).LimitCodeSize.Should().Be(true);
-        specProvider.GetSpec((blockNumber, ChiadoSpecProvider.ShanghaiTimestamp)).LimitCodeSize.Should().Be(true);
+        VerifyGnosisShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
     }
 
     [Test]
@@ -281,14 +266,45 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(GnosisSpecProvider.Instance.TerminalTotalDifficulty));
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Gnosis));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Gnosis));
+        VerifyGnosisPreShanghaiExceptions(provider);
 
-        provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp - 1)).MaxCodeSize.Should().Be(long.MaxValue);
+        /* ToDo uncomment with Gnosis fork specified
+        IReleaseSpec? preShanghaiSpec = provider.GetSpec((GnosisSpecProvider.LondonBlockNumber + 1,
+            GnosisSpecProvider.ShanghaiTimestamp - 1));
+        IReleaseSpec? postShanghaiSpec = provider.GetSpec((GnosisSpecProvider.LondonBlockNumber + 1,
+            GnosisSpecProvider.ShanghaiTimestamp));
 
-        /* ToDo uncomment when we have gnosis shapella timestamp
-        provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp)).MaxCodeSize.Should().Be(24576L);
-        provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp)).MaxInitCodeSize.Should().Be(2 * 24576L);*/
+        VerifyGnosisForkExceptions(preShanghaiSpec, postShanghaiSpec); */
     }
 
+    private void VerifyGnosisShanghaiExceptions(IReleaseSpec preShanghaiSpec, IReleaseSpec postShanghaiSpec)
+    {
+        preShanghaiSpec.MaxCodeSize.Should().Be(long.MaxValue);
+        postShanghaiSpec.MaxCodeSize.Should().Be(24576L);
+
+        preShanghaiSpec.MaxInitCodeSize.Should().Be(-2L); // doesn't have meaningful value before EIP3860
+        postShanghaiSpec.MaxInitCodeSize.Should().Be(2 * 24576L);
+
+        preShanghaiSpec.LimitCodeSize.Should().Be(false);
+        postShanghaiSpec.LimitCodeSize.Should().Be(true);
+
+        preShanghaiSpec.IsEip170Enabled.Should().Be(false);
+        postShanghaiSpec.IsEip170Enabled.Should().Be(true);
+    }
+
+    private void VerifyGnosisPreShanghaiExceptions(ISpecProvider specProvider)
+    {
+        specProvider.GenesisSpec.MaximumUncleCount.Should().Be(0);
+        specProvider.GetSpec((ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber - (1))).IsEip1283Enabled.Should()
+            .BeFalse();
+        specProvider.GetSpec((ForkActivation)GnosisSpecProvider.ConstantinopoleBlockNumber).IsEip1283Enabled.Should()
+            .BeTrue();
+
+        specProvider.GetSpec((ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber -1)).UseConstantinopleNetGasMetering.Should()
+            .BeFalse();
+        specProvider.GetSpec((ForkActivation)GnosisSpecProvider.ConstantinopoleBlockNumber).UseConstantinopleNetGasMetering.Should()
+            .BeTrue();
+    }
 
     [Test]
     public void Mainnet_loads_properly()
