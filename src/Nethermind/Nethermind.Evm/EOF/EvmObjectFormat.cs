@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using FastEnumUtility;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
@@ -502,6 +503,17 @@ internal static class EvmObjectFormat
                         }
                     }
 
+                    if (opcode is Instruction.DUPN or Instruction.SWAPN)
+                    {
+                        if (postInstructionByte + ONE_BYTE_LENGTH > code.Length)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-663 : {opcode.FastToString()} Argument underflow");
+                            return false;
+                        }
+
+                        // var argCount = code[postInstructionByte];
+                    }
+
                     if (opcode is Instruction.RJUMPV)
                     {
                         if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
@@ -669,7 +681,11 @@ internal static class EvmObjectFormat
 
                     pos += ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH;
                 }
-                else if (opcode is >= Instruction.PUSH0 and <= Instruction.PUSH32)
+                else if (opcode is Instruction.SWAPN or Instruction.DUPN)
+                {
+                    pos += ONE_BYTE_LENGTH;
+                }
+                else if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
                 {
                     int len = opcode - Instruction.PUSH0;
                     pos += len;
@@ -701,7 +717,7 @@ internal static class EvmObjectFormat
                     while (!stop)
                     {
                         Instruction opcode = (Instruction)code[worklet.Position];
-                        (ushort inputs, ushort outputs, ushort immediates) = opcode.StackRequirements();
+                        (ushort? inputs, ushort? outputs, ushort? immediates) = opcode.StackRequirements();
                         ushort posPostInstruction = (ushort)(worklet.Position + 1);
                         if (recordedStackHeight[worklet.Position] != 0)
                         {
@@ -734,6 +750,19 @@ internal static class EvmObjectFormat
                             }
                         }
 
+                        switch (opcode)
+                        {
+                            case Instruction.DUPN:
+                                byte imm = code[posPostInstruction];
+                                inputs = (ushort)(imm + 1);
+                                outputs = (ushort)(inputs + 1);
+                                break;
+                            case Instruction.SWAPN:
+                                imm = code[posPostInstruction];
+                                outputs = inputs = (ushort)(1 + imm);
+                                break;
+                        }
+
                         if (worklet.StackHeight < inputs)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Stack Underflow required {inputs} but found {worklet.StackHeight}");
@@ -764,7 +793,7 @@ internal static class EvmObjectFormat
                             case Instruction.RJUMP:
                                 {
                                     short offset = code.Slice(posPostInstruction, TWO_BYTE_LENGTH).ReadEthInt16();
-                                    int jumpDestination = posPostInstruction + immediates + offset;
+                                    int jumpDestination = posPostInstruction + immediates.Value + offset;
                                     PushWorklet(workset, ref worksetTop, new Worklet((ushort)jumpDestination, worklet.StackHeight));
                                     stop = true;
                                     break;
@@ -774,7 +803,7 @@ internal static class EvmObjectFormat
                                     var offset = code.Slice(posPostInstruction, TWO_BYTE_LENGTH).ReadEthInt16();
                                     var jumpDestination = posPostInstruction + immediates + offset;
                                     PushWorklet(workset, ref worksetTop, new Worklet((ushort)jumpDestination, worklet.StackHeight));
-                                    posPostInstruction += immediates;
+                                    posPostInstruction += immediates.Value;
                                     break;
                                 }
                             case Instruction.RJUMPV:
@@ -785,15 +814,15 @@ internal static class EvmObjectFormat
                                     {
                                         int case_v = posPostInstruction + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH;
                                         int offset = code.Slice(case_v, TWO_BYTE_LENGTH).ReadEthInt16();
-                                        int jumpDestination = posPostInstruction + immediates + offset;
+                                        int jumpDestination = posPostInstruction + immediates.Value + offset;
                                         PushWorklet(workset, ref worksetTop, new Worklet((ushort)jumpDestination, worklet.StackHeight));
                                     }
-                                    posPostInstruction += immediates;
+                                    posPostInstruction += immediates.Value;
                                     break;
                                 }
                             default:
                                 {
-                                    posPostInstruction += immediates;
+                                    posPostInstruction += immediates.Value;
                                     break;
                                 }
                         }

@@ -2156,10 +2156,24 @@ public class VirtualMachine : IVirtualMachine
                 case Instruction.DUP15:
                 case Instruction.DUP16:
                     {
-                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
+                            goto OutOfGas;
 
                         stack.Dup(instruction - Instruction.DUP1 + 1);
                         break;
+                    }
+                case Instruction.DUPN:
+                    {
+                        if (spec.IncludeGeneralSwapsAndDup && env.CodeInfo.IsEof())
+                        {
+                            if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
+                                goto OutOfGas;
+
+                            byte imm = codeSection[programCounter];
+                            stack.Dup(imm + 1);
+                            break;
+                        }
+                        else return CallResult.InvalidInstructionException;
                     }
                 case Instruction.SWAP1:
                 case Instruction.SWAP2:
@@ -2178,10 +2192,24 @@ public class VirtualMachine : IVirtualMachine
                 case Instruction.SWAP15:
                 case Instruction.SWAP16:
                     {
-                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
+                            goto OutOfGas;
 
                         stack.Swap(instruction - Instruction.SWAP1 + 2);
                         break;
+                    }
+                case Instruction.SWAPN:
+                    {
+                        if (spec.IncludeGeneralSwapsAndDup && env.CodeInfo.IsEof())
+                        {
+                            if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
+                                goto OutOfGas;
+
+                            byte imm = codeSection[programCounter];
+                            stack.Swap(imm + 1);
+                            break;
+                        }
+                        else return CallResult.InvalidInstructionException;
                     }
                 case Instruction.LOG0:
                 case Instruction.LOG1:
@@ -2189,7 +2217,8 @@ public class VirtualMachine : IVirtualMachine
                 case Instruction.LOG3:
                 case Instruction.LOG4:
                     {
-                        if (vmState.IsStatic) goto StaticCallViolation;
+                        if (vmState.IsStatic)
+                            goto StaticCallViolation;
 
                         stack.PopUInt256(out UInt256 memoryPos);
                         stack.PopUInt256(out UInt256 length);

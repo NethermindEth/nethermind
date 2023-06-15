@@ -128,8 +128,12 @@ namespace Nethermind.Evm
             => @this.Op(Instruction.MSIZE);
         public static Prepare SWAPx(this Prepare @this, byte i)
             => @this.Op(Instruction.SWAP1 + i - 1);
+        public static Prepare SWAPn(this Prepare @this, byte i)
+            => @this.Op(Instruction.SWAPN).Data((byte)(i));
         public static Prepare DUPx(this Prepare @this, byte i)
             => @this.Op(Instruction.DUP1 + i - 1);
+        public static Prepare DUPn(this Prepare @this, byte i)
+            => @this.Op(Instruction.DUPN).Data((byte)(i));
         public static Prepare BEGINSUB(this Prepare @this)
             => @this.Op(Instruction.BEGINSUB);
         public static Prepare RETURNSUB(this Prepare @this)
@@ -375,6 +379,34 @@ namespace Nethermind.Evm
             => @this.PushSingle(cond)
                         .Op(Instruction.RJUMPI)
                         .Data(BitConverter.GetBytes(to).Reverse().ToArray());
+
+
+        public static Prepare DUP(this Prepare @this, UInt256?[] values, bool useGeneric)
+        {
+            byte len = (byte)values.Length;
+            var result = @this.PushSequence(values)
+                .Op(useGeneric ? Instruction.DUP1 + len - 1 : Instruction.DUPN);
+
+            if (useGeneric)
+            {
+                result.Data(len);
+            }
+            return result;
+        }
+
+        public static Prepare SWAP(this Prepare @this, UInt256?[] values, bool useGeneric)
+        {
+            byte len = (byte)values.Length;
+            var result = @this.PushSequence(values)
+                .Op(useGeneric ? Instruction.SWAP1 + len - 1 : Instruction.SWAPN);
+
+            if (useGeneric)
+            {
+                result.Data(len);
+            }
+            return result;
+        }
+
         #endregion
     }
 }

@@ -127,6 +127,7 @@ namespace Nethermind.Evm
         PUSH31 = 0x7e,
         PUSH32 = 0x7f,
 
+        DUPN = 0xb5,
         DUP1 = 0x80,
         DUP2 = 0x81,
         DUP3 = 0x82,
@@ -144,6 +145,7 @@ namespace Nethermind.Evm
         DUP15 = 0x8e,
         DUP16 = 0x8f,
 
+        SWAPN = 0xb6,
         SWAP1 = 0x90,
         SWAP2 = 0x91,
         SWAP3 = 0x92,
@@ -204,6 +206,7 @@ namespace Nethermind.Evm
             => instruction switch
             {
                 Instruction.CALLF or Instruction.JUMPF => IsEofContext ? EvmObjectFormat.Eof1.TWO_BYTE_LENGTH : 0,
+                Instruction.DUPN or Instruction.SWAPN => IsEofContext ? EvmObjectFormat.Eof1.ONE_BYTE_LENGTH : 0,
                 Instruction.RJUMP or Instruction.RJUMPI => IsEofContext ? EvmObjectFormat.Eof1.TWO_BYTE_LENGTH : 0,
                 Instruction.RJUMPV => IsEofContext ? jumpvCount * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH + EvmObjectFormat.Eof1.ONE_BYTE_LENGTH : 0,
                 >= Instruction.PUSH0 and <= Instruction.PUSH32 => instruction - Instruction.PUSH0,
@@ -234,6 +237,7 @@ namespace Nethermind.Evm
                 Instruction.CALLCODE or Instruction.SELFDESTRUCT => !IsEofContext,
                 Instruction.JUMPI or Instruction.JUMP => !IsEofContext,
                 Instruction.CALLF or Instruction.RETF or Instruction.JUMPF => IsEofContext,
+                Instruction.DUPN or Instruction.SWAPN => IsEofContext,
                 Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB => true,
                 Instruction.CALL or Instruction.DELEGATECALL or Instruction.GAS => !IsEofContext,
                 _ => true
@@ -241,7 +245,7 @@ namespace Nethermind.Evm
         }
 
         //Note() : Extensively test this, refactor it, 
-        public static (ushort InputCount, ushort OutputCount, ushort immediates) StackRequirements(this Instruction instruction) => instruction switch
+        public static (ushort? InputCount, ushort? OutputCount, ushort? immediates) StackRequirements(this Instruction instruction) => instruction switch
         {
             Instruction.STOP => (0, 0, 0),
             Instruction.ADD => (2, 1, 0),
@@ -306,7 +310,6 @@ namespace Nethermind.Evm
             Instruction.JUMPDEST => (0, 0, 0),
             Instruction.RJUMP => (0, 0, 2),
             Instruction.RJUMPI => (1, 0, 2),
-            Instruction.RJUMPV => (1, 0, 4),
             Instruction.BLOBHASH => (1, 1, 0),
             >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, 1, instruction - Instruction.PUSH0),
             >= Instruction.DUP1 and <= Instruction.DUP16 => ((ushort)(instruction - Instruction.DUP1 + 1), (ushort)(instruction - Instruction.DUP1 + 2), 0),
@@ -335,6 +338,9 @@ namespace Nethermind.Evm
             Instruction.DATASIZE => (0, 1, 0),
             Instruction.DATACOPY => (3, 1, 0),
 
+            Instruction.RJUMPV => (1, 0, null), // null indicates this is a dynamic multi-bytes opcode
+            Instruction.SWAPN => (null, null, 1),
+            Instruction.DUPN => (null, null, 1),
             _ => throw new NotImplementedException($"Instruction {instruction} not implemented")
         };
 
