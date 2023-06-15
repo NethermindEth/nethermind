@@ -8,7 +8,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Timers;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -50,18 +49,54 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IReceiptConfig _receiptConfig;
         private readonly IColumnsDb<ReceiptsColumns> _receiptsDb;
         private readonly IDbWithSpan _receiptsBlockDb;
+        private readonly IReceiptsRecovery _recovery;
 
-        public ReceiptMigration(IApiWithNetwork api)
+        /// <summary>
+        /// Note, it start in decreasing order from this high number.
+        /// </summary>
+        private long MigrateToBlockNumber =>
+            _receiptStorage.MigratedBlockNumber == long.MaxValue
+                ? _syncModeSelector.Current.NotSyncing()
+                    ? _blockTree.Head?.Number ?? 0
+                    : _blockTree.BestKnownNumber
+                : _receiptStorage.MigratedBlockNumber - 1;
+
+        public ReceiptMigration(IApiWithNetwork api): this(
+            api.ReceiptStorage!,
+            api.DisposeStack,
+            api.BlockTree!,
+            api.SyncModeSelector!,
+            api.ChainLevelInfoRepository!,
+            api.Config<IReceiptConfig>(),
+            api.DbProvider?.ReceiptsDb!,
+            new ReceiptsRecovery(api.EthereumEcdsa, api.SpecProvider),
+            api.LogManager
+        )
         {
-            _logger = api.LogManager.GetClassLogger<ReceiptMigration>();
-            _receiptStorage = api.ReceiptStorage ?? throw new StepDependencyException(nameof(api.ReceiptStorage));
-            _disposeStack = api.DisposeStack ?? throw new StepDependencyException(nameof(api.DisposeStack));
-            _blockTree = api.BlockTree ?? throw new StepDependencyException(nameof(api.BlockTree));
-            _syncModeSelector = api.SyncModeSelector ?? throw new StepDependencyException(nameof(api.SyncModeSelector));
-            _chainLevelInfoRepository = api.ChainLevelInfoRepository ?? throw new StepDependencyException(nameof(api.ChainLevelInfoRepository));
-            _receiptConfig = api.Config<IReceiptConfig>() ?? throw new StepDependencyException("initConfig");
-            _receiptsDb = api.DbProvider!.ReceiptsDb;
+        }
+
+        public ReceiptMigration(
+            IReceiptStorage receiptStorage,
+            DisposableStack disposeStack,
+            IBlockTree blockTree,
+            ISyncModeSelector syncModeSelector,
+            IChainLevelInfoRepository chainLevelInfoRepository,
+            IReceiptConfig receiptConfig,
+            IColumnsDb<ReceiptsColumns> receiptsDb,
+            IReceiptsRecovery recovery,
+            ILogManager logManager
+        )
+        {
+            _receiptStorage = receiptStorage ?? throw new StepDependencyException(nameof(receiptStorage));
+            _disposeStack = disposeStack ?? throw new StepDependencyException(nameof(disposeStack));
+            _blockTree = blockTree ?? throw new StepDependencyException(nameof(blockTree));
+            _syncModeSelector = syncModeSelector ?? throw new StepDependencyException(nameof(syncModeSelector));
+            _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new StepDependencyException(nameof(chainLevelInfoRepository));
+            _receiptConfig = receiptConfig ?? throw new StepDependencyException("receiptConfig");
+            _receiptsDb = receiptsDb;
             _receiptsBlockDb = _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
+            _recovery = recovery;
+            _logger = logManager.GetClassLogger();
         }
 
         public async ValueTask DisposeAsync()
@@ -85,6 +120,8 @@ namespace Nethermind.Init.Steps.Migrations
             {
                 if (_receiptConfig.ReceiptsMigration)
                 {
+                    ResetMigrationIndexIfNeeded();
+
                     if (CanMigrate(_syncModeSelector.Current))
                     {
                         RunMigration();
@@ -94,14 +131,6 @@ namespace Nethermind.Init.Steps.Migrations
                         _syncModeSelector.Changed -= OnSyncModeChanged;
                         _syncModeSelector.Changed += OnSyncModeChanged;
                         if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration will start after switching to full sync.");
-                    }
-                }
-                else
-                {
-                    long migrateToBlockNumber = MigrateToBlockNumber;
-                    if (migrateToBlockNumber > 0)
-                    {
-                        if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration disabled. Finding logs when multiple blocks receipts need to be scanned might be slow below {migrateToBlockNumber} block.");
                     }
                 }
             }
@@ -188,7 +217,7 @@ namespace Nethermind.Init.Steps.Migrations
             return emptyBlock;
         }
 
-        void ReturnMissingBlock(Block emptyBlock)
+        static void ReturnMissingBlock(Block emptyBlock)
         {
             EmptyBlock.Return(emptyBlock);
         }
@@ -290,19 +319,40 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
+        private void ResetMigrationIndexIfNeeded()
+        {
+            if (_receiptStorage.MigratedBlockNumber != long.MaxValue)
+            {
+                long blockNumber = _blockTree.Head?.Number ?? 0;
+                while (blockNumber > 0)
+                {
+                    ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(blockNumber);
+                    BlockInfo? firstBlockInfo = level?.BlockInfos.FirstOrDefault();
+                    if (firstBlockInfo is not null)
+                    {
+                        TxReceipt[] receipts = _receiptStorage.Get(firstBlockInfo.BlockHash);
+                        if (receipts.Length > 0)
+                        {
+                            if (_recovery.NeedRecover(receipts))
+                            {
+                                _receiptStorage.MigratedBlockNumber = long.MaxValue;
+                            }
+
+                            break;
+                        }
+                    }
+
+                    blockNumber--;
+                }
+            }
+        }
+
         private string GetLogMessage(string status, string? suffix = null)
         {
             string message = $"ReceiptsDb migration {status} | {_stopwatch?.Elapsed:d\\:hh\\:mm\\:ss} | {_progress.CurrentValue.ToString().PadLeft(_toBlock.ToString().Length)} / {_toBlock} blocks migrated. | current {_progress.CurrentPerSecond:F2} Blk/s | total {_progress.TotalPerSecond:F2} Blk/s. {suffix}";
             _progress.SetMeasuringPoint();
             return message;
         }
-
-        private long MigrateToBlockNumber =>
-            _receiptStorage.MigratedBlockNumber == long.MaxValue
-                ? _syncModeSelector.Current.NotSyncing()
-                    ? _blockTree.Head?.Number ?? 0
-                    : _blockTree.BestKnownNumber
-                : _receiptStorage.MigratedBlockNumber - 1;
 
         private class EmptyBlockObjectPolicy : IPooledObjectPolicy<Block>
         {
