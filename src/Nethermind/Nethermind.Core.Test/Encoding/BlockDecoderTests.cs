@@ -80,7 +80,7 @@ public class BlockDecoderTests
         Rlp.ValueDecoderContext valueDecoderContext = new(bytes);
         Block? decoded = valueDecoder ? decoder.Decode(ref valueDecoderContext) : decoder.Decode(new RlpStream(bytes));
         Rlp encoded = decoder.Encode(decoded);
-        Assert.That(encoded.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
+        Assert.That(encoded.Bytes.ToHexString(), Is.EqualTo(bytes.ToHexString()));
     }
 
     [Test]

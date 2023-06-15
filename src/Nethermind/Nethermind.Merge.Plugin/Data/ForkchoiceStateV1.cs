@@ -36,5 +36,5 @@ public class ForkchoiceStateV1
     /// <remarks>Can be <see cref="Keccak.Zero"/> when transition block is not finalized yet.</remarks>
     public Keccak FinalizedBlockHash { get; set; }
 
-    public override string ToString() => $"ForkchoiceState: ({nameof(HeadBlockHash)}: {HeadBlockHash}, {nameof(SafeBlockHash)}: {SafeBlockHash}, {nameof(FinalizedBlockHash)}: {FinalizedBlockHash})";
+    public override string ToString() => $"ForkChoice:     (Head: {HeadBlockHash.ToShortString()}, Safe: {SafeBlockHash.ToShortString()}, Finalized: {FinalizedBlockHash.ToShortString()})";
 }

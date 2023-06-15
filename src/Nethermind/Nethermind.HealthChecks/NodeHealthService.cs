@@ -175,7 +175,7 @@ namespace Nethermind.HealthChecks
             bool result = false;
             foreach (var capability in capabilities)
             {
-                if (capability.Value)
+                if (capability.Value.Enabled)
                 {
                     result |= UpdateStatsAndCheckInvoked(capability.Key, now);
                 }

@@ -22,6 +22,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle;
 [TestFixture]
 public class ChainSpecBasedSpecProviderTests
 {
+    private const ulong GnosisBlockTime = 5;
+
     [TestCase(0, null, false)]
     [TestCase(0, 0ul, false)]
     [TestCase(0, 4660ul, false)]
@@ -37,8 +39,8 @@ public class ChainSpecBasedSpecProviderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-        LimboTraceLogger? logger = Substitute.ForPartsOf<LimboTraceLogger>();
-        ILogManager? logManager = Substitute.For<ILogManager>();
+        var logger = Substitute.ForPartsOf<LimboTraceLogger>();
+        var logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider
@@ -82,9 +84,9 @@ public class ChainSpecBasedSpecProviderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-        ILogger? logger = Substitute.For<ILogger>();
+        var logger = Substitute.For<ILogger>();
         logger.IsWarn.Returns(true);
-        ILogManager? logManager = Substitute.For<ILogManager>();
+        var logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
         ChainSpecBasedSpecProvider provider = new(chainSpec, logManager);
         ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider
@@ -117,7 +119,12 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Sepolia_loads_properly()
     {
-        ChainSpecBasedSpecProvider provider = LoadChainSpecFromChainFolder("sepolia");
+        ChainSpecLoader loader = new(new EthereumJsonSerializer());
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/sepolia.json");
+        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
         SepoliaSpecProvider sepolia = SepoliaSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
@@ -169,7 +176,12 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Goerli_loads_properly()
     {
-        ChainSpecBasedSpecProvider provider = LoadChainSpecFromChainFolder("goerli");
+        ChainSpecLoader loader = new(new EthereumJsonSerializer());
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/goerli.json");
+        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
         GoerliSpecProvider goerli = GoerliSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
@@ -196,7 +208,11 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Chiado_loads_properly()
     {
-        ChainSpecBasedSpecProvider provider = LoadChainSpecFromChainFolder("chiado");
+        ChainSpecLoader loader = new(new EthereumJsonSerializer());
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/chiado.json");
+        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
         ChiadoSpecProvider chiado = ChiadoSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
@@ -217,6 +233,8 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec? postShanghaiSpec = provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp));
 
         VerifyGnosisShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
     }
 
     [Test]
@@ -248,6 +266,7 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(GnosisSpecProvider.Instance.TerminalTotalDifficulty));
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Gnosis));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Gnosis));
+
         VerifyGnosisPreShanghaiExceptions(provider);
 
         /* ToDo uncomment with Gnosis fork specified
@@ -256,7 +275,7 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec? postShanghaiSpec = provider.GetSpec((GnosisSpecProvider.LondonBlockNumber + 1,
             GnosisSpecProvider.ShanghaiTimestamp));
 
-        VerifyGnosisForkExceptions(preShanghaiSpec, postShanghaiSpec); */
+        VerifyGnosisPreShanghaiExceptions(preShanghaiSpec, postShanghaiSpec); */
     }
 
     private void VerifyGnosisShanghaiExceptions(IReleaseSpec preShanghaiSpec, IReleaseSpec postShanghaiSpec)
@@ -288,10 +307,16 @@ public class ChainSpecBasedSpecProviderTests
             .BeTrue();
     }
 
+
     [Test]
     public void Mainnet_loads_properly()
     {
-        ChainSpecBasedSpecProvider provider = LoadChainSpecFromChainFolder("foundation");
+        ChainSpecLoader loader = new(new EthereumJsonSerializer());
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/foundation.json");
+        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
         MainnetSpecProvider mainnet = MainnetSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
@@ -330,7 +355,6 @@ public class ChainSpecBasedSpecProviderTests
         provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxCodeSize.Should().Be(24576L);
         provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxInitCodeSize.Should().Be(2 * 24576L);
 
-        provider.GetSpec((ForkActivation)(long.MaxValue - 1)).IsEip2537Enabled.Should().BeFalse();
         Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(MainnetSpecProvider.LondonBlockNumber));
         Assert.That(provider.GetSpec((ForkActivation)4_369_999).DifficultyBombDelay, Is.EqualTo(0_000_000));
         Assert.That(provider.GetSpec((ForkActivation)4_370_000).DifficultyBombDelay, Is.EqualTo(3_000_000));
@@ -796,4 +820,21 @@ public class ChainSpecBasedSpecProviderTests
         });
         TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = true; });
     }
+
+    private static IEnumerable<ulong> GetTransitionTimestamps(ChainParameters parameters) => parameters.GetType()
+        .Properties()
+        .Where(p => p.Name.EndsWith("TransitionTimestamp", StringComparison.Ordinal))
+        .Select(p => (ulong?)p.GetValue(parameters))
+        .Where(t => t is not null)
+        .Select(t => t!.Value);
+
+    /// <summary>
+    /// Validates the timestamp specified by making sure the resulting slot is a multiple of 8192.
+    /// </summary>
+    /// <param name="timestamp">The timestamp to validate</param>
+    /// <param name="genesisTimestamp">The network's genesis timestamp</param>
+    /// <param name="blockTime">The network's block time in seconds</param>
+    /// <returns><c>true</c> if the timestamp is valid; otherwise, <c>false</c>.</returns>
+    private static bool ValidateSlotByTimestamp(ulong timestamp, ulong genesisTimestamp, ulong blockTime = 12) =>
+        timestamp > genesisTimestamp && (timestamp - genesisTimestamp) / blockTime % 0x2000 == 0;
 }

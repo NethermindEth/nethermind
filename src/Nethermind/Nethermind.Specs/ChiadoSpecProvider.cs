@@ -10,7 +10,8 @@ namespace Nethermind.Specs;
 
 public class ChiadoSpecProvider : ISpecProvider
 {
-    public const ulong ShanghaiTimestamp = 0x646e0e4cUL;
+    public const ulong BeaconChainGenesisTimestamp = 0x6343ee4c;
+    public const ulong ShanghaiTimestamp = 0x646e0e4c;
 
     private ChiadoSpecProvider() { }
 
