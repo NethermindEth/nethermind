@@ -41,14 +41,14 @@ namespace Nethermind.Blockchain.Test.Producers
                     UInt256 balanceBefore = _testRpcBlockchain.State.GetBalance(_eip1559FeeCollector);
                     await _testRpcBlockchain.AddBlock(transactions);
                     UInt256 balanceAfter = _testRpcBlockchain.State.GetBalance(_eip1559FeeCollector);
-                    Assert.AreEqual(expectedFeeCollected, balanceAfter - balanceBefore);
+                    Assert.That(balanceAfter - balanceBefore, Is.EqualTo(expectedFeeCollected));
 
                     return this;
                 }
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task FeeCollector_should_collect_burned_fees_when_eip1559_and_fee_collector_are_set()
         {
             long gasTarget = 3000000;
@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await scenario.Finish();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task FeeCollector_should_not_collect_burned_fees_when_eip1559_is_not_set()
         {
             long gasTarget = 3000000;
@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await scenario.Finish();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task FeeCollector_should_not_collect_burned_fees_when_transaction_is_free()
         {
             long gasTarget = 3000000;

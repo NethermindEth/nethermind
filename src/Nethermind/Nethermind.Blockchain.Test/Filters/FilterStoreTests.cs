@@ -18,27 +18,27 @@ namespace Nethermind.Blockchain.Test.Filters
     [TestFixture]
     public class FilterStoreTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_save_and_load_block_filter()
         {
             FilterStore store = new();
             BlockFilter filter = store.CreateBlockFilter(1);
             store.SaveFilter(filter);
             Assert.True(store.FilterExists(0), "exists");
-            Assert.AreEqual(FilterType.BlockFilter, store.GetFilterType(filter.Id), "type");
+            Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.BlockFilter), "type");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_save_and_load_log_filter()
         {
             FilterStore store = new();
             LogFilter filter = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2));
             store.SaveFilter(filter);
             Assert.True(store.FilterExists(0), "exists");
-            Assert.AreEqual(FilterType.LogFilter, store.GetFilterType(filter.Id), "type");
+            Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.LogFilter), "type");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Cannot_overwrite_filters()
         {
             FilterStore store = new();
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Test.Filters
             Assert.Throws<InvalidOperationException>(() => store.SaveFilter(externalFilter));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Ids_are_incremented_when_storing_externally_created_filter()
         {
             FilterStore store = new();
@@ -60,10 +60,10 @@ namespace Nethermind.Blockchain.Test.Filters
 
             Assert.True(store.FilterExists(100), "exists 100");
             Assert.True(store.FilterExists(101), "exists 101");
-            Assert.AreEqual(FilterType.LogFilter, store.GetFilterType(filter.Id), "type");
+            Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.LogFilter), "type");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Remove_filter_removes_and_notifies()
         {
             FilterStore store = new();
@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Test.Filters
             Assert.False(store.FilterExists(0), "exists");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_get_filters_by_type()
         {
             FilterStore store = new();
@@ -89,10 +89,10 @@ namespace Nethermind.Blockchain.Test.Filters
             LogFilter[] logFilters = store.GetFilters<LogFilter>().ToArray();
             BlockFilter[] blockFilters = store.GetFilters<BlockFilter>().ToArray();
 
-            Assert.AreEqual(1, logFilters.Length, "log filters length");
-            Assert.AreEqual(1, logFilters[0].Id, "log filters ids");
-            Assert.AreEqual(1, blockFilters.Length, "block Filters length");
-            Assert.AreEqual(0, blockFilters[0].Id, "block filters ids");
+            Assert.That(logFilters.Length, Is.EqualTo(1), "log filters length");
+            Assert.That(logFilters[0].Id, Is.EqualTo(1), "log filters ids");
+            Assert.That(blockFilters.Length, Is.EqualTo(1), "block Filters length");
+            Assert.That(blockFilters[0].Id, Is.EqualTo(0), "block filters ids");
         }
 
         public static IEnumerable CorrectlyCreatesAddressFilterTestCases

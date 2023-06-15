@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -56,6 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             Tracer tracer = new(
                 txProcessingEnv.StateProvider,
+                chainProcessingEnv.ChainProcessor,
                 chainProcessingEnv.ChainProcessor);
 
             return new ProofRpcModule(tracer, _blockTree, _receiptFinder, _specProvider, _logManager);

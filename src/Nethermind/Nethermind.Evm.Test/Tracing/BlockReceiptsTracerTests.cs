@@ -25,13 +25,13 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.StartNewTxTrace(block.Transactions[0]);
             tracer.MarkAsSuccess(TestItem.AddressA, 100, new byte[0], new LogEntry[0], TestItem.KeccakF);
 
-            Assert.AreEqual(TestItem.KeccakF, tracer.TxReceipts[0].PostTransactionState);
+            Assert.That(tracer.TxReceipts[0].PostTransactionState, Is.EqualTo(TestItem.KeccakF));
         }
 
         [Test]
         public void Sets_tx_type()
         {
-            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.WithChainId(1).WithType(TxType.AccessList).TestObject).TestObject;
+            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.WithChainId(TestBlockchainIds.ChainId).WithType(TxType.AccessList).TestObject).TestObject;
 
             BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(NullBlockTracer.Instance);
@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.StartNewTxTrace(block.Transactions[0]);
             tracer.MarkAsFailed(TestItem.AddressA, 100, new byte[0], "error", TestItem.KeccakF);
 
-            Assert.AreEqual(TestItem.KeccakF, tracer.TxReceipts[0].PostTransactionState);
+            Assert.That(tracer.TxReceipts[0].PostTransactionState, Is.EqualTo(TestItem.KeccakF));
         }
 
         [Test]

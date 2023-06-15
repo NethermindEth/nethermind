@@ -8,13 +8,11 @@ namespace Nethermind.Merge.Plugin.Data
 {
     /// <summary>
     /// Result of engine_newPayloadV1 call.
-    /// 
+    ///
     /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#PayloadStatusV1"/>
     /// </summary>
     public class PayloadStatusV1
     {
-        public static readonly PayloadStatusV1 InvalidBlockHash = new() { Status = PayloadStatus.InvalidBlockHash };
-
         public static readonly PayloadStatusV1 Syncing = new() { Status = PayloadStatus.Syncing };
 
         public static readonly PayloadStatusV1 Accepted = new() { Status = PayloadStatus.Accepted };
@@ -37,7 +35,7 @@ namespace Nethermind.Merge.Plugin.Data
         public Keccak? LatestValidHash { get; set; }
 
         /// <summary>
-        /// Message providing additional details on the validation error if the payload is classified as <see cref="PayloadStatus.Invalid"/> or <see cref="PayloadStatus.InvalidBlockHash"/>. 
+        /// Message providing additional details on the validation error if the payload is classified as <see cref="PayloadStatus.Invalid"/>.
         /// </summary>
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public string? ValidationError { get; set; }

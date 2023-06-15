@@ -101,13 +101,13 @@ namespace Nethermind.Clique.Test
 
         private CliqueSealer BuildSealer(int currentBlock, IDb db)
         {
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Rinkeby, LimboLogs.Instance);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(BlockchainIds.Rinkeby, LimboLogs.Instance);
             CliqueConfig config = new();
             int currentSignerIndex = (currentBlock % _signers.Count);
             _currentSigner = _signers[currentSignerIndex];
             _snapshotManager = new SnapshotManager(config, db, _blockTree, ecdsa, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
-            _clique = new CliqueSealer(new Signer(ChainId.Rinkeby, _currentSigner, LimboLogs.Instance), config,
+            _clique = new CliqueSealer(new Signer(BlockchainIds.Rinkeby, _currentSigner, LimboLogs.Instance), config,
                 _snapshotManager, LimboLogs.Instance);
             return _clique;
         }
@@ -189,7 +189,7 @@ namespace Nethermind.Clique.Test
 
             Address expectedBlockSealer = new("0xb279182d99e65703f0076e4812653aab85fca0f0");
             Address blockSealer = _snapshotManager.GetBlockSealer(header);
-            Assert.AreEqual(expectedBlockSealer, blockSealer);
+            Assert.That(blockSealer, Is.EqualTo(expectedBlockSealer));
         }
 
         private static BlockHeader BuildCliqueBlock()

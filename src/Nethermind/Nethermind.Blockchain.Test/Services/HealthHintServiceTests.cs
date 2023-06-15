@@ -11,7 +11,7 @@ namespace Nethermind.Blockchain.Test.Services
 {
     public class HealthHintServiceTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void GetBlockProcessorAndProducerIntervalHint_returns_expected_result(
             [ValueSource(nameof(BlockProcessorIntervalHintTestCases))]
             BlockProcessorIntervalHint test)
@@ -19,8 +19,8 @@ namespace Nethermind.Blockchain.Test.Services
             IHealthHintService healthHintService = new HealthHintService(test.ChainSpec);
             ulong? actualProcessing = healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
             ulong? actualProducing = healthHintService.MaxSecondsIntervalForProducingBlocksHint();
-            Assert.AreEqual(test.ExpectedProcessingHint, actualProcessing);
-            Assert.AreEqual(test.ExpectedProducingHint, actualProducing);
+            Assert.That(actualProcessing, Is.EqualTo(test.ExpectedProcessingHint));
+            Assert.That(actualProducing, Is.EqualTo(test.ExpectedProducingHint));
         }
 
         public class BlockProcessorIntervalHint

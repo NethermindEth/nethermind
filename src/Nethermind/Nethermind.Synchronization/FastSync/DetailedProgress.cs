@@ -44,14 +44,11 @@ namespace Nethermind.Synchronization.FastSync
 
         internal (DateTime small, DateTime full) LastReportTime = (DateTime.MinValue, DateTime.MinValue);
 
-        private Known.SizeInfo? _chainSizeInfo;
+        private readonly IChainEstimations _chainEstimations;
 
         public DetailedProgress(ulong chainId, byte[] serializedInitialState)
         {
-            if (Known.ChainSize.TryGetValue(chainId, out Known.SizeInfo value))
-            {
-                _chainSizeInfo = value;
-            }
+            _chainEstimations = ChainSizes.CreateChainSizeInfo(chainId);
 
             LoadFromSerialized(serializedInitialState);
         }
@@ -72,13 +69,13 @@ namespace Nethermind.Synchronization.FastSync
                 // if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {(decimal) _dataSize / 1000 / 1000,6:F2}MB | kBps: {savedKBytesPerSecond,5:F0} | P: {_pendingRequests.Count} | acc {_savedAccounts} | queues {StreamsDescription} | db {_averageTimeInHandler:f2}ms");
 
                 Metrics.StateSynced = DataSize;
-                string dataSizeInfo = $"{(decimal)DataSize / 1000 / 1000,6:F2}MB";
-                if (_chainSizeInfo is not null)
+                string dataSizeInfo = $"{(decimal)DataSize / 1000 / 1000,6:F2} MB";
+                if (_chainEstimations.StateSize is not null)
                 {
-                    decimal percentage = Math.Min(1, (decimal)DataSize / _chainSizeInfo.Value.Current);
+                    decimal percentage = Math.Min(1, (decimal)DataSize / _chainEstimations.StateSize.Value);
                     dataSizeInfo = string.Concat(
                         $"~{percentage:P2} | ", dataSizeInfo,
-                        $" / ~{(decimal)_chainSizeInfo.Value.Current / 1000 / 1000,6:F2}MB");
+                        $" / ~{(decimal)_chainEstimations.StateSize.Value / 1000 / 1000,6:F2} MB");
                 }
 
                 if (logger.IsInfo) logger.Info(
@@ -105,7 +102,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private void LoadFromSerialized(byte[] serializedData)
         {
-            if (serializedData is not null)
+            if (serializedData != null)
             {
                 RlpStream rlpStream = new(serializedData);
                 rlpStream.ReadSequenceLength();
@@ -130,21 +127,42 @@ namespace Nethermind.Synchronization.FastSync
 
         public byte[] Serialize()
         {
-            Rlp rlp = Rlp.Encode(
-                Rlp.Encode(ConsumedNodesCount),
-                Rlp.Encode(SavedStorageCount),
-                Rlp.Encode(SavedStateCount),
-                Rlp.Encode(SavedNodesCount),
-                Rlp.Encode(SavedAccounts),
-                Rlp.Encode(SavedCode),
-                Rlp.Encode(RequestedNodesCount),
-                Rlp.Encode(DbChecks),
-                Rlp.Encode(StateWasThere),
-                Rlp.Encode(StateWasNotThere),
-                Rlp.Encode(DataSize),
-                Rlp.Encode(SecondsInSync));
+            Span<long> progress = stackalloc[]
+            {
+                ConsumedNodesCount,
+                SavedStorageCount,
+                SavedStateCount,
+                SavedNodesCount,
+                SavedAccounts,
+                SavedCode,
+                RequestedNodesCount,
+                DbChecks,
+                StateWasThere,
+                StateWasNotThere,
+                DataSize,
+                SecondsInSync
+            };
 
-            return rlp.Bytes;
+            int contentLength = GetLength(progress);
+            RlpStream stream = new RlpStream(Rlp.LengthOfSequence(contentLength));
+            stream.StartSequence(contentLength);
+            foreach (long entry in progress)
+            {
+                stream.Encode(entry);
+            }
+            return stream.Data;
+        }
+
+        private static int GetLength(Span<long> progress)
+        {
+            int sum = 0;
+
+            for (int index = 0; index < progress.Length; index++)
+            {
+                sum += Rlp.LengthOf(progress[index]);
+            }
+
+            return sum;
         }
     }
 }

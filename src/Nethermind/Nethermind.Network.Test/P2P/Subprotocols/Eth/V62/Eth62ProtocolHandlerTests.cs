@@ -459,7 +459,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+                txs[i] = Build.A.Transaction.SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
             }
 
             _handler.SendNewTransactions(txs);
@@ -491,7 +491,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+                txs[i] = Build.A.Transaction.SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
             }
 
             _handler.SendNewTransactions(txs);
@@ -508,18 +508,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void should_send_single_transaction_even_if_exceed_MaxPacketSize(int dataSize)
         {
             int txCount = 512; //we will try to send 512 txs
-            Transaction tx = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved().TestObject;
-            int sizeOfOneTx = tx.GetLength(new TxDecoder());
-            int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
-            int nonFullMsgTxsCount = txCount % numberOfTxsInOneMsg;
-            int messagesCount = txCount / numberOfTxsInOneMsg + (nonFullMsgTxsCount > 0 ? 1 : 0);
 
             Transaction[] txs = new Transaction[txCount];
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = tx;
+                txs[i] = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
             }
+
+            Transaction tx = txs[0];
+            int sizeOfOneTx = tx.GetLength();
+            int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
+            int nonFullMsgTxsCount = txCount % numberOfTxsInOneMsg;
+            int messagesCount = txCount / numberOfTxsInOneMsg + (nonFullMsgTxsCount > 0 ? 1 : 0);
 
             _handler.SendNewTransactions(txs);
 

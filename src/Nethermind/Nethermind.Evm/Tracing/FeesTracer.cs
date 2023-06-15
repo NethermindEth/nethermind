@@ -25,6 +25,7 @@ public class FeesTracer : IBlockTracer, ITxTracer
     public bool IsTracingStorage => false;
     public bool IsTracingReceipt => false;
     public bool IsTracingFees => true;
+    public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
     public UInt256 Fees { get; private set; } = UInt256.Zero;
     public UInt256 BurntFees { get; private set; } = UInt256.Zero;
@@ -75,12 +76,12 @@ public class FeesTracer : IBlockTracer, ITxTracer
     {
         throw new NotImplementedException();
     }
-    public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+    public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
     {
         throw new NotImplementedException();
     }
 
-    public void ReportStorageRead(StorageCell storageCell)
+    public void ReportStorageRead(in StorageCell storageCell)
     {
         throw new NotImplementedException();
     }

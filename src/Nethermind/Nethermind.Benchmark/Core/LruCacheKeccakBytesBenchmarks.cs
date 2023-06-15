@@ -20,26 +20,31 @@ namespace Nethermind.Benchmarks.Core
             }
         }
 
-        [Params(0, 2, 4, 8, 16, 32)]
-        public int StartCapacity { get; set; }
+        [Params(16, 32, 128)]
+        public int MaxCapacity { get; set; }
 
-        [Params(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28)]
+        [Params(1, 2, 8, 32, 64)]
         public int ItemsCount { get; set; }
 
-        public Keccak[] Keys { get; set; } = new Keccak[28];
+        public Keccak[] Keys { get; set; } = new Keccak[64];
 
         public byte[] Value { get; set; } = new byte[0];
 
         [Benchmark]
-        public LruCache<Keccak, byte[]> WithItems()
+        public LruCache<ValueKeccak, byte[]> WithItems()
         {
-            LruCache<Keccak, byte[]> cache = new LruCache<Keccak, byte[]>(128, StartCapacity, String.Empty);
-            for (int j = 0; j < ItemsCount; j++)
-            {
-                cache.Set(Keys[j], Value);
-            }
+            LruCache<ValueKeccak, byte[]> cache = new LruCache<ValueKeccak, byte[]>(MaxCapacity, MaxCapacity, String.Empty);
+            Fill(cache);
 
             return cache;
+
+            void Fill(LruCache<ValueKeccak, byte[]> cache)
+            {
+                for (int j = 0; j < ItemsCount; j++)
+                {
+                    cache.Set(Keys[j], Value);
+                }
+            }
         }
     }
 }

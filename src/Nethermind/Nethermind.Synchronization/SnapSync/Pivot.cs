@@ -55,14 +55,14 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void LogPivotChanged(string msg)
         {
-            _logger.Info($"SNAP - {msg} - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
+            _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
         }
 
         public void UpdateHeaderForcefully()
         {
             if (_blockTree.BestSuggestedHeader?.Number > _bestHeader.Number)
             {
-                LogPivotChanged("to many empty responses");
+                LogPivotChanged("too many empty responses");
                 _bestHeader = _blockTree.BestSuggestedHeader;
             }
         }

@@ -8,7 +8,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
     public class BlockHeadersMessage : P2PMessage
     {
         public override int PacketType { get; } = LesMessageCode.BlockHeaders;
-        public override string Protocol { get; } = P2P.Protocol.Les;
+        public override string Protocol { get; } = Contract.P2P.Protocol.Les;
         public Eth.V62.Messages.BlockHeadersMessage EthMessage { get; set; }
         public long RequestId { get; set; }
         public int BufferValue { get; set; }

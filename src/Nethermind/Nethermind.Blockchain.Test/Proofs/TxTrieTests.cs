@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Test.Proofs
             _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_calculate_root()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
@@ -33,17 +33,15 @@ namespace Nethermind.Blockchain.Test.Proofs
 
             if (_releaseSpec == Berlin.Instance)
             {
-                Assert.AreEqual("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5",
-                    txTrie.RootHash.ToString());
+                Assert.That(txTrie.RootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
             }
             else
             {
-                Assert.AreEqual("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5",
-                    txTrie.RootHash.ToString());
+                Assert.That(txTrie.RootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_collect_proof_trie_case_1()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
@@ -54,19 +52,19 @@ namespace Nethermind.Blockchain.Test.Proofs
             VerifyProof(proof, txTrie.RootHash);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_collect_proof_with_trie_case_2()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
             TxTrie txTrie = new(block.Transactions, true);
             byte[][] proof = txTrie.BuildProof(0);
-            Assert.AreEqual(2, proof.Length);
+            Assert.That(proof.Length, Is.EqualTo(2));
 
             txTrie.UpdateRootHash();
             VerifyProof(proof, txTrie.RootHash);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_collect_proof_with_trie_case_3_modified()
         {
             Block block = Build.A.Block.WithTransactions(Enumerable.Repeat(Build.A.Transaction.TestObject, 1000).ToArray()).TestObject;

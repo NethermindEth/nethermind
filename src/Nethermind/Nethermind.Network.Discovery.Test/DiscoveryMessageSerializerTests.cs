@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -46,17 +48,18 @@ namespace Nethermind.Network.Discovery.Test
                     new byte[32])
                 { FarAddress = _farAddress };
 
-            byte[] data = _messageSerializationService.Serialize(message);
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(message);
             PingMsg deserializedMessage = _messageSerializationService.Deserialize<PingMsg>(data);
+            data.SafeRelease();
 
-            Assert.AreEqual(message.MsgType, deserializedMessage.MsgType);
-            Assert.AreEqual(message.FarPublicKey, deserializedMessage.FarPublicKey);
-            Assert.AreEqual(message.ExpirationTime, deserializedMessage.ExpirationTime);
+            Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
+            Assert.That(deserializedMessage.FarPublicKey, Is.EqualTo(message.FarPublicKey));
+            Assert.That(deserializedMessage.ExpirationTime, Is.EqualTo(message.ExpirationTime));
 
-            Assert.AreEqual(message.FarAddress, deserializedMessage.SourceAddress);
-            Assert.AreEqual(message.DestinationAddress, deserializedMessage.DestinationAddress);
-            Assert.AreEqual(message.SourceAddress, deserializedMessage.SourceAddress);
-            Assert.AreEqual(message.Version, deserializedMessage.Version);
+            Assert.That(deserializedMessage.SourceAddress, Is.EqualTo(message.FarAddress));
+            Assert.That(deserializedMessage.DestinationAddress, Is.EqualTo(message.DestinationAddress));
+            Assert.That(deserializedMessage.SourceAddress, Is.EqualTo(message.SourceAddress));
+            Assert.That(deserializedMessage.Version, Is.EqualTo(message.Version));
 
             byte[] expectedPingMdc =
                 Bytes.FromHexString("0xf8c61953f3b94a91aefe611e61dd74fe26aa5c969d9f29b7e063e6169171a772");
@@ -72,14 +75,15 @@ namespace Nethermind.Network.Discovery.Test
                     FarAddress = _farAddress
                 };
 
-            byte[] data = _messageSerializationService.Serialize(message);
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(message);
             PongMsg deserializedMessage = _messageSerializationService.Deserialize<PongMsg>(data);
+            data.SafeRelease();
 
-            Assert.AreEqual(message.MsgType, deserializedMessage.MsgType);
-            Assert.AreEqual(message.FarPublicKey, deserializedMessage.FarPublicKey);
-            Assert.AreEqual(message.ExpirationTime, deserializedMessage.ExpirationTime);
+            Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
+            Assert.That(deserializedMessage.FarPublicKey, Is.EqualTo(message.FarPublicKey));
+            Assert.That(deserializedMessage.ExpirationTime, Is.EqualTo(message.ExpirationTime));
 
-            Assert.AreEqual(message.PingMdc, deserializedMessage.PingMdc);
+            Assert.That(deserializedMessage.PingMdc, Is.EqualTo(message.PingMdc));
         }
 
         [Test]
@@ -87,19 +91,21 @@ namespace Nethermind.Network.Discovery.Test
         {
             PingMsg pingMsg = new(TestItem.PublicKeyA, long.MaxValue, TestItem.IPEndPointA, TestItem.IPEndPointB, new byte[32]);
             pingMsg.EnrSequence = 3;
-            byte[] serialized = _messageSerializationService.Serialize(pingMsg);
+            IByteBuffer serialized = _messageSerializationService.ZeroSerialize(pingMsg);
             pingMsg = _messageSerializationService.Deserialize<PingMsg>(serialized);
-            Assert.AreEqual(3, pingMsg.EnrSequence);
+            serialized.SafeRelease();
+            Assert.That(pingMsg.EnrSequence, Is.EqualTo(3));
         }
 
         [Test]
         public void Enr_request_there_and_back()
         {
             EnrRequestMsg msg = new(TestItem.PublicKeyA, long.MaxValue);
-            byte[] serialized = _messageSerializationService.Serialize(msg);
+            IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
             EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(serialized);
-            Assert.AreEqual(msg.ExpirationTime, deserialized.ExpirationTime);
-            Assert.AreEqual(deserialized.FarPublicKey, _privateKey.PublicKey);
+            serialized.SafeRelease();
+            Assert.That(deserialized.ExpirationTime, Is.EqualTo(msg.ExpirationTime));
+            Assert.That(_privateKey.PublicKey, Is.EqualTo(deserialized.FarPublicKey));
         }
 
         [Test]
@@ -112,11 +118,12 @@ namespace Nethermind.Network.Discovery.Test
             signer.Sign(nodeRecord);
             EnrResponseMsg msg = new(TestItem.PublicKeyA, nodeRecord, TestItem.KeccakA);
 
-            byte[] serialized = _messageSerializationService.Serialize(msg);
+            IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
             EnrResponseMsg deserialized = _messageSerializationService.Deserialize<EnrResponseMsg>(serialized);
-            Assert.AreEqual(msg.NodeRecord.EnrSequence, deserialized.NodeRecord.EnrSequence);
-            Assert.AreEqual(msg.RequestKeccak, deserialized.RequestKeccak);
-            Assert.AreEqual(msg.NodeRecord.Signature, deserialized.NodeRecord.Signature);
+            serialized.SafeRelease();
+            Assert.That(deserialized.NodeRecord.EnrSequence, Is.EqualTo(msg.NodeRecord.EnrSequence));
+            Assert.That(deserialized.RequestKeccak, Is.EqualTo(msg.RequestKeccak));
+            Assert.That(deserialized.NodeRecord.Signature, Is.EqualTo(msg.NodeRecord.Signature));
         }
 
         [Test]
@@ -149,14 +156,15 @@ namespace Nethermind.Network.Discovery.Test
                     FarAddress = _farAddress
                 };
 
-            byte[] data = _messageSerializationService.Serialize(message);
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(message);
             FindNodeMsg deserializedMessage = _messageSerializationService.Deserialize<FindNodeMsg>(data);
+            data.SafeRelease();
 
-            Assert.AreEqual(message.MsgType, deserializedMessage.MsgType);
-            Assert.AreEqual(message.FarPublicKey, deserializedMessage.FarPublicKey);
-            Assert.AreEqual(message.ExpirationTime, deserializedMessage.ExpirationTime);
+            Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
+            Assert.That(deserializedMessage.FarPublicKey, Is.EqualTo(message.FarPublicKey));
+            Assert.That(deserializedMessage.ExpirationTime, Is.EqualTo(message.ExpirationTime));
 
-            Assert.AreEqual(message.SearchedNodeId, deserializedMessage.SearchedNodeId);
+            Assert.That(deserializedMessage.SearchedNodeId, Is.EqualTo(message.SearchedNodeId));
         }
 
         [Test]
@@ -174,19 +182,20 @@ namespace Nethermind.Network.Discovery.Test
                     FarAddress = _farAddress
                 };
 
-            byte[] data = _messageSerializationService.Serialize(message);
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(message);
             NeighborsMsg deserializedMessage = _messageSerializationService.Deserialize<NeighborsMsg>(data);
+            data.SafeRelease();
 
-            Assert.AreEqual(message.MsgType, deserializedMessage.MsgType);
-            Assert.AreEqual(message.FarPublicKey, deserializedMessage.FarPublicKey);
-            Assert.AreEqual(message.ExpirationTime, deserializedMessage.ExpirationTime);
+            Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
+            Assert.That(deserializedMessage.FarPublicKey, Is.EqualTo(message.FarPublicKey));
+            Assert.That(deserializedMessage.ExpirationTime, Is.EqualTo(message.ExpirationTime));
 
             for (int i = 0; i < message.Nodes.Length; i++)
             {
-                Assert.AreEqual(message.Nodes[i].Host, deserializedMessage.Nodes[i].Host);
-                Assert.AreEqual(message.Nodes[i].Port, deserializedMessage.Nodes[i].Port);
-                Assert.AreEqual(message.Nodes[i].IdHash, deserializedMessage.Nodes[i].IdHash);
-                Assert.AreEqual(message.Nodes[i], deserializedMessage.Nodes[i]);
+                Assert.That(deserializedMessage.Nodes[i].Host, Is.EqualTo(message.Nodes[i].Host));
+                Assert.That(deserializedMessage.Nodes[i].Port, Is.EqualTo(message.Nodes[i].Port));
+                Assert.That(deserializedMessage.Nodes[i].IdHash, Is.EqualTo(message.Nodes[i].IdHash));
+                Assert.That(deserializedMessage.Nodes[i], Is.EqualTo(message.Nodes[i]));
             }
         }
     }

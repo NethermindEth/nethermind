@@ -11,7 +11,7 @@ namespace Nethermind.Serialization.Rlp
         public static T[] DecodeArray<T>(this IRlpStreamDecoder<T> decoder, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
-            T[] result = new T[rlpStream.ReadNumberOfItemsRemaining(checkPosition)];
+            T[] result = new T[rlpStream.PeekNumberOfItemsRemaining(checkPosition)];
             for (int i = 0; i < result.Length; i++)
             {
                 result[i] = decoder.Decode(rlpStream, rlpBehaviors);
@@ -23,7 +23,7 @@ namespace Nethermind.Serialization.Rlp
         public static T[] DecodeArray<T>(this IRlpValueDecoder<T> decoder, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            T[] result = new T[decoderContext.ReadNumberOfItemsRemaining(checkPosition)];
+            T[] result = new T[decoderContext.PeekNumberOfItemsRemaining(checkPosition)];
             for (int i = 0; i < result.Length; i++)
             {
                 result[i] = decoder.Decode(ref decoderContext, rlpBehaviors);
@@ -107,6 +107,55 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return Rlp.Encode(rlpSequence);
+        }
+
+        public static void Encode<T>(this IRlpStreamDecoder<T> decoder, RlpStream stream, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            if (items == null)
+            {
+                stream.Encode(Rlp.OfEmptySequence);
+            }
+
+            stream.StartSequence(decoder.GetContentLength(items, behaviors));
+            for (int index = 0; index < items.Length; index++)
+            {
+                T t = items[index];
+                if (t == null)
+                {
+                    stream.Encode(Rlp.OfEmptySequence);
+                }
+                else
+                {
+                    decoder.Encode(stream, t, behaviors);
+                }
+            }
+
+        }
+
+        public static int GetContentLength<T>(this IRlpStreamDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            if (items == null)
+            {
+                return Rlp.OfEmptySequence.Length;
+            }
+
+            int contentLength = 0;
+            for (int i = 0; i < items.Length; i++)
+            {
+                contentLength += decoder.GetLength(items[i], behaviors);
+            }
+
+            return contentLength;
+        }
+
+        public static int GetLength<T>(this IRlpStreamDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            if (items == null)
+            {
+                return Rlp.OfEmptySequence.Length;
+            }
+
+            return Rlp.LengthOfSequence(decoder.GetContentLength(items, behaviors));
         }
 
     }

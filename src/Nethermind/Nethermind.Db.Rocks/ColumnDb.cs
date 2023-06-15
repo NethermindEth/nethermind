@@ -13,7 +13,9 @@ public class ColumnDb : IDbWithSpan
 {
     private readonly RocksDb _rocksDb;
     private readonly DbOnTheRocks _mainDb;
-    private readonly ColumnFamilyHandle _columnFamily;
+    internal readonly ColumnFamilyHandle _columnFamily;
+
+    private DbOnTheRocks.ManagedIterators _readaheadIterators = new();
 
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
     {
@@ -23,37 +25,29 @@ public class ColumnDb : IDbWithSpan
         Name = name;
     }
 
-    public void Dispose() { GC.SuppressFinalize(this); }
+    public void Dispose()
+    {
+        _readaheadIterators.DisposeAll();
+    }
 
     public string Name { get; }
 
-    public byte[]? this[byte[] key]
+    public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        get
-        {
-            UpdateReadMetrics();
-            return _rocksDb.Get(key, _columnFamily);
-        }
-        set
-        {
-            UpdateWriteMetrics();
-            if (value is null)
-            {
-                _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
-            }
-            else
-            {
-                _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteOptions);
-            }
-        }
+        return _mainDb.GetWithColumnFamily(key, _columnFamily, _readaheadIterators, flags);
+    }
+
+    public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+    {
+        _mainDb.SetWithColumnFamily(key, _columnFamily, value, flags);
     }
 
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] =>
         _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());
 
-    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
     {
-        using Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
+        Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
         return _mainDb.GetAllCore(iterator);
     }
 
@@ -84,30 +78,31 @@ public class ColumnDb : IDbWithSpan
             _underlyingBatch.Dispose();
         }
 
-        public byte[]? this[byte[] key]
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            get => _underlyingBatch[key];
-            set
+            return _underlyingBatch.Get(key, flags);
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (value is null)
             {
-                if (value is null)
-                {
-                    _underlyingBatch._rocksBatch.Delete(key, _columnDb._columnFamily);
-                }
-                else
-                {
-                    _underlyingBatch._rocksBatch.Put(key, value, _columnDb._columnFamily);
-                }
+                _underlyingBatch.Delete(key, _columnDb._columnFamily);
+            }
+            else
+            {
+                _underlyingBatch.Set(key, value, _columnDb._columnFamily);
             }
         }
     }
 
-    public void Remove(byte[] key)
+    public void Remove(ReadOnlySpan<byte> key)
     {
         // TODO: this does not participate in batching?
         _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
     }
 
-    public bool KeyExists(byte[] key) => _rocksDb.Get(key, _columnFamily) is not null;
+    public bool KeyExists(ReadOnlySpan<byte> key) => _rocksDb.Get(key, _columnFamily) is not null;
 
     public void Flush()
     {
@@ -119,16 +114,16 @@ public class ColumnDb : IDbWithSpan
     /// </summary>
     /// <exception cref="NotSupportedException"></exception>
     public void Clear() { throw new NotSupportedException(); }
+    public long GetSize() => _mainDb.GetSize();
+    public long GetCacheSize() => _mainDb.GetCacheSize();
+    public long GetIndexSize() => _mainDb.GetIndexSize();
+    public long GetMemtableSize() => _mainDb.GetMemtableSize();
 
-    private void UpdateWriteMetrics() => _mainDb.UpdateWriteMetrics();
+    public Span<byte> GetSpan(ReadOnlySpan<byte> key) => _rocksDb.GetSpan(key, _columnFamily);
 
-    private void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
-
-    public Span<byte> GetSpan(byte[] key) => _rocksDb.GetSpan(key, _columnFamily);
-
-    public void PutSpan(byte[] keyBytes, ReadOnlySpan<byte> value)
+    public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
     {
-        _rocksDb.Put(keyBytes, value);
+        _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteOptions);
     }
 
     public void DangerousReleaseMemory(in Span<byte> span) => _rocksDb.DangerousReleaseMemory(span);

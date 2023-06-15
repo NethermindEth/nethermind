@@ -25,6 +25,7 @@ namespace Nethermind.Evm.Test
         public bool IsTracingBlockHash => true;
         public bool IsTracingAccess { get; set; } = true;
         public bool IsTracingFees => true;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
         public byte[] ReturnValue { get; set; }
 
@@ -117,11 +118,11 @@ namespace Nethermind.Evm.Test
         {
         }
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
         }
 
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
         {
         }
 

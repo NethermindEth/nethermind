@@ -7,6 +7,11 @@ namespace Nethermind.Trie
 {
     public interface ITreeVisitor
     {
+        /// <summary>
+        /// Specify that this is a full table scan and should optimize for it.
+        /// </summary>
+        public bool IsFullDbScan { get; }
+
         bool ShouldVisit(Keccak nextNode);
 
         void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext);

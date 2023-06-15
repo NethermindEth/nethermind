@@ -56,6 +56,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithExcessDataGas(UInt256 excessDataGas)
+        {
+            TestObjectInternal.Header.ExcessDataGas = excessDataGas;
+            return this;
+        }
+
         public BlockBuilder WithTransactions(int txCount, IReleaseSpec releaseSpec)
         {
             Transaction[] txs = new Transaction[txCount];
@@ -73,6 +79,7 @@ namespace Nethermind.Core.Test.Builders
             for (int i = 0; i < txCount; i++)
             {
                 txs[i] = new Transaction();
+                txs[i].Hash = txs[i].CalculateHash();
             }
 
             TxReceipt[] receipts = new TxReceipt[txCount];
@@ -160,6 +167,15 @@ namespace Nethermind.Core.Test.Builders
             return WithParent(block.Header);
         }
 
+        public BlockBuilder WithPostMergeRules()
+        {
+            TestObjectInternal.Header.Difficulty = 0;
+            TestObjectInternal.Header.UnclesHash = Keccak.OfAnEmptySequenceRlp;
+            TestObjectInternal.Header.Nonce = 0;
+            TestObjectInternal.Header.IsPostMerge = true;
+            return this;
+        }
+
         public BlockBuilder WithUncles(params Block[] uncles)
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
@@ -242,7 +258,7 @@ namespace Nethermind.Core.Test.Builders
             return WithWithdrawals(withdrawals);
         }
 
-        public BlockBuilder WithWithdrawals(Withdrawal[]? withdrawals)
+        public BlockBuilder WithWithdrawals(params Withdrawal[]? withdrawals)
         {
             TestObjectInternal = TestObjectInternal
                 .WithReplacedBody(TestObjectInternal.Body.WithChangedWithdrawals(withdrawals));

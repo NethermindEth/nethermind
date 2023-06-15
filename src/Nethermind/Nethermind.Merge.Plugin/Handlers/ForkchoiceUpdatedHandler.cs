@@ -71,12 +71,12 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
     {
-        string requestStr = $"{forkchoiceState} {payloadAttributes}";
-        if (_logger.IsInfo) _logger.Info($"Received: {requestStr}");
+        string requestStr = payloadAttributes is null ? forkchoiceState.ToString() : $"{forkchoiceState} {payloadAttributes}";
+        if (_logger.IsInfo) _logger.Info($"Received {requestStr}");
 
         if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Keccak? lastValidHash))
         {
-            if (_logger.IsInfo) _logger.Info($" FCU - Invalid - {requestStr} {forkchoiceState.HeadBlockHash} is known to be a part of an invalid chain.");
+            if (_logger.IsInfo) _logger.Info($" ForkChoiceUpdate: Invalid - {requestStr} {forkchoiceState.HeadBlockHash} is known to be a part of an invalid chain.");
             return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
         }
 
@@ -89,7 +89,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             }
             else if (_logger.IsInfo)
             {
-                _logger.Info($"Syncing... Unknown forkchoiceState head hash... Request: {requestStr}.");
+                _logger.Info($"Syncing Unknown ForkChoiceState head hash Request: {requestStr}.");
             }
 
             return ForkchoiceUpdatedV1Result.Syncing;
@@ -134,18 +134,18 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
                 _mergeSyncController.StopBeaconModeControl();
 
-                if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers... Request: {requestStr}."); }
+                if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers, Request: {requestStr}"); }
             }
             else
             {
-                if (_logger.IsInfo) { _logger.Info($"Processing {_processingQueue.Count} blocks... Request: {requestStr}."); }
+                if (_logger.IsInfo) { _logger.Info($"Processing {_processingQueue.Count} blocks, Request: {requestStr}"); }
             }
 
             _beaconPivot.ProcessDestination ??= newHeadBlock!.Header;
             return ForkchoiceUpdatedV1Result.Syncing;
         }
 
-        if (_logger.IsInfo) _logger.Info($"FCU - block {newHeadBlock} was processed.");
+        if (_logger.IsDebug) _logger.Debug($"ForkChoiceUpdate: block {newHeadBlock} was processed.");
 
         BlockHeader? finalizedHeader = ValidateBlockHash(forkchoiceState.FinalizedBlockHash, out string? finalizationErrorMsg);
         if (finalizationErrorMsg is not null)
@@ -179,11 +179,9 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
         {
-            if (_logger.IsInfo) _logger.Info($"Valid. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
+            if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
             return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
         }
-
-        EnsureTerminalBlock(forkchoiceState, blocks);
 
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
         bool shouldUpdateHead = !newHeadTheSameAsCurrentHead && blocks is not null;
@@ -194,20 +192,19 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (IsInconsistent(forkchoiceState.FinalizedBlockHash))
         {
-            string errorMsg = $"Inconsistent forkchoiceState - finalized block hash. Request: {requestStr}";
+            string errorMsg = $"Inconsistent ForkChoiceState - finalized block hash. Request: {requestStr}";
             if (_logger.IsWarn) _logger.Warn(errorMsg);
             return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
         if (IsInconsistent(forkchoiceState.SafeBlockHash))
         {
-            string errorMsg = $"Inconsistent forkchoiceState - safe block hash. Request: {requestStr}";
+            string errorMsg = $"Inconsistent ForkChoiceState - safe block hash. Request: {requestStr}";
             if (_logger.IsWarn) _logger.Warn(errorMsg);
             return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
         bool nonZeroFinalizedBlockHash = forkchoiceState.FinalizedBlockHash != Keccak.Zero;
-        // bool nonZeroSafeBlockHash = forkchoiceState.SafeBlockHash != Keccak.Zero;
         if (nonZeroFinalizedBlockHash)
         {
             _manualBlockFinalizationManager.MarkFinalized(newHeadBlock.Header, finalizedHeader!);
@@ -216,7 +213,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         if (shouldUpdateHead)
         {
             _poSSwitcher.ForkchoiceUpdated(newHeadBlock.Header, forkchoiceState.FinalizedBlockHash);
-            if (_logger.IsInfo) _logger.Info($"Block {forkchoiceState.HeadBlockHash} was set as head.");
+            if (_logger.IsInfo) _logger.Info($"Synced chain Head to  {newHeadBlock.ToString(Block.Format.Short)}");
         }
 
         string? payloadId = null;
@@ -235,7 +232,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock.Header, payloadAttributes);
         }
 
-        if (_logger.IsInfo) _logger.Info($"Valid. Request: {requestStr}.");
+        if (_logger.IsDebug) _logger.Debug($"Valid. Request: {requestStr}.");
 
         _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
         return ForkchoiceUpdatedV1Result.Valid(payloadId, forkchoiceState.HeadBlockHash);
@@ -248,31 +245,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _peerRefresher.RefreshPeers(block.Hash!, block.ParentHash!, forkchoiceState.FinalizedBlockHash);
         _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
 
-        if (_logger.IsInfo) _logger.Info($"Start a new sync process... Request: {requestStr}.");
-    }
-
-    // This method will detect reorg in terminal PoW block
-    private void EnsureTerminalBlock(ForkchoiceStateV1 forkchoiceState, Block[]? blocks)
-    {
-        // we can reorg terminal block only if we haven't finalized PoS yet and we're not finalizing PoS now
-        // https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#ability-to-jump-between-terminal-pow-blocks
-        bool notFinalizingPoS = forkchoiceState.FinalizedBlockHash == Keccak.Zero;
-        bool notFinalizedPoS = _manualBlockFinalizationManager.LastFinalizedHash == Keccak.Zero;
-        if (notFinalizingPoS && notFinalizedPoS && blocks is not null)
-        {
-            for (int i = 0; i < blocks.Length; ++i)
-            {
-                if (blocks[i].Header.Difficulty != 0 && blocks[i].TotalDifficulty >= _poSSwitcher.TerminalTotalDifficulty)
-                {
-                    if (_poSSwitcher.TryUpdateTerminalBlock(blocks[i].Header))
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Terminal block {blocks[i].Header} updated during the forkchoice");
-                    }
-
-                    break;
-                }
-            }
-        }
+        if (_logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
     }
 
     private bool IsInconsistent(Keccak blockHash) => blockHash != Keccak.Zero && !_blockTree.IsMainChain(blockHash);
@@ -282,7 +255,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         Block? block = _blockTree.FindBlock(headBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (block is null)
         {
-            if (_logger.IsInfo) _logger.Info($"Syncing... Block {headBlockHash} not found.");
+            if (_logger.IsInfo) _logger.Info($"Syncing, Block {headBlockHash} not found.");
         }
 
         return block;

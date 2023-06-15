@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Security.Cryptography;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
@@ -18,6 +20,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (rlpStream.IsNextItemNull())
             {
+                rlpStream.ReadByte();
                 return null;
             }
 
@@ -30,14 +33,14 @@ namespace Nethermind.Serialization.Rlp
             while (rlpStream.Position < lastCheck)
             {
                 // block info can be null for corrupted states (also cases where block hash is null from the old DBs)
-                BlockInfo? blockInfo = Rlp.Decode<BlockInfo?>(rlpStream, RlpBehaviors.AllowExtraData);
+                BlockInfo? blockInfo = Rlp.Decode<BlockInfo?>(rlpStream, RlpBehaviors.AllowExtraBytes);
                 if (blockInfo is not null)
                 {
                     blockInfos.Add(blockInfo);
                 }
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 rlpStream.Check(lastCheck);
             }
@@ -46,9 +49,28 @@ namespace Nethermind.Serialization.Rlp
             return info;
         }
 
-        public void Encode(RlpStream stream, ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream stream, ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotImplementedException();
+            if (item == null)
+            {
+                stream.Encode(Rlp.OfEmptySequence);
+                return;
+            }
+
+            if (item.BlockInfos.Any(t => t == null))
+            {
+                throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
+            }
+
+            int contentLength = GetContentLength(item, rlpBehaviors);
+            stream.StartSequence(contentLength);
+            stream.Encode(item.HasBlockOnMainChain);
+            int infoLength = GetBlockInfoLength(item.BlockInfos);
+            stream.StartSequence(infoLength);
+            foreach (BlockInfo? blockInfo in item.BlockInfos)
+            {
+                stream.Encode(blockInfo);
+            }
         }
 
         public ChainLevelInfo? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -67,14 +89,14 @@ namespace Nethermind.Serialization.Rlp
             while (decoderContext.Position < lastCheck)
             {
                 // block info can be null for corrupted states (also cases where block hash is null from the old DBs)
-                BlockInfo? blockInfo = Rlp.Decode<BlockInfo?>(ref decoderContext, RlpBehaviors.AllowExtraData);
+                BlockInfo? blockInfo = Rlp.Decode<BlockInfo?>(ref decoderContext, RlpBehaviors.AllowExtraBytes);
                 if (blockInfo is not null)
                 {
                     blockInfos.Add(blockInfo);
                 }
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 decoderContext.Check(lastCheck);
             }
@@ -85,30 +107,41 @@ namespace Nethermind.Serialization.Rlp
 
         public Rlp Encode(ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item is null)
-            {
-                return Rlp.OfEmptySequence;
-            }
-
-            for (int i = 0; i < item.BlockInfos.Length; i++)
-            {
-                if (item.BlockInfos[i] is null)
-                {
-                    throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
-                }
-            }
-
-            Rlp[] elements = new Rlp[2];
-            elements[0] = Rlp.Encode(item.HasBlockOnMainChain);
-            elements[1] = Rlp.Encode(item.BlockInfos);
-            Rlp rlp = Rlp.Encode(elements);
-
-            return rlp;
+            throw new NotImplementedException();
         }
 
-        public int GetLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors)
+        private int GetContentLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotImplementedException();
+            if (item == null)
+            {
+                return Rlp.OfEmptySequence.Length;
+            }
+            int contentLength = 0;
+            contentLength += Rlp.LengthOf(item.HasBlockOnMainChain);
+            contentLength += Rlp.LengthOfSequence(GetBlockInfoLength(item.BlockInfos));
+            return contentLength;
+        }
+
+        public int GetLength(ChainLevelInfo? item, RlpBehaviors rlpBehaviors)
+        {
+            if (item == null)
+            {
+                return Rlp.OfEmptySequence.Length;
+            }
+
+            int contLength = GetContentLength(item, rlpBehaviors);
+            return Rlp.LengthOfSequence(contLength);
+        }
+
+        private int GetBlockInfoLength(BlockInfo[] item)
+        {
+            int contentLength = 0;
+            foreach (BlockInfo? blockInfo in item)
+            {
+                contentLength += Rlp.LengthOf(blockInfo);
+            }
+
+            return contentLength;
         }
     }
 }

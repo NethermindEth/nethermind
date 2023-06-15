@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Test.Producers
     [Parallelizable(ParallelScope.All)]
     public partial class BlockProducerBaseTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task DevBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();
@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await AssertIsProducingBlocks(blockProducer);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task TestBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();
@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await AssertIsProducingBlocks(blockProducer);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task MinedBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();
@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await AssertIsProducingBlocks(blockProducer);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task AuraTestBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<ITxSource>(),
                 Substitute.For<IBlockchainProcessor>(),
                 Substitute.For<IBlockProductionTrigger>(),
-                Substitute.For<IStateProvider>(),
+                Substitute.For<IWorldState>(),
                 Substitute.For<ISealer>(),
                 Substitute.For<IBlockTree>(),
                 Substitute.For<ITimestamper>(),
@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await AssertIsProducingBlocks(blockProducer);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task CliqueBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();
@@ -136,7 +136,7 @@ namespace Nethermind.Blockchain.Test.Producers
         private async Task<TestRpcBlockchain> CreateTestRpc()
         {
             Address address = TestItem.Addresses[0];
-            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            TestSingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                 .Build(spec);
             testRpc.TestWallet.UnlockAccount(address, new SecureString());
@@ -146,15 +146,15 @@ namespace Nethermind.Blockchain.Test.Producers
 
         private async Task AssertIsProducingBlocks(IBlockProducer blockProducer)
         {
-            Assert.AreEqual(false, blockProducer.IsProducingBlocks(null));
+            Assert.That(blockProducer.IsProducingBlocks(null), Is.EqualTo(false));
             await blockProducer.Start();
-            Assert.AreEqual(true, blockProducer.IsProducingBlocks(null));
+            Assert.That(blockProducer.IsProducingBlocks(null), Is.EqualTo(true));
             Thread.Sleep(5000);
-            Assert.AreEqual(false, blockProducer.IsProducingBlocks(1));
-            Assert.AreEqual(true, blockProducer.IsProducingBlocks(1000));
-            Assert.AreEqual(true, blockProducer.IsProducingBlocks(null));
+            Assert.That(blockProducer.IsProducingBlocks(1), Is.EqualTo(false));
+            Assert.That(blockProducer.IsProducingBlocks(1000), Is.EqualTo(true));
+            Assert.That(blockProducer.IsProducingBlocks(null), Is.EqualTo(true));
             await blockProducer.StopAsync();
-            Assert.AreEqual(false, blockProducer.IsProducingBlocks(null));
+            Assert.That(blockProducer.IsProducingBlocks(null), Is.EqualTo(false));
         }
     }
 }

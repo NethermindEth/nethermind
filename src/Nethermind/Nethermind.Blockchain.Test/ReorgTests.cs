@@ -44,9 +44,8 @@ namespace Nethermind.Blockchain.Test
         {
             IDbProvider memDbProvider = TestMemDbProvider.Init();
             TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
-            StateProvider stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
+            WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
             StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
             ChainLevelInfoRepository chainLevelInfoRepository = new(memDbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IBloomStorage bloomStorage = NullBloomStorage.Instance;
@@ -75,7 +74,6 @@ namespace Nethermind.Blockchain.Test
             TransactionProcessor transactionProcessor = new(
                 specProvider,
                 stateProvider,
-                storageProvider,
                 virtualMachine,
                 LimboLogs.Instance);
 
@@ -85,7 +83,6 @@ namespace Nethermind.Blockchain.Test
                 new RewardCalculator(specProvider),
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
-                storageProvider,
                 NullReceiptStorage.Instance,
                 new WitnessCollector(memDbProvider.StateDb, LimboLogs.Instance),
                 LimboLogs.Instance);
@@ -101,7 +98,7 @@ namespace Nethermind.Blockchain.Test
                 LimboLogs.Instance, BlockchainProcessor.Options.Default);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         [Retry(3)]
         public void Test()
         {

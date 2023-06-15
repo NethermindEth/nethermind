@@ -20,7 +20,7 @@ namespace Nethermind.Logging.NLog.Test
         {
             NLogManager manager = new NLogManager("test", null);
             NLogLogger logger = (NLogLogger)manager.GetClassLogger();
-            Assert.AreEqual(GetType().FullName.Replace("Nethermind.", string.Empty), logger.Name);
+            Assert.That(logger.Name, Is.EqualTo(GetType().FullName.Replace("Nethermind.", string.Empty)));
         }
 
         [Test]

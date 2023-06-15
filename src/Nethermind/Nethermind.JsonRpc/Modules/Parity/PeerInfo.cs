@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Network;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats.Model;
@@ -70,8 +71,10 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
             Network = peerNetworkInfo;
 
-            Protocols = new Dictionary<string, EthProtocolInfo>();
-            Protocols.Add("eth", ethProtocolInfo);
+            Protocols = new Dictionary<string, EthProtocolInfo>
+            {
+                { "eth", ethProtocolInfo }
+            };
         }
     }
 }

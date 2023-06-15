@@ -23,6 +23,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// </summary>
         public string DataDir { get; set; }
 
+        public ulong NetworkId { get; set; }
+
         public ulong ChainId { get; set; }
 
         public NetworkNode[] Bootnodes { get; set; }

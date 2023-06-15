@@ -43,7 +43,8 @@ namespace Nethermind.Consensus.Ethash
             {
                 return Task.FromResult((IBlockProducer)null);
             }
-            var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
+
+            var (getFromApi, _) = _nethermindApi!.ForProducer;
 
             ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
@@ -62,7 +63,7 @@ namespace Nethermind.Consensus.Ethash
                 txFilterPipeline);
 
             ILogger logger = getFromApi.LogManager.GetClassLogger();
-            if (logger.IsWarn) logger.Warn("Starting Neth Dev block producer & sealer");
+            if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
 
             ReadOnlyTxProcessingEnv producerEnv = new(
@@ -78,7 +79,6 @@ namespace Nethermind.Consensus.Ethash
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockProductionTransactionsExecutor(producerEnv, getFromApi!.SpecProvider, getFromApi.LogManager),
                 producerEnv.StateProvider,
-                producerEnv.StorageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 getFromApi.LogManager);

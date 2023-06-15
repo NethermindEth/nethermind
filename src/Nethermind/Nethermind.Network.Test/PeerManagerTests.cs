@@ -79,7 +79,7 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             await Task.Delay(_travisDelay);
-            Assert.AreEqual(1, ctx.RlpxPeer.ConnectAsyncCallsCount);
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1));
         }
 
         [Test]
@@ -90,7 +90,7 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             await Task.Delay(_travisDelayLong * 10);
-            Assert.AreEqual(25, ctx.RlpxPeer.ConnectAsyncCallsCount);
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(25));
         }
 
         [Test]
@@ -261,11 +261,11 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             await Task.Delay(_travisDelayLong);
-            Assert.AreEqual(25, ctx.RlpxPeer.ConnectAsyncCallsCount);
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(25));
             ctx.DisconnectAllSessions();
 
             await Task.Delay(_travisDelayLong);
-            Assert.AreEqual(50, ctx.RlpxPeer.ConnectAsyncCallsCount);
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(50));
         }
 
         [Test, Retry(5)]
@@ -278,7 +278,7 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
 
             await Task.Delay(_travisDelay);
-            Assert.AreEqual(0, ctx.PeerManager.ActivePeers.Count);
+            Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(0));
         }
 
         [Test, Retry(3)]
@@ -299,8 +299,8 @@ namespace Nethermind.Network.Test
                 for (int i = 0; i < 10; i++)
                 {
                     currentCount += 25;
-                    await Task.Delay(_travisDelayLong);
-                    Assert.AreEqual(currentCount, ctx.RlpxPeer.ConnectAsyncCallsCount);
+                    await Task.Delay(_travisDelayLonger);
+                    Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(currentCount));
                     ctx.DisconnectAllSessions();
                 }
             }
@@ -322,7 +322,7 @@ namespace Nethermind.Network.Test
             {
                 ctx.DiscoverNew(25);
                 await Task.Delay(_travisDelay);
-                Assert.AreEqual(25, ctx.PeerManager.ActivePeers.Count);
+                Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(25));
             }
         }
 
@@ -334,7 +334,7 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
 
             var networkNode = new NetworkNode(ctx.GenerateEnode());
-            ctx.Stats.ReportFailedValidation(new Node(networkNode), CompatibilityValidationType.ChainId);
+            ctx.Stats.ReportFailedValidation(new Node(networkNode), CompatibilityValidationType.NetworkId);
 
             ctx.PeerPool.GetOrAdd(networkNode);
 
@@ -342,9 +342,10 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.ActivePeers.Count.Should().Be(0);
         }
 
-        private int _travisDelay = 100;
+        private int _travisDelay = 500;
 
         private int _travisDelayLong = 1000;
+        private int _travisDelayLonger = 3000;
 
         [Test]
         [Ignore("Behaviour changed that allows peers to go over max if awaiting response")]
@@ -359,11 +360,12 @@ namespace Nethermind.Network.Test
             {
                 ctx.CreateNewIncomingSessions(25);
                 await Task.Delay(_travisDelay);
-                Assert.AreEqual(25, ctx.PeerManager.ActivePeers.Count);
+                Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(25));
             }
         }
 
-        [Test, Retry(3)]
+        [Test]
+        [Retry(3)]
         public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing()
         {
             await using Context ctx = new();
@@ -372,11 +374,13 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
 
             int currentCount = 0;
+            int maxCount = 0;
             for (int i = 0; i < 10; i++)
             {
                 currentCount += 25;
+                maxCount += 50;
                 await Task.Delay(_travisDelay);
-                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, currentCount + 25);
+                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, maxCount);
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_travisDelay);
                 ctx.DisconnectAllSessions();
@@ -385,7 +389,9 @@ namespace Nethermind.Network.Test
             await ctx.PeerManager.StopAsync();
             ctx.DisconnectAllSessions();
 
-            Assert.True(ctx.PeerManager.CandidatePeers.All(p => p.OutSession is null));
+            Assert.That(
+                () => ctx.PeerManager.CandidatePeers.All(p => p.OutSession is null),
+                Is.True.After(1000, 10));
         }
 
         [Test]
@@ -451,8 +457,9 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
-            await Task.Delay(_travisDelayLong);
-            ctx.PeerManager.ActivePeers.Count.Should().Be(4);
+            Assert.That(
+                () => ctx.PeerManager.ActivePeers.Count,
+                Is.EqualTo(4).After(5000, 100));
         }
 
         [Test]

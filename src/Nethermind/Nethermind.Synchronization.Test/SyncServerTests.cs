@@ -50,7 +50,7 @@ namespace Nethermind.Synchronization.Test
             ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
             ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>());
             ctx.BlockTree.DidNotReceive().FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>());
-            Assert.AreEqual(TestItem.KeccakA, result);
+            Assert.That(result, Is.EqualTo(TestItem.KeccakA));
         }
 
         [Test]
@@ -118,11 +118,11 @@ namespace Nethermind.Synchronization.Test
 
             if (accepted)
             {
-                Assert.AreEqual(localBlockTree.BestSuggestedHeader, block.Header);
+                Assert.That(block.Header, Is.EqualTo(localBlockTree.BestSuggestedHeader));
             }
             else
             {
-                Assert.AreNotEqual(localBlockTree.BestSuggestedHeader, block.Header);
+                Assert.That(block.Header, Is.Not.EqualTo(localBlockTree.BestSuggestedHeader));
             }
         }
 
@@ -152,7 +152,7 @@ namespace Nethermind.Synchronization.Test
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
 
-            Assert.AreEqual(localBlockTree.BestSuggestedHeader, block.Header);
+            Assert.That(block.Header, Is.EqualTo(localBlockTree.BestSuggestedHeader));
         }
 
         [Test]
@@ -197,11 +197,11 @@ namespace Nethermind.Synchronization.Test
                 testSpecProvider,
                 LimboLogs.Instance);
 
-            Block remoteBestBlock = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            Block? remoteBestBlock = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
-            ctx.SyncServer.AddNewBlock(remoteBestBlock, ctx.NodeWhoSentTheBlock);
-            Assert.AreEqual(newBestLocalBlock.Header.Hash, localBlockTree.BestSuggestedHeader!.Hash);
-            Assert.AreEqual(remoteBestBlock.Hash, localBlockTree.FindBlock(remoteBestBlock.Hash, BlockTreeLookupOptions.None)!.Hash);
+            ctx.SyncServer.AddNewBlock(remoteBestBlock!, ctx.NodeWhoSentTheBlock);
+            Assert.That(localBlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(newBestLocalBlock.Header.Hash));
+            Assert.That(localBlockTree.FindBlock(remoteBestBlock!.Hash, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(remoteBestBlock.Hash));
         }
 
         [TestCase(10000000)]
@@ -211,14 +211,14 @@ namespace Nethermind.Synchronization.Test
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             Context ctx = CreateMergeContext(9, (UInt256)ttd);
 
-            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
-            block.Header.TotalDifficulty *= 2;
+            Block? block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            block!.Header.TotalDifficulty *= 2;
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-            Assert.AreEqual(ctx.LocalBlockTree.BestSuggestedHeader!.Hash, block.Header.Hash);
+            Assert.That(block.Header.Hash, Is.EqualTo(ctx.LocalBlockTree.BestSuggestedHeader!.Hash));
 
-            Block parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
-            Assert.AreEqual(parentBlock.TotalDifficulty + block.Difficulty, ctx.LocalBlockTree.BestSuggestedHeader.TotalDifficulty);
+            Block? parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
+            Assert.That(ctx.LocalBlockTree.BestSuggestedHeader.TotalDifficulty, Is.EqualTo(parentBlock.TotalDifficulty + block.Difficulty));
         }
 
         [TestCase(9000000, true)]
@@ -236,7 +236,7 @@ namespace Nethermind.Synchronization.Test
             }
 
             Assert.Throws<EthSyncException>(() => ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock));
-            Assert.AreEqual(ctx.LocalBlockTree.BestSuggestedHeader!.Number, 8);
+            Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(8));
         }
 
         [TestCase(9000000, true)]
@@ -256,7 +256,7 @@ namespace Nethermind.Synchronization.Test
             }
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-            Assert.AreEqual(ctx.LocalBlockTree.BestSuggestedHeader!.Number, 8);
+            Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(8));
             ctx.LocalBlockTree.FindBlock(postMergeBlock.Hash!, BlockTreeLookupOptions.None).Should().BeNull();
         }
 
@@ -279,7 +279,7 @@ namespace Nethermind.Synchronization.Test
             }
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-            Assert.AreEqual(ctx.LocalBlockTree.BestSuggestedHeader!.Number, 9);
+            Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(9));
             ctx.LocalBlockTree.FindBlock(terminalBlockWithLowerDifficulty.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull();
             ctx.LocalBlockTree.BestSuggestedHeader!.Hash.Should().NotBe(terminalBlockWithLowerDifficulty.Hash!);
         }
@@ -294,14 +294,14 @@ namespace Nethermind.Synchronization.Test
             Context ctx = CreateMergeContext(10, (UInt256)ttd);
             Assert.True(terminalBlockWithHigherTotalDifficulty.IsTerminalBlock(ctx.SpecProvider));
 
-            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            Block? block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
             if (sendFakeTd)
             {
                 block.Header.TotalDifficulty *= 2;
             }
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-            Assert.AreEqual(ctx.LocalBlockTree.BestSuggestedHeader!.Number, 9);
+            Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(9));
             ctx.LocalBlockTree.FindBlock(terminalBlockWithHigherTotalDifficulty.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull();
             ctx.LocalBlockTree.BestSuggestedHeader!.Hash.Should().Be(terminalBlockWithHigherTotalDifficulty.Hash!);
         }
@@ -322,7 +322,7 @@ namespace Nethermind.Synchronization.Test
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-            Assert.AreEqual(ctx.LocalBlockTree.BestSuggestedHeader!.Number, 10);
+            Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(10));
             ctx.LocalBlockTree.FindBlock(poWBlockPostMerge.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull();
             ctx.LocalBlockTree.BestSuggestedHeader!.Hash.Should().Be(newPostMergeBlock.Hash!);
             ctx.LocalBlockTree.FindCanonicalBlockInfo(poWBlockPostMerge.Number).BlockHash.Should().NotBe(poWBlockPostMerge.Hash);
@@ -418,14 +418,14 @@ namespace Nethermind.Synchronization.Test
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
 
-            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
-            block.Header.TotalDifficulty *= 2;
+            Block? block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            block!.Header!.TotalDifficulty *= 2;
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-            Assert.AreEqual(localBlockTree.BestSuggestedHeader!.Hash, block.Header.Hash);
+            Assert.That(block.Header.Hash, Is.EqualTo(localBlockTree.BestSuggestedHeader!.Hash));
 
-            Block parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
-            Assert.AreEqual(parentBlock.TotalDifficulty + block.Difficulty, localBlockTree.BestSuggestedHeader.TotalDifficulty);
+            Block? parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
+            Assert.That(localBlockTree.BestSuggestedHeader.TotalDifficulty, Is.EqualTo(parentBlock.TotalDifficulty + block.Difficulty));
         }
 
         [Test]
@@ -603,7 +603,7 @@ namespace Nethermind.Synchronization.Test
             trieStore.FinishBlockCommit(TrieType.State, 1, node);
 
             stateDb.KeyExists(nodeKey).Should().BeFalse();
-            ctx.SyncServer.GetNodeData(new[] { nodeKey }, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.Bytes });
+            ctx.SyncServer.GetNodeData(new[] { nodeKey }, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.BytesToArray() });
         }
 
         private class Context

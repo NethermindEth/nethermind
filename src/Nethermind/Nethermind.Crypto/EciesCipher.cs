@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Secp256k1;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Engines;
@@ -39,7 +37,7 @@ namespace Nethermind.Crypto
                 return (false, null);
             }
 
-            Span<byte> ephemBytes = cipherText.AsSpan().Slice(0, ephemBytesLength);
+            Span<byte> ephemBytes = cipherText.AsSpan(0, ephemBytesLength);
             byte[] iv = cipherText.Slice(ephemBytesLength, KeySize / 8);
             byte[] cipherBody = cipherText.Slice(ephemBytesLength + KeySize / 8);
 
@@ -54,11 +52,20 @@ namespace Nethermind.Crypto
             IIesEngine iesEngine = MakeIesEngine(true, recipientPublicKey, ephemeralPrivateKey, iv);
             byte[] cipher = iesEngine.ProcessBlock(plainText, 0, plainText.Length, macData);
 
-            using MemoryStream memoryStream = new();
-            memoryStream.Write(ephemeralPrivateKey.PublicKey.PrefixedBytes, 0, ephemeralPrivateKey.PublicKey.PrefixedBytes.Length);
-            memoryStream.Write(iv, 0, iv.Length);
-            memoryStream.Write(cipher, 0, cipher.Length);
-            return memoryStream.ToArray();
+            byte[] prefixedBytes = ephemeralPrivateKey.PublicKey.PrefixedBytes;
+
+            byte[] outputArray = new byte[prefixedBytes.Length + iv.Length + cipher.Length];
+            Span<byte> outputSpan = outputArray;
+
+            prefixedBytes.AsSpan().CopyTo(outputSpan);
+            outputSpan = outputSpan[prefixedBytes.Length..];
+
+            iv.AsSpan().CopyTo(outputSpan);
+            outputSpan = outputSpan[iv.Length..];
+
+            cipher.AsSpan().CopyTo(outputSpan);
+
+            return outputArray;
         }
 
         private OptimizedKdf _optimizedKdf = new();
@@ -69,11 +76,11 @@ namespace Nethermind.Crypto
             return iesEngine.ProcessBlock(ciphertextBody, 0, ciphertextBody.Length, macData);
         }
 
-        private static IesParameters _iesParameters = new IesWithCipherParameters(new byte[] { }, new byte[] { }, KeySize, KeySize);
+        private static IesParameters _iesParameters = new IesWithCipherParameters(Array.Empty<byte>(), Array.Empty<byte>(), KeySize, KeySize);
 
         private IIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
         {
-            AesEngine aesFastEngine = new();
+            IBlockCipher aesFastEngine = AesEngineX86Intrinsic.IsSupported ? new AesEngineX86Intrinsic() : new AesEngine();
 
             EthereumIesEngine iesEngine = new(
                 new HMac(new Sha256Digest()),
@@ -81,7 +88,7 @@ namespace Nethermind.Crypto
                 new BufferedBlockCipher(new SicBlockCipher(aesFastEngine)));
 
             ParametersWithIV parametersWithIV = new(_iesParameters, iv);
-            byte[] secret = Proxy.EcdhSerialized(publicKey.Bytes, privateKey.KeyBytes);
+            byte[] secret = SecP256k1.EcdhSerialized(publicKey.Bytes, privateKey.KeyBytes);
             iesEngine.Init(isEncrypt, _optimizedKdf.Derive(secret), parametersWithIV);
             return iesEngine;
         }

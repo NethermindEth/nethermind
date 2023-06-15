@@ -3,16 +3,12 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
-using Google.Protobuf.WellKnownTypes;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
@@ -97,5 +93,5 @@ public class PeerRefresherTests
 
     private void GivenFinalizedHeaderAvailable() =>
         _syncPeer.GetHeadBlockHeader(_finalizedBlockHeader.Hash!, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(_finalizedBlockHeader));
+            .Returns(Task.FromResult<BlockHeader?>(_finalizedBlockHeader));
 }

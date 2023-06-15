@@ -46,7 +46,7 @@ namespace Nethermind.Init.Steps.Migrations
         [NotNull]
         private readonly IChainLevelInfoRepository? _chainLevelInfoRepository;
 
-        private readonly IInitConfig _initConfig;
+        private readonly IReceiptConfig _receiptConfig;
 
         public ReceiptMigration(IApiWithNetwork api)
         {
@@ -57,7 +57,7 @@ namespace Nethermind.Init.Steps.Migrations
             _blockTree = api.BlockTree ?? throw new StepDependencyException(nameof(api.BlockTree));
             _syncModeSelector = api.SyncModeSelector ?? throw new StepDependencyException(nameof(api.SyncModeSelector));
             _chainLevelInfoRepository = api.ChainLevelInfoRepository ?? throw new StepDependencyException(nameof(api.ChainLevelInfoRepository));
-            _initConfig = api.Config<IInitConfig>() ?? throw new StepDependencyException("initConfig");
+            _receiptConfig = api.Config<IReceiptConfig>() ?? throw new StepDependencyException("initConfig");
         }
 
         public async ValueTask DisposeAsync()
@@ -72,14 +72,14 @@ namespace Nethermind.Init.Steps.Migrations
             await (_migrationTask ?? Task.CompletedTask);
             _receiptStorage.MigratedBlockNumber = Math.Min(Math.Max(_receiptStorage.MigratedBlockNumber, blockNumber), (_blockTree.Head?.Number ?? 0) + 1);
             Run();
-            return _initConfig.StoreReceipts && _initConfig.ReceiptsMigration;
+            return _receiptConfig.StoreReceipts && _receiptConfig.ReceiptsMigration;
         }
 
         public void Run()
         {
-            if (_initConfig.StoreReceipts)
+            if (_receiptConfig.StoreReceipts)
             {
-                if (_initConfig.ReceiptsMigration)
+                if (_receiptConfig.ReceiptsMigration)
                 {
                     if (CanMigrate(_syncModeSelector.Current))
                     {
@@ -254,7 +254,7 @@ namespace Nethermind.Init.Steps.Migrations
 
         private string GetLogMessage(string status, string? suffix = null)
         {
-            string message = $"ReceiptsDb migration {status} | {_stopwatch?.Elapsed:d\\:hh\\:mm\\:ss} | {_progress.CurrentValue.ToString().PadLeft(_toBlock.ToString().Length)} / {_toBlock} blocks migrated. | current {_progress.CurrentPerSecond:F2}bps | total {_progress.TotalPerSecond:F2}bps. {suffix}";
+            string message = $"ReceiptsDb migration {status} | {_stopwatch?.Elapsed:d\\:hh\\:mm\\:ss} | {_progress.CurrentValue.ToString().PadLeft(_toBlock.ToString().Length)} / {_toBlock} blocks migrated. | current {_progress.CurrentPerSecond:F2} Blk/s | total {_progress.TotalPerSecond:F2} Blk/s. {suffix}";
             _progress.SetMeasuringPoint();
             return message;
         }

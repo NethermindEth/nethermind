@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Numerics;
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Validators
@@ -36,81 +36,144 @@ namespace Nethermind.Consensus.Validators
                    transaction.GasLimit >= IntrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
                    /* if it is a call or a transfer then we require the 'To' field to have a value
                       while for an init it will be empty */
-                   ValidateSignature(transaction.Signature, releaseSpec) &&
+                   ValidateSignature(transaction, releaseSpec) &&
                    ValidateChainId(transaction) &&
                    Validate1559GasFields(transaction, releaseSpec) &&
-                   Validate3860Rules(transaction, releaseSpec);
+                   Validate3860Rules(transaction, releaseSpec) &&
+                   Validate4844Fields(transaction);
         }
 
-        private bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec)
-        {
-            bool aboveInitCode = transaction.IsContractCreation && releaseSpec.IsEip3860Enabled && transaction.DataLength > releaseSpec.MaxInitCodeSize;
-            return !aboveInitCode;
-        }
+        private static bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) =>
+            !transaction.IsAboveInitCode(releaseSpec);
 
-        private bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec)
-        {
-            switch (transaction.Type)
+        private static bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec) =>
+            transaction.Type switch
             {
-                case TxType.Legacy:
-                    return true;
-                case TxType.AccessList:
-                    return releaseSpec.UseTxAccessLists;
-                case TxType.EIP1559:
-                    return releaseSpec.IsEip1559Enabled;
-                default:
-                    return false;
-            }
-        }
+                TxType.Legacy => true,
+                TxType.AccessList => releaseSpec.UseTxAccessLists,
+                TxType.EIP1559 => releaseSpec.IsEip1559Enabled,
+                TxType.Blob => releaseSpec.IsEip4844Enabled,
+                _ => false
+            };
 
-        private bool Validate1559GasFields(Transaction transaction, IReleaseSpec releaseSpec)
+        private static bool Validate1559GasFields(Transaction transaction, IReleaseSpec releaseSpec)
         {
-            if (!releaseSpec.IsEip1559Enabled || !transaction.IsEip1559)
+            if (!releaseSpec.IsEip1559Enabled || !transaction.Supports1559)
                 return true;
 
             return transaction.MaxFeePerGas >= transaction.MaxPriorityFeePerGas;
         }
 
-        private bool ValidateChainId(Transaction transaction)
-        {
-            switch (transaction.Type)
+        private bool ValidateChainId(Transaction transaction) =>
+            transaction.Type switch
             {
-                case TxType.Legacy:
-                    return true;
-                case TxType.AccessList:
-                case TxType.EIP1559:
-                    return transaction.ChainId == _chainIdValue;
-                default:
-                    return false;
-            }
-        }
+                TxType.Legacy => true,
+                _ => transaction.ChainId == _chainIdValue
+            };
 
-        private bool ValidateSignature(Signature? signature, IReleaseSpec spec)
+        private bool ValidateSignature(Transaction tx, IReleaseSpec spec)
         {
+            Signature? signature = tx.Signature;
+
             if (signature is null)
             {
                 return false;
             }
 
-            BigInteger sValue = signature.SAsSpan.ToUnsignedBigInteger();
-            BigInteger rValue = signature.RAsSpan.ToUnsignedBigInteger();
+            UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
+            UInt256 rValue = new(signature.RAsSpan, isBigEndian: true);
 
-            if (sValue.IsZero || sValue >= (spec.IsEip2Enabled ? Secp256K1Curve.HalfN + 1 : Secp256K1Curve.N))
+            if (sValue.IsZero || sValue >= (spec.IsEip2Enabled ? Secp256K1Curve.HalfNPlusOne : Secp256K1Curve.N))
             {
                 return false;
             }
 
-            if (rValue.IsZero || rValue >= Secp256K1Curve.N - 1)
+            if (rValue.IsZero || rValue >= Secp256K1Curve.NMinusOne)
             {
                 return false;
             }
 
-            if (spec.IsEip155Enabled)
+            if (signature.V is 27 or 28)
             {
-                return (signature.ChainId ?? _chainIdValue) == _chainIdValue;
+                return true;
             }
 
-            return !spec.ValidateChainId || (signature.V == 27 || signature.V == 28);
+            if (tx.Type == TxType.Legacy && spec.IsEip155Enabled && (signature.V == _chainIdValue * 2 + 35ul || signature.V == _chainIdValue * 2 + 36ul))
+            {
+                return true;
+            }
+
+            return !spec.ValidateChainId;
+        }
+
+        private static bool Validate4844Fields(Transaction transaction)
+        {
+            // Execution-payload version verification
+            if (!transaction.SupportsBlobs)
+            {
+                return transaction.MaxFeePerDataGas is null &&
+                       transaction.BlobVersionedHashes is null &&
+                       transaction is not { NetworkWrapper: ShardBlobNetworkWrapper };
+            }
+
+            if (transaction.To is null ||
+                transaction.MaxFeePerDataGas is null ||
+                transaction.BlobVersionedHashes is null ||
+                transaction.BlobVersionedHashes!.Length > Eip4844Constants.MaxBlobsPerTransaction ||
+                transaction.BlobVersionedHashes!.Length < Eip4844Constants.MinBlobsPerTransaction)
+            {
+                return false;
+            }
+
+            int blobCount = transaction.BlobVersionedHashes.Length;
+
+            for (int i = 0; i < blobCount; i++)
+            {
+                if (transaction.BlobVersionedHashes[i] is null ||
+                    transaction.BlobVersionedHashes![i].Length !=
+                    KzgPolynomialCommitments.BytesPerBlobVersionedHash ||
+                    transaction.BlobVersionedHashes![i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+                {
+                    return false;
+                }
+            }
+
+            // Mempool version verification if presents
+            if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+            {
+                if (wrapper.Blobs.Length != blobCount ||
+                    wrapper.Commitments.Length != blobCount ||
+                    wrapper.Proofs.Length != blobCount)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < blobCount; i++)
+                {
+                    if (wrapper.Blobs[i].Length != Ckzg.Ckzg.BytesPerBlob ||
+                        wrapper.Commitments[i].Length != Ckzg.Ckzg.BytesPerCommitment ||
+                        wrapper.Proofs[i].Length != Ckzg.Ckzg.BytesPerProof)
+                    {
+                        return false;
+                    }
+                }
+
+                Span<byte> hash = stackalloc byte[32];
+                for (int i = 0; i < blobCount; i++)
+                {
+                    if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(
+                            wrapper.Commitments[i].AsSpan(), hash) ||
+                        !hash.SequenceEqual(transaction.BlobVersionedHashes[i]))
+                    {
+                        return false;
+                    }
+                }
+
+                return KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs,
+                    wrapper.Commitments, wrapper.Proofs);
+            }
+
+            return true;
         }
     }
 }

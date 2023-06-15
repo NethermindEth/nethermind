@@ -31,7 +31,7 @@ namespace Nethermind.Core.Crypto
                 throw new ArgumentException();
             }
 
-            bytes.Slice(0, 64).CopyTo(Bytes.AsSpan());
+            bytes[..64].CopyTo(Bytes.AsSpan());
             V = bytes[64];
         }
 
@@ -42,8 +42,8 @@ namespace Nethermind.Core.Crypto
                 throw new ArgumentException(nameof(v));
             }
 
-            r.CopyTo(Bytes.AsSpan().Slice(32 - r.Length, r.Length));
-            s.CopyTo(Bytes.AsSpan().Slice(64 - s.Length, s.Length));
+            r.CopyTo(Bytes.AsSpan(32 - r.Length, r.Length));
+            s.CopyTo(Bytes.AsSpan(64 - s.Length, s.Length));
             V = v;
         }
 
@@ -54,8 +54,8 @@ namespace Nethermind.Core.Crypto
                 throw new ArgumentException(nameof(v));
             }
 
-            r.ToBigEndian(Bytes.AsSpan().Slice(0, 32));
-            s.ToBigEndian(Bytes.AsSpan().Slice(32, 32));
+            r.ToBigEndian(Bytes.AsSpan(0, 32));
+            s.ToBigEndian(Bytes.AsSpan(32, 32));
 
             V = v;
         }
@@ -73,9 +73,9 @@ namespace Nethermind.Core.Crypto
         public byte RecoveryId => V <= VOffset + 1 ? (byte)(V - VOffset) : (byte)(1 - V % 2);
 
         public byte[] R => Bytes.Slice(0, 32);
-        public Span<byte> RAsSpan => Bytes.AsSpan().Slice(0, 32);
+        public Span<byte> RAsSpan => Bytes.AsSpan(0, 32);
         public byte[] S => Bytes.Slice(32, 32);
-        public Span<byte> SAsSpan => Bytes.AsSpan().Slice(32, 32);
+        public Span<byte> SAsSpan => Bytes.AsSpan(32, 32);
 
         [Todo("Change signature to store 65 bytes and just slice it for normal Bytes.")]
         public byte[] BytesWithRecovery

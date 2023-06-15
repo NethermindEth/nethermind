@@ -33,9 +33,6 @@ namespace Nethermind.Init.Steps
                 Rlp.RegisterDecoders(assembly);
             }
 
-            HeaderDecoder.Eip1559TransitionBlock = _api.SpecProvider.GenesisSpec.Eip1559TransitionBlock;
-            HeaderDecoder.WithdrawalTimestamp = _api.SpecProvider.GenesisSpec.WithdrawalTimestamp;
-
             return Task.CompletedTask;
         }
     }

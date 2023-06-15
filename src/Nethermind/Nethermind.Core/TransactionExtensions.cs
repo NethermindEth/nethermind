@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Core
@@ -15,7 +16,7 @@ namespace Nethermind.Core
         public static bool TryCalculatePremiumPerGas(this Transaction tx, in UInt256 baseFeePerGas, out UInt256 premiumPerGas)
         {
             bool freeTransaction = tx.IsFree();
-            UInt256 feeCap = tx.IsEip1559 ? tx.MaxFeePerGas : tx.GasPrice;
+            UInt256 feeCap = tx.Supports1559 ? tx.MaxFeePerGas : tx.GasPrice;
             if (baseFeePerGas > feeCap)
             {
                 premiumPerGas = UInt256.Zero;
@@ -60,6 +61,11 @@ namespace Nethermind.Core
         {
             return eip1559Enabled ? UInt256.Min(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas > baseFee ? tx.MaxFeePerGas - baseFee : 0) : tx.MaxPriorityFeePerGas;
         }
+        public static bool IsAboveInitCode(this Transaction tx, IReleaseSpec spec)
+        {
+            return tx.IsContractCreation && spec.IsEip3860Enabled && (tx.DataLength) > spec.MaxInitCodeSize;
+        }
+
 
     }
 }

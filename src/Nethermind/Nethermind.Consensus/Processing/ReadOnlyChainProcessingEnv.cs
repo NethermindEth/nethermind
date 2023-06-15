@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.Processing
         public IBlockProcessor BlockProcessor { get; }
         public IBlockchainProcessor ChainProcessor { get; }
         public IBlockProcessingQueue BlockProcessingQueue { get; }
-        public IStateProvider StateProvider => _txEnv.StateProvider;
+        public IWorldState StateProvider => _txEnv.StateProvider;
 
         public ReadOnlyChainProcessingEnv(
             ReadOnlyTxProcessingEnv txEnv,
@@ -48,7 +48,6 @@ namespace Nethermind.Consensus.Processing
                 rewardCalculator,
                 transactionsExecutor,
                 StateProvider,
-                _txEnv.StorageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);

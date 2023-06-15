@@ -14,7 +14,7 @@ namespace Nethermind.Core.Resettables
         private readonly int _startCapacity;
         private readonly int _resetRatio;
 
-        private IDictionary<TKey, TValue> _wrapped;
+        private Dictionary<TKey, TValue> _wrapped;
 
         public ResettableDictionary(
             IEqualityComparer<TKey>? comparer,
@@ -47,7 +47,7 @@ namespace Nethermind.Core.Resettables
 
         public void Add(KeyValuePair<TKey, TValue> item)
         {
-            _wrapped.Add(item);
+            _wrapped.Add(item.Key, item.Value);
         }
 
         public void Clear()
@@ -57,17 +57,17 @@ namespace Nethermind.Core.Resettables
 
         public bool Contains(KeyValuePair<TKey, TValue> item)
         {
-            return _wrapped.Contains(item);
+            return ((IDictionary<TKey, TValue>)_wrapped).Contains(item);
         }
 
         public void CopyTo(KeyValuePair<TKey, TValue>[] array, int arrayIndex)
         {
-            _wrapped.CopyTo(array, arrayIndex);
+            ((IDictionary<TKey, TValue>)_wrapped).CopyTo(array, arrayIndex);
         }
 
         public bool Remove(KeyValuePair<TKey, TValue> item)
         {
-            return _wrapped.Remove(item);
+            return ((IDictionary<TKey, TValue>)_wrapped).Remove(item);
         }
 
         public int Count => _wrapped.Count;

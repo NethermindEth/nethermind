@@ -25,7 +25,7 @@ namespace Ethereum.KeyAddress.Test
         public void SetUp()
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-            _ecdsa = new EthereumEcdsa(ChainId.Olympic, LimboLogs.Instance);
+            _ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance);
         }
 
         private static IEnumerable<KeyAddressTest> LoadTests()
@@ -56,7 +56,7 @@ namespace Ethereum.KeyAddress.Test
             Address address = new Address(addressHex);
 
             // TODO: check - at the moment they are failing when running in the test mode but not in Debug
-            Assert.AreEqual(address, recovered);
+            Assert.That(recovered, Is.EqualTo(address));
         }
 
         [Ignore("Ignoring these as the test values seem wrong, need to confirm")]
@@ -75,16 +75,16 @@ namespace Ethereum.KeyAddress.Test
             string expectedSigHex = expectedSig.ToString();
             Address expectedAddress = new Address(test.Address);
 
-            Assert.AreEqual(expectedAddress, actualAddress, "address vs adress from private key");
+            Assert.That(actualAddress, Is.EqualTo(expectedAddress), "address vs adress from private key");
 
             Address recoveredActualAddress = _ecdsa.RecoverAddress(actualSig, Keccak.OfAnEmptyString);
-            Assert.AreEqual(actualAddress, recoveredActualAddress);
+            Assert.That(recoveredActualAddress, Is.EqualTo(actualAddress));
 
             // it does not work
-            Assert.AreEqual(expectedSigHex, actualSigHex, "expected vs actual signature hex");
+            Assert.That(actualSigHex, Is.EqualTo(expectedSigHex), "expected vs actual signature hex");
 
             Address recovered = _ecdsa.RecoverAddress(expectedSig, Keccak.OfAnEmptyString);
-            Assert.AreEqual(expectedAddress, recovered);
+            Assert.That(recovered, Is.EqualTo(expectedAddress));
         }
 
         private class SigOfEmptyString

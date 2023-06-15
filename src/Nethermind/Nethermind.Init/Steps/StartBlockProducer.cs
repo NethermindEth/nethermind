@@ -13,7 +13,8 @@ using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeBlockProducer), typeof(ReviewBlockTree))]  // Unfortunately EngineRPC API need review blockTree
+    [RunnerStepDependencies(typeof(InitializeBlockProducer), typeof(ReviewBlockTree),
+        typeof(InitializePrecompiles))] // Unfortunately EngineRPC API need review blockTree
     public class StartBlockProducer : IStep
     {
         protected IApiWithBlockchain _api;
@@ -25,12 +26,12 @@ namespace Nethermind.Init.Steps
 
         public async Task Execute(CancellationToken _)
         {
-            if (_api.BlockProductionPolicy.ShouldStartBlockProduction() && _api.BlockProducer is not null)
+            if (_api.BlockProductionPolicy!.ShouldStartBlockProduction() && _api.BlockProducer is not null)
             {
                 if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
                 ILogger logger = _api.LogManager.GetClassLogger();
-                if (logger.IsWarn) logger.Warn($"Starting {_api.SealEngineType} block producer & sealer");
+                if (logger.IsInfo) logger.Info($"Starting {_api.SealEngineType} block producer & sealer");
                 ProducedBlockSuggester suggester = new(_api.BlockTree, _api.BlockProducer);
                 _api.DisposeStack.Push(suggester);
                 await _api.BlockProducer.Start();

@@ -18,6 +18,7 @@ namespace Nethermind.Blockchain.Test
 {
     public class TransactionComparisonTests
     {
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(10, 10, 0)]
         [TestCase(15, 10, -1)]
         [TestCase(2, 3, 1)]
@@ -28,6 +29,7 @@ namespace Nethermind.Blockchain.Test
             AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(10, 10, 0)]
         [TestCase(15, 10, -1)]
         [TestCase(2, 3, 1)]
@@ -38,6 +40,7 @@ namespace Nethermind.Blockchain.Test
             AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         // head block number before eip 1559 transition
         [TestCase(10, 10, 0, 0, 0)]
         [TestCase(15, 10, 10, 1, -1)]
@@ -56,6 +59,7 @@ namespace Nethermind.Blockchain.Test
             AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         // head block number before eip 1559 transition
         [TestCase(10, 10, 0, 0, 0)]
         [TestCase(15, 10, 10, 1, -1)]
@@ -79,9 +83,10 @@ namespace Nethermind.Blockchain.Test
             Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
                 .WithGasPrice((UInt256)gasPriceY).TestObject;
             int result = comparer.Compare(x, y);
-            Assert.AreEqual(expectedResult, result);
+            Assert.That(result, Is.EqualTo(expectedResult));
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(10, 5, 12, 4, 4, 6, -1)]
         [TestCase(10, 5, 12, 4, 10, 6, 1)]
         [TestCase(10, 4, 12, 4, 4, 6, 1)]
@@ -98,6 +103,7 @@ namespace Nethermind.Blockchain.Test
             Assert1559Transactions(comparer, feeCapX, gasPremiumX, feeCapY, gasPremiumY, expectedResult);
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(4, 3, 1, 3, 1)]
         [TestCase(4, 3, 3, 1, -1)]
         [TestCase(4, 3, 0, 0, 0)]
@@ -113,9 +119,10 @@ namespace Nethermind.Blockchain.Test
             Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
                 .WithGasPrice((UInt256)gasPriceY).WithGasBottleneck((UInt256)gasBottleneckY).TestObject;
             int result = comparer.Compare(x, y);
-            Assert.AreEqual(expectedResult, result);
+            Assert.That(result, Is.EqualTo(expectedResult));
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(10, 5, 12, 4, 4, 6, -1)]
         [TestCase(10, 5, 12, 4, 10, 6, 1)]
         [TestCase(10, 4, 12, 4, 4, 6, 1)]
@@ -139,7 +146,7 @@ namespace Nethermind.Blockchain.Test
                 .WithMaxFeePerGas((UInt256)feeCapY).WithMaxPriorityFeePerGas((UInt256)gasPremiumY)
                 .WithType(TxType.EIP1559).TestObject;
             int result = comparer.Compare(x, y);
-            Assert.AreEqual(expectedResult, result);
+            Assert.That(result, Is.EqualTo(expectedResult));
         }
 
         private class TestingContext

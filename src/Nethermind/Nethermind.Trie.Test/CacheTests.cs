@@ -16,7 +16,7 @@ namespace Nethermind.Trie.Test
         public void Cache_initial_memory_calculated_correctly()
         {
             MemCountingCache cache = new(1024, string.Empty);
-            cache.MemorySize.Should().Be(160);
+            cache.MemorySize.Should().Be(136);
         }
 
         [Test]
@@ -24,7 +24,7 @@ namespace Nethermind.Trie.Test
         {
             MemCountingCache cache = new(1024, string.Empty);
             cache.Set(Keccak.Zero, new byte[0]);
-            cache.MemorySize.Should().Be(400);
+            cache.MemorySize.Should().Be(344);
         }
 
         [Test]
@@ -35,27 +35,27 @@ namespace Nethermind.Trie.Test
             cache.Set(TestItem.KeccakB, new byte[0]);
             cache.Set(TestItem.KeccakC, new byte[0]);
             cache.Set(TestItem.KeccakD, new byte[0]);
-            cache.MemorySize.Should().Be(824);
+            cache.MemorySize.Should().Be(672);
         }
 
         [Test]
         public void Limit_by_memory_works_fine()
         {
-            MemCountingCache cache = new(800, string.Empty);
+            MemCountingCache cache = new(584, string.Empty);
             cache.Set(TestItem.KeccakA, new byte[0]);
             cache.Set(TestItem.KeccakB, new byte[0]);
             cache.Set(TestItem.KeccakC, new byte[0]);
 
-            cache.MemorySize.Should().Be(608);
+            cache.MemorySize.Should().Be(488);
             cache.Get(TestItem.KeccakA).Should().NotBeNull();
 
             cache.Set(TestItem.KeccakD, new byte[0]);
-            cache.MemorySize.Should().Be(608);
+            cache.MemorySize.Should().Be(488);
             cache.Get(TestItem.KeccakB).Should().BeNull();
             cache.Get(TestItem.KeccakD).Should().NotBeNull();
 
             cache.Set(TestItem.KeccakE, new byte[0]);
-            cache.MemorySize.Should().Be(608);
+            cache.MemorySize.Should().Be(488);
             cache.Get(TestItem.KeccakB).Should().BeNull();
             cache.Get(TestItem.KeccakC).Should().BeNull();
             cache.Get(TestItem.KeccakE).Should().NotBeNull();
@@ -71,11 +71,11 @@ namespace Nethermind.Trie.Test
 
             cache.Set(TestItem.KeccakA, null);
 
-            cache.MemorySize.Should().Be(504);
+            cache.MemorySize.Should().Be(416);
             cache.Get(TestItem.KeccakA).Should().BeNull();
 
             cache.Set(TestItem.KeccakD, new byte[0]);
-            cache.MemorySize.Should().Be(608);
+            cache.MemorySize.Should().Be(488);
             cache.Get(TestItem.KeccakB).Should().NotBeNull();
             cache.Get(TestItem.KeccakD).Should().NotBeNull();
         }

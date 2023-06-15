@@ -41,18 +41,18 @@ namespace Nethermind.Consensus.Producers
         public event EventHandler<BlockEventArgs>? BlockProduced;
 
         private ISealer Sealer { get; }
-        private IStateProvider StateProvider { get; }
+        private IWorldState StateProvider { get; }
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly ISpecProvider _specProvider;
         private readonly ITxSource _txSource;
         private readonly IBlockProductionTrigger _trigger;
         private bool _isRunning;
-        private readonly ManualResetEvent _producingBlockLock = new(true);
+        protected readonly SemaphoreSlim _producingBlockLock = new(1);
         private CancellationTokenSource? _producerCancellationToken;
 
         private DateTime _lastProducedBlockDateTime;
-        private const int BlockProductionTimeout = 1000;
+        protected const int BlockProductionTimeout = 2000;
         protected ILogger Logger { get; }
         protected readonly IBlocksConfig _blocksConfig;
 
@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Producers
             ISealer? sealer,
             IBlockTree? blockTree,
             IBlockProductionTrigger? trigger,
-            IStateProvider? stateProvider,
+            IWorldState? stateProvider,
             IGasLimitCalculator? gasLimitCalculator,
             ITimestamper? timestamper,
             ISpecProvider? specProvider,
@@ -122,7 +122,7 @@ namespace Nethermind.Consensus.Producers
             token = tokenSource.Token;
 
             Block? block = null;
-            if (await _producingBlockLock.WaitOneAsync(BlockProductionTimeout, token))
+            if (await _producingBlockLock.WaitAsync(BlockProductionTimeout, token))
             {
                 try
                 {
@@ -140,7 +140,7 @@ namespace Nethermind.Consensus.Producers
                 }
                 finally
                 {
-                    _producingBlockLock.Set();
+                    _producingBlockLock.Release();
                 }
             }
             else
@@ -229,6 +229,12 @@ namespace Nethermind.Consensus.Producers
             return Task.FromResult((Block?)null);
         }
 
+        /// <summary>
+        /// Sets the state to produce block on
+        /// </summary>
+        /// <param name="parentStateRoot">Parent block state</param>
+        /// <returns>True if succeeded, false otherwise</returns>
+        /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
         protected bool TrySetState(Keccak? parentStateRoot)
         {
             bool HasState(Keccak stateRoot)
@@ -303,6 +309,13 @@ namespace Nethermind.Consensus.Producers
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
             IEnumerable<Transaction> transactions = GetTransactions(parent);
+
+            if (_specProvider.GetSpec(header).IsEip4844Enabled)
+            {
+                // TODO: Calculate ExcessDataGas depending on parent ExcessDataGas and number of blobs in txs
+                header.ExcessDataGas = 0;
+            }
+
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }
     }

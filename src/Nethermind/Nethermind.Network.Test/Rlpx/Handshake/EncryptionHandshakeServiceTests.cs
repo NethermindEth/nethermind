@@ -41,7 +41,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             _ack = null;
         }
 
-        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(ChainId.Ropsten, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
+        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
 
         private IMessageSerializationService _messageSerializationService;
 
@@ -137,19 +137,18 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
             _initiatorService.Agree(_initiatorHandshake, ack);
 
-            Assert.AreEqual(NetTestVectors.AesSecret, _initiatorHandshake.Secrets.AesSecret, "initiator AES");
-            Assert.AreEqual(NetTestVectors.AesSecret, _recipientHandshake.Secrets.AesSecret, "recipient AES");
-            Assert.AreEqual(NetTestVectors.MacSecret, _initiatorHandshake.Secrets.MacSecret, "initiator MAC");
-            Assert.AreEqual(NetTestVectors.MacSecret, _recipientHandshake.Secrets.MacSecret, "recipient MAC");
+            Assert.That(_initiatorHandshake.Secrets.AesSecret, Is.EqualTo(NetTestVectors.AesSecret), "initiator AES");
+            Assert.That(_recipientHandshake.Secrets.AesSecret, Is.EqualTo(NetTestVectors.AesSecret), "recipient AES");
+            Assert.That(_initiatorHandshake.Secrets.MacSecret, Is.EqualTo(NetTestVectors.MacSecret), "initiator MAC");
+            Assert.That(_recipientHandshake.Secrets.MacSecret, Is.EqualTo(NetTestVectors.MacSecret), "recipient MAC");
 
             // TODO: below failing, probably different format after serialization / during encryption (only tested decryption / deserialization in EciesCoder)
             // ingress uses the auth packet which is encrypted with a random IV and ephemeral key - need to remove that randomness for tests
             byte[] fooBytes = Encoding.ASCII.GetBytes("foo");
-            _recipientHandshake.Secrets.IngressMac.BlockUpdate(fooBytes, 0, fooBytes.Length);
+            _recipientHandshake.Secrets.IngressMac.Update(fooBytes);
 
-            byte[] ingressFooResult = new byte[32];
-            _recipientHandshake.Secrets.IngressMac.DoFinal(ingressFooResult, 0);
-            Assert.AreEqual(NetTestVectors.BIngressMacFoo, ingressFooResult, "recipient ingress foo");
+            byte[] ingressFooResult = _recipientHandshake.Secrets.IngressMac.Hash;
+            Assert.That(ingressFooResult, Is.EqualTo(NetTestVectors.BIngressMacFoo), "recipient ingress foo");
         }
 
         [TestCase(true)]
@@ -162,23 +161,17 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Agree();
 
             //            Assert.AreEqual(_recipientHandshake.Secrets.Token, _initiatorHandshake.Secrets.Token, "Token");
-            Assert.AreEqual(_recipientHandshake.Secrets.AesSecret, _initiatorHandshake.Secrets.AesSecret, "AES");
-            Assert.AreEqual(_recipientHandshake.Secrets.MacSecret, _initiatorHandshake.Secrets.MacSecret, "MAC");
+            Assert.That(_initiatorHandshake.Secrets.AesSecret, Is.EqualTo(_recipientHandshake.Secrets.AesSecret), "AES");
+            Assert.That(_initiatorHandshake.Secrets.MacSecret, Is.EqualTo(_recipientHandshake.Secrets.MacSecret), "MAC");
 
-            byte[] recipientEgress = new byte[32];
-            byte[] recipientIngress = new byte[32];
+            byte[] recipientEgress = _recipientHandshake.Secrets.EgressMac.Hash;
+            byte[] recipientIngress = _recipientHandshake.Secrets.IngressMac.Hash;
 
-            byte[] initiatorEgress = new byte[32];
-            byte[] initiatorIngress = new byte[32];
+            byte[] initiatorEgress = _initiatorHandshake.Secrets.EgressMac.Hash;
+            byte[] initiatorIngress = _initiatorHandshake.Secrets.IngressMac.Hash;
 
-            _recipientHandshake.Secrets.EgressMac.DoFinal(recipientEgress, 0);
-            _recipientHandshake.Secrets.IngressMac.DoFinal(recipientIngress, 0);
-
-            _initiatorHandshake.Secrets.EgressMac.DoFinal(initiatorEgress, 0);
-            _initiatorHandshake.Secrets.IngressMac.DoFinal(initiatorIngress, 0);
-
-            Assert.AreEqual(initiatorEgress, recipientIngress, "Egress");
-            Assert.AreEqual(initiatorIngress, recipientEgress, "Ingress");
+            Assert.That(recipientIngress, Is.EqualTo(initiatorEgress), "Egress");
+            Assert.That(recipientEgress, Is.EqualTo(initiatorIngress), "Ingress");
         }
 
         [TestCase(true)]
@@ -220,7 +213,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             InitializeRandom(preEip8Format);
             Auth(preEip8Format);
             Ack();
-            Assert.AreEqual(NetTestVectors.EphemeralKeyB, _recipientHandshake.EphemeralPrivateKey);
+            Assert.That(_recipientHandshake.EphemeralPrivateKey, Is.EqualTo(NetTestVectors.EphemeralKeyB));
         }
 
         [TestCase(true)]
@@ -229,7 +222,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         {
             InitializeRandom(preEip8Format);
             Auth(preEip8Format);
-            Assert.AreEqual(NetTestVectors.EphemeralKeyA, _initiatorHandshake.EphemeralPrivateKey);
+            Assert.That(_initiatorHandshake.EphemeralPrivateKey, Is.EqualTo(NetTestVectors.EphemeralKeyA));
         }
 
         [TestCase(true)]
@@ -239,7 +232,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             InitializeRandom(preEip8Format);
             Auth(preEip8Format);
             Ack();
-            Assert.AreEqual(NetTestVectors.NonceA, _recipientHandshake.InitiatorNonce);
+            Assert.That(_recipientHandshake.InitiatorNonce, Is.EqualTo(NetTestVectors.NonceA));
         }
 
         [TestCase(true)]
@@ -248,7 +241,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         {
             InitializeRandom(preEip8Format);
             Auth(preEip8Format);
-            Assert.AreEqual(NetTestVectors.NonceA, _initiatorHandshake.InitiatorNonce);
+            Assert.That(_initiatorHandshake.InitiatorNonce, Is.EqualTo(NetTestVectors.NonceA));
         }
 
         [TestCase(true)]
@@ -258,7 +251,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             InitializeRandom(preEip8Format);
             Auth(preEip8Format);
             Ack();
-            Assert.AreEqual(NetTestVectors.NonceB, _recipientHandshake.RecipientNonce);
+            Assert.That(_recipientHandshake.RecipientNonce, Is.EqualTo(NetTestVectors.NonceB));
         }
 
         [TestCase(true)]
@@ -269,7 +262,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Auth(preEip8Format);
             Ack();
             Agree();
-            Assert.AreEqual(NetTestVectors.NonceB, _initiatorHandshake.RecipientNonce);
+            Assert.That(_initiatorHandshake.RecipientNonce, Is.EqualTo(NetTestVectors.NonceB));
         }
 
         [TestCase(true)]
@@ -279,7 +272,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             InitializeRandom(preEip8Format);
             Auth(preEip8Format);
             Ack();
-            Assert.AreEqual(NetTestVectors.EphemeralKeyA.PublicKey, _recipientHandshake.RemoteEphemeralPublicKey);
+            Assert.That(_recipientHandshake.RemoteEphemeralPublicKey, Is.EqualTo(NetTestVectors.EphemeralKeyA.PublicKey));
         }
 
         [TestCase(true)]
@@ -290,7 +283,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Auth(preEip8Format);
             Ack();
             Agree();
-            Assert.AreEqual(NetTestVectors.EphemeralKeyB.PublicKey, _initiatorHandshake.RemoteEphemeralPublicKey);
+            Assert.That(_initiatorHandshake.RemoteEphemeralPublicKey, Is.EqualTo(NetTestVectors.EphemeralKeyB.PublicKey));
         }
 
         [TestCase(true)]
@@ -300,7 +293,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             InitializeRandom(preEip8Format);
             Auth(preEip8Format);
             Ack();
-            Assert.AreEqual(NetTestVectors.StaticKeyA.PublicKey, _recipientHandshake.RemoteNodeId);
+            Assert.That(_recipientHandshake.RemoteNodeId, Is.EqualTo(NetTestVectors.StaticKeyA.PublicKey));
         }
 
         [TestCase(true)]
@@ -309,7 +302,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         {
             InitializeRandom(preEip8Format);
             Auth(preEip8Format);
-            Assert.AreEqual(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake.RemoteNodeId);
+            Assert.That(_initiatorHandshake.RemoteNodeId, Is.EqualTo(NetTestVectors.StaticKeyB.PublicKey));
         }
     }
 }

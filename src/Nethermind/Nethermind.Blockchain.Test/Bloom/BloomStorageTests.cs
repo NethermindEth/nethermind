@@ -19,6 +19,7 @@ namespace Nethermind.Blockchain.Test.Bloom
     [Parallelizable(ParallelScope.All)]
     public class BloomStorageTests
     {
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(0, 0)]
         [TestCase(1, 1)]
         [TestCase(0, 10)]
@@ -29,6 +30,7 @@ namespace Nethermind.Blockchain.Test.Bloom
             storage.ContainsRange(from, to).Should().BeFalse();
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(0, 0, ExpectedResult = false)]
         [TestCase(1, 1, ExpectedResult = true)]
         [TestCase(0, 10, ExpectedResult = false)]
@@ -43,6 +45,7 @@ namespace Nethermind.Blockchain.Test.Bloom
             return storage.ContainsRange(from, to);
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(0, 0, ExpectedResult = false)]
         [TestCase(1, 1, ExpectedResult = true)]
         [TestCase(0, 10, ExpectedResult = false)]
@@ -100,6 +103,7 @@ namespace Nethermind.Blockchain.Test.Bloom
             bloomsChecked.Should().Be(expectedBloomsChecked);
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(1, 10, new long[] { 4 }, new[] { 4 })]
         [TestCase(0, 4, new long[] { 4 }, new[] { 4 })]
         [TestCase(1, 10, new long[] { 1, 4, 6, 8 }, new[] { 4 })]
@@ -155,6 +159,7 @@ namespace Nethermind.Blockchain.Test.Bloom
             return storage;
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(byte.MaxValue)]
         [TestCase(ushort.MaxValue / 4)]
         [TestCase(ushort.MaxValue, Explicit = true)]
@@ -201,16 +206,6 @@ namespace Nethermind.Blockchain.Test.Bloom
             finally
             {
                 Directory.Delete(basePath, true);
-            }
-        }
-
-        private IEnumerable<(Core.Bloom Bloom, (long FromBlock, long ToBlock) CurrentIndices)> Unwind(IBloomEnumeration blooms)
-        {
-            foreach (Core.Bloom bloom in blooms)
-            {
-                (long FromBlock, long ToBlock) currentIndices = blooms.CurrentIndices;
-                yield return (bloom, currentIndices);
-                blooms.TryGetBlockNumber(out _);
             }
         }
     }

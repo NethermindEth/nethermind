@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Test.Visitors
     {
         private int _dbLoadTimeout = 5000;
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Can_load_blocks_from_db()
         {
             for (int chainLength = 2; chainLength <= 32; chainLength++)
@@ -68,11 +68,11 @@ namespace Nethermind.Blockchain.Test.Visitors
                 DbBlocksLoader loader = new(blockTree, LimboNoErrorLogger.Instance);
                 await blockTree.Accept(loader, CancellationToken.None);
 
-                Assert.AreEqual(testTree.Head.Hash, blockTree.BestSuggestedHeader.Hash, $"head {chainLength}");
+                Assert.That(blockTree.BestSuggestedHeader.Hash, Is.EqualTo(testTree.Head.Hash), $"head {chainLength}");
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Can_load_blocks_from_db_odd()
         {
             for (int chainLength = 2; chainLength <= 32; chainLength++)
@@ -114,11 +114,11 @@ namespace Nethermind.Blockchain.Test.Visitors
                 DbBlocksLoader loader = new(blockTree, LimboNoErrorLogger.Instance);
                 await blockTree.Accept(loader, CancellationToken.None);
 
-                Assert.AreEqual(testTree.Head.Hash, blockTree.BestSuggestedHeader.Hash, $"head {chainLength}");
+                Assert.That(blockTree.BestSuggestedHeader.Hash, Is.EqualTo(testTree.Head.Hash), $"head {chainLength}");
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Can_load_from_DB_when_there_is_an_invalid_block_in_DB_and_a_valid_branch()
         {
             MemDb blocksDb = new();
@@ -183,7 +183,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             DbBlocksLoader loader = new(tree2, LimboNoErrorLogger.Instance, null, 1);
             await tree2.Accept(loader, tokenSource.Token);
 
-            Assert.AreEqual(3L, tree2.BestKnownNumber, "best known");
+            Assert.That(tree2.BestKnownNumber, Is.EqualTo(3L), "best known");
             tree2.Head.Header.Should().BeEquivalentTo(block3B.Header, options => { return options.Excluding(t => t.MaybeParent); });
             tree2.BestSuggestedHeader.Should().BeEquivalentTo(block3B.Header, options => { return options.Excluding(t => t.MaybeParent); });
 
@@ -196,7 +196,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             Assert.NotNull(blockInfosDb.Get(3), "level 3");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Can_load_from_DB_when_there_is_only_an_invalid_chain_in_DB()
         {
             MemDb blocksDb = new();
@@ -255,9 +255,9 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             /* note the block tree historically loads one less block than it could */
 
-            Assert.AreEqual(0L, tree2.BestKnownNumber, "best known");
-            Assert.AreEqual(block0.Hash, tree2.Head.Hash, "head");
-            Assert.AreEqual(block0.Hash, tree2.BestSuggestedHeader.Hash, "suggested");
+            Assert.That(tree2.BestKnownNumber, Is.EqualTo(0L), "best known");
+            Assert.That(tree2.Head.Hash, Is.EqualTo(block0.Hash), "head");
+            Assert.That(tree2.BestSuggestedHeader.Hash, Is.EqualTo(block0.Hash), "suggested");
 
             Assert.IsNull(blocksDb.Get(block1.Hash), "block 1");
             Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");

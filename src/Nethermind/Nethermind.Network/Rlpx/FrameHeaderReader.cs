@@ -22,7 +22,7 @@ namespace Nethermind.Network.Rlpx
 
             Rlp.ValueDecoderContext headerBodyItems = HeaderBytes.AsSpan(3, 13).AsRlpValueContext();
             int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
-            int numberOfItems = headerBodyItems.ReadNumberOfItemsRemaining(headerDataEnd);
+            int numberOfItems = headerBodyItems.PeekNumberOfItemsRemaining(headerDataEnd);
             headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
             int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?)null;
             _currentContextId = contextId;
@@ -33,7 +33,7 @@ namespace Nethermind.Network.Rlpx
             return new FrameInfo(isChunked, isFirst, frameSize, totalPacketSize ?? frameSize);
         }
 
-        internal struct FrameInfo
+        internal readonly struct FrameInfo
         {
             public FrameInfo(bool isChunked, bool isFirst, int size, int totalPacketSize)
             {

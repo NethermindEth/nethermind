@@ -2,26 +2,25 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
-using DotNetty.Transport.Channels;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Json;
-using Nethermind.State.Repositories;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
-using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
@@ -38,11 +37,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(chainLength);
             InMemoryReceiptStorage inMemoryReceiptStorage = new() { MigratedBlockNumber = migratedBlockNumber is not null ? 0 : long.MaxValue };
             InMemoryReceiptStorage outMemoryReceiptStorage = new() { MigratedBlockNumber = migratedBlockNumber is not null ? 0 : long.MaxValue };
-            NethermindApi context = new()
+            NethermindApi context = new(configProvider, new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec())
             {
-                ConfigProvider = configProvider,
-                EthereumJsonSerializer = new EthereumJsonSerializer(),
-                LogManager = LimboLogs.Instance,
                 ReceiptStorage = new TestReceiptStorage(inMemoryReceiptStorage, outMemoryReceiptStorage),
                 DbProvider = Substitute.For<IDbProvider>(),
                 BlockTree = blockTreeBuilder.TestObject,
@@ -51,8 +47,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 SyncModeSelector = Substitute.For<ISyncModeSelector>()
             };
 
-            configProvider.GetConfig<IInitConfig>().StoreReceipts.Returns(true);
-            configProvider.GetConfig<IInitConfig>().ReceiptsMigration.Returns(true);
+            configProvider.GetConfig<IReceiptConfig>().StoreReceipts.Returns(true);
+            configProvider.GetConfig<IReceiptConfig>().ReceiptsMigration.Returns(true);
             context.SyncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
 
             int txIndex = 0;
@@ -67,7 +63,14 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             ManualResetEvent guard = new(false);
             Keccak lastTransaction = TestItem.Keccaks[txIndex - 1];
-            context.DbProvider.ReceiptsDb.When(x => x.Remove(lastTransaction.Bytes)).Do(c => guard.Set());
+
+            TestReceiptColumenDb receiptColumenDb = new();
+            context.DbProvider.ReceiptsDb.Returns(receiptColumenDb);
+            receiptColumenDb.RemoveFunc = (key) =>
+            {
+                if (Bytes.AreEqual(key, lastTransaction.Bytes)) guard.Set();
+            };
+
             ReceiptMigration migration = new(context);
             if (migratedBlockNumber.HasValue)
             {
@@ -81,7 +84,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             guard.WaitOne(TimeSpan.FromSeconds(1));
             int txCount = ((migratedBlockNumber ?? chainLength) - 1 - 1) * 2;
-            context.DbProvider.ReceiptsDb.Received(Quantity.Exactly(txCount)).Remove(Arg.Any<byte[]>());
+
+            receiptColumenDb.KeyWasRemoved(_ => true, txCount);
             outMemoryReceiptStorage.Count.Should().Be(txCount);
         }
 
@@ -118,9 +122,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 set => _outStorage.MigratedBlockNumber = value;
             }
 
-            public bool HasBlock(Keccak hash)
+            public bool HasBlock(long blockNumber, Keccak hash)
             {
-                return _outStorage.HasBlock(hash);
+                return _outStorage.HasBlock(blockNumber, hash);
             }
 
             public void EnsureCanonical(Block block)
@@ -128,6 +132,16 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
 
             public event EventHandler<ReceiptsEventArgs> ReceiptsInserted { add { } remove { } }
+        }
+
+        class TestReceiptColumenDb : TestMemDb, IColumnsDb<ReceiptsColumns>
+        {
+            public IDbWithSpan GetColumnDb(ReceiptsColumns key)
+            {
+                return this;
+            }
+
+            public IEnumerable<ReceiptsColumns> ColumnKeys { get; }
         }
     }
 }

@@ -30,7 +30,7 @@ namespace Nethermind.Ethash.Test
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
             EthashDifficultyCalculator difficultyCalculator = new(specProvider);
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
-            Assert.AreEqual((UInt256)90186983, result);
+            Assert.That(result, Is.EqualTo((UInt256)90186983));
         }
 
 
@@ -43,7 +43,7 @@ namespace Nethermind.Ethash.Test
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Olympic.Instance);
             EthashDifficultyCalculator difficultyCalculator = new(specProvider);
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
-            Assert.AreEqual((UInt256)90186983, result);
+            Assert.That(result, Is.EqualTo((UInt256)90186983));
         }
 
         [Test]
@@ -55,7 +55,7 @@ namespace Nethermind.Ethash.Test
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);
             EthashDifficultyCalculator difficultyCalculator = new(specProvider);
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
-            Assert.AreEqual((UInt256)90186982, result);
+            Assert.That(result, Is.EqualTo((UInt256)90186982));
         }
 
         // previous difficulty bomb +  InitialDifficultyBombBlock + offset
@@ -108,7 +108,7 @@ namespace Nethermind.Ethash.Test
             EthashDifficultyCalculator secondHardforkDifficultyCalculator = new(secondHardforkSpecProvider);
             UInt256 secondHardforkResult = secondHardforkDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blocksAbove, false);
 
-            Assert.AreNotEqual(firstHardforkResult, secondHardforkResult);
+            Assert.That(secondHardforkResult, Is.Not.EqualTo(firstHardforkResult));
         }
     }
 }

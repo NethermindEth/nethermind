@@ -1,0 +1,212 @@
+name: Nethermind/Ethereum tests
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      coverage:
+        default: false
+        description: Collect coverage
+        required: false
+        type: boolean
+
+env:
+  COLLECT_COVERAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event.inputs.coverage }}
+  DOTNET_VERSION: 7
+  RETENTION: 1
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
+  TERM: xterm
+
+jobs:
+  nethermind-tests:
+    name: Run ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    outputs:
+      collect_coverage: ${{ env.COLLECT_COVERAGE }}
+    strategy:
+      matrix:
+        project:
+          - Nethermind.Abi.Test
+          - Nethermind.AccountAbstraction.Test
+          - Nethermind.Api.Test
+          - Nethermind.AuRa.Test
+          - Nethermind.Blockchain.Test
+          - Nethermind.Cli.Test
+          - Nethermind.Clique.Test
+          - Nethermind.Config.Test
+          - Nethermind.Consensus.Test
+          - Nethermind.Core.Test
+          - Nethermind.Db.Test
+          - Nethermind.Ethash.Test
+          - Nethermind.EthStats.Test
+          - Nethermind.Evm.Test
+          - Nethermind.Facade.Test
+          - Nethermind.HealthChecks.Test
+          - Nethermind.Hive.Test
+          - Nethermind.JsonRpc.Test
+          - Nethermind.JsonRpc.TraceStore.Test
+          - Nethermind.KeyStore.Test
+          - Nethermind.Logging.NLog.Test
+          - Nethermind.Merge.AuRa.Test
+          - Nethermind.Merge.Plugin.Test
+          - Nethermind.Mev.Test
+          - Nethermind.Mining.Test
+          - Nethermind.Monitoring.Test
+          - Nethermind.Network.Discovery.Test
+          - Nethermind.Network.Dns.Test
+          - Nethermind.Network.Enr.Test
+          - Nethermind.Network.Test
+          - Nethermind.Overseer.Test
+          - Nethermind.Runner.Test
+          - Nethermind.Serialization.Ssz.Test
+          - Nethermind.Sockets.Test
+          - Nethermind.Specs.Test
+          - Nethermind.State.Test
+          - Nethermind.State.Test.Runner.Test
+          - Nethermind.Synchronization.Test
+          - Nethermind.Trie.Test
+          - Nethermind.TxPool.Test
+          - Nethermind.Wallet.Test
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v3
+      with:
+        submodules: true
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    - name: Install Linux packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev -y --no-install-recommends
+    - name: ${{ matrix.project }}
+      id: test
+      run: |
+        dotnet test src/Nethermind/${{ matrix.project }} -c release \
+          ${{ env.COLLECT_COVERAGE == 'true' && '-p:CollectCoverage=true -p:CoverletOutputFormat=opencover' || '' }}
+    - name: Save test outcome
+      if: success() || failure()
+      run: echo "${{ steps.test.outcome == 'success' }}," >> nethermind.outcome
+    - name: Upload test outcome
+      if: success() || failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.project }}-outcome
+        path: nethermind.outcome
+        retention-days: ${{ env.RETENTION }}
+    - name: Upload coverage report
+      if: env.COLLECT_COVERAGE == 'true'
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.project }}-coverage
+        path: src/Nethermind/${{ matrix.project }}/coverage.opencover.xml
+        retention-days: ${{ env.RETENTION }}
+
+  nethermind-tests-status:
+    name: Nethermind tests
+    needs: nethermind-tests
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download test outcomes
+      uses: actions/download-artifact@v3
+    - name: Ensure tests passed
+      run: |
+        data=$(cat **/nethermind.outcome) && data=${data%?}
+        passed=$(echo "[$data]" | jq -r 'all')
+        [ $passed = 'true' ] && exit 0 || exit 1
+
+  ethereum-tests:
+    name: Run ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      matrix:
+        project:
+          - Ethereum.Abi.Test
+          - Ethereum.Basic.Test
+          - Ethereum.Blockchain.Block.Legacy.Test
+          - Ethereum.Blockchain.Block.Test
+          - Ethereum.Blockchain.Legacy.Test
+          - Ethereum.Blockchain.Test
+          - Ethereum.Difficulty.Test
+          - Ethereum.HexPrefix.Test
+          - Ethereum.KeyAddress.Test
+          - Ethereum.PoW.Test
+          - Ethereum.Rlp.Test
+          - Ethereum.Transaction.Test
+          - Ethereum.Transition.Test
+          - Ethereum.Trie.Test
+          - Ethereum.VM.Test
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    - name: Install Linux packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev -y --no-install-recommends
+    - name: ${{ matrix.project }}
+      id: test
+      run: |
+        dotnet test src/Nethermind/${{ matrix.project }} -c release \
+          ${{ env.COLLECT_COVERAGE == 'true' && '-p:CollectCoverage=true -p:CoverletOutputFormat=opencover -p:Exclude="[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Ethereum.Test.Base]*"' || '' }}
+    - name: Save test outcome
+      if: success() || failure()
+      run: echo "${{ steps.test.outcome == 'success' }}," >> ethereum.outcome
+    - name: Upload test outcome
+      if: success() || failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.project }}-outcome
+        path: ethereum.outcome
+        retention-days: ${{ env.RETENTION }}
+    - name: Upload coverage report
+      if: env.COLLECT_COVERAGE == 'true'
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.project }}-coverage
+        path: src/Nethermind/${{ matrix.project }}/coverage.opencover.xml
+        retention-days: ${{ env.RETENTION }}
+
+  ethereum-tests-status:
+    name: Ethereum tests
+    needs: ethereum-tests
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download test outcomes
+      uses: actions/download-artifact@v3
+    - name: Ensure tests passed
+      run: |
+        data=$(cat **/ethereum.outcome) && data=${data%?}
+        passed=$(echo "[$data]" | jq -r 'all')
+        [ $passed = 'true' ] && exit 0 || exit 1
+
+  codecov-upload:
+    name: Upload Codecov reports
+    needs: [nethermind-tests-status, ethereum-tests-status]
+    if: needs.nethermind-tests.outputs.collect_coverage == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download coverage reports
+        uses: actions/download-artifact@v3
+        with:
+          path: .coverage
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          name: codecov-nethermind
+          directory: .coverage

@@ -24,12 +24,6 @@ namespace Nethermind.Network.Test.Builders
             TestObject = new MessageSerializationService();
         }
 
-        public SerializationBuilder With<T>(IMessageSerializer<T> serializer) where T : MessageBase
-        {
-            TestObject.Register(serializer);
-            return this;
-        }
-
         public SerializationBuilder With<T>(IZeroMessageSerializer<T> serializer) where T : MessageBase
         {
             TestObject.Register(serializer);

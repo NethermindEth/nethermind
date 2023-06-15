@@ -12,7 +12,7 @@ namespace Nethermind.Blockchain.Test.Rewards
 {
     public class RewardCalculatorTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Two_uncles_from_the_same_coinbase()
         {
             Block uncle = Build.A.Block.WithNumber(1).TestObject;
@@ -22,13 +22,13 @@ namespace Nethermind.Blockchain.Test.Rewards
             RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
-            Assert.AreEqual(3, rewards.Length);
-            Assert.AreEqual(5312500000000000000, (long)rewards[0].Value, "miner");
-            Assert.AreEqual(3750000000000000000, (long)rewards[1].Value, "uncle1");
-            Assert.AreEqual(3750000000000000000, (long)rewards[2].Value, "uncle2");
+            Assert.That(rewards.Length, Is.EqualTo(3));
+            Assert.That((long)rewards[0].Value, Is.EqualTo(5312500000000000000), "miner");
+            Assert.That((long)rewards[1].Value, Is.EqualTo(3750000000000000000), "uncle1");
+            Assert.That((long)rewards[2].Value, Is.EqualTo(3750000000000000000), "uncle2");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void One_uncle()
         {
             Block uncle = Build.A.Block.WithNumber(1).TestObject;
@@ -37,12 +37,12 @@ namespace Nethermind.Blockchain.Test.Rewards
             RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
-            Assert.AreEqual(2, rewards.Length);
-            Assert.AreEqual(5156250000000000000, (long)rewards[0].Value, "miner");
-            Assert.AreEqual(3750000000000000000, (long)rewards[1].Value, "uncle1");
+            Assert.That(rewards.Length, Is.EqualTo(2));
+            Assert.That((long)rewards[0].Value, Is.EqualTo(5156250000000000000), "miner");
+            Assert.That((long)rewards[1].Value, Is.EqualTo(3750000000000000000), "uncle1");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void No_uncles()
         {
             Block block = Build.A.Block.WithNumber(3).TestObject;
@@ -50,11 +50,11 @@ namespace Nethermind.Blockchain.Test.Rewards
             RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
-            Assert.AreEqual(1, rewards.Length);
-            Assert.AreEqual(5000000000000000000, (long)rewards[0].Value, "miner");
+            Assert.That(rewards.Length, Is.EqualTo(1));
+            Assert.That((long)rewards[0].Value, Is.EqualTo(5000000000000000000), "miner");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Byzantium_reward_two_uncles()
         {
             long blockNumber = RopstenSpecProvider.ByzantiumBlockNumber;
@@ -65,13 +65,13 @@ namespace Nethermind.Blockchain.Test.Rewards
             RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
-            Assert.AreEqual(3, rewards.Length);
-            Assert.AreEqual(3187500000000000000, (long)rewards[0].Value, "miner");
-            Assert.AreEqual(2250000000000000000, (long)rewards[1].Value, "uncle1");
-            Assert.AreEqual(2250000000000000000, (long)rewards[2].Value, "uncle2");
+            Assert.That(rewards.Length, Is.EqualTo(3));
+            Assert.That((long)rewards[0].Value, Is.EqualTo(3187500000000000000), "miner");
+            Assert.That((long)rewards[1].Value, Is.EqualTo(2250000000000000000), "uncle1");
+            Assert.That((long)rewards[2].Value, Is.EqualTo(2250000000000000000), "uncle2");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Constantinople_reward_two_uncles()
         {
             long blockNumber = RopstenSpecProvider.ConstantinopleBlockNumber;
@@ -82,10 +82,10 @@ namespace Nethermind.Blockchain.Test.Rewards
             RewardCalculator calculator = new(RopstenSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
-            Assert.AreEqual(3, rewards.Length);
-            Assert.AreEqual(2125000000000000000, (long)rewards[0].Value, "miner");
-            Assert.AreEqual(1500000000000000000, (long)rewards[1].Value, "uncle1");
-            Assert.AreEqual(1500000000000000000, (long)rewards[2].Value, "uncle2");
+            Assert.That(rewards.Length, Is.EqualTo(3));
+            Assert.That((long)rewards[0].Value, Is.EqualTo(2125000000000000000), "miner");
+            Assert.That((long)rewards[1].Value, Is.EqualTo(1500000000000000000), "uncle1");
+            Assert.That((long)rewards[2].Value, Is.EqualTo(1500000000000000000), "uncle2");
         }
     }
 }

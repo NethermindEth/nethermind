@@ -25,13 +25,16 @@ namespace Nethermind.Core
         public void Dispose()
         {
             _onDispose?.Invoke();
-            GC.SuppressFinalize(this);
         }
 
-        public byte[]? this[byte[] key]
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            get => _storePretendingToSupportBatches[key];
-            set => _storePretendingToSupportBatches[key] = value;
+            return _storePretendingToSupportBatches.Get(key, flags);
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            _storePretendingToSupportBatches.Set(key, value, flags);
         }
     }
 }

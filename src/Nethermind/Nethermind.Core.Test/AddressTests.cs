@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -22,7 +24,7 @@ namespace Nethermind.Core.Test
         {
             Address address = new(init);
             string addressString = address.ToString();
-            Assert.AreEqual(expected, addressString);
+            Assert.That(addressString, Is.EqualTo(expected));
         }
 
         [TestCase("0x52908400098527886E0F7030069857D2E4169EE7", "0x52908400098527886E0F7030069857D2E4169EE7")]
@@ -41,7 +43,7 @@ namespace Nethermind.Core.Test
         {
             Address address = new(init);
             string addressString = address.ToString(true);
-            Assert.AreEqual(expected, addressString);
+            Assert.That(addressString, Is.EqualTo(expected));
         }
 
         [TestCase("0x52908400098527886E0F7030069857D2E4169EE7", true, true)]
@@ -50,7 +52,7 @@ namespace Nethermind.Core.Test
         [TestCase("52908400098527886E0F7030069857D2E4169EE7", false, true)]
         public void Can_check_if_address_is_valid(string addressHex, bool allowPrefix, bool expectedResult)
         {
-            Assert.AreEqual(expectedResult, Address.IsValidAddress(addressHex, allowPrefix));
+            Assert.That(Address.IsValidAddress(addressHex, allowPrefix), Is.EqualTo(expectedResult));
         }
 
         [Test]
@@ -164,7 +166,7 @@ namespace Nethermind.Core.Test
         public void From_number_for_precompile(int number, bool isPrecompile)
         {
             Address address = Address.FromNumber((UInt256)number);
-            Assert.AreEqual(isPrecompile, address.IsPrecompile(Byzantium.Instance));
+            Assert.That(address.IsPrecompile(Byzantium.Instance), Is.EqualTo(isPrecompile));
         }
 
         [TestCase(0, "0x24cd2edba056b7c654a50e8201b619d4f624fdda")]
@@ -172,7 +174,20 @@ namespace Nethermind.Core.Test
         public void Of_contract(long nonce, string expectedAddress)
         {
             Address address = ContractAddress.From(TestItem.AddressA, (UInt256)nonce);
-            Assert.AreEqual(address, new Address(expectedAddress));
+            Assert.That(new Address(expectedAddress), Is.EqualTo(address));
+        }
+
+        [TestCaseSource(nameof(PointEvaluationPrecompileTestCases))]
+        public bool Is_PointEvaluationPrecompile_properly_activated(IReleaseSpec spec) =>
+            Address.FromNumber(0x14).IsPrecompile(spec);
+
+        public static IEnumerable PointEvaluationPrecompileTestCases
+        {
+            get
+            {
+                yield return new TestCaseData(Shanghai.Instance) { ExpectedResult = false, TestName = nameof(Shanghai) };
+                yield return new TestCaseData(Cancun.Instance) { ExpectedResult = true, TestName = nameof(Cancun) };
+            }
         }
 
         [Test]

@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         private (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists) GetPermissions(Transaction tx, BlockHeader parentHeader)
         {
-            var key = (parentHeader.Hash, SenderAddress: tx.SenderAddress);
+            var key = (parentHeader.Hash, tx.SenderAddress);
             return _cache.Permissions.TryGet(key, out var txCachedPermissions)
                 ? txCachedPermissions
                 : GetPermissionsFromContract(tx, parentHeader, key);
@@ -105,7 +105,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         {
             public const int MaxCacheSize = 4096;
 
-            internal ICache<(Keccak ParentHash, Address Sender), (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)> Permissions { get; } =
+            internal LruCache<(Keccak ParentHash, Address Sender), (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)> Permissions { get; } =
                 new LruCache<(Keccak ParentHash, Address Sender), (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)>(MaxCacheSize, "TxPermissions");
         }
     }

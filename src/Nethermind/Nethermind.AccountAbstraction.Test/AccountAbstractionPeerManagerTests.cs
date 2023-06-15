@@ -41,7 +41,7 @@ namespace Nethermind.AccountAbstraction.Test
         private IBlockTree _blockTree = Substitute.For<IBlockTree>();
         private ILogger _logger = Substitute.For<ILogger>();
         private ILogFinder _logFinder = Substitute.For<ILogFinder>();
-        private IStateProvider _stateProvider = Substitute.For<IStateProvider>();
+        private IWorldState _stateProvider = Substitute.For<IWorldState>();
         private ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
         private readonly ISigner _signer = Substitute.For<ISigner>();
         private readonly string[] _entryPointContractAddress = { "0x8595dd9e0438640b5e1254f9df579ac12a86865f", "0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e" };
@@ -149,7 +149,7 @@ namespace Nethermind.AccountAbstraction.Test
                 _simulator,
                 userOperationSortedPool,
                 userOperationBroadcaster,
-                1);
+                TestBlockchainIds.ChainId);
         }
 
     }

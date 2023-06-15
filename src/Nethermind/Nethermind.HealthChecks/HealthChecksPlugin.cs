@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using System.IO.Abstractions;
 using System.Net;
 using System.Threading;
@@ -15,6 +14,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.HealthChecks
 {
@@ -40,7 +40,7 @@ namespace Nethermind.HealthChecks
             }
             if (_freeDiskSpaceChecker is not null)
             {
-                await _freeDiskSpaceChecker.DisposeAsync();
+                await FreeDiskSpaceChecker.DisposeAsync();
             }
         }
 
@@ -50,6 +50,16 @@ namespace Nethermind.HealthChecks
 
         public string Author => "Nethermind";
 
+        public bool MustInitialize => true;
+
+        public FreeDiskSpaceChecker FreeDiskSpaceChecker => LazyInitializer.EnsureInitialized(ref _freeDiskSpaceChecker,
+            () => new FreeDiskSpaceChecker(
+                _healthChecksConfig,
+                _api.FileSystem.GetDriveInfos(_initConfig.BaseDbPath),
+                _api.TimerFactory,
+                _api.ProcessExit,
+                _logger));
+
         public Task Init(INethermindApi api)
         {
             _api = api;
@@ -57,6 +67,9 @@ namespace Nethermind.HealthChecks
             _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             _initConfig = _api.Config<IInitConfig>();
             _logger = api.LogManager.GetClassLogger();
+
+            //will throw an exception and close app or block until enough disk space is available (LowStorageCheckAwaitOnStartup)
+            EnsureEnoughFreeSpace();
 
             return Task.CompletedTask;
         }
@@ -117,8 +130,7 @@ namespace Nethermind.HealthChecks
                 try
                 {
                     drives = _api.FileSystem.GetDriveInfos(_initConfig.BaseDbPath);
-                    _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_healthChecksConfig, _logger, drives, _api.TimerFactory);
-                    _freeDiskSpaceChecker.StartAsync(default);
+                    FreeDiskSpaceChecker.StartAsync(default);
                 }
                 catch (Exception ex)
                 {
@@ -128,7 +140,7 @@ namespace Nethermind.HealthChecks
 
             _nodeHealthService = new NodeHealthService(_api.SyncServer,
                 _api.BlockchainProcessor!, _api.BlockProducer!, _healthChecksConfig, _api.HealthHintService!,
-                _api.EthSyncingInfo!, _api, drives, _initConfig.IsMining);
+                _api.EthSyncingInfo!, _api.RpcCapabilitiesProvider, _api, drives, _initConfig.IsMining);
 
             if (_healthChecksConfig.Enabled)
             {
@@ -151,6 +163,14 @@ namespace Nethermind.HealthChecks
             string host = _jsonRpcConfig.Host.Replace("0.0.0.0", "localhost");
             host = host.Replace("[::]", "localhost");
             return new UriBuilder("http", host, _jsonRpcConfig.Port, _healthChecksConfig.Slug).ToString();
+        }
+
+        private void EnsureEnoughFreeSpace()
+        {
+            if (_healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
+            {
+                FreeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(_api.TimerFactory);
+            }
         }
 
         private class ClHealthLogger : IHostedService, IAsyncDisposable

@@ -258,6 +258,11 @@ namespace Nethermind.Core.Specs
         bool IsEip4895Enabled { get; }
 
         /// <summary>
+        /// Blob transactions
+        /// </summary>
+        bool IsEip4844Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -265,7 +270,9 @@ namespace Nethermind.Core.Specs
 
         public ulong WithdrawalTimestamp { get; }
 
-        // STATE related
+        public ulong Eip4844TransitionTimestamp { get; }
+
+        // STATE related 
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
 
         // VM

@@ -209,6 +209,7 @@ namespace Nethermind.Mev.Execution
             public bool IsTracingStorage => false;
             public bool IsTracingBlockHash => false;
             public bool IsTracingAccess => false;
+            public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
             public long GasSpent { get; set; }
             public UInt256? BeneficiaryBalanceBefore { get; private set; }
             public UInt256? BeneficiaryBalanceAfter { get; private set; }
@@ -312,12 +313,12 @@ namespace Nethermind.Mev.Execution
             {
             }
 
-            public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+            public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
             {
                 throw new NotSupportedException();
             }
 
-            public void ReportStorageRead(StorageCell storageCell)
+            public void ReportStorageRead(in StorageCell storageCell)
             {
                 throw new NotImplementedException();
             }

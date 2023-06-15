@@ -31,7 +31,7 @@ public static class ChainSpecLoaderExtensions
             fileName = fileName.GetApplicationResourcePath();
             if (File.Exists(fileName))
             {
-                if (logger.IsWarn) logger.Warn("ChainSpecPath matched an embedded resource inside the binary. Loading chainspec from embedded resources instead of file!");
+                if (logger.IsInfo) logger.Info("ChainSpecPath matched an embedded resource inside the binary. Loading chainspec from embedded resources instead of file!");
             }
             else
             {
@@ -82,10 +82,8 @@ public static class ChainSpecLoaderExtensions
             {
                 // do nothing - the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
             }
-            finally
-            {
-                throw new FileNotFoundException(missingChainspecFileMessage.ToString());
-            }
+
+            throw new FileNotFoundException(missingChainspecFileMessage.ToString());
         }
         if (logger.IsInfo) logger.Info($"Loading chainspec from file: {filePath}");
         return chainSpecLoader.Load(File.ReadAllText(filePath));

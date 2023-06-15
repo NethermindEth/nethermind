@@ -174,22 +174,22 @@ namespace Ethereum.Transaction.Test
 
             bool useChainId = transaction.Signature.V > 28UL;
 
-            TxValidator validator = new(useChainId ? ChainId.Mainnet : 0UL);
+            TxValidator validator = new(useChainId ? BlockchainIds.Mainnet : 0UL);
 
             if (validTest != null)
             {
-                Assert.AreEqual(validTest.Value, transaction.Value, "value");
-                Assert.AreEqual(validTest.Data, transaction.Data, "data");
-                Assert.AreEqual(validTest.GasLimit, transaction.GasLimit, "gasLimit");
-                Assert.AreEqual(validTest.GasPrice, transaction.GasPrice, "gasPrice");
-                Assert.AreEqual(validTest.Nonce, transaction.Nonce, "nonce");
-                Assert.AreEqual(validTest.To, transaction.To, "to");
+                Assert.That(transaction.Value, Is.EqualTo(validTest.Value), "value");
+                Assert.That(transaction.Data.AsArray(), Is.EqualTo(validTest.Data), "data");
+                Assert.That(transaction.GasLimit, Is.EqualTo(validTest.GasLimit.ToInt64(null)), "gasLimit");
+                Assert.That(transaction.GasPrice, Is.EqualTo(validTest.GasPrice), "gasPrice");
+                Assert.That(transaction.Nonce, Is.EqualTo(validTest.Nonce), "nonce");
+                Assert.That(transaction.To, Is.EqualTo(validTest.To), "to");
                 Assert.True(validator.IsWellFormed(transaction, spec));
 
                 Signature expectedSignature = new(validTest.R, validTest.S, validTest.V);
-                Assert.AreEqual(expectedSignature, transaction.Signature, "signature");
+                Assert.That(transaction.Signature, Is.EqualTo(expectedSignature), "signature");
 
-                IEthereumEcdsa ecdsa = new EthereumEcdsa(useChainId ? ChainId.Mainnet : 0UL, LimboLogs.Instance);
+                IEthereumEcdsa ecdsa = new EthereumEcdsa(useChainId ? BlockchainIds.Mainnet : 0UL, LimboLogs.Instance);
                 bool verified = ecdsa.Verify(
                     validTest.Sender,
                     transaction);

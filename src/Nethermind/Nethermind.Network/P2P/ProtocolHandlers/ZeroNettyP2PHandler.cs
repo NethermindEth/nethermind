@@ -9,6 +9,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
+using Nethermind.Stats.Model;
 using Snappy;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
@@ -50,7 +51,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
                 if (content.ReadableBytes > SnappyParameters.MaxSnappyLength / 4)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Big Snappy message of length {content.ReadableBytes}");
+                    if (_logger.IsTrace) _logger.Trace($"Big Snappy message of length {content.ReadableBytes}");
                 }
                 else
                 {
@@ -101,7 +102,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
             //In case of SocketException we log it as debug to avoid noise
-            string clientId = _session?.Node?.ToString("c") ?? $"unknown {_session?.RemoteHost}";
+            string clientId = _session?.Node?.ToString(Node.Format.Console) ?? $"unknown {_session?.RemoteHost}";
             if (exception is SocketException)
             {
                 if (_logger.IsTrace) _logger.Trace($"Error in communication with {clientId} (SocketException): {exception}");

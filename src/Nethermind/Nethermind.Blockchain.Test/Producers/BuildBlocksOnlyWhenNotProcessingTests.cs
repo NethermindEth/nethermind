@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Test.Producers
     [Parallelizable(ParallelScope.All)]
     public class BuildBlocksOnlyWhenNotProcessingTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task should_trigger_block_production_on_empty_queue()
         {
             Context context = new();
@@ -28,23 +28,23 @@ namespace Nethermind.Blockchain.Test.Producers
             context.TriggeredCount.Should().Be(1);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task should_trigger_block_production_when_queue_empties()
         {
             Context context = new();
             context.BlockProcessingQueue.IsEmpty.Returns(false);
-            Task<Block> buildTask = context.MainBlockProductionTrigger.BuildBlock();
+            Task<Block?> buildTask = context.MainBlockProductionTrigger.BuildBlock();
 
             await Task.Delay(BuildBlocksOnlyWhenNotProcessing.ChainNotYetProcessedMillisecondsDelay * 2);
             buildTask.IsCanceled.Should().BeFalse();
 
             context.BlockProcessingQueue.IsEmpty.Returns(true);
-            Block block = await buildTask;
+            Block? block = await buildTask;
             block.Should().Be(context.DefaultBlock);
             context.TriggeredCount.Should().Be(1);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task should_cancel_triggering_block_production()
         {
             Context context = new();
@@ -76,10 +76,10 @@ namespace Nethermind.Blockchain.Test.Producers
             public Block DefaultBlock { get; }
             public int TriggeredCount { get; private set; }
 
-            private void OnTriggerBlockProduction(object sender, BlockProductionEventArgs e)
+            private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
             {
                 TriggeredCount++;
-                e.BlockProductionTask = Task.FromResult(DefaultBlock);
+                e.BlockProductionTask = Task.FromResult<Block?>(DefaultBlock);
             }
 
             public BuildBlocksOnlyWhenNotProcessing Trigger { get; }

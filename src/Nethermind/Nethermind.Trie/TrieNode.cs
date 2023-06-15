@@ -3,6 +3,7 @@
 
 using System;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -65,12 +66,10 @@ namespace Nethermind.Trie
 
         public long? LastSeen { get; set; }
 
-        public byte[]? Path => Key?.Path;
-
-        internal HexPrefix? Key
+        public byte[]? Key
         {
-            get => _data?[0] as HexPrefix;
-            set
+            get => _data?[0] as byte[];
+            internal set
             {
                 if (IsSealed)
                 {
@@ -191,6 +190,11 @@ namespace Nethermind.Trie
             _rlpStream = rlp.AsRlpStream();
         }
 
+        public TrieNode(NodeType nodeType, Keccak keccak, ReadOnlySpan<byte> rlp)
+            : this(nodeType, keccak, rlp.ToArray())
+        {
+        }
+
         public TrieNode(NodeType nodeType, Keccak keccak, byte[] rlp)
             : this(nodeType, rlp)
         {
@@ -228,7 +232,7 @@ namespace Nethermind.Trie
         /// <summary>
         /// Highly optimized
         /// </summary>
-        public void ResolveNode(ITrieNodeResolver tree)
+        public void ResolveNode(ITrieNodeResolver tree, ReadFlags readFlags = ReadFlags.None)
         {
             try
             {
@@ -241,7 +245,7 @@ namespace Nethermind.Trie
                             throw new TrieException("Unable to resolve node without Keccak");
                         }
 
-                        FullRlp = tree.LoadRlp(Keccak);
+                        FullRlp = tree.LoadRlp(Keccak, readFlags);
                         IsPersisted = true;
 
                         if (FullRlp is null)
@@ -265,7 +269,7 @@ namespace Nethermind.Trie
                 _rlpStream.ReadSequenceLength();
 
                 // micro optimization to prevent searches beyond 3 items for branches (search up to three)
-                int numberOfItems = _rlpStream.ReadNumberOfItemsRemaining(null, 3);
+                int numberOfItems = _rlpStream.PeekNumberOfItemsRemaining(null, 3);
 
                 if (numberOfItems > 2)
                 {
@@ -273,24 +277,23 @@ namespace Nethermind.Trie
                 }
                 else if (numberOfItems == 2)
                 {
-                    HexPrefix key = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
-                    bool isExtension = key.IsExtension;
+                    (byte[] key, bool isLeaf) = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
 
                     // a hack to set internally and still verify attempts from the outside
                     // after the code is ready we should just add proper access control for methods from the outside and inside
                     bool isDirtyActual = IsDirty;
                     IsDirty = true;
 
-                    if (isExtension)
-                    {
-                        NodeType = NodeType.Extension;
-                        Key = key;
-                    }
-                    else
+                    if (isLeaf)
                     {
                         NodeType = NodeType.Leaf;
                         Key = key;
                         Value = _rlpStream.DecodeByteArray();
+                    }
+                    else
+                    {
+                        NodeType = NodeType.Extension;
+                        Key = key;
                     }
 
                     IsDirty = isDirtyActual;
@@ -315,6 +318,17 @@ namespace Nethermind.Trie
                 return;
             }
 
+            Keccak = GenerateKey(tree, isRoot);
+        }
+
+        public Keccak? GenerateKey(ITrieNodeResolver tree, bool isRoot)
+        {
+            Keccak? keccak = Keccak;
+            if (keccak is not null)
+            {
+                return keccak;
+            }
+
             if (FullRlp is null || IsDirty)
             {
                 FullRlp = RlpEncode(tree);
@@ -327,8 +341,10 @@ namespace Nethermind.Trie
             if (FullRlp.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
-                Keccak = Keccak.Compute(FullRlp);
+                return Keccak.Compute(FullRlp);
             }
+
+            return null;
         }
 
         public bool TryResolveStorageRootHash(ITrieNodeResolver resolver, out Keccak? storageRootHash)
@@ -387,6 +403,24 @@ namespace Nethermind.Trie
             SeekChild(i);
             (int _, int length) = _rlpStream!.PeekPrefixAndContentLength();
             return length == 32 ? _rlpStream.DecodeKeccak() : null;
+        }
+
+        public bool GetChildHashAsValueKeccak(int i, out ValueKeccak keccak)
+        {
+            Unsafe.SkipInit(out keccak);
+            if (_rlpStream is null)
+            {
+                return false;
+            }
+
+            SeekChild(i);
+            (_, int length) = _rlpStream!.PeekPrefixAndContentLength();
+            if (length == 32 && _rlpStream.DecodeValueKeccak(out keccak))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         public bool IsChildNull(int i)
@@ -561,7 +595,7 @@ namespace Nethermind.Trie
             return MemorySizes.Align(unaligned);
         }
 
-        public TrieNode CloneWithChangedKey(HexPrefix key)
+        public TrieNode CloneWithChangedKey(byte[] key)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
@@ -596,7 +630,7 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(HexPrefix key, byte[]? changedValue)
+        public TrieNode CloneWithChangedKeyAndValue(byte[] key, byte[]? changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;

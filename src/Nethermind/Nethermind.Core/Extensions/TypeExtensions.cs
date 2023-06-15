@@ -16,9 +16,8 @@ namespace Nethermind.Core.Extensions
                 throw new NotSupportedException($"GetDirectInterfaceImplementation method is only allowed to use on interface types, got {interfaceType} instead");
             }
 
-            TypeDiscovery typeDiscovery = new();
             Type[] baseInterfaces = interfaceType.GetInterfaces();
-            IEnumerable<Type> implementations = typeDiscovery.FindNethermindTypes(interfaceType).Where(i => i.IsClass);
+            IEnumerable<Type> implementations = TypeDiscovery.FindNethermindTypes(interfaceType).Where(i => i.IsClass);
 
             foreach (Type implementation in implementations)
             {

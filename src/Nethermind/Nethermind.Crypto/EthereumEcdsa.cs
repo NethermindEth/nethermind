@@ -8,7 +8,6 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Secp256k1;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Crypto
@@ -61,7 +60,7 @@ namespace Nethermind.Crypto
         }
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="tx"></param>
@@ -73,7 +72,7 @@ namespace Nethermind.Crypto
         }
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="tx"></param>
         /// <param name="useSignatureChainId"></param>
@@ -89,8 +88,8 @@ namespace Nethermind.Crypto
 
             // feels like it is the same check twice
             bool applyEip155 = useSignatureChainId
-                               || tx.Signature.V == _chainIdValue * 2 + 35ul
-                               || tx.Signature.V == _chainIdValue * 2 + 36ul;
+                               || tx.Signature.V == CalculateV(_chainIdValue, false)
+                               || tx.Signature.V == CalculateV(_chainIdValue, true);
 
             ulong chainId;
             switch (tx.Type)
@@ -105,10 +104,12 @@ namespace Nethermind.Crypto
                     chainId = tx.ChainId!.Value;
                     break;
             }
-
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
+
             return RecoverAddress(tx.Signature, hash);
         }
+
+        public static ulong CalculateV(ulong chainId, bool addParity = true) => chainId * 2 + 35ul + (addParity ? 1u : 0u);
 
         public Address? RecoverAddress(Signature signature, Keccak message)
         {
@@ -118,10 +119,10 @@ namespace Nethermind.Crypto
         public Address? RecoverAddress(Span<byte> signatureBytes, Keccak message)
         {
             Span<byte> publicKey = stackalloc byte[65];
-            bool success = Proxy.RecoverKeyFromCompact(
+            bool success = SpanSecP256k1.RecoverKeyFromCompact(
                 publicKey,
                 message.Bytes,
-                signatureBytes.Slice(0, 64),
+                signatureBytes[..64],
                 signatureBytes[64],
                 false);
 

@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -31,7 +33,7 @@ public class HeaderDecoderTests
         BlockHeader? decoded = decoder.Decode(ref decoderContext);
         decoded!.Hash = decoded.CalculateHash();
 
-        Assert.AreEqual(header.Hash, decoded.Hash, "hash");
+        Assert.That(decoded.Hash, Is.EqualTo(header.Hash), "hash");
     }
 
     [Test]
@@ -55,7 +57,7 @@ public class HeaderDecoderTests
         BlockHeader? decoded = decoder.Decode(ref decoderContext);
         decoded!.Hash = decoded.CalculateHash();
 
-        Assert.AreEqual(header.Hash, decoded.Hash, "hash");
+        Assert.That(decoded.Hash, Is.EqualTo(header.Hash), "hash");
     }
 
     [Test]
@@ -73,14 +75,14 @@ public class HeaderDecoderTests
         BlockHeader? decoded = decoder.Decode(ref decoderContext);
         decoded!.Hash = decoded.CalculateHash();
 
-        Assert.AreEqual(header.Hash, decoded.Hash, "hash");
+        Assert.That(decoded.Hash, Is.EqualTo(header.Hash), "hash");
     }
 
     [Test]
     public void Get_length_null()
     {
         HeaderDecoder decoder = new();
-        Assert.AreEqual(1, decoder.GetLength(null, RlpBehaviors.None));
+        Assert.That(decoder.GetLength(null, RlpBehaviors.None), Is.EqualTo(1));
     }
 
     [Test]
@@ -94,18 +96,60 @@ public class HeaderDecoderTests
     [Test]
     public void Can_encode_decode_with_base_fee()
     {
-        try
-        {
-            HeaderDecoder.Eip1559TransitionBlock = 0;
-            BlockHeader header = Build.A.BlockHeader.WithBaseFee(123).TestObject;
-            Rlp rlp = Rlp.Encode(header);
-            BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
-            blockHeader.BaseFeePerGas.Should().Be(123);
-        }
-        finally
-        {
-            HeaderDecoder.Eip1559TransitionBlock = long.MaxValue;
-        }
+        BlockHeader header = Build.A.BlockHeader.WithBaseFee(123).TestObject;
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
+        blockHeader.BaseFeePerGas.Should().Be((UInt256)123);
+    }
+
+    [Test]
+    public void If_baseFee_is_zero_should_not_encode()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithBaseFee(0).WithNonce(0).WithDifficulty(0).TestObject;
+        Rlp rlp = Rlp.Encode(header);
+        Convert.ToHexString(rlp.Bytes).ToLower().Should().Be("f901f6a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008080833d090080830f424083010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2880000000000000000");
+    }
+
+    [Test]
+    public void Can_encode_with_withdrawals()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithBaseFee(1).WithNonce(0).WithDifficulty(0)
+            .WithWithdrawalsRoot(Keccak.Compute("withdrawals")).TestObject;
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
+        blockHeader.WithdrawalsRoot.Should().Be(Keccak.Compute("withdrawals"));
+    }
+
+    [Test]
+    public void If_withdrawals_are_null_should_not_encode()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithBaseFee(1).WithNonce(0).WithDifficulty(0).TestObject;
+        Rlp rlp = Rlp.Encode(header);
+        Convert.ToHexString(rlp.Bytes).ToLower().Should().Be("f901f7a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008080833d090080830f424083010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e288000000000000000001");
+    }
+
+    [TestCaseSource(nameof(ExcessDataGasCaseSource))]
+    public void Can_encode_decode_with_excessDataGas(UInt256? excessDataGas)
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithExcessDataGas(excessDataGas).TestObject;
+
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+
+        blockHeader.ExcessDataGas.Should().Be(excessDataGas);
+    }
+
+    public static IEnumerable<UInt256?> ExcessDataGasCaseSource()
+    {
+        yield return null;
+        yield return UInt256.Zero;
+        yield return new UInt256(1);
+        yield return UInt256.UInt128MaxValue;
+        yield return UInt256.MaxValue;
     }
 
     [TestCase(-1)]

@@ -66,6 +66,19 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public void When_commit_forward_write_flag_if_available()
+        {
+            TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
+
+            TestMemDb testMemDb = new TestMemDb();
+
+            using TrieStore trieStore = new(testMemDb, No.Pruning, No.Persistence, _logManager);
+            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode), WriteFlags.LowPriority);
+            trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode, WriteFlags.LowPriority);
+            testMemDb.KeyWasWrittenWithFlags(trieNode.Keccak.BytesToArray(), WriteFlags.LowPriority);
+        }
+
+        [Test]
         public void Should_always_announce_block_number_when_pruning_disabled_and_persisting()
         {
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero) { LastSeen = 1 };
@@ -105,9 +118,9 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode returnedNode = trieStore.FindCachedOrUnknown(TestItem.KeccakA);
             TrieNode returnedNode2 = trieStore.FindCachedOrUnknown(TestItem.KeccakB);
             TrieNode returnedNode3 = trieStore.FindCachedOrUnknown(TestItem.KeccakC);
-            Assert.AreEqual(NodeType.Unknown, returnedNode.NodeType);
-            Assert.AreEqual(NodeType.Unknown, returnedNode2.NodeType);
-            Assert.AreEqual(NodeType.Unknown, returnedNode3.NodeType);
+            Assert.That(returnedNode.NodeType, Is.EqualTo(NodeType.Unknown));
+            Assert.That(returnedNode2.NodeType, Is.EqualTo(NodeType.Unknown));
+            Assert.That(returnedNode3.NodeType, Is.EqualTo(NodeType.Unknown));
             trieStore.MemoryUsedByDirtyCache.Should().Be(0);
         }
 
@@ -119,15 +132,15 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FindCachedOrUnknown(TestItem.KeccakA);
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
             long oneKeccakSize = trieNode.GetMemorySize(false);
-            Assert.AreEqual(startSize + oneKeccakSize, trieStore.MemoryUsedByDirtyCache);
+            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize + oneKeccakSize));
             trieStore.FindCachedOrUnknown(TestItem.KeccakB);
-            Assert.AreEqual(2 * oneKeccakSize + startSize, trieStore.MemoryUsedByDirtyCache);
+            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(2 * oneKeccakSize + startSize));
             trieStore.FindCachedOrUnknown(TestItem.KeccakB);
-            Assert.AreEqual(2 * oneKeccakSize + startSize, trieStore.MemoryUsedByDirtyCache);
+            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(2 * oneKeccakSize + startSize));
             trieStore.FindCachedOrUnknown(TestItem.KeccakC);
-            Assert.AreEqual(3 * oneKeccakSize + startSize, trieStore.MemoryUsedByDirtyCache);
+            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(3 * oneKeccakSize + startSize));
             trieStore.FindCachedOrUnknown(TestItem.KeccakD, true);
-            Assert.AreEqual(3 * oneKeccakSize + startSize, trieStore.MemoryUsedByDirtyCache);
+            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(3 * oneKeccakSize + startSize));
         }
 
         [Test]
@@ -382,10 +395,20 @@ namespace Nethermind.Trie.Test.Pruning
         {
             private Dictionary<byte[], byte[]> _db = new();
 
-            public byte[]? this[byte[] key]
+            public byte[]? this[ReadOnlySpan<byte> key]
             {
-                get => _db[key];
-                set => _db[key] = value;
+                get => Get(key);
+                set => Set(key, value);
+            }
+
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+            {
+                _db[key.ToArray()] = value;
+            }
+
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+            {
+                return _db[key.ToArray()];
             }
 
             public IBatch StartBatch()
@@ -401,10 +424,20 @@ namespace Nethermind.Trie.Test.Pruning
                 {
                 }
 
-                public byte[]? this[byte[] key]
+                public byte[]? this[ReadOnlySpan<byte> key]
                 {
-                    get => _inBatched[key];
-                    set => _inBatched[key] = value;
+                    get => Get(key);
+                    set => Set(key, value);
+                }
+
+                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                {
+                    _inBatched[key.ToArray()] = value;
+                }
+
+                public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+                {
+                    return _inBatched[key.ToArray()];
                 }
             }
         }
@@ -430,7 +463,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = HexPrefix.Leaf("abc");
+            a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb memDb = new();
@@ -464,7 +497,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = HexPrefix.Leaf("abc");
+            a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode b = new(NodeType.Leaf, new byte[1]);
@@ -503,7 +536,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = HexPrefix.Leaf("abc");
+            a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode storage2 = new(NodeType.Leaf, new byte[32]);
@@ -512,7 +545,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode b = new(NodeType.Leaf);
             Account accountB = new(2, 1, storage2.Keccak, Keccak.OfAnEmptyString);
             b.Value = _accountDecoder.Encode(accountB).Bytes;
-            b.Key = HexPrefix.Leaf("abcd");
+            b.Key = Bytes.FromHexString("abcd");
             b.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode branch = new(NodeType.Branch);
@@ -553,7 +586,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode node = new(NodeType.Leaf);
             Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
             node.Value = _accountDecoder.Encode(account).Bytes;
-            node.Key = HexPrefix.Leaf("abc");
+            node.Key = Bytes.FromHexString("abc");
             node.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb originalStore = new MemDb();
@@ -632,7 +665,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode node = new(NodeType.Leaf);
             Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
             node.Value = _accountDecoder.Encode(account).Bytes;
-            node.Key = HexPrefix.Leaf("abc");
+            node.Key = Bytes.FromHexString("abc");
             node.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             using TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(pruning), No.Persistence, _logManager);

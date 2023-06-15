@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
@@ -24,19 +25,23 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly Stopwatch _stopwatch;
         private long _persistedNodes = 0;
         private bool _finished = false;
+        private WriteFlags _writeFlags;
         private readonly CancellationToken _cancellationToken;
         private const int Million = 1_000_000;
 
         public CopyTreeVisitor(
             IPruningContext pruningContext,
+            WriteFlags writeFlags,
             ILogManager logManager)
         {
             _pruningContext = pruningContext;
             _cancellationToken = pruningContext.CancellationTokenSource.Token;
+            _writeFlags = writeFlags;
             _logger = logManager.GetClassLogger();
             _stopwatch = new Stopwatch();
         }
 
+        public bool IsFullDbScan => true;
         public bool ShouldVisit(Keccak nextNode) => !_cancellationToken.IsCancellationRequested;
 
         public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
@@ -69,7 +74,7 @@ namespace Nethermind.Blockchain.FullPruning
             if (node.Keccak is not null)
             {
                 // simple copy of nodes RLP
-                _pruningContext[node.Keccak.Bytes] = node.FullRlp;
+                _pruningContext.Set(node.Keccak.Bytes, node.FullRlp, _writeFlags);
                 Interlocked.Increment(ref _persistedNodes);
 
                 // log message every 1 mln nodes

@@ -49,7 +49,7 @@ namespace Nethermind.Synchronization
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
-        private readonly LruCache<Keccak, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
+        private readonly LruCache<ValueKeccak, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
 
         private readonly long _pivotNumber;
         private readonly Keccak _pivotHash;
@@ -92,7 +92,7 @@ namespace Nethermind.Synchronization
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
         }
 
-        public ulong ChainId => _blockTree.ChainId;
+        public ulong NetworkId => _blockTree.NetworkId;
         public BlockHeader Genesis => _blockTree.Genesis;
 
         public BlockHeader? Head

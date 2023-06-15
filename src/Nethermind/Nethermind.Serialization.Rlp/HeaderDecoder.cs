@@ -10,11 +10,6 @@ namespace Nethermind.Serialization.Rlp
 {
     public class HeaderDecoder : IRlpValueDecoder<BlockHeader>, IRlpStreamDecoder<BlockHeader>
     {
-        // TODO: need to take a decision on whether to make the whole RLP spec specific?
-        // This would help with EIP1559 as well and could generally setup proper coders automatically, hmm
-        // but then RLP would have to be passed into so many places
-        public static long Eip1559TransitionBlock = long.MaxValue;
-        public static ulong WithdrawalTimestamp = ulong.MaxValue;
 
         public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -71,18 +66,25 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.AuRaSignature = decoderContext.DecodeByteArray();
             }
 
-            if (blockHeader.Number >= Eip1559TransitionBlock)
+            // if we didn't reach the end of the stream, assume we have basefee to decode
+            if (decoderContext.Position != headerCheck)
             {
                 blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             }
 
-            if (decoderContext.ReadNumberOfItemsRemaining(null, 1) > 0 &&
+            int itemsRemaining = decoderContext.PeekNumberOfItemsRemaining(null, 2);
+            if (itemsRemaining > 0 &&
                 decoderContext.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
+
+                if (itemsRemaining == 2 && decoderContext.Position != headerCheck)
+                {
+                    blockHeader.ExcessDataGas = decoderContext.DecodeUInt256();
+                }
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 decoderContext.Check(headerCheck);
             }
@@ -145,18 +147,24 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.AuRaSignature = rlpStream.DecodeByteArray();
             }
 
-            if (blockHeader.Number >= Eip1559TransitionBlock)
+            if (rlpStream.Position != headerCheck)
             {
                 blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
             }
 
-            if (rlpStream.ReadNumberOfItemsRemaining(null, 1) > 0 &&
+            int itemsRemaining = rlpStream.PeekNumberOfItemsRemaining(null, 2);
+            if (itemsRemaining > 0 &&
                 rlpStream.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.WithdrawalsRoot = rlpStream.DecodeKeccak();
+
+                if (itemsRemaining == 2 && rlpStream.Position != headerCheck)
+                {
+                    blockHeader.ExcessDataGas = rlpStream.DecodeUInt256();
+                }
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 rlpStream.Check(headerCheck);
             }
@@ -203,14 +211,19 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            if (header.Number >= Eip1559TransitionBlock)
+            if (!header.BaseFeePerGas.IsZero)
             {
                 rlpStream.Encode(header.BaseFeePerGas);
             }
 
-            if (header.WithdrawalsRoot is not null)
+            if (header.WithdrawalsRoot is not null || header.ExcessDataGas is not null)
             {
-                rlpStream.Encode(header.WithdrawalsRoot);
+                rlpStream.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
+            }
+
+            if (header.ExcessDataGas is not null)
+            {
+                rlpStream.Encode(header.ExcessDataGas.Value);
             }
         }
 
@@ -249,8 +262,9 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.GasUsed)
                                 + Rlp.LengthOf(item.Timestamp)
                                 + Rlp.LengthOf(item.ExtraData)
-                                + (item.Number < Eip1559TransitionBlock ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
-                                + (item.WithdrawalsRoot is null ? 0 : Rlp.LengthOf(item.WithdrawalsRoot));
+                                + (item.BaseFeePerGas.IsZero ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
+                                + (item.WithdrawalsRoot is null && item.ExcessDataGas is null ? 0 : Rlp.LengthOfKeccakRlp)
+                                + (item.ExcessDataGas is null ? 0 : Rlp.LengthOf(item.ExcessDataGas.Value));
 
             if (notForSealing)
             {

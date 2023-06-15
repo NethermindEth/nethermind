@@ -11,7 +11,7 @@ namespace Nethermind.Blockchain.Test
 {
     public class ChainHeadReadOnlyStateProviderTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void uses_block_tree_head_state_root()
         {
             BlockTree blockTree = Build.A.BlockTree(Build.A.Block.WithStateRoot(TestItem.KeccakA).TestObject).OfChainLength(10).TestObject;

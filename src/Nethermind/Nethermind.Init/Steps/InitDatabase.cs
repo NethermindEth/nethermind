@@ -14,13 +14,13 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
-using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Init.Steps
 {
+    [RunnerStepDependencies(typeof(ApplyMemoryHint))]
     public class InitDatabase : IStep
     {
-        private readonly IBasicApi _api;
+        private readonly INethermindApi _api;
 
         public InitDatabase(INethermindApi api)
         {
@@ -49,10 +49,10 @@ namespace Nethermind.Init.Steps
                 StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory, _api.FileSystem, pruningConfig.Mode.IsFull());
                 await dbInitializer.InitStandardDbsAsync(useReceiptsDb);
             }
-            catch (TypeInitializationException e)
+            catch (TypeInitializationException ex)
             {
                 if (logger.IsError)
-                    logger.Error("RocksDb was not found, please make sure it is installed on your machine. \n On macOs : 'brew install rocksdb'", e);
+                    logger.Error("Failed loading RocksDB", ex);
             }
         }
 

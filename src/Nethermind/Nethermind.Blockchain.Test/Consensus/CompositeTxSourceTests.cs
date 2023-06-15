@@ -16,7 +16,7 @@ namespace Nethermind.Blockchain.Test.Consensus
 {
     public class CompositeTxSourceTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void To_string_does_not_throw()
         {
             ITxSource txSource = Substitute.For<ITxSource>();
@@ -24,13 +24,13 @@ namespace Nethermind.Blockchain.Test.Consensus
             _ = selector.ToString();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Throws_on_null_argument()
         {
-            Assert.Throws<ArgumentNullException>(() => new CompositeTxSource(null));
+            Assert.Throws<ArgumentNullException>(() => new CompositeTxSource(null!));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void selectTransactions_injects_transactions_from_ImmediateTransactionSources_in_front_of_block_transactions()
         {
             ITxSource CreateImmediateTransactionSource(BlockHeader header, Address address, List<Transaction> txs, bool createsTransaction)

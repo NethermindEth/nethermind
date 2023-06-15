@@ -1,16 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.IO;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.IO;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -35,7 +31,7 @@ namespace Nethermind.Merge.Plugin.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, TestSpecProvider.Instance, LimboLogs.Instance);
 
-            Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
+            Assert.That(poSSwitcher.TerminalTotalDifficulty, Is.EqualTo(expectedTtd));
         }
 
         [Test]
@@ -50,8 +46,8 @@ namespace Nethermind.Merge.Plugin.Test
             ChainSpecBasedSpecProvider specProvider = new(chainSpec);
             PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, specProvider, LimboLogs.Instance);
 
-            Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
-            Assert.AreEqual(101, specProvider.MergeBlockNumber?.BlockNumber);
+            Assert.That(poSSwitcher.TerminalTotalDifficulty, Is.EqualTo(expectedTtd));
+            Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(101));
         }
 
         [TestCase(5000000)]
@@ -69,10 +65,10 @@ namespace Nethermind.Merge.Plugin.Test
             BlockHeader? block5 = blockTree.FindHeader(5, BlockTreeLookupOptions.All);
             Block blockWithPostMergeFlag = Build.A.Block.WithNumber(4).WithDifficulty(0).WithPostMergeFlag(true)
                                             .WithParent(block3!).TestObject;
-            Assert.AreEqual(false, block3!.IsTerminalBlock(specProvider)); // PoWBlock
-            Assert.AreEqual(true, block4!.IsTerminalBlock(specProvider)); // terminal block
-            Assert.AreEqual(false, block5!.IsTerminalBlock(specProvider)); // incorrect PoW not terminal block
-            Assert.AreEqual(false, blockWithPostMergeFlag.IsTerminalBlock(specProvider)); // block with post merge flag
+            Assert.That(block3!.IsTerminalBlock(specProvider), Is.EqualTo(false)); // PoWBlock
+            Assert.That(block4!.IsTerminalBlock(specProvider), Is.EqualTo(true)); // terminal block
+            Assert.That(block5!.IsTerminalBlock(specProvider), Is.EqualTo(false)); // incorrect PoW not terminal block
+            Assert.That(blockWithPostMergeFlag.IsTerminalBlock(specProvider), Is.EqualTo(false)); // block with post merge flag
         }
 
         [TestCase(5000000, true)]
@@ -86,7 +82,7 @@ namespace Nethermind.Merge.Plugin.Test
             BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(6).TestObject;
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
-            Assert.AreEqual(expectedResult, genesisBlock.IsTerminalBlock(specProvider));
+            Assert.That(genesisBlock.IsTerminalBlock(specProvider), Is.EqualTo(expectedResult));
         }
 
         [Test]
@@ -98,8 +94,8 @@ namespace Nethermind.Merge.Plugin.Test
             specProvider.UpdateMergeTransitionInfo(100, 20);
             PoSSwitcher poSSwitcher = new(new MergeConfig() { TerminalTotalDifficulty = "340", TerminalBlockNumber = 2000 }, new SyncConfig(), new MemDb(), blockTree, specProvider, LimboLogs.Instance);
 
-            Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
-            Assert.AreEqual(2001, specProvider.MergeBlockNumber?.BlockNumber);
+            Assert.That(poSSwitcher.TerminalTotalDifficulty, Is.EqualTo(expectedTtd));
+            Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(2001));
         }
 
         [Test]
@@ -111,8 +107,8 @@ namespace Nethermind.Merge.Plugin.Test
             specProvider.UpdateMergeTransitionInfo(2001, expectedTtd);
             PoSSwitcher poSSwitcher = new(new MergeConfig() { }, new SyncConfig(), new MemDb(), blockTree, specProvider, LimboLogs.Instance);
 
-            Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
-            Assert.AreEqual(2001, specProvider.MergeBlockNumber?.BlockNumber);
+            Assert.That(poSSwitcher.TerminalTotalDifficulty, Is.EqualTo(expectedTtd));
+            Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(2001));
         }
 
         [TestCase(5000000)]
@@ -130,10 +126,10 @@ namespace Nethermind.Merge.Plugin.Test
             BlockHeader? block5 = blockTree.FindHeader(5, BlockTreeLookupOptions.All);
             Block blockWithPostMergeFlag = Build.A.Block.WithNumber(4).WithDifficulty(0).WithPostMergeFlag(true)
                 .WithParent(block3!).TestObject;
-            Assert.AreEqual((false, false), poSSwitcher.GetBlockConsensusInfo(block3!)); // PoWBlock
-            Assert.AreEqual((true, false), poSSwitcher.GetBlockConsensusInfo(block4!)); // terminal block
-            Assert.AreEqual((false, true), poSSwitcher.GetBlockConsensusInfo(block5!)); // incorrect PoW, TTD > TD and it is not terminal, so we should process it in the same way like post merge blocks
-            Assert.AreEqual((false, true), poSSwitcher.GetBlockConsensusInfo(blockWithPostMergeFlag.Header)); // block with post merge flag
+            Assert.That(poSSwitcher.GetBlockConsensusInfo(block3!), Is.EqualTo((false, false))); // PoWBlock
+            Assert.That(poSSwitcher.GetBlockConsensusInfo(block4!), Is.EqualTo((true, false))); // terminal block
+            Assert.That(poSSwitcher.GetBlockConsensusInfo(block5!), Is.EqualTo((false, true))); // incorrect PoW, TTD > TD and it is not terminal, so we should process it in the same way like post merge blocks
+            Assert.That(poSSwitcher.GetBlockConsensusInfo(blockWithPostMergeFlag.Header), Is.EqualTo((false, true))); // block with post merge flag
         }
 
         [TestCase(5000000, false)]
@@ -156,10 +152,10 @@ namespace Nethermind.Merge.Plugin.Test
             block3!.TotalDifficulty = nullTdValue ? null : UInt256.Zero;
             block4!.TotalDifficulty = nullTdValue ? null : UInt256.Zero;
             block5!.TotalDifficulty = nullTdValue ? null : UInt256.Zero;
-            Assert.AreEqual((false, false), poSSwitcher.GetBlockConsensusInfo(block3!)); // PoWBlock
-            Assert.AreEqual((false, false), poSSwitcher.GetBlockConsensusInfo(block4!)); // terminal block
-            Assert.AreEqual((false, false), poSSwitcher.GetBlockConsensusInfo(block5!));
-            Assert.AreEqual((false, true), poSSwitcher.GetBlockConsensusInfo(blockWithPostMergeFlag.Header)); // block with post merge flag
+            Assert.That(poSSwitcher.GetBlockConsensusInfo(block3!), Is.EqualTo((false, false))); // PoWBlock
+            Assert.That(poSSwitcher.GetBlockConsensusInfo(block4!), Is.EqualTo((false, false))); // terminal block
+            Assert.That(poSSwitcher.GetBlockConsensusInfo(block5!), Is.EqualTo((false, false)));
+            Assert.That(poSSwitcher.GetBlockConsensusInfo(blockWithPostMergeFlag.Header), Is.EqualTo((false, true))); // block with post merge flag
         }
 
         [Test]
@@ -172,13 +168,13 @@ namespace Nethermind.Merge.Plugin.Test
 
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
-            Assert.AreEqual(false, poSSwitcher.HasEverReachedTerminalBlock());
+            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(false));
             Block block = Build.A.Block.WithTotalDifficulty(5000000L).WithNumber(4).WithParent(blockTree.Head!).WithDifficulty(1000000L).TestObject;
             Block alternativeTerminalBlock = Build.A.Block.WithTotalDifficulty(5000000L).WithNumber(4).WithParent(blockTree.Head!).WithGasLimit(20000000).WithDifficulty(1000000L).TestObject;
             blockTree.SuggestBlock(block);
             blockTree.UpdateMainChain(block);
-            Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalBlock());
-            Assert.AreEqual((true, false), poSSwitcher.GetBlockConsensusInfo(alternativeTerminalBlock.Header));
+            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(true));
+            Assert.That(poSSwitcher.GetBlockConsensusInfo(alternativeTerminalBlock.Header), Is.EqualTo((true, false)));
         }
 
         [Test]
@@ -191,12 +187,12 @@ namespace Nethermind.Merge.Plugin.Test
 
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
-            Assert.AreEqual(false, poSSwitcher.HasEverReachedTerminalBlock());
+            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(false));
             Block block = Build.A.Block.WithTotalDifficulty(5000000L).WithNumber(4).WithParent(blockTree.Head!).WithDifficulty(1000000L).TestObject;
             blockTree.SuggestBlock(block);
             blockTree.UpdateMainChain(block);
 
-            Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalBlock());
+            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(true));
         }
 
         [Test]
@@ -210,20 +206,20 @@ namespace Nethermind.Merge.Plugin.Test
             BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(4).TestObject;
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, metadataDb, specProvider);
 
-            Assert.AreEqual(false, poSSwitcher.HasEverReachedTerminalBlock());
+            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(false));
             Block block = Build.A.Block.WithTotalDifficulty(5000000L).WithNumber(terminalBlock).WithParent(blockTree.Head!).WithDifficulty(1000000L).TestObject;
             blockTree.SuggestBlock(block);
             blockTree.UpdateMainChain(block);
-            Assert.AreEqual(terminalBlock + 1, specProvider.MergeBlockNumber?.BlockNumber);
-            Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalBlock());
+            Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(terminalBlock + 1));
+            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(true));
 
             TestSpecProvider newSpecProvider = new(London.Instance);
             newSpecProvider.TerminalTotalDifficulty = 5000000L;
             // we're using the same MemDb for a new switcher
             PoSSwitcher newPoSSwitcher = CreatePosSwitcher(blockTree, metadataDb, newSpecProvider);
 
-            Assert.AreEqual(terminalBlock + 1, newSpecProvider.MergeBlockNumber?.BlockNumber);
-            Assert.AreEqual(true, newPoSSwitcher.HasEverReachedTerminalBlock());
+            Assert.That(newSpecProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(terminalBlock + 1));
+            Assert.That(newPoSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(true));
         }
 
         private static PoSSwitcher CreatePosSwitcher(IBlockTree blockTree, IDb? db = null, ISpecProvider? specProvider = null)

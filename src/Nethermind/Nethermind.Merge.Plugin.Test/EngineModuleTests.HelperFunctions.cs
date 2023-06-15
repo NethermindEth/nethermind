@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
@@ -28,13 +29,12 @@ namespace Nethermind.Merge.Plugin.Test
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
 
-        private void AssertExecutionStatusChanged(IEngineRpcModule rpc, Keccak headBlockHash, Keccak finalizedBlockHash,
+        private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Keccak headBlockHash, Keccak finalizedBlockHash,
              Keccak safeBlockHash)
         {
-            ExecutionStatusResult? result = rpc.engine_executionStatus().Data;
-            Assert.AreEqual(headBlockHash, result.HeadBlockHash);
-            Assert.AreEqual(finalizedBlockHash, result.FinalizedBlockHash);
-            Assert.AreEqual(safeBlockHash, result.SafeBlockHash);
+            Assert.That(blockFinder.HeadHash, Is.EqualTo(headBlockHash));
+            Assert.That(blockFinder.FinalizedHash, Is.EqualTo(finalizedBlockHash));
+            Assert.That(blockFinder.SafeHash, Is.EqualTo(safeBlockHash));
         }
 
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,
@@ -47,7 +47,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Keccak parentHash, PrivateKey from,
-            Address to, uint count, int value, out Account accountFrom, out BlockHeader parentHeader)
+            Address to, uint count, int value, out Account accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0)
         {
             Transaction BuildTransaction(uint index, Account senderAccount) =>
                 Build.A.Transaction.WithNonce(senderAccount.Nonce + index)
@@ -57,8 +57,9 @@ namespace Nethermind.Merge.Plugin.Test
                     .WithGasPrice(1.GWei())
                     .WithChainId(chain.SpecProvider.ChainId)
                     .WithSenderAddress(from.Address)
-                    .SignedAndResolved(from)
-                    .TestObject;
+                    .WithShardBlobTxTypeAndFields(blobCountPerTx)
+                    .WithMaxFeePerGasIfSupports1559(1.GWei())
+                    .SignedAndResolved(from).TestObject;
 
             parentHeader = chain.BlockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
             Account account = chain.StateReader.GetAccount(parentHeader.StateRoot!, from.Address)!;
@@ -78,11 +79,12 @@ namespace Nethermind.Merge.Plugin.Test
                 StateRoot = head.StateRoot!,
                 ReceiptsRoot = head.ReceiptsRoot!,
                 GasLimit = head.GasLimit,
-                Timestamp = (ulong)head.Timestamp
+                Timestamp = head.Timestamp,
+                BaseFeePerGas = head.BaseFeePerGas,
             };
         }
 
-        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null)
+        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, UInt256? excessDataGas = null, Transaction[]? transactions = null)
         {
             ExecutionPayload blockRequest = new()
             {
@@ -95,10 +97,11 @@ namespace Nethermind.Merge.Plugin.Test
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 LogsBloom = Bloom.Empty,
                 Timestamp = parent.Timestamp + 1,
-                Withdrawals = withdrawals
+                Withdrawals = withdrawals,
+                ExcessDataGas = excessDataGas,
             };
 
-            blockRequest.SetTransactions(Array.Empty<Transaction>());
+            blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());
             TryCalculateHash(blockRequest, out Keccak? hash);
             blockRequest.BlockHash = hash;
             return blockRequest;
@@ -158,7 +161,7 @@ namespace Nethermind.Merge.Plugin.Test
 
         private async Task<TestRpcBlockchain> CreateTestRpc(MergeTestBlockchain chain)
         {
-            SingleReleaseSpecProvider spec = new(London.Instance, 1);
+            TestSingleReleaseSpecProvider spec = new(London.Instance);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                 .WithBlockFinder(chain.BlockFinder)
                 .Build(spec);

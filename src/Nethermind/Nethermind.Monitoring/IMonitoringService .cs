@@ -8,8 +8,8 @@ namespace Nethermind.Monitoring
 {
     public interface IMonitoringService
     {
-        void RegisterMetrics(Type type);
         Task StartAsync();
         Task StopAsync();
+        void AddMetricsUpdateAction(Action callback);
     }
 }

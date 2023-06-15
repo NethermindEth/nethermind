@@ -21,7 +21,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
-            statusMessage.ChainId = 1;
+            statusMessage.NetworkId = 1;
 
             StatusMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, statusMessage, "f8483f0183020080a0c89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6a0044852b2a670ade5407e78fb2863c51de9fcb96542a07186fe3aeda6bb8a116d");
@@ -43,8 +43,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
-            statusMessage.ChainId = 1;
-            statusMessage.ForkId = new ForkId(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, 0);
+            statusMessage.NetworkId = 1;
+            statusMessage.ForkId = new ForkId(12345678, 0);
 
             StatusMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, statusMessage);
@@ -58,8 +58,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
-            statusMessage.ChainId = 1;
-            statusMessage.ForkId = new ForkId(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, long.MaxValue);
+            statusMessage.NetworkId = 1;
+            statusMessage.ForkId = new ForkId(12345678, long.MaxValue);
 
             StatusMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, statusMessage);
@@ -73,7 +73,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             next ??= BinaryPrimitives.ReadUInt32BigEndian(Bytes.FromHexString("baddcafe"));
             StatusMessageSerializer serializer = new();
             StatusMessage message = new();
-            message.ForkId = new ForkId(Bytes.FromHexString(forkHash), next.Value);
+            message.ForkId = new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(forkHash)), next.Value);
             serializer.Serialize(message).ToHexString().Should().EndWith(expected);
         }
 
@@ -94,7 +94,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             StatusMessage message = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(message);
             serialized.Should().BeEquivalentTo(bytes);
-            Assert.AreEqual(64, message.ProtocolVersion, "ProtocolVersion");
+            Assert.That(message.ProtocolVersion, Is.EqualTo(64), "ProtocolVersion");
         }
 
         [TestCase("f8524005830f0ea3 a01f895b10d62bf1b07c3aadb61d20d2568ba4617108e47435a0a911d1c5011614 a0bf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1ac9 84a3f5ab08 8317d433")]
@@ -115,7 +115,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             StatusMessage message = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(message);
             serialized.Should().BeEquivalentTo(bytes);
-            Assert.AreEqual(64, message.ProtocolVersion, "ProtocolVersion");
+            Assert.That(message.ProtocolVersion, Is.EqualTo(64), "ProtocolVersion");
         }
 
         [Test]
@@ -124,14 +124,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             byte[] bytes = Bytes.FromHexString("f84927808425c60144a0832056d3c93ff2739ace7199952e5365aa29f18805be05634c4db125c5340216a0955f36d073ccb026b78ab3424c15cf966a7563aa270413859f78702b9e8e22cb");
             StatusMessageSerializer serializer = new();
             StatusMessage message = serializer.Deserialize(bytes);
-            Assert.AreEqual(39, message.ProtocolVersion, "ProtocolVersion");
+            Assert.That(message.ProtocolVersion, Is.EqualTo(39), "ProtocolVersion");
 
-            Assert.AreEqual(0x25c60144, (int)message.TotalDifficulty, "Difficulty");
-            Assert.AreEqual(new Keccak("832056d3c93ff2739ace7199952e5365aa29f18805be05634c4db125c5340216"), message.BestHash, "BestHash");
-            Assert.AreEqual(new Keccak("0x955f36d073ccb026b78ab3424c15cf966a7563aa270413859f78702b9e8e22cb"), message.GenesisHash, "GenesisHash");
+            Assert.That((int)message.TotalDifficulty, Is.EqualTo(0x25c60144), "Difficulty");
+            Assert.That(message.BestHash, Is.EqualTo(new Keccak("832056d3c93ff2739ace7199952e5365aa29f18805be05634c4db125c5340216")), "BestHash");
+            Assert.That(message.GenesisHash, Is.EqualTo(new Keccak("0x955f36d073ccb026b78ab3424c15cf966a7563aa270413859f78702b9e8e22cb")), "GenesisHash");
 
             byte[] serialized = serializer.Serialize(message);
-            Assert.AreEqual(bytes, serialized, "serializing to same format");
+            Assert.That(serialized, Is.EqualTo(bytes), "serializing to same format");
         }
 
         [Test]

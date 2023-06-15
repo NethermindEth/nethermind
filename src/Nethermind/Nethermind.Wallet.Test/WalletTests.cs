@@ -4,21 +4,17 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
-using Nethermind.Specs;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Wallet.Test
@@ -42,7 +38,8 @@ namespace Nethermind.Wallet.Test
                             config.KeyStoreDirectory = _keyStorePath.Path;
                             ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
                             Wallet = new DevKeyStoreWallet(
-                                new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
+                                new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(),
+                                    LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
                                 LimboLogs.Instance);
                             break;
                         }
@@ -57,8 +54,10 @@ namespace Nethermind.Wallet.Test
                             config.KeyStoreDirectory = _keyStorePath.Path;
                             ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
                             ProtectedKeyStoreWallet wallet = new ProtectedKeyStoreWallet(
-                                new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
-                                new ProtectedPrivateKeyFactory(new CryptoRandom(), Timestamper.Default),
+                                new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(),
+                                    LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
+                                new ProtectedPrivateKeyFactory(new CryptoRandom(),
+                                    Timestamper.Default, config.KeyStoreDirectory),
                                 Timestamper.Default,
                                 LimboLogs.Instance);
                             wallet.SetupTestAccounts(3);
@@ -114,7 +113,7 @@ namespace Nethermind.Wallet.Test
         public void Has_10_dev_accounts([ValueSource(nameof(WalletTypes))] WalletType walletType)
         {
             Context ctx = _cachedWallets[walletType];
-            Assert.AreEqual((walletType == WalletType.Memory ? 10 : 3), ctx.Wallet.GetAccounts().Length);
+            Assert.That(ctx.Wallet.GetAccounts().Length, Is.EqualTo((walletType == WalletType.Memory ? 10 : 3)));
         }
 
         [Test]
@@ -131,7 +130,7 @@ namespace Nethermind.Wallet.Test
                 Assert.True(ctx.Wallet.GetAccounts().Any(a => a == key.Address), $"{i}");
             }
 
-            Assert.AreEqual(count, ctx.Wallet.GetAccounts().Length);
+            Assert.That(ctx.Wallet.GetAccounts().Length, Is.EqualTo(count));
         }
 
         [Test]
@@ -147,9 +146,9 @@ namespace Nethermind.Wallet.Test
 
                 WalletExtensions.Sign(ctx.Wallet, tx, chainId);
                 Address recovered = ecdsa.RecoverAddress(tx);
-                Assert.AreEqual(signerAddress, recovered, $"{i}");
+                Assert.That(recovered, Is.EqualTo(signerAddress), $"{i}");
                 Console.WriteLine(tx.Signature);
-                Assert.AreEqual(chainId, tx.Signature.ChainId, "chainId");
+                Assert.That(tx.Signature.ChainId, Is.EqualTo(chainId), "chainId");
             }
         }
     }

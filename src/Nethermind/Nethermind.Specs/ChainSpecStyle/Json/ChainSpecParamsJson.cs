@@ -14,7 +14,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
     [SuppressMessage("ReSharper", "InconsistentNaming")]
     internal class ChainSpecParamsJson
     {
-        public ulong ChainId { get; set; }
+        public ulong? ChainId { get; set; }
         public ulong? NetworkId { get; set; }
 
         [JsonProperty(PropertyName = "registrar")]
@@ -49,6 +49,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public long? MaxCodeSize { get; set; }
 
         public long? MaxCodeSizeTransition { get; set; }
+
+        public ulong? MaxCodeSizeTransitionTimestamp { get; set; }
 
         public long? Eip140Transition { get; set; }
 
@@ -138,5 +140,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public ulong? Eip3855TransitionTimestamp { get; set; }
         public ulong? Eip3860TransitionTimestamp { get; set; }
         public ulong? Eip4895TransitionTimestamp { get; set; }
+
+        public ulong? Eip4844TransitionTimestamp { get; set; }
     }
 }

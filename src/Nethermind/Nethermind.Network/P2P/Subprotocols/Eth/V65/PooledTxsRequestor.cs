@@ -15,7 +15,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
     public class PooledTxsRequestor : IPooledTxsRequestor
     {
         private readonly ITxPool _txPool;
-        private readonly LruKeyCache<Keccak> _pendingHashes = new(MemoryAllowance.TxHashCacheSize,
+        private readonly LruKeyCache<ValueKeccak> _pendingHashes = new(MemoryAllowance.TxHashCacheSize,
             Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "pending tx hashes");
 
         public PooledTxsRequestor(ITxPool txPool)
@@ -25,7 +25,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         public void RequestTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes)
         {
-            using ArrayPoolList<Keccak> discoveredTxHashes = new(hashes.Count, GetAndMarkUnknownHashes(hashes));
+            using ArrayPoolList<Keccak> discoveredTxHashes = new(hashes.Count);
+            AddMarkUnknownHashes(hashes, discoveredTxHashes);
 
             if (discoveredTxHashes.Count != 0)
             {
@@ -36,7 +37,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         public void RequestTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes)
         {
-            using ArrayPoolList<Keccak> discoveredTxHashes = new(hashes.Count, GetAndMarkUnknownHashes(hashes));
+            using ArrayPoolList<Keccak> discoveredTxHashes = new(hashes.Count);
+            AddMarkUnknownHashes(hashes, discoveredTxHashes);
 
             if (discoveredTxHashes.Count != 0)
             {
@@ -46,14 +48,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        private IEnumerable<Keccak> GetAndMarkUnknownHashes(IReadOnlyList<Keccak> hashes)
+        private void AddMarkUnknownHashes(IReadOnlyList<Keccak> hashes, ArrayPoolList<Keccak> discoveredTxHashes)
         {
-            for (int i = 0; i < hashes.Count; i++)
+            int count = hashes.Count;
+            for (int i = 0; i < count; i++)
             {
                 Keccak hash = hashes[i];
                 if (!_txPool.IsKnown(hash) && _pendingHashes.Set(hash))
                 {
-                    yield return hash;
+                    discoveredTxHashes.Add(hash);
                 }
             }
         }

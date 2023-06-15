@@ -26,11 +26,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             if (txReceipts is null)
             {
-                Assert.AreEqual(0, deserialized.TxReceipts.Length);
+                Assert.That(deserialized.TxReceipts.Length, Is.EqualTo(0));
             }
             else
             {
-                Assert.AreEqual(txReceipts.Length, deserialized.TxReceipts.Length, "length");
+                Assert.That(deserialized.TxReceipts.Length, Is.EqualTo(txReceipts.Length), "length");
                 for (int i = 0; i < txReceipts.Length; i++)
                 {
                     if (txReceipts[i] is null)
@@ -47,20 +47,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                             }
                             else
                             {
-                                Assert.AreEqual(txReceipts[i][j].TxType, deserialized.TxReceipts[i][j].TxType, $"receipts[{i}][{j}].TxType");
-                                Assert.AreEqual(txReceipts[i][j].Bloom, deserialized.TxReceipts[i][j].Bloom, $"receipts[{i}][{j}].Bloom");
+                                Assert.That(deserialized.TxReceipts[i][j].TxType, Is.EqualTo(txReceipts[i][j].TxType), $"receipts[{i}][{j}].TxType");
+                                Assert.That(deserialized.TxReceipts[i][j].Bloom, Is.EqualTo(txReceipts[i][j].Bloom), $"receipts[{i}][{j}].Bloom");
                                 Assert.Null(deserialized.TxReceipts[i][j].Error, $"receipts[{i}][{j}].Error");
-                                Assert.AreEqual(0, deserialized.TxReceipts[i][j].Index, $"receipts[{i}][{j}].Index");
-                                Assert.AreEqual(txReceipts[i][j].Logs.Length, deserialized.TxReceipts[i][j].Logs.Length, $"receipts[{i}][{j}].Logs.Length");
+                                Assert.That(deserialized.TxReceipts[i][j].Index, Is.EqualTo(0), $"receipts[{i}][{j}].Index");
+                                Assert.That(deserialized.TxReceipts[i][j].Logs.Length, Is.EqualTo(txReceipts[i][j].Logs.Length), $"receipts[{i}][{j}].Logs.Length");
                                 Assert.Null(deserialized.TxReceipts[i][j].Recipient, $"receipts[{i}][{j}].Recipient");
                                 Assert.Null(deserialized.TxReceipts[i][j].Sender, $"receipts[{i}][{j}].Sender");
                                 Assert.Null(deserialized.TxReceipts[i][j].BlockHash, $"receipts[{i}][{j}].BlockHash");
-                                Assert.AreEqual(0L, deserialized.TxReceipts[i][j].BlockNumber, $"receipts[{i}][{j}].BlockNumber");
+                                Assert.That(deserialized.TxReceipts[i][j].BlockNumber, Is.EqualTo(0L), $"receipts[{i}][{j}].BlockNumber");
                                 Assert.Null(deserialized.TxReceipts[i][j].ContractAddress, $"receipts[{i}][{j}].ContractAddress");
-                                Assert.AreEqual(0L, deserialized.TxReceipts[i][j].GasUsed, $"receipts[{i}][{j}].GasUsed");
-                                Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode, deserialized.TxReceipts[i][j].StatusCode, $"receipts[{i}][{j}].StatusCode");
-                                Assert.AreEqual(txReceipts[i][j].GasUsedTotal, deserialized.TxReceipts[i][j].GasUsedTotal, $"receipts[{i}][{j}].GasUsedTotal");
-                                Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null, deserialized.TxReceipts[i][j].PostTransactionState, $"receipts[{i}][{j}].PostTransactionState");
+                                Assert.That(deserialized.TxReceipts[i][j].GasUsed, Is.EqualTo(0L), $"receipts[{i}][{j}].GasUsed");
+                                Assert.That(deserialized.TxReceipts[i][j].GasUsedTotal, Is.EqualTo(txReceipts[i][j].GasUsedTotal), $"receipts[{i}][{j}].GasUsedTotal");
+                                if (!txReceipts[i][j].SkipStateAndStatusInRlp)
+                                {
+                                    Assert.That(deserialized.TxReceipts[i][j].StatusCode, Is.EqualTo(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode), $"receipts[{i}][{j}].StatusCode");
+                                    Assert.That(deserialized.TxReceipts[i][j].PostTransactionState, Is.EqualTo(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null), $"receipts[{i}][{j}].PostTransactionState");
+                                }
                             }
                         }
                     }
@@ -137,7 +140,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             ReceiptsMessageSerializer serializer = new(RopstenSpecProvider.Instance);
             ReceiptsMessage message = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(message);
-            Assert.AreEqual(bytes, serialized);
+            Assert.That(serialized, Is.EqualTo(bytes));
         }
 
         [Test]

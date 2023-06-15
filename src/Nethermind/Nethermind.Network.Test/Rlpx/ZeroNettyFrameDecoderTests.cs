@@ -3,6 +3,7 @@
 
 using System;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Rlpx;
@@ -25,7 +26,7 @@ namespace Nethermind.Network.Test.Rlpx
         private byte[] _frame;
         private byte[] _shortFrame;
         private IFrameCipher _frameCipher;
-        private IFrameMacProcessor _macProcessor;
+        private FrameMacProcessor _macProcessor;
 
         [SetUp]
         public void Setup()
@@ -75,10 +76,10 @@ namespace Nethermind.Network.Test.Rlpx
         private void Test(string frame, Func<byte[], IByteBuffer, ZeroFrameDecoderTestWrapper, IByteBuffer> deliveryStrategy, string expectedOutput)
         {
             byte[] frameBytes = Bytes.FromHexString(frame);
-            IByteBuffer input = Unpooled.Buffer(256);
+            IByteBuffer input = ReferenceCountUtil.ReleaseLater(Unpooled.Buffer(256));
             ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper = new(_frameCipher, _macProcessor);
 
-            IByteBuffer result = deliveryStrategy(frameBytes, input, zeroFrameDecoderTestWrapper);
+            IByteBuffer result = ReferenceCountUtil.ReleaseLater(deliveryStrategy(frameBytes, input, zeroFrameDecoderTestWrapper));
             Assert.NotNull(result, "did not decode frame");
 
             byte[] resultBytes = new byte[result.ReadableBytes];
@@ -86,8 +87,8 @@ namespace Nethermind.Network.Test.Rlpx
             TestContext.WriteLine(resultBytes.ToHexString());
             string expected = expectedOutput;
             TestContext.WriteLine(resultBytes.ToHexString());
-            Assert.AreEqual(expected, resultBytes.ToHexString());
-            Assert.AreEqual(input.ReaderIndex, input.WriterIndex, "reader index == writer index");
+            Assert.That(resultBytes.ToHexString(), Is.EqualTo(expected));
+            Assert.That(input.WriterIndex, Is.EqualTo(input.ReaderIndex), "reader index == writer index");
         }
 
         private static IByteBuffer DeliverAllAtOnce(byte[] frame, IByteBuffer input, ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper)

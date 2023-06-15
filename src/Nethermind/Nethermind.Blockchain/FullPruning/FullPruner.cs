@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
@@ -24,7 +27,10 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IPruningConfig _pruningConfig;
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
+        private readonly IProcessExitSource _processExitSource;
         private readonly ILogManager _logManager;
+        private readonly IChainEstimations _chainEstimations;
+        private readonly IDriveInfo _driveInfo;
         private IPruningContext? _currentPruning;
         private int _waitingForBlockProcessed = 0;
         private int _waitingForStateReady = 0;
@@ -40,6 +46,9 @@ namespace Nethermind.Blockchain.FullPruning
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
             IStateReader stateReader,
+            IProcessExitSource processExitSource,
+            IChainEstimations chainEstimations,
+            IDriveInfo driveInfo,
             ILogManager logManager)
         {
             _fullPruningDb = fullPruningDb;
@@ -47,7 +56,10 @@ namespace Nethermind.Blockchain.FullPruning
             _pruningConfig = pruningConfig;
             _blockTree = blockTree;
             _stateReader = stateReader;
+            _processExitSource = processExitSource;
             _logManager = logManager;
+            _chainEstimations = chainEstimations;
+            _driveInfo = driveInfo;
             _pruningTrigger.Prune += OnPrune;
             _logger = _logManager.GetClassLogger();
             _minimumPruningDelay = TimeSpan.FromHours(_pruningConfig.FullPruningMinimumDelayHours);
@@ -73,32 +85,39 @@ namespace Nethermind.Blockchain.FullPruning
             // If we are already pruning, we don't need to do anything
             else if (CanStartNewPruning())
             {
+                // Check if we have enough disk space to run pruning
+                if (!HaveEnoughDiskSpaceToRun() && _pruningConfig.AvailableSpaceCheckEnabled)
+                {
+                    e.Status = PruningStatus.NotEnoughDiskSpace;
+                }
                 // we mark that we are waiting for block (for thread safety)
-                if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 1, 0) == 0)
+                else if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 1, 0) == 0)
                 {
                     // we don't want to start pruning in the middle of block processing, lets wait for new head.
-                    _blockTree.NewHeadBlock += OnNewHead;
+                    _blockTree.OnUpdateMainChain += OnUpdateMainChain;
                     e.Status = PruningStatus.Starting;
                 }
             }
         }
 
-        private void OnNewHead(object? sender, BlockEventArgs e)
+        private void OnUpdateMainChain(object? sender, OnUpdateMainChainArgs e)
         {
+            if (!e.WereProcessed) return;
             if (CanStartNewPruning())
             {
                 if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 0, 1) == 1)
                 {
-                    if (e.Block is not null)
+                    if (e.Blocks is not null && e.Blocks.Count > 0)
                     {
                         if (_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext pruningContext))
                         {
                             SetCurrentPruning(pruningContext);
                             if (Interlocked.CompareExchange(ref _waitingForStateReady, 1, 0) == 0)
                             {
-                                _blockToWaitFor = e.Block.Number;
+                                Block lastBlock = e.Blocks[^1];
+                                _blockToWaitFor = lastBlock.Number;
                                 _stateToCopy = long.MaxValue;
-                                if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: waiting for state {e.Block.Number} to be ready.");
+                                if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: waiting for state {lastBlock.Number} to be ready.");
                             }
                         }
                     }
@@ -121,7 +140,7 @@ namespace Nethermind.Blockchain.FullPruning
                         {
                             if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {_stateToCopy} with root {header.StateRoot}.");
                             Task.Run(() => RunPruning(_currentPruning, header.StateRoot!));
-                            _blockTree.NewHeadBlock -= OnNewHead;
+                            _blockTree.OnUpdateMainChain -= OnUpdateMainChain;
                         }
                     }
                     else
@@ -136,7 +155,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
             else
             {
-                _blockTree.NewHeadBlock -= OnNewHead;
+                _blockTree.OnUpdateMainChain -= OnUpdateMainChain;
             }
         }
 
@@ -151,6 +170,28 @@ namespace Nethermind.Blockchain.FullPruning
 
         private bool CanStartNewPruning() => _fullPruningDb.CanStartPruning;
 
+        private const long ChainSizeThresholdFactor = 130;
+
+        private bool HaveEnoughDiskSpaceToRun()
+        {
+            long? currentChainSize = _chainEstimations.PruningSize;
+            if (currentChainSize is null)
+            {
+                if (_logger.IsInfo) _logger.Info("Full Pruning: Chain size estimation is unavailable.");
+                return true;
+            }
+
+            long available = _driveInfo.AvailableFreeSpace;
+            if (available < currentChainSize.Value * ChainSizeThresholdFactor / 100)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Not enough disk space to run full pruning. Required {(currentChainSize * ChainSizeThresholdFactor) / 1.GB()} GB. Have {available / 1.GB()} GB");
+                return false;
+            }
+            return true;
+        }
+
         private void HandlePruningFinished(object? sender, PruningEventArgs e)
         {
             switch (_pruningConfig.FullPruningCompletionBehavior)
@@ -158,7 +199,7 @@ namespace Nethermind.Blockchain.FullPruning
                 case FullPruningCompletionBehavior.AlwaysShutdown:
                 case FullPruningCompletionBehavior.ShutdownOnSuccess when e.Success:
                     if (_logger.IsInfo) _logger.Info($"Full Pruning completed {(e.Success ? "successfully" : "unsuccessfully")}, shutting down as requested in the configuration.");
-                    Task.Run(() => Environment.Exit(0));
+                    _processExitSource.Exit(ExitCodes.Ok);
                     break;
             }
         }
@@ -168,15 +209,27 @@ namespace Nethermind.Blockchain.FullPruning
             try
             {
                 pruning.MarkStart();
-                using CopyTreeVisitor copyTreeVisitor = new(pruning, _logManager);
-                VisitingOptions visitingOptions = new() { MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism };
+
+                WriteFlags writeFlags = WriteFlags.DisableWAL;
+                if (!_pruningConfig.FullPruningDisableLowPriorityWrites)
+                {
+                    writeFlags |= WriteFlags.LowPriority;
+                }
+
+                using CopyTreeVisitor copyTreeVisitor = new(pruning, writeFlags, _logManager);
+                VisitingOptions visitingOptions = new()
+                {
+                    MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,
+                    FullScanMemoryBudget = ((long)_pruningConfig.FullPruningMemoryBudgetMb).MiB(),
+                };
                 _stateReader.RunTreeVisitor(copyTreeVisitor, statRoot, visitingOptions);
 
                 if (!pruning.CancellationTokenSource.IsCancellationRequested)
                 {
-                    void CommitOnNewBLock(object o, BlockEventArgs e)
+                    void CommitOnNewBLock(object o, OnUpdateMainChainArgs e)
                     {
-                        _blockTree.NewHeadBlock -= CommitOnNewBLock;
+                        if (!e.WereProcessed) return;
+                        _blockTree.OnUpdateMainChain -= CommitOnNewBLock;
                         // ReSharper disable AccessToDisposedClosure
                         pruning.Commit();
                         _lastPruning = DateTime.Now;
@@ -184,7 +237,7 @@ namespace Nethermind.Blockchain.FullPruning
                         // ReSharper restore AccessToDisposedClosure
                     }
 
-                    _blockTree.NewHeadBlock += CommitOnNewBLock;
+                    _blockTree.OnUpdateMainChain += CommitOnNewBLock;
                     copyTreeVisitor.Finish();
                 }
                 else
@@ -192,8 +245,9 @@ namespace Nethermind.Blockchain.FullPruning
                     pruning.Dispose();
                 }
             }
-            catch (Exception)
+            catch (Exception e)
             {
+                _logger.Error("Error during pruning. ", e);
                 pruning.Dispose();
                 throw;
             }
@@ -201,7 +255,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         public void Dispose()
         {
-            _blockTree.NewHeadBlock -= OnNewHead;
+            _blockTree.OnUpdateMainChain -= OnUpdateMainChain;
             _pruningTrigger.Prune -= OnPrune;
             _currentPruning?.Dispose();
             _fullPruningDb.PruningFinished -= HandlePruningFinished;

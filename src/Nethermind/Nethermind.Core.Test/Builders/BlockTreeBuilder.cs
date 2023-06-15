@@ -26,19 +26,19 @@ namespace Nethermind.Core.Test.Builders
     public class BlockTreeBuilder : BuilderBase<BlockTree>
     {
         private readonly Block _genesisBlock;
+        private readonly ISpecProvider _specProvider;
         private IReceiptStorage? _receiptStorage;
-        private ISpecProvider? _specProvider;
         private IEthereumEcdsa? _ecdsa;
         private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;
 
         private bool _onlyHeaders;
 
-        public BlockTreeBuilder()
-            : this(Build.A.Block.Genesis.TestObject)
+        public BlockTreeBuilder(ISpecProvider specProvider)
+            : this(Build.A.Block.Genesis.TestObject, specProvider)
         {
         }
 
-        public BlockTreeBuilder(Block genesisBlock, ISpecProvider? specProvider = null)
+        public BlockTreeBuilder(Block genesisBlock, ISpecProvider specProvider)
         {
             BlocksDb = new MemDb();
             HeadersDb = new MemDb();
@@ -48,8 +48,9 @@ namespace Nethermind.Core.Test.Builders
             // so we automatically include in all tests my questionable decision of storing Head block header at 00...
             BlocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
             _genesisBlock = genesisBlock;
+            _specProvider = specProvider;
             ChainLevelInfoRepository = new ChainLevelInfoRepository(BlockInfoDb);
-            TestObjectInternal = new BlockTree(BlocksDb, HeadersDb, BlockInfoDb, ChainLevelInfoRepository, specProvider ?? MainnetSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+            TestObjectInternal = new BlockTree(BlocksDb, HeadersDb, BlockInfoDb, ChainLevelInfoRepository, specProvider, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
         }
 
         public MemDb BlocksDb { get; set; }
@@ -71,13 +72,22 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, params Address[] blockBeneficiaries)
+        public BlockTreeBuilder WithPostMergeRules()
         {
-            OfChainLength(out _, chainLength, splitVariant, splitFrom, blockBeneficiaries);
+            PostMergeBlockTree = true;
             return this;
         }
 
-        public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, params Address[] blockBeneficiaries)
+        public bool PostMergeBlockTree { get; set; }
+
+
+        public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
+        {
+            OfChainLength(out _, chainLength, splitVariant, splitFrom, withWithdrawals, blockBeneficiaries);
+            return this;
+        }
+
+        public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
             Block current = _genesisBlock;
             headBlock = _genesisBlock;
@@ -95,30 +105,42 @@ namespace Nethermind.Core.Test.Builders
                     }
 
                     Block parent = current;
-                    current = CreateBlock(splitVariant, splitFrom, i, parent, beneficiary);
+                    current = CreateBlock(splitVariant, splitFrom, i, parent, withWithdrawals, beneficiary);
                 }
                 else
                 {
                     if (!(current.IsGenesis && skipGenesis))
                     {
                         AddBlockResult result = TestObjectInternal.SuggestBlock(current);
-                        Assert.AreEqual(AddBlockResult.Added, result, $"Adding {current.ToString(Block.Format.Short)} at split variant {splitVariant}");
+                        Assert.That(result, Is.EqualTo(AddBlockResult.Added), $"Adding {current.ToString(Block.Format.Short)} at split variant {splitVariant}");
 
                         TestObjectInternal.UpdateMainChain(current);
                     }
 
                     Block parent = current;
 
-                    current = CreateBlock(splitVariant, splitFrom, i, parent, beneficiary);
+                    current = CreateBlock(splitVariant, splitFrom, i, parent, withWithdrawals, beneficiary);
                 }
             }
 
             return this;
         }
 
-        private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent, Address beneficiary)
+        private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent, bool withWithdrawals, Address beneficiary)
         {
             Block currentBlock;
+            BlockBuilder currentBlockBuilder = Build.A.Block
+                .WithNumber(blockIndex + 1)
+                .WithParent(parent)
+                .WithWithdrawals(withWithdrawals ? new[] { TestItem.WithdrawalA_1Eth } : null)
+                .WithBeneficiary(beneficiary);
+
+            if (PostMergeBlockTree)
+                currentBlockBuilder.WithPostMergeRules();
+            else
+                currentBlockBuilder.WithDifficulty(BlockHeaderBuilder.DefaultDifficulty -
+                                                                      (splitFrom > parent.Number ? 0 : (ulong)splitVariant));
+
             if (_receiptStorage is not null && blockIndex % 3 == 0)
             {
                 Transaction[] transactions = new[]
@@ -127,19 +149,15 @@ namespace Nethermind.Core.Test.Builders
                     Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject
                 };
 
-                currentBlock = Build.A.Block
-                    .WithNumber(blockIndex + 1)
-                    .WithParent(parent)
-                    .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong)splitVariant))
+                currentBlock = currentBlockBuilder
                     .WithTransactions(transactions)
                     .WithBloom(new Bloom())
-                    .WithBeneficiary(beneficiary)
                     .TestObject;
 
                 List<TxReceipt> receipts = new();
-                foreach (var transaction in currentBlock.Transactions)
+                foreach (Transaction transaction in currentBlock.Transactions)
                 {
-                    var logEntries = _logCreationFunction?.Invoke(currentBlock, transaction).ToArray() ?? Array.Empty<LogEntry>();
+                    LogEntry[] logEntries = _logCreationFunction?.Invoke(currentBlock, transaction).ToArray() ?? Array.Empty<LogEntry>();
                     TxReceipt receipt = new()
                     {
                         Logs = logEntries,
@@ -166,15 +184,11 @@ namespace Nethermind.Core.Test.Builders
             }
             else
             {
-                currentBlock = Build.A.Block.WithNumber(blockIndex + 1)
-                    .WithParent(parent)
-                    .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong)splitVariant))
-                    .WithBeneficiary(beneficiary)
+                currentBlock = currentBlockBuilder
                     .TestObject;
             }
 
             currentBlock.Header.AuRaStep = blockIndex;
-            currentBlock.Header.IsPostMerge = currentBlock.Header.IsPostTTD(_specProvider ?? MainnetSpecProvider.Instance);
 
             return currentBlock;
         }
@@ -241,10 +255,9 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, ISpecProvider specProvider, Func<Block, Transaction, IEnumerable<LogEntry>>? logsForBlockBuilder = null)
+        public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, Func<Block, Transaction, IEnumerable<LogEntry>>? logsForBlockBuilder = null)
         {
-            _specProvider = specProvider;
-            _ecdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
+            _ecdsa = new EthereumEcdsa(TestObjectInternal.ChainId, LimboLogs.Instance);
             _receiptStorage = receiptStorage;
             _logCreationFunction = logsForBlockBuilder;
             return this;

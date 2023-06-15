@@ -3,9 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -29,7 +29,7 @@ namespace Nethermind.State
             {
                 UInt256 index = (UInt256)i;
                 index.ToBigEndian(buffer);
-                Cache[index] = Keccak.Compute(buffer).Bytes;
+                Cache[index] = Keccak.Compute(buffer).BytesToArray();
             }
         }
 
@@ -45,23 +45,27 @@ namespace Nethermind.State
             TrieType = TrieType.Storage;
         }
 
-        public static Span<byte> GetKey(in UInt256 index)
+        private static void GetKey(in UInt256 index, in Span<byte> key)
         {
             if (index < CacheSize)
             {
-                return Cache[index];
+                Cache[index].CopyTo(key);
+                return;
             }
 
-            Span<byte> span = stackalloc byte[32];
-            index.ToBigEndian(span);
+            index.ToBigEndian(key);
 
-            // (1% allocations on archive sync) this ToArray can be pooled or just directly converted to nibbles
-            return ValueKeccak.Compute(span).BytesAsSpan.ToArray();
+            // in situ calculation
+            KeccakHash.ComputeHashBytesToSpan(key, key);
         }
 
+
+        [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Keccak? storageRoot = null)
         {
-            Span<byte> key = GetKey(index);
+            Span<byte> key = stackalloc byte[32];
+            GetKey(index, key);
+
             byte[]? value = Get(key, storageRoot);
             if (value is null)
             {
@@ -72,18 +76,20 @@ namespace Nethermind.State
             return rlp.DecodeByteArray();
         }
 
+        [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)
         {
-            var key = GetKey(index);
+            Span<byte> key = stackalloc byte[32];
+            GetKey(index, key);
             SetInternal(key, value);
         }
 
-        public void Set(Keccak key, byte[] value, bool rlpEncode = true)
+        public void Set(in ValueKeccak key, byte[] value, bool rlpEncode = true)
         {
             SetInternal(key.Bytes, value, rlpEncode);
         }
 
-        private void SetInternal(Span<byte> rawKey, byte[] value, bool rlpEncode = true)
+        private void SetInternal(ReadOnlySpan<byte> rawKey, byte[] value, bool rlpEncode = true)
         {
             if (value.IsZero())
             {

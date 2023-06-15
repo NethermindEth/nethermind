@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake
@@ -44,15 +47,15 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                       "f0fce91676fd64c7773bac6a003f481fddd0bae0a1f31aa27504e2a533af4cef3b623f4791b2cca6" +
                       "d490");
 
-            Span<byte> sizeBytes = allBytes.AsSpan().Slice(0, 2);
+            Span<byte> sizeBytes = allBytes.AsSpan(0, 2);
             int size = sizeBytes.ReadEthInt32();
 
             (_, byte[] deciphered) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes.ToArray());
 
             AuthEip8Message authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(deciphered);
-            Assert.AreEqual(authMessage.PublicKey, NetTestVectors.StaticKeyA.PublicKey);
-            Assert.AreEqual(authMessage.Nonce, NetTestVectors.NonceA);
-            Assert.AreEqual(authMessage.Version, 4);
+            Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
+            Assert.That(NetTestVectors.NonceA, Is.EqualTo(authMessage.Nonce));
+            Assert.That(authMessage.Version, Is.EqualTo(4));
 
             Assert.NotNull(authMessage.Signature);
         }
@@ -72,15 +75,15 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             (_, byte[] deciphered) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes);
 
             AuthMessage authMessage = _messageSerializationService.Deserialize<AuthMessage>(deciphered);
-            Assert.AreEqual(authMessage.PublicKey, NetTestVectors.StaticKeyA.PublicKey);
-            Assert.AreEqual(authMessage.EphemeralPublicHash, Keccak.Compute(NetTestVectors.EphemeralKeyA.PublicKey.Bytes));
-            Assert.AreEqual(authMessage.Nonce, NetTestVectors.NonceA);
-            Assert.AreEqual(authMessage.IsTokenUsed, false);
+            Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
+            Assert.That(Keccak.Compute(NetTestVectors.EphemeralKeyA.PublicKey.Bytes), Is.EqualTo(authMessage.EphemeralPublicHash));
+            Assert.That(NetTestVectors.NonceA, Is.EqualTo(authMessage.Nonce));
+            Assert.That(authMessage.IsTokenUsed, Is.EqualTo(false));
             Assert.NotNull(authMessage.Signature);
 
-            byte[] data = _messageSerializationService.Serialize(authMessage);
-            Array.Resize(ref data, deciphered.Length);
-            Assert.AreEqual(deciphered, data, "serialization");
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
+            Assert.That(data.ReadAllBytesAsArray(), Is.EqualTo(deciphered), "serialization");
+            data.SafeRelease();
         }
 
         [Test]
@@ -98,7 +101,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                       "2aa067241aaa433f0bb053c7b31a838504b148f570c0ad62837129e547678c5190341e4f1693956c" +
                       "3bf7678318e2d5b5340c9e488eefea198576344afbdf66db5f51204a6961a63ce072c8926c");
 
-            Span<byte> sizeBytes = allBytes.AsSpan().Slice(0, 2);
+            Span<byte> sizeBytes = allBytes.AsSpan(0, 2);
             int size = sizeBytes.ReadEthInt32();
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
@@ -106,15 +109,15 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             (_, byte[] deciphered) = cipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes.ToArray());
 
             AuthEip8Message authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(deciphered);
-            Assert.AreEqual(authMessage.PublicKey, NetTestVectors.StaticKeyA.PublicKey);
-            Assert.AreEqual(authMessage.Nonce, NetTestVectors.NonceA);
-            Assert.AreEqual(authMessage.Version, 4);
+            Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
+            Assert.That(NetTestVectors.NonceA, Is.EqualTo(authMessage.Nonce));
+            Assert.That(authMessage.Version, Is.EqualTo(4));
             Assert.NotNull(authMessage.Signature);
 
-            byte[] data = _messageSerializationService.Serialize(authMessage);
-            Array.Resize(ref data, deciphered.Length);
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
 
-            Assert.AreEqual(deciphered.Slice(0, 169), data.Slice(0, 169), "serialization");
+            Assert.That(data.Slice(0, 169).ReadAllBytesAsArray(), Is.EqualTo(deciphered.Slice(0, 169)), "serialization");
+            data.SafeRelease();
         }
 
         [Test]
@@ -130,13 +133,13 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             (_, byte[] deciphered) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyA, allBytes);
 
             AckMessage ackMessage = _messageSerializationService.Deserialize<AckMessage>(deciphered);
-            Assert.AreEqual(ackMessage.EphemeralPublicKey, NetTestVectors.EphemeralKeyB.PublicKey);
-            Assert.AreEqual(ackMessage.Nonce, NetTestVectors.NonceB);
-            Assert.AreEqual(ackMessage.IsTokenUsed, false);
+            Assert.That(NetTestVectors.EphemeralKeyB.PublicKey, Is.EqualTo(ackMessage.EphemeralPublicKey));
+            Assert.That(NetTestVectors.NonceB, Is.EqualTo(ackMessage.Nonce));
+            Assert.That(ackMessage.IsTokenUsed, Is.EqualTo(false));
 
-            byte[] data = _messageSerializationService.Serialize(ackMessage);
-            Array.Resize(ref data, deciphered.Length);
-            Assert.AreEqual(deciphered, data, "serialization");
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
+            Assert.That(data.ReadAllBytesAsArray(), Is.EqualTo(deciphered), "serialization");
+            data.SafeRelease();
         }
 
         [Test]
@@ -156,7 +159,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                       "1778d809bdf60232ae21ce8a437eca8223f45ac37f6487452ce626f549b3b5fdee26afd2072e4bc7" +
                       "5833c2464c805246155289f4");
 
-            Span<byte> sizeBytes = allBytes.AsSpan().Slice(0, 2);
+            Span<byte> sizeBytes = allBytes.AsSpan(0, 2);
             int size = sizeBytes.ReadEthInt32();
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
@@ -164,15 +167,15 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             (_, byte[] deciphered) = cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes.ToArray());
 
             AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(deciphered);
-            Assert.AreEqual(ackMessage.EphemeralPublicKey, NetTestVectors.EphemeralKeyB.PublicKey);
-            Assert.AreEqual(ackMessage.Nonce, NetTestVectors.NonceB);
-            Assert.AreEqual(ackMessage.Version, 4);
+            Assert.That(NetTestVectors.EphemeralKeyB.PublicKey, Is.EqualTo(ackMessage.EphemeralPublicKey));
+            Assert.That(NetTestVectors.NonceB, Is.EqualTo(ackMessage.Nonce));
+            Assert.That(ackMessage.Version, Is.EqualTo(4));
 
-            byte[] data = _messageSerializationService.Serialize(ackMessage);
-            Array.Resize(ref data, deciphered.Length);
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
 
             // TODO: check 102
-            Assert.AreEqual(deciphered.Slice(0, 102), data.Slice(0, 102), "serialization");
+            Assert.That(data.ReadAllBytesAsArray().Slice(0, 102), Is.EqualTo(deciphered.Slice(0, 102)), "serialization");
+            data.SafeRelease();
         }
 
         [Test]
@@ -192,7 +195,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                       "39a2336a61ef9fda549180d4ccde21514d117b6c6fd07a9102b5efe710a32af4eeacae2cb3b1dec0" +
                       "35b9593b48b9d3ca4c13d245d5f04169b0b1");
 
-            Span<byte> sizeBytes = allBytes.AsSpan().Slice(0, 2);
+            Span<byte> sizeBytes = allBytes.AsSpan(0, 2);
             int size = sizeBytes.ReadEthInt32();
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
@@ -200,9 +203,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             (_, byte[] deciphered) = cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes.ToArray());
 
             AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(deciphered);
-            Assert.AreEqual(ackMessage.EphemeralPublicKey, NetTestVectors.EphemeralKeyB.PublicKey);
-            Assert.AreEqual(ackMessage.Nonce, NetTestVectors.NonceB);
-            Assert.AreEqual(ackMessage.Version, 4);
+            Assert.That(NetTestVectors.EphemeralKeyB.PublicKey, Is.EqualTo(ackMessage.EphemeralPublicKey));
+            Assert.That(NetTestVectors.NonceB, Is.EqualTo(ackMessage.Nonce));
+            Assert.That(ackMessage.Version, Is.EqualTo(4));
         }
 
         [Test]
@@ -216,7 +219,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             byte[] cipherText = _eciesCipher.Encrypt(privateKey.PublicKey, plainText, null); // public(65) | IV(16) | cipher(...)
 
             (_, byte[] deciphered) = _eciesCipher.Decrypt(privateKey, cipherText);
-            Assert.AreEqual(plainText, deciphered);
+            Assert.That(deciphered, Is.EqualTo(plainText));
         }
     }
 }

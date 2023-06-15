@@ -42,7 +42,5 @@ namespace Nethermind.State
             stateReader.RunTreeVisitor(rootCheckVisitor, header.StateRoot);
             return rootCheckVisitor.HasRoot;
         }
-
-
     }
 }

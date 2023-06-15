@@ -99,7 +99,7 @@ namespace Nethermind.Network.Test.Rlpx
                 ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new();
                 output = zeroFrameMergerTestWrapper.Decode(input);
                 Assert.NotNull(output);
-                Assert.AreEqual(1, output.Content.ReadableBytes);
+                Assert.That(output.Content.ReadableBytes, Is.EqualTo(1));
             }
             finally
             {
@@ -118,7 +118,7 @@ namespace Nethermind.Network.Test.Rlpx
                 ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new();
                 output = zeroFrameMergerTestWrapper.Decode(input);
                 Assert.NotNull(output);
-                Assert.AreEqual(2049, output.Content.ReadableBytes);
+                Assert.That(output.Content.ReadableBytes, Is.EqualTo(2049));
             }
             finally
             {
@@ -137,7 +137,7 @@ namespace Nethermind.Network.Test.Rlpx
                 ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new();
                 output = zeroFrameMergerTestWrapper.Decode(input);
                 Assert.NotNull(output);
-                Assert.AreEqual((byte)2, output.PacketType);
+                Assert.That(output.PacketType, Is.EqualTo((byte)2));
             }
             finally
             {
@@ -160,14 +160,14 @@ namespace Nethermind.Network.Test.Rlpx
                 output = zeroFrameMergerTestWrapper.Decode(input);
                 Assert.NotNull(output);
 
-                Assert.AreEqual(0, output.PacketType);
+                Assert.That(output.PacketType, Is.EqualTo(0));
 
-                byte[] outputBytes = output.Content.ReadAllBytes();
+                byte[] outputBytes = output.Content.ReadAllBytesAsArray();
                 HelloMessageSerializer serializer = new();
                 HelloMessage helloMessage = serializer.Deserialize(outputBytes);
 
-                Assert.AreEqual("Nethermind/v1.0.0-rc28dev-c9d5542a/X64-Microsoft Windows 10.0.17134 /Core4.6.27617.05", helloMessage.ClientId);
-                Assert.AreEqual(input.ReaderIndex, input.WriterIndex, "reader index == writer index");
+                Assert.That(helloMessage.ClientId, Is.EqualTo("Nethermind/v1.0.0-rc28dev-c9d5542a/X64-Microsoft Windows 10.0.17134 /Core4.6.27617.05"));
+                Assert.That(input.WriterIndex, Is.EqualTo(input.ReaderIndex), "reader index == writer index");
             }
             finally
             {
@@ -191,8 +191,8 @@ namespace Nethermind.Network.Test.Rlpx
                 output = zeroFrameMergerTestWrapper.Decode(input);
                 Assert.NotNull(output);
 
-                Assert.AreEqual(32, output.PacketType);
-                output.Content.ReadAllBytes();
+                Assert.That(output.PacketType, Is.EqualTo(32));
+                output.Content.ReadAllBytesAsArray();
             }
             finally
             {

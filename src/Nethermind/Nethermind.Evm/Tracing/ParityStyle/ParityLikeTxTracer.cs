@@ -7,6 +7,7 @@ using System.Linq;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
@@ -77,6 +78,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
         public bool IsTracingFees => false;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
         private static string GetCallType(ExecutionType executionType)
         {
@@ -255,7 +257,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 _trace.Action.From = _tx.SenderAddress;
                 _trace.Action.To = _tx.To;
                 _trace.Action.Value = _tx.Value;
-                _trace.Action.Input = _tx.Data;
+                _trace.Action.Input = _tx.Data.AsArray();
                 _trace.Action.Gas = _tx.GasLimit;
                 _trace.Action.CallType = _tx.IsMessageCall ? "call" : "init";
                 _trace.Action.Error = error;
@@ -288,7 +290,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             {
                 _gasAlreadySetForCurrentOp = true;
 
-                _currentOperation.Cost = _currentOperation.Cost - (_treatGasParityStyle ? 0 : gas);
+                _currentOperation.Cost -= (_treatGasParityStyle ? 0 : gas);
 
                 // based on Parity behaviour - adding stipend to the gas cost
                 if (_currentOperation.Cost == 7400)
@@ -387,9 +389,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
         }
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
-            Dictionary<UInt256, ParityStateChange<byte[]>> storage = null;
+            Dictionary<UInt256, ParityStateChange<byte[]>> storage;
             if (!_trace.StateChanges.ContainsKey(storageCell.Address))
             {
                 _trace.StateChanges[storageCell.Address] = new ParityAccountStateChange();
@@ -405,7 +407,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             storage[storageCell.Index] = new ParityStateChange<byte[]>(before, after);
         }
 
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
         {
         }
 

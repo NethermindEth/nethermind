@@ -22,7 +22,7 @@ namespace Nethermind.Cli.Test
         [TestCase("4\x00082\x0008", "")]
         public void Cli_Input_Should_Be_Properly_Sanitized(string input, string expectedOutput)
         {
-            Assert.AreEqual(expectedOutput, Program.RemoveDangerousCharacters(input));
+            Assert.That(Program.RemoveDangerousCharacters(input), Is.EqualTo(expectedOutput));
         }
     }
 }

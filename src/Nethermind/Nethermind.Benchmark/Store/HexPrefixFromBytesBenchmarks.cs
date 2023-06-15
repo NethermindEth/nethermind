@@ -16,8 +16,8 @@ namespace Nethermind.Benchmarks.Store
 
         private byte[][] _scenarios = new byte[][]
         {
-            Keccak.EmptyTreeHash.Bytes,
-            Keccak.Zero.Bytes,
+            Keccak.EmptyTreeHash.BytesToArray(),
+            Keccak.Zero.BytesToArray(),
             TestItem.AddressA.Bytes,
         };
 
@@ -33,13 +33,14 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public byte Improved()
         {
-            return HexPrefix.FromBytes(_a).Path[0];
+
+            return HexPrefix.FromBytes(_a).key[0];
         }
 
         [Benchmark(Baseline = true)]
         public byte Current()
         {
-            return HexPrefix.FromBytes(_a).Path[0];
+            return HexPrefix.FromBytes(_a).key[0];
         }
     }
 }

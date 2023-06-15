@@ -88,7 +88,7 @@ namespace Nethermind.Network.Benchmarks
                 return (IByteBuffer)result[0];
             }
 
-            public TestZeroDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
+            public TestZeroDecoder(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor)
                 : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
             {
             }
@@ -137,7 +137,7 @@ namespace Nethermind.Network.Benchmarks
             IByteBuffer decoded = _zeroDecoder.Decode(_decoderBuffer);
             IByteBuffer merged = _zeroMerger.Decode(decoded);
             merged.ReadByte();
-            _outputMessage = _newBlockMessageSerializer.Deserialize(merged.ReadAllBytes());
+            _outputMessage = _newBlockMessageSerializer.Deserialize(merged.ReadAllBytesAsArray());
         }
     }
 }

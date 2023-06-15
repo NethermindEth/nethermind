@@ -7,7 +7,9 @@ namespace Nethermind.Network.Config
 {
     public interface INetworkConfig : IConfig
     {
-        public const int DefaultNettyArenaOrder = 11;
+        public const int DefaultNettyArenaOrder = -1;
+        public const int MaxNettyArenaOrder = 14;
+        public const int DefaultMaxNettyArenaCount = 8;
 
         [ConfigItem(Description = "Use only if your node cannot resolve external IP automatically.", DefaultValue = "null")]
         string? ExternalIp { get; set; }
@@ -66,8 +68,11 @@ namespace Nethermind.Network.Config
         [ConfigItem(DefaultValue = "false", Description = "Enabled very verbose diag network tracing files for DEV purposes (Nethermind specific)")]
         bool DiagTracerEnabled { get; set; }
 
-        [ConfigItem(DefaultValue = "11", Description = "[TECHNICAL] Defines the size of a buffer allocated to each peer - default is 8192 << 11 so 16MB where order is 11.")]
+        [ConfigItem(DefaultValue = "-1", Description = "[TECHNICAL] Defines the size of a netty arena order. Default depends on memory hint.")]
         int NettyArenaOrder { get; set; }
+
+        [ConfigItem(DefaultValue = "8", Description = "[TECHNICAL] Defines maximum netty arena count. Increasing this on high core machine without increasing memory budget may reduce chunk size so much that it causes significant netty huge allocation.")]
+        uint MaxNettyArenaCount { get; set; }
 
         [ConfigItem(DefaultValue = "", Description = "Bootnodes")]
         string Bootnodes { get; set; }
@@ -77,5 +82,14 @@ namespace Nethermind.Network.Config
 
         [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = "[TECHNICAL] Introduce a fixed latency for all p2p message send. Useful for testing higher latency network or simulate slower network for testing purpose.")]
         long SimulateSendLatencyMs { get; set; }
+
+        [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = "[TECHNICAL] Number of concurrent outgoing connections. Reduce this if your ISP throttles from having open too many connections. Default is 0 which means same as processor count.")]
+        int NumConcurrentOutgoingConnects { get; set; }
+
+        [ConfigItem(DefaultValue = "2000", HiddenFromDocs = true, Description = "[TECHNICAL] Outgoing connection timeout in ms. Default is 2 seconds.")]
+        int ConnectTimeoutMs { get; set; }
+
+        [ConfigItem(DefaultValue = "1", HiddenFromDocs = true, Description = "[TECHNICAL] Num of thread in final processing of network packet. Set to more than 1 if you have very fast internet.")]
+        int ProcessingThreadCount { get; set; }
     }
 }

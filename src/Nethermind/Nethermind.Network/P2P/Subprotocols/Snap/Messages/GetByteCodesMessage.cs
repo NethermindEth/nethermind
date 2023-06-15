@@ -14,7 +14,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// <summary>
         /// Code hashes to retrieve the code for
         /// </summary>
-        public Keccak[] Hashes { get; set; }
+        public IReadOnlyList<ValueKeccak> Hashes { get; set; }
 
         /// <summary>
         /// Soft limit at which to stop returning data

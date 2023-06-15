@@ -61,7 +61,7 @@ namespace Nethermind.Abi
 
             if (arg is Keccak hash && Length == 32)
             {
-                return Encode(hash.Bytes, packed);
+                return Encode(hash.Bytes.ToArray(), packed);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);

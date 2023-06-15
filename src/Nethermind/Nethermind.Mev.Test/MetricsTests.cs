@@ -23,6 +23,7 @@ using NSubstitute;
 namespace Nethermind.Mev.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.None)] // Metrics are global variables. Dont run with other tests.
     public class MetricsTests
     {
         [Test]
@@ -110,7 +111,7 @@ namespace Nethermind.Mev.Test
 
             deltaBundlesReceived.Should().Be(4);
             deltaValidBundlesReceived.Should().Be(2);
-            deltaBundlesSimulated.Should().Be(0); // should not simulate invalid bundle 
+            deltaBundlesSimulated.Should().Be(0); // should not simulate invalid bundle
         }
 
         [Test]
@@ -146,7 +147,7 @@ namespace Nethermind.Mev.Test
 
             deltaBundlesReceived.Should().Be(4);
             deltaValidBundlesReceived.Should().Be(1);
-            deltaBundlesSimulated.Should().Be(0); // should not simulate invalid bundle 
+            deltaBundlesSimulated.Should().Be(0); // should not simulate invalid bundle
         }
 
         [Test]
@@ -192,7 +193,8 @@ namespace Nethermind.Mev.Test
         private static TestBundlePool CreateTestBundlePool(IEthereumEcdsa? ecdsa = null, MevConfig? config = null)
         {
             var blockTree = Substitute.For<IBlockTree>();
-            blockTree.ChainId.Returns((ulong)ChainId.Mainnet);
+            blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
+            blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
             BlockHeader header = new(
                 Keccak.Zero,
                 Keccak.Zero,

@@ -1,60 +1,60 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
-namespace Nethermind.Specs
+namespace Nethermind.Specs;
+
+public class GoerliSpecProvider : ISpecProvider
 {
-    public class GoerliSpecProvider : ISpecProvider
+    public const long IstanbulBlockNumber = 1_561_651;
+    public const long BerlinBlockNumber = 4_460_644;
+    public const long LondonBlockNumber = 5_062_605;
+    public const ulong BeaconChainGenesisTimestamp = 0x6059f460;
+    public const ulong ShanghaiTimestamp = 0x6410f460;
+
+    private GoerliSpecProvider() { }
+
+    public IReleaseSpec GetSpec(ForkActivation forkActivation)
     {
-        public static readonly GoerliSpecProvider Instance = new();
-        private GoerliSpecProvider() { }
-
-        private ForkActivation? _theMergeBlock = null;
-        private UInt256? _terminalTotalDifficulty = 10790000;
-
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        return forkActivation.BlockNumber switch
         {
-            if (blockNumber is not null)
-                _theMergeBlock = (ForkActivation)blockNumber;
-            if (terminalTotalDifficulty is not null)
-                _terminalTotalDifficulty = terminalTotalDifficulty;
-        }
-
-        public ForkActivation? MergeBlockNumber => _theMergeBlock;
-        public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
-        public IReleaseSpec GenesisSpec { get; } = ConstantinopleFix.Instance;
-
-        private IReleaseSpec IstanbulNoBomb { get; } = Istanbul.Instance;
-
-        private IReleaseSpec BerlinNoBomb { get; } = Berlin.Instance;
-
-        private IReleaseSpec LondonNoBomb { get; } = London.Instance;
-
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
-            forkActivation.BlockNumber switch
+            < IstanbulBlockNumber => GenesisSpec,
+            < BerlinBlockNumber => Istanbul.Instance,
+            < LondonBlockNumber => Berlin.Instance,
+            _ => forkActivation.Timestamp switch
             {
-                < IstanbulBlockNumber => GenesisSpec,
-                < BerlinBlockNumber => IstanbulNoBomb,
-                < LondonBlockNumber => BerlinNoBomb,
-                _ => LondonNoBomb
-            };
-
-        public long? DaoBlockNumber => null;
-        public const long IstanbulBlockNumber = 1_561_651;
-        public const long BerlinBlockNumber = 4_460_644;
-        public const long LondonBlockNumber = 5_062_605;
-        public ulong ChainId => Core.ChainId.Goerli;
-
-        public ForkActivation[] TransitionActivations { get; } =
-        {
-            (ForkActivation)IstanbulBlockNumber,
-            (ForkActivation)BerlinBlockNumber,
-            (ForkActivation)LondonBlockNumber
+                null or < ShanghaiTimestamp => London.Instance,
+                _ => Shanghai.Instance
+            }
         };
     }
+
+    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+    {
+        if (blockNumber is not null)
+            MergeBlockNumber = (ForkActivation)blockNumber;
+        if (terminalTotalDifficulty is not null)
+            TerminalTotalDifficulty = terminalTotalDifficulty;
+    }
+
+    public ulong NetworkId => BlockchainIds.Goerli;
+    public ulong ChainId => NetworkId;
+    public long? DaoBlockNumber => null;
+    public ForkActivation? MergeBlockNumber { get; private set; } = null;
+    public ulong TimestampFork => ShanghaiTimestamp;
+    public UInt256? TerminalTotalDifficulty { get; private set; } = 10790000;
+    public IReleaseSpec GenesisSpec { get; } = ConstantinopleFix.Instance;
+    public ForkActivation[] TransitionActivations { get; } =
+    {
+        (ForkActivation)IstanbulBlockNumber,
+        (ForkActivation)BerlinBlockNumber,
+        (ForkActivation)LondonBlockNumber,
+        (LondonBlockNumber, ShanghaiTimestamp)
+    };
+
+    public static readonly GoerliSpecProvider Instance = new();
 }

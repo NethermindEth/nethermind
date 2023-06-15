@@ -8,7 +8,7 @@ using DotNetty.Common.Utilities;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class NettyRlpStream : RlpStream, IDisposable
+    public sealed class NettyRlpStream : RlpStream, IDisposable
     {
         private readonly IByteBuffer _buffer;
 
@@ -20,7 +20,7 @@ namespace Nethermind.Serialization.Rlp
             _initialPosition = buffer.ReaderIndex;
         }
 
-        public override void Write(Span<byte> bytesToWrite)
+        public override void Write(ReadOnlySpan<byte> bytesToWrite)
         {
             _buffer.EnsureWritable(bytesToWrite.Length, true);
 
@@ -99,7 +99,7 @@ namespace Nethermind.Serialization.Rlp
 
         public override int Length => _buffer.ReadableBytes + (_buffer.ReaderIndex - _initialPosition);
 
-        public override bool HasBeenRead => _buffer.ReadableBytes > 0;
+        public override bool HasBeenRead => _buffer.ReadableBytes <= 0;
 
         protected override string Description => "|NettyRlpStream|description missing|";
 

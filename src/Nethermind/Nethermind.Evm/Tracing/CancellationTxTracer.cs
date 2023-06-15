@@ -11,7 +11,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class CancellationTxTracer : ITxTracer
+    public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
     {
         private readonly ITxTracer _innerTracer;
         private readonly CancellationToken _token;
@@ -28,6 +28,7 @@ namespace Nethermind.Evm.Tracing
         private readonly bool _isTracingBlockHash;
         private readonly bool _isTracingBlockAccess;
         private readonly bool _isTracingFees;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
         public ITxTracer InnerTracer => _innerTracer;
 
@@ -151,7 +152,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingStorage)
@@ -160,7 +161,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingStorage)

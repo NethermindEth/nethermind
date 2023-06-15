@@ -10,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -33,6 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private readonly MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]> _nodeDataRequests66;
         private readonly MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, TxReceipt[][]> _receiptsRequests66;
         private readonly IPooledTxsRequestor _pooledTxsRequestor;
+        private readonly Action<GetPooledTransactionsMessage> _sendAction;
 
         public Eth66ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -50,11 +52,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, TxReceipt[][]>(Send);
             _pooledTxsRequestor = pooledTxsRequestor;
+            // Capture Action once rather than per call
+            _sendAction = Send;
         }
 
         public override string Name => "eth66";
 
-        public override byte ProtocolVersion => 66;
+        public override byte ProtocolVersion => EthVersions.Eth66;
 
         public override void HandleMessage(ZeroPacket message)
         {
@@ -66,63 +70,63 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     GetBlockHeadersMessage getBlockHeadersMessage
                         = Deserialize<GetBlockHeadersMessage>(message.Content);
                     Metrics.Eth66GetBlockHeadersReceived++;
-                    ReportIn(getBlockHeadersMessage);
+                    ReportIn(getBlockHeadersMessage, size);
                     Handle(getBlockHeadersMessage);
                     break;
                 case Eth66MessageCode.BlockHeaders:
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
                     Metrics.Eth66BlockHeadersReceived++;
-                    ReportIn(headersMsg);
+                    ReportIn(headersMsg, size);
                     Handle(headersMsg, size);
                     break;
                 case Eth66MessageCode.GetBlockBodies:
                     GetBlockBodiesMessage getBodiesMsg = Deserialize<GetBlockBodiesMessage>(message.Content);
                     Metrics.Eth66GetBlockBodiesReceived++;
-                    ReportIn(getBodiesMsg);
+                    ReportIn(getBodiesMsg, size);
                     Handle(getBodiesMsg);
                     break;
                 case Eth66MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
                     Metrics.Eth66BlockBodiesReceived++;
-                    ReportIn(bodiesMsg);
+                    ReportIn(bodiesMsg, size);
                     HandleBodies(bodiesMsg, size);
                     break;
                 case Eth66MessageCode.GetPooledTransactions:
                     GetPooledTransactionsMessage getPooledTxMsg
                         = Deserialize<GetPooledTransactionsMessage>(message.Content);
                     Metrics.Eth66GetPooledTransactionsReceived++;
-                    ReportIn(getPooledTxMsg);
+                    ReportIn(getPooledTxMsg, size);
                     Handle(getPooledTxMsg);
                     break;
                 case Eth66MessageCode.PooledTransactions:
                     PooledTransactionsMessage pooledTxMsg
                         = Deserialize<PooledTransactionsMessage>(message.Content);
                     Metrics.Eth66PooledTransactionsReceived++;
-                    ReportIn(pooledTxMsg);
+                    ReportIn(pooledTxMsg, size);
                     Handle(pooledTxMsg.EthMessage);
                     break;
                 case Eth66MessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
                     Metrics.Eth66GetReceiptsReceived++;
-                    ReportIn(getReceiptsMessage);
+                    ReportIn(getReceiptsMessage, size);
                     Handle(getReceiptsMessage);
                     break;
                 case Eth66MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
                     Metrics.Eth66ReceiptsReceived++;
-                    ReportIn(receiptsMessage);
+                    ReportIn(receiptsMessage, size);
                     Handle(receiptsMessage, size);
                     break;
                 case Eth66MessageCode.GetNodeData:
                     GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
                     Metrics.Eth66GetNodeDataReceived++;
-                    ReportIn(getNodeDataMessage);
+                    ReportIn(getNodeDataMessage, size);
                     Handle(getNodeDataMessage);
                     break;
                 case Eth66MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
                     Metrics.Eth66NodeDataReceived++;
-                    ReportIn(nodeDataMessage);
+                    ReportIn(nodeDataMessage, size);
                     Handle(nodeDataMessage, size);
                     break;
                 default:
@@ -189,12 +193,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         protected override void Handle(NewPooledTransactionHashesMessage msg)
         {
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            bool isTrace = Logger.IsTrace;
+            Stopwatch? stopwatch = isTrace ? Stopwatch.StartNew() : null;
 
-            _pooledTxsRequestor.RequestTransactionsEth66(Send, msg.Hashes.ToArray());
+            _pooledTxsRequestor.RequestTransactionsEth66(_sendAction, msg.Hashes);
 
-            stopwatch.Stop();
-            if (Logger.IsTrace)
+            stopwatch?.Stop();
+            if (isTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
                              $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }

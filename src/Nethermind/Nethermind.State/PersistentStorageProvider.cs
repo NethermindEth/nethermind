@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
+using Nethermind.State.Tracing;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
@@ -17,10 +18,10 @@ namespace Nethermind.State
     /// Manages persistent storage allowing for snapshotting and restoring
     /// Persists data to ITrieStore
     /// </summary>
-    public class PersistentStorageProvider : PartialStorageProviderBase
+    internal class PersistentStorageProvider : PartialStorageProviderBase
     {
         private readonly ITrieStore _trieStore;
-        private readonly IStateProvider _stateProvider;
+        private readonly StateProvider _stateProvider;
         private readonly ILogManager? _logManager;
         private readonly ResettableDictionary<Address, StorageTree> _storages = new();
         /// <summary>
@@ -29,7 +30,7 @@ namespace Nethermind.State
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
-        public PersistentStorageProvider(ITrieStore? trieStore, IStateProvider? stateProvider, ILogManager? logManager)
+        public PersistentStorageProvider(ITrieStore? trieStore, StateProvider? stateProvider, ILogManager? logManager)
             : base(logManager)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
@@ -53,7 +54,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected override byte[] GetCurrentValue(StorageCell storageCell) =>
+        protected override byte[] GetCurrentValue(in StorageCell storageCell) =>
             TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
 
         /// <summary>
@@ -61,7 +62,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell"></param>
         /// <returns></returns>
-        public byte[] GetOriginal(StorageCell storageCell)
+        public byte[] GetOriginal(in StorageCell storageCell)
         {
             if (!_originalValues.ContainsKey(storageCell))
             {
@@ -226,7 +227,7 @@ namespace Nethermind.State
             return _storages[address];
         }
 
-        private byte[] LoadFromTree(StorageCell storageCell)
+        private byte[] LoadFromTree(in StorageCell storageCell)
         {
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
 
@@ -236,7 +237,7 @@ namespace Nethermind.State
             return value;
         }
 
-        private void PushToRegistryOnly(StorageCell cell, byte[] value)
+        private void PushToRegistryOnly(in StorageCell cell, byte[] value)
         {
             SetupRegistry(cell);
             IncrementChangePosition();

@@ -39,11 +39,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             long number = (parentHeader?.Number ?? 0) + 1;
             bool isEip1559Enabled = _specProvider.GetSpecFor1559(number).IsEip1559Enabled;
-            UInt256 gasPrice = isEip1559Enabled && tx.IsEip1559 ? tx.MaxFeePerGas : tx.GasPrice;
+            UInt256 gasPrice = isEip1559Enabled && tx.Supports1559 ? tx.MaxFeePerGas : tx.GasPrice;
 
             return new object[]
             {
-                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, gasPrice, tx.Data ?? Array.Empty<byte>()
+                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, gasPrice, tx.Data.AsArray() ?? Array.Empty<byte>()
             };
         }
 

@@ -70,6 +70,7 @@ namespace Nethermind.Specs
         public bool ValidateReceipts { get; set; }
         public long Eip1559TransitionBlock { get; set; }
         public ulong WithdrawalTimestamp { get; set; }
+        public ulong Eip4844TransitionTimestamp { get; set; }
         public Address Eip1559FeeCollector { get; set; }
         public UInt256? Eip1559BaseFeeMinValue { get; set; }
         public bool IsEip1153Enabled { get; set; }
@@ -77,5 +78,6 @@ namespace Nethermind.Specs
         public bool IsEip3855Enabled { get; set; }
         public bool IsEip3860Enabled { get; set; }
         public bool IsEip4895Enabled { get; set; }
+        public bool IsEip4844Enabled { get; set; }
     }
 }

@@ -36,22 +36,37 @@ namespace Nethermind.Db.Rpc
             _recordDb.Dispose();
         }
 
+        public long GetSize() => 0;
+        public long GetCacheSize() => 0;
+        public long GetIndexSize() => 0;
+        public long GetMemtableSize() => 0;
+
         public string Name { get; } = "RpcDb";
 
-        public byte[] this[byte[] key]
+        public byte[] this[ReadOnlySpan<byte> key]
         {
-            get => GetThroughRpc(key);
-            set => throw new InvalidOperationException("RPC DB does not support writes");
+            get => Get(key);
+            set => Set(key, value);
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, GetThroughRpc(k))).ToArray();
-
-        public void Remove(byte[] key)
+        public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None)
         {
             throw new InvalidOperationException("RPC DB does not support writes");
         }
 
-        public bool KeyExists(byte[] key)
+        public byte[] Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return GetThroughRpc(key);
+        }
+
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, GetThroughRpc(k))).ToArray();
+
+        public void Remove(ReadOnlySpan<byte> key)
+        {
+            throw new InvalidOperationException("RPC DB does not support writes");
+        }
+
+        public bool KeyExists(ReadOnlySpan<byte> key)
         {
             return GetThroughRpc(key) is not null;
         }
@@ -69,7 +84,7 @@ namespace Nethermind.Db.Rpc
             throw new InvalidOperationException("RPC DB does not support writes");
         }
 
-        private byte[] GetThroughRpc(byte[] key)
+        private byte[] GetThroughRpc(ReadOnlySpan<byte> key)
         {
             string responseJson = _rpcClient.Post("debug_getFromDb", _dbName, key.ToHexString()).Result;
             JsonRpcSuccessResponse response = _jsonSerializer.Deserialize<JsonRpcSuccessResponse>(responseJson);

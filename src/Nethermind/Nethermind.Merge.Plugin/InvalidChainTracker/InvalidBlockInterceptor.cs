@@ -128,12 +128,12 @@ public class InvalidBlockInterceptor : IBlockValidator
             return true;
 
         // Body does not match header, but it does not mean the hash that the header point to is invalid.
-        if (!BlockValidator.ValidateTxRootMatchesTxs(block, out Keccak _))
+        if (!BlockValidator.ValidateTxRootMatchesTxs(block, out _))
             return true;
 
-        if (!BlockValidator.ValidateUnclesHashMatches(block, out Keccak _))
+        if (!BlockValidator.ValidateUnclesHashMatches(block, out _))
             return true;
 
-        return !BlockValidator.ValidateWithdrawalsHashMatches(block, out Keccak _);
+        return !BlockValidator.ValidateWithdrawalsHashMatches(block, out _);
     }
 }

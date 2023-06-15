@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using DotNetty.Buffers;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
@@ -16,7 +17,7 @@ using Nethermind.TxPool;
 namespace Nethermind.Init
 {
     /// <summary>
-    /// Applies changes to the NetworkConfig and the DbConfig so to adhere to the max memory limit hint. 
+    /// Applies changes to the NetworkConfig and the DbConfig so to adhere to the max memory limit hint.
     /// </summary>
     public class MemoryHintMan
     {
@@ -42,28 +43,29 @@ namespace Nethermind.Init
             checked
             {
                 if (_logger.IsInfo) _logger.Info("Setting up memory allowances");
-                if (_logger.IsInfo) _logger.Info($"  memory hint:        {TotalMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  Memory hint:        {TotalMemory / 1000 / 1000,5} MB");
                 _remainingMemory = initConfig.MemoryHint ?? 2.GB();
                 _remainingMemory -= GeneralMemory;
-                if (_logger.IsInfo) _logger.Info($"  general memory:     {GeneralMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  General memory:     {GeneralMemory / 1000 / 1000,5} MB");
                 AssignPeersMemory(networkConfig);
                 _remainingMemory -= PeersMemory;
-                if (_logger.IsInfo) _logger.Info($"  peers memory:       {PeersMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  Peers memory:       {PeersMemory / 1000 / 1000,5} MB");
                 AssignNettyMemory(networkConfig, cpuCount);
                 _remainingMemory -= NettyMemory;
-                if (_logger.IsInfo) _logger.Info($"  Netty memory:       {NettyMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  Netty memory:       {NettyMemory / 1000 / 1000,5} MB");
                 AssignTxPoolMemory(txPoolConfig);
                 _remainingMemory -= TxPoolMemory;
-                if (_logger.IsInfo) _logger.Info($"  mempool memory:     {TxPoolMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  Mempool memory:     {TxPoolMemory / 1000 / 1000,5} MB");
                 AssignFastBlocksMemory(syncConfig);
                 _remainingMemory -= FastBlocksMemory;
-                if (_logger.IsInfo) _logger.Info($"  fast blocks memory: {FastBlocksMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  Fast blocks memory: {FastBlocksMemory / 1000 / 1000,5} MB");
                 AssignTrieCacheMemory();
                 _remainingMemory -= TrieCacheMemory;
-                if (_logger.IsInfo) _logger.Info($"  trie memory:        {TrieCacheMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  Trie memory:        {TrieCacheMemory / 1000 / 1000,5} MB");
                 UpdateDbConfig(cpuCount, syncConfig, dbConfig, initConfig);
                 _remainingMemory -= DbMemory;
-                if (_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / 1000 / 1000,5} MB");
+
             }
         }
 
@@ -141,6 +143,8 @@ namespace Nethermind.Init
                 return;
             }
 
+            if (dbConfig.SkipMemoryHintSetting) return;
+
             DbMemory = _remainingMemory;
             long remaining = DbMemory;
             DbNeeds dbNeeds = GetHeaderNeeds(cpuCount, syncConfig);
@@ -188,9 +192,11 @@ namespace Nethermind.Init
             dbNeeds = GetStateNeeds(cpuCount, syncConfig);
             dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
-            dbConfig.WriteBufferNumber = dbGets.Buffers;
-            dbConfig.WriteBufferSize = (ulong)dbGets.SingleBufferMem;
-            dbConfig.BlockCacheSize = (ulong)dbGets.CacheMem;
+            dbConfig.StateDbWriteBufferNumber = dbGets.Buffers;
+            dbConfig.StateDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
+            dbConfig.StateDbBlockCacheSize = (ulong)dbGets.CacheMem;
+
+            dbConfig.SharedBlockCacheSize = (ulong)remaining;
         }
 
         private DbGets GiveItWhatYouCan(DbNeeds dbNeeds, long memoryHint, long remaining)
@@ -271,8 +277,8 @@ namespace Nethermind.Init
                 preferredBuffers,
                 1.MB(), // min buffer size
                 64.MB(), // max buffer size
-                4.MB(), // min block cache
-                128.GB(), // max block cache
+                0, // min block cache
+                0, // max block cache
                 1m); // db memory %
         }
 
@@ -343,16 +349,20 @@ namespace Nethermind.Init
                 preferredBuffers,
                 1.MB(), // min buffer size
                 4.MB(), // max buffer size
-                2.MB(), // min block cache
-                32.MB(), // max block cache
+                0, // min block cache
+                0, // max block cache
                 0); // db memory %
         }
 
         private void AssignNettyMemory(INetworkConfig networkConfig, uint cpuCount)
         {
-            NettyMemory = Math.Min(512.MB(), (long)(0.2 * _remainingMemory));
-            long estimate = NettyMemoryEstimator.Estimate(cpuCount, networkConfig.NettyArenaOrder);
             ValidateCpuCount(cpuCount);
+
+            NettyMemory = Math.Min(512.MB(), (long)(0.2 * _remainingMemory));
+
+            uint arenaCount = (uint)Math.Min(cpuCount * 2, networkConfig.MaxNettyArenaCount);
+
+            long estimate = NettyMemoryEstimator.Estimate(arenaCount, networkConfig.NettyArenaOrder);
 
             /* first of all we assume that the mainnet will be heavier than any other chain on the side */
             /* we will leave the arena order as in config if it is set to a non-default value */
@@ -364,10 +374,10 @@ namespace Nethermind.Init
             }
             else
             {
-                int targetNettyArenaOrder = INetworkConfig.DefaultNettyArenaOrder;
-                for (int i = networkConfig.NettyArenaOrder; i > 0; i--)
+                int targetNettyArenaOrder = INetworkConfig.MaxNettyArenaOrder;
+                for (int i = INetworkConfig.MaxNettyArenaOrder; i > 0; i--)
                 {
-                    estimate = NettyMemoryEstimator.Estimate(cpuCount, i);
+                    estimate = NettyMemoryEstimator.Estimate(arenaCount, i);
                     long maxAvailableFoNetty = NettyMemory;
                     if (estimate <= maxAvailableFoNetty)
                     {
@@ -380,6 +390,36 @@ namespace Nethermind.Init
             }
 
             NettyMemory = estimate;
+
+            // Need to set these early, or otherwise if the allocator is used ahead of these setting, these config
+            // will not take affect
+
+            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", networkConfig.NettyArenaOrder.ToString());
+
+            // Arena count is capped because if its too high, the memory budget per arena can get too low causing
+            // a very small chunk size. Any allocation of size higher than a chunk will essentially be unpooled triggering LOH.
+            // For example, on 16C32T machine, the default arena count is 64. Goerli with its default 128MB budget will
+            // cause the chunk size to be 2 MB. Mainnet with its 383MB budget will cause the chunk size to be 4 MB (lower
+            // power of two from 5.9 MB).
+            //
+            // When a thread first try to allocate from the pooled byte buffer, a threadlocal is created and pick
+            // one of the many arena, binding the thread to it. So arena count is like sharding.
+            //
+            // An arena consist of a list of chunks. Usually only one remain most of the time per arena.
+            // Multiple allocation will share a chunk as long as there is enough space. If no chunk with enough space
+            // is available, a new chunk is created, triggering a LOH allocation. There are also a thread level cache,
+            // so a chunk usually is not immediately freed once buffer allocated to it is released.
+            //
+            // Heap arena frees a chunk by just dereferencing, leaving GC to take it later.
+            // Direct arena holds a pinned `GCHandle` per chunk and calls `GCHandle.Free` to release the chunk.
+            // We never use any direct arena, but it does not take up memory because of that.
+            Environment.SetEnvironmentVariable("io.netty.allocator.numHeapArenas", arenaCount.ToString());
+            Environment.SetEnvironmentVariable("io.netty.allocator.numDirectArenas", arenaCount.ToString());
+
+            if (PooledByteBufferAllocator.Default.Metric.HeapArenas().Count != arenaCount)
+            {
+                _logger.Warn("unable to set netty pooled byte buffer config");
+            }
         }
 
         private static void ValidateCpuCount(uint cpuCount)

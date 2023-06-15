@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -17,12 +18,12 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using MemoryAllowance = Nethermind.TxPool.MemoryAllowance;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
@@ -43,7 +44,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         // this means that we know what the number, hash, and total diff of the head block is
         public bool IsInitialized { get; set; }
-        public override string ToString() => $"[Peer|{Name}|{HeadNumber,8}|{Node:s}]";
+        public override string ToString() => $"[Peer|{Name}|{HeadNumber,8}|{Node:a}|{Session?.Direction,4}]";
 
         protected Keccak _remoteHeadBlockHash;
         protected readonly ITimestamper _timestamper;
@@ -51,6 +52,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests;
+        protected LruKeyCache<Keccak> NotifiedTransactions { get; } = new(2 * MemoryAllowance.MemPoolSize, "notifiedTransactions");
 
         protected SyncPeerProtocolHandlerBase(ISession session,
             IMessageSerializationService serializer,
@@ -178,19 +180,48 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockMode mode);
 
+        private bool ShouldNotifyTransaction(Keccak? hash) => hash is not null && NotifiedTransactions.Set(hash);
+
         public void SendNewTransaction(Transaction tx)
         {
-            SendMessage(new[] { tx });
+            if (ShouldNotifyTransaction(tx.Hash))
+            {
+                SendNewTransactionCore(tx);
+            }
         }
 
-        public virtual void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx = false)
+        protected virtual void SendNewTransactionCore(Transaction tx)
+        {
+            if (!tx.SupportsBlobs) //additional protection from sending full tx with blob
+            {
+                SendMessage(new[] { tx });
+            }
+        }
+
+        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx = false)
+        {
+            SendNewTransactionsCore(TxsToSendAndMarkAsNotified(txs, sendFullTx), sendFullTx);
+        }
+
+        private IEnumerable<Transaction> TxsToSendAndMarkAsNotified(IEnumerable<Transaction> txs, bool sendFullTx)
+        {
+            foreach (Transaction tx in txs)
+            {
+                if (sendFullTx || ShouldNotifyTransaction(tx.Hash))
+                {
+                    yield return tx;
+                }
+            }
+        }
+
+        protected virtual void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
         {
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
             using ArrayPoolList<Transaction> txsToSend = new(1024);
 
             foreach (Transaction tx in txs)
             {
-                int txSize = tx.GetLength(_txDecoder);
+                int txSize = tx.GetLength();
 
                 if (txSize > packetSizeLeft && txsToSend.Count > 0)
                 {
@@ -199,7 +230,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     packetSizeLeft = TransactionsMessage.MaxPacketSize;
                 }
 
-                if (tx.Hash is not null)
+                if (tx.Hash is not null && !tx.SupportsBlobs) //additional protection from sending full tx with blob
                 {
                     txsToSend.Add(tx);
                     packetSizeLeft -= txSize;
@@ -260,10 +291,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
 
             Keccak startingHash = msg.StartBlockHash;
-            if (startingHash is null)
-            {
-                startingHash = SyncServer.FindHash(msg.StartBlockNumber);
-            }
+            startingHash ??= SyncServer.FindHash(msg.StartBlockNumber);
 
             BlockHeader[] headers =
                 startingHash is null
@@ -312,13 +340,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return new BlockBodiesMessage(blocks);
         }
 
-        protected virtual void Handle(BlockHeadersMessage message, long size)
+        protected void Handle(BlockHeadersMessage message, long size)
         {
             Metrics.Eth62BlockHeadersReceived++;
             _headersRequests.Handle(message.BlockHeaders, size);
         }
 
-        protected virtual void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
+        protected void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
         {
             Metrics.Eth62BlockBodiesReceived++;
             _bodiesRequests.Handle(blockBodiesMessage.Bodies, size);
@@ -424,8 +452,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         #region IPeerWithSatelliteProtocol
 
-        private IDictionary<string, object>? _protocolHandlers;
-        private IDictionary<string, object> ProtocolHandlers => _protocolHandlers ??= new Dictionary<string, object>();
+        private Dictionary<string, object>? _protocolHandlers;
+        private Dictionary<string, object> ProtocolHandlers => _protocolHandlers ??= new Dictionary<string, object>();
 
         public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
         {

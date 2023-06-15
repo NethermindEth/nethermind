@@ -51,31 +51,15 @@ namespace Nethermind.Serialization.Rlp
 
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
-            int numberOfReceipts = rlpStream.ReadNumberOfItemsRemaining(lastCheck);
+            int numberOfReceipts = rlpStream.PeekNumberOfItemsRemaining(lastCheck);
             LogEntry[] entries = new LogEntry[numberOfReceipts];
             for (int i = 0; i < numberOfReceipts; i++)
             {
-                entries[i] = Rlp.Decode<LogEntry>(rlpStream, RlpBehaviors.AllowExtraData);
+                entries[i] = Rlp.Decode<LogEntry>(rlpStream, RlpBehaviors.AllowExtraBytes);
             }
 
             txReceipt.Logs = entries;
             return txReceipt;
-        }
-
-        public Rlp Encode(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item.TxType == TxType.Legacy)
-            {
-                return Rlp.Encode(
-                    (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts
-                        ? Rlp.Encode(item.StatusCode)
-                        : Rlp.Encode(item.PostTransactionState),
-                    Rlp.Encode(item.GasUsedTotal),
-                    Rlp.Encode(item.Bloom),
-                    Rlp.Encode(item.Logs));
-            }
-
-            return new Rlp(EncodeNew(item, rlpBehaviors));
         }
 
         private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)

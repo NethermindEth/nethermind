@@ -17,6 +17,7 @@ namespace Nethermind.Specs.Test
         {
             _specProvider = specProvider;
             _overrideAction = overrideAction;
+            TimestampFork = _specProvider.TimestampFork;
         }
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -26,6 +27,8 @@ namespace Nethermind.Specs.Test
 
         public ForkActivation? MergeBlockNumber => _specProvider.MergeBlockNumber;
 
+        public ulong TimestampFork { get; set; }
+
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
 
         public IReleaseSpec GenesisSpec => _overrideAction(_specProvider.GenesisSpec);
@@ -34,6 +37,7 @@ namespace Nethermind.Specs.Test
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 
+        public ulong NetworkId => _specProvider.NetworkId;
         public ulong ChainId => _specProvider.ChainId;
 
         public ForkActivation[] TransitionActivations => _specProvider.TransitionActivations;

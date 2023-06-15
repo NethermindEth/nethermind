@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Crypto
 {
@@ -23,7 +24,7 @@ namespace Nethermind.Crypto
             Bytes = bytes;
         }
 
-        public static Keccak512 OfAnEmptyString = InternalCompute(new byte[] { });
+        public static Keccak512 OfAnEmptyString = InternalCompute(Array.Empty<byte>());
 
         /// <returns>
         ///     <string>0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</string>
@@ -62,9 +63,9 @@ namespace Nethermind.Crypto
             return InternalCompute(input);
         }
 
-        public static uint[] ComputeToUInts(byte[] input)
+        public static uint[] ComputeToUInts(ReadOnlySpan<byte> input)
         {
-            if (input is null || input.Length == 0)
+            if (input.Length == 0)
             {
                 throw new NotSupportedException();
             }
@@ -94,7 +95,7 @@ namespace Nethermind.Crypto
 
         private static Keccak512 InternalCompute(byte[] input)
         {
-            return new Keccak512(KeccakHash.ComputeHash(input, Size).ToArray());
+            return new Keccak512(KeccakHash.ComputeHashBytes(input, Size));
         }
 
         public static Keccak512 Compute(string? input)

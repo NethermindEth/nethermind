@@ -18,6 +18,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -84,7 +85,7 @@ namespace Nethermind.Synchronization.FastSync
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
-            _data = new DetailedProgress(_blockTree.ChainId, progress);
+            _data = new DetailedProgress(_blockTree.NetworkId, progress);
             _pendingItems = new PendingSyncItems();
             _branchProgress = new BranchProgress(0, _logger);
         }
@@ -100,10 +101,9 @@ namespace Nethermind.Synchronization.FastSync
 
                 if (requestItems.Count > 0)
                 {
-                    StateSyncItem[] requestedNodes = requestItems.ToArray();
-                    StateSyncBatch result = new(_rootNode, requestItems[0].NodeDataType, requestedNodes);
+                    StateSyncBatch result = new(_rootNode, requestItems[0].NodeDataType, requestItems);
 
-                    Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Length);
+                    Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Count);
                     Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + secondsInCurrentSync);
 
                     if (_logger.IsTrace) _logger.Trace($"After preparing a request of {requestItems.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
@@ -129,7 +129,7 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch)
+        public SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch, PeerInfo? peerInfo = null)
         {
             if (batch == EmptyBatch)
             {
@@ -150,7 +150,7 @@ namespace Nethermind.Synchronization.FastSync
                         return SyncResponseHandlingResult.OK;
                     }
 
-                    int requestLength = batch.RequestedNodes?.Length ?? 0;
+                    int requestLength = batch.RequestedNodes?.Count ?? 0;
                     int responseLength = batch.Responses?.Length ?? 0;
 
                     void AddAgainAllItems()
@@ -178,12 +178,10 @@ namespace Nethermind.Synchronization.FastSync
                         AddAgainAllItems();
                         if (_logger.IsWarn) _logger.Warn("Batch response had invalid format");
                         Interlocked.Increment(ref _data.InvalidFormatCount);
-                        return isMissingRequestData
-                            ? SyncResponseHandlingResult.InternalError
-                            : SyncResponseHandlingResult.NotAssigned;
+                        return SyncResponseHandlingResult.InternalError;
                     }
 
-                    if (batch.Responses is null)
+                    if (peerInfo == null)
                     {
                         AddAgainAllItems();
                         if (_logger.IsTrace) _logger.Trace("Batch was not assigned to any peer.");
@@ -191,11 +189,19 @@ namespace Nethermind.Synchronization.FastSync
                         return SyncResponseHandlingResult.NotAssigned;
                     }
 
+                    if (batch.Responses is null)
+                    {
+                        AddAgainAllItems();
+                        if (_logger.IsTrace) _logger.Trace($"Peer {peerInfo} failed to satisfy request.");
+                        Interlocked.Increment(ref _data.NotAssignedCount);
+                        return SyncResponseHandlingResult.LesserQuality;
+                    }
+
                     if (_logger.IsTrace)
                         _logger.Trace($"Received node data - {responseLength} items in response to {requestLength}");
                     int nonEmptyResponses = 0;
                     int invalidNodes = 0;
-                    for (int i = 0; i < batch.RequestedNodes!.Length; i++)
+                    for (int i = 0; i < batch.RequestedNodes!.Count; i++)
                     {
                         StateSyncItem currentStateSyncItem = batch.RequestedNodes[i];
 
@@ -261,7 +267,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     if (_logger.IsTrace)
                         _logger.Trace(
-                            $"After handling response (non-empty responses {nonEmptyResponses}) of {batch.RequestedNodes.Length} from ({_pendingItems.Description}) nodes");
+                            $"After handling response (non-empty responses {nonEmptyResponses}) of {batch.RequestedNodes.Count} from ({_pendingItems.Description}) nodes");
 
                     /* magic formula is ratio of our desired batch size - 1024 to Geth max batch size 384 times some missing nodes ratio */
                     bool isEmptish = (decimal)nonEmptyResponses / Math.Max(requestLength, 1) < 384m / 1024m * 0.75m;
@@ -285,7 +291,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         if (_logger.IsDebug)
                             _logger.Debug(
-                                $"Peer sent no data in response to a request of length {batch.RequestedNodes.Length}");
+                                $"Peer sent no data in response to a request of length {batch.RequestedNodes.Count}");
                         return SyncResponseHandlingResult.NoProgress;
                     }
 
@@ -454,7 +460,7 @@ namespace Nethermind.Synchronization.FastSync
                     foreach ((StateSyncBatch pendingRequest, _) in _pendingRequests)
                     {
                         // re-add the pending request
-                        for (int i = 0; i < pendingRequest.RequestedNodes.Length; i++)
+                        for (int i = 0; i < pendingRequest.RequestedNodes.Count; i++)
                         {
                             AddNodeToPending(pendingRequest.RequestedNodes[i], null, "pending request", true);
                         }
@@ -775,7 +781,7 @@ namespace Nethermind.Synchronization.FastSync
                     HashSet<Keccak?> alreadyProcessedChildHashes = new();
 
                     Span<byte> branchChildPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + 1];
-                    currentStateSyncItem.PathNibbles.CopyTo(branchChildPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
+                    currentStateSyncItem.PathNibbles.CopyTo(branchChildPath[..currentStateSyncItem.PathNibbles.Length]);
 
                     for (int childIndex = 15; childIndex >= 0; childIndex--)
                     {
@@ -831,9 +837,9 @@ namespace Nethermind.Synchronization.FastSync
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 1);
 
                         // Add nibbles to StateSyncItem.PathNibbles
-                        Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Path!.Length];
-                        currentStateSyncItem.PathNibbles.CopyTo(childPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
-                        trieNode.Path!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
+                        Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Key!.Length];
+                        currentStateSyncItem.PathNibbles.CopyTo(childPath[..currentStateSyncItem.PathNibbles.Length]);
+                        trieNode.Key!.CopyTo(childPath[currentStateSyncItem.PathNibbles.Length..]);
 
                         AddNodeResult addResult = AddNodeToPending(
                             new StateSyncItem(
@@ -841,7 +847,7 @@ namespace Nethermind.Synchronization.FastSync
                                 currentStateSyncItem.AccountPathNibbles,
                                 childPath.ToArray(),
                                 nodeDataType,
-                                currentStateSyncItem.Level + trieNode.Path!.Length,
+                                currentStateSyncItem.Level + trieNode.Key!.Length,
                                 CalculateRightness(trieNode.NodeType, currentStateSyncItem, 0))
                             { ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex },
                             dependentItem,
@@ -894,9 +900,9 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             // it's a leaf with a storage, so we need to copy the current path (full 64 nibbles) to StateSyncItem.AccountPathNibbles
                             // and StateSyncItem.PathNibbles will start from null (storage root)
-                            Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Path!.Length];
-                            currentStateSyncItem.PathNibbles.CopyTo(childPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
-                            trieNode.Path!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
+                            Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Key!.Length];
+                            currentStateSyncItem.PathNibbles.CopyTo(childPath[..currentStateSyncItem.PathNibbles.Length]);
+                            trieNode.Key!.CopyTo(childPath[currentStateSyncItem.PathNibbles.Length..]);
 
                             AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, childPath.ToArray(), null, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult != AddNodeResult.AlreadySaved)

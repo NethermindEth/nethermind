@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
-    public class AckMessageSerializer : IMessageSerializer<AckMessage>
+    public class AckMessageSerializer : IZeroMessageSerializer<AckMessage>
     {
         public const int EphemeralPublicKeyLength = 64;
         public const int EphemeralPublicKeyOffset = 0;
@@ -17,26 +19,28 @@ namespace Nethermind.Network.Rlpx.Handshake
         public const int IsTokenUsedOffset = NonceOffset + NonceLength;
         public const int TotalLength = IsTokenUsedOffset + IsTokenUsedLength;
 
-        public byte[] Serialize(AckMessage msg)
+        public void Serialize(IByteBuffer byteBuffer, AckMessage msg)
         {
+            byteBuffer.EnsureWritable(TotalLength);
+            // TODO: find a way to now allocate this here
             byte[] data = new byte[TotalLength];
             Buffer.BlockCopy(msg.EphemeralPublicKey.Bytes, 0, data, EphemeralPublicKeyOffset, EphemeralPublicKeyLength);
             Buffer.BlockCopy(msg.Nonce, 0, data, NonceOffset, NonceLength);
             data[IsTokenUsedOffset] = msg.IsTokenUsed ? (byte)0x01 : (byte)0x00;
-            return data;
+            byteBuffer.WriteBytes(data);
         }
 
-        public AckMessage Deserialize(byte[] msgBytes)
+        public AckMessage Deserialize(IByteBuffer msgBytes)
         {
-            if (msgBytes.Length != TotalLength)
+            if (msgBytes.ReadableBytes != TotalLength)
             {
-                throw new NetworkingException($"Incorrect incoming {nameof(AckMessage)} length. Expected {TotalLength} but was {msgBytes.Length}", NetworkExceptionType.Validation);
+                throw new NetworkingException($"Incorrect incoming {nameof(AckMessage)} length. Expected {TotalLength} but was {msgBytes.ReadableBytes}", NetworkExceptionType.Validation);
             }
 
             AckMessage authMessage = new();
-            authMessage.EphemeralPublicKey = new PublicKey(msgBytes.AsSpan().Slice(EphemeralPublicKeyOffset, EphemeralPublicKeyLength));
-            authMessage.Nonce = msgBytes.Slice(NonceOffset, NonceLength);
-            authMessage.IsTokenUsed = msgBytes[IsTokenUsedOffset] == 0x01;
+            authMessage.EphemeralPublicKey = new PublicKey(msgBytes.Slice(EphemeralPublicKeyOffset, EphemeralPublicKeyLength).ReadAllBytesAsSpan());
+            authMessage.Nonce = msgBytes.Slice(NonceOffset, NonceLength).ReadAllBytesAsArray();
+            authMessage.IsTokenUsed = msgBytes.GetByte(IsTokenUsedOffset) == 0x01;
             return authMessage;
         }
     }

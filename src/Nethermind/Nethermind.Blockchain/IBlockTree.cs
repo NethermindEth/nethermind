@@ -16,7 +16,12 @@ namespace Nethermind.Blockchain
     public interface IBlockTree : IBlockFinder
     {
         /// <summary>
-        /// Chain ID that identifies the chain among the public and private chains (different IDs for mainnet, ETH classic, etc.)
+        /// Network ID that identifies the chain among the public and private chains (different IDs for mainnet, ETH classic, etc.)
+        /// </summary>
+        ulong NetworkId { get; }
+
+        /// <summary>
+        /// Additional identifier of the chain to mitigate risks described in 155
         /// </summary>
         ulong ChainId { get; }
 
@@ -74,8 +79,6 @@ namespace Nethermind.Blockchain
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
         AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None);
-
-        void Insert(IEnumerable<Block> blocks);
 
         void UpdateHeadBlock(Keccak blockHash);
 
@@ -140,8 +143,6 @@ namespace Nethermind.Blockchain
 
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
 
-        UInt256? BackFillTotalDifficulty(long startNumber, long endNumber, long batchSize, UInt256? startingTotalDifficulty = null);
-
         (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Keccak blockHash);
 
         ChainLevelInfo? FindLevel(long number);
@@ -162,13 +163,29 @@ namespace Nethermind.Blockchain
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
+
+        /// <summary>
+        /// A block is marked as canon
+        /// </summary>
         event EventHandler<BlockReplacementEventArgs> BlockAddedToMain;
+
+        /// <summary>
+        /// A block is now set as head
+        /// </summary>
         event EventHandler<BlockEventArgs> NewHeadBlock;
+
+        /// <summary>
+        /// A branch is now set as canon. This is different from `BlockAddedToMain` as it is fired only once for the
+        /// the whole branch.
+        /// </summary>
+        event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain;
 
         int DeleteChainSlice(in long startNumber, long? endNumber = null);
 
         bool IsBetterThanHead(BlockHeader? header);
 
         void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
+
+        void RecalculateTreeLevels();
     }
 }

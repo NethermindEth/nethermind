@@ -17,11 +17,6 @@ namespace Nethermind.Evm.Test
         private readonly bool _simdDisabled;
         protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
-        private void AssertEip1014(Address address, byte[] code)
-        {
-            AssertCodeHash(address, Keccak.Compute(code));
-        }
-
         public CmpTests(bool simdDisabled)
         {
             _simdDisabled = simdDisabled;
@@ -97,11 +92,6 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput receipt = Execute(code);
             AssertCmp(receipt, result);
-        }
-
-        private void AssertCmp(TestAllTracerWithOutput receipt, string result)
-        {
-            AssertCmp(receipt, Bytes.FromHexString(result));
         }
 
         private void AssertCmp(TestAllTracerWithOutput receipt, byte[] result)

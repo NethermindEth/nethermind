@@ -31,12 +31,13 @@ using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.AuRa.Test.Validators
 {
     public class ContractBasedValidatorTests
     {
-        private IStateProvider _stateProvider;
+        private IWorldState _stateProvider;
         private IAbiEncoder _abiEncoder;
         private ILogManager _logManager;
         private AuRaParameters.Validator _validator;
@@ -60,7 +61,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             _validatorStore = new ValidatorStore(new MemDb());
             _validSealerStrategy = new ValidSealerStrategy();
-            _stateProvider = Substitute.For<IStateProvider>();
+            _stateProvider = Substitute.For<IWorldState>();
             _abiEncoder = Substitute.For<IAbiEncoder>();
             _logManager = LimboLogs.Instance;
             _blockTree = Substitute.For<IBlockTree>();
@@ -333,7 +334,7 @@ namespace Nethermind.AuRa.Test.Validators
                                         InitializeBlock = 3,
                                         FinalizeBlock = 3
                                     },
-                                    new() 
+                                    new()
                                         // this will not get finalized because of reorganisation
                                     {
                                         Addresses = GenerateValidators(2),
@@ -346,7 +347,7 @@ namespace Nethermind.AuRa.Test.Validators
                         {
                             7, new ConsecutiveInitiateChangeTestParameters.ChainInfo()
                             {
-                                BlockNumber = 5, //reorganisation to block 5 in order to invalidate last initiate change 
+                                BlockNumber = 5, //reorganisation to block 5 in order to invalidate last initiate change
                                 ExpectedFinalizationCount = 0,
                                 NumberOfSteps = 10,
                             }
@@ -447,7 +448,7 @@ namespace Nethermind.AuRa.Test.Validators
                         {
                             7, new ConsecutiveInitiateChangeTestParameters.ChainInfo()
                             {
-                                BlockNumber = 6, //reorganisation to block 6 in order to keep last initiate change 
+                                BlockNumber = 6, //reorganisation to block 6 in order to keep last initiate change
                                 ExpectedFinalizationCount = 2,
                                 NumberOfSteps = 10,
                                 Validators = new List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
@@ -551,8 +552,8 @@ namespace Nethermind.AuRa.Test.Validators
 
             Address validators = TestItem.Addresses[initialValidatorsIndex * 10];
             InMemoryReceiptStorage inMemoryReceiptStorage = new();
-            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().WithTransactions(inMemoryReceiptStorage,
-                    RopstenSpecProvider.Instance, delegate (Block block, Transaction transaction)
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(RopstenSpecProvider.Instance)
+                .WithTransactions(inMemoryReceiptStorage, delegate (Block block, Transaction transaction)
                     {
                         byte i = 0;
                         return new[]
@@ -563,7 +564,7 @@ namespace Nethermind.AuRa.Test.Validators
                                 .TestObject
                         };
                     })
-                .OfChainLength(9, 0, 0, validators);
+                .OfChainLength(9, 0, 0, false, validators);
 
             BlockTree blockTree = blockTreeBuilder.TestObject;
             SetupInitialValidators(blockTree.Head?.Header, blockTree.FindHeader(blockTree.Head?.ParentHash, BlockTreeLookupOptions.None), validators);
@@ -651,7 +652,7 @@ namespace Nethermind.AuRa.Test.Validators
 
         private bool CheckTransaction(Transaction t, (Address Sender, byte[] TransactionData) transactionInfo)
         {
-            return t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data == transactionInfo.TransactionData;
+            return t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data.AsArray() == transactionInfo.TransactionData;
         }
 
         public class ConsecutiveInitiateChangeTestParameters

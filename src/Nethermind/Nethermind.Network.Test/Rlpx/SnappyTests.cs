@@ -46,7 +46,7 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 var result = UnpooledByteBufferAllocator.Default.Buffer();
                 Encode(null, input.ToUnpooledByteBuffer(), result);
-                return result.ReadAllBytes();
+                return result.ReadAllBytesAsArray();
             }
         }
 
@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
             byte[] compressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _goCompressedTestFileName)));
             byte[] uncompressedResult = decoder.TestDecode(compressed);
-            Assert.AreEqual(expectedUncompressed, uncompressedResult);
+            Assert.That(uncompressedResult, Is.EqualTo(expectedUncompressed));
         }
 
         [Test]
@@ -67,7 +67,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
             byte[] compressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
             byte[] uncompressedResult = decoder.TestDecode(compressed);
-            Assert.AreEqual(expectedUncompressed, uncompressedResult);
+            Assert.That(uncompressedResult, Is.EqualTo(expectedUncompressed));
         }
 
         [Test]
@@ -113,7 +113,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
             byte[] compressed = encoder.TestEncode(Bytes.Concat(1, expectedUncompressed));
             byte[] uncompressedResult = decoder.TestDecode(compressed.Skip(1).ToArray());
-            Assert.AreEqual(expectedUncompressed, uncompressedResult);
+            Assert.That(uncompressedResult, Is.EqualTo(expectedUncompressed));
         }
     }
 }

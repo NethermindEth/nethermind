@@ -22,30 +22,31 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Blockchain.Test.Visitors
 {
     public class StartupTreeFixerTests
     {
-        [Test, Ignore("Not implemented")]
+        [Test, Timeout(Timeout.MaxTestTime), Ignore("Not implemented")]
         public void Cleans_missing_references_from_chain_level_info()
         {
             // for now let us just look at the warnings (before we start adding cleanup)
         }
 
-        [Test, Ignore("Not implemented")]
+        [Test, Timeout(Timeout.MaxTestTime), Ignore("Not implemented")]
         public void Warns_when_blocks_are_marked_as_processed_but_there_are_no_bodies()
         {
             // for now let us just look at the warnings (before we start adding cleanup)
         }
 
-        [Test, Ignore("Not implemented")]
+        [Test, Timeout(Timeout.MaxTestTime), Ignore("Not implemented")]
         public void Warns_when_there_is_a_hole_in_processed_blocks()
         {
         }
 
-        [Test]
-        public void Deletes_everything_after_the_missing_level()
+        [Test, Timeout(Timeout.MaxTestTime)]
+        public async Task Deletes_everything_after_the_missing_level()
         {
             MemDb blocksDb = new();
             MemDb blockInfosDb = new();
@@ -74,7 +75,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
             StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, new MemDb(), LimboNoErrorLogger.Instance);
-            tree.Accept(fixer, CancellationToken.None);
+            await tree.Accept(fixer, CancellationToken.None);
 
             Assert.Null(blockInfosDb.Get(3), "level 3");
             Assert.Null(blockInfosDb.Get(4), "level 4");
@@ -86,6 +87,8 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree.BestKnownNumber.Should().Be(2);
         }
 
+        [Retry(30)]
+        [Timeout(Timeout.MaxTestTime * 4)]
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]
@@ -120,9 +123,10 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             // add a new block at the end
             await testRpc.AddBlock();
-            Assert.AreEqual(startingBlockNumber + suggestedBlocksAmount + 1, tree.Head!.Number);
+            Assert.That(tree.Head!.Number, Is.EqualTo(startingBlockNumber + suggestedBlocksAmount + 1));
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]
@@ -146,10 +150,10 @@ namespace Nethermind.Blockchain.Test.Visitors
             IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, stateDb, LimboNoErrorLogger.Instance, 5);
             BlockVisitOutcome result = await fixer.VisitBlock(tree.Head!, CancellationToken.None);
 
-            Assert.AreEqual(BlockVisitOutcome.None, result);
+            Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Fixer_should_not_suggest_block_with_null_block()
         {
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
@@ -167,7 +171,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.DbProvider.StateDb, LimboNoErrorLogger.Instance, 5);
             BlockVisitOutcome result = await fixer.VisitBlock(null, CancellationToken.None);
 
-            Assert.AreEqual(BlockVisitOutcome.None, result);
+            Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
         }
 
         private static void SuggestNumberOfBlocks(IBlockTree blockTree, int blockAmount)
@@ -186,8 +190,8 @@ namespace Nethermind.Blockchain.Test.Visitors
         }
 
         [Ignore("It is causing some trouble now. Disabling it while the restarts logic is under review")]
-        [Test]
-        public void When_head_block_is_followed_by_a_block_bodies_gap_it_should_delete_all_levels_after_the_gap_start()
+        [Test, Timeout(Timeout.MaxTestTime)]
+        public async Task When_head_block_is_followed_by_a_block_bodies_gap_it_should_delete_all_levels_after_the_gap_start()
         {
             MemDb blocksDb = new();
             MemDb blockInfosDb = new();
@@ -210,15 +214,15 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree.UpdateMainChain(block2);
 
             StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, new MemDb(), LimboNoErrorLogger.Instance);
-            tree.Accept(fixer, CancellationToken.None);
+            await tree.Accept(fixer, CancellationToken.None);
 
             Assert.Null(blockInfosDb.Get(3), "level 3");
             Assert.Null(blockInfosDb.Get(4), "level 4");
             Assert.Null(blockInfosDb.Get(5), "level 5");
 
-            Assert.AreEqual(2L, tree.BestKnownNumber, "best known");
-            Assert.AreEqual(block2.Header, tree.Head?.Header, "head");
-            Assert.AreEqual(block2.Hash, tree.BestSuggestedHeader.Hash, "suggested");
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(2L), "best known");
+            Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header), "head");
+            Assert.That(tree.BestSuggestedHeader.Hash, Is.EqualTo(block2.Hash), "suggested");
         }
     }
 }

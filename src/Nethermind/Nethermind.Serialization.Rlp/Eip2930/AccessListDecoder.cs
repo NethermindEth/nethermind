@@ -26,14 +26,14 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 return null;
             }
 
-            int length = rlpStream.PeekNextRlpLength();
+            int length = rlpStream.ReadSequenceLength();
             int check = rlpStream.Position + length;
-            rlpStream.SkipLength();
 
             AccessListBuilder accessListBuilder = new();
             while (rlpStream.Position < check)
             {
-                rlpStream.SkipLength();
+                int accessListItemLength = rlpStream.ReadSequenceLength();
+                int accessListItemCheck = rlpStream.Position + accessListItemLength;
                 Address address = rlpStream.DecodeAddress();
                 if (address is null)
                 {
@@ -44,17 +44,30 @@ namespace Nethermind.Serialization.Rlp.Eip2930
 
                 if (rlpStream.Position < check)
                 {
-                    int storageCheck = rlpStream.Position + rlpStream.PeekNextRlpLength();
-                    rlpStream.SkipLength();
-                    while (rlpStream.Position < storageCheck)
+                    int storagesLength = rlpStream.ReadSequenceLength();
+                    int storagesCheck = rlpStream.Position + storagesLength;
+                    while (rlpStream.Position < storagesCheck)
                     {
+                        int storageItemCheck = rlpStream.Position + 33;
                         UInt256 index = rlpStream.DecodeUInt256();
                         accessListBuilder.AddStorage(index);
+                        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                        {
+                            rlpStream.Check(storageItemCheck);
+                        }
                     }
+                    if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                    {
+                        rlpStream.Check(storagesCheck);
+                    }
+                }
+                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                {
+                    rlpStream.Check(accessListItemCheck);
                 }
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 rlpStream.Check(check);
             }
@@ -78,14 +91,14 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 return null;
             }
 
-            int length = decoderContext.PeekNextRlpLength();
+            int length = decoderContext.ReadSequenceLength();
             int check = decoderContext.Position + length;
-            decoderContext.SkipLength();
 
             AccessListBuilder accessListBuilder = new();
             while (decoderContext.Position < check)
             {
-                decoderContext.SkipLength();
+                int accessListItemLength = decoderContext.ReadSequenceLength();
+                int accessListItemCheck = decoderContext.Position + accessListItemLength;
                 Address address = decoderContext.DecodeAddress();
                 if (address is null)
                 {
@@ -96,17 +109,30 @@ namespace Nethermind.Serialization.Rlp.Eip2930
 
                 if (decoderContext.Position < check)
                 {
-                    int storageCheck = decoderContext.Position + decoderContext.PeekNextRlpLength();
-                    decoderContext.SkipLength();
-                    while (decoderContext.Position < storageCheck)
+                    int storagesLength = decoderContext.ReadSequenceLength();
+                    int storagesCheck = decoderContext.Position + storagesLength;
+                    while (decoderContext.Position < storagesCheck)
                     {
+                        int storageItemCheck = decoderContext.Position + 33;
                         UInt256 index = decoderContext.DecodeUInt256();
                         accessListBuilder.AddStorage(index);
+                        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                        {
+                            decoderContext.Check(storageItemCheck);
+                        }
                     }
+                    if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                    {
+                        decoderContext.Check(storagesCheck);
+                    }
+                }
+                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                {
+                    decoderContext.Check(accessListItemCheck);
                 }
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 decoderContext.Check(check);
             }

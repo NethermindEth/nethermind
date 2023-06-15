@@ -18,8 +18,7 @@ public class MergeHeaderValidatorTests
 {
     private class Context
     {
-        private IPoSSwitcher? _poSSwitcher;
-        public IPoSSwitcher PoSSwitcher => _poSSwitcher ?? Substitute.For<IPoSSwitcher>();
+        public IPoSSwitcher PoSSwitcher => Substitute.For<IPoSSwitcher>();
 
         private IHeaderValidator? _preMergeHeaderValidator;
         public IHeaderValidator PreMergeHeaderValidator => _preMergeHeaderValidator ?? Substitute.For<IHeaderValidator>();

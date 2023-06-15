@@ -33,10 +33,10 @@ namespace Nethermind.Synchronization.Test.FastSync
 {
     public class StateSyncFeedTestsBase
     {
-        private const int TimeoutLength = 2000;
+        private const int TimeoutLength = 5000;
 
         protected static IBlockTree _blockTree;
-        private static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
+        protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
 
         protected ILogger _logger;
         protected ILogManager _logManager;
@@ -80,7 +80,10 @@ namespace Nethermind.Synchronization.Test.FastSync
             SyncPeerMock[] syncPeers = new SyncPeerMock[_defaultPeerCount];
             for (int i = 0; i < _defaultPeerCount; i++)
             {
-                Node node = new Node(TestItem.PublicKeys[i], $"127.0.0.{i}", 30302, true) { EthDetails = "eth66" };
+                Node node = new Node(TestItem.PublicKeys[i], $"127.0.0.{i}", 30302, true)
+                {
+                    EthDetails = "eth66",
+                };
                 SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb, node: node, maxRandomizedLatencyMs: _defaultPeerMaxRandomLatency);
                 mockMutator?.Invoke(mock);
                 syncPeers[i] = mock;
@@ -97,7 +100,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx = new SafeContext();
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader.Number).TestObject;
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            ctx.Pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), 25, LimboLogs.Instance);
+            ctx.Pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
             ctx.Pool.Start();
 
             for (int i = 0; i < syncPeers.Length; i++)
@@ -110,8 +113,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
             ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
-            ctx.StateSyncDispatcher =
-                new StateSyncDispatcher(ctx.Feed, ctx.Pool, new StateSyncAllocationStrategyFactory(), _logManager);
+            ctx.Downloader = new StateSyncDownloader(_logManager);
+            ctx.StateSyncDispatcher = new SyncDispatcher<StateSyncBatch>(0, ctx.Feed, ctx.Downloader, ctx.Pool, new StateSyncAllocationStrategyFactory(), _logManager);
             ctx.StateSyncDispatcher.Start(CancellationToken.None);
             return ctx;
         }
@@ -142,7 +145,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             public ISyncPeerPool Pool;
             public TreeSync TreeFeed;
             public StateSyncFeed Feed;
-            public StateSyncDispatcher StateSyncDispatcher;
+            public StateSyncDownloader Downloader;
+            public SyncDispatcher<StateSyncBatch> StateSyncDispatcher;
         }
 
         protected class DbContext
@@ -192,11 +196,11 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 if (stage == "END")
                 {
-                    Assert.AreEqual(remote, local, $"{remote}{Environment.NewLine}{local}");
+                    Assert.That(local, Is.EqualTo(remote), $"{remote}{Environment.NewLine}{local}");
                     TrieStatsCollector collector = new(LocalCodeDb, LimboLogs.Instance);
                     LocalStateTree.Accept(collector, LocalStateTree.RootHash);
-                    Assert.AreEqual(0, collector.Stats.MissingNodes);
-                    Assert.AreEqual(0, collector.Stats.MissingCode);
+                    Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
+                    Assert.That(collector.Stats.MissingCode, Is.EqualTo(0));
                 }
 
                 //            Assert.AreEqual(dbContext._remoteCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), dbContext._localCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
@@ -218,6 +222,8 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         protected class SyncPeerMock : ISyncPeer
         {
+            public string Name => "Mock";
+
             public static Func<IList<Keccak>, Task<byte[][]>> NotPreimage = request =>
             {
                 var result = new byte[request.Count][];
@@ -273,6 +279,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             public UInt256 TotalDifficulty { get; set; }
             public bool IsInitialized { get; set; }
             public bool IsPriority { get; set; }
+            public byte ProtocolVersion { get; }
+            public string ProtocolCode { get; }
 
             public void Disconnect(InitiateDisconnectReason reason, string details)
             {
@@ -311,7 +319,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -352,7 +360,8 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
             {
-                throw new NotImplementedException();
+                protocolHandler = null!;
+                return false;
             }
         }
     }

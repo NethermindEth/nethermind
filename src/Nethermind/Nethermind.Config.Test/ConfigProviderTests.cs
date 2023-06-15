@@ -20,7 +20,7 @@ namespace Nethermind.Config.Test
         {
             ConfigProvider configProvider = new();
             INetworkConfig config = configProvider.GetConfig<INetworkConfig>();
-            Assert.AreEqual(30303, config.DiscoveryPort);
+            Assert.That(config.DiscoveryPort, Is.EqualTo(30303));
         }
 
         public int DefaultTestProperty { get; set; } = 5;
@@ -79,7 +79,7 @@ namespace Nethermind.Config.Test
                             ? bitArray.Get(1)
                             : false;
 
-                Assert.AreEqual(expectedResult, config.Enabled, bitArray.ToBitString());
+                Assert.That(config.Enabled, Is.EqualTo(expectedResult), bitArray.ToBitString());
             }
         }
     }

@@ -28,10 +28,14 @@ namespace Nethermind.Network.Config
         public int CandidatePeerCountCleanupThreshold { get; set; } = 11000;
         public bool DiagTracerEnabled { get; set; } = false;
         public int NettyArenaOrder { get; set; } = INetworkConfig.DefaultNettyArenaOrder;
+        public uint MaxNettyArenaCount { get; set; } = INetworkConfig.DefaultMaxNettyArenaCount;
         public string Bootnodes { get; set; } = string.Empty;
         public bool EnableUPnP { get; set; } = false;
         public int DiscoveryPort { get; set; } = 30303;
         public int P2PPort { get; set; } = 30303;
         public long SimulateSendLatencyMs { get; set; } = 0;
+        public int NumConcurrentOutgoingConnects { get; set; } = 0;
+        public int ConnectTimeoutMs { get; set; } = 2000;
+        public int ProcessingThreadCount { get; set; } = 1;
     }
 }

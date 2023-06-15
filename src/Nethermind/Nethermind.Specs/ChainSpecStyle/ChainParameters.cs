@@ -9,11 +9,11 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     public class ChainParameters
     {
-        public long MaxCodeSize { get; set; }
-        public long MaxCodeSizeTransition { get; set; }
+        public long? MaxCodeSize { get; set; }
+        public long? MaxCodeSizeTransition { get; set; }
+        public ulong? MaxCodeSizeTransitionTimestamp { get; set; }
         public long GasLimitBoundDivisor { get; set; }
         public Address Registrar { get; set; }
-        public UInt256 AccountStartNonce { get; set; }
         public long MaximumExtraDataSize { get; set; }
         public long MinGasLimit { get; set; }
         public Keccak ForkCanonHash { get; set; }
@@ -44,6 +44,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? Eip1559Transition { get; set; }
         public long? Eip2315Transition { get; set; }
         public long? Eip2537Transition { get; set; }
+        public ulong? Eip2537TransitionTimestamp { get; set; }
         public long? Eip2565Transition { get; set; }
         public long? Eip2929Transition { get; set; }
         public long? Eip2930Transition { get; set; }
@@ -120,5 +121,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong? Eip3860TransitionTimestamp { get; set; }
 
         public ulong? Eip4895TransitionTimestamp { get; set; }
+
+        public ulong? Eip4844TransitionTimestamp { get; set; }
     }
 }
