@@ -7,6 +7,8 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Org.BouncyCastle.Utilities.Encoders;
+using Nethermind.Int256;
+using Nethermind.Evm;
 
 // send-blobs <url-without-auth> <transactions-count-1-blob-each> <secret-key> <receiver-address>
 // send-blobs http://localhost:8545 5 0x0000000000000000000000000000000000000000000000000000000000000000 0x000000000000000000000000000000000000f1c1

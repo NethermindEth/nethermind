@@ -5,7 +5,7 @@
 ```sh
 apt install libsnappy-dev dotnet-sdk-7.0 -y
 cd ./nethermind/src/Nethermind/Nethermind.SendBlobs
-dotnet publish -r win-x64 -o .
+dotnet publish --sc -o .
 ```
 
 ## Usage
