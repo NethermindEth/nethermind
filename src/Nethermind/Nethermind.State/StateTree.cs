@@ -35,42 +35,33 @@ namespace Nethermind.State
         [DebuggerStepThrough]
         public Account? Get(Address address, Keccak? rootHash = null)
         {
-            byte[]? bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
-            if (bytes is null)
-            {
-                return null;
-            }
-
-            return _decoder.Decode(bytes.AsRlpStream());
+            ValueKeccak keccak = ValueKeccak.Compute(address.Bytes);
+            return Get(keccak, rootHash);
         }
 
         [DebuggerStepThrough]
         internal Account? Get(Keccak keccak) // for testing
-        {
-            byte[]? bytes = Get(keccak.Bytes);
-            if (bytes is null)
-            {
-                return null;
-            }
+            => Get(keccak.ValueKeccak);
 
-            return _decoder.Decode(bytes.AsRlpStream());
+        [DebuggerStepThrough]
+        private Account? Get(in ValueKeccak keccak, Keccak? rootHash = null)
+        {
+            byte[]? bytes = Get(keccak.BytesAsSpan, rootHash);
+            return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 
+        [DebuggerStepThrough]
         public void Set(Address address, Account? account)
         {
             ValueKeccak keccak = ValueKeccak.Compute(address.Bytes);
-            Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
+            Set(in keccak, account);
         }
 
         [DebuggerStepThrough]
         public Rlp? Set(Keccak keccak, Account? account)
-        {
-            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
+            => Set(in keccak.ValueKeccak, account);
 
-            Set(keccak.Bytes, rlp);
-            return rlp;
-        }
-
+        [DebuggerStepThrough]
         public Rlp? Set(in ValueKeccak keccak, Account? account)
         {
             Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
