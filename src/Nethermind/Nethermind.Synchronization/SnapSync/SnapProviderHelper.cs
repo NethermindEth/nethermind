@@ -122,7 +122,7 @@ namespace Nethermind.Synchronization.SnapSync
         }
 
         private static (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(
-            IPatriciaTree tree,
+            PatriciaTree tree,
             in ValueKeccak? startingHash,
             in ValueKeccak endHash,
             in ValueKeccak limitHash,

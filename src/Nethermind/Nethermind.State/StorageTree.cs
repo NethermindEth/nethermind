@@ -3,12 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -17,15 +14,13 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class StorageTree : IPatriciaTree
+    public class StorageTree : PatriciaTree
     {
         private static readonly UInt256 CacheSize = 1024;
 
         private static readonly int CacheSizeInt = (int)CacheSize;
 
         private static readonly Dictionary<UInt256, byte[]> Cache = new(CacheSizeInt);
-
-        private readonly PatriciaTree _patriciaTree;
 
         static StorageTree()
         {
@@ -38,64 +33,30 @@ namespace Nethermind.State
             }
         }
 
-        [DebuggerStepThrough]
-        public StorageTree(ITrieStore? store, ILogManager? logManager)
-            : this(store, Keccak.EmptyTreeHash, logManager)
+        public StorageTree(ITrieStore? trieStore, ILogManager? logManager)
+            : base(trieStore, Keccak.EmptyTreeHash, false, true, logManager)
         {
+            TrieType = TrieType.Storage;
         }
 
-        [DebuggerStepThrough]
-        public StorageTree(ITrieStore? store, Keccak rootHash, ILogManager? logManager)
-            : this(new PatriciaTree(store, rootHash, false, true, logManager) { TrieType = TrieType.Storage })
+        public StorageTree(ITrieStore? trieStore, Keccak rootHash, ILogManager? logManager)
+            : base(trieStore, rootHash, false, true, logManager)
         {
+            TrieType = TrieType.Storage;
         }
-
-        [DebuggerStepThrough]
-        public StorageTree(PatriciaTree patriciaTree)
-        {
-            if (patriciaTree.TrieType != TrieType.Storage) throw new ArgumentException($"{nameof(PatriciaTree.TrieType)} must be {nameof(TrieType.Storage)}", nameof(patriciaTree));
-            _patriciaTree = patriciaTree;
-        }
-
-        public Keccak RootHash
-        {
-            get
-            {
-                return _patriciaTree.RootHash;
-            }
-            set
-            {
-                _patriciaTree.RootHash = value;
-            }
-        }
-
-        public TrieNode? RootRef
-        {
-            get
-            {
-                return _patriciaTree.RootRef;
-            }
-            set
-            {
-                _patriciaTree.RootRef = value;
-            }
-        }
-
-        public ITrieStore TrieStore => _patriciaTree.TrieStore;
 
         private static void GetKey(in UInt256 index, in Span<byte> key)
         {
             if (index < CacheSize)
             {
                 Cache[index].CopyTo(key);
+                return;
             }
-            else
-            {
-                index.ToBigEndian(key);
 
-                // in situ calculation
-                KeccakHash.ComputeHashBytesToSpan(key, key);
-            }
+            index.ToBigEndian(key);
+
+            // in situ calculation
+            KeccakHash.ComputeHashBytesToSpan(key, key);
         }
 
 
@@ -105,8 +66,14 @@ namespace Nethermind.State
             Span<byte> key = stackalloc byte[32];
             GetKey(index, key);
 
-            byte[]? value = _patriciaTree.Get(key, storageRoot);
-            return value is null ? new byte[] { 0 } : value.AsRlpValueContext().DecodeByteArray();
+            byte[]? value = Get(key, storageRoot);
+            if (value is null)
+            {
+                return new byte[] { 0 };
+            }
+
+            Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
+            return rlp.DecodeByteArray();
         }
 
         [SkipLocalsInit]
@@ -126,34 +93,13 @@ namespace Nethermind.State
         {
             if (value.IsZero())
             {
-                _patriciaTree.Set(rawKey, Array.Empty<byte>());
+                Set(rawKey, Array.Empty<byte>());
             }
             else
             {
                 Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
-                _patriciaTree.Set(rawKey, rlpEncoded);
+                Set(rawKey, rlpEncoded);
             }
-        }
-
-        public void Commit(long blockNumber, bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
-        {
-            _patriciaTree.Commit(blockNumber, skipRoot, writeFlags);
-        }
-
-        public void UpdateRootHash()
-        {
-            _patriciaTree.UpdateRootHash();
-        }
-
-        public void Set(ReadOnlySpan<byte> rawKey, byte[] value)
-        {
-            _patriciaTree.Set(rawKey, value);
-        }
-
-        [DebuggerStepThrough]
-        public void Set(ReadOnlySpan<byte> rawKey, Rlp? value)
-        {
-            Set(rawKey, value is null ? Array.Empty<byte>() : value.Bytes);
         }
     }
 }
