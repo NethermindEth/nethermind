@@ -21,6 +21,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         Node Node { get; }
 
+        string Name { get; }
         string ClientId => Node?.ClientId;
         NodeClientType ClientType => Node?.ClientType ?? NodeClientType.Unknown;
         Keccak HeadHash { get; set; }

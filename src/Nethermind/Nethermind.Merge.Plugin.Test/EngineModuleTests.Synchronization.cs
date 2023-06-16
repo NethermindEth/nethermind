@@ -34,7 +34,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task forkChoiceUpdatedV1_unknown_block_initiates_syncing()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
@@ -88,7 +88,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task forkChoiceUpdatedV1_unknown_block_parent_while_syncing_initiates_new_sync()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
@@ -178,7 +178,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task should_return_invalid_lvh_null_on_invalid_blocks_during_the_sync()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
@@ -226,7 +226,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task newPayloadV1_can_insert_blocks_from_cache_when_syncing()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
 
@@ -271,7 +271,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task first_new_payload_set_beacon_main_chain()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
@@ -312,7 +312,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task repeated_new_payloads_do_not_change_metadata()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
@@ -361,7 +361,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Can_set_beacon_pivot_in_new_payload_if_null()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
@@ -396,7 +396,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task BeaconMainChain_is_correctly_set_when_block_was_not_processed()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
@@ -432,7 +432,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Repeated_block_do_not_change_metadata()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
@@ -470,7 +470,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task second_new_payload_should_not_set_beacon_main_chain()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
@@ -530,7 +530,7 @@ public partial class EngineModuleTests
     [TestCase(3, 4, 0)]
     public async Task should_reorg_during_the_sync(int initialChainPayloadsCount, int reorgedChainPayloadCount, int? reorgToIndex = null)
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
@@ -585,7 +585,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Blocks_from_cache_inserted_when_fast_headers_sync_finish_before_newPayloadV1_request()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         Keccak startingHead = chain.BlockTree.HeadHash;
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload[] requests = CreateBlockRequestBranch(new ExecutionPayload(chain.BlockTree.Head!), Address.Zero, 7);
@@ -631,7 +631,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Maintain_correct_pointers_for_beacon_sync_in_archive_sync()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
         // create 7 block gap
@@ -736,7 +736,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Blocks_before_pivots_should_not_be_added_if_node_has_never_been_in_sync()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         BlockTree syncedBlockTree = Build.A.BlockTree(chain.BlockTree.Head!, chain.SpecProvider).WithPostMergeRules().OfChainLength(5).TestObject;
         ISyncConfig syncConfig = new SyncConfig
         {
@@ -758,7 +758,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Blocks_before_pivots_should_not_be_added_if_node_has_been_synced()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         BlockTree syncedBlockTree = Build.A.BlockTree(chain.BlockTree.Head!, chain.SpecProvider).WithPostMergeRules().OfChainLength(5).TestObject;
         ISyncConfig syncConfig = new SyncConfig
         {
@@ -784,7 +784,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Maintain_correct_pointers_for_beacon_sync_in_fast_sync()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         BlockTree syncedBlockTree = Build.A.BlockTree(chain.BlockTree.Head!).OfChainLength(5).TestObject;
         ISyncConfig syncConfig = new SyncConfig
         {
@@ -850,7 +850,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Invalid_block_can_create_invalid_best_state_issue_but_recalculating_tree_levels_will_fix_it()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak lastHash = (await ProduceBranchV1(rpc, chain, 30, CreateParentBlockRequestOnHead(chain.BlockTree), true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
@@ -887,7 +887,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task MultiSyncModeSelector_should_fix_block_tree_levels_if_needed()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak lastHash = (await ProduceBranchV1(rpc, chain, 30, CreateParentBlockRequestOnHead(chain.BlockTree), true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
