@@ -433,13 +433,13 @@ namespace Nethermind.Consensus.Processing
             return maxProcessingInterval is null || _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow;
         }
 
-        private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
+        private Block[]? TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
         {
             if ((_options.DumpOptions & dumpType) != 0)
             {
                 try
                 {
-                    _blockProcessor.Process(
+                    return _blockProcessor.Process(
                         processingBranch.Root,
                         processingBranch.BlocksToProcess,
                         options,
@@ -454,6 +454,8 @@ namespace Nethermind.Consensus.Processing
                     BlockTraceDumper.LogTraceFailure(blockTracer, processingBranch.Root, ex, _logger);
                 }
             }
+
+            return null;
         }
 
         private Block[]? ProcessBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer)
@@ -523,31 +525,45 @@ namespace Nethermind.Consensus.Processing
                 }
                 catch (InvalidBlockException ex)
                 {
+                    processedBlocks = TraceFailingBranch(
+                        processingBranch,
+                        options,
+                        new BlockReceiptsTracer(),
+                        DumpOptions.Receipts);
+
+                    if (processedBlocks is not null)
+                    {
+                        return processedBlocks;
+                    }
+
+                    processedBlocks = TraceFailingBranch(
+                        processingBranch,
+                        options,
+                        new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
+                        DumpOptions.Parity);
+
+                    if (processedBlocks is not null)
+                    {
+                        return processedBlocks;
+                    }
+
+                    processedBlocks = TraceFailingBranch(
+                        processingBranch,
+                        options,
+                        new GethLikeBlockTracer(GethTraceOptions.Default),
+                        DumpOptions.Geth);
+
+                    if (processedBlocks is not null)
+                    {
+                        return processedBlocks;
+                    }
+
                     InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs
                     {
                         InvalidBlock = ex.InvalidBlock,
                     });
 
                     invalidBlockHash = ex.InvalidBlock.Hash;
-                    TraceFailingBranch(
-                        processingBranch,
-                        options,
-                        new BlockReceiptsTracer(),
-                        DumpOptions.Receipts);
-
-                    TraceFailingBranch(
-                        processingBranch,
-                        options,
-                        new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
-                        DumpOptions.Parity);
-
-                    TraceFailingBranch(
-                        processingBranch,
-                        options,
-                        new GethLikeBlockTracer(GethTraceOptions.Default),
-                        DumpOptions.Geth);
-
-                    processedBlocks = null;
                 }
                 finally
                 {
