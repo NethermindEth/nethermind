@@ -329,6 +329,42 @@ namespace Nethermind.Evm.Test
             }
         }
 
+        [Test]
+        public void Should_reject_tx_with_high_value()
+        {
+            Transaction tx = Build.A.Transaction.WithValue(UInt256.MaxValue).WithGasLimit(21000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+                .TestObject;
+
+            long blockNumber = _isEip155Enabled
+                ? MainnetSpecProvider.ByzantiumBlockNumber
+                : MainnetSpecProvider.ByzantiumBlockNumber - 1;
+            Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, true, true);
+
+            Execute(tracer, tx, block);
+
+            tracer.TxReceipts[0].StatusCode.Should().Be(StatusCode.Failure);
+        }
+
+        [TestCase(562949953421312ul)]
+        [TestCase(562949953421311ul)]
+        public void Should_reject_tx_with_high_max_fee_per_gas(ulong topDigit)
+        {
+            Transaction tx = Build.A.Transaction.WithMaxFeePerGas(new(0, 0, 0, topDigit)).WithGasLimit(32768)
+                .WithType(TxType.EIP1559).WithValue(0)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+                .TestObject;
+
+            long blockNumber = MainnetSpecProvider.LondonBlockNumber;
+            Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, true, true);
+
+            Execute(tracer, tx, block);
+
+            tracer.TxReceipts[0].StatusCode.Should().Be(StatusCode.Failure);
+        }
+
         [TestCase]
         public void Can_estimate_simple()
         {
