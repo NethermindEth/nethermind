@@ -1,14 +1,17 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using Nethermind.Cli;
 using Nethermind.Cli.Console;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Org.BouncyCastle.Utilities.Encoders;
-using Nethermind.Int256;
-using Nethermind.Evm;
 
 // send-blobs <url-without-auth> <transactions-count-1-blob-each> <secret-key> <receiver-address>
 // send-blobs http://localhost:8545 5 0x0000000000000000000000000000000000000000000000000000000000000000 0x000000000000000000000000000000000000f1c1
@@ -29,10 +32,14 @@ IJsonSerializer serializer = new EthereumJsonSerializer();
 ILogManager logManager = new OneLoggerLogManager(logger);
 ICliEngine engine = new CliEngine(cliConsole);
 INodeManager nodeManager = new NodeManager(engine, serializer, cliConsole, logManager);
-//nodeManager.SwitchUri(new Uri("https://rpc.bootnode-1.srv.4844-devnet-5.ethpandaops.io"));
 nodeManager.SwitchUri(new Uri(rpcUrl));
 
-string nonceString = await nodeManager.Post<string>("eth_getTransactionCount", privateKey.Address, "latest") ?? "0";
+string? nonceString = await nodeManager.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
+if(nonceString is null)
+{
+    logger.Error("Unable to get nonce");
+    return;
+}
 ulong nonce = Convert.ToUInt64(nonceString, nonceString.StartsWith("0x") ? 16 : 10);
 
 string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
@@ -44,24 +51,38 @@ UInt256 gasPrice = (UInt256)Convert.ToUInt64(gasPriceRes, gasPriceRes.StartsWith
 string? gasPriceTipRes = await nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
 UInt256 gasPriceTip = (UInt256)Convert.ToUInt64(gasPriceTipRes, gasPriceTipRes.StartsWith("0x") ? 16 : 10);
 
+Signer signer = new Signer(chainId, privateKey, new OneLoggerLogManager(logger));
+TxDecoder txDecoder = new();
+
 while (blobTxCount > 0)
 {
     blobTxCount--;
-    byte[][] blobs = new byte[1][];
-    blobs[0] = new byte[Ckzg.Ckzg.BytesPerBlob];
-    new Random().NextBytes(blobs[0]);
-    for (int i = 0; i < Ckzg.Ckzg.BytesPerBlob; i += 32)
+    const int blobCount = 1;
+
+    byte[][] blobs = new byte[blobCount][];
+    byte[][] commitments = new byte[blobCount][];
+    byte[][] proofs = new byte[blobCount][];
+    byte[][] blobhashes = new byte[blobCount][];
+
+    for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
     {
-        blobs[0][i] = 0;
+        blobs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerBlob];
+        new Random().NextBytes(blobs[blobIndex]);
+        for (int i = 0; i < Ckzg.Ckzg.BytesPerBlob; i += 32)
+        {
+            blobs[blobIndex][i] = 0;
+        }
+        
+        commitments[blobIndex] = new byte[Ckzg.Ckzg.BytesPerCommitment];
+        proofs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerProof];
+        blobhashes[blobIndex] = new byte[32];
+
+        KzgPolynomialCommitments.KzgifyBlob(
+            blobs[blobIndex].AsSpan(),
+            commitments[blobIndex].AsSpan(),
+            proofs[blobIndex].AsSpan(),
+            blobhashes[blobIndex].AsSpan());
     }
-
-    byte[][] commitments = new byte[1][];
-    commitments[0] = new byte[Ckzg.Ckzg.BytesPerCommitment];
-    byte[][] proofs = new byte[1][];
-    proofs[0] = new byte[Ckzg.Ckzg.BytesPerProof];
-    byte[] blobhash = new byte[32];
-
-    KzgPolynomialCommitments.KzgifyBlob(blobs[0].AsSpan(), commitments[0].AsSpan(), proofs[0].AsSpan(), blobhash.AsSpan());
 
     Transaction tx = new()
     {
@@ -74,64 +95,20 @@ while (blobTxCount > 0)
         MaxFeePerDataGas = 100,
         Value = 0,
         To = new Address(receiver),
-        BlobVersionedHashes = new[] { blobhash },
+        BlobVersionedHashes = blobhashes,
         NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs),
     };
 
-    await new Signer(chainId, privateKey, new OneLoggerLogManager(logger)).Sign(tx);
+    await signer.Sign(tx);
 
-    TxDecoder txDecoder = new();
+    
     string txRlp = Hex.ToHexString(txDecoder
         .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);
-
-
-    //{
-    //    // verify
-    //    Transaction? tx2 = txDecoder.Decode(new RlpStream(Hex.Decode(txRlp)),
-    //        RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
-    //    var wrapper = tx2.NetworkWrapper as ShardBlobNetworkWrapper;
-    //    bool check = KzgPolynomialCommitments.AreProofsValid(wrapper?.Blobs!,
-    //        wrapper?.Commitments!, wrapper?.Proofs!);
-
-    //    if (!check)
-    //    {
-    //        throw new InvalidProgramException();
-    //    }
-
-    //    byte[] hash = new byte[32];
-    //    byte[][] commitements = wrapper.Commitments;
-    //    for (int i = 0, n = 0;
-    //         i < tx.BlobVersionedHashes!.Length;
-    //         i++, n += Ckzg.Ckzg.BytesPerCommitment)
-    //    {
-    //        if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(
-    //                commitements[0], hash) ||
-    //            !hash.SequenceEqual(tx.BlobVersionedHashes[i]!))
-    //        {
-    //            Console.WriteLine("Commitment to hash is incorrect: {0} vs {1}", Hex.ToHexString(hash.ToArray()),
-    //                Hex.ToHexString(tx.BlobVersionedHashes[i]));
-    //            return;
-    //        }
-    //    }
-    //}
-
-    // while (true)
-    // {
-    //     ulong blockNo = Convert.ToUInt64(await nodeManager.Post<string>("eth_blockNumber") ?? "0x0", 16);
-    //     Console.WriteLine("The current block is {0}", blockNo);
-    //     if (blockNo > 32 * 2)
-    //     {
-    //         break;
-    //     }
-    //
-    //     await Task.Delay(2000);
-    // }
 
     string? result = await nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
 
     Console.WriteLine("Result:" + result);
-    Console.WriteLine("Done");
 
     nonce++;
-    //await Task.Delay(5_000);
+    //await Task.Delay(500); // delay in milliseconds
 }

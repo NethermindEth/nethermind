@@ -8,6 +8,14 @@ cd ./nethermind/src/Nethermind/Nethermind.SendBlobs
 dotnet publish --sc -o .
 ```
 
+or via docker
+
+```sh
+cd ./nethermind/ # repository root
+docker build . -f ./src/Nethermind/Nethermind.SendBlobs/Dockerfile -t send-blobs
+docker run send-blobs ... # args sample below
+```
+
 ## Usage
 
 ```sh
