@@ -210,8 +210,10 @@ namespace Nethermind.Init.Steps.Migrations
                     if (usingEmptyBlock) {
                         block = GetMissingBlock(blockNum, blockHash);
                     }
+
                     _progress.Update(Interlocked.Increment(ref synced));
                     MigrateBlock(block!);
+
                     if (usingEmptyBlock)
                     {
                         ReturnMissingBlock(block!);
