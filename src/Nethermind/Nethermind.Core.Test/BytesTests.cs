@@ -18,11 +18,11 @@ namespace Nethermind.Core.Test
     {
         [TestCase("0x", "0x", 0)]
         [TestCase(null, null, 0)]
-        [TestCase(null, "0x", 1)]
-        [TestCase("0x", null, -1)]
+        [TestCase(null, "0x", -1)]
+        [TestCase("0x", null, 1)]
         [TestCase("0x01", "0x01", 0)]
-        [TestCase("0x01", "0x0102", 1)]
-        [TestCase("0x0102", "0x01", -1)]
+        [TestCase("0x01", "0x0102", -1)]
+        [TestCase("0x0102", "0x01", 1)]
         public void Compares_bytes_properly(string? hexString1, string? hexString2, int expectedResult)
         {
             IComparer<byte[]> comparer = Bytes.Comparer;
