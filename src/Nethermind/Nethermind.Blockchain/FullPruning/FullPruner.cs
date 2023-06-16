@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IProcessExitSource _processExitSource;
         private readonly ILogManager _logManager;
         private readonly IChainEstimations _chainEstimations;
-        private readonly IDriveInfo _driveInfo;
+        private readonly IDriveInfo? _driveInfo;
         private IPruningContext? _currentPruning;
         private int _waitingForBlockProcessed = 0;
         private int _waitingForStateReady = 0;
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.FullPruning
             IStateReader stateReader,
             IProcessExitSource processExitSource,
             IChainEstimations chainEstimations,
-            IDriveInfo driveInfo,
+            IDriveInfo? driveInfo,
             ILogManager logManager)
         {
             _fullPruningDb = fullPruningDb;
@@ -181,7 +181,7 @@ namespace Nethermind.Blockchain.FullPruning
                 return true;
             }
 
-            long available = _driveInfo.AvailableFreeSpace;
+            long available = _driveInfo?.AvailableFreeSpace ?? 0;
             if (available < currentChainSize.Value * ChainSizeThresholdFactor / 100)
             {
                 if (_logger.IsWarn)
