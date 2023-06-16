@@ -24,4 +24,7 @@ public interface IReceiptConfig : IConfig
 
     [ConfigItem(Description = "Max num of block per eth_getLogs request.", DefaultValue = "10000", HiddenFromDocs = true)]
     int MaxBlockDepth { get; set; }
+
+    [ConfigItem(Description = "Force receipt recovery if its not able to detect it.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool ForceReceiptsMigration { get; set; }
 }

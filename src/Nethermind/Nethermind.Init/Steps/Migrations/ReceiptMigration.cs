@@ -48,6 +48,7 @@ namespace Nethermind.Init.Steps.Migrations
 
         private readonly IReceiptConfig _receiptConfig;
         private readonly IColumnsDb<ReceiptsColumns> _receiptsDb;
+        private readonly IDbWithSpan _txIndexDb;
         private readonly IDbWithSpan _receiptsBlockDb;
         private readonly IReceiptsRecovery _recovery;
 
@@ -95,6 +96,7 @@ namespace Nethermind.Init.Steps.Migrations
             _receiptConfig = receiptConfig ?? throw new StepDependencyException("receiptConfig");
             _receiptsDb = receiptsDb;
             _receiptsBlockDb = _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
+            _txIndexDb = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
             _recovery = recovery;
             _logger = logManager.GetClassLogger();
         }
@@ -293,8 +295,19 @@ namespace Nethermind.Init.Steps.Migrations
                     _receiptsDb.Delete(notNullReceipts[i].TxHash!);
                 }
 
-                // Receipts are now prefixed with block number now.
+                // Receipts are now prefixed with block number.
                 _receiptsBlockDb.Delete(block.Hash!);
+
+                // Remove old tx index
+                bool txIndexExpired = _receiptConfig.TxLookupLimit != 0 && _blockTree.Head?.Number - block.Number > _receiptConfig.TxLookupLimit;
+                bool neverIndexTx = _receiptConfig.TxLookupLimit == -1;
+                if (neverIndexTx || txIndexExpired)
+                {
+                    foreach (TxReceipt? receipt in notNullReceipts)
+                    {
+                        _txIndexDb.Delete(receipt.TxHash!);
+                    }
+                }
 
                 if (notNullReceipts.Length != receipts.Length)
                 {
@@ -321,6 +334,12 @@ namespace Nethermind.Init.Steps.Migrations
 
         private void ResetMigrationIndexIfNeeded()
         {
+            if (_receiptConfig.ForceReceiptsMigration)
+            {
+                _receiptStorage.MigratedBlockNumber = long.MaxValue;
+                return;
+            }
+
             if (_receiptStorage.MigratedBlockNumber != long.MaxValue)
             {
                 long blockNumber = _blockTree.Head?.Number ?? 0;
@@ -333,7 +352,7 @@ namespace Nethermind.Init.Steps.Migrations
                         TxReceipt[] receipts = _receiptStorage.Get(firstBlockInfo.BlockHash);
                         if (receipts.Length > 0)
                         {
-                            if (_recovery.NeedRecover(receipts))
+                            if (IsMigrationNeeded(blockNumber, firstBlockInfo.BlockHash, receipts))
                             {
                                 _receiptStorage.MigratedBlockNumber = long.MaxValue;
                             }
@@ -344,6 +363,34 @@ namespace Nethermind.Init.Steps.Migrations
 
                     blockNumber--;
                 }
+            }
+        }
+
+        private bool IsMigrationNeeded(long blockNumber, Keccak blockHash, TxReceipt[] receipts)
+        {
+            if (!_receiptConfig.CompactReceiptStore && _recovery.NeedRecover(receipts))
+            {
+                return true;
+            }
+
+            bool canGetIterator =
+                _receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out ReceiptsIterator iterator);
+            if (!canGetIterator)
+            {
+                return true;
+            }
+
+            try
+            {
+                if (_receiptConfig.CompactReceiptStore)
+                {
+                    // Compact receipt can't decode bloom
+                    return iterator.CanDecodeBloom;
+                }
+
+                return !iterator.CanDecodeBloom;
+            } finally {
+                iterator.Dispose();
             }
         }
 
