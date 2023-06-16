@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Newtonsoft.Json;
 
-[assembly:InternalsVisibleTo("Nethermind.Specs.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Specs.Test")]
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
