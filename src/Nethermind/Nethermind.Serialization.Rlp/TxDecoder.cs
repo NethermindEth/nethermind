@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -533,6 +534,10 @@ namespace Nethermind.Serialization.Rlp
         private void EncodeTx(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
             bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
         {
+            if((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm)
+            {
+                Console.WriteLine("InMempoolForm trace {0}", new StackTrace());
+            }
             if (item is null)
             {
                 stream.WriteByte(Rlp.NullObjectByte);
