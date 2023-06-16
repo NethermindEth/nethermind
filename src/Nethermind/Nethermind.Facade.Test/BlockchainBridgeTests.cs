@@ -271,7 +271,7 @@ namespace Nethermind.Facade.Test
             _receiptStorage.Get(block).Returns(new[] { receipt });
 
             (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) result = postEip4844
-                ? (receipt, new(effectiveGasPrice, 262144, 262144), 0)
+                ? (receipt, new(effectiveGasPrice, 1, 262144), 0)
                 : (receipt, new(effectiveGasPrice), 0);
 
             if (!isCanonical)

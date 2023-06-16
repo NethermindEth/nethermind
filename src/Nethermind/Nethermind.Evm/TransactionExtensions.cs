@@ -23,7 +23,7 @@ namespace Nethermind.Evm
             if (tx.SupportsBlobs)
             {
                 dataGas = DataGasCalculator.CalculateDataGas(tx);
-                dataGasPrice = DataGasCalculator.CalculateDataGasPrice(header, tx);
+                dataGasPrice = DataGasCalculator.CalculateDataGasPricePerUnit(header);
             }
 
             return new(effectiveGasPrice, dataGasPrice, dataGas);

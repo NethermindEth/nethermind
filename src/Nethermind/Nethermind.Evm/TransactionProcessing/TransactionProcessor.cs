@@ -278,7 +278,7 @@ namespace Nethermind.Evm.TransactionProcessing
                             TraceLogInvalidTx(transaction,
                                 $"INSUFFICIENT_MAX_FEE_PER_DATA_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}, MAX_FEE_PER_DATA_GAS: {transaction.MaxFeePerDataGas}");
                             QuickFail(transaction, block, txTracer, eip658NotEnabled,
-                                "insufficient MaxFeePerGas for sender balance");
+                                "insufficient MaxFeePerDataGas for sender balance");
                             return;
                         }
                     }
