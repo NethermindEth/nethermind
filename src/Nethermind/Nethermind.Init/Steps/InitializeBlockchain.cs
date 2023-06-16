@@ -115,6 +115,8 @@ namespace Nethermind.Init.Steps
                     Persist.EveryBlock,
                     getApi.LogManager, 128);
 
+            _api.ByPathDbPrunner = new ByPathStateDbPrunner(stateWitnessedBy, _api.LogManager);
+
             ITrieStore storageTrieStore;
             storageTrieStore = new TrieStoreByPath(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.EveryBlock, _api.LogManager, 128);
 

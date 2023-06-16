@@ -22,6 +22,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
+using Nethermind.Trie.ByPath;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization
@@ -58,6 +59,7 @@ namespace Nethermind.Synchronization
         private HeadersSyncFeed? _headersFeed;
         private BodiesSyncFeed? _bodiesFeed;
         private ReceiptsSyncFeed? _receiptsFeed;
+        private ByPathStateDbPrunner _dbPrunner;
 
         public Synchronizer(
             IDbProvider dbProvider,
@@ -72,6 +74,7 @@ namespace Nethermind.Synchronization
             IBlockDownloaderFactory blockDownloaderFactory,
             IPivot pivot,
             ISyncReport syncReport,
+            ByPathStateDbPrunner? dbPrunner,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -88,6 +91,7 @@ namespace Nethermind.Synchronization
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
+            _dbPrunner = dbPrunner;
         }
 
         public virtual void Start()
@@ -148,7 +152,7 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, TrieNodeResolverCapability.Path, _logManager, null);
+            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, TrieNodeResolverCapability.Path, _logManager, _dbPrunner);
             _stateSyncFeed = new StateSyncFeed(_syncMode, treeSync, _logManager);
             StateSyncDispatcher stateSyncDispatcher = new(_stateSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>

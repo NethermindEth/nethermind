@@ -20,6 +20,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
+using Nethermind.Trie.ByPath;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
@@ -96,5 +97,7 @@ namespace Nethermind.Api
         CompositePruningTrigger PruningTrigger { get; }
 
         IBlockProductionPolicy BlockProductionPolicy { get; set; }
+
+        ByPathStateDbPrunner? ByPathDbPrunner { get; set; }
     }
 }

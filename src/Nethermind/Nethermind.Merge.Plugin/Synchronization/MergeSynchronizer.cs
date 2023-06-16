@@ -59,6 +59,7 @@ public class MergeSynchronizer : Synchronizer
             blockDownloaderFactory,
             pivot,
             syncReport,
+            null,
             logManager)
     {
         _invalidChainTracker = invalidChainTracker;

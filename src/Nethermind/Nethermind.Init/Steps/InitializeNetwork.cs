@@ -162,6 +162,7 @@ public class InitializeNetwork : IStep
                 _api.BlockDownloaderFactory,
                 _api.Pivot,
                 syncReport,
+                _api.ByPathDbPrunner!,
                 _api.LogManager);
         }
 

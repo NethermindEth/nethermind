@@ -82,6 +82,8 @@ namespace Nethermind.Synchronization.FastSync
         private long _blockNumber;
         private SyncMode _syncMode;
 
+        private ByPathStateDbPrunner _dbPrunner;
+
         public TreeSync(SyncMode syncMode, IDb codeDb, IColumnsDb<StateColumns> stateDb, IBlockTree blockTree, TrieNodeResolverCapability resolverCapability, ILogManager logManager, ByPathStateDbPrunner dbPrunner)
         {
             _syncMode = syncMode;
@@ -102,8 +104,9 @@ namespace Nethermind.Synchronization.FastSync
             }
             else if (resolverCapability == TrieNodeResolverCapability.Path)
             {
+                _dbPrunner = dbPrunner;
                 _stateStore = new TrieStoreByPath(stateDb, Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0, dbPrunner);
-                _storageStore = new TrieStoreByPath(stateDb.GetColumnDb(StateColumns.Storage), Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0, dbPrunner);
+                _storageStore = new TrieStoreByPath(stateDb.GetColumnDb(StateColumns.Storage), Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0);
             }
 
             _additionalLeafNibbles = new ConcurrentDictionary<Keccak, List<byte>>();
@@ -447,7 +450,7 @@ namespace Nethermind.Synchronization.FastSync
             ResetStateRoot(bestSuggested.Number, bestSuggested.StateRoot!, currentState);
         }
 
-        public void ResetStateRoot(long blockNumber, Keccak stateRoot, SyncFeedState currentState, bool forceRootChange = false)
+        public void ResetStateRoot(long blockNumber, Keccak stateRoot, SyncFeedState currentState, bool forceRootChange = true)
         {
             _syncStateLock.EnterWriteLock();
             try
@@ -471,6 +474,9 @@ namespace Nethermind.Synchronization.FastSync
                 {
                     if (stateRoot != Keccak.EmptyTreeHash && _rootNode != Keccak.EmptyTreeHash || forceRootChange)
                         rootChanged = true;
+
+                    if (rootChanged)
+                        _dbPrunner.Start();
 
                     _branchProgress = new BranchProgress(blockNumber, _logger);
                     _blockNumber = blockNumber;
@@ -806,6 +812,8 @@ namespace Nethermind.Synchronization.FastSync
             if (syncItem.IsRoot)
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
+
+                _dbPrunner?.EndOfCleanupRequests();
 
                 Interlocked.Exchange(ref _rootSaved, 1);
             }
