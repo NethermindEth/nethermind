@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -58,10 +60,20 @@ public class HealingTrieStore : TrieStore
         }
         catch (TrieException)
         {
-            byte[]? rlp = _recovery?.Recover(keccak).GetAwaiter().GetResult();
-            if (rlp is null) throw;
-            _keyValueStore.Set(keccak.Bytes, rlp);
-            return rlp;
+            if (BlockchainProcessor.IsMainProcessingThread && TryRecover(keccak, out byte[] rlp))
+            {
+                return rlp;
+            }
+
+            throw;
         }
+    }
+
+    private bool TryRecover(Keccak keccak, [NotNullWhen(true)] out byte[]? rlp)
+    {
+        rlp = _recovery?.Recover(keccak).GetAwaiter().GetResult();
+        if (rlp is null) return false;
+        _keyValueStore.Set(keccak.Bytes, rlp);
+        return true;
     }
 }

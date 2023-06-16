@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -38,7 +39,7 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (Recover(e.GetPathPart()))
+            if (BlockchainProcessor.IsMainProcessingThread && Recover(e.GetPathPart()))
             {
                 return base.Get(rawKey, rootHash);
             }
@@ -55,7 +56,7 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (Recover(e.GetPathPart()))
+            if (BlockchainProcessor.IsMainProcessingThread && Recover(e.GetPathPart()))
             {
                 base.Set(rawKey, value);
             }

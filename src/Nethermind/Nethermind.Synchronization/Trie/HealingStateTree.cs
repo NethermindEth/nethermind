@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -43,7 +44,7 @@ public class HealingStateTree : StateTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (Recover(e.GetPathPart(), rootHash ?? RootHash))
+            if (BlockchainProcessor.IsMainProcessingThread && Recover(e.GetPathPart(), rootHash ?? RootHash))
             {
                 return base.Get(rawKey, rootHash);
             }
@@ -60,7 +61,7 @@ public class HealingStateTree : StateTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (Recover(e.GetPathPart(), RootHash))
+            if (BlockchainProcessor.IsMainProcessingThread && Recover(e.GetPathPart(), RootHash))
             {
                 base.Set(rawKey, value);
             }
