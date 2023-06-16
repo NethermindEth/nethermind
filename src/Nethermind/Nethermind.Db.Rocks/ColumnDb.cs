@@ -45,7 +45,7 @@ public class ColumnDb : IDbWithSpan
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] =>
         _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());
 
-    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
     {
         Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
         return _mainDb.GetAllCore(iterator);
@@ -87,11 +87,11 @@ public class ColumnDb : IDbWithSpan
         {
             if (value is null)
             {
-                _underlyingBatch._rocksBatch.Delete(key, _columnDb._columnFamily);
+                _underlyingBatch.Delete(key, _columnDb._columnFamily);
             }
             else
             {
-                _underlyingBatch._rocksBatch.Put(key, value, _columnDb._columnFamily);
+                _underlyingBatch.Set(key, value, _columnDb._columnFamily);
             }
         }
     }

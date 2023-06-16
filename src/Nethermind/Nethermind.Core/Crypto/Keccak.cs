@@ -189,44 +189,6 @@ namespace Nethermind.Core.Crypto
         public static bool operator <=(in ValueKeccak left, in ValueKeccak right) => left.CompareTo(in right) <= 0;
     }
 
-    /// <summary>
-    /// Used as dictionary key with implicit conversion to devirtualize comparisions
-    /// </summary>
-    [DebuggerStepThrough]
-    public readonly struct KeccakKey : IEquatable<KeccakKey>, IComparable<KeccakKey>
-    {
-        private readonly ValueKeccak _innerKeccak;
-
-        public ReadOnlySpan<byte> Bytes => _innerKeccak.Bytes;
-
-        private KeccakKey(ValueKeccak bytes)
-        {
-            _innerKeccak = bytes;
-        }
-
-        public static implicit operator KeccakKey(Keccak k) => new(k.ValueKeccak);
-
-        public int CompareTo(KeccakKey other)
-        {
-            return _innerKeccak.CompareTo(other._innerKeccak);
-        }
-
-        public bool Equals(KeccakKey other)
-        {
-            return _innerKeccak.Equals(other._innerKeccak);
-        }
-
-        public override bool Equals(object? obj)
-        {
-            return obj is KeccakKey key && Equals(key);
-        }
-
-        public override int GetHashCode()
-        {
-            return _innerKeccak.GetHashCode();
-        }
-    }
-
     [DebuggerStepThrough]
     public class Keccak : IEquatable<Keccak>, IComparable<Keccak>
     {

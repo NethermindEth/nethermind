@@ -41,6 +41,10 @@ on:
         default: master
         type: string
 
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
+  TERM: xterm
+
 jobs:
   test:
     name: Build and run tests
@@ -83,7 +87,7 @@ jobs:
           ref: ${{ env.HIVE_BRANCH }}
           path: hive
       - name: Patch Hive Dockerfile
-        run: sed -i 's#FROM $user/$repo:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+        run: sed -i 's#FROM $baseimage:$tag#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
       - name: Build Hive
         working-directory: hive
         run: go build .

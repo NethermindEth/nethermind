@@ -93,5 +93,5 @@ public class PeerRefresherTests
 
     private void GivenFinalizedHeaderAvailable() =>
         _syncPeer.GetHeadBlockHeader(_finalizedBlockHeader.Hash!, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(_finalizedBlockHeader));
+            .Returns(Task.FromResult<BlockHeader?>(_finalizedBlockHeader));
 }

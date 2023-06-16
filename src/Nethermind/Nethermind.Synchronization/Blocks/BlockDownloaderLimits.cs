@@ -14,7 +14,7 @@ namespace Nethermind.Synchronization.Blocks
         {
             return peer.PeerClientType switch
             {
-                NodeClientType.BeSu => BeSuSyncLimits.MaxBodyFetch,
+                NodeClientType.Besu => BeSuSyncLimits.MaxBodyFetch,
                 NodeClientType.Geth => GethSyncLimits.MaxBodyFetch,
                 NodeClientType.Nethermind => NethermindSyncLimits.MaxBodyFetch,
                 NodeClientType.Parity => ParitySyncLimits.MaxBodyFetch,
@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.Blocks
         {
             return peer.PeerClientType switch
             {
-                NodeClientType.BeSu => BeSuSyncLimits.MaxReceiptFetch,
+                NodeClientType.Besu => BeSuSyncLimits.MaxReceiptFetch,
                 NodeClientType.Geth => GethSyncLimits.MaxReceiptFetch,
                 NodeClientType.Nethermind => NethermindSyncLimits.MaxReceiptFetch,
                 NodeClientType.Parity => ParitySyncLimits.MaxReceiptFetch,
@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.Blocks
         {
             return peer.PeerClientType switch
             {
-                NodeClientType.BeSu => BeSuSyncLimits.MaxHeaderFetch,
+                NodeClientType.Besu => BeSuSyncLimits.MaxHeaderFetch,
                 NodeClientType.Geth => GethSyncLimits.MaxHeaderFetch,
                 NodeClientType.Nethermind => NethermindSyncLimits.MaxHeaderFetch,
                 NodeClientType.Parity => ParitySyncLimits.MaxHeaderFetch,

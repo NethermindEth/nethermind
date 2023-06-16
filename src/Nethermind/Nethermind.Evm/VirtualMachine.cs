@@ -63,7 +63,7 @@ public class VirtualMachine : IVirtualMachine
 
     private readonly IBlockhashProvider _blockhashProvider;
     private readonly ISpecProvider _specProvider;
-    private static readonly LruCache<KeccakKey, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
+    private static readonly LruCache<ValueKeccak, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
     private readonly ILogger _logger;
     private IWorldState _worldState;
     private IWorldState _state;
@@ -622,6 +622,10 @@ public class VirtualMachine : IVirtualMachine
 
         if (vmState.Env.CodeInfo.MachineCode.Length == 0)
         {
+            if (!vmState.IsTopLevel)
+            {
+                Metrics.EmptyCalls++;
+            }
             goto Empty;
         }
 
@@ -662,7 +666,7 @@ public class VirtualMachine : IVirtualMachine
         {
 #if DEBUG
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
-#endif  
+#endif
             Instruction instruction = (Instruction)code[programCounter];
             // Console.WriteLine(instruction);
 
@@ -826,7 +830,7 @@ public class VirtualMachine : IVirtualMachine
                         Metrics.ModExpOpcode++;
 
                         stack.PopUInt256(out UInt256 baseInt);
-                        Span<byte> exp = stack.PopBytes();
+                        Span<byte> exp = stack.PopWord256();
 
                         int leadingZeros = exp.LeadingZerosCount();
                         if (leadingZeros != 32)
@@ -869,7 +873,7 @@ public class VirtualMachine : IVirtualMachine
 
                         int position = 31 - (int)a;
 
-                        Span<byte> b = stack.PopBytes();
+                        Span<byte> b = stack.PopWord256();
                         sbyte sign = (sbyte)b[position];
 
                         if (sign >= 0)
@@ -957,8 +961,8 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopBytes();
-                        Span<byte> b = stack.PopBytes();
+                        Span<byte> a = stack.PopWord256();
+                        Span<byte> b = stack.PopWord256();
                         if (a.SequenceEqual(b))
                         {
                             stack.PushOne();
@@ -974,7 +978,7 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopBytes();
+                        Span<byte> a = stack.PopWord256();
                         if (a.SequenceEqual(BytesZero32))
                         {
                             stack.PushOne();
@@ -990,8 +994,8 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopBytes();
-                        Span<byte> b = stack.PopBytes();
+                        Span<byte> a = stack.PopWord256();
+                        Span<byte> b = stack.PopWord256();
 
                         if (_simdOperationsEnabled)
                         {
@@ -1019,8 +1023,8 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopBytes();
-                        Span<byte> b = stack.PopBytes();
+                        Span<byte> a = stack.PopWord256();
+                        Span<byte> b = stack.PopWord256();
 
                         if (_simdOperationsEnabled)
                         {
@@ -1048,8 +1052,8 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopBytes();
-                        Span<byte> b = stack.PopBytes();
+                        Span<byte> a = stack.PopWord256();
+                        Span<byte> b = stack.PopWord256();
 
                         if (_simdOperationsEnabled)
                         {
@@ -1077,7 +1081,7 @@ public class VirtualMachine : IVirtualMachine
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopBytes();
+                        Span<byte> a = stack.PopWord256();
 
                         if (_simdOperationsEnabled)
                         {
@@ -1105,7 +1109,7 @@ public class VirtualMachine : IVirtualMachine
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out UInt256 position);
-                        Span<byte> bytes = stack.PopBytes();
+                        Span<byte> bytes = stack.PopWord256();
 
                         if (position >= BigInt32)
                         {
@@ -1485,11 +1489,11 @@ public class VirtualMachine : IVirtualMachine
                         stack.PushUInt256(in baseFee);
                         break;
                     }
-                case Instruction.DATAHASH:
+                case Instruction.BLOBHASH:
                     {
                         if (!spec.IsEip4844Enabled) goto InvalidInstruction;
 
-                        if (!UpdateGas(GasCostOf.DataHash, ref gasAvailable)) goto OutOfGas;
+                        if (!UpdateGas(GasCostOf.BlobHash, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out UInt256 blobIndex);
 
@@ -1528,10 +1532,10 @@ public class VirtualMachine : IVirtualMachine
 
                         stack.PopUInt256(out UInt256 memPosition);
 
-                        Span<byte> data = stack.PopBytes();
+                        Span<byte> word = stack.PopWord256();
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in memPosition, 32)) goto OutOfGas;
-                        vmState.Memory.SaveWord(in memPosition, data);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, data.SliceWithZeroPadding(0, 32, PadDirection.Left));
+                        vmState.Memory.SaveWord(in memPosition, word);
+                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, word.SliceWithZeroPadding(0, 32, PadDirection.Left));
 
                         break;
                     }
@@ -1589,7 +1593,7 @@ public class VirtualMachine : IVirtualMachine
                         }
 
                         stack.PopUInt256(out UInt256 storageIndex);
-                        Span<byte> newValue = stack.PopBytes();
+                        Span<byte> newValue = stack.PopWord256();
                         bool newIsZero = newValue.IsZero();
                         if (!newIsZero)
                         {
@@ -1753,7 +1757,7 @@ public class VirtualMachine : IVirtualMachine
                         if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out UInt256 storageIndex);
-                        Span<byte> newValue = stack.PopBytes();
+                        Span<byte> newValue = stack.PopWord256();
                         bool newIsZero = newValue.IsZero();
                         if (!newIsZero)
                         {
@@ -1788,7 +1792,7 @@ public class VirtualMachine : IVirtualMachine
                         if (!UpdateGas(GasCostOf.High, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out UInt256 jumpDest);
-                        Span<byte> condition = stack.PopBytes();
+                        Span<byte> condition = stack.PopWord256();
                         if (!condition.SequenceEqual(BytesZero32))
                         {
                             if (!Jump(jumpDest, ref programCounter, in env)) goto InvalidJumpDestination;
@@ -1963,7 +1967,7 @@ public class VirtualMachine : IVirtualMachine
                         Keccak[] topics = new Keccak[topicsCount];
                         for (int i = 0; i < topicsCount; i++)
                         {
-                            topics[i] = new Keccak(stack.PopBytes());
+                            topics[i] = new Keccak(stack.PopWord256());
                         }
 
                         LogEntry logEntry = new(
@@ -1976,6 +1980,7 @@ public class VirtualMachine : IVirtualMachine
                 case Instruction.CREATE:
                 case Instruction.CREATE2:
                     {
+                        Metrics.Creates++;
                         if (!spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) goto InvalidInstruction;
 
                         if (vmState.IsStatic) goto StaticCallViolation;
@@ -1992,7 +1997,7 @@ public class VirtualMachine : IVirtualMachine
                         Span<byte> salt = null;
                         if (instruction == Instruction.CREATE2)
                         {
-                            salt = stack.PopBytes();
+                            salt = stack.PopWord256();
                         }
 
                         //EIP-3860
@@ -2255,14 +2260,14 @@ public class VirtualMachine : IVirtualMachine
                             gasLimitUl,
                             callEnv,
                             executionType,
-                            false,
+                            isTopLevel: false,
                             snapshot,
                             (long)outputOffset,
                             (long)outputLength,
                             instruction == Instruction.STATICCALL || vmState.IsStatic,
                             vmState,
-                            false,
-                            false);
+                            isContinuation: false,
+                            isCreateOnPreExistingAccount: false);
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);

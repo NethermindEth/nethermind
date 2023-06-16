@@ -7,6 +7,7 @@ using Nethermind.Db;
 namespace Nethermind.Core.Test;
 
 public class TestMemColumnsDb<TKey> : TestMemDb, IColumnsDb<TKey>
+    where TKey : notnull
 {
     private readonly IDictionary<TKey, IDbWithSpan> _columnDbs = new Dictionary<TKey, IDbWithSpan>();
 

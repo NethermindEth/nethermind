@@ -22,7 +22,7 @@ namespace Nethermind.State.Witnesses
         [ThreadStatic]
         private static bool _collectWitness;
 
-        private readonly LruCache<KeccakKey, Keccak[]> _witnessCache = new(256, "Witnesses");
+        private readonly LruCache<ValueKeccak, Keccak[]> _witnessCache = new(256, "Witnesses");
 
         public IReadOnlyCollection<Keccak> Collected => _collected;
 
