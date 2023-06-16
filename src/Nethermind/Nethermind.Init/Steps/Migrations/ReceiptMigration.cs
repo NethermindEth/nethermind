@@ -303,54 +303,47 @@ namespace Nethermind.Init.Steps.Migrations
                 ? Array.Empty<TxReceipt>()
                 : receipts.Where(r => r is not null).Cast<TxReceipt>().ToArray();
 
-            if (notNullReceipts.Length != 0)
+            if (notNullReceipts.Length == 0) return;
+
+            _receiptStorage.Insert(block, notNullReceipts);
+
+            // I guess some old schema need this
             {
-                _receiptStorage.Insert(block, notNullReceipts);
-
-                // I guess some old schema need this
+                using IBatch batch = _receiptsDb.StartBatch();
+                for (int i = 0; i < notNullReceipts.Length; i++)
                 {
-                    using IBatch batch = _receiptsDb.StartBatch();
-                    for (int i = 0; i < notNullReceipts.Length; i++)
-                    {
-                        batch[notNullReceipts[i].TxHash!.Bytes] = null;
-                    }
-                }
-
-                // Receipts are now prefixed with block number.
-                _receiptsBlockDb.Delete(block.Hash!);
-
-                // Remove old tx index
-                bool txIndexExpired = _receiptConfig.TxLookupLimit != 0 && _blockTree.Head?.Number - block.Number > _receiptConfig.TxLookupLimit;
-                bool neverIndexTx = _receiptConfig.TxLookupLimit == -1;
-                if (neverIndexTx || txIndexExpired)
-                {
-                    using IBatch batch = _txIndexDb.StartBatch();
-                    foreach (TxReceipt? receipt in notNullReceipts)
-                    {
-                        batch[receipt.TxHash!.Bytes] = null;
-                    }
-                }
-
-                if (notNullReceipts.Length != receipts.Length)
-                {
-                    if (_logger.IsWarn)
-                        _logger.Warn(GetLogMessage("warning",
-                            $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} of {receipts.Length} receipts!"));
-                }
-
-                lock (_migrateBlockLock)
-                {
-                    if (_receiptStorage.MigratedBlockNumber > block.Number)
-                    {
-                        _receiptStorage.MigratedBlockNumber = block.Number;
-                    }
+                    batch[notNullReceipts[i].TxHash!.Bytes] = null;
                 }
             }
-            else if (block.Number <= _blockTree.Head?.Number)
+
+            // Receipts are now prefixed with block number.
+            _receiptsBlockDb.Delete(block.Hash!);
+
+            // Remove old tx index
+            bool txIndexExpired = _receiptConfig.TxLookupLimit != 0 && _blockTree.Head?.Number - block.Number > _receiptConfig.TxLookupLimit;
+            bool neverIndexTx = _receiptConfig.TxLookupLimit == -1;
+            if (neverIndexTx || txIndexExpired)
+            {
+                using IBatch batch = _txIndexDb.StartBatch();
+                foreach (TxReceipt? receipt in notNullReceipts)
+                {
+                    batch[receipt.TxHash!.Bytes] = null;
+                }
+            }
+
+            if (notNullReceipts.Length != receipts.Length)
             {
                 if (_logger.IsWarn)
                     _logger.Warn(GetLogMessage("warning",
                         $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} of {receipts.Length} receipts!"));
+            }
+
+            lock (_migrateBlockLock)
+            {
+                if (_receiptStorage.MigratedBlockNumber > block.Number)
+                {
+                    _receiptStorage.MigratedBlockNumber = block.Number;
+                }
             }
         }
 
