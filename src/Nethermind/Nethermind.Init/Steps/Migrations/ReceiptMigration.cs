@@ -52,16 +52,6 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IDbWithSpan _receiptsBlockDb;
         private readonly IReceiptsRecovery _recovery;
 
-        /// <summary>
-        /// Note, it start in decreasing order from this high number.
-        /// </summary>
-        private long MigrateToBlockNumber =>
-            _receiptStorage.MigratedBlockNumber == long.MaxValue
-                ? _syncModeSelector.Current.NotSyncing()
-                    ? _blockTree.Head?.Number ?? 0
-                    : _blockTree.BestKnownNumber
-                : _receiptStorage.MigratedBlockNumber - 1;
-
         public ReceiptMigration(IApiWithNetwork api): this(
             api.ReceiptStorage!,
             api.DisposeStack,
@@ -112,7 +102,7 @@ namespace Nethermind.Init.Steps.Migrations
             _cancellationTokenSource?.Cancel();
             await (_migrationTask ?? Task.CompletedTask);
             _receiptStorage.MigratedBlockNumber = Math.Min(Math.Max(_receiptStorage.MigratedBlockNumber, blockNumber), (_blockTree.Head?.Number ?? 0) + 1);
-            Run();
+            DoRun();
             return _receiptConfig.StoreReceipts && _receiptConfig.ReceiptsMigration;
         }
 
@@ -123,17 +113,24 @@ namespace Nethermind.Init.Steps.Migrations
                 if (_receiptConfig.ReceiptsMigration)
                 {
                     ResetMigrationIndexIfNeeded();
+                    DoRun();
+                }
+            }
+        }
 
-                    if (CanMigrate(_syncModeSelector.Current))
-                    {
-                        RunMigration();
-                    }
-                    else
-                    {
-                        _syncModeSelector.Changed -= OnSyncModeChanged;
-                        _syncModeSelector.Changed += OnSyncModeChanged;
-                        if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration will start after switching to full sync.");
-                    }
+        private void DoRun()
+        {
+            if (_receiptConfig.StoreReceipts)
+            {
+                if (CanMigrate(_syncModeSelector.Current))
+                {
+                    RunMigration();
+                }
+                else
+                {
+                    _syncModeSelector.Changed -= OnSyncModeChanged;
+                    _syncModeSelector.Changed += OnSyncModeChanged;
+                    if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration will start after switching to full sync.");
                 }
             }
         }
@@ -151,7 +148,15 @@ namespace Nethermind.Init.Steps.Migrations
 
         private void RunMigration()
         {
-            _toBlock = MigrateToBlockNumber;
+            // Note, it start in decreasing order from this high number.
+            long migrateToBlockNumber = _receiptStorage.MigratedBlockNumber == long.MaxValue
+                    ? _syncModeSelector.Current.NotSyncing()
+                        ? _blockTree.Head?.Number ?? 0
+                        : _blockTree.BestKnownNumber
+                    : _receiptStorage.MigratedBlockNumber - 1;
+            _toBlock = migrateToBlockNumber;
+
+            _logger.Warn($"Running migration to {_toBlock}");
 
             if (_toBlock > 0)
             {
@@ -170,7 +175,7 @@ namespace Nethermind.Init.Steps.Migrations
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration not needed. {MigrateToBlockNumber} {_receiptStorage.MigratedBlockNumber}");
+                if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration not needed. {migrateToBlockNumber} {_receiptStorage.MigratedBlockNumber}");
             }
         }
 
@@ -191,11 +196,21 @@ namespace Nethermind.Init.Steps.Migrations
 
             try
             {
-                foreach (Block block in GetBlockBodiesForMigration(token).AsParallel())
+                GetBlockBodiesForMigration(token).AsParallel().ForAll((item) =>
                 {
-                    _progress.Update(++synced);
-                    MigrateBlock(block);
-                }
+                    (long blockNum, Keccak blockHash) = item;
+                    Block? block = _blockTree.FindBlock(blockHash!, BlockTreeLookupOptions.None);
+                    bool usingEmptyBlock = block == null;
+                    if (usingEmptyBlock) {
+                        block = GetMissingBlock(blockNum, blockHash);
+                    }
+                    _progress.Update(Interlocked.Increment(ref synced));
+                    MigrateBlock(block!);
+                    if (usingEmptyBlock)
+                    {
+                        ReturnMissingBlock(block!);
+                    }
+                });
             }
             finally
             {
@@ -224,7 +239,7 @@ namespace Nethermind.Init.Steps.Migrations
             EmptyBlock.Return(emptyBlock);
         }
 
-        IEnumerable<Block> GetBlockBodiesForMigration(CancellationToken token)
+        IEnumerable<(long, Keccak)> GetBlockBodiesForMigration(CancellationToken token)
         {
             bool TryGetMainChainBlockHashFromLevel(long number, out Keccak? blockHash)
             {
@@ -261,17 +276,7 @@ namespace Nethermind.Init.Steps.Migrations
 
                 if (TryGetMainChainBlockHashFromLevel(i, out Keccak? blockHash))
                 {
-                    Block? block = _blockTree.FindBlock(blockHash!, BlockTreeLookupOptions.None);
-                    if (block != null)
-                    {
-                        yield return block;
-                    }
-                    else
-                    {
-                        Block missingBlock = GetMissingBlock(i, blockHash);
-                        yield return missingBlock;
-                        ReturnMissingBlock(missingBlock);
-                    }
+                    yield return (i, blockHash!);
                 }
             }
         }
@@ -290,9 +295,12 @@ namespace Nethermind.Init.Steps.Migrations
                 _receiptStorage.Insert(block, notNullReceipts);
 
                 // I guess some old schema need this
-                for (int i = 0; i < notNullReceipts.Length; i++)
                 {
-                    _receiptsDb.Delete(notNullReceipts[i].TxHash!);
+                    using IBatch batch = _receiptsDb.StartBatch();
+                    for (int i = 0; i < notNullReceipts.Length; i++)
+                    {
+                        batch[notNullReceipts[i].TxHash!.Bytes] = null;
+                    }
                 }
 
                 // Receipts are now prefixed with block number.
@@ -303,9 +311,10 @@ namespace Nethermind.Init.Steps.Migrations
                 bool neverIndexTx = _receiptConfig.TxLookupLimit == -1;
                 if (neverIndexTx || txIndexExpired)
                 {
+                    using IBatch batch = _txIndexDb.StartBatch();
                     foreach (TxReceipt? receipt in notNullReceipts)
                     {
-                        _txIndexDb.Delete(receipt.TxHash!);
+                        batch[receipt.TxHash!.Bytes] = null;
                     }
                 }
 
@@ -318,7 +327,7 @@ namespace Nethermind.Init.Steps.Migrations
 
                 lock (_migrateBlockLock)
                 {
-                    if (_receiptStorage.MigratedBlockNumber < block.Number)
+                    if (_receiptStorage.MigratedBlockNumber > block.Number)
                     {
                         _receiptStorage.MigratedBlockNumber = block.Number;
                     }

@@ -24,11 +24,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
     [TestFixture]
     public class ReceiptMigrationTests
     {
-        [TestCase(null, false, false, false)]
-        [TestCase(5, false, false, false)]
-        [TestCase(5, true, false, true)]
-        [TestCase(5, false, true, true)]
-        public void RunMigration(int? migratedBlockNumber, bool forceReset, bool useCompactEncoding, bool didCompleteMigration)
+        [TestCase(null, false, false)]
+        [TestCase(5, false, false)]
+        [TestCase(null, true, false)]
+        [TestCase(null, false, true)]
+        public void RunMigration(int? commandMigratedBlockNumber, bool forceReset, bool useCompactEncoding)
         {
             int chainLength = 10;
             IReceiptConfig receiptConfig = new ReceiptConfig()
@@ -43,8 +43,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             IBlockTree blockTree = blockTreeBuilder.TestObject;
             ChainLevelInfoRepository chainLevelInfoRepository = blockTreeBuilder.ChainLevelInfoRepository;
 
-            InMemoryReceiptStorage inMemoryReceiptStorage = new(true) { MigratedBlockNumber = migratedBlockNumber is not null ? 0 : long.MaxValue };
-            InMemoryReceiptStorage outMemoryReceiptStorage = new(true) { MigratedBlockNumber = migratedBlockNumber is not null ? 0 : long.MaxValue };
+            InMemoryReceiptStorage inMemoryReceiptStorage = new(true) { MigratedBlockNumber = commandMigratedBlockNumber is not null ? 0 : long.MaxValue };
+            InMemoryReceiptStorage outMemoryReceiptStorage = new(true) { MigratedBlockNumber = commandMigratedBlockNumber is not null ? 0 : long.MaxValue };
             TestReceiptStorage receiptStorage = new(inMemoryReceiptStorage, outMemoryReceiptStorage);
 
             ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
@@ -82,9 +82,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 receiptsRecovery,
                 LimboLogs.Instance
             );
-            if (migratedBlockNumber.HasValue)
+            if (commandMigratedBlockNumber.HasValue)
             {
-                _ = migration.Run(migratedBlockNumber.Value);
+                _ = migration.Run(commandMigratedBlockNumber.Value);
             }
             else
             {
@@ -93,16 +93,13 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             guard.WaitOne(TimeSpan.FromSeconds(1));
 
-            int blockNum = (migratedBlockNumber ?? chainLength) - 1 - 1;
-            if (didCompleteMigration)
-            {
-                blockNum = chainLength - 1 - 1;
-            }
+            Assert.That(() => outMemoryReceiptStorage.MigratedBlockNumber, Is.InRange(0, 1).After(1000, 10));
 
+            int blockNum = (commandMigratedBlockNumber ?? chainLength) - 1 - 1;
             int txCount = blockNum * 2;
-
-            receiptColumnDb.KeyWasRemoved(_ => true, txCount);
-            ((TestMemDb) receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRemoved(_ => true, blockNum);
+            receiptColumnDb
+                .KeyWasWritten((item => item.Item2 == null), txCount);
+            ((TestMemDb) receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRemoved((_ => true), blockNum);
             outMemoryReceiptStorage.Count.Should().Be(txCount);
         }
 
