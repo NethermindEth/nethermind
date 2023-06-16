@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IProcessExitSource _processExitSource;
         private readonly ILogManager _logManager;
         private readonly IChainEstimations _chainEstimations;
-        private readonly long _availableFreeSpace;
+        private readonly IDriveInfo _driveInfo;
         private IPruningContext? _currentPruning;
         private int _waitingForBlockProcessed = 0;
         private int _waitingForStateReady = 0;
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.FullPruning
             IStateReader stateReader,
             IProcessExitSource processExitSource,
             IChainEstimations chainEstimations,
-            long availableFreeSpace,
+            IDriveInfo driveInfo,
             ILogManager logManager)
         {
             _fullPruningDb = fullPruningDb;
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.FullPruning
             _processExitSource = processExitSource;
             _logManager = logManager;
             _chainEstimations = chainEstimations;
-            _availableFreeSpace = availableFreeSpace;
+            _driveInfo = driveInfo;
             _pruningTrigger.Prune += OnPrune;
             _logger = _logManager.GetClassLogger();
             _minimumPruningDelay = TimeSpan.FromHours(_pruningConfig.FullPruningMinimumDelayHours);
@@ -181,11 +181,12 @@ namespace Nethermind.Blockchain.FullPruning
                 return true;
             }
 
-            if (_availableFreeSpace < currentChainSize.Value * ChainSizeThresholdFactor / 100)
+            long available = _driveInfo.AvailableFreeSpace;
+            if (available < currentChainSize.Value * ChainSizeThresholdFactor / 100)
             {
                 if (_logger.IsWarn)
                     _logger.Warn(
-                        $"Not enough disk space to run full pruning. Required {(currentChainSize * ChainSizeThresholdFactor) / 1.GB()} GB. Have {_availableFreeSpace / 1.GB()} GB");
+                        $"Not enough disk space to run full pruning. Required {(currentChainSize * ChainSizeThresholdFactor) / 1.GB()} GB. Have {available / 1.GB()} GB");
                 return false;
             }
             return true;
