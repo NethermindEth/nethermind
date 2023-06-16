@@ -207,15 +207,18 @@ namespace Nethermind.Trie
             }
         }
 
-        public static byte[] IncrementNibble(this byte[] nibbles)
+        public static Span<byte> IncrementNibble(this Span<byte> nibbles, bool trimHighest = false)
         {
             if (nibbles.Length == 0)
                 return nibbles;
 
-            for (int i = nibbles.Length - 1; i >=0; i--)
+            int omitted = 0;
+
+            for (int i = nibbles.Length - 1; i >= 0; i--)
             {
                 if (nibbles[i] == 0x0f)
                 {
+                    omitted++;
                     continue;
                 }
                 else
@@ -224,7 +227,9 @@ namespace Nethermind.Trie
                     break;
                 }
             }
-            return nibbles;
+            return trimHighest ?
+                nibbles.Slice(0, nibbles.Length - omitted) :
+                nibbles;
         }
     }
 }

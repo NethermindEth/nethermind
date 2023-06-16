@@ -141,6 +141,9 @@ namespace Nethermind.Db
 
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
         {
+            if (Bytes.Comparer.Compare(startKey, endKey) == 0)
+                _db.Remove(startKey.ToArray(), out _);
+
             List<byte[]> keys = new();
             foreach (byte[] key in _db.Keys)
             {

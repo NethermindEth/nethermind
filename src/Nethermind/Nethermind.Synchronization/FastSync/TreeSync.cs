@@ -476,7 +476,7 @@ namespace Nethermind.Synchronization.FastSync
                         rootChanged = true;
 
                     if (rootChanged)
-                        _dbPrunner.Start();
+                        _dbPrunner?.Start();
 
                     _branchProgress = new BranchProgress(blockNumber, _logger);
                     _blockNumber = blockNumber;

@@ -13,7 +13,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.ByPath;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -65,9 +64,7 @@ namespace Nethermind.Trie.Pruning
             _committedNodes = new TrieNodeBlockCache(this, historyBlockDepth, logManager);
             _destroyPrefixes = new ConcurrentQueue<byte[]>();
             _emptyPrefixes = new BlockingCollection<byte[]>();
-            _dbPrunner = dbPrunner ?? new ByPathStateDbPrunner(_keyValueStore);
-            //_pruningTask = BuildCleaningTask();
-            //_pruningTask.Start();
+            _dbPrunner = dbPrunner;
         }
 
         public long LastPersistedBlockNumber
@@ -529,7 +526,7 @@ namespace Nethermind.Trie.Pruning
                 trieNode.PathToNode.CopyTo(pathToNodeSlice);
                 byte[] pathToNodeBytes = Nibbles.NibblesToByteStorage(pathToNodeNibbles);
 
-                _logger.Info($"Saving node {trieNode.NodeType} path to nibbles {pathToNodeNibbles.ToHexString()}, bytes: {pathToNodeBytes.ToHexString()}, full: {pathBytes.ToHexString()}");
+                if (_logger.IsDebug) _logger.Debug($"Saving node {trieNode.NodeType} path to nibbles {pathToNodeNibbles.ToHexString()}, bytes: {pathToNodeBytes.ToHexString()}, full: {pathBytes.ToHexString()}");
 
                 if (trieNode.FullRlp == null)
                 {
@@ -542,17 +539,9 @@ namespace Nethermind.Trie.Pruning
                         byte[] newPath = new byte[pathBytes.Length + 1];
                         Array.Copy(pathBytes, 0, newPath, 1, pathBytes.Length);
                         newPath[0] = PathMarker;
-                        if (withDelete)
+                        if (withDelete && _dbPrunner is not null)
                         {
                             RequestDeletionForLeaf(pathToNodeNibbles, trieNode.FullPath);
-                            //_emptyPrefixes.Add(pathToNodeNibbles.ToArray());
-                            //DeleteSubtreeWithRangeDelete(pathToNodeNibbles, keyValueStore);
-                            //_dbPrunner.EnqueueRange()
-                            //DeleteTreeVisitor deleteVistor = new(_keyValueStore, this, new DeleteTreeVisitorContext()
-                            //{
-                            //    StoreNibblePrefix = trieNode.StoreNibblePathPrefix
-                            //});
-                            //deleteVistor.DeleteSubTree(trieNode.PathToNode);
                         }
                         //_logger.Info($"Save path {trieNode.PathToNode.ToHexString()}");
                         keyValueStore[pathToNodeBytes] = newPath;
@@ -561,9 +550,9 @@ namespace Nethermind.Trie.Pruning
             }
             else
             {
-                _logger.Info($"Saving node {trieNode.NodeType} full: {pathBytes.ToHexString()}");
+                if (_logger.IsDebug) _logger.Debug($"Saving node {trieNode.NodeType} full nibbles {fullPath.ToHexString()} full: {pathBytes.ToHexString()}");
             }
-            if (withDelete)
+            if (withDelete && _dbPrunner is not null)
             {
                 if (trieNode.IsBranch)
                 {
@@ -571,7 +560,7 @@ namespace Nethermind.Trie.Pruning
                 }
                 else if (trieNode.IsExtension)
                 {
-                    _logger.Info($"Missed extension handling {pathBytes.ToHexString()}");
+                    if (_logger.IsDebug) _logger.Debug($"Missed extension handling {pathBytes.ToHexString()}");
                 }
             }
 
@@ -751,6 +740,14 @@ namespace Nethermind.Trie.Pruning
             return (fromKey, toKey);
         }
 
+        public static (byte[], byte[]) GetDeleteKeyFromNibbles2(Span<byte> nibbleFrom, Span<byte> nibbleTo, int maxLength, int oddityOverride)
+        {
+            byte[] fromKey = EncodePathWithEnforcedOddity2(nibbleFrom, oddityOverride);
+            byte[] toKey = EncodePathWithEnforcedOddity2(nibbleTo, oddityOverride);
+
+            return (fromKey, toKey);
+        }
+
         public static byte[] EncodePathWithEnforcedOddity(Span<byte> pathNibbles, int maxLength, int oddityOverride, byte mask)
         {
             byte[] targetBytes = new byte[maxLength];
@@ -787,73 +784,135 @@ namespace Nethermind.Trie.Pruning
             return targetBytes;
         }
 
+        public static byte[] EncodePathWithEnforcedOddity2(Span<byte> pathNibbles, int oddityOverride)
+        {
+            byte[] targetBytes = null;
+
+            int oddity = pathNibbles.Length % 2;
+
+            if (oddity == oddityOverride)
+            {
+                return Nibbles.NibblesToByteStorage(pathNibbles);
+            }
+            else if (oddity == 1 && oddityOverride == 0)
+            {
+                targetBytes = new byte[pathNibbles.Length / 2 + 2];
+                for (int i = 0; i < pathNibbles.Length / 2; i++)
+                    targetBytes[i + 1] = Nibbles.ToByte(pathNibbles[2 * i], pathNibbles[2 * i + 1]);
+
+                targetBytes[pathNibbles.Length / 2 + 1] = Nibbles.ToByte(pathNibbles[^1], 0);
+            }
+            else if (oddity == 0 && oddityOverride == 1)
+            {
+                targetBytes = new byte[pathNibbles.Length / 2 + 1];
+
+                for (int i = 0; i < pathNibbles.Length / 2 - 1; i++)
+                    targetBytes[i + 1] = Nibbles.ToByte(pathNibbles[2 * i + oddityOverride], pathNibbles[2 * i + 1 + oddityOverride]);
+
+                targetBytes[0] = Nibbles.ToByte(1, pathNibbles[0]);
+                targetBytes[pathNibbles.Length / 2] = Nibbles.ToByte(pathNibbles[^1], 0);
+            }
+            return targetBytes;
+        }
+
         public void RequestDeletionForLeaf(Span<byte> pathToNodeNibbles, Span<byte> fullPathNibbles)
         {
             int fullKeyLength = fullPathNibbles.Length >= 66 ? 66 : 33;
+            byte[] from, to;
 
-            (byte[] from, byte[] to) = GetDeleteKeyFromNibbles(pathToNodeNibbles, fullPathNibbles, fullKeyLength, 0);
-            _logger.Info($"From: {from.ToHexString()} To: {to.ToHexString()}");
-            _dbPrunner.EnqueueRange(from, to);
+            //edge cases
+            Span<byte> keySlice = fullPathNibbles.Slice(pathToNodeNibbles.Length);
 
-            (from, to) = GetDeleteKeyFromNibbles(pathToNodeNibbles, fullPathNibbles, fullKeyLength, 1);
-            _logger.Info($"From: {from.ToHexString()} To: {to.ToHexString()}");
-            _dbPrunner.EnqueueRange(from, to);
+            Span<byte> fromNibblesKey = stackalloc byte[pathToNodeNibbles.Length + 1];
+            pathToNodeNibbles.CopyTo(fromNibblesKey);
 
-            byte[] modified = fullPathNibbles.ToArray();
-            (from, to) = GetDeleteKeyFromNibbles(modified.IncrementNibble(), pathToNodeNibbles, fullKeyLength, 0);
-            _logger.Info($"From: {from.ToHexString()} To: {to.ToHexString()}");
-            _dbPrunner.EnqueueRange(from, to);
+            if (!keySlice.IsZero())
+            {
+                (from, to) = GetDeleteKeyFromNibbles2(fromNibblesKey, fullPathNibbles, fullKeyLength, 0);
+                _dbPrunner.EnqueueRange(from, to);
 
-            (from, to) = GetDeleteKeyFromNibbles(modified, pathToNodeNibbles, fullKeyLength, 1);
-            _logger.Info($"From: {from.ToHexString()} To: {to.ToHexString()}");
-            _dbPrunner.EnqueueRange(from, to);
+                (from, to) = GetDeleteKeyFromNibbles2(fromNibblesKey, fullPathNibbles, fullKeyLength, 1);
+                _dbPrunner.EnqueueRange(from, to);
+            }
+
+            if (keySlice.IndexOfAnyExcept((byte)0xf) >= 0)
+            {
+                Span<byte> fullPathIncremented = stackalloc byte[fullPathNibbles.Length];
+                fullPathNibbles.CopyTo(fullPathIncremented);
+                Span<byte> endNibbles = fromNibblesKey.Slice(0, pathToNodeNibbles.Length).IncrementNibble();
+                (from, to) = GetDeleteKeyFromNibbles2(fullPathIncremented.IncrementNibble(), endNibbles, fullKeyLength, 0);
+                _dbPrunner.EnqueueRange(from, to);
+
+                (from, to) = GetDeleteKeyFromNibbles2(fullPathIncremented, endNibbles, fullKeyLength, 1);
+                _dbPrunner.EnqueueRange(from, to);
+            }
         }
 
         public void RequestDeletionForBranch(TrieNode branchNode)
         {
-            void GenerateRangesAndRequest(Span<byte> childPathFrom, Span<byte> childPathTo, byte? from, byte? to)
+            void GenerateRangesAndRequest(Span<byte> childPathFrom, Span<byte> childPathTo, byte? from, byte? to, byte toMask)
             {
                 int fullKeyLength = childPathFrom.Length >= 66 ? 66 : 33;
+                byte[][] keyRanges = new byte[4][];
 
-                childPathFrom[^1] = from.Value;
-                childPathTo[^1] = to ?? from.Value;
-                (byte[] fromKey, byte[] toKey) = GetDeleteKeyFromNibbles(childPathFrom, childPathTo, fullKeyLength, 0);
-                _logger.Info($"From: {fromKey.ToHexString()} To: {toKey.ToHexString()}");
-                _dbPrunner.EnqueueRange(fromKey, toKey);
+                if (childPathFrom.Length > 0)
+                {
+                    childPathFrom[^1] = from.Value;
+                    keyRanges[0] = EncodePathWithEnforcedOddity2(childPathFrom, 0);
+                    keyRanges[2] = EncodePathWithEnforcedOddity2(childPathFrom, 1);
+                }
+                else
+                {
+                    keyRanges[0] = EncodePathWithEnforcedOddity(childPathFrom, fullKeyLength, 0, 0x00);
+                    keyRanges[2] = EncodePathWithEnforcedOddity(childPathFrom, fullKeyLength, 1, 0x00);
+                }
 
-                (fromKey, toKey) = GetDeleteKeyFromNibbles(childPathFrom, childPathTo, fullKeyLength, 1);
-                _logger.Info($"From: {fromKey.ToHexString()} To: {toKey.ToHexString()}");
-                _dbPrunner.EnqueueRange(fromKey, toKey);
+                if (childPathTo.Length > 0)
+                {
+                    if (to is not null)
+                        childPathTo[^1] = to.Value;
+                    keyRanges[1] = EncodePathWithEnforcedOddity2(childPathTo, 0);
+                    keyRanges[3] = EncodePathWithEnforcedOddity2(childPathTo, 1);
+                }
+                else
+                {
+                    keyRanges[1] = EncodePathWithEnforcedOddity(childPathTo, fullKeyLength, 0, 0xff);
+                    keyRanges[3] = EncodePathWithEnforcedOddity(childPathTo, fullKeyLength, 1, 0xff);
+                }
+
+                for (int i = 0; i < 4; i+=2)
+                {
+                    _dbPrunner.EnqueueRange(keyRanges[i], keyRanges[i + 1]);
+                }
             }
 
             Span<byte> childPathFrom = stackalloc byte[branchNode.FullPath.Length + 1];
             Span<byte> childPathTo = stackalloc byte[branchNode.FullPath.Length + 1];
             branchNode.FullPath.CopyTo(childPathFrom);
             branchNode.FullPath.CopyTo(childPathTo);
-            byte? ind1 = null, ind2 = null;
+            byte? ind1 = null;
             for (byte i = 0; i < 16; i++)
             {
                 if (branchNode.IsChildNull(i))
                 {
-                    if (ind1 is null)
-                        ind1 = i;
-                    else
-                        ind2 = i;
+                    ind1 ??= i;
                     continue;
                 }
                 else
                 {
                     if (ind1 is not null)
                     {
-                        GenerateRangesAndRequest(childPathFrom, childPathTo, ind1, ind2);
-                        ind1 = ind2 = null;
+                        GenerateRangesAndRequest(childPathFrom, childPathTo, ind1, i, 0x00);
+                        ind1 = null;
                     }
                 }
             }
+
             if (ind1 is not null)
             {
-                GenerateRangesAndRequest(childPathFrom, childPathTo, ind1, ind2);
-                ind1 = ind2 = null;
+                Span<byte> nextSiblingPath = childPathTo.Slice(0, branchNode.FullPath.Length).IncrementNibble();
+                GenerateRangesAndRequest(childPathFrom, nextSiblingPath, ind1, null, 0x00);
+                ind1 = null;
             }
         }
 
@@ -883,27 +942,6 @@ namespace Nethermind.Trie.Pruning
         public Task GetTask()
         {
             return _pruningTask;
-        }
-
-        private Task BuildCleaningTask()
-        {
-            return new Task(() =>
-            {
-                while (!_emptyPrefixes.IsCompleted)
-                {
-                    byte[] prefixNibbles = null;
-                    try
-                    {
-                        prefixNibbles = _emptyPrefixes.Take();
-                    }
-                    catch (InvalidOperationException) { }
-
-                    if (prefixNibbles is not null)
-                    {
-                        DeleteSubtreeWithRangeDelete(prefixNibbles, _keyValueStore);
-                    }
-                }
-            });
         }
     }
 

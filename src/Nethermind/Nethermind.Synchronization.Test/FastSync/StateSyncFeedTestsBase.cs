@@ -131,12 +131,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             {
                 if (e.NewState == SyncFeedState.Dormant)
                 {
-                    if (withDeletion) dbContext.DbPrunner.EndOfCleanupRequests();
                     dormantAgainSource.TrySetResult(0);
                 }
             };
-            if (withDeletion) dbContext.DbPrunner.Start();
-
             safeContext.TreeFeed.ResetStateRoot(blockNumber, dbContext.RemoteStateTree.RootHash, safeContext.Feed.CurrentState, withDeletion);
             safeContext.Feed.Activate();
             var watch = Stopwatch.StartNew();
@@ -176,7 +173,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 ResolverCapability = capability;
 
-                DbPrunner = new ByPathStateDbPrunner(LocalDb);
+                DbPrunner = new ByPathStateDbPrunner(LocalDb, logManager);
 
                 ITrieStore localTrieStore = capability.CreateTrieStore(LocalStateDb, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, DbPrunner);
                 ITrieStore localStorageTrieStore = capability.CreateTrieStore(LocalStateDb.GetColumnDb(StateColumns.Storage), logManager);

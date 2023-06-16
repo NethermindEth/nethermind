@@ -22,9 +22,6 @@ public class ByPathStateDbPrunner
     {
         _keyValueStore = keyValueStore;
         _logger = logManager?.GetClassLogger<ByPathStateDbPrunner>() ?? throw new ArgumentNullException(nameof(logManager));
-        //_cleanupQueue = new BlockingCollection<KeyRange>();
-        //_pruneTask = BuildCleaningTask();
-        //_pruneTask.Start();
     }
 
     public void EnqueueRange(Span<byte> from, Span<byte> to)
@@ -53,7 +50,7 @@ public class ByPathStateDbPrunner
     {
         if (_pruneTask?.IsCompleted == false)
         {
-            if (_logger.IsWarn) _logger.Warn($"Cleanup taks not finished - cancelling - queue size {_cleanupQueue.Count}");
+            if (_logger.IsWarn) _logger.Warn($"Cleanup task not finished - cancelling - queue size {_cleanupQueue.Count}");
             _pruningTaskCancellationTokenSource.Cancel();
             _pruneTask.Wait();
         }
@@ -76,8 +73,11 @@ public class ByPathStateDbPrunner
 
     public void Wait()
     {
-        Console.WriteLine("Waiting");
-        _pruneTask.Wait();
+        if (_pruneTask is not null)
+        {
+            if (_logger.IsInfo) _logger.Info($"Waiting for cleanup task to finish");
+            _pruneTask.Wait();
+        }
     }
 
     private Task BuildCleaningTask()

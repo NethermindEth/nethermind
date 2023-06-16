@@ -92,6 +92,7 @@ namespace Nethermind.Synchronization.Test
                 blockDownloaderFactory,
                 pivot,
                 syncReport,
+                null,
                 LimboLogs.Instance);
             _syncServer = new SyncServer(
                 trieStore,

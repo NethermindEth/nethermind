@@ -408,6 +408,7 @@ namespace Nethermind.Synchronization.Test
                         blockDownloaderFactory,
                         pivot,
                         syncReport,
+                        null,
                         _logManager);
                 }
 
