@@ -217,6 +217,13 @@ namespace Nethermind.Init.Steps.Migrations
                         ReturnMissingBlock(block!);
                     }
                 });
+
+                if (_logger.IsInfo) _logger.Info(GetLogMessage("Compacting receipts database"));
+                _receiptsDb.Compact();
+                if (_logger.IsInfo) _logger.Info(GetLogMessage("Compacting receipts tx index database"));
+                _txIndexDb.Compact();
+                if (_logger.IsInfo) _logger.Info(GetLogMessage("Compacting receipts block database"));
+                _receiptsBlockDb.Compact();
             }
             finally
             {
