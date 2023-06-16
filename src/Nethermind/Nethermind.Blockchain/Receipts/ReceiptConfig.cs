@@ -7,6 +7,7 @@ public class ReceiptConfig : IReceiptConfig
 {
     public bool StoreReceipts { get; set; } = true;
     public bool ReceiptsMigration { get; set; } = false;
+    public int ReceiptsMigrationDegreeOfParallelism { get; set; } = 0;
     public bool CompactReceiptStore { get; set; } = true;
     public bool CompactTxIndex { get; set; } = true;
     public long? TxLookupLimit { get; set; } = 2350000;

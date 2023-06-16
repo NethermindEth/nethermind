@@ -196,7 +196,13 @@ namespace Nethermind.Init.Steps.Migrations
 
             try
             {
-                GetBlockBodiesForMigration(token).AsParallel().ForAll((item) =>
+                int parallelism = _receiptConfig.ReceiptsMigrationDegreeOfParallelism;
+                if (parallelism == 0)
+                {
+                    parallelism = Environment.ProcessorCount;
+                }
+
+                GetBlockBodiesForMigration(token).AsParallel().WithDegreeOfParallelism(parallelism).ForAll((item) =>
                 {
                     (long blockNum, Keccak blockHash) = item;
                     Block? block = _blockTree.FindBlock(blockHash!, BlockTreeLookupOptions.None);

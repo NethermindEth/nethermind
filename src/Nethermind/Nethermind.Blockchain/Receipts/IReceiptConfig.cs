@@ -13,6 +13,12 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "If set to 'true' then receipts db will be migrated to new schema.", DefaultValue = "false")]
     bool ReceiptsMigration { get; set; }
 
+    [ConfigItem(Description = "[TECHNICAL] Specify degree of parallelism during receipt migration.", DefaultValue = "0", HiddenFromDocs = true)]
+    int ReceiptsMigrationDegreeOfParallelism { get; set; }
+
+    [ConfigItem(Description = "Force receipt recovery if its not able to detect it.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool ForceReceiptsMigration { get; set; }
+
     [ConfigItem(Description = "If set to 'true' then reduce receipt db size at expense of rpc performance.", DefaultValue = "true")]
     bool CompactReceiptStore { get; set; }
 
@@ -24,7 +30,4 @@ public interface IReceiptConfig : IConfig
 
     [ConfigItem(Description = "Max num of block per eth_getLogs request.", DefaultValue = "10000", HiddenFromDocs = true)]
     int MaxBlockDepth { get; set; }
-
-    [ConfigItem(Description = "Force receipt recovery if its not able to detect it.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool ForceReceiptsMigration { get; set; }
 }
