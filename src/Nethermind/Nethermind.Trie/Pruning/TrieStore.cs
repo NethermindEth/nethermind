@@ -822,11 +822,6 @@ namespace Nethermind.Trie.Pruning
             });
         }
 
-        public byte[]? this[ReadOnlySpan<byte> key]
-        {
-            get => Get(key);
-        }
-
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             return _pruningStrategy.PruningEnabled

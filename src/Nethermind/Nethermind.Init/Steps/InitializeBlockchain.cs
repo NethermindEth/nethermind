@@ -147,6 +147,7 @@ namespace Nethermind.Init.Steps
 
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
 
+            // TODO: Internally pass HealingPatriciaTree as State/Storage tries.
             IWorldState worldState = setApi.WorldState = new WorldState(
                 trieStore,
                 codeDb,
