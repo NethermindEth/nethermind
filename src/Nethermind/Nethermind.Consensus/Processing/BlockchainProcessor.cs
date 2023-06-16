@@ -458,7 +458,7 @@ namespace Nethermind.Consensus.Processing
 
         private Block[]? ProcessBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer)
         {
-            const int maxRetries = 3;
+            const int maxRetries = 2;
 
             List<Block> blocksToProcess = processingBranch.BlocksToProcess;
             if (blocksToProcess.Count == 0)
@@ -498,7 +498,7 @@ namespace Nethermind.Consensus.Processing
                     // We are favouring liveness here and will retry
                     // the block a number of times before halting the
                     // chain for this fork.
-                    
+
                     for (int b = 0; i < blocksToProcess.Count; b++)
                     {
                         if (blocksToProcess[i].Hash == ex.InvalidBlock.Hash)
