@@ -128,7 +128,12 @@ public class InitializeNetwork : IStep
 
         if (_api.TrieStore is HealingTrieStore healingTrieStore)
         {
-            healingTrieStore.InitializeNetwork(apiSyncPeerPool, new TrieHealingAllocationStrategyFactory(), _api.ChainHeadStateProvider!);
+            healingTrieStore.InitializeNetwork(apiSyncPeerPool);
+        }
+
+        if (_api.WorldState is HealingWorldState healingWorldState)
+        {
+            healingWorldState.InitializeNetwork(apiSyncPeerPool);
         }
 
         IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();

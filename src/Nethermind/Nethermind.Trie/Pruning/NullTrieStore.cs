@@ -19,10 +19,7 @@ namespace Nethermind.Trie.Pruning
 
         public void HackPersistOnShutdown() { }
 
-        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
-        {
-            return this;
-        }
+        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore) => this;
 
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {
@@ -30,24 +27,16 @@ namespace Nethermind.Trie.Pruning
             remove { }
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak hash)
-        {
-            return new(NodeType.Unknown, hash);
-        }
+        public TrieNode FindCachedOrUnknown(Keccak hash) => new(NodeType.Unknown, hash);
 
-        public byte[] LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None)
-        {
-            return Array.Empty<byte>();
-        }
+        public byte[] LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
 
-        public bool IsPersisted(Keccak keccak) => true;
         public bool IsPersisted(in ValueKeccak keccak) => true;
 
         public void Dispose() { }
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            return null;
-        }
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => null;
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
     }
 }

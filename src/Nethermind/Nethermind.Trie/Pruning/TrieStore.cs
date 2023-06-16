@@ -332,20 +332,6 @@ namespace Nethermind.Trie.Pruning
 
         public virtual byte[] LoadRlp(Keccak keccak, ReadFlags readFlags = ReadFlags.None) => LoadRlp(keccak, null, readFlags);
 
-        public bool IsPersisted(Keccak keccak)
-        {
-            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
-
-            if (rlp is null)
-            {
-                return false;
-            }
-
-            Metrics.LoadedFromDbNodesCount++;
-
-            return true;
-        }
-
         public bool IsPersisted(in ValueKeccak keccak)
         {
             byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
@@ -832,5 +818,14 @@ namespace Nethermind.Trie.Pruning
                 ? trieNode.FullRlp
                 : _currentBatch?.Get(key, flags) ?? _keyValueStore.Get(key, flags);
         }
+
+        /// <summary>
+        /// Sets value in key-value store.
+        /// </summary>
+        /// <param name="key"></param>
+        /// <param name="value"></param>
+        /// <param name="flags"></param>
+        /// <remarks>For healing only!</remarks>
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => _keyValueStore.Set(key, value, flags);
     }
 }

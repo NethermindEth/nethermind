@@ -20,7 +20,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Trie
 {
     [DebuggerDisplay("{RootHash}")]
-    public class PatriciaTree : IPatriciaTree
+    public class PatriciaTree
     {
         private readonly ILogger _logger;
 
@@ -299,7 +299,7 @@ namespace Nethermind.Trie
         }
 
         [DebuggerStepThrough]
-        public virtual byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
+        public virtual byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
         {
             try
             {
@@ -326,7 +326,7 @@ namespace Nethermind.Trie
         }
 
         [DebuggerStepThrough]
-        public void Set(ReadOnlySpan<byte> rawKey, byte[] value)
+        public virtual void Set(ReadOnlySpan<byte> rawKey, byte[] value)
         {
             if (_logger.IsTrace)
                 _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");

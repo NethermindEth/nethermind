@@ -32,5 +32,6 @@ namespace Nethermind.Trie
 
         public byte[] UpdatePath { get; }
         public int CurrentIndex { get; }
+        public ReadOnlySpan<byte> GetPathPart() => UpdatePath.AsSpan(0, CurrentIndex + 1);
     }
 }
