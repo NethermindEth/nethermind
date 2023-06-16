@@ -37,16 +37,16 @@ namespace Nethermind.Db
         FullPruningTrigger FullPruningTrigger { get; set; }
 
         [ConfigItem(
-            Description = "'Full' pruning: Defines how many parallel tasks and potentially used threads can be created by full pruning. -1 - number of logical processors, 0 - half of logical processors, 1 - full pruning will run on single thread. " +
-                          "Recommended value depends on the type of the node. If the node needs to be responsive (its RPC or Validator node) then recommended value is below the number of logical processors. " +
-                          "If the node doesn't have much other responsibilities but needs to be reliably be able to follow the chain without any delays and produce live logs - the default value is recommended. " +
-                          "If the node doesn't have to be responsive, has very fast I/O (like NVME) and the shortest pruning time is to be achieved, this can be set to 2-3x of the number of logical processors.",
+            Description = "'Full' pruning: Defines how many parallel tasks and potentially used threads can be created by full pruning. -1 - number of logical processors, 0 - 25% of logical processors, 1 - full pruning will run on single thread. " +
+                          "Recommended value depends on the type of the node. If the node needs to be responsive (its RPC or Validator node) then recommended value is the default value or below is recommended. " +
+                          "If the node doesn't have much other responsibilities but needs to be reliably be able to follow the chain without any delays and produce live logs - the default value or above is recommended. " +
+                          "If the node doesn't have to be responsive, has very fast I/O (like NVME) and the shortest pruning time is to be achieved, this can be set to the number of logical processors (-1).",
             DefaultValue = "0")]
         int FullPruningMaxDegreeOfParallelism { get; set; }
 
         [ConfigItem(
             Description = "Set the memory budget used for the trie visit. Increasing this significantly reduces read iops requirement at expense of RAM. Default depend on network. Set to 0 to disable.",
-            DefaultValue = "0")]
+            DefaultValue = "4000")]
         int FullPruningMemoryBudgetMb { get; set; }
 
         [ConfigItem(
