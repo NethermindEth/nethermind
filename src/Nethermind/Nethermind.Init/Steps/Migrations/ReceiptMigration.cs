@@ -303,9 +303,7 @@ namespace Nethermind.Init.Steps.Migrations
                 ? Array.Empty<TxReceipt>()
                 : receipts.Where(r => r is not null).Cast<TxReceipt>().ToArray();
 
-            if (receipts.Length == 0 ||
-                notNullReceipts.Length !=
-                0) // if notNullReceipts.Length is 0 and receipts are not 0 - we are missing all receipts, they are not processed yet.
+            if (notNullReceipts.Length != 0)
             {
                 _receiptStorage.Insert(block, notNullReceipts);
 
