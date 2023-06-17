@@ -652,7 +652,7 @@ OutOfGas:
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
         Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
         int programCounter = vmState.ProgramCounter;
-
+        bool isRevert = false;
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
@@ -662,6 +662,7 @@ OutOfGas:
         Unsafe.SkipInit(out Int256.Int256 sa);
         Unsafe.SkipInit(out Int256.Int256 sb);
         Unsafe.SkipInit(out UInt256 result);
+        object returnData;
         while (programCounter < code.Length)
         {
 #if DEBUG
@@ -1752,24 +1753,18 @@ OutOfGas:
 
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        (bool outOfGas, EvmState? callState) = InstructionCreate(vmState, stack, ref gasAvailable, spec, instruction, programCounter);
+                        (bool outOfGas, returnData) = InstructionCreate(vmState, ref stack, ref gasAvailable, spec, instruction);
 
                         if (outOfGas) goto OutOfGas;
-                        if (callState is null) break;
+                        if (returnData is null) break;
 
-                        return new CallResult(callState);
+                        goto DataReturnNoTrace;
                     }
                 case Instruction.RETURN:
                     {
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!InstructionReturn(vmState, ref stack, ref gasAvailable, out returnData)) goto OutOfGas;
 
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
-                        ReadOnlyMemory<byte> returnData = vmState.Memory.Load(in a, b);
-
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                        if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-                        return new CallResult(returnData.ToArray(), null);
+                        goto DataReturn;
                     }
                 case Instruction.CALL:
                 case Instruction.CALLCODE:
@@ -1918,23 +1913,17 @@ OutOfGas:
                             isContinuation: false,
                             isCreateOnPreExistingAccount: false);
 
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                        if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-                        return new CallResult(callState);
+                        returnData = callState;
+                        goto DataReturn;
                     }
                 case Instruction.REVERT:
                     {
                         if (!spec.RevertOpcodeEnabled) goto InvalidInstruction;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!InstructionRevert(vmState, ref stack, ref gasAvailable, out returnData)) goto OutOfGas;
 
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
-                        ReadOnlyMemory<byte> errorDetails = vmState.Memory.Load(in a, b);
-
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                        if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-                        return new CallResult(errorDetails.ToArray(), null, true);
+                        isRevert = true;
+                        goto DataReturn;
                     }
                 case Instruction.INVALID:
                     {
@@ -2094,17 +2083,27 @@ OutOfGas:
             }
         }
 
-        goto EmptyTrace;
+        goto EmptyReturnNoTrace;
 
 // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
 EmptyReturn:
         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-EmptyTrace:
+EmptyReturnNoTrace:
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 #if DEBUG
         debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
         return CallResult.Empty;
+DataReturn:
+        if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+DataReturnNoTrace:
+        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+
+        if (returnData is EvmState state)
+        {
+            return new CallResult(state);
+        }
+        return new CallResult((byte[])returnData, null, shouldRevert: isRevert);
 
 OutOfGas:
         EvmExceptionType exceptionType = EvmExceptionType.OutOfGas;
@@ -2131,6 +2130,37 @@ AccessViolation:
         exceptionType = EvmExceptionType.AccessViolation;
 ReturnFailure:
         return GetFailureReturn(gasAvailable, exceptionType, traceOpcodes);
+    }
+
+    private static bool InstructionRevert(EvmState vmState, ref EvmStack stack, ref long gasAvailable, out object returnData)
+    {
+        stack.PopUInt256(out UInt256 position);
+        stack.PopUInt256(out UInt256 length);
+
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, in length))
+        {
+            returnData = null;
+            return false;
+        }
+
+        returnData = vmState.Memory.Load(in position, in length).ToArray();
+        return true;
+    }
+
+    private static bool InstructionReturn(EvmState vmState, ref EvmStack stack, ref long gasAvailable, out object returnData)
+    {
+        stack.PopUInt256(out UInt256 position);
+        stack.PopUInt256(out UInt256 length);
+
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, in length))
+        {
+            returnData = null;
+            return false;
+        }
+
+        returnData = vmState.Memory.Load(in position, in length).ToArray();
+
+        return true;
     }
 
     private bool InstructionSelfDestruct(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
@@ -2169,8 +2199,7 @@ ReturnFailure:
         return true;
     }
 
-    private (bool outOfGas, EvmState? callState) InstructionCreate(EvmState vmState, EvmStack stack, ref long gasAvailable, IReleaseSpec spec,
-        Instruction instruction, int programCounter)
+    private (bool outOfGas, EvmState? callState) InstructionCreate(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec, Instruction instruction)
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
@@ -2299,7 +2328,6 @@ ReturnFailure:
             false,
             accountExists);
 
-        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
         return (outOfGas: false, callState);
     }
 
