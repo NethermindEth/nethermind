@@ -4,7 +4,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -36,8 +35,7 @@ public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
 
-    private bool _simdOperationsEnabled = Vector<byte>.Count == 32;
-    private UInt256 P255Int = (UInt256)BigInteger.Pow(2, 255);
+    private UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
     private UInt256 P255 => P255Int;
     private UInt256 BigInt256 = 256;
     public UInt256 BigInt32 = 32;
@@ -410,11 +408,6 @@ public class VirtualMachine : IVirtualMachine
         }
 
         return cachedCodeInfo;
-    }
-
-    public void DisableSimdInstructions()
-    {
-        _simdOperationsEnabled = false;
     }
 
     private void InitializePrecompiledContracts()
@@ -1001,27 +994,10 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        bytes = stack.PopWord256();
-                        Span<byte> bytesb = stack.PopWord256();
+                        Vector256<byte> aVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(stack.PopWord256()));
+                        Vector256<byte> bVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(stack.PopWord256()));
 
-                        if (_simdOperationsEnabled)
-                        {
-                            Vector<byte> aVec = new(bytes);
-                            Vector<byte> bVec = new(bytesb);
-
-                            Vector.BitwiseAnd(aVec, bVec).CopyTo(stack.Register);
-                        }
-                        else
-                        {
-                            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(bytes);
-                            ref ulong refB = ref MemoryMarshal.AsRef<ulong>(bytesb);
-                            ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                            refBuffer = refA & refB;
-                            Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) & Unsafe.Add(ref refB, 1);
-                            Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) & Unsafe.Add(ref refB, 2);
-                            Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) & Unsafe.Add(ref refB, 3);
-                        }
+                        Vector256.BitwiseAnd(aVec, bVec).CopyTo(stack.Register);
 
                         stack.PushBytes(stack.Register);
                         break;
@@ -1030,27 +1006,10 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        bytes = stack.PopWord256();
-                        Span<byte> bytesb = stack.PopWord256();
+                        Vector256<byte> aVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(stack.PopWord256()));
+                        Vector256<byte> bVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(stack.PopWord256()));
 
-                        if (_simdOperationsEnabled)
-                        {
-                            Vector<byte> aVec = new(bytes);
-                            Vector<byte> bVec = new(bytesb);
-
-                            Vector.BitwiseOr(aVec, bVec).CopyTo(stack.Register);
-                        }
-                        else
-                        {
-                            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(bytes);
-                            ref ulong refB = ref MemoryMarshal.AsRef<ulong>(bytesb);
-                            ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                            refBuffer = refA | refB;
-                            Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) | Unsafe.Add(ref refB, 1);
-                            Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) | Unsafe.Add(ref refB, 2);
-                            Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) | Unsafe.Add(ref refB, 3);
-                        }
+                        Vector256.BitwiseOr(aVec, bVec).CopyTo(stack.Register);
 
                         stack.PushBytes(stack.Register);
                         break;
@@ -1059,27 +1018,10 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        bytes = stack.PopWord256();
-                        Span<byte> bytesb = stack.PopWord256();
+                        Vector256<byte> aVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(stack.PopWord256()));
+                        Vector256<byte> bVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(stack.PopWord256()));
 
-                        if (_simdOperationsEnabled)
-                        {
-                            Vector<byte> aVec = new(bytes);
-                            Vector<byte> bVec = new(bytesb);
-
-                            Vector.Xor(aVec, bVec).CopyTo(stack.Register);
-                        }
-                        else
-                        {
-                            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(bytes);
-                            ref ulong refB = ref MemoryMarshal.AsRef<ulong>(bytesb);
-                            ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                            refBuffer = refA ^ refB;
-                            Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) ^ Unsafe.Add(ref refB, 1);
-                            Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) ^ Unsafe.Add(ref refB, 2);
-                            Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) ^ Unsafe.Add(ref refB, 3);
-                        }
+                        Vector256.Xor(aVec, bVec).CopyTo(stack.Register);
 
                         stack.PushBytes(stack.Register);
                         break;
@@ -1088,25 +1030,9 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        bytes = stack.PopWord256();
+                        Vector256<byte> negVec = Vector256.OnesComplement(Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(stack.PopWord256())));
 
-                        if (_simdOperationsEnabled)
-                        {
-                            Vector<byte> aVec = new(bytes);
-                            Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
-
-                            negVec.CopyTo(stack.Register);
-                        }
-                        else
-                        {
-                            ref var refA = ref MemoryMarshal.AsRef<ulong>(bytes);
-                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                            refBuffer = ~refA;
-                            Unsafe.Add(ref refBuffer, 1) = ~Unsafe.Add(ref refA, 1);
-                            Unsafe.Add(ref refBuffer, 2) = ~Unsafe.Add(ref refA, 2);
-                            Unsafe.Add(ref refBuffer, 3) = ~Unsafe.Add(ref refA, 3);
-                        }
+                        negVec.CopyTo(stack.Register);
 
                         stack.PushBytes(stack.Register);
                         break;
