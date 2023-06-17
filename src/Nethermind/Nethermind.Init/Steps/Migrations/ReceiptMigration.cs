@@ -293,6 +293,11 @@ namespace Nethermind.Init.Steps.Migrations
                 {
                     yield return (i, blockHash!);
                 }
+
+                if (_receiptStorage.MigratedBlockNumber > i)
+                {
+                    _receiptStorage.MigratedBlockNumber = i;
+                }
             }
         }
 
@@ -336,14 +341,6 @@ namespace Nethermind.Init.Steps.Migrations
                 if (_logger.IsWarn)
                     _logger.Warn(GetLogMessage("warning",
                         $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} of {receipts.Length} receipts!"));
-            }
-
-            lock (_migrateBlockLock)
-            {
-                if (_receiptStorage.MigratedBlockNumber > block.Number)
-                {
-                    _receiptStorage.MigratedBlockNumber = block.Number;
-                }
             }
         }
 
