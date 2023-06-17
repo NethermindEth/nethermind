@@ -132,11 +132,13 @@ namespace Nethermind.Evm.Test
             TestSpecProvider customSpecProvider = new(Frontier.Instance, spec);
             Machine = new VirtualMachine(TestBlockhashProvider.Instance, customSpecProvider, logManager);
             _processor = new TransactionProcessor(customSpecProvider, TestState, Machine, LimboLogs.Instance);
-            (Block block, Transaction transaction) = PrepareInitTx(BlockNumber, 100000, createContract);
+            (Block block, Transaction transaction) = testcase.UseCreateTx
+                ? PrepareInitTx(BlockNumber, 100000, createContract)
+                : PrepareTx(BlockNumber, 100000, createContract);
 
             var txTracer = new TestAllTracerWithOutput();
             _processor.Execute(transaction, block.Header, txTracer);
-            Assert.That(txTracer.ReportedActionErrors.Any(x => x is EvmExceptionType.InvalidCode or EvmExceptionType.BadInstruction or EvmExceptionType.InvalidEofCode) ? StatusCode.Failure : StatusCode.Success, Is.EqualTo(testcase.Result.Status), testcase.Result.Msg);
+            Assert.That(txTracer.ReportedActionErrors.Any(x => x is EvmExceptionType.InvalidCode or EvmExceptionType.InvalidEofCode) ? StatusCode.Failure : StatusCode.Success, Is.EqualTo(testcase.Result.Status), testcase.Result.Msg);
 
         }
 
@@ -145,6 +147,7 @@ namespace Nethermind.Evm.Test
             public byte[] Bytecode;
             public bool isEofCode = true;
             public DeploymentContext Ctx;
+            public bool UseCreateTx = true;
             public (byte Status, string Msg) Result;
         }
 
@@ -554,23 +557,23 @@ namespace Nethermind.Evm.Test
                 }
 
                 bool isValid = ctx is DeploymentContext.UseCreateTx
-                    ? !scenarios.HasFlag(DeploymentScenario.CorruptInitCode) && (
-                        scenarios.HasFlag(DeploymentScenario.EofInitCode)
-                        ? scenarios.HasFlag(DeploymentScenario.EofDeployedCode) && !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode)
-                        : !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode))
-                    : scenarios.HasFlag(DeploymentScenario.CorruptInitCode)
-                        ? true
-                        : !scenarios.HasFlag(DeploymentScenario.EofInitCode)
-                            ? !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode)
-                            : scenarios.HasFlag(DeploymentScenario.EofDeployedCode)
-                                && !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode);
-
+                    ? scenarios.HasFlag(DeploymentScenario.EofInitCode)
+                        ? scenarios.HasFlag(DeploymentScenario.CorruptInitCode) ?
+                            true : scenarios.HasFlag(DeploymentScenario.EofDeployedCode) && !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode)
+                        : scenarios.HasFlag(DeploymentScenario.CorruptInitCode) ?
+                            true : !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode)
+                    : scenarios.HasFlag(DeploymentScenario.EofInitCode)
+                        ? scenarios.HasFlag(DeploymentScenario.CorruptInitCode) ?
+                            true : scenarios.HasFlag(DeploymentScenario.EofDeployedCode) && !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode)
+                        : scenarios.HasFlag(DeploymentScenario.CorruptInitCode) ?
+                            true : !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode);
 
 
                 byte[] bytecode = EmitBytecode();
                 string message = $"EOF1 execution : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {EnumToDetailedString(scenarios)}, \nContext : {ctx.FastToString()}";
                 return new TestCase(scenarios.ToInt32())
                 {
+                    UseCreateTx = ctx.HasFlag(DeploymentContext.UseCreateTx),
                     Bytecode = bytecode,
                     Ctx = ctx,
                     Result = (isValid ? StatusCode.Success : StatusCode.Failure, message),

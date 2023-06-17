@@ -19,9 +19,12 @@ public class EofCodeInfo : ICodeInfo
     public ReadOnlyMemory<byte> TypeSection { get; }
     public ReadOnlyMemory<byte> CodeSection { get; }
     public ReadOnlyMemory<byte> DataSection { get; }
-    public ReadOnlyMemory<byte> ContainerSection { get; }
+    public ReadOnlyMemory<byte>? ContainerSection { get; }
     public (int, int) SectionOffset(int sectionId) => (_header.CodeSections[sectionId].Start - _header.TypeSection.EndOffset, _header.CodeSections[sectionId].Size);
-    public (int, int) ContainerOffset(int sectionId) => (_header.ContainerSection[sectionId].Start - _header.DataSection.EndOffset, _header.ContainerSection[sectionId].Size);
+    public (int, int) ContainerOffset(int sectionId) =>
+        _header.ContainerSection is null
+            ? throw new System.Diagnostics.UnreachableException()
+            : (_header.ContainerSection.Value[sectionId].Start - _header.DataSection.EndOffset, _header.ContainerSection.Value[sectionId].Size);
     public (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index)
     {
         ReadOnlySpan<byte> typesectionSpan = TypeSection.Span;
@@ -46,8 +49,9 @@ public class EofCodeInfo : ICodeInfo
         _header = header;
         ReadOnlyMemory<byte> memory = MachineCode.AsMemory();
         TypeSection = memory.Slice(_header.TypeSection.Start, _header.TypeSection.Size);
-        CodeSection = memory.Slice(_header.CodeSections[0].Start, _header.CodeSectionsSize);
+        CodeSection = memory.Slice(_header.CodeSections[0].Start, _header.CodeSections.Size);
         DataSection = memory.Slice(_header.DataSection.Start, _header.DataSection.Size);
-        ContainerSection = memory.Slice(_header.ContainerSection[0].Start, _header.ExtraContainersSize);
+        ContainerSection = _header.ContainerSection is null ? null
+            : memory.Slice(_header.ContainerSection.Value[0].Start, _header.ContainerSection.Value.Size);
     }
 }

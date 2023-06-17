@@ -210,13 +210,9 @@ public class VirtualMachine : IVirtualMachine
                                 }
                             }
                             // Reject code starting with 0xEF if EIP-3541 is enabled And not following EOF if EIP-3540 is enabled and it has the EOF Prefix.
-                            else if (currentState.ExecutionType.IsAnyCreateLegacy() && CodeDepositHandler.IsValidWithLegacyRules(callResult.Output.Bytes))
+                            else if (currentState.ExecutionType.IsAnyCreate() && !CodeDepositHandler.CodeIsValid(callResult.Output.Bytes, spec, callResult.FromVersion))
                             {
                                 _txTracer.ReportActionError(callResult.FromVersion > 0 ? EvmExceptionType.InvalidEofCode : EvmExceptionType.InvalidCode);
-                            }
-                            else if (currentState.ExecutionType.IsAnyCreateEof() && CodeDepositHandler.IsValidWithEofRules(callResult.Output.Bytes, callResult.FromVersion))
-                            {
-                                _txTracer.ReportActionError(EvmExceptionType.InvalidEofCode);
                             }
                             else
                             {
@@ -261,7 +257,7 @@ public class VirtualMachine : IVirtualMachine
                         if (previousState.ExecutionType.IsAnyCreateLegacy())
                         {
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Bytes.Length, spec);
-                            bool invalidCode = CodeDepositHandler.IsValidWithLegacyRules(callResult.Output.Bytes);
+                            bool invalidCode = !CodeDepositHandler.CodeIsValid(callResult.Output.Bytes, spec, callResult.FromVersion);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
                                 _state.InsertCode(callCodeOwner, callResult.Output.Bytes, spec);
@@ -305,38 +301,37 @@ public class VirtualMachine : IVirtualMachine
 
                             if (!invalidCode)
                             {
-                                Span<byte> bytecodeResult = new byte[size + auxExtraData.Length];
-                                var (typesectionOffsets, codesectionOffsets, datasectionOffsets, containersectionOffsets) = header.Value.offsets;
+                                Span<byte> bytecodeResult = new byte[header.Value.DataSection.Start + header.Value.DataSection.Size];
 
                                 // copy magic eof prefix
                                 int movingOffset = 0;
-                                ReadOnlySpan<byte> magicSpan = container.Slice(0, EvmObjectFormat.MAGIC.Length + EvmObjectFormat.Eof1.ONE_BYTE_LENGTH);
+                                ReadOnlySpan<byte> magicSpan = container.Slice(0, EvmObjectFormat.MAGIC.Length + EvmObjectFormat.ONE_BYTE_LENGTH);
                                 magicSpan.CopyTo(bytecodeResult);
                                 movingOffset += magicSpan.Length;
 
                                 // copy typesection header
-                                ReadOnlySpan<byte> typesectionHeaderSpan = container.Slice(typesectionOffsets.start, typesectionOffsets.size);
+                                ReadOnlySpan<byte> typesectionHeaderSpan = container.Slice(header.Value.TypeSection.Start, header.Value.TypeSection.Size);
                                 typesectionHeaderSpan.CopyTo(bytecodeResult.Slice(movingOffset));
                                 movingOffset += typesectionHeaderSpan.Length;
 
                                 // copy codesection header
-                                ReadOnlySpan<byte> codesectionHeaderSpan = container.Slice(codesectionOffsets.start, codesectionOffsets.size);
+                                ReadOnlySpan<byte> codesectionHeaderSpan = container.Slice(header.Value.CodeSections.Start, header.Value.CodeSections.Size);
                                 codesectionHeaderSpan.CopyTo(bytecodeResult.Slice(movingOffset));
                                 movingOffset += codesectionHeaderSpan.Length;
 
 
                                 // copy codesection header
-                                ReadOnlySpan<byte> containerectionHeaderSpan = container.Slice(containersectionOffsets.start, containersectionOffsets.size);
+                                ReadOnlySpan<byte> containerectionHeaderSpan = container.Slice(header.Value.ContainerSection.Value.Start, header.Value.ContainerSection.Value.Size);
                                 containerectionHeaderSpan.CopyTo(bytecodeResult.Slice(movingOffset));
                                 movingOffset += containerectionHeaderSpan.Length;
 
                                 // copy codesection header
-                                bytecodeResult[movingOffset++] = EvmObjectFormat.Eof1.KIND_DATA;
+                                bytecodeResult[movingOffset++] = (byte)EvmObjectFormat.Eof1.Separator.KIND_DATA;
                                 byte[] newDataSectionLength = (auxExtraData.Length + header.Value.DataSection.Size).ToBigEndianByteArray();
                                 newDataSectionLength.CopyTo(bytecodeResult.Slice(movingOffset));
                                 movingOffset += newDataSectionLength.Length;
 
-                                bytecodeResult[movingOffset++] = EvmObjectFormat.Eof1.TERMINATOR;
+                                bytecodeResult[movingOffset++] = (byte)EvmObjectFormat.Eof1.Separator.TERMINATOR;
 
                                 // copy type section
                                 ReadOnlySpan<byte> typesectionSpan = container.Slice(header.Value.TypeSection.Start, header.Value.TypeSection.Size);
@@ -344,12 +339,12 @@ public class VirtualMachine : IVirtualMachine
                                 movingOffset += typesectionSpan.Length;
 
                                 // copy code section
-                                ReadOnlySpan<byte> codesectionSpan = container.Slice(header.Value.CodeSections[0].Start, header.Value.CodeSectionsSize);
+                                ReadOnlySpan<byte> codesectionSpan = container.Slice(header.Value.CodeSections[0].Start, header.Value.CodeSections.Size);
                                 codesectionSpan.CopyTo(bytecodeResult.Slice(movingOffset));
                                 movingOffset += codesectionSpan.Length;
 
                                 // copy container section
-                                ReadOnlySpan<byte> containersectionSpan = container.Slice(header.Value.ContainerSection?[0].Start ?? 0, header.Value.ExtraContainersSize);
+                                ReadOnlySpan<byte> containersectionSpan = container.Slice(header.Value.ContainerSection?[0].Start ?? 0, header.Value.ContainerSection?.Size ?? 0);
                                 containersectionSpan.CopyTo(bytecodeResult.Slice(movingOffset));
                                 movingOffset += containersectionSpan.Length;
 
@@ -754,16 +749,17 @@ public class VirtualMachine : IVirtualMachine
         EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
         long gasAvailable = vmState.GasAvailable;
         int programCounter = vmState.ProgramCounter;
-        int sectionIndex = 0;
+        int sectionIndex = vmState.SectionIndex;
         ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection.Span;
         ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection.Span;
         ReadOnlySpan<byte> typeSection = env.CodeInfo.TypeSection.Span;
 
-        static void UpdateCurrentState(EvmState state, int pc, long gas, int stackHead)
+        static void UpdateCurrentState(EvmState state, int pc, long gas, int stackHead, int sectionIndex)
         {
             state.ProgramCounter = pc;
             state.GasAvailable = gas;
             state.DataStackHead = stackHead;
+            state.SectionIndex = sectionIndex;
         }
         EvmState ScheduleCallSubstate
             (EvmState vmState, ExecutionEnvironment env, TxExecutionContext txCtx, EvmStack stack, long gasAvailable, int programCounter, Instruction instruction, Address codeSource, ICodeInfo targetCodeInfo, UInt256 callValue, UInt256 transferValue, Address caller, Address target, long gasLimitUl, ReadOnlyMemory<byte> callData)
@@ -799,7 +795,7 @@ public class VirtualMachine : IVirtualMachine
                 false,
                 false);
 
-            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
             if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
             return callState;
         }
@@ -860,7 +856,7 @@ public class VirtualMachine : IVirtualMachine
                 vmState,
                 false,
                 accountExists);
-            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
             return callState;
         }
 
@@ -906,7 +902,7 @@ public class VirtualMachine : IVirtualMachine
                             return CallResult.InvalidEofCodeException;
                         }
 
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
                         goto EmptyTrace;
                     }
                 case Instruction.ADD:
@@ -2347,7 +2343,7 @@ public class VirtualMachine : IVirtualMachine
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in memoryPos, length)) goto OutOfGas;
                         ReadOnlySpan<byte> returnData = vmState.Memory.Load(in memoryPos, length).Span;
 
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
                         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
                         return new CallResult(returnData.ToArray(), null, env.CodeInfo.EofVersion());
                     }
@@ -2511,7 +2507,7 @@ public class VirtualMachine : IVirtualMachine
                             isContinuation: false,
                             isCreateOnPreExistingAccount: false);
 
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
                         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
                         return new CallResult(callState);
                     }
@@ -2525,7 +2521,7 @@ public class VirtualMachine : IVirtualMachine
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in memoryPos, length)) goto OutOfGas;
                         ReadOnlyMemory<byte> errorDetails = vmState.Memory.Load(in memoryPos, length);
 
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
                         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
                         return new CallResult(errorDetails.ToArray(), null, env.CodeInfo.EofVersion(), true);
                     }
@@ -2572,7 +2568,7 @@ public class VirtualMachine : IVirtualMachine
 
                         _state.SubtractFromBalance(env.ExecutingAccount, ownerBalance, spec);
 
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
                         goto EmptyTrace;
                     }
                 case Instruction.SHL:
@@ -2679,8 +2675,8 @@ public class VirtualMachine : IVirtualMachine
                         if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.IsEof())
                         {
                             if (!UpdateGas(GasCostOf.RJump, ref gasAvailable)) goto OutOfGas;
-                            short offset = codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
-                            programCounter += EvmObjectFormat.Eof1.TWO_BYTE_LENGTH + offset;
+                            short offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+                            programCounter += EvmObjectFormat.TWO_BYTE_LENGTH + offset;
                             break;
                         }
                         else
@@ -2702,12 +2698,12 @@ public class VirtualMachine : IVirtualMachine
                         {
                             if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) goto OutOfGas;
                             Span<byte> condition = stack.PopWord256();
-                            short offset = codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
+                            short offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
                             if (!condition.SequenceEqual(BytesZero32))
                             {
                                 programCounter += offset;
                             }
-                            programCounter += EvmObjectFormat.Eof1.TWO_BYTE_LENGTH;
+                            programCounter += EvmObjectFormat.TWO_BYTE_LENGTH;
                         }
                         else
                         {
@@ -2734,12 +2730,12 @@ public class VirtualMachine : IVirtualMachine
                             if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
                             var case_v = stack.PopByte();
                             var count = codeSection[programCounter++];
-                            var immediateValueSize = count * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH;
+                            var immediateValueSize = count * EvmObjectFormat.TWO_BYTE_LENGTH;
                             if (case_v < count)
                             {
                                 int caseOffset = codeSection.Slice(
-                                    programCounter + case_v * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH,
-                                    EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
+                                    programCounter + case_v * EvmObjectFormat.TWO_BYTE_LENGTH,
+                                    EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
                                 programCounter += caseOffset;
                             }
                             programCounter += immediateValueSize;
@@ -2773,7 +2769,7 @@ public class VirtualMachine : IVirtualMachine
                         }
 
                         if (!UpdateGas(GasCostOf.Callf, ref gasAvailable)) goto OutOfGas;
-                        var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
+                        var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
                         (int inputCount, _, int maxStackHeight) = env.CodeInfo.GetSectionMetadata(index);
 
                         if (maxStackHeight + stack.Head > EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_LENGTH)
@@ -2788,7 +2784,7 @@ public class VirtualMachine : IVirtualMachine
                         {
                             Index = sectionIndex,
                             Height = stack.Head - inputCount,
-                            Offset = programCounter + EvmObjectFormat.Eof1.TWO_BYTE_LENGTH
+                            Offset = programCounter + EvmObjectFormat.TWO_BYTE_LENGTH
                         };
 
                         sectionIndex = index;
@@ -2806,7 +2802,7 @@ public class VirtualMachine : IVirtualMachine
                         (_, int outputCount, _) = env.CodeInfo.GetSectionMetadata(sectionIndex);
                         if (vmState.ReturnStackHead == 0)
                         {
-                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
                             goto EmptyTrace;
                         }
 
@@ -2846,7 +2842,7 @@ public class VirtualMachine : IVirtualMachine
                         {
                             if (!UpdateGas(GasCostOf.DataLoadN, ref gasAvailable)) goto OutOfGas;
 
-                            var castedOffset = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
+                            var castedOffset = (int)codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
                             var bytes = dataSection[castedOffset..(castedOffset + 32)];
                             stack.PushBytes(bytes);
                             break;
@@ -3020,7 +3016,7 @@ public class VirtualMachine : IVirtualMachine
                         if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable)) // still undecided in EIP
                             goto OutOfGas;
 
-                        var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
+                        var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
                         (_, _, int maxStackHeight) = env.CodeInfo.GetSectionMetadata(index);
 
                         if (maxStackHeight + stack.Head > EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_LENGTH)
@@ -3178,7 +3174,7 @@ public class VirtualMachine : IVirtualMachine
             }
         }
 
-        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
 // Fall through to Empty: label
 
 // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
