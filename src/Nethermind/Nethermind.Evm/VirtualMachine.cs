@@ -1524,9 +1524,8 @@ OutOfGas:
                     {
                         Metrics.TloadOpcode++;
                         if (!spec.TransientStorageEnabled) goto InvalidInstruction;
-                        var gasCost = GasCostOf.TLoad;
 
-                        if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
+                        if (!UpdateGas(GasCostOf.TLoad, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out result);
                         StorageCell storageCell = new(env.ExecutingAccount, result);
@@ -1548,8 +1547,7 @@ OutOfGas:
 
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        long gasCost = GasCostOf.TStore;
-                        if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
+                        if (!UpdateGas(GasCostOf.TStore, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out result);
                         bytes = stack.PopWord256();
@@ -1626,16 +1624,10 @@ OutOfGas:
                     }
                 case Instruction.PUSH0:
                     {
-                        if (spec.IncludePush0Instruction)
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
+                        if (!spec.IncludePush0Instruction) goto InvalidInstruction;
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PushZero();
-                        }
-                        else
-                        {
-                            goto InvalidInstruction;
-                        }
+                        stack.PushZero();
                         break;
                     }
                 case Instruction.PUSH1:
