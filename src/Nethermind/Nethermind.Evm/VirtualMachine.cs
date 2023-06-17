@@ -1510,153 +1510,16 @@ OutOfGas:
                         break;
                     }
                 case Instruction.SSTORE:
-                    {
-                        Metrics.SstoreOpcode++;
+                {
+                    Metrics.SstoreOpcode++;
 
-                        if (vmState.IsStatic) goto StaticCallViolation;
+                    if (vmState.IsStatic) goto StaticCallViolation;
 
-                        // fail fast before the first storage read if gas is not enough even for reset
-                        if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) goto OutOfGas;
+                    if (!InstructionSStore(vmState, ref stack, ref gasAvailable, spec))
+                        goto OutOfGas;
 
-                        if (spec.UseNetGasMeteringWithAStipendFix)
-                        {
-                            if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
-                            if (gasAvailable <= GasCostOf.CallStipend) goto OutOfGas;
-                        }
-
-                        stack.PopUInt256(out result);
-                        bytes = stack.PopWord256();
-                        bool newIsZero = bytes.IsZero();
-                        if (!newIsZero)
-                        {
-                            bytes = bytes.WithoutLeadingZeros().ToArray();
-                        }
-                        else
-                        {
-                            bytes = new byte[] { 0 };
-                        }
-
-                        StorageCell storageCell = new(env.ExecutingAccount, result);
-
-                        if (!ChargeStorageAccessGas(
-                            ref gasAvailable,
-                            vmState,
-                            storageCell,
-                            StorageAccessType.SSTORE,
-                            spec)) goto OutOfGas;
-
-                        Span<byte> currentValue = _state.Get(storageCell);
-                        // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
-                        bool currentIsZero = currentValue.IsZero();
-
-                        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
-                        long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
-
-                        if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
-                        {
-                            if (newIsZero)
-                            {
-                                if (!newSameAsCurrent)
-                                {
-                                    vmState.Refund += sClearRefunds;
-                                    if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
-                                }
-                            }
-                            else if (currentIsZero)
-                            {
-                                if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable)) goto OutOfGas;
-                            }
-                        }
-                        else // net metered
-                        {
-                            if (newSameAsCurrent)
-                            {
-                                if (!UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable)) goto OutOfGas;
-                            }
-                            else // net metered, C != N
-                            {
-                                Span<byte> originalValue = _state.GetOriginal(storageCell);
-                                bool originalIsZero = originalValue.IsZero();
-
-                                bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
-                                if (currentSameAsOriginal)
-                                {
-                                    if (currentIsZero)
-                                    {
-                                        if (!UpdateGas(GasCostOf.SSet, ref gasAvailable)) goto OutOfGas;
-                                    }
-                                    else // net metered, current == original != new, !currentIsZero
-                                    {
-                                        if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) goto OutOfGas;
-
-                                        if (newIsZero)
-                                        {
-                                            vmState.Refund += sClearRefunds;
-                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
-                                        }
-                                    }
-                                }
-                                else // net metered, new != current != original
-                                {
-                                    long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
-                                    if (!UpdateGas(netMeteredStoreCost, ref gasAvailable)) goto OutOfGas;
-
-                                    if (!originalIsZero) // net metered, new != current != original != 0
-                                    {
-                                        if (currentIsZero)
-                                        {
-                                            vmState.Refund -= sClearRefunds;
-                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(-sClearRefunds);
-                                        }
-
-                                        if (newIsZero)
-                                        {
-                                            vmState.Refund += sClearRefunds;
-                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
-                                        }
-                                    }
-
-                                    bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
-                                    if (newSameAsOriginal)
-                                    {
-                                        long refundFromReversal;
-                                        if (originalIsZero)
-                                        {
-                                            refundFromReversal = spec.GetSetReversalRefund();
-                                        }
-                                        else
-                                        {
-                                            refundFromReversal = spec.GetClearReversalRefund();
-                                        }
-
-                                        vmState.Refund += refundFromReversal;
-                                        if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(refundFromReversal);
-                                    }
-                                }
-                            }
-                        }
-
-                        if (!newSameAsCurrent)
-                        {
-                            Span<byte> valueToStore = newIsZero ? BytesZero : bytes;
-                            _state.Set(storageCell, valueToStore.ToArray());
-                        }
-
-                        if (_txTracer.IsTracingInstructions)
-                        {
-                            Span<byte> valueToStore = newIsZero ? BytesZero : bytes;
-                            bytes = new byte[32]; // do not stackalloc here
-                            storageCell.Index.ToBigEndian(bytes);
-                            _txTracer.ReportStorageChange(bytes, valueToStore);
-                        }
-
-                        if (_txTracer.IsTracingOpLevelStorage)
-                        {
-                            _txTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
-                        }
-
-                        break;
-                    }
+                    break;
+                }
                 case Instruction.TLOAD:
                     {
                         Metrics.TloadOpcode++;
@@ -2444,6 +2307,152 @@ AccessViolation:
         exceptionType = EvmExceptionType.AccessViolation;
 ReturnFailure:
         return GetFailureReturn(gasAvailable, exceptionType, traceOpcodes);
+    }
+
+    private bool InstructionSStore(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
+    {
+        // fail fast before the first storage read if gas is not enough even for reset
+        if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return false;
+
+        if (spec.UseNetGasMeteringWithAStipendFix)
+        {
+            if (_txTracer.IsTracingRefunds)
+                _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
+            if (gasAvailable <= GasCostOf.CallStipend) return false;
+        }
+
+        stack.PopUInt256(out UInt256 result);
+        Span<byte> bytes = stack.PopWord256();
+        bool newIsZero = bytes.IsZero();
+        if (!newIsZero)
+        {
+            bytes = bytes.WithoutLeadingZeros().ToArray();
+        }
+        else
+        {
+            bytes = new byte[] { 0 };
+        }
+
+        StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
+
+        if (!ChargeStorageAccessGas(
+                ref gasAvailable,
+                vmState,
+                storageCell,
+                StorageAccessType.SSTORE,
+                spec)) return false;
+
+        Span<byte> currentValue = _state.Get(storageCell);
+        // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
+        bool currentIsZero = currentValue.IsZero();
+
+        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
+        long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
+
+        if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
+        {
+            if (newIsZero)
+            {
+                if (!newSameAsCurrent)
+                {
+                    vmState.Refund += sClearRefunds;
+                    if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
+                }
+            }
+            else if (currentIsZero)
+            {
+                if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable)) return false;
+            }
+        }
+        else // net metered
+        {
+            if (newSameAsCurrent)
+            {
+                if (!UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable)) return false;
+            }
+            else // net metered, C != N
+            {
+                Span<byte> originalValue = _state.GetOriginal(storageCell);
+                bool originalIsZero = originalValue.IsZero();
+
+                bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
+                if (currentSameAsOriginal)
+                {
+                    if (currentIsZero)
+                    {
+                        if (!UpdateGas(GasCostOf.SSet, ref gasAvailable)) return false;
+                    }
+                    else // net metered, current == original != new, !currentIsZero
+                    {
+                        if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return false;
+
+                        if (newIsZero)
+                        {
+                            vmState.Refund += sClearRefunds;
+                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
+                        }
+                    }
+                }
+                else // net metered, new != current != original
+                {
+                    long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
+                    if (!UpdateGas(netMeteredStoreCost, ref gasAvailable)) return false;
+
+                    if (!originalIsZero) // net metered, new != current != original != 0
+                    {
+                        if (currentIsZero)
+                        {
+                            vmState.Refund -= sClearRefunds;
+                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(-sClearRefunds);
+                        }
+
+                        if (newIsZero)
+                        {
+                            vmState.Refund += sClearRefunds;
+                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
+                        }
+                    }
+
+                    bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
+                    if (newSameAsOriginal)
+                    {
+                        long refundFromReversal;
+                        if (originalIsZero)
+                        {
+                            refundFromReversal = spec.GetSetReversalRefund();
+                        }
+                        else
+                        {
+                            refundFromReversal = spec.GetClearReversalRefund();
+                        }
+
+                        vmState.Refund += refundFromReversal;
+                        if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(refundFromReversal);
+                    }
+                }
+            }
+        }
+
+        if (!newSameAsCurrent)
+        {
+            Span<byte> valueToStore = newIsZero ? BytesZero : bytes;
+            _state.Set(storageCell, valueToStore.ToArray());
+        }
+
+        if (_txTracer.IsTracingInstructions)
+        {
+            Span<byte> valueToStore = newIsZero ? BytesZero : bytes;
+            bytes = new byte[32]; // do not stackalloc here
+            storageCell.Index.ToBigEndian(bytes);
+            _txTracer.ReportStorageChange(bytes, valueToStore);
+        }
+
+        if (_txTracer.IsTracingOpLevelStorage)
+        {
+            _txTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
+        }
+
+        return true;
     }
 
     private CallResult GetFailureReturn(long gasAvailable, EvmExceptionType exceptionType, bool traceOpcodes)
