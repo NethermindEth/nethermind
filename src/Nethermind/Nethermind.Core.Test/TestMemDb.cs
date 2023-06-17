@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using FluentAssertions;
 using Nethermind.Db;
 using Bytes = Nethermind.Core.Extensions.Bytes;
@@ -23,6 +24,7 @@ public class TestMemDb : MemDb, ITunableDb
     public Func<byte[], byte[]>? ReadFunc { get; set; }
     public Action<byte[]>? RemoveFunc { get; set; }
 
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
         _readKeys.Add((key.ToArray(), flags));
@@ -31,6 +33,7 @@ public class TestMemDb : MemDb, ITunableDb
         return base.Get(key, flags);
     }
 
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
         _writes.Add(((key.ToArray(), value), flags));
@@ -42,6 +45,7 @@ public class TestMemDb : MemDb, ITunableDb
         return Get(key);
     }
 
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public override void Remove(ReadOnlySpan<byte> key)
     {
         _removedKeys.Add(key.ToArray());

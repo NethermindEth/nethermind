@@ -14,9 +14,11 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization.ParallelSync;
 using Timer = System.Timers.Timer;
@@ -29,10 +31,9 @@ namespace Nethermind.Init.Steps.Migrations
 
         private readonly ILogger _logger;
         private CancellationTokenSource? _cancellationTokenSource;
-        private Task? _migrationTask;
+        internal Task? _migrationTask;
         private Stopwatch? _stopwatch;
         private long _toBlock;
-        private readonly object _migrateBlockLock = new();
 
         private readonly MeasuredProgress _progress = new MeasuredProgress();
         [NotNull]
@@ -45,6 +46,8 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly ISyncModeSelector? _syncModeSelector;
         [NotNull]
         private readonly IChainLevelInfoRepository? _chainLevelInfoRepository;
+
+        private readonly ReceiptArrayStorageDecoder _storageDecoder;
 
         private readonly IReceiptConfig _receiptConfig;
         private readonly IColumnsDb<ReceiptsColumns> _receiptsDb;
@@ -89,6 +92,7 @@ namespace Nethermind.Init.Steps.Migrations
             _txIndexDb = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
             _recovery = recovery;
             _logger = logManager.GetClassLogger();
+            _storageDecoder = new ReceiptArrayStorageDecoder(); // it just need to detect the type of the storage
         }
 
         public async ValueTask DisposeAsync()
@@ -385,25 +389,19 @@ namespace Nethermind.Init.Steps.Migrations
                 return true;
             }
 
-            bool canGetIterator =
-                _receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out ReceiptsIterator iterator);
-            if (!canGetIterator)
+            byte[]? receiptData = _receiptsBlockDb.Get(blockHash.Bytes);
+            if (receiptData == null)
+            {
+                receiptData = _receiptsBlockDb.Get(Bytes.Concat(blockNumber.ToBigEndianByteArray(), blockHash.Bytes));
+            }
+
+            if (receiptData == null)
             {
                 return true;
             }
 
-            try
-            {
-                if (_receiptConfig.CompactReceiptStore)
-                {
-                    // Compact receipt can't decode bloom
-                    return iterator.CanDecodeBloom;
-                }
-
-                return !iterator.CanDecodeBloom;
-            } finally {
-                iterator.Dispose();
-            }
+            bool isCompactEncoding = _storageDecoder.IsCompactEncoding(receiptData!);
+            return _receiptConfig.CompactReceiptStore != isCompactEncoding;
         }
 
         private string GetLogMessage(string status, string? suffix = null)
