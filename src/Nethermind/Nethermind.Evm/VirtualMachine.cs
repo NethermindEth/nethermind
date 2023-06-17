@@ -677,8 +677,7 @@ OutOfGas:
             {
                 case Instruction.STOP:
                     {
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                        goto EmptyTrace;
+                        goto EmptyReturn;
                     }
                 case Instruction.ADD:
                     {
@@ -1949,39 +1948,9 @@ OutOfGas:
 
                         if (spec.UseShanghaiDDosProtection && !UpdateGas(GasCostOf.SelfDestructEip150, ref gasAvailable)) goto OutOfGas;
 
-                        Metrics.SelfDestructs++;
+                        if (!InstructionSelfDestruct(vmState, ref stack, ref gasAvailable, spec)) goto OutOfGas;
 
-                        Address inheritor = stack.PopAddress();
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false)) goto OutOfGas;
-
-                        vmState.DestroyList.Add(env.ExecutingAccount);
-
-                        result = _state.GetBalance(env.ExecutingAccount);
-                        if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(env.ExecutingAccount, result, inheritor);
-                        if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && _state.IsDeadAccount(inheritor))
-                        {
-                            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) goto OutOfGas;
-                        }
-
-                        bool inheritorAccountExists = _state.AccountExists(inheritor);
-                        if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
-                        {
-                            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) goto OutOfGas;
-                        }
-
-                        if (!inheritorAccountExists)
-                        {
-                            _state.CreateAccount(inheritor, result);
-                        }
-                        else if (!inheritor.Equals(env.ExecutingAccount))
-                        {
-                            _state.AddToBalance(inheritor, result, spec);
-                        }
-
-                        _state.SubtractFromBalance(env.ExecutingAccount, result, spec);
-
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                        goto EmptyTrace;
+                        goto EmptyReturn;
                     }
                 case Instruction.SHL:
                     {
@@ -2125,13 +2094,13 @@ OutOfGas:
             }
         }
 
-        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-
-        return CallResult.Empty;
+        goto EmptyTrace;
 
 // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
-EmptyTrace:
+EmptyReturn:
         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+EmptyTrace:
+        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 #if DEBUG
         debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
@@ -2162,6 +2131,42 @@ AccessViolation:
         exceptionType = EvmExceptionType.AccessViolation;
 ReturnFailure:
         return GetFailureReturn(gasAvailable, exceptionType, traceOpcodes);
+    }
+
+    private bool InstructionSelfDestruct(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
+    {
+        Metrics.SelfDestructs++;
+
+        Address inheritor = stack.PopAddress();
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false)) return false;
+
+        Address executingAccount = vmState.Env.ExecutingAccount;
+        vmState.DestroyList.Add(executingAccount);
+
+        UInt256 result = _state.GetBalance(executingAccount);
+        if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(executingAccount, result, inheritor);
+        if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && _state.IsDeadAccount(inheritor))
+        {
+            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return false;
+        }
+
+        bool inheritorAccountExists = _state.AccountExists(inheritor);
+        if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
+        {
+            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return false;
+        }
+
+        if (!inheritorAccountExists)
+        {
+            _state.CreateAccount(inheritor, result);
+        }
+        else if (!inheritor.Equals(executingAccount))
+        {
+            _state.AddToBalance(inheritor, result, spec);
+        }
+
+        _state.SubtractFromBalance(executingAccount, result, spec);
+        return true;
     }
 
     private (bool outOfGas, EvmState? callState) InstructionCreate(EvmState vmState, EvmStack stack, ref long gasAvailable, IReleaseSpec spec,
