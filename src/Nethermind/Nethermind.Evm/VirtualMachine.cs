@@ -442,7 +442,6 @@ public class VirtualMachine : IVirtualMachine
 
     private static bool UpdateGas(long gasCost, ref long gasAvailable)
     {
-        // Console.WriteLine($"{gasCost}");
         if (gasAvailable < gasCost)
         {
             return false;
@@ -829,7 +828,7 @@ OutOfGas:
 
                         Metrics.ModExpOpcode++;
 
-                        stack.PopUInt256(out UInt256 baseInt);
+                        stack.PopUInt256(out a);
                         Span<byte> exp = stack.PopWord256();
 
                         int leadingZeros = exp.LeadingZerosCount();
@@ -844,18 +843,18 @@ OutOfGas:
                             break;
                         }
 
-                        if (baseInt.IsZero)
+                        if (a.IsZero)
                         {
                             stack.PushZero();
                         }
-                        else if (baseInt.IsOne)
+                        else if (a.IsOne)
                         {
                             stack.PushOne();
                         }
                         else
                         {
-                            UInt256.Exp(baseInt, new UInt256(exp, true), out UInt256 res);
-                            stack.PushUInt256(in res);
+                            UInt256.Exp(a, new UInt256(exp, true), out result);
+                            stack.PushUInt256(in result);
                         }
 
                         break;
@@ -1041,16 +1040,16 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 position);
+                        stack.PopUInt256(out a);
                         bytes = stack.PopWord256();
 
-                        if (position >= BigInt32)
+                        if (a >= BigInt32)
                         {
                             stack.PushZero();
                             break;
                         }
 
-                        int adjustedPosition = bytes.Length - 32 + (int)position;
+                        int adjustedPosition = bytes.Length - 32 + (int)a;
                         if (adjustedPosition < 0)
                         {
                             stack.PushZero();
@@ -1064,14 +1063,14 @@ OutOfGas:
                     }
                 case Instruction.SHA3:
                     {
-                        stack.PopUInt256(out UInt256 memSrc);
-                        stack.PopUInt256(out UInt256 memLength);
-                        if (!UpdateGas(GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(memLength),
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
+                        if (!UpdateGas(GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(b),
                             ref gasAvailable)) goto OutOfGas;
 
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in memSrc, memLength)) goto OutOfGas;
+                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
 
-                        Span<byte> memData = vmState.Memory.LoadSpan(in memSrc, memLength);
+                        Span<byte> memData = vmState.Memory.LoadSpan(in a, b);
                         stack.PushBytes(ValueKeccak.Compute(memData).BytesAsSpan);
                         break;
                     }
@@ -1090,8 +1089,8 @@ OutOfGas:
                         Address address = stack.PopAddress();
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
 
-                        UInt256 balance = _state.GetBalance(address);
-                        stack.PushUInt256(in balance);
+                        result = _state.GetBalance(address);
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.CALLER:
@@ -1105,8 +1104,8 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                        UInt256 callValue = env.Value;
-                        stack.PushUInt256(in callValue);
+                        result = env.Value;
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.ORIGIN:
@@ -1120,35 +1119,35 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 src);
-                        stack.PushBytes(env.InputData.SliceWithZeroPadding(src, 32));
+                        stack.PopUInt256(out result);
+                        stack.PushBytes(env.InputData.SliceWithZeroPadding(result, 32));
                         break;
                     }
                 case Instruction.CALLDATASIZE:
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                        UInt256 callDataSize = (UInt256)env.InputData.Length;
-                        stack.PushUInt256(in callDataSize);
+                        result = (UInt256)env.InputData.Length;
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.CALLDATACOPY:
                     {
-                        stack.PopUInt256(out UInt256 dest);
-                        stack.PopUInt256(out UInt256 src);
-                        stack.PopUInt256(out UInt256 length);
-                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length),
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
+                        stack.PopUInt256(out result);
+                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(result),
                             ref gasAvailable)) goto OutOfGas;
 
-                        if (length > UInt256.Zero)
+                        if (result > UInt256.Zero)
                         {
-                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in dest, length)) goto OutOfGas;
+                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            ZeroPaddedMemory callDataSlice = env.InputData.SliceWithZeroPadding(src, (int)length);
-                            vmState.Memory.Save(in dest, callDataSlice);
+                            ZeroPaddedMemory callDataSlice = env.InputData.SliceWithZeroPadding(b, (int)result);
+                            vmState.Memory.Save(in a, callDataSlice);
                             if (_txTracer.IsTracingInstructions)
                             {
-                                _txTracer.ReportMemoryChange((long)dest, callDataSlice);
+                                _txTracer.ReportMemoryChange((long)a, callDataSlice);
                             }
                         }
 
@@ -1158,24 +1157,24 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                        UInt256 codeLength = (UInt256)code.Length;
-                        stack.PushUInt256(in codeLength);
+                        result = (UInt256)code.Length;
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.CODECOPY:
                     {
-                        stack.PopUInt256(out UInt256 dest);
-                        stack.PopUInt256(out UInt256 src);
-                        stack.PopUInt256(out UInt256 length);
-                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable)) goto OutOfGas;
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
+                        stack.PopUInt256(out result);
+                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(result), ref gasAvailable)) goto OutOfGas;
 
-                        if (length > UInt256.Zero)
+                        if (!result.IsZero)
                         {
-                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in dest, length)) goto OutOfGas;
+                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(src, (int)length);
-                            vmState.Memory.Save(in dest, codeSlice);
-                            if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dest, codeSlice);
+                            ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(b, (int)result);
+                            vmState.Memory.Save(in a, codeSlice);
+                            if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)a, codeSlice);
                         }
 
                         break;
@@ -1184,8 +1183,8 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                        UInt256 gasPrice = txCtx.GasPrice;
-                        stack.PushUInt256(in gasPrice);
+                        result = txCtx.GasPrice;
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.EXTCODESIZE:
@@ -1256,33 +1255,33 @@ OutOfGas:
                         }
 
                         byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-                        UInt256 codeSize = (UInt256)accountCode.Length;
-                        stack.PushUInt256(in codeSize);
+                        result = (UInt256)accountCode.Length;
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.EXTCODECOPY:
                     {
                         Address address = stack.PopAddress();
-                        stack.PopUInt256(out UInt256 dest);
-                        stack.PopUInt256(out UInt256 src);
-                        stack.PopUInt256(out UInt256 length);
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
+                        stack.PopUInt256(out result);
 
                         long gasCost = spec.GetExtCodeCost();
-                        if (!UpdateGas(gasCost + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length),
+                        if (!UpdateGas(gasCost + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(result),
                             ref gasAvailable)) goto OutOfGas;
 
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
 
-                        if (length > UInt256.Zero)
+                        if (!result.IsZero)
                         {
-                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in dest, length)) goto OutOfGas;
+                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
                             byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-                            ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int)length);
-                            vmState.Memory.Save(in dest, callDataSlice);
+                            ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(b, (int)result);
+                            vmState.Memory.Save(in a, callDataSlice);
                             if (_txTracer.IsTracingInstructions)
                             {
-                                _txTracer.ReportMemoryChange((long)dest, callDataSlice);
+                                _txTracer.ReportMemoryChange((long)a, callDataSlice);
                             }
                         }
 
@@ -1294,33 +1293,33 @@ OutOfGas:
 
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                        UInt256 res = (UInt256)_returnDataBuffer.Length;
-                        stack.PushUInt256(in res);
+                        result = (UInt256)_returnDataBuffer.Length;
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.RETURNDATACOPY:
                     {
                         if (!spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
 
-                        stack.PopUInt256(out UInt256 dest);
-                        stack.PopUInt256(out UInt256 src);
-                        stack.PopUInt256(out UInt256 length);
-                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable)) goto OutOfGas;
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
+                        stack.PopUInt256(out result);
+                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(result), ref gasAvailable)) goto OutOfGas;
 
-                        if (UInt256.AddOverflow(length, src, out UInt256 newLength) || newLength > _returnDataBuffer.Length)
+                        if (UInt256.AddOverflow(result, b, out UInt256 newLength) || newLength > _returnDataBuffer.Length)
                         {
                             goto AccessViolation;
                         }
 
-                        if (length > UInt256.Zero)
+                        if (!result.IsZero)
                         {
-                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in dest, length)) goto OutOfGas;
+                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            ZeroPaddedSpan returnDataSlice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(src, (int)length);
-                            vmState.Memory.Save(in dest, returnDataSlice);
+                            ZeroPaddedSpan returnDataSlice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(b, (int)result);
+                            vmState.Memory.Save(in a, returnDataSlice);
                             if (_txTracer.IsTracingInstructions)
                             {
-                                _txTracer.ReportMemoryChange((long)dest, returnDataSlice);
+                                _txTracer.ReportMemoryChange((long)a, returnDataSlice);
                             }
                         }
 
@@ -1364,8 +1363,8 @@ OutOfGas:
                         }
                         else
                         {
-                            UInt256 diff = txCtx.Header.Difficulty;
-                            stack.PushUInt256(in diff);
+                            result = txCtx.Header.Difficulty;
+                            stack.PushUInt256(in result);
                         }
                         break;
                     }
@@ -1373,24 +1372,24 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                        UInt256 timestamp = txCtx.Header.Timestamp;
-                        stack.PushUInt256(in timestamp);
+                        result = txCtx.Header.Timestamp;
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.NUMBER:
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                        UInt256 blockNumber = (UInt256)txCtx.Header.Number;
-                        stack.PushUInt256(in blockNumber);
+                        result = (UInt256)txCtx.Header.Number;
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.GASLIMIT:
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                        UInt256 gasLimit = (UInt256)txCtx.Header.GasLimit;
-                        stack.PushUInt256(in gasLimit);
+                        result = (UInt256)txCtx.Header.GasLimit;
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.CHAINID:
@@ -1408,8 +1407,8 @@ OutOfGas:
 
                         if (!UpdateGas(GasCostOf.SelfBalance, ref gasAvailable)) goto OutOfGas;
 
-                        UInt256 balance = _state.GetBalance(env.ExecutingAccount);
-                        stack.PushUInt256(in balance);
+                        result = _state.GetBalance(env.ExecutingAccount);
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.BASEFEE:
@@ -1418,8 +1417,8 @@ OutOfGas:
 
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                        UInt256 baseFee = txCtx.Header.BaseFeePerGas;
-                        stack.PushUInt256(in baseFee);
+                        result = txCtx.Header.BaseFeePerGas;
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.BLOBHASH:
@@ -1428,11 +1427,11 @@ OutOfGas:
 
                         if (!UpdateGas(GasCostOf.BlobHash, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 blobIndex);
+                        stack.PopUInt256(out result);
 
-                        if (txCtx.BlobVersionedHashes is not null && blobIndex < txCtx.BlobVersionedHashes.Length)
+                        if (txCtx.BlobVersionedHashes is not null && result < txCtx.BlobVersionedHashes.Length)
                         {
-                            stack.PushBytes(txCtx.BlobVersionedHashes[blobIndex.u0]);
+                            stack.PushBytes(txCtx.BlobVersionedHashes[result.u0]);
                         }
                         else
                         {
@@ -1451,24 +1450,24 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 memPosition);
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in memPosition, 32)) goto OutOfGas;
-                        Span<byte> memData = vmState.Memory.LoadSpan(in memPosition);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange(memPosition, memData);
+                        stack.PopUInt256(out result);
+                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, 32)) goto OutOfGas;
+                        bytes = vmState.Memory.LoadSpan(in result);
+                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange(result, bytes);
 
-                        stack.PushBytes(memData);
+                        stack.PushBytes(bytes);
                         break;
                     }
                 case Instruction.MSTORE:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 memPosition);
+                        stack.PopUInt256(out result);
 
-                        Span<byte> word = stack.PopWord256();
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in memPosition, 32)) goto OutOfGas;
-                        vmState.Memory.SaveWord(in memPosition, word);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, word.SliceWithZeroPadding(0, 32, PadDirection.Left));
+                        bytes = stack.PopWord256();
+                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, 32)) goto OutOfGas;
+                        vmState.Memory.SaveWord(in result, bytes);
+                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)result, bytes.SliceWithZeroPadding(0, 32, PadDirection.Left));
 
                         break;
                     }
@@ -1476,11 +1475,11 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 memPosition);
+                        stack.PopUInt256(out result);
                         byte data = stack.PopByte();
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in memPosition, UInt256.One)) goto OutOfGas;
-                        vmState.Memory.SaveByte(in memPosition, data);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, data);
+                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, UInt256.One)) goto OutOfGas;
+                        vmState.Memory.SaveByte(in result, data);
+                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)result, data);
 
                         break;
                     }
@@ -1491,8 +1490,8 @@ OutOfGas:
 
                         if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 storageIndex);
-                        StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
+                        stack.PopUInt256(out result);
+                        StorageCell storageCell = new(env.ExecutingAccount, result);
                         if (!ChargeStorageAccessGas(
                             ref gasAvailable,
                             vmState,
@@ -1505,7 +1504,7 @@ OutOfGas:
 
                         if (_txTracer.IsTracingOpLevelStorage)
                         {
-                            _txTracer.LoadOperationStorage(storageCell.Address, storageIndex, value);
+                            _txTracer.LoadOperationStorage(storageCell.Address, result, value);
                         }
 
                         break;
@@ -1525,19 +1524,19 @@ OutOfGas:
                             if (gasAvailable <= GasCostOf.CallStipend) goto OutOfGas;
                         }
 
-                        stack.PopUInt256(out UInt256 storageIndex);
-                        Span<byte> newValue = stack.PopWord256();
-                        bool newIsZero = newValue.IsZero();
+                        stack.PopUInt256(out result);
+                        bytes = stack.PopWord256();
+                        bool newIsZero = bytes.IsZero();
                         if (!newIsZero)
                         {
-                            newValue = newValue.WithoutLeadingZeros().ToArray();
+                            bytes = bytes.WithoutLeadingZeros().ToArray();
                         }
                         else
                         {
-                            newValue = new byte[] { 0 };
+                            bytes = new byte[] { 0 };
                         }
 
-                        StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
+                        StorageCell storageCell = new(env.ExecutingAccount, result);
 
                         if (!ChargeStorageAccessGas(
                             ref gasAvailable,
@@ -1550,7 +1549,7 @@ OutOfGas:
                         // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
                         bool currentIsZero = currentValue.IsZero();
 
-                        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
+                        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
                         long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
 
                         if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
@@ -1617,7 +1616,7 @@ OutOfGas:
                                         }
                                     }
 
-                                    bool newSameAsOriginal = Bytes.AreEqual(originalValue, newValue);
+                                    bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
                                     if (newSameAsOriginal)
                                     {
                                         long refundFromReversal;
@@ -1639,13 +1638,13 @@ OutOfGas:
 
                         if (!newSameAsCurrent)
                         {
-                            Span<byte> valueToStore = newIsZero ? BytesZero : newValue;
+                            Span<byte> valueToStore = newIsZero ? BytesZero : bytes;
                             _state.Set(storageCell, valueToStore.ToArray());
                         }
 
                         if (_txTracer.IsTracingInstructions)
                         {
-                            Span<byte> valueToStore = newIsZero ? BytesZero : newValue;
+                            Span<byte> valueToStore = newIsZero ? BytesZero : bytes;
                             bytes = new byte[32]; // do not stackalloc here
                             storageCell.Index.ToBigEndian(bytes);
                             _txTracer.ReportStorageChange(bytes, valueToStore);
@@ -1653,7 +1652,7 @@ OutOfGas:
 
                         if (_txTracer.IsTracingOpLevelStorage)
                         {
-                            _txTracer.SetOperationStorage(storageCell.Address, storageIndex, newValue, currentValue);
+                            _txTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
                         }
 
                         break;
@@ -1666,15 +1665,15 @@ OutOfGas:
 
                         if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 storageIndex);
-                        StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
+                        stack.PopUInt256(out result);
+                        StorageCell storageCell = new(env.ExecutingAccount, result);
 
                         byte[] value = _state.GetTransientState(storageCell);
                         stack.PushBytes(value);
 
                         if (_txTracer.IsTracingOpLevelStorage)
                         {
-                            _txTracer.LoadOperationTransientStorage(storageCell.Address, storageIndex, value);
+                            _txTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
                         }
 
                         break;
@@ -1689,25 +1688,25 @@ OutOfGas:
                         long gasCost = GasCostOf.TStore;
                         if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 storageIndex);
-                        Span<byte> newValue = stack.PopWord256();
-                        bool newIsZero = newValue.IsZero();
+                        stack.PopUInt256(out result);
+                        bytes = stack.PopWord256();
+                        bool newIsZero = bytes.IsZero();
                         if (!newIsZero)
                         {
-                            newValue = newValue.WithoutLeadingZeros().ToArray();
+                            bytes = bytes.WithoutLeadingZeros().ToArray();
                         }
                         else
                         {
-                            newValue = BytesZero;
+                            bytes = BytesZero;
                         }
 
-                        StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
-                        byte[] currentValue = newValue.ToArray();
+                        StorageCell storageCell = new(env.ExecutingAccount, result);
+                        byte[] currentValue = bytes.ToArray();
                         _state.SetTransientState(storageCell, currentValue);
 
                         if (_txTracer.IsTracingOpLevelStorage)
                         {
-                            _txTracer.SetOperationTransientStorage(storageCell.Address, storageIndex, newValue, currentValue);
+                            _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
                         }
 
                         break;
@@ -1716,19 +1715,19 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 jumpDest);
-                        if (!Jump(jumpDest, ref programCounter, in env)) goto InvalidJumpDestination;
+                        stack.PopUInt256(out result);
+                        if (!Jump(result, ref programCounter, in env)) goto InvalidJumpDestination;
                         break;
                     }
                 case Instruction.JUMPI:
                     {
                         if (!UpdateGas(GasCostOf.High, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 jumpDest);
-                        Span<byte> condition = stack.PopWord256();
-                        if (!condition.SequenceEqual(BytesZero32))
+                        stack.PopUInt256(out result);
+                        bytes = stack.PopWord256();
+                        if (!bytes.SequenceEqual(BytesZero32))
                         {
-                            if (!Jump(jumpDest, ref programCounter, in env)) goto InvalidJumpDestination;
+                            if (!Jump(result, ref programCounter, in env)) goto InvalidJumpDestination;
                         }
 
                         break;
@@ -1744,16 +1743,16 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                        UInt256 size = vmState.Memory.Size;
-                        stack.PushUInt256(in size);
+                        result = vmState.Memory.Size;
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.GAS:
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                        UInt256 gas = (UInt256)gasAvailable;
-                        stack.PushUInt256(in gas);
+                        result = (UInt256)gasAvailable;
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.JUMPDEST:
@@ -1888,15 +1887,15 @@ OutOfGas:
                     {
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        stack.PopUInt256(out UInt256 memoryPos);
-                        stack.PopUInt256(out UInt256 length);
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
                         long topicsCount = instruction - Instruction.LOG0;
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in memoryPos, length)) goto OutOfGas;
+                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
                         if (!UpdateGas(
                             GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
-                            (long)length * GasCostOf.LogData, ref gasAvailable)) goto OutOfGas;
+                            (long)b * GasCostOf.LogData, ref gasAvailable)) goto OutOfGas;
 
-                        ReadOnlyMemory<byte> data = vmState.Memory.Load(in memoryPos, length);
+                        ReadOnlyMemory<byte> data = vmState.Memory.Load(in a, b);
                         Keccak[] topics = new Keccak[topicsCount];
                         for (int i = 0; i < topicsCount; i++)
                         {
@@ -1927,7 +1926,7 @@ OutOfGas:
                         stack.PopUInt256(out UInt256 value);
                         stack.PopUInt256(out UInt256 memoryPositionOfInitCode);
                         stack.PopUInt256(out UInt256 initCodeLength);
-                        Span<byte> salt = null;
+                        Span<byte> salt = default;
                         if (instruction == Instruction.CREATE2)
                         {
                             salt = stack.PopWord256();
@@ -2045,11 +2044,11 @@ OutOfGas:
                     }
                 case Instruction.RETURN:
                     {
-                        stack.PopUInt256(out UInt256 memoryPos);
-                        stack.PopUInt256(out UInt256 length);
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
 
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in memoryPos, length)) goto OutOfGas;
-                        ReadOnlyMemory<byte> returnData = vmState.Memory.Load(in memoryPos, length);
+                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
+                        ReadOnlyMemory<byte> returnData = vmState.Memory.Load(in a, b);
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
@@ -2210,11 +2209,11 @@ OutOfGas:
                     {
                         if (!spec.RevertOpcodeEnabled) goto InvalidInstruction;
 
-                        stack.PopUInt256(out UInt256 memoryPos);
-                        stack.PopUInt256(out UInt256 length);
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
 
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in memoryPos, length)) goto OutOfGas;
-                        ReadOnlyMemory<byte> errorDetails = vmState.Memory.Load(in memoryPos, length);
+                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
+                        ReadOnlyMemory<byte> errorDetails = vmState.Memory.Load(in a, b);
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
@@ -2239,9 +2238,9 @@ OutOfGas:
 
                         vmState.DestroyList.Add(env.ExecutingAccount);
 
-                        UInt256 ownerBalance = _state.GetBalance(env.ExecutingAccount);
-                        if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(env.ExecutingAccount, ownerBalance, inheritor);
-                        if (spec.ClearEmptyAccountWhenTouched && ownerBalance != 0 && _state.IsDeadAccount(inheritor))
+                        result = _state.GetBalance(env.ExecutingAccount);
+                        if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(env.ExecutingAccount, result, inheritor);
+                        if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && _state.IsDeadAccount(inheritor))
                         {
                             if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) goto OutOfGas;
                         }
@@ -2254,14 +2253,14 @@ OutOfGas:
 
                         if (!inheritorAccountExists)
                         {
-                            _state.CreateAccount(inheritor, ownerBalance);
+                            _state.CreateAccount(inheritor, result);
                         }
                         else if (!inheritor.Equals(env.ExecutingAccount))
                         {
-                            _state.AddToBalance(inheritor, ownerBalance, spec);
+                            _state.AddToBalance(inheritor, result, spec);
                         }
 
-                        _state.SubtractFromBalance(env.ExecutingAccount, ownerBalance, spec);
+                        _state.SubtractFromBalance(env.ExecutingAccount, result, spec);
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         goto EmptyTrace;
@@ -2324,14 +2323,13 @@ OutOfGas:
                             }
                             else
                             {
-                                Int256.Int256 res = Int256.Int256.MinusOne;
-                                stack.PushSignedInt256(in res);
+                                stack.PushSignedInt256(in Int256.Int256.MinusOne);
                             }
                         }
                         else
                         {
-                            sb.RightShift((int)a, out Int256.Int256 res);
-                            stack.PushSignedInt256(in res);
+                            sb.RightShift((int)a, out sa);
+                            stack.PushSignedInt256(in sa);
                         }
 
                         break;
@@ -2390,8 +2388,8 @@ OutOfGas:
 
                         vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
 
-                        stack.PopUInt256(out UInt256 jumpDest);
-                        if (!Jump(jumpDest, ref programCounter, in env, true)) goto InvalidJumpDestination;
+                        stack.PopUInt256(out result);
+                        if (!Jump(result, ref programCounter, in env, true)) goto InvalidJumpDestination;
                         programCounter++;
 
                         break;
