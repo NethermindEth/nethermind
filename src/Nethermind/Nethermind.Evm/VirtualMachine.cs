@@ -645,14 +645,14 @@ OutOfGas:
     [SkipLocalsInit]
     private CallResult ExecuteCode(EvmState vmState, scoped ref EvmStack stack, long gasAvailable, IReleaseSpec spec)
     {
-        bool isTrace = _logger.IsTrace;
-        bool traceOpcodes = _txTracer.IsTracingInstructions;
-
+        int programCounter = vmState.ProgramCounter;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
         Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
-        int programCounter = vmState.ProgramCounter;
+        EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
+        bool isTrace = _logger.IsTrace;
+        bool traceOpcodes = _txTracer.IsTracingInstructions;
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
@@ -1771,149 +1771,16 @@ OutOfGas:
                 case Instruction.DELEGATECALL:
                 case Instruction.STATICCALL:
                     {
-                        Metrics.Calls++;
-
-                        if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
-                            instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) goto InvalidInstruction;
-
-                        stack.PopUInt256(out UInt256 gasLimit);
-                        Address codeSource = stack.PopAddress();
-
-                        // Console.WriteLine($"CALLIN {codeSource}");
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) goto OutOfGas;
-
-                        UInt256 callValue;
-                        switch (instruction)
+                        exceptionType = InstructionCall(vmState, ref stack, ref gasAvailable, spec, instruction, out returnData);
+                        if (exceptionType != EvmExceptionType.None)
                         {
-                            case Instruction.STATICCALL:
-                                callValue = UInt256.Zero;
-                                break;
-                            case Instruction.DELEGATECALL:
-                                callValue = env.Value;
-                                break;
-                            default:
-                                stack.PopUInt256(out callValue);
-                                break;
+                            goto ReturnFailure;
                         }
-
-                        UInt256 transferValue = instruction == Instruction.DELEGATECALL ? UInt256.Zero : callValue;
-                        stack.PopUInt256(out UInt256 dataOffset);
-                        stack.PopUInt256(out UInt256 dataLength);
-                        stack.PopUInt256(out UInt256 outputOffset);
-                        stack.PopUInt256(out UInt256 outputLength);
-
-                        if (vmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE) goto StaticCallViolation;
-
-                        Address caller = instruction == Instruction.DELEGATECALL ? env.Caller : env.ExecutingAccount;
-                        Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? codeSource : env.ExecutingAccount;
-
-                        if (isTrace)
+                        if (returnData is null)
                         {
-                            _logger.Trace($"caller {caller}");
-                            _logger.Trace($"code source {codeSource}");
-                            _logger.Trace($"target {target}");
-                            _logger.Trace($"value {callValue}");
-                            _logger.Trace($"transfer value {transferValue}");
-                        }
-
-                        long gasExtra = 0L;
-
-                        if (!transferValue.IsZero)
-                        {
-                            gasExtra += GasCostOf.CallValue;
-                        }
-
-                        if (!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(target))
-                        {
-                            gasExtra += GasCostOf.NewAccount;
-                        }
-                        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && _state.IsDeadAccount(target))
-                        {
-                            gasExtra += GasCostOf.NewAccount;
-                        }
-
-                        if (!UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
-                            !UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength) ||
-                            !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
-                            !UpdateGas(gasExtra, ref gasAvailable)) goto OutOfGas;
-
-                        if (spec.Use63Over64Rule)
-                        {
-                            gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
-                        }
-
-                        if (gasLimit >= long.MaxValue) goto OutOfGas;
-
-                        long gasLimitUl = (long)gasLimit;
-                        if (!UpdateGas(gasLimitUl, ref gasAvailable)) goto OutOfGas;
-
-                        if (!transferValue.IsZero)
-                        {
-                            if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
-                            gasLimitUl += GasCostOf.CallStipend;
-                        }
-
-                        if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
-                        {
-                            _returnDataBuffer = Array.Empty<byte>();
-                            stack.PushZero();
-
-                            if (traceOpcodes)
-                            {
-                                // very specific for Parity trace, need to find generalization - very peculiar 32 length...
-                                ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
-                                _txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
-                            }
-
-                            if (isTrace) _logger.Trace("FAIL - call depth");
-                            if (traceOpcodes) _txTracer.ReportOperationRemainingGas(gasAvailable);
-                            if (traceOpcodes) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
-
-                            UpdateGasUp(gasLimitUl, ref gasAvailable);
-                            if (traceOpcodes) _txTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
                             break;
                         }
 
-                        ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
-
-                        Snapshot snapshot = _worldState.TakeSnapshot();
-                        _state.SubtractFromBalance(caller, transferValue, spec);
-
-                        ExecutionEnvironment callEnv = new
-                        (
-                            txExecutionContext: env.TxExecutionContext,
-                            callDepth: env.CallDepth + 1,
-                            caller: caller,
-                            codeSource: codeSource,
-                            executingAccount: target,
-                            transferValue: transferValue,
-                            value: callValue,
-                            inputData: callData,
-                            codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
-                        );
-                        if (isTrace) _logger.Trace($"Tx call gas {gasLimitUl}");
-                        if (outputLength == 0)
-                        {
-                            // TODO: when output length is 0 outputOffset can have any value really
-                            // and the value does not matter and it can cause trouble when beyond long range
-                            outputOffset = 0;
-                        }
-
-                        ExecutionType executionType = GetCallExecutionType(instruction, txCtx.Header.IsPostMerge);
-                        EvmState callState = new(
-                            gasLimitUl,
-                            callEnv,
-                            executionType,
-                            isTopLevel: false,
-                            snapshot,
-                            (long)outputOffset,
-                            (long)outputLength,
-                            instruction == Instruction.STATICCALL || vmState.IsStatic,
-                            vmState,
-                            isContinuation: false,
-                            isCreateOnPreExistingAccount: false);
-
-                        returnData = callState;
                         goto DataReturn;
                     }
                 case Instruction.REVERT:
@@ -2106,7 +1973,7 @@ DataReturnNoTrace:
         return new CallResult((byte[])returnData, null, shouldRevert: isRevert);
 
 OutOfGas:
-        EvmExceptionType exceptionType = EvmExceptionType.OutOfGas;
+        exceptionType = EvmExceptionType.OutOfGas;
         goto ReturnFailure;
 InvalidInstruction:
         exceptionType = EvmExceptionType.BadInstruction;
@@ -2130,6 +1997,161 @@ AccessViolation:
         exceptionType = EvmExceptionType.AccessViolation;
 ReturnFailure:
         return GetFailureReturn(gasAvailable, exceptionType, traceOpcodes);
+    }
+
+    private EvmExceptionType InstructionCall(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec,
+        Instruction instruction, out object returnData)
+    {
+        returnData = null;
+        ref readonly ExecutionEnvironment env = ref vmState.Env;
+        bool isTrace = _logger.IsTrace;
+        bool traceOpcodes = _txTracer.IsTracingInstructions;
+
+        Metrics.Calls++;
+
+        if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
+            instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
+
+        stack.PopUInt256(out UInt256 gasLimit);
+        Address codeSource = stack.PopAddress();
+
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) return EvmExceptionType.OutOfGas;
+
+        UInt256 callValue;
+        switch (instruction)
+        {
+            case Instruction.STATICCALL:
+                callValue = UInt256.Zero;
+                break;
+            case Instruction.DELEGATECALL:
+                callValue = env.Value;
+                break;
+            default:
+                stack.PopUInt256(out callValue);
+                break;
+        }
+
+        UInt256 transferValue = instruction == Instruction.DELEGATECALL ? UInt256.Zero : callValue;
+        stack.PopUInt256(out UInt256 dataOffset);
+        stack.PopUInt256(out UInt256 dataLength);
+        stack.PopUInt256(out UInt256 outputOffset);
+        stack.PopUInt256(out UInt256 outputLength);
+
+        if (vmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE) return EvmExceptionType.StaticCallViolation;
+
+        Address caller = instruction == Instruction.DELEGATECALL ? env.Caller : env.ExecutingAccount;
+        Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL
+            ? codeSource
+            : env.ExecutingAccount;
+
+        if (isTrace)
+        {
+            _logger.Trace($"caller {caller}");
+            _logger.Trace($"code source {codeSource}");
+            _logger.Trace($"target {target}");
+            _logger.Trace($"value {callValue}");
+            _logger.Trace($"transfer value {transferValue}");
+        }
+
+        long gasExtra = 0L;
+
+        if (!transferValue.IsZero)
+        {
+            gasExtra += GasCostOf.CallValue;
+        }
+
+        if (!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(target))
+        {
+            gasExtra += GasCostOf.NewAccount;
+        }
+        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && _state.IsDeadAccount(target))
+        {
+            gasExtra += GasCostOf.NewAccount;
+        }
+
+        if (!UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
+            !UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength) ||
+            !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
+            !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        if (spec.Use63Over64Rule)
+        {
+            gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
+        }
+
+        if (gasLimit >= long.MaxValue) return EvmExceptionType.OutOfGas;
+
+        long gasLimitUl = (long)gasLimit;
+        if (!UpdateGas(gasLimitUl, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        if (!transferValue.IsZero)
+        {
+            if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
+            gasLimitUl += GasCostOf.CallStipend;
+        }
+
+        if (env.CallDepth >= MaxCallDepth ||
+            !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
+        {
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+
+            if (traceOpcodes)
+            {
+                // very specific for Parity trace, need to find generalization - very peculiar 32 length...
+                ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
+                _txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
+            }
+
+            if (isTrace) _logger.Trace("FAIL - call depth");
+            if (traceOpcodes) _txTracer.ReportOperationRemainingGas(gasAvailable);
+            if (traceOpcodes) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+
+            UpdateGasUp(gasLimitUl, ref gasAvailable);
+            if (traceOpcodes) _txTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
+            return EvmExceptionType.None;
+        }
+
+        ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
+
+        Snapshot snapshot = _worldState.TakeSnapshot();
+        _state.SubtractFromBalance(caller, transferValue, spec);
+
+        ExecutionEnvironment callEnv = new
+        (
+            txExecutionContext: env.TxExecutionContext,
+            callDepth: env.CallDepth + 1,
+            caller: caller,
+            codeSource: codeSource,
+            executingAccount: target,
+            transferValue: transferValue,
+            value: callValue,
+            inputData: callData,
+            codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
+        );
+        if (isTrace) _logger.Trace($"Tx call gas {gasLimitUl}");
+        if (outputLength == 0)
+        {
+            // TODO: when output length is 0 outputOffset can have any value really
+            // and the value does not matter and it can cause trouble when beyond long range
+            outputOffset = 0;
+        }
+
+        ExecutionType executionType = GetCallExecutionType(instruction, env.TxExecutionContext.Header.IsPostMerge);
+        returnData = new EvmState(
+            gasLimitUl,
+            callEnv,
+            executionType,
+            isTopLevel: false,
+            snapshot,
+            (long)outputOffset,
+            (long)outputLength,
+            instruction == Instruction.STATICCALL || vmState.IsStatic,
+            vmState,
+            isContinuation: false,
+            isCreateOnPreExistingAccount: false);
+
+        return EvmExceptionType.None;
     }
 
     private static bool InstructionRevert(EvmState vmState, ref EvmStack stack, ref long gasAvailable, out object returnData)
