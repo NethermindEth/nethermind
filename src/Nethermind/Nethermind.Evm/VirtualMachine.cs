@@ -635,7 +635,19 @@ public class VirtualMachine : IVirtualMachine
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
 
-        return ExecuteCode(vmState, ref stack, gasAvailable, spec);
+        if (!_txTracer.IsTracingInstructions)
+        {
+            // Struct generic parameter is used to burn out all the if statements
+            // and inner code by typeof(TTracingInstructions) == typeof(NotTracing)
+            // checks that are evaluated to constant values at compile time.
+            // This only works for structs, not for classes or interface types
+            // which use shared generics.
+            return ExecuteCode<NotTracing>(vmState, ref stack, gasAvailable, spec);
+        }
+        else
+        {
+            return ExecuteCode<IsTracing>(vmState, ref stack, gasAvailable, spec);
+        }
 Empty:
         return CallResult.Empty;
 OutOfGas:
@@ -643,7 +655,8 @@ OutOfGas:
     }
 
     [SkipLocalsInit]
-    private CallResult ExecuteCode(EvmState vmState, scoped ref EvmStack stack, long gasAvailable, IReleaseSpec spec)
+    private CallResult ExecuteCode<TTracingInstructions>(EvmState vmState, scoped ref EvmStack stack, long gasAvailable, IReleaseSpec spec)
+        where TTracingInstructions : struct, IIsTracing
     {
         int programCounter = vmState.ProgramCounter;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
@@ -651,8 +664,6 @@ OutOfGas:
         Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
         EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
-        bool isTrace = _logger.IsTrace;
-        bool traceOpcodes = _txTracer.IsTracingInstructions;
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
@@ -670,7 +681,8 @@ OutOfGas:
 #endif
             Instruction instruction = (Instruction)code[programCounter];
 
-            if (traceOpcodes)
+            // Evaluated to constant at compile time and code elided if not tracing
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
                 StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
 
             programCounter++;
@@ -1139,13 +1151,13 @@ OutOfGas:
                         if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(result),
                             ref gasAvailable)) goto OutOfGas;
 
-                        if (result > UInt256.Zero)
+                        if (!result.IsZero)
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
                             ZeroPaddedMemory callDataSlice = env.InputData.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, callDataSlice);
-                            if (traceOpcodes)
+                            if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
                                 _txTracer.ReportMemoryChange((long)a, callDataSlice);
                             }
@@ -1174,7 +1186,7 @@ OutOfGas:
 
                             ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, codeSlice);
-                            if (traceOpcodes) _txTracer.ReportMemoryChange((long)a, codeSlice);
+                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)a, codeSlice);
                         }
 
                         break;
@@ -1196,7 +1208,7 @@ OutOfGas:
                         Address address = stack.PopAddress();
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
 
-                        if (!traceOpcodes && programCounter < code.Length)
+                        if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < code.Length)
                         {
                             bool optimizeAccess = false;
                             Instruction nextInstruction = (Instruction)code[programCounter];
@@ -1279,7 +1291,7 @@ OutOfGas:
                             byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                             ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, callDataSlice);
-                            if (traceOpcodes)
+                            if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
                                 _txTracer.ReportMemoryChange((long)a, callDataSlice);
                             }
@@ -1317,7 +1329,7 @@ OutOfGas:
 
                             ZeroPaddedSpan returnDataSlice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, returnDataSlice);
-                            if (traceOpcodes)
+                            if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
                                 _txTracer.ReportMemoryChange((long)a, returnDataSlice);
                             }
@@ -1336,7 +1348,7 @@ OutOfGas:
                         Keccak blockHash = _blockhashProvider.GetBlockhash(txCtx.Header, number);
                         stack.PushBytes(blockHash != null ? blockHash.Bytes : BytesZero32);
 
-                        if (isTrace)
+                        if (_logger.IsTrace)
                         {
                             if (_txTracer.IsTracingBlockHash && blockHash is not null)
                             {
@@ -1453,7 +1465,7 @@ OutOfGas:
                         stack.PopUInt256(out result);
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, 32)) goto OutOfGas;
                         bytes = vmState.Memory.LoadSpan(in result);
-                        if (traceOpcodes) _txTracer.ReportMemoryChange(result, bytes);
+                        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(result, bytes);
 
                         stack.PushBytes(bytes);
                         break;
@@ -1467,7 +1479,7 @@ OutOfGas:
                         bytes = stack.PopWord256();
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, 32)) goto OutOfGas;
                         vmState.Memory.SaveWord(in result, bytes);
-                        if (traceOpcodes) _txTracer.ReportMemoryChange((long)result, bytes);
+                        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)result, bytes);
 
                         break;
                     }
@@ -1479,7 +1491,7 @@ OutOfGas:
                         byte data = stack.PopByte();
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, UInt256.One)) goto OutOfGas;
                         vmState.Memory.SaveByte(in result, data);
-                        if (traceOpcodes) _txTracer.ReportMemoryChange((long)result, data);
+                        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)result, data);
 
                         break;
                     }
@@ -1515,7 +1527,7 @@ OutOfGas:
 
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        if (!InstructionSStore(vmState, ref stack, ref gasAvailable, spec))
+                        if (!InstructionSStore<TTracingInstructions>(vmState, ref stack, ref gasAvailable, spec))
                             goto OutOfGas;
 
                         break;
@@ -1744,7 +1756,7 @@ OutOfGas:
 
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        (bool outOfGas, returnData) = InstructionCreate(vmState, ref stack, ref gasAvailable, spec, instruction);
+                        (bool outOfGas, returnData) = InstructionCreate<TTracingInstructions>(vmState, ref stack, ref gasAvailable, spec, instruction);
 
                         if (outOfGas) goto OutOfGas;
                         if (returnData is null) break;
@@ -1762,7 +1774,7 @@ OutOfGas:
                 case Instruction.DELEGATECALL:
                 case Instruction.STATICCALL:
                     {
-                        exceptionType = InstructionCall(vmState, ref stack, ref gasAvailable, spec, instruction, out returnData);
+                        exceptionType = InstructionCall<TTracingInstructions>(vmState, ref stack, ref gasAvailable, spec, instruction, out returnData);
                         if (exceptionType != EvmExceptionType.None)
                         {
                             goto ReturnFailure;
@@ -1935,7 +1947,7 @@ OutOfGas:
             }
 
 
-            if (traceOpcodes)
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
             {
                 EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
             }
@@ -1945,7 +1957,7 @@ OutOfGas:
 
 // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
 EmptyReturn:
-        if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
 EmptyReturnNoTrace:
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 #if DEBUG
@@ -1953,7 +1965,7 @@ EmptyReturnNoTrace:
 #endif
         return CallResult.Empty;
 DataReturn:
-        if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
 DataReturnNoTrace:
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 
@@ -1987,16 +1999,16 @@ InvalidJumpDestination:
 AccessViolation:
         exceptionType = EvmExceptionType.AccessViolation;
 ReturnFailure:
-        return GetFailureReturn(gasAvailable, exceptionType, traceOpcodes);
+        return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
     }
 
-    private EvmExceptionType InstructionCall(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec,
+    private EvmExceptionType InstructionCall<TTracingInstructions>(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec,
         Instruction instruction, out object returnData)
+        where TTracingInstructions : struct, IIsTracing
     {
         returnData = null;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         bool isTrace = _logger.IsTrace;
-        bool traceOpcodes = _txTracer.IsTracingInstructions;
 
         Metrics.Calls++;
 
@@ -2087,7 +2099,7 @@ ReturnFailure:
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
 
-            if (traceOpcodes)
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
             {
                 // very specific for Parity trace, need to find generalization - very peculiar 32 length...
                 ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
@@ -2095,11 +2107,11 @@ ReturnFailure:
             }
 
             if (isTrace) _logger.Trace("FAIL - call depth");
-            if (traceOpcodes) _txTracer.ReportOperationRemainingGas(gasAvailable);
-            if (traceOpcodes) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportOperationRemainingGas(gasAvailable);
+            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
 
             UpdateGasUp(gasLimitUl, ref gasAvailable);
-            if (traceOpcodes) _txTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
+            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
             return EvmExceptionType.None;
         }
 
@@ -2212,7 +2224,8 @@ ReturnFailure:
         return true;
     }
 
-    private (bool outOfGas, EvmState? callState) InstructionCreate(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec, Instruction instruction)
+    private (bool outOfGas, EvmState? callState) InstructionCreate<TTracingInstructions>(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec, Instruction instruction)
+        where TTracingInstructions : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
@@ -2275,7 +2288,7 @@ ReturnFailure:
             return (outOfGas: false, null);
         }
 
-        if (_txTracer.IsTracingInstructions) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
         // todo: === below is a new call - refactor / move
 
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
@@ -2370,7 +2383,8 @@ ReturnFailure:
         return true;
     }
 
-    private bool InstructionSStore(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
+    private bool InstructionSStore<TTracingInstructions>(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
+        where TTracingInstructions : struct, IIsTracing
     {
         // fail fast before the first storage read if gas is not enough even for reset
         if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return false;
@@ -2500,7 +2514,7 @@ ReturnFailure:
             _state.Set(storageCell, valueToStore.ToArray());
         }
 
-        if (_txTracer.IsTracingInstructions)
+        if (typeof(TTracingInstructions) == typeof(IsTracing))
         {
             Span<byte> valueToStore = newIsZero ? BytesZero : bytes;
             bytes = new byte[32]; // do not stackalloc here
@@ -2516,9 +2530,10 @@ ReturnFailure:
         return true;
     }
 
-    private CallResult GetFailureReturn(long gasAvailable, EvmExceptionType exceptionType, bool traceOpcodes)
+    private CallResult GetFailureReturn<TTracingInstructions>(long gasAvailable, EvmExceptionType exceptionType)
+        where TTracingInstructions : struct, IIsTracing
     {
-        if (traceOpcodes) EndInstructionTraceError(gasAvailable, exceptionType);
+        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTraceError(gasAvailable, exceptionType);
 
         return exceptionType switch
         {
@@ -2647,6 +2662,10 @@ ReturnFailure:
 
         return executionType;
     }
+
+    private interface IIsTracing { }
+    private readonly struct NotTracing : IIsTracing { }
+    private readonly struct IsTracing : IIsTracing { }
 
     internal readonly ref struct CallResult
     {
