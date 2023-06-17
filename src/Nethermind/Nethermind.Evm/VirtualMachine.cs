@@ -656,7 +656,7 @@ OutOfGas:
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
-        Span<byte> bytes = default;
+        ReadOnlySpan<byte> bytes = default;
         Unsafe.SkipInit(out UInt256 a);
         Unsafe.SkipInit(out UInt256 b);
         Unsafe.SkipInit(out Int256.Int256 sa);
@@ -872,19 +872,19 @@ OutOfGas:
 
                         int position = 31 - (int)a;
 
-                        bytes = stack.PopWord256();
-                        sbyte sign = (sbyte)bytes[position];
+                        Span<byte> wbytes = stack.PopWord256();
+                        sbyte sign = (sbyte)wbytes[position];
 
                         if (sign >= 0)
                         {
-                            BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
+                            BytesZero32.AsSpan(0, position).CopyTo(wbytes[..position]);
                         }
                         else
                         {
-                            BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
+                            BytesMax32.AsSpan(0, position).CopyTo(wbytes[..position]);
                         }
 
-                        stack.PushBytes(bytes);
+                        stack.PushBytes(wbytes);
                         break;
                     }
                 case Instruction.LT:
@@ -1467,7 +1467,7 @@ OutOfGas:
                         bytes = stack.PopWord256();
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, 32)) goto OutOfGas;
                         vmState.Memory.SaveWord(in result, bytes);
-                        if (traceOpcodes) _txTracer.ReportMemoryChange((long)result, bytes.SliceWithZeroPadding(0, 32, PadDirection.Left));
+                        if (traceOpcodes) _txTracer.ReportMemoryChange((long)result, bytes);
 
                         break;
                     }
@@ -1550,23 +1550,14 @@ OutOfGas:
                         if (!UpdateGas(GasCostOf.TStore, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out result);
-                        bytes = stack.PopWord256();
-                        bool newIsZero = bytes.IsZero();
-                        if (!newIsZero)
-                        {
-                            bytes = bytes.WithoutLeadingZeros().ToArray();
-                        }
-                        else
-                        {
-                            bytes = BytesZero;
-                        }
-
                         StorageCell storageCell = new(env.ExecutingAccount, result);
-                        byte[] currentValue = bytes.ToArray();
-                        _state.SetTransientState(storageCell, currentValue);
+                        bytes = stack.PopWord256();
+
+                        _state.SetTransientState(storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
 
                         if (_txTracer.IsTracingOpLevelStorage)
                         {
+                            byte[] currentValue = _state.GetTransientState(in storageCell);
                             _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
                         }
 

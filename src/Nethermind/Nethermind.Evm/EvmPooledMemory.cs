@@ -20,7 +20,7 @@ namespace Nethermind.Evm
         public const int WordSize = 32;
         private static readonly UInt256 WordSize256 = WordSize;
 
-        private static readonly ArrayPool<byte> Pool = LargerArrayPool.Shared;
+        private static readonly LargerArrayPool Pool = LargerArrayPool.Shared;
 
         private int _lastZeroedSize;
 
@@ -28,7 +28,7 @@ namespace Nethermind.Evm
         public ulong Length { get; private set; }
         public ulong Size { get; private set; }
 
-        public void SaveWord(in UInt256 location, Span<byte> word)
+        public void SaveWord(in UInt256 location, ReadOnlySpan<byte> word)
         {
             if (word.Length != WordSize) ThrowArgumentOutOfRangeException();
 
@@ -253,6 +253,7 @@ namespace Nethermind.Evm
             if (_memory is not null)
             {
                 Pool.Return(_memory);
+                _memory = null;
             }
         }
 

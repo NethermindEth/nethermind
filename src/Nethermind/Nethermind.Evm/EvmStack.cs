@@ -41,7 +41,7 @@ namespace Nethermind.Evm
 
         private ITxTracer _tracer;
 
-        public void PushBytes(scoped in Span<byte> value)
+        public void PushBytes(scoped in ReadOnlySpan<byte> value)
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
 

@@ -11,7 +11,7 @@ namespace Nethermind.Core.Buffers
     {
         static readonly LargerArrayPool s_instance = new();
 
-        public static new ArrayPool<byte> Shared => s_instance;
+        public static new LargerArrayPool Shared => s_instance;
 
         public const int LargeBufferSize = 8 * 1024 * 1024;
         const int ArrayPoolLimit = 1024 * 1024;

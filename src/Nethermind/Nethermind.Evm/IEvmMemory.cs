@@ -10,7 +10,7 @@ namespace Nethermind.Evm
     public interface IEvmMemory : IDisposable
     {
         ulong Size { get; }
-        void SaveWord(in UInt256 location, Span<byte> word);
+        void SaveWord(in UInt256 location, ReadOnlySpan<byte> word);
         void SaveByte(in UInt256 location, byte value);
         void Save(in UInt256 location, Span<byte> value);
         void Save(in UInt256 location, byte[] value);
@@ -53,7 +53,7 @@ namespace Nethermind.Evm
 
         public ulong Size => _pooled.Size - _offset / 32;
 
-        public void SaveWord(in UInt256 location, Span<byte> word)
+        public void SaveWord(in UInt256 location, ReadOnlySpan<byte> word)
         {
             _pooled.SaveWord(location + _offset, word);
         }
