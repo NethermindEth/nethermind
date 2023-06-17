@@ -224,12 +224,15 @@ namespace Nethermind.Init.Steps.Migrations
                     }
                 });
 
-                if (_logger.IsInfo) _logger.Info(GetLogMessage("Compacting receipts database"));
-                _receiptsDb.Compact();
-                if (_logger.IsInfo) _logger.Info(GetLogMessage("Compacting receipts tx index database"));
-                _txIndexDb.Compact();
-                if (_logger.IsInfo) _logger.Info(GetLogMessage("Compacting receipts block database"));
-                _receiptsBlockDb.Compact();
+                if (!token.IsCancellationRequested)
+                {
+                    if (_logger.IsInfo) _logger.Info(GetLogMessage("Compacting receipts database"));
+                    _receiptsDb.Compact();
+                    if (_logger.IsInfo) _logger.Info(GetLogMessage("Compacting receipts tx index database"));
+                    _txIndexDb.Compact();
+                    if (_logger.IsInfo) _logger.Info(GetLogMessage("Compacting receipts block database"));
+                    _receiptsBlockDb.Compact();
+                }
             }
             finally
             {
@@ -246,7 +249,7 @@ namespace Nethermind.Init.Steps.Migrations
 
         Block GetMissingBlock(long i, Keccak? blockHash)
         {
-            if (_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Block {i} not found. Logs will not be searchable for this block."));
+            if (_logger.IsDebug) _logger.Debug(GetLogMessage("warning", $"Block {i} not found. Logs will not be searchable for this block."));
             Block emptyBlock = EmptyBlock.Get();
             emptyBlock.Header.Number = i;
             emptyBlock.Header.Hash = blockHash;
