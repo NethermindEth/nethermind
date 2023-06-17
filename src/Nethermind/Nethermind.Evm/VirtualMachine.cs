@@ -2412,36 +2412,56 @@ OutOfGas:
         return CallResult.Empty;
 
 // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
-OutOfGas:
-        if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.OutOfGas);
-        return CallResult.OutOfGasException;
 EmptyTrace:
         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
 #if DEBUG
         debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
         return CallResult.Empty;
+
+OutOfGas:
+        EvmExceptionType exceptionType = EvmExceptionType.OutOfGas;
+        goto ReturnFailure;
 InvalidInstruction:
-        if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.BadInstruction);
-        return CallResult.InvalidInstructionException;
+        exceptionType = EvmExceptionType.BadInstruction;
+        goto ReturnFailure;
 StaticCallViolation:
-        if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.StaticCallViolation);
-        return CallResult.StaticCallViolationException;
+        exceptionType = EvmExceptionType.StaticCallViolation;
+        goto ReturnFailure;
 InvalidSubroutineEntry:
-        if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.InvalidSubroutineEntry);
-        return CallResult.InvalidSubroutineEntry;
+        exceptionType = EvmExceptionType.InvalidSubroutineEntry;
+        goto ReturnFailure;
 InvalidSubroutineReturn:
-        if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.InvalidSubroutineReturn);
-        return CallResult.InvalidSubroutineReturn;
+        exceptionType = EvmExceptionType.InvalidSubroutineReturn;
+        goto ReturnFailure;
 StackOverflow:
-        if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.StackOverflow);
-        return CallResult.StackOverflowException;
+        exceptionType = EvmExceptionType.StackOverflow;
+        goto ReturnFailure;
 InvalidJumpDestination:
-        if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.InvalidJumpDestination);
-        return CallResult.InvalidJumpDestination;
+        exceptionType = EvmExceptionType.InvalidJumpDestination;
+        goto ReturnFailure;
 AccessViolation:
-        if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.AccessViolation);
-        return CallResult.AccessViolationException;
+        exceptionType = EvmExceptionType.AccessViolation;
+ReturnFailure:
+        return GetFailureReturn(gasAvailable, exceptionType, traceOpcodes);
+    }
+
+    private CallResult GetFailureReturn(long gasAvailable, EvmExceptionType exceptionType, bool traceOpcodes)
+    {
+        if (traceOpcodes) EndInstructionTraceError(gasAvailable, exceptionType);
+
+        return exceptionType switch
+        {
+            EvmExceptionType.OutOfGas => CallResult.OutOfGasException,
+            EvmExceptionType.BadInstruction => CallResult.InvalidInstructionException,
+            EvmExceptionType.StaticCallViolation => CallResult.StaticCallViolationException,
+            EvmExceptionType.InvalidSubroutineEntry => CallResult.InvalidSubroutineEntry,
+            EvmExceptionType.InvalidSubroutineReturn => CallResult.InvalidSubroutineReturn,
+            EvmExceptionType.StackOverflow => CallResult.StackOverflowException,
+            EvmExceptionType.InvalidJumpDestination => CallResult.InvalidJumpDestination,
+            EvmExceptionType.AccessViolation => CallResult.AccessViolationException,
+            _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
+        };
     }
 
     private static void UpdateCurrentState(EvmState state, int pc, long gas, int stackHead)
