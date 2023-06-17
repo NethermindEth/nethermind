@@ -664,6 +664,12 @@ OutOfGas:
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
+        Span<byte> bytes = default;
+        Unsafe.SkipInit(out UInt256 a);
+        Unsafe.SkipInit(out UInt256 b);
+        Unsafe.SkipInit(out Int256.Int256 sa);
+        Unsafe.SkipInit(out Int256.Int256 sb);
+        Unsafe.SkipInit(out UInt256 result);
         while (programCounter < code.Length)
         {
 #if DEBUG
@@ -686,10 +692,10 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 b);
-                        stack.PopUInt256(out UInt256 a);
-                        UInt256.Add(in a, in b, out UInt256 c);
-                        stack.PushUInt256(c);
+                        stack.PopUInt256(out b);
+                        stack.PopUInt256(out a);
+                        UInt256.Add(in a, in b, out result);
+                        stack.PushUInt256(result);
 
                         break;
                     }
@@ -697,19 +703,19 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 a);
-                        stack.PopUInt256(out UInt256 b);
-                        UInt256.Multiply(in a, in b, out UInt256 res);
-                        stack.PushUInt256(in res);
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
+                        UInt256.Multiply(in a, in b, out result);
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.SUB:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 a);
-                        stack.PopUInt256(out UInt256 b);
-                        UInt256.Subtract(in a, in b, out UInt256 result);
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
+                        UInt256.Subtract(in a, in b, out result);
 
                         stack.PushUInt256(in result);
                         break;
@@ -718,16 +724,16 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 a);
-                        stack.PopUInt256(out UInt256 b);
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
                         if (b.IsZero)
                         {
                             stack.PushZero();
                         }
                         else
                         {
-                            UInt256.Divide(in a, in b, out UInt256 res);
-                            stack.PushUInt256(in res);
+                            UInt256.Divide(in a, in b, out result);
+                            stack.PushUInt256(in result);
                         }
 
                         break;
@@ -736,21 +742,21 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 a);
-                        stack.PopSignedInt256(out Int256.Int256 b);
-                        if (b.IsZero)
+                        stack.PopUInt256(out a);
+                        stack.PopSignedInt256(out sb);
+                        if (sb.IsZero)
                         {
                             stack.PushZero();
                         }
-                        else if (b == Int256.Int256.MinusOne && a == P255)
+                        else if (sb == Int256.Int256.MinusOne && a == P255)
                         {
-                            UInt256 res = P255;
-                            stack.PushUInt256(in res);
+                            result = P255;
+                            stack.PushUInt256(in result);
                         }
                         else
                         {
-                            Int256.Int256 signedA = new(a);
-                            Int256.Int256.Divide(in signedA, in b, out Int256.Int256 res);
+                            sa = new(a);
+                            Int256.Int256.Divide(in sa, in sb, out Int256.Int256 res);
                             stack.PushSignedInt256(in res);
                         }
 
@@ -760,9 +766,9 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 a);
-                        stack.PopUInt256(out UInt256 b);
-                        UInt256.Mod(in a, in b, out UInt256 result);
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
+                        UInt256.Mod(in a, in b, out result);
                         stack.PushUInt256(in result);
                         break;
                     }
@@ -770,15 +776,15 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopSignedInt256(out Int256.Int256 a);
-                        stack.PopSignedInt256(out Int256.Int256 b);
-                        if (b.IsZero || b.IsOne)
+                        stack.PopSignedInt256(out sa);
+                        stack.PopSignedInt256(out sb);
+                        if (sb.IsZero || sb.IsOne)
                         {
                             stack.PushZero();
                         }
                         else
                         {
-                            a.Mod(in b, out Int256.Int256 mod);
+                            sa.Mod(in sb, out Int256.Int256 mod);
                             stack.PushSignedInt256(in mod);
                         }
 
@@ -788,8 +794,8 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 a);
-                        stack.PopUInt256(out UInt256 b);
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
                         stack.PopUInt256(out UInt256 mod);
 
                         if (mod.IsZero)
@@ -798,8 +804,8 @@ OutOfGas:
                         }
                         else
                         {
-                            UInt256.AddMod(a, b, mod, out UInt256 res);
-                            stack.PushUInt256(in res);
+                            UInt256.AddMod(a, b, mod, out result);
+                            stack.PushUInt256(in result);
                         }
 
                         break;
@@ -808,8 +814,8 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 a);
-                        stack.PopUInt256(out UInt256 b);
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
                         stack.PopUInt256(out UInt256 mod);
 
                         if (mod.IsZero)
@@ -818,8 +824,8 @@ OutOfGas:
                         }
                         else
                         {
-                            UInt256.MultiplyMod(in a, in b, in mod, out UInt256 res);
-                            stack.PushUInt256(in res);
+                            UInt256.MultiplyMod(in a, in b, in mod, out result);
+                            stack.PushUInt256(in result);
                         }
 
                         break;
@@ -865,7 +871,7 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 a);
+                        stack.PopUInt256(out a);
                         if (a >= BigInt32)
                         {
                             stack.EnsureDepth(1);
@@ -874,27 +880,27 @@ OutOfGas:
 
                         int position = 31 - (int)a;
 
-                        Span<byte> b = stack.PopWord256();
-                        sbyte sign = (sbyte)b[position];
+                        bytes = stack.PopWord256();
+                        sbyte sign = (sbyte)bytes[position];
 
                         if (sign >= 0)
                         {
-                            BytesZero32.AsSpan(0, position).CopyTo(b[..position]);
+                            BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
                         }
                         else
                         {
-                            BytesMax32.AsSpan(0, position).CopyTo(b[..position]);
+                            BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
                         }
 
-                        stack.PushBytes(b);
+                        stack.PushBytes(bytes);
                         break;
                     }
                 case Instruction.LT:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 a);
-                        stack.PopUInt256(out UInt256 b);
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
                         if (a < b)
                         {
                             stack.PushOne();
@@ -910,8 +916,8 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 a);
-                        stack.PopUInt256(out UInt256 b);
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
                         if (a > b)
                         {
                             stack.PushOne();
@@ -927,10 +933,10 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopSignedInt256(out Int256.Int256 a);
-                        stack.PopSignedInt256(out Int256.Int256 b);
+                        stack.PopSignedInt256(out sa);
+                        stack.PopSignedInt256(out sb);
 
-                        if (a.CompareTo(b) < 0)
+                        if (sa.CompareTo(sb) < 0)
                         {
                             stack.PushOne();
                         }
@@ -945,9 +951,9 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopSignedInt256(out Int256.Int256 a);
-                        stack.PopSignedInt256(out Int256.Int256 b);
-                        if (a.CompareTo(b) > 0)
+                        stack.PopSignedInt256(out sa);
+                        stack.PopSignedInt256(out sb);
+                        if (sa.CompareTo(sb) > 0)
                         {
                             stack.PushOne();
                         }
@@ -962,9 +968,9 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopWord256();
-                        Span<byte> b = stack.PopWord256();
-                        if (a.SequenceEqual(b))
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
+                        if (a.Equals(b))
                         {
                             stack.PushOne();
                         }
@@ -979,8 +985,8 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopWord256();
-                        if (a.SequenceEqual(BytesZero32))
+                        stack.PopUInt256(out a);
+                        if (a.IsZero)
                         {
                             stack.PushOne();
                         }
@@ -995,20 +1001,20 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopWord256();
-                        Span<byte> b = stack.PopWord256();
+                        bytes = stack.PopWord256();
+                        Span<byte> bytesb = stack.PopWord256();
 
                         if (_simdOperationsEnabled)
                         {
-                            Vector<byte> aVec = new(a);
-                            Vector<byte> bVec = new(b);
+                            Vector<byte> aVec = new(bytes);
+                            Vector<byte> bVec = new(bytesb);
 
                             Vector.BitwiseAnd(aVec, bVec).CopyTo(stack.Register);
                         }
                         else
                         {
-                            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a);
-                            ref ulong refB = ref MemoryMarshal.AsRef<ulong>(b);
+                            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(bytes);
+                            ref ulong refB = ref MemoryMarshal.AsRef<ulong>(bytesb);
                             ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
 
                             refBuffer = refA & refB;
@@ -1024,20 +1030,20 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopWord256();
-                        Span<byte> b = stack.PopWord256();
+                        bytes = stack.PopWord256();
+                        Span<byte> bytesb = stack.PopWord256();
 
                         if (_simdOperationsEnabled)
                         {
-                            Vector<byte> aVec = new(a);
-                            Vector<byte> bVec = new(b);
+                            Vector<byte> aVec = new(bytes);
+                            Vector<byte> bVec = new(bytesb);
 
                             Vector.BitwiseOr(aVec, bVec).CopyTo(stack.Register);
                         }
                         else
                         {
-                            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a);
-                            ref ulong refB = ref MemoryMarshal.AsRef<ulong>(b);
+                            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(bytes);
+                            ref ulong refB = ref MemoryMarshal.AsRef<ulong>(bytesb);
                             ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
 
                             refBuffer = refA | refB;
@@ -1053,20 +1059,20 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopWord256();
-                        Span<byte> b = stack.PopWord256();
+                        bytes = stack.PopWord256();
+                        Span<byte> bytesb = stack.PopWord256();
 
                         if (_simdOperationsEnabled)
                         {
-                            Vector<byte> aVec = new(a);
-                            Vector<byte> bVec = new(b);
+                            Vector<byte> aVec = new(bytes);
+                            Vector<byte> bVec = new(bytesb);
 
                             Vector.Xor(aVec, bVec).CopyTo(stack.Register);
                         }
                         else
                         {
-                            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a);
-                            ref ulong refB = ref MemoryMarshal.AsRef<ulong>(b);
+                            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(bytes);
+                            ref ulong refB = ref MemoryMarshal.AsRef<ulong>(bytesb);
                             ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
 
                             refBuffer = refA ^ refB;
@@ -1082,18 +1088,18 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Span<byte> a = stack.PopWord256();
+                        bytes = stack.PopWord256();
 
                         if (_simdOperationsEnabled)
                         {
-                            Vector<byte> aVec = new(a);
+                            Vector<byte> aVec = new(bytes);
                             Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
 
                             negVec.CopyTo(stack.Register);
                         }
                         else
                         {
-                            ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
+                            ref var refA = ref MemoryMarshal.AsRef<ulong>(bytes);
                             ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
 
                             refBuffer = ~refA;
@@ -1110,7 +1116,7 @@ OutOfGas:
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out UInt256 position);
-                        Span<byte> bytes = stack.PopWord256();
+                        bytes = stack.PopWord256();
 
                         if (position >= BigInt32)
                         {
@@ -1400,7 +1406,7 @@ OutOfGas:
 
                         if (!UpdateGas(GasCostOf.BlockHash, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 a);
+                        stack.PopUInt256(out a);
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
                         Keccak blockHash = _blockhashProvider.GetBlockhash(txCtx.Header, number);
                         stack.PushBytes(blockHash != null ? blockHash.Bytes : BytesZero32);
@@ -1714,9 +1720,9 @@ OutOfGas:
                         if (_txTracer.IsTracingInstructions)
                         {
                             Span<byte> valueToStore = newIsZero ? BytesZero : newValue;
-                            Span<byte> span = new byte[32]; // do not stackalloc here
-                            storageCell.Index.ToBigEndian(span);
-                            _txTracer.ReportStorageChange(span, valueToStore);
+                            bytes = new byte[32]; // do not stackalloc here
+                            storageCell.Index.ToBigEndian(bytes);
+                            _txTracer.ReportStorageChange(bytes, valueToStore);
                         }
 
                         if (_txTracer.IsTracingOpLevelStorage)
@@ -2340,7 +2346,7 @@ OutOfGas:
 
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 a);
+                        stack.PopUInt256(out a);
                         if (a >= 256UL)
                         {
                             stack.PopLimbo();
@@ -2348,9 +2354,9 @@ OutOfGas:
                         }
                         else
                         {
-                            stack.PopUInt256(out UInt256 b);
-                            UInt256 res = b << (int)a.u0;
-                            stack.PushUInt256(in res);
+                            stack.PopUInt256(out b);
+                            result = b << (int)a.u0;
+                            stack.PushUInt256(in result);
                         }
 
                         break;
@@ -2361,7 +2367,7 @@ OutOfGas:
 
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 a);
+                        stack.PopUInt256(out a);
                         if (a >= 256)
                         {
                             stack.PopLimbo();
@@ -2369,9 +2375,9 @@ OutOfGas:
                         }
                         else
                         {
-                            stack.PopUInt256(out UInt256 b);
-                            UInt256 res = b >> (int)a.u0;
-                            stack.PushUInt256(in res);
+                            stack.PopUInt256(out b);
+                            result = b >> (int)a.u0;
+                            stack.PushUInt256(in result);
                         }
 
                         break;
@@ -2382,11 +2388,11 @@ OutOfGas:
 
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopUInt256(out UInt256 a);
-                        stack.PopSignedInt256(out Int256.Int256 b);
+                        stack.PopUInt256(out a);
+                        stack.PopSignedInt256(out sb);
                         if (a >= BigInt256)
                         {
-                            if (b.Sign >= 0)
+                            if (sb.Sign >= 0)
                             {
                                 stack.PushZero();
                             }
@@ -2398,7 +2404,7 @@ OutOfGas:
                         }
                         else
                         {
-                            b.RightShift((int)a, out Int256.Int256 res);
+                            sb.RightShift((int)a, out Int256.Int256 res);
                             stack.PushSignedInt256(in res);
                         }
 
