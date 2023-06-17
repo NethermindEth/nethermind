@@ -1145,7 +1145,7 @@ OutOfGas:
 
                             ZeroPaddedMemory callDataSlice = env.InputData.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, callDataSlice);
-                            if (_txTracer.IsTracingInstructions)
+                            if (traceOpcodes)
                             {
                                 _txTracer.ReportMemoryChange((long)a, callDataSlice);
                             }
@@ -1174,7 +1174,7 @@ OutOfGas:
 
                             ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, codeSlice);
-                            if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)a, codeSlice);
+                            if (traceOpcodes) _txTracer.ReportMemoryChange((long)a, codeSlice);
                         }
 
                         break;
@@ -1279,7 +1279,7 @@ OutOfGas:
                             byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                             ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, callDataSlice);
-                            if (_txTracer.IsTracingInstructions)
+                            if (traceOpcodes)
                             {
                                 _txTracer.ReportMemoryChange((long)a, callDataSlice);
                             }
@@ -1317,7 +1317,7 @@ OutOfGas:
 
                             ZeroPaddedSpan returnDataSlice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, returnDataSlice);
-                            if (_txTracer.IsTracingInstructions)
+                            if (traceOpcodes)
                             {
                                 _txTracer.ReportMemoryChange((long)a, returnDataSlice);
                             }
@@ -1453,7 +1453,7 @@ OutOfGas:
                         stack.PopUInt256(out result);
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, 32)) goto OutOfGas;
                         bytes = vmState.Memory.LoadSpan(in result);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange(result, bytes);
+                        if (traceOpcodes) _txTracer.ReportMemoryChange(result, bytes);
 
                         stack.PushBytes(bytes);
                         break;
@@ -1467,7 +1467,7 @@ OutOfGas:
                         bytes = stack.PopWord256();
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, 32)) goto OutOfGas;
                         vmState.Memory.SaveWord(in result, bytes);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)result, bytes.SliceWithZeroPadding(0, 32, PadDirection.Left));
+                        if (traceOpcodes) _txTracer.ReportMemoryChange((long)result, bytes.SliceWithZeroPadding(0, 32, PadDirection.Left));
 
                         break;
                     }
@@ -1479,7 +1479,7 @@ OutOfGas:
                         byte data = stack.PopByte();
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, UInt256.One)) goto OutOfGas;
                         vmState.Memory.SaveByte(in result, data);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)result, data);
+                        if (traceOpcodes) _txTracer.ReportMemoryChange((long)result, data);
 
                         break;
                     }
@@ -1872,7 +1872,7 @@ OutOfGas:
                             _returnDataBuffer = Array.Empty<byte>();
                             stack.PushZero();
 
-                            if (_txTracer.IsTracingInstructions)
+                            if (traceOpcodes)
                             {
                                 // very specific for Parity trace, need to find generalization - very peculiar 32 length...
                                 ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
@@ -1880,11 +1880,11 @@ OutOfGas:
                             }
 
                             if (isTrace) _logger.Trace("FAIL - call depth");
-                            if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(gasAvailable);
-                            if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+                            if (traceOpcodes) _txTracer.ReportOperationRemainingGas(gasAvailable);
+                            if (traceOpcodes) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
 
                             UpdateGasUp(gasLimitUl, ref gasAvailable);
-                            if (_txTracer.IsTracingInstructions) _txTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
+                            if (traceOpcodes) _txTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
                             break;
                         }
 
