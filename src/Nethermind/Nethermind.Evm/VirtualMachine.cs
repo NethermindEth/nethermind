@@ -1750,26 +1750,7 @@ OutOfGas:
                     {
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
-                        long topicsCount = instruction - Instruction.LOG0;
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
-                        if (!UpdateGas(
-                            GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
-                            (long)b * GasCostOf.LogData, ref gasAvailable)) goto OutOfGas;
-
-                        ReadOnlyMemory<byte> data = vmState.Memory.Load(in a, b);
-                        Keccak[] topics = new Keccak[topicsCount];
-                        for (int i = 0; i < topicsCount; i++)
-                        {
-                            topics[i] = new Keccak(stack.PopWord256());
-                        }
-
-                        LogEntry logEntry = new(
-                            env.ExecutingAccount,
-                            data.ToArray(),
-                            topics);
-                        vmState.Logs.Add(logEntry);
+                        if (!InstructionLog(vmState, ref stack, ref gasAvailable, instruction)) goto OutOfGas;
                         break;
                     }
                 case Instruction.CREATE:
@@ -2307,6 +2288,32 @@ AccessViolation:
         exceptionType = EvmExceptionType.AccessViolation;
 ReturnFailure:
         return GetFailureReturn(gasAvailable, exceptionType, traceOpcodes);
+    }
+
+    private static bool InstructionLog(EvmState vmState, ref EvmStack stack, ref long gasAvailable, Instruction instruction)
+    {
+        stack.PopUInt256(out UInt256 position);
+        stack.PopUInt256(out UInt256 length);
+        long topicsCount = instruction - Instruction.LOG0;
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) return false;
+        if (!UpdateGas(
+                GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
+                (long)length * GasCostOf.LogData, ref gasAvailable)) return false;
+
+        ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length);
+        Keccak[] topics = new Keccak[topicsCount];
+        for (int i = 0; i < topicsCount; i++)
+        {
+            topics[i] = new Keccak(stack.PopWord256());
+        }
+
+        LogEntry logEntry = new(
+            vmState.Env.ExecutingAccount,
+            data.ToArray(),
+            topics);
+        vmState.Logs.Add(logEntry);
+
+        return true;
     }
 
     private bool InstructionSStore(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
