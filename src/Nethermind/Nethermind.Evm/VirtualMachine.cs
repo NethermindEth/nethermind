@@ -22,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
+using System.Runtime.Intrinsics;
 
 #if DEBUG
 using Nethermind.Evm.Tracing.DebugTrace;
@@ -594,15 +595,7 @@ public class VirtualMachine : IVirtualMachine
     [SkipLocalsInit]
     private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
     {
-        bool isTrace = _logger.IsTrace;
-        bool traceOpcodes = _txTracer.IsTracingInstructions;
-#if DEBUG
-        DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
-#endif
-
         ref readonly ExecutionEnvironment env = ref vmState.Env;
-        ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
-
         if (!vmState.IsContinuation)
         {
             if (!_state.AccountExists(env.ExecutingAccount))
@@ -620,7 +613,7 @@ public class VirtualMachine : IVirtualMachine
             }
         }
 
-        if (vmState.Env.CodeInfo.MachineCode.Length == 0)
+        if (env.CodeInfo.MachineCode.Length == 0)
         {
             if (!vmState.IsTopLevel)
             {
@@ -632,15 +625,6 @@ public class VirtualMachine : IVirtualMachine
         vmState.InitStacks();
         EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
         long gasAvailable = vmState.GasAvailable;
-        int programCounter = vmState.ProgramCounter;
-        Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
-
-        static void UpdateCurrentState(EvmState state, int pc, long gas, int stackHead)
-        {
-            state.ProgramCounter = pc;
-            state.GasAvailable = gas;
-            state.DataStackHead = stackHead;
-        }
 
         if (previousCallResult is not null)
         {
@@ -653,22 +637,39 @@ public class VirtualMachine : IVirtualMachine
             UInt256 localPreviousDest = previousCallOutputDestination;
             if (!UpdateMemoryCost(vmState, ref gasAvailable, in localPreviousDest, (ulong)previousCallOutput.Length))
             {
-                // Never ran any instructions, so nothing to trace (or mark as end of trace)
-                traceOpcodes = false;
                 goto OutOfGas;
             }
 
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
-            //                if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
         }
 
+        return ExecuteCode(vmState, ref stack, ref gasAvailable, spec);
+Empty:
+        return CallResult.Empty;
+OutOfGas:
+        return CallResult.OutOfGasException;
+    }
+
+    [SkipLocalsInit]
+    private CallResult ExecuteCode(EvmState vmState, scoped ref EvmStack stack, scoped ref long gasAvailable, IReleaseSpec spec)
+    {
+        bool isTrace = _logger.IsTrace;
+        bool traceOpcodes = _txTracer.IsTracingInstructions;
+
+        ref readonly ExecutionEnvironment env = ref vmState.Env;
+        ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
+        Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
+        int programCounter = vmState.ProgramCounter;
+        
+#if DEBUG
+        DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
+#endif
         while (programCounter < code.Length)
         {
 #if DEBUG
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
             Instruction instruction = (Instruction)code[programCounter];
-            // Console.WriteLine(instruction);
 
             if (traceOpcodes)
                 StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
@@ -2477,11 +2478,10 @@ public class VirtualMachine : IVirtualMachine
         }
 
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-// Fall through to Empty: label
+
+        return CallResult.Empty;
 
 // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
-Empty:
-        return CallResult.Empty;
 OutOfGas:
         if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.OutOfGas);
         return CallResult.OutOfGasException;
@@ -2514,7 +2514,14 @@ AccessViolation:
         return CallResult.AccessViolationException;
     }
 
-    static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
+    private static void UpdateCurrentState(EvmState state, int pc, long gas, int stackHead)
+    {
+        state.ProgramCounter = pc;
+        state.GasAvailable = gas;
+        state.DataStackHead = stackHead;
+    }
+
+    private static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
     {
         if (vmState.Memory is null)
         {
