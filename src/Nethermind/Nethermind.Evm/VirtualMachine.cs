@@ -642,11 +642,15 @@ public class VirtualMachine : IVirtualMachine
             // checks that are evaluated to constant values at compile time.
             // This only works for structs, not for classes or interface types
             // which use shared generics.
-            return ExecuteCode<NotTracing>(vmState, ref stack, gasAvailable, spec);
+            return _txTracer.IsTracingRefunds ?
+                ExecuteCode<NotTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
+                ExecuteCode<NotTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
         }
         else
         {
-            return ExecuteCode<IsTracing>(vmState, ref stack, gasAvailable, spec);
+            return _txTracer.IsTracingRefunds ?
+                ExecuteCode<IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
+                ExecuteCode<IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
         }
 Empty:
         return CallResult.Empty;
@@ -655,8 +659,9 @@ OutOfGas:
     }
 
     [SkipLocalsInit]
-    private CallResult ExecuteCode<TTracingInstructions>(EvmState vmState, scoped ref EvmStack stack, long gasAvailable, IReleaseSpec spec)
+    private CallResult ExecuteCode<TTracingInstructions, TTracingRefunds>(EvmState vmState, scoped ref EvmStack stack, long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
+        where TTracingRefunds : struct, IIsTracing
     {
         int programCounter = vmState.ProgramCounter;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
@@ -1527,7 +1532,7 @@ OutOfGas:
 
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        if (!InstructionSStore<TTracingInstructions>(vmState, ref stack, ref gasAvailable, spec))
+                        if (!InstructionSStore<TTracingInstructions, TTracingRefunds>(vmState, ref stack, ref gasAvailable, spec))
                             goto OutOfGas;
 
                         break;
@@ -1774,7 +1779,7 @@ OutOfGas:
                 case Instruction.DELEGATECALL:
                 case Instruction.STATICCALL:
                     {
-                        exceptionType = InstructionCall<TTracingInstructions>(vmState, ref stack, ref gasAvailable, spec, instruction, out returnData);
+                        exceptionType = InstructionCall<TTracingInstructions, TTracingRefunds>(vmState, ref stack, ref gasAvailable, spec, instruction, out returnData);
                         if (exceptionType != EvmExceptionType.None)
                         {
                             goto ReturnFailure;
@@ -2002,9 +2007,10 @@ ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
     }
 
-    private EvmExceptionType InstructionCall<TTracingInstructions>(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec,
+    private EvmExceptionType InstructionCall<TTracingInstructions, TTracingRefunds>(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec,
         Instruction instruction, out object returnData)
         where TTracingInstructions : struct, IIsTracing
+        where TTracingRefunds : struct, IIsTracing
     {
         returnData = null;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
@@ -2089,7 +2095,7 @@ ReturnFailure:
 
         if (!transferValue.IsZero)
         {
-            if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
+            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
             gasLimitUl += GasCostOf.CallStipend;
         }
 
@@ -2383,15 +2389,16 @@ ReturnFailure:
         return true;
     }
 
-    private bool InstructionSStore<TTracingInstructions>(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
+    private bool InstructionSStore<TTracingInstructions, TTracingRefunds>(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
+        where TTracingRefunds : struct, IIsTracing
     {
         // fail fast before the first storage read if gas is not enough even for reset
         if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return false;
 
         if (spec.UseNetGasMeteringWithAStipendFix)
         {
-            if (_txTracer.IsTracingRefunds)
+            if (typeof(TTracingRefunds) == typeof(IsTracing))
                 _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
             if (gasAvailable <= GasCostOf.CallStipend) return false;
         }
@@ -2431,7 +2438,7 @@ ReturnFailure:
                 if (!newSameAsCurrent)
                 {
                     vmState.Refund += sClearRefunds;
-                    if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
+                    if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
                 }
             }
             else if (currentIsZero)
@@ -2464,7 +2471,7 @@ ReturnFailure:
                         if (newIsZero)
                         {
                             vmState.Refund += sClearRefunds;
-                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
+                            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
                         }
                     }
                 }
@@ -2478,13 +2485,13 @@ ReturnFailure:
                         if (currentIsZero)
                         {
                             vmState.Refund -= sClearRefunds;
-                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(-sClearRefunds);
+                            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(-sClearRefunds);
                         }
 
                         if (newIsZero)
                         {
                             vmState.Refund += sClearRefunds;
-                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
+                            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(sClearRefunds);
                         }
                     }
 
@@ -2502,7 +2509,7 @@ ReturnFailure:
                         }
 
                         vmState.Refund += refundFromReversal;
-                        if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(refundFromReversal);
+                        if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportRefund(refundFromReversal);
                     }
                 }
             }
