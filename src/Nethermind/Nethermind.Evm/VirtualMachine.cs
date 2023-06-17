@@ -635,7 +635,7 @@ public class VirtualMachine : IVirtualMachine
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
 
-        return ExecuteCode(vmState, ref stack, ref gasAvailable, spec);
+        return ExecuteCode(vmState, ref stack, gasAvailable, spec);
 Empty:
         return CallResult.Empty;
 OutOfGas:
@@ -643,7 +643,7 @@ OutOfGas:
     }
 
     [SkipLocalsInit]
-    private CallResult ExecuteCode(EvmState vmState, scoped ref EvmStack stack, scoped ref long gasAvailable, IReleaseSpec spec)
+    private CallResult ExecuteCode(EvmState vmState, scoped ref EvmStack stack, long gasAvailable, IReleaseSpec spec)
     {
         bool isTrace = _logger.IsTrace;
         bool traceOpcodes = _txTracer.IsTracingInstructions;
@@ -652,7 +652,7 @@ OutOfGas:
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
         Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
         int programCounter = vmState.ProgramCounter;
-        
+
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
@@ -1510,16 +1510,16 @@ OutOfGas:
                         break;
                     }
                 case Instruction.SSTORE:
-                {
-                    Metrics.SstoreOpcode++;
+                    {
+                        Metrics.SstoreOpcode++;
 
-                    if (vmState.IsStatic) goto StaticCallViolation;
+                        if (vmState.IsStatic) goto StaticCallViolation;
 
-                    if (!InstructionSStore(vmState, ref stack, ref gasAvailable, spec))
-                        goto OutOfGas;
+                        if (!InstructionSStore(vmState, ref stack, ref gasAvailable, spec))
+                            goto OutOfGas;
 
-                    break;
-                }
+                        break;
+                    }
                 case Instruction.TLOAD:
                     {
                         Metrics.TloadOpcode++;
