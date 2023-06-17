@@ -1761,129 +1761,11 @@ OutOfGas:
 
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        // TODO: happens in CREATE_empty000CreateInitCode_Transaction but probably has to be handled differently
-                        if (!_state.AccountExists(env.ExecutingAccount))
-                        {
-                            _state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
-                        }
+                        (bool outOfGas, EvmState? callState) = InstructionCreate(vmState, stack, ref gasAvailable, spec, instruction, programCounter);
 
-                        stack.PopUInt256(out UInt256 value);
-                        stack.PopUInt256(out UInt256 memoryPositionOfInitCode);
-                        stack.PopUInt256(out UInt256 initCodeLength);
-                        Span<byte> salt = default;
-                        if (instruction == Instruction.CREATE2)
-                        {
-                            salt = stack.PopWord256();
-                        }
+                        if (outOfGas) goto OutOfGas;
+                        if (callState is null) break;
 
-                        //EIP-3860
-                        if (spec.IsEip3860Enabled)
-                        {
-                            if (initCodeLength > spec.MaxInitCodeSize) goto OutOfGas;
-                        }
-
-                        long gasCost = GasCostOf.Create +
-                            (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0) +
-                            (instruction == Instruction.CREATE2 ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0);
-
-                        if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
-
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in memoryPositionOfInitCode, initCodeLength)) goto OutOfGas;
-
-                        // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
-                        if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
-                        {
-                            // TODO: need a test for this
-                            _returnDataBuffer = Array.Empty<byte>();
-                            stack.PushZero();
-                            break;
-                        }
-
-                        Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
-
-                        UInt256 balance = _state.GetBalance(env.ExecutingAccount);
-                        if (value > balance)
-                        {
-                            _returnDataBuffer = Array.Empty<byte>();
-                            stack.PushZero();
-                            break;
-                        }
-
-                        UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
-                        UInt256 maxNonce = ulong.MaxValue;
-                        if (accountNonce >= maxNonce)
-                        {
-                            _returnDataBuffer = Array.Empty<byte>();
-                            stack.PushZero();
-                            break;
-                        }
-
-                        if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-                        // todo: === below is a new call - refactor / move
-
-                        long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-                        if (!UpdateGas(callGas, ref gasAvailable)) goto OutOfGas;
-
-                        Address contractAddress = instruction == Instruction.CREATE
-                            ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
-                            : ContractAddress.From(env.ExecutingAccount, salt, initCode);
-
-                        if (spec.UseHotAndColdStorage)
-                        {
-                            // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
-                            vmState.WarmUp(contractAddress);
-                        }
-
-                        _state.IncrementNonce(env.ExecutingAccount);
-
-                        Snapshot snapshot = _worldState.TakeSnapshot();
-
-                        bool accountExists = _state.AccountExists(contractAddress);
-                        if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
-                        {
-                            /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
-                            if (isTrace) _logger.Trace($"Contract collision at {contractAddress}");
-                            _returnDataBuffer = Array.Empty<byte>();
-                            stack.PushZero();
-                            break;
-                        }
-
-                        if (accountExists)
-                        {
-                            _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
-                        }
-                        else if (_state.IsDeadAccount(contractAddress))
-                        {
-                            _state.ClearStorage(contractAddress);
-                        }
-
-                        _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
-                        ExecutionEnvironment callEnv = new
-                        (
-                            txExecutionContext: env.TxExecutionContext,
-                            callDepth: env.CallDepth + 1,
-                            caller: env.ExecutingAccount,
-                            executingAccount: contractAddress,
-                            codeSource: null,
-                            codeInfo: new CodeInfo(initCode.ToArray()),
-                            inputData: default,
-                            transferValue: value,
-                            value: value
-                        );
-                        EvmState callState = new(
-                            callGas,
-                            callEnv,
-                            instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
-                            false,
-                            snapshot,
-                            0L,
-                            0L,
-                            vmState.IsStatic,
-                            vmState,
-                            false,
-                            accountExists);
-
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         return new CallResult(callState);
                     }
                 case Instruction.RETURN:
@@ -2288,6 +2170,140 @@ AccessViolation:
         exceptionType = EvmExceptionType.AccessViolation;
 ReturnFailure:
         return GetFailureReturn(gasAvailable, exceptionType, traceOpcodes);
+    }
+
+    private (bool outOfGas, EvmState? callState) InstructionCreate(EvmState vmState, EvmStack stack, ref long gasAvailable, IReleaseSpec spec,
+        Instruction instruction, int programCounter)
+    {
+        ref readonly ExecutionEnvironment env = ref vmState.Env;
+
+        // TODO: happens in CREATE_empty000CreateInitCode_Transaction but probably has to be handled differently
+        if (!_state.AccountExists(env.ExecutingAccount))
+        {
+            _state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
+        }
+
+        stack.PopUInt256(out UInt256 value);
+        stack.PopUInt256(out UInt256 memoryPositionOfInitCode);
+        stack.PopUInt256(out UInt256 initCodeLength);
+        Span<byte> salt = default;
+        if (instruction == Instruction.CREATE2)
+        {
+            salt = stack.PopWord256();
+        }
+
+        //EIP-3860
+        if (spec.IsEip3860Enabled)
+        {
+            if (initCodeLength > spec.MaxInitCodeSize) return (outOfGas: true, null);
+        }
+
+        long gasCost = GasCostOf.Create +
+                       (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0) +
+                       (instruction == Instruction.CREATE2
+                           ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength)
+                           : 0);
+
+        if (!UpdateGas(gasCost, ref gasAvailable)) return (outOfGas: true, null);
+
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in memoryPositionOfInitCode, initCodeLength)) return (outOfGas: true, null);
+
+        // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
+        if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
+        {
+            // TODO: need a test for this
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return (outOfGas: false, null);
+        }
+
+        Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+
+        UInt256 balance = _state.GetBalance(env.ExecutingAccount);
+        if (value > balance)
+        {
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return (outOfGas: false, null);
+        }
+
+        UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
+        UInt256 maxNonce = ulong.MaxValue;
+        if (accountNonce >= maxNonce)
+        {
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return (outOfGas: false, null);
+        }
+
+        if (_txTracer.IsTracingInstructions) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+        // todo: === below is a new call - refactor / move
+
+        long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
+        if (!UpdateGas(callGas, ref gasAvailable)) return (outOfGas: true, null);
+
+        Address contractAddress = instruction == Instruction.CREATE
+            ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
+            : ContractAddress.From(env.ExecutingAccount, salt, initCode);
+
+        if (spec.UseHotAndColdStorage)
+        {
+            // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
+            vmState.WarmUp(contractAddress);
+        }
+
+        _state.IncrementNonce(env.ExecutingAccount);
+
+        Snapshot snapshot = _worldState.TakeSnapshot();
+
+        bool accountExists = _state.AccountExists(contractAddress);
+        if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 ||
+                              _state.GetNonce(contractAddress) != 0))
+        {
+            /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
+            if (_logger.IsTrace) _logger.Trace($"Contract collision at {contractAddress}");
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return (outOfGas: false, null);
+        }
+
+        if (accountExists)
+        {
+            _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
+        }
+        else if (_state.IsDeadAccount(contractAddress))
+        {
+            _state.ClearStorage(contractAddress);
+        }
+
+        _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+        ExecutionEnvironment callEnv = new
+        (
+            txExecutionContext: env.TxExecutionContext,
+            callDepth: env.CallDepth + 1,
+            caller: env.ExecutingAccount,
+            executingAccount: contractAddress,
+            codeSource: null,
+            codeInfo: new CodeInfo(initCode.ToArray()),
+            inputData: default,
+            transferValue: value,
+            value: value
+        );
+        EvmState callState = new(
+            callGas,
+            callEnv,
+            instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
+            false,
+            snapshot,
+            0L,
+            0L,
+            vmState.IsStatic,
+            vmState,
+            false,
+            accountExists);
+
+        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+        return (outOfGas: false, callState);
     }
 
     private static bool InstructionLog(EvmState vmState, ref EvmStack stack, ref long gasAvailable, Instruction instruction)
