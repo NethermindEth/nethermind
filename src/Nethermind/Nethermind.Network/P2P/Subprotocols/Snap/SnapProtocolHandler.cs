@@ -23,10 +23,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
-        private const int MaxBytesLimit = 2_000_000;
-        private const int MinBytesLimit = 20_000;
-        public static readonly TimeSpan UpperLatencyThreshold = TimeSpan.FromMilliseconds(2000);
-        public static readonly TimeSpan LowerLatencyThreshold = TimeSpan.FromMilliseconds(1000);
+        private readonly int _maxBytesLimit = 2_000_000;
+        private readonly int _minBytesLimit = 20_000;
+        private readonly TimeSpan _upperLatencyThreshold;
+        private readonly TimeSpan _lowerLatencyThreshold;
         private const double BytesLimitAdjustmentFactor = 2;
 
         public override string Name => "snap1";
@@ -44,7 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private readonly MessageQueue<GetTrieNodesMessage, TrieNodesMessage> _getTrieNodesRequests;
         private static readonly byte[] _emptyBytes = { 0 };
 
-        private int _currentBytesLimit = MinBytesLimit;
+        private int _currentBytesLimit;
 
         public SnapProtocolHandler(ISession session,
             INodeStatsManager nodeStats,
@@ -57,6 +57,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getStorageRangeRequests = new(Send);
             _getByteCodesRequests = new(Send);
             _getTrieNodesRequests = new(Send);
+
+            _upperLatencyThreshold = TimeSpan.FromMilliseconds(networkConfig.SnapResponseLatencyHighWatermarkMs);
+            _lowerLatencyThreshold = TimeSpan.FromMilliseconds(networkConfig.SnapResponseLatencyLowWatermarkMs);
+            _maxBytesLimit = networkConfig.SnapRequestMaxBytes;
+            _minBytesLimit = networkConfig.SnapRequestMinBytes;
+            _currentBytesLimit = _minBytesLimit;
         }
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
@@ -310,13 +316,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 sw.Stop();
                 if (failed)
                 {
-                    _currentBytesLimit = MinBytesLimit;
+                    _currentBytesLimit = _minBytesLimit;
                 }
-                else if (sw.Elapsed < LowerLatencyThreshold)
+                else if (sw.Elapsed < _lowerLatencyThreshold)
                 {
-                    _currentBytesLimit = Math.Min((int)(startingBytesLimit * BytesLimitAdjustmentFactor), MaxBytesLimit);
+                    _currentBytesLimit = Math.Min((int)(startingBytesLimit * BytesLimitAdjustmentFactor), _maxBytesLimit);
                 }
-                else if (sw.Elapsed > UpperLatencyThreshold && startingBytesLimit > MinBytesLimit)
+                else if (sw.Elapsed > _upperLatencyThreshold && startingBytesLimit > _minBytesLimit)
                 {
                     _currentBytesLimit = (int)(startingBytesLimit / BytesLimitAdjustmentFactor);
                 }
