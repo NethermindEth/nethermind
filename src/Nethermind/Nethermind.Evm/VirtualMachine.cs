@@ -136,7 +136,15 @@ public class VirtualMachine : IVirtualMachine
                         if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);
                     }
 
-                    callResult = ExecuteCall(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
+                    if (!_txTracer.IsTracingInstructions)
+                    {
+                        callResult = ExecuteCall<NotTracing>(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
+                    }
+                    else
+                    {
+                        callResult = ExecuteCall<IsTracing>(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
+                    }
+
                     if (!callResult.IsReturn)
                     {
                         _stateStack.Push(currentState);
@@ -584,8 +592,14 @@ public class VirtualMachine : IVirtualMachine
         }
     }
 
+    /// <remarks>
+    /// Struct generic parameter is used to burn out all the if statements and inner code
+    /// by typeof(TTracing) == typeof(NotTracing) checks that are evaluated to constant
+    /// values at compile time.
+    /// </remarks>
     [SkipLocalsInit]
-    private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+    private CallResult ExecuteCall<TTracing>(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+        where TTracing : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         if (!vmState.IsContinuation)
@@ -615,13 +629,13 @@ public class VirtualMachine : IVirtualMachine
         }
 
         vmState.InitStacks();
-        EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
+        EvmStack<TTracing> stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
         long gasAvailable = vmState.GasAvailable;
 
         if (previousCallResult is not null)
         {
             stack.PushBytes(previousCallResult);
-            if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
+            if (typeof(TTracing) == typeof(IsTracing)) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
         }
 
         if (previousCallOutput.Length > 0)
@@ -635,23 +649,14 @@ public class VirtualMachine : IVirtualMachine
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
 
-        if (!_txTracer.IsTracingInstructions)
-        {
-            // Struct generic parameter is used to burn out all the if statements
-            // and inner code by typeof(TTracingInstructions) == typeof(NotTracing)
-            // checks that are evaluated to constant values at compile time.
-            // This only works for structs, not for classes or interface types
-            // which use shared generics.
-            return _txTracer.IsTracingRefunds ?
-                ExecuteCode<NotTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
-                ExecuteCode<NotTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
-        }
-        else
-        {
-            return _txTracer.IsTracingRefunds ?
-                ExecuteCode<IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
-                ExecuteCode<IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
-        }
+        // Struct generic parameter is used to burn out all the if statements
+        // and inner code by typeof(TTracing) == typeof(NotTracing)
+        // checks that are evaluated to constant values at compile time.
+        // This only works for structs, not for classes or interface types
+        // which use shared generics.
+        return _txTracer.IsTracingRefunds ?
+            ExecuteCode<TTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
+            ExecuteCode<TTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
 Empty:
         return CallResult.Empty;
 OutOfGas:
@@ -659,7 +664,7 @@ OutOfGas:
     }
 
     [SkipLocalsInit]
-    private CallResult ExecuteCode<TTracingInstructions, TTracingRefunds>(EvmState vmState, scoped ref EvmStack stack, long gasAvailable, IReleaseSpec spec)
+    private CallResult ExecuteCode<TTracingInstructions, TTracingRefunds>(EvmState vmState, scoped ref EvmStack<TTracingInstructions> stack, long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
     {
@@ -2007,7 +2012,7 @@ ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
     }
 
-    private EvmExceptionType InstructionCall<TTracingInstructions, TTracingRefunds>(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec,
+    private EvmExceptionType InstructionCall<TTracingInstructions, TTracingRefunds>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec,
         Instruction instruction, out object returnData)
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
@@ -2163,7 +2168,8 @@ ReturnFailure:
         return EvmExceptionType.None;
     }
 
-    private static bool InstructionRevert(EvmState vmState, ref EvmStack stack, ref long gasAvailable, out object returnData)
+    private static bool InstructionRevert<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, out object returnData)
+        where TTracing : struct, IIsTracing
     {
         stack.PopUInt256(out UInt256 position);
         stack.PopUInt256(out UInt256 length);
@@ -2178,7 +2184,8 @@ ReturnFailure:
         return true;
     }
 
-    private static bool InstructionReturn(EvmState vmState, ref EvmStack stack, ref long gasAvailable, out object returnData)
+    private static bool InstructionReturn<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, out object returnData)
+        where TTracing : struct, IIsTracing
     {
         stack.PopUInt256(out UInt256 position);
         stack.PopUInt256(out UInt256 length);
@@ -2194,7 +2201,8 @@ ReturnFailure:
         return true;
     }
 
-    private bool InstructionSelfDestruct(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
+    private bool InstructionSelfDestruct<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec)
+        where TTracing : struct, IIsTracing
     {
         Metrics.SelfDestructs++;
 
@@ -2230,8 +2238,8 @@ ReturnFailure:
         return true;
     }
 
-    private (bool outOfGas, EvmState? callState) InstructionCreate<TTracingInstructions>(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec, Instruction instruction)
-        where TTracingInstructions : struct, IIsTracing
+    private (bool outOfGas, EvmState? callState) InstructionCreate<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec, Instruction instruction)
+        where TTracing : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
@@ -2294,7 +2302,7 @@ ReturnFailure:
             return (outOfGas: false, null);
         }
 
-        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+        if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
         // todo: === below is a new call - refactor / move
 
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
@@ -2363,7 +2371,8 @@ ReturnFailure:
         return (outOfGas: false, callState);
     }
 
-    private static bool InstructionLog(EvmState vmState, ref EvmStack stack, ref long gasAvailable, Instruction instruction)
+    private static bool InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction)
+        where TTracing : struct, IIsTracing
     {
         stack.PopUInt256(out UInt256 position);
         stack.PopUInt256(out UInt256 length);
@@ -2389,7 +2398,7 @@ ReturnFailure:
         return true;
     }
 
-    private bool InstructionSStore<TTracingInstructions, TTracingRefunds>(EvmState vmState, ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
+    private bool InstructionSStore<TTracingInstructions, TTracingRefunds>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
     {
@@ -2611,7 +2620,8 @@ ReturnFailure:
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void StartInstructionTrace(Instruction instruction, EvmState vmState, long gasAvailable, int programCounter, in EvmStack stackValue)
+    private void StartInstructionTrace<TIsTracing>(Instruction instruction, EvmState vmState, long gasAvailable, int programCounter, in EvmStack<TIsTracing> stackValue)
+        where TIsTracing : struct, IIsTracing
     {
         _txTracer.StartOperation(vmState.Env.CallDepth + 1, gasAvailable, instruction, programCounter, vmState.Env.TxExecutionContext.Header.IsPostMerge);
         if (_txTracer.IsTracingMemory)
@@ -2670,9 +2680,9 @@ ReturnFailure:
         return executionType;
     }
 
-    private interface IIsTracing { }
-    private readonly struct NotTracing : IIsTracing { }
-    private readonly struct IsTracing : IIsTracing { }
+    public interface IIsTracing { }
+    public readonly struct NotTracing : IIsTracing { }
+    public readonly struct IsTracing : IIsTracing { }
 
     internal readonly ref struct CallResult
     {
