@@ -9,6 +9,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -56,8 +57,7 @@ namespace Nethermind.Network
         private readonly HashSet<Capability> _capabilities = new();
         public event EventHandler<ProtocolInitializedEventArgs> P2PProtocolInitialized;
 
-        public ProtocolsManager(
-            ISyncPeerPool syncPeerPool,
+        public ProtocolsManager(ISyncPeerPool syncPeerPool,
             ISyncServer syncServer,
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
@@ -69,6 +69,7 @@ namespace Nethermind.Network
             INetworkStorage peerStorage,
             ForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
+            INetworkConfig networkConfig,
             ILogManager logManager)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));

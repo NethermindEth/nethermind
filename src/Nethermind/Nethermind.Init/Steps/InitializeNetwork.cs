@@ -526,6 +526,7 @@ public class InitializeNetwork : IStep
             peerStorage,
             forkInfo,
             _api.GossipPolicy,
+            _networkConfig,
             _api.LogManager);
 
         if (_syncConfig.WitnessProtocolEnabled)

@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
@@ -31,6 +32,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Prometheus;
 
 namespace Nethermind.Network.Test
 {
@@ -113,6 +115,7 @@ namespace Nethermind.Network.Test
                     _peerStorage,
                     forkInfo,
                     _gossipPolicy,
+                    Substitute.For<INetworkConfig>(),
                     LimboLogs.Instance);
 
                 _serializer.Register(new HelloMessageSerializer());
