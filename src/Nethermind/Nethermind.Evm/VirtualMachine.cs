@@ -22,6 +22,7 @@ using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Runtime.Intrinsics;
+using static Nethermind.Evm.VirtualMachine;
 
 #if DEBUG
 using Nethermind.Evm.Tracing.DebugTrace;
@@ -35,6 +36,97 @@ public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
 
+    private readonly IVirtualMachine _evm;
+
+    public VirtualMachine(
+        IBlockhashProvider? blockhashProvider,
+        ISpecProvider? specProvider,
+        ILogManager? logManager)
+    {
+        ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        if (!logger.IsTrace)
+        {
+            _evm = new VirtualMachine<NotTracing>(blockhashProvider, specProvider, logger);
+        }
+        else
+        {
+            _evm = new VirtualMachine<IsTracing>(blockhashProvider, specProvider, logger);
+        }
+    }
+
+    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
+        => _evm.GetCachedCodeInfo(worldState, codeSource, spec);
+
+    public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
+        where TTracingActions : struct, IIsTracing
+        => _evm.Run<TTracingActions>(state, worldState, txTracer);
+
+    internal readonly ref struct CallResult
+    {
+        public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
+        public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
+        public static CallResult OutOfGasException => new(EvmExceptionType.OutOfGas);
+        public static CallResult AccessViolationException => new(EvmExceptionType.AccessViolation);
+        public static CallResult InvalidJumpDestination => new(EvmExceptionType.InvalidJumpDestination);
+        public static CallResult InvalidInstructionException
+        {
+            get
+            {
+                return new(EvmExceptionType.BadInstruction);
+            }
+        }
+
+        public static CallResult StaticCallViolationException => new(EvmExceptionType.StaticCallViolation);
+        public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
+        public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
+
+        public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
+        public static CallResult Empty => new(Array.Empty<byte>(), null);
+
+        public CallResult(EvmState stateToExecute)
+        {
+            StateToExecute = stateToExecute;
+            Output = Array.Empty<byte>();
+            PrecompileSuccess = null;
+            ShouldRevert = false;
+            ExceptionType = EvmExceptionType.None;
+        }
+
+        private CallResult(EvmExceptionType exceptionType)
+        {
+            StateToExecute = null;
+            Output = StatusCode.FailureBytes;
+            PrecompileSuccess = null;
+            ShouldRevert = false;
+            ExceptionType = exceptionType;
+        }
+
+        public CallResult(byte[] output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        {
+            StateToExecute = null;
+            Output = output;
+            PrecompileSuccess = precompileSuccess;
+            ShouldRevert = shouldRevert;
+            ExceptionType = exceptionType;
+        }
+
+        public EvmState? StateToExecute { get; }
+        public byte[] Output { get; }
+        public EvmExceptionType ExceptionType { get; }
+        public bool ShouldRevert { get; }
+        public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
+        public bool IsReturn => StateToExecute is null;
+        public bool IsException => ExceptionType != EvmExceptionType.None;
+    }
+
+    public interface IIsTracing { }
+    public readonly struct NotTracing : IIsTracing { }
+    public readonly struct IsTracing : IIsTracing { }
+}
+
+internal sealed class VirtualMachine<TLogger> : IVirtualMachine
+    where TLogger : struct, IIsTracing
+{
     private UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
     private UInt256 P255 => P255Int;
     private UInt256 BigInt256 = 256;
@@ -75,9 +167,9 @@ public class VirtualMachine : IVirtualMachine
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
-        ILogManager? logManager)
+        ILogger? logger)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
@@ -336,7 +428,7 @@ public class VirtualMachine : IVirtualMachine
             }
             catch (Exception ex) when (ex is EvmException or OverflowException)
             {
-                if (_logger.IsTrace) _logger.Trace($"exception ({ex.GetType().Name}) in {currentState.ExecutionType} at depth {currentState.Env.CallDepth} - restoring snapshot");
+                if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"exception ({ex.GetType().Name}) in {currentState.ExecutionType} at depth {currentState.Env.CallDepth} - restoring snapshot");
 
                 _worldState.Restore(currentState.Snapshot);
 
@@ -1360,7 +1452,7 @@ OutOfGas:
                         Keccak blockHash = _blockhashProvider.GetBlockhash(txCtx.Header, number);
                         stack.PushBytes(blockHash != null ? blockHash.Bytes : BytesZero32);
 
-                        if (_logger.IsTrace)
+                        if (typeof(TLogger) == typeof(IsTracing))
                         {
                             if (_txTracer.IsTracingBlockHash && blockHash is not null)
                             {
@@ -2021,7 +2113,6 @@ ReturnFailure:
     {
         returnData = null;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
-        bool isTrace = _logger.IsTrace;
 
         Metrics.Calls++;
 
@@ -2060,7 +2151,7 @@ ReturnFailure:
             ? codeSource
             : env.ExecutingAccount;
 
-        if (isTrace)
+        if (typeof(TLogger) == typeof(IsTracing))
         {
             _logger.Trace($"caller {caller}");
             _logger.Trace($"code source {codeSource}");
@@ -2119,7 +2210,7 @@ ReturnFailure:
                 _txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
             }
 
-            if (isTrace) _logger.Trace("FAIL - call depth");
+            if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace("FAIL - call depth");
             if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportOperationRemainingGas(gasAvailable);
             if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
 
@@ -2145,7 +2236,7 @@ ReturnFailure:
             inputData: callData,
             codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
         );
-        if (isTrace) _logger.Trace($"Tx call gas {gasLimitUl}");
+        if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {gasLimitUl}");
         if (outputLength == 0)
         {
             // TODO: when output length is 0 outputOffset can have any value really
@@ -2329,7 +2420,7 @@ ReturnFailure:
                               _state.GetNonce(contractAddress) != 0))
         {
             /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
-            if (_logger.IsTrace) _logger.Trace($"Contract collision at {contractAddress}");
+            if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Contract collision at {contractAddress}");
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
             return (outOfGas: false, null);
@@ -2680,67 +2771,5 @@ ReturnFailure:
         }
 
         return executionType;
-    }
-
-    public interface IIsTracing { }
-    public readonly struct NotTracing : IIsTracing { }
-    public readonly struct IsTracing : IIsTracing { }
-
-    internal readonly ref struct CallResult
-    {
-        public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
-        public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
-        public static CallResult OutOfGasException => new(EvmExceptionType.OutOfGas);
-        public static CallResult AccessViolationException => new(EvmExceptionType.AccessViolation);
-        public static CallResult InvalidJumpDestination => new(EvmExceptionType.InvalidJumpDestination);
-        public static CallResult InvalidInstructionException
-        {
-            get
-            {
-                return new(EvmExceptionType.BadInstruction);
-            }
-        }
-
-        public static CallResult StaticCallViolationException => new(EvmExceptionType.StaticCallViolation);
-        public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
-        public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
-
-        public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
-        public static CallResult Empty => new(Array.Empty<byte>(), null);
-
-        public CallResult(EvmState stateToExecute)
-        {
-            StateToExecute = stateToExecute;
-            Output = Array.Empty<byte>();
-            PrecompileSuccess = null;
-            ShouldRevert = false;
-            ExceptionType = EvmExceptionType.None;
-        }
-
-        private CallResult(EvmExceptionType exceptionType)
-        {
-            StateToExecute = null;
-            Output = StatusCode.FailureBytes;
-            PrecompileSuccess = null;
-            ShouldRevert = false;
-            ExceptionType = exceptionType;
-        }
-
-        public CallResult(byte[] output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
-        {
-            StateToExecute = null;
-            Output = output;
-            PrecompileSuccess = precompileSuccess;
-            ShouldRevert = shouldRevert;
-            ExceptionType = exceptionType;
-        }
-
-        public EvmState? StateToExecute { get; }
-        public byte[] Output { get; }
-        public EvmExceptionType ExceptionType { get; }
-        public bool ShouldRevert { get; }
-        public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
-        public bool IsReturn => StateToExecute is null;
-        public bool IsException => ExceptionType != EvmExceptionType.None;
     }
 }
