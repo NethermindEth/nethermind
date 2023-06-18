@@ -747,9 +747,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         // checks that are evaluated to constant values at compile time.
         // This only works for structs, not for classes or interface types
         // which use shared generics.
-        return _txTracer.IsTracingRefunds ?
-            ExecuteCode<TTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
-            ExecuteCode<TTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
+        if (!_txTracer.IsTracingRefunds)
+        {
+            return _txTracer.IsTracingOpLevelStorage ?
+                ExecuteCode<TTracing, NotTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
+                ExecuteCode<TTracing, NotTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
+        }
+        else
+        {
+            return _txTracer.IsTracingOpLevelStorage ?
+                ExecuteCode<TTracing, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
+                ExecuteCode<TTracing, IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
+        }
 Empty:
         return CallResult.Empty;
 OutOfGas:
@@ -757,9 +766,10 @@ OutOfGas:
     }
 
     [SkipLocalsInit]
-    private CallResult ExecuteCode<TTracingInstructions, TTracingRefunds>(EvmState vmState, scoped ref EvmStack<TTracingInstructions> stack, long gasAvailable, IReleaseSpec spec)
+    private CallResult ExecuteCode<TTracingInstructions, TTracingRefunds, TTracingStorage>(EvmState vmState, scoped ref EvmStack<TTracingInstructions> stack, long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
+        where TTracingStorage : struct, IIsTracing
     {
         int programCounter = vmState.ProgramCounter;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
@@ -1618,7 +1628,7 @@ OutOfGas:
                         byte[] value = _state.Get(storageCell);
                         stack.PushBytes(value);
 
-                        if (_txTracer.IsTracingOpLevelStorage)
+                        if (typeof(TTracingStorage) == typeof(IsTracing))
                         {
                             _txTracer.LoadOperationStorage(storageCell.Address, result, value);
                         }
@@ -1631,7 +1641,7 @@ OutOfGas:
 
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        if (!InstructionSStore<TTracingInstructions, TTracingRefunds>(vmState, ref stack, ref gasAvailable, spec))
+                        if (!InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec))
                             goto OutOfGas;
 
                         break;
@@ -1649,7 +1659,7 @@ OutOfGas:
                         byte[] value = _state.GetTransientState(storageCell);
                         stack.PushBytes(value);
 
-                        if (_txTracer.IsTracingOpLevelStorage)
+                        if (typeof(TTracingStorage) == typeof(IsTracing))
                         {
                             _txTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
                         }
@@ -1671,7 +1681,7 @@ OutOfGas:
 
                         _state.SetTransientState(storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
 
-                        if (_txTracer.IsTracingOpLevelStorage)
+                        if (typeof(TTracingStorage) == typeof(IsTracing))
                         {
                             byte[] currentValue = _state.GetTransientState(in storageCell);
                             _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
@@ -2491,9 +2501,10 @@ ReturnFailure:
         return true;
     }
 
-    private bool InstructionSStore<TTracingInstructions, TTracingRefunds>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
+    private bool InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
+        where TTracingStorage : struct, IIsTracing
     {
         // fail fast before the first storage read if gas is not enough even for reset
         if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return false;
@@ -2631,7 +2642,7 @@ ReturnFailure:
             _txTracer.ReportStorageChange(bytes, valueToStore);
         }
 
-        if (_txTracer.IsTracingOpLevelStorage)
+        if (typeof(TTracingStorage) == typeof(IsTracing))
         {
             _txTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
