@@ -13,6 +13,7 @@ using Nethermind.Evm.Tracing;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Intrinsics;
 using System.Diagnostics;
+using System.Runtime.Intrinsics.X86;
 
 namespace Nethermind.Evm
 {
@@ -188,25 +189,40 @@ namespace Nethermind.Evm
         public void PushUInt256(in UInt256 value)
         {
             Span<byte> word = _bytes.Slice(Head * WordSize, WordSize);
-            ref byte bytes = ref word[0];
+            ref byte bytes = ref MemoryMarshal.GetReference(word);
 
-            ulong u3, u2, u1, u0;
-            if (BitConverter.IsLittleEndian)
+            if (Avx2.IsSupported)
             {
-                u3 = BinaryPrimitives.ReverseEndianness(value.u3);
-                u2 = BinaryPrimitives.ReverseEndianness(value.u2);
-                u1 = BinaryPrimitives.ReverseEndianness(value.u1);
-                u0 = BinaryPrimitives.ReverseEndianness(value.u0);
+                Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(value));
+                Vector256<ulong> convert = Avx2.Permute4x64(permute, 0b_01_00_11_10);
+                Word shuffle = Vector256.Create(
+                    (byte) 
+                    31 ,30 ,29 ,28 ,27 ,26 ,25 ,24,
+                    23 ,22 ,21 ,20 ,19 ,18 ,17 ,16,
+                    15 ,14 ,13 ,12 ,11 ,10 ,9 ,8, 
+                    7 ,6 ,5 ,4 ,3 ,2 ,1 ,0);
+                Unsafe.WriteUnaligned(ref bytes, Avx2.Shuffle(Unsafe.As<Vector256<ulong>, Word>(ref convert), shuffle));
             }
             else
             {
-                u3 = value.u3;
-                u2 = value.u2;
-                u1 = value.u1;
-                u0 = value.u0;
-            }
+                ulong u3, u2, u1, u0;
+                if (BitConverter.IsLittleEndian)
+                {
+                    u3 = BinaryPrimitives.ReverseEndianness(value.u3);
+                    u2 = BinaryPrimitives.ReverseEndianness(value.u2);
+                    u1 = BinaryPrimitives.ReverseEndianness(value.u1);
+                    u0 = BinaryPrimitives.ReverseEndianness(value.u0);
+                }
+                else
+                {
+                    u3 = value.u3;
+                    u2 = value.u2;
+                    u1 = value.u1;
+                    u0 = value.u0;
+                }
 
-            Unsafe.WriteUnaligned(ref bytes, Vector256.Create(u3, u2, u1, u0));
+                Unsafe.WriteUnaligned(ref bytes, Vector256.Create(u3, u2, u1, u0));
+            }
 
             if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(word);
 
@@ -249,24 +265,40 @@ namespace Nethermind.Evm
         {
             ref byte bytes = ref PopBytesByRef();
 
-            ulong u3, u2, u1, u0;
-            if (BitConverter.IsLittleEndian)
+            if (Avx2.IsSupported)
             {
-                // Combine read and switch endianness to movbe reg, mem
-                u3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
-                u2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong))));
-                u1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong))));
-                u0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong))));
+                Word data = Unsafe.ReadUnaligned<Word>(ref bytes);
+                Word shuffle = Vector256.Create(
+                    (byte) 
+                    31 ,30 ,29 ,28 ,27 ,26 ,25 ,24,
+                    23 ,22 ,21 ,20 ,19 ,18 ,17 ,16,
+                    15 ,14 ,13 ,12 ,11 ,10 ,9 ,8, 
+                    7 ,6 ,5 ,4 ,3 ,2 ,1 ,0);
+                Word convert = Avx2.Shuffle(data, shuffle);
+                Vector256<ulong> permute = Avx2.Permute4x64(Unsafe.As<Word, Vector256<ulong>>(ref convert), 0b_01_00_11_10);
+                result = Unsafe.As<Vector256<ulong>, UInt256>(ref permute);
             }
             else
             {
-                u3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
-                u2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong)));
-                u1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong)));
-                u0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong)));
-            }
+                ulong u3, u2, u1, u0;
+                if (BitConverter.IsLittleEndian)
+                {
+                    // Combine read and switch endianness to movbe reg, mem
+                    u3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
+                    u2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong))));
+                    u1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong))));
+                    u0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong))));
+                }
+                else
+                {
+                    u3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
+                    u2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong)));
+                    u1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong)));
+                    u0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong)));
+                }
 
-            result = new UInt256(u0, u1, u2, u3);
+                result = new UInt256(u0, u1, u2, u3);
+            }
         }
 
         public bool PeekUInt256IsZero()
