@@ -84,7 +84,8 @@ public class VirtualMachine : IVirtualMachine
         InitializePrecompiledContracts();
     }
 
-    public TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer txTracer)
+    public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
+        where TTracingActions : struct, IIsTracing
     {
         _txTracer = txTracer;
 
@@ -108,7 +109,7 @@ public class VirtualMachine : IVirtualMachine
                 CallResult callResult;
                 if (currentState.IsPrecompile)
                 {
-                    if (_txTracer.IsTracingActions)
+                    if (typeof(TTracingActions) == typeof(IsTracing))
                     {
                         _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
                     }
@@ -130,7 +131,7 @@ public class VirtualMachine : IVirtualMachine
                 }
                 else
                 {
-                    if (_txTracer.IsTracingActions && !currentState.IsContinuation)
+                    if (typeof(TTracingActions) == typeof(IsTracing) && !currentState.IsContinuation)
                     {
                         _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData, currentState.ExecutionType);
                         if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);
@@ -157,7 +158,7 @@ public class VirtualMachine : IVirtualMachine
 
                     if (callResult.IsException)
                     {
-                        if (_txTracer.IsTracingActions) _txTracer.ReportActionError(callResult.ExceptionType);
+                        if (typeof(TTracingActions) == typeof(IsTracing)) _txTracer.ReportActionError(callResult.ExceptionType);
                         _worldState.Restore(currentState.Snapshot);
 
                         RevertParityTouchBugAccount(spec);
@@ -181,7 +182,7 @@ public class VirtualMachine : IVirtualMachine
 
                 if (currentState.IsTopLevel)
                 {
-                    if (_txTracer.IsTracingActions)
+                    if (typeof(TTracingActions) == typeof(IsTracing))
                     {
                         long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
 
@@ -265,7 +266,7 @@ public class VirtualMachine : IVirtualMachine
                             _state.InsertCode(callCodeOwner, callResult.Output, spec);
                             currentState.GasAvailable -= codeDepositGasCost;
 
-                            if (_txTracer.IsTracingActions)
+                            if (typeof(TTracingActions) == typeof(IsTracing))
                             {
                                 _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output);
                             }
@@ -282,12 +283,12 @@ public class VirtualMachine : IVirtualMachine
                             previousCallResult = BytesZero;
                             previousStateSucceeded = false;
 
-                            if (_txTracer.IsTracingActions)
+                            if (typeof(TTracingActions) == typeof(IsTracing))
                             {
                                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
                             }
                         }
-                        else if (_txTracer.IsTracingActions)
+                        else if (typeof(TTracingActions) == typeof(IsTracing))
                         {
                             _txTracer.ReportActionEnd(0L, callCodeOwner, callResult.Output);
                         }
@@ -307,7 +308,7 @@ public class VirtualMachine : IVirtualMachine
                             }
                         }
 
-                        if (_txTracer.IsTracingActions)
+                        if (typeof(TTracingActions) == typeof(IsTracing))
                         {
                             _txTracer.ReportActionEnd(previousState.GasAvailable, _returnDataBuffer);
                         }
@@ -327,7 +328,7 @@ public class VirtualMachine : IVirtualMachine
                     previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
 
-                    if (_txTracer.IsTracingActions)
+                    if (typeof(TTracingActions) == typeof(IsTracing))
                     {
                         _txTracer.ReportActionError(EvmExceptionType.Revert, previousState.GasAvailable);
                     }
@@ -347,7 +348,7 @@ public class VirtualMachine : IVirtualMachine
                     txTracer.ReportOperationRemainingGas(0);
                 }
 
-                if (_txTracer.IsTracingActions)
+                if (typeof(TTracingActions) == typeof(IsTracing))
                 {
                     EvmException evmException = ex as EvmException;
                     _txTracer.ReportActionError(evmException?.ExceptionType ?? EvmExceptionType.Other);
