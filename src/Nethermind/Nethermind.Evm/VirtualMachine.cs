@@ -685,7 +685,8 @@ OutOfGas:
         Unsafe.SkipInit(out Int256.Int256 sb);
         Unsafe.SkipInit(out UInt256 result);
         object returnData;
-        while (programCounter < code.Length)
+        uint codeLength = (uint)code.Length;
+        while ((uint)programCounter < codeLength)
         {
 #if DEBUG
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
