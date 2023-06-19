@@ -28,7 +28,7 @@ namespace Nethermind.Evm
         public ulong Length { get; private set; }
         public ulong Size { get; private set; }
 
-        public void SaveWord(in UInt256 location, ReadOnlySpan<byte> word)
+        public void SaveWord(in UInt256 location, Span<byte> word)
         {
             if (word.Length != WordSize) ThrowArgumentOutOfRangeException();
 
@@ -140,7 +140,7 @@ namespace Nethermind.Evm
             return _memory.AsSpan((int)location, WordSize);
         }
 
-        public Span<byte> LoadSpan(in UInt256 location, in UInt256 length)
+        public Span<byte> LoadSpan(scoped in UInt256 location, scoped in UInt256 length)
         {
             if (length.IsZero)
             {

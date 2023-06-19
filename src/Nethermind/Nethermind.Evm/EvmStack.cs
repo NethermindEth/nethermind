@@ -43,7 +43,7 @@ namespace Nethermind.Evm
 
         private ITxTracer _tracer;
 
-        public void PushBytes(scoped in ReadOnlySpan<byte> value)
+        public void PushBytes(scoped in Span<byte> value)
         {
             if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
 
@@ -311,14 +311,25 @@ namespace Nethermind.Evm
 
         public bool PeekUInt256IsZero()
         {
-            int head = Head - 1;
-            if (head <= 0)
+            int head = Head;
+            if (head-- == 0)
             {
                 return false;
             }
 
             ref byte bytes = ref _bytes[head * WordSize];
             return Unsafe.ReadUnaligned<UInt256>(ref bytes).IsZero;
+        }
+
+        public Span<byte> PeekWord256()
+        {
+            int head = Head;
+            if (head-- == 0)
+            {
+                EvmStack.ThrowEvmStackUnderflowException();
+            }
+
+            return _bytes.Slice(head * WordSize, WordSize);
         }
 
         public Address PopAddress()

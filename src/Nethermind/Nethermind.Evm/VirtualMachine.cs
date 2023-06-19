@@ -783,7 +783,7 @@ OutOfGas:
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
-        ReadOnlySpan<byte> bytes = default;
+        Span<byte> bytes = default;
         SkipInit(out UInt256 a);
         SkipInit(out UInt256 b);
         SkipInit(out UInt256 result);
@@ -956,9 +956,9 @@ OutOfGas:
                         Metrics.ModExpOpcode++;
 
                         stack.PopUInt256(out a);
-                        Span<byte> exp = stack.PopWord256();
+                        bytes = stack.PopWord256();
 
-                        int leadingZeros = exp.LeadingZerosCount();
+                        int leadingZeros = bytes.LeadingZerosCount();
                         if (leadingZeros != 32)
                         {
                             int expSize = 32 - leadingZeros;
@@ -980,7 +980,7 @@ OutOfGas:
                         }
                         else
                         {
-                            UInt256.Exp(a, new UInt256(exp, true), out result);
+                            UInt256.Exp(a, new UInt256(bytes, true), out result);
                             stack.PushUInt256(in result);
                         }
 
@@ -999,16 +999,16 @@ OutOfGas:
 
                         int position = 31 - (int)a;
 
-                        Span<byte> wbytes = stack.PeekWord256();
-                        sbyte sign = (sbyte)wbytes[position];
+                        bytes = stack.PeekWord256();
+                        sbyte sign = (sbyte)bytes[position];
 
                         if (sign >= 0)
                         {
-                            BytesZero32.AsSpan(0, position).CopyTo(wbytes[..position]);
+                            BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
                         }
                         else
                         {
-                            BytesMax32.AsSpan(0, position).CopyTo(wbytes[..position]);
+                            BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
                         }
 
                         // Didn't remove from stack so don't need to push back
@@ -1189,8 +1189,8 @@ OutOfGas:
 
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
 
-                        Span<byte> memData = vmState.Memory.LoadSpan(in a, b);
-                        stack.PushBytes(ValueKeccak.Compute(memData).BytesAsSpan);
+                        bytes = vmState.Memory.LoadSpan(in a, b);
+                        stack.PushBytes(ValueKeccak.Compute(bytes).BytesAsSpan);
                         break;
                     }
                 case Instruction.ADDRESS:
@@ -1979,7 +1979,7 @@ OutOfGas:
                     {
                         if (!spec.ExtCodeHashOpcodeEnabled) goto InvalidInstruction;
 
-                        var gasCost = spec.GetExtCodeHashCost();
+                        long gasCost = spec.GetExtCodeHashCost();
                         if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
                         Address address = stack.PopAddress();
