@@ -61,7 +61,7 @@ namespace Nethermind.Consensus.Producers
             // TODO: removing transactions from TX pool here seems to be a bad practice since they will
             // not come back if the block is ignored?
             int blobsCounter = 0;
-            UInt256? dataGasPrice = null;
+            UInt256 dataGasPrice = UInt256.Zero;
 
             foreach (Transaction tx in transactions)
             {
@@ -79,8 +79,20 @@ namespace Nethermind.Consensus.Producers
 
                 if (tx.SupportsBlobs)
                 {
-                    dataGasPrice ??= DataGasCalculator.CalculateDataGasPricePerUnit(
-                        DataGasCalculator.CalculateExcessDataGas(parent, _specProvider.GetFinalSpec()) ?? 0);
+                    if (dataGasPrice == UInt256.Zero)
+                    {
+                        ulong? excessDataGas = DataGasCalculator.CalculateExcessDataGas(parent, _specProvider.GetFinalSpec());
+                        if (excessDataGas is null)
+                        {
+                            if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, the specification is not configured to handle shard blob transactions.");
+                            continue;
+                        }
+                        if (!DataGasCalculator.TryCalculateDataGasPricePerUnit(excessDataGas.Value, out dataGasPrice))
+                        {
+                            if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, failed to calculate data gas price.");
+                            continue;
+                        }
+                    }
 
                     int txAmountOfBlobs = tx.BlobVersionedHashes?.Length ?? 0;
 

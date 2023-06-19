@@ -16,35 +16,61 @@ public static class DataGasCalculator
     public static ulong CalculateDataGas(Transaction transaction) =>
         CalculateDataGas(transaction.BlobVersionedHashes?.Length ?? 0);
 
-    public static UInt256 CalculateDataGasPrice(BlockHeader header, Transaction transaction) =>
-        CalculateDataGas(transaction) * CalculateDataGasPricePerUnit(header);
+    public static bool TryCalculateDataGasPrice(BlockHeader header, Transaction transaction, out UInt256 dataGasPrice)
+    {
+        if (!TryCalculateDataGasPricePerUnit(header.ExcessDataGas.Value, out UInt256 dataGasPricePerUnit))
+        {
+            dataGasPrice = UInt256.MaxValue;
+            return false;
+        }
+        return !UInt256.MultiplyOverflow(CalculateDataGas(transaction), dataGasPricePerUnit, out dataGasPrice);
+    }
 
-    public static UInt256 CalculateDataGasPricePerUnit(BlockHeader header) =>
+    public static bool TryCalculateDataGasPricePerUnit(BlockHeader header, out UInt256 dataGasPricePerUnit) =>
         header.ExcessDataGas is null
             ? throw new ArgumentException(nameof(BlockHeader.ExcessDataGas))
-            : CalculateDataGasPricePerUnit(header.ExcessDataGas.Value);
+            : TryCalculateDataGasPricePerUnit(header.ExcessDataGas.Value, out dataGasPricePerUnit);
 
-    public static UInt256 CalculateDataGasPricePerUnit(ulong excessDataGas)
+    public static bool TryCalculateDataGasPricePerUnit(ulong excessDataGas, out UInt256 dataGasPricePerUnit)
     {
-        static UInt256 FakeExponential(UInt256 factor, UInt256 num, UInt256 denominator)
+        static bool FakeExponentialOverflow(UInt256 factor, UInt256 num, UInt256 denominator, out UInt256 dataGasPricePerUnit)
         {
             UInt256 output = UInt256.Zero;
 
-            UInt256 numAccum = factor * denominator;
+            if (UInt256.MultiplyOverflow(factor, denominator, out UInt256 numAccum))
+            {
+                dataGasPricePerUnit = UInt256.MaxValue;
+                return true;
+            }
 
             for (UInt256 i = 1; numAccum > 0; i++)
             {
-                output += numAccum;
-                numAccum *= num;
-                numAccum /= i * denominator;
+                if (UInt256.AddOverflow(output, numAccum, out output))
+                {
+                    dataGasPricePerUnit = UInt256.MaxValue;
+                    return true;
+                }
+
+                if (UInt256.MultiplyOverflow(numAccum, num, out UInt256 updatedNumAccum))
+                {
+                    dataGasPricePerUnit = UInt256.MaxValue;
+                    return true;
+                }
+
+                if (UInt256.MultiplyOverflow(i, denominator, out UInt256 multipliedDeniminator))
+                {
+                    dataGasPricePerUnit = UInt256.MaxValue;
+                    return true;
+                }
+
+                numAccum = updatedNumAccum / multipliedDeniminator;
             }
 
-            return output / denominator;
+            dataGasPricePerUnit = output / denominator;
+            return false;
         }
 
-        UInt256 scaleDueToParentExcessDataGas =
-            FakeExponential(Eip4844Constants.MinDataGasPrice, excessDataGas, Eip4844Constants.DataGasUpdateFraction);
-        return scaleDueToParentExcessDataGas;
+        return !FakeExponentialOverflow(Eip4844Constants.MinDataGasPrice, excessDataGas, Eip4844Constants.DataGasUpdateFraction, out dataGasPricePerUnit);
     }
 
     public static ulong? CalculateExcessDataGas(BlockHeader? parentBlockHeader, IReleaseSpec releaseSpec)
@@ -61,15 +87,6 @@ public static class DataGasCalculator
 
         ulong excessDataGas = parentBlockHeader.ExcessDataGas ?? 0;
         excessDataGas += parentBlockHeader.DataGasUsed ?? 0;
-        return excessDataGas < Eip4844Constants.TargetDataGasPerBlock
-            ? 0
-            : (excessDataGas - Eip4844Constants.TargetDataGasPerBlock);
-    }
-
-    public static ulong? CalculateExcessDataGas(ulong? parentExcessDataGas, ulong? parentDataGasUsed)
-    {
-        ulong excessDataGas = parentExcessDataGas ?? 0;
-        excessDataGas += parentDataGasUsed ?? 0;
         return excessDataGas < Eip4844Constants.TargetDataGasPerBlock
             ? 0
             : (excessDataGas - Eip4844Constants.TargetDataGasPerBlock);

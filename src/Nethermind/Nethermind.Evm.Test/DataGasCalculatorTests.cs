@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -23,8 +22,8 @@ public class DataGasCalculatorTests
             BlockHeader parentHeader = Build.A.BlockHeader
                 .WithDataGasUsed(DataGasCalculator.CalculateDataGas(testCase.parentBlobsCount))
                 .WithExcessDataGas(testCase.parentExcessDataGas).TestObject;
-            DataGasCalculator.CalculateExcessDataGas(parentHeader, spec).Should()
-                .Be(areBlobsEnabled ? testCase.expectedExcessDataGas : null);
+
+            Assert.That(DataGasCalculator.CalculateExcessDataGas(parentHeader, spec), Is.EqualTo(areBlobsEnabled ? testCase.expectedExcessDataGas : null));
         }
 
         Test(Homestead.Instance, false);
@@ -43,12 +42,27 @@ public class DataGasCalculatorTests
     }
 
     [TestCaseSource(nameof(BlobDataGasCostTestCaseSource))]
-    public void Data_gas_cost_is_calculated_properly(
+    public void Data_gas_price_is_calculated_properly(
         (Transaction tx, ulong excessDataGas, UInt256 expectedCost) testCase)
     {
         BlockHeader header = Build.A.BlockHeader.WithExcessDataGas(testCase.excessDataGas).TestObject;
-        DataGasCalculator.CalculateDataGasPrice(header, testCase.tx).Should()
-            .Be(testCase.expectedCost);
+
+        bool success = DataGasCalculator.TryCalculateDataGasPrice(header, testCase.tx, out UInt256 dataGasPrice);
+
+        Assert.That(success, Is.True);
+        Assert.That(dataGasPrice, Is.EqualTo(testCase.expectedCost));
+    }
+
+    [Test]
+    public void Data_gas_price_may_overflow()
+    {
+        var tx = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithExcessDataGas(ulong.MaxValue).TestObject;
+
+        bool success = DataGasCalculator.TryCalculateDataGasPrice(header, tx, out UInt256 dataGasPrice);
+
+        Assert.That(success, Is.False);
+        Assert.That(dataGasPrice, Is.EqualTo(UInt256.MaxValue));
     }
 
     public static IEnumerable<(ulong parentExcessDataGas, int parentBlobsCount, ulong expectedExcessDataGas)> ExcessDataGasTestCaseSource()

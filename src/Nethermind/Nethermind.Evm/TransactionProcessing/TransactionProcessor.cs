@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Data.Common;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -19,7 +17,6 @@ using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Tracing;
 using static Nethermind.Core.Extensions.MemoryExtensions;
-using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
@@ -395,8 +392,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
                 if (!overflows && tx.SupportsBlobs)
                 {
-                    UInt256 dataGasFee = tx.SupportsBlobs ? DataGasCalculator.CalculateDataGasPrice(header, tx) : UInt256.Zero;
-                    overflows = UInt256.AddOverflow(senderReservedGasPayment, dataGasFee, out senderReservedGasPayment);
+                    overflows = !DataGasCalculator.TryCalculateDataGasPrice(header, tx, out UInt256 dataGasFee);
+                    if (!overflows)
+                    {
+                        overflows = UInt256.AddOverflow(senderReservedGasPayment, dataGasFee, out senderReservedGasPayment);
+                    }
                 }
 
                 if (overflows || senderReservedGasPayment > balanceLeft)

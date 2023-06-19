@@ -215,7 +215,7 @@ public class BlockValidator : IBlockValidator
         }
 
         int blobsInBlock = 0;
-        UInt256? dataGasPrice = null;
+        UInt256 dataGasPrice = UInt256.Zero;
         for (int txIndex = 0; txIndex < block.Transactions.Length; txIndex++)
         {
             Transaction transaction = block.Transactions[txIndex];
@@ -223,8 +223,16 @@ public class BlockValidator : IBlockValidator
             {
                 continue;
             }
-
-            if (transaction.MaxFeePerDataGas < (dataGasPrice ??= DataGasCalculator.CalculateDataGasPricePerUnit(block.Header)))
+            if (dataGasPrice == UInt256.Zero)
+            {
+                if (!DataGasCalculator.TryCalculateDataGasPricePerUnit(block.Header, out dataGasPrice))
+                {
+                    error = $"{nameof(dataGasPrice)} overflow.";
+                    if (_logger.IsWarn) _logger.Warn(error);
+                    return false;
+                }
+            }
+            if (transaction.MaxFeePerDataGas < dataGasPrice)
             {
                 error = $"A transaction has unsufficient MaxFeePerDataGas {transaction.MaxFeePerDataGas} < {dataGasPrice}.";
                 if (_logger.IsWarn) _logger.Warn(error);
