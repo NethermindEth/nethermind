@@ -7,7 +7,7 @@ set -e
 DEBIAN_FRONTEND=noninteractive
 
 # Install required packages
-#sudo apt-get install -y docker-compose docker.io jq pwgen
+#sudo apt-get install -y docker-compose docker.io jq openssl
 
 main() {
 mkdir private-networking
@@ -34,7 +34,7 @@ for i in $(seq 1 $validators);
 do 
     PORT=$(( 30301 + $i ))
     PRIVATE_IP=10.5.0.$(( 1 + $i ))
-    KEY=$(pwgen 64 1 | tr '[:lower:]' '[:upper:]') 
+    KEY=$(openssl rand -hex 32 | tr '[:lower:]' '[:upper:]') 
     writeNethermindConfig $i $PORT $PRIVATE_IP $KEY
 done
 
