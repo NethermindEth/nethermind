@@ -55,7 +55,7 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IDbWithSpan _receiptsBlockDb;
         private readonly IReceiptsRecovery _recovery;
 
-        public ReceiptMigration(IApiWithNetwork api): this(
+        public ReceiptMigration(IApiWithNetwork api) : this(
             api.ReceiptStorage!,
             api.DisposeStack,
             api.BlockTree!,
@@ -211,7 +211,8 @@ namespace Nethermind.Init.Steps.Migrations
                     (long blockNum, Keccak blockHash) = item;
                     Block? block = _blockTree.FindBlock(blockHash!, BlockTreeLookupOptions.None);
                     bool usingEmptyBlock = block == null;
-                    if (usingEmptyBlock) {
+                    if (usingEmptyBlock)
+                    {
                         block = GetMissingBlock(blockNum, blockHash);
                     }
 

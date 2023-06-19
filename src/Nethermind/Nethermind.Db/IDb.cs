@@ -22,7 +22,7 @@ namespace Nethermind.Db
 
         void Flush();
         void Clear();
-        void Compact() {}
+        void Compact() { }
 
         public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);
     }
