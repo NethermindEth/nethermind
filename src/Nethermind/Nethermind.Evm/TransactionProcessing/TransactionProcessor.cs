@@ -297,7 +297,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (!_worldState.AccountExists(tx.SenderAddress))
             {
-                _logger.Warn($"TX sender account does not exist {tx.SenderAddress} - trying to recover it");
+                if (_logger.IsDebug) _logger.Debug($"TX sender account does not exist {tx.SenderAddress} - trying to recover it");
 
                 Address prevSender = tx.SenderAddress;
                 // hacky fix for the potential recovery issue
