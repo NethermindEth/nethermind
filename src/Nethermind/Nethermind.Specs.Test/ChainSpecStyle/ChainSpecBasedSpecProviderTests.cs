@@ -718,7 +718,6 @@ public class ChainSpecBasedSpecProviderTests
                 Eip2028Transition = 20280L,
                 Eip2200Transition = 22000L,
                 Eip2315Transition = 23150L,
-                Eip2537Transition = 25370L,
                 Eip2565Transition = 25650L,
                 Eip2929Transition = 29290L,
                 Eip2930Transition = 29300L,
@@ -738,6 +737,7 @@ public class ChainSpecBasedSpecProviderTests
                 Eip3855TransitionTimestamp = 1000000012,
                 Eip3860TransitionTimestamp = 1000000012,
                 Eip1153TransitionTimestamp = 1000000024,
+                Eip2537TransitionTimestamp = 1000000024
             }
         };
 
@@ -801,11 +801,13 @@ public class ChainSpecBasedSpecProviderTests
         TestTransitions((ForkActivation)22000L, r => { r.IsEip2200Enabled = true; });
         TestTransitions((ForkActivation)23000L, r => { r.IsEip1283Enabled = r.IsEip1344Enabled = true; });
         TestTransitions((ForkActivation)24000L, r => { r.IsEip2315Enabled = r.ValidateChainId = r.ValidateReceipts = true; });
-        TestTransitions((ForkActivation)29290L, r => { r.IsEip2929Enabled = r.IsEip2537Enabled = r.IsEip2565Enabled = true; });
+        TestTransitions((ForkActivation)29290L, r => { r.IsEip2929Enabled = r.IsEip2565Enabled = true; });
         TestTransitions((ForkActivation)29300L, r => { r.IsEip2930Enabled = true; });
         TestTransitions((ForkActivation)31980L, r => { r.IsEip3198Enabled = true; });
         TestTransitions((ForkActivation)35290L, r => { r.IsEip3529Enabled = true; });
         TestTransitions((ForkActivation)35410L, r => { r.IsEip3541Enabled = true; });
+        TestTransitions((ForkActivation)35410L, r => { r.IsEip3541Enabled = true; });
+
 
         TestTransitions((41000L, 1000000012), r =>
         {
@@ -813,7 +815,7 @@ public class ChainSpecBasedSpecProviderTests
             r.IsEip3855Enabled = true;
             r.IsEip3860Enabled = true;
         });
-        TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = true; });
+        TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = r.IsEip2537Enabled = true; });
     }
 
     private static IEnumerable<ulong> GetTransitionTimestamps(ChainParameters parameters) => parameters.GetType()
