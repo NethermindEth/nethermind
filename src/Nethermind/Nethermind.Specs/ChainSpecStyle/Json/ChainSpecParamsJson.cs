@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Newtonsoft.Json;
 
+[assembly: InternalsVisibleTo("Nethermind.Specs.Test")]
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
@@ -20,8 +22,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public Address EnsRegistrar { get; set; }
 
         public long? GasLimitBoundDivisor { get; set; }
-
-        public UInt256? AccountStartNonce { get; set; }
 
         public long? MaximumExtraDataSize { get; set; }
 
@@ -134,7 +134,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public long? TerminalPoWBlockNumber { get; set; }
 
         public ulong? Eip1153TransitionTimestamp { get; set; }
-
         public ulong? Eip3651TransitionTimestamp { get; set; }
         public ulong? Eip3855TransitionTimestamp { get; set; }
         public ulong? Eip3860TransitionTimestamp { get; set; }
@@ -144,7 +143,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public ulong? Eip4750TransitionTimestamp { get; set; }
         public ulong? Eip5450TransitionTimestamp { get; set; }
         public ulong? Eip4895TransitionTimestamp { get; set; }
-
         public ulong? Eip4844TransitionTimestamp { get; set; }
+        public ulong? Eip2537TransitionTimestamp { get; set; }
     }
 }

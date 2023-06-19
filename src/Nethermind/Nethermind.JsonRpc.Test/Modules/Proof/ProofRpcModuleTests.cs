@@ -110,7 +110,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.True(response.Contains($"{ErrorCodes.ResourceNotFound}"));
         }
 
-        [Test]
+        [TestCase]
         public void On_incorrect_params_returns_correct_error_code()
         {
             Keccak txHash = TestItem.KeccakH;
@@ -229,7 +229,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(response, Is.EqualTo(expectedResult));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call()
         {
             WorldState stateProvider = CreateInitialState(null);
@@ -254,7 +254,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.True(response.Contains("\"result\""));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_by_hash()
         {
             WorldState stateProvider = CreateInitialState(null);
@@ -278,7 +278,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.True(response.Contains("\"result\""));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_by_hash_canonical()
         {
             Block lastHead = _blockTree.Head;
@@ -304,7 +304,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.True(response.Contains("-32001"));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_block_hashes()
         {
             byte[] code = Prepare.EvmCode
@@ -315,7 +315,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.BlockHeaders.Length, Is.EqualTo(2));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_many_block_hashes()
         {
             byte[] code = Prepare.EvmCode
@@ -328,7 +328,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.BlockHeaders.Length, Is.EqualTo(3));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_same_block_hash_many_time()
         {
             byte[] code = Prepare.EvmCode
@@ -341,7 +341,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.BlockHeaders.Length, Is.EqualTo(2));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_storage_load()
         {
             byte[] code = Prepare.EvmCode
@@ -353,7 +353,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_many_storage_loads()
         {
             byte[] code = Prepare.EvmCode
@@ -366,7 +366,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_storage_write()
         {
             byte[] code = Prepare.EvmCode
@@ -379,7 +379,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_extcodecopy()
         {
             byte[] code = Prepare.EvmCode
@@ -393,7 +393,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_extcodecopy_to_system_account()
         {
             byte[] code = Prepare.EvmCode
@@ -407,7 +407,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_extcodesize()
         {
             byte[] code = Prepare.EvmCode
@@ -418,7 +418,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_extcodesize_to_system_account()
         {
             byte[] code = Prepare.EvmCode
@@ -429,7 +429,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_extcodehash()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -441,7 +441,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_extcodehash_to_system_account()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -453,7 +453,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_just_basic_addresses()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -464,7 +464,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_balance()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -477,7 +477,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_self_balance()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -489,7 +489,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_balance_of_system_account()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -501,7 +501,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_call_to_system_account_with_zero_value()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -519,7 +519,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_static_call_to_system_account()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -536,7 +536,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_delegate_call_to_system_account()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -553,7 +553,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_call_to_system_account_with_non_zero_value()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -571,7 +571,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_call_with_zero_value()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -589,7 +589,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_static_call()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -606,7 +606,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_delegate_call()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -623,7 +623,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(3));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_call_with_non_zero_value()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -641,7 +641,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_self_destruct()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -654,7 +654,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_self_destruct_to_system_account()
         {
             _specProvider.SpecToReturn = MuirGlacier.Instance;
@@ -667,7 +667,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         }
 
 
-        [Test]
+        [TestCase]
         public void Can_call_with_many_storage_writes()
         {
             byte[] code = Prepare.EvmCode
@@ -682,7 +682,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_mix_of_everything()
         {
             byte[] code = Prepare.EvmCode
@@ -707,7 +707,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             TestCallWithCode(code);
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_mix_of_everything_and_storage()
         {
             byte[] code = Prepare.EvmCode
@@ -732,7 +732,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             TestCallWithStorageAndCode(code, _useNonZeroGasPrice ? 10.GWei() : 0);
         }
 
-        [Test]
+        [TestCase]
         public void Can_call_with_mix_of_everything_and_storage_from_another_account_wrong_nonce()
         {
             byte[] code = Prepare.EvmCode

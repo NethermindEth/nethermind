@@ -98,9 +98,9 @@ namespace Nethermind.Specs.ChainSpecStyle
             _transitions = CreateTransitions(_chainSpec, transitionBlockNumbers, transitionTimestamps);
             _firstTimestampActivation = TransitionActivations.FirstOrDefault(t => t.Timestamp is not null);
 
-            if (_chainSpec.Parameters.TerminalPowBlockNumber is not null)
+            if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
-                MergeBlockNumber = (ForkActivation)(_chainSpec.Parameters.TerminalPowBlockNumber + 1);
+                MergeBlockNumber = (ForkActivation)(_chainSpec.Parameters.TerminalPoWBlockNumber + 1);
             }
 
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
