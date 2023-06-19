@@ -81,7 +81,7 @@ namespace Nethermind.Consensus.Producers
                 {
                     if (dataGasPrice == UInt256.Zero)
                     {
-                        ulong? excessDataGas = DataGasCalculator.CalculateExcessDataGas(parent, _specProvider.GetFinalSpec());
+                        ulong? excessDataGas = DataGasCalculator.CalculateExcessDataGas(parent, _specProvider.GetSpec(parent));
                         if (excessDataGas is null)
                         {
                             if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, the specification is not configured to handle shard blob transactions.");
