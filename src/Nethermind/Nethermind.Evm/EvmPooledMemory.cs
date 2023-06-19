@@ -100,7 +100,7 @@ namespace Nethermind.Evm
             Array.Copy(value, 0, _memory!, (long)location, value.Length);
         }
 
-        public void Save(in UInt256 location, ZeroPaddedSpan value)
+        public void Save(in UInt256 location, in ZeroPaddedSpan value)
         {
             if (value.Length == 0)
             {
@@ -116,7 +116,7 @@ namespace Nethermind.Evm
             _memory.AsSpan(intLocation + value.Span.Length, value.PaddingLength).Clear();
         }
 
-        public void Save(in UInt256 location, ZeroPaddedMemory value)
+        public void Save(in UInt256 location, in ZeroPaddedMemory value)
         {
             if (value.Length == 0)
             {

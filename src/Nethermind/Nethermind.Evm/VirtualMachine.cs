@@ -783,11 +783,14 @@ OutOfGas:
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
-        Span<byte> bytes = default;
+        Span<byte> bytes;
         SkipInit(out UInt256 a);
         SkipInit(out UInt256 b);
+        SkipInit(out UInt256 c);
         SkipInit(out UInt256 result);
+        SkipInit(out StorageCell storageCell);
         object returnData;
+        ZeroPaddedSpan slice;
         uint codeLength = (uint)code.Length;
         while ((uint)programCounter < codeLength)
         {
@@ -915,15 +918,15 @@ OutOfGas:
 
                         stack.PopUInt256(out a);
                         stack.PopUInt256(out b);
-                        stack.PopUInt256(out UInt256 mod);
+                        stack.PopUInt256(out c);
 
-                        if (mod.IsZero)
+                        if (c.IsZero)
                         {
                             stack.PushZero();
                         }
                         else
                         {
-                            UInt256.AddMod(a, b, mod, out result);
+                            UInt256.AddMod(a, b, c, out result);
                             stack.PushUInt256(in result);
                         }
 
@@ -935,15 +938,15 @@ OutOfGas:
 
                         stack.PopUInt256(out a);
                         stack.PopUInt256(out b);
-                        stack.PopUInt256(out UInt256 mod);
+                        stack.PopUInt256(out c);
 
-                        if (mod.IsZero)
+                        if (c.IsZero)
                         {
                             stack.PushZero();
                         }
                         else
                         {
-                            UInt256.MultiplyMod(in a, in b, in mod, out result);
+                            UInt256.MultiplyMod(in a, in b, in c, out result);
                             stack.PushUInt256(in result);
                         }
 
@@ -1262,11 +1265,11 @@ OutOfGas:
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            ZeroPaddedMemory callDataSlice = env.InputData.SliceWithZeroPadding(b, (int)result);
-                            vmState.Memory.Save(in a, callDataSlice);
+                            slice = env.InputData.SliceWithZeroPadding(b, (int)result);
+                            vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
-                                _txTracer.ReportMemoryChange((long)a, callDataSlice);
+                                _txTracer.ReportMemoryChange((long)a, slice);
                             }
                         }
 
@@ -1291,9 +1294,9 @@ OutOfGas:
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(b, (int)result);
-                            vmState.Memory.Save(in a, codeSlice);
-                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)a, codeSlice);
+                            slice = code.SliceWithZeroPadding(in b, (int)result);
+                            vmState.Memory.Save(in a, in slice);
+                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)a, in slice);
                         }
 
                         break;
@@ -1384,11 +1387,11 @@ OutOfGas:
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
                             byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-                            ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(b, (int)result);
-                            vmState.Memory.Save(in a, callDataSlice);
+                            slice = externalCode.SliceWithZeroPadding(b, (int)result);
+                            vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
-                                _txTracer.ReportMemoryChange((long)a, callDataSlice);
+                                _txTracer.ReportMemoryChange((long)a, in slice);
                             }
                         }
 
@@ -1413,7 +1416,7 @@ OutOfGas:
                         stack.PopUInt256(out result);
                         if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(result), ref gasAvailable)) goto OutOfGas;
 
-                        if (UInt256.AddOverflow(result, b, out UInt256 newLength) || newLength > _returnDataBuffer.Length)
+                        if (UInt256.AddOverflow(result, b, out c) || c > _returnDataBuffer.Length)
                         {
                             goto AccessViolation;
                         }
@@ -1422,11 +1425,11 @@ OutOfGas:
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            ZeroPaddedSpan returnDataSlice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(b, (int)result);
-                            vmState.Memory.Save(in a, returnDataSlice);
+                            slice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(b, (int)result);
+                            vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
-                                _txTracer.ReportMemoryChange((long)a, returnDataSlice);
+                                _txTracer.ReportMemoryChange((long)a, in slice);
                             }
                         }
 
@@ -1598,11 +1601,11 @@ OutOfGas:
                         if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out result);
-                        StorageCell storageCell = new(env.ExecutingAccount, result);
+                        storageCell = new(env.ExecutingAccount, result);
                         if (!ChargeStorageAccessGas(
                             ref gasAvailable,
                             vmState,
-                            storageCell,
+                            in storageCell,
                             StorageAccessType.SLOAD,
                             spec)) goto OutOfGas;
 
@@ -1635,7 +1638,7 @@ OutOfGas:
                         if (!UpdateGas(GasCostOf.TLoad, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out result);
-                        StorageCell storageCell = new(env.ExecutingAccount, result);
+                        storageCell = new(env.ExecutingAccount, result);
 
                         byte[] value = _state.GetTransientState(in storageCell);
                         stack.PushBytes(value);
@@ -1657,7 +1660,7 @@ OutOfGas:
                         if (!UpdateGas(GasCostOf.TStore, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out result);
-                        StorageCell storageCell = new(env.ExecutingAccount, result);
+                        storageCell = new(env.ExecutingAccount, result);
                         bytes = stack.PopWord256();
 
                         _state.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
@@ -1851,7 +1854,7 @@ OutOfGas:
 
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        (bool outOfGas, returnData) = InstructionCreate<TTracingInstructions>(vmState, ref stack, ref gasAvailable, spec, instruction);
+                        (bool outOfGas, returnData) = InstructionCreate(vmState, ref stack, ref gasAvailable, spec, instruction);
 
                         if (outOfGas) goto OutOfGas;
                         if (returnData is null) break;
@@ -2097,6 +2100,7 @@ ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
     }
 
+    [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
