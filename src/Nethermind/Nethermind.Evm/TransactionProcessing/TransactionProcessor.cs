@@ -486,7 +486,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         state.WarmUp(header.GasBeneficiary);
                     }
 
-                    if (!txTracer.IsTracingActions)
+                    if (!tracer.IsTracingActions)
                     {
                         substate = _virtualMachine.Run<NotTracing>(state, _worldState, tracer);
                     }
