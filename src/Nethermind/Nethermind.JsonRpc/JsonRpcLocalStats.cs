@@ -50,52 +50,56 @@ namespace Nethermind.JsonRpc
                 return Task.CompletedTask;
             }
 
+            return ReportCallInternal(report, elapsedMicroseconds, size);
+        }
+
+        private async Task ReportCallInternal(RpcReport report, long elapsedMicroseconds, long? size)
+        {
             // we don't want to block RPC calls any longer than required
-            return Task.Run(() =>
+            await Task.Yield();
+
+            BuildReport();
+
+            MethodStats methodStats = _currentStats.GetOrAdd(report.Method, _ => new MethodStats());
+            MethodStats allTimeMethodStats = _allTimeStats.GetOrAdd(report.Method, _ => new MethodStats());
+
+            long reportHandlingTimeMicroseconds = elapsedMicroseconds == 0 ? report.HandlingTimeMicroseconds : elapsedMicroseconds;
+
+            decimal sizeDec = size ?? 0;
+
+            lock (methodStats)
             {
-                BuildReport();
-
-                MethodStats methodStats = _currentStats.GetOrAdd(report.Method, _ => new MethodStats());
-                MethodStats allTimeMethodStats = _allTimeStats.GetOrAdd(report.Method, _ => new MethodStats());
-
-                long reportHandlingTimeMicroseconds = elapsedMicroseconds == 0 ? report.HandlingTimeMicroseconds : elapsedMicroseconds;
-
-                decimal sizeDec = size ?? 0;
-
-                lock (methodStats)
+                if (report.Success)
                 {
-                    if (report.Success)
-                    {
-                        methodStats.AvgTimeOfSuccesses =
-                            (methodStats.Successes * methodStats.AvgTimeOfSuccesses + reportHandlingTimeMicroseconds) /
-                            ++methodStats.Successes;
-                        methodStats.MaxTimeOfSuccess =
-                            Math.Max(methodStats.MaxTimeOfSuccess, reportHandlingTimeMicroseconds);
+                    methodStats.AvgTimeOfSuccesses =
+                        (methodStats.Successes * methodStats.AvgTimeOfSuccesses + reportHandlingTimeMicroseconds) /
+                        ++methodStats.Successes;
+                    methodStats.MaxTimeOfSuccess =
+                        Math.Max(methodStats.MaxTimeOfSuccess, reportHandlingTimeMicroseconds);
 
-                        allTimeMethodStats.AvgTimeOfSuccesses =
-                            (allTimeMethodStats.Successes * allTimeMethodStats.AvgTimeOfSuccesses +
-                             reportHandlingTimeMicroseconds) /
-                            ++allTimeMethodStats.Successes;
-                        allTimeMethodStats.MaxTimeOfSuccess =
-                            Math.Max(allTimeMethodStats.MaxTimeOfSuccess, reportHandlingTimeMicroseconds);
-                    }
-                    else
-                    {
-                        methodStats.AvgTimeOfErrors =
-                            (methodStats.Errors * methodStats.AvgTimeOfErrors + reportHandlingTimeMicroseconds) /
-                            ++methodStats.Errors;
-                        methodStats.MaxTimeOfError = Math.Max(methodStats.MaxTimeOfError, reportHandlingTimeMicroseconds);
-
-                        allTimeMethodStats.AvgTimeOfErrors =
-                            (allTimeMethodStats.Errors * allTimeMethodStats.AvgTimeOfErrors + reportHandlingTimeMicroseconds) /
-                            ++allTimeMethodStats.Errors;
-                        allTimeMethodStats.MaxTimeOfError = Math.Max(allTimeMethodStats.MaxTimeOfError, reportHandlingTimeMicroseconds);
-                    }
-
-                    methodStats.TotalSize += sizeDec;
-                    allTimeMethodStats.TotalSize += sizeDec;
+                    allTimeMethodStats.AvgTimeOfSuccesses =
+                        (allTimeMethodStats.Successes * allTimeMethodStats.AvgTimeOfSuccesses +
+                            reportHandlingTimeMicroseconds) /
+                        ++allTimeMethodStats.Successes;
+                    allTimeMethodStats.MaxTimeOfSuccess =
+                        Math.Max(allTimeMethodStats.MaxTimeOfSuccess, reportHandlingTimeMicroseconds);
                 }
-            });
+                else
+                {
+                    methodStats.AvgTimeOfErrors =
+                        (methodStats.Errors * methodStats.AvgTimeOfErrors + reportHandlingTimeMicroseconds) /
+                        ++methodStats.Errors;
+                    methodStats.MaxTimeOfError = Math.Max(methodStats.MaxTimeOfError, reportHandlingTimeMicroseconds);
+
+                    allTimeMethodStats.AvgTimeOfErrors =
+                        (allTimeMethodStats.Errors * allTimeMethodStats.AvgTimeOfErrors + reportHandlingTimeMicroseconds) /
+                        ++allTimeMethodStats.Errors;
+                    allTimeMethodStats.MaxTimeOfError = Math.Max(allTimeMethodStats.MaxTimeOfError, reportHandlingTimeMicroseconds);
+                }
+
+                methodStats.TotalSize += sizeDec;
+                allTimeMethodStats.TotalSize += sizeDec;
+            }
         }
 
         private const string ReportHeader = "method                                  | " +
