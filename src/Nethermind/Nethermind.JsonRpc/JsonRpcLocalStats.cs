@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc
         public void ReportCall(string method, long handlingTimeMicroseconds, bool success) =>
             ReportCall(new RpcReport(method, handlingTimeMicroseconds, success));
 
-        public void ReportCall(in RpcReport report, long elapsedMicroseconds = 0, long? size = null)
+        public void ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null)
         {
             if (string.IsNullOrWhiteSpace(report.Method))
             {
@@ -49,52 +49,52 @@ namespace Nethermind.JsonRpc
                 return;
             }
 
-            DateTime thisTime = _timestamper.UtcNow;
-            if (thisTime - _lastReport > _reportingInterval)
+            // we don't want to block RPC calls any longer than required
+            Task.Run(() =>
             {
-                Task.Run(BuildReport);
-            }
+                BuildReport();
 
-            MethodStats methodStats = _currentStats.GetOrAdd(report.Method, _ => new MethodStats());
-            MethodStats allTimeMethodStats = _allTimeStats.GetOrAdd(report.Method, _ => new MethodStats());
+                MethodStats methodStats = _currentStats.GetOrAdd(report.Method, _ => new MethodStats());
+                MethodStats allTimeMethodStats = _allTimeStats.GetOrAdd(report.Method, _ => new MethodStats());
 
-            long reportHandlingTimeMicroseconds = elapsedMicroseconds == 0 ? report.HandlingTimeMicroseconds : elapsedMicroseconds;
+                long reportHandlingTimeMicroseconds = elapsedMicroseconds == 0 ? report.HandlingTimeMicroseconds : elapsedMicroseconds;
 
-            decimal sizeDec = size ?? 0;
+                decimal sizeDec = size ?? 0;
 
-            lock (methodStats)
-            {
-                if (report.Success)
+                lock (methodStats)
                 {
-                    methodStats.AvgTimeOfSuccesses =
-                        (methodStats.Successes * methodStats.AvgTimeOfSuccesses + reportHandlingTimeMicroseconds) /
-                        ++methodStats.Successes;
-                    methodStats.MaxTimeOfSuccess =
-                        Math.Max(methodStats.MaxTimeOfSuccess, reportHandlingTimeMicroseconds);
+                    if (report.Success)
+                    {
+                        methodStats.AvgTimeOfSuccesses =
+                            (methodStats.Successes * methodStats.AvgTimeOfSuccesses + reportHandlingTimeMicroseconds) /
+                            ++methodStats.Successes;
+                        methodStats.MaxTimeOfSuccess =
+                            Math.Max(methodStats.MaxTimeOfSuccess, reportHandlingTimeMicroseconds);
 
-                    allTimeMethodStats.AvgTimeOfSuccesses =
-                        (allTimeMethodStats.Successes * allTimeMethodStats.AvgTimeOfSuccesses +
-                         reportHandlingTimeMicroseconds) /
-                        ++allTimeMethodStats.Successes;
-                    allTimeMethodStats.MaxTimeOfSuccess =
-                        Math.Max(allTimeMethodStats.MaxTimeOfSuccess, reportHandlingTimeMicroseconds);
+                        allTimeMethodStats.AvgTimeOfSuccesses =
+                            (allTimeMethodStats.Successes * allTimeMethodStats.AvgTimeOfSuccesses +
+                             reportHandlingTimeMicroseconds) /
+                            ++allTimeMethodStats.Successes;
+                        allTimeMethodStats.MaxTimeOfSuccess =
+                            Math.Max(allTimeMethodStats.MaxTimeOfSuccess, reportHandlingTimeMicroseconds);
+                    }
+                    else
+                    {
+                        methodStats.AvgTimeOfErrors =
+                            (methodStats.Errors * methodStats.AvgTimeOfErrors + reportHandlingTimeMicroseconds) /
+                            ++methodStats.Errors;
+                        methodStats.MaxTimeOfError = Math.Max(methodStats.MaxTimeOfError, reportHandlingTimeMicroseconds);
+
+                        allTimeMethodStats.AvgTimeOfErrors =
+                            (allTimeMethodStats.Errors * allTimeMethodStats.AvgTimeOfErrors + reportHandlingTimeMicroseconds) /
+                            ++allTimeMethodStats.Errors;
+                        allTimeMethodStats.MaxTimeOfError = Math.Max(allTimeMethodStats.MaxTimeOfError, reportHandlingTimeMicroseconds);
+                    }
+
+                    methodStats.TotalSize += sizeDec;
+                    allTimeMethodStats.TotalSize += sizeDec;
                 }
-                else
-                {
-                    methodStats.AvgTimeOfErrors =
-                        (methodStats.Errors * methodStats.AvgTimeOfErrors + reportHandlingTimeMicroseconds) /
-                        ++methodStats.Errors;
-                    methodStats.MaxTimeOfError = Math.Max(methodStats.MaxTimeOfError, reportHandlingTimeMicroseconds);
-
-                    allTimeMethodStats.AvgTimeOfErrors =
-                        (allTimeMethodStats.Errors * allTimeMethodStats.AvgTimeOfErrors + reportHandlingTimeMicroseconds) /
-                        ++allTimeMethodStats.Errors;
-                    allTimeMethodStats.MaxTimeOfError = Math.Max(allTimeMethodStats.MaxTimeOfError, reportHandlingTimeMicroseconds);
-                }
-
-                methodStats.TotalSize += sizeDec;
-                allTimeMethodStats.TotalSize += sizeDec;
-            }
+            });
         }
 
 
