@@ -34,23 +34,23 @@ namespace Nethermind.JsonRpc
 
         public MethodStats GetMethodStats(string methodName) => _allTimeStats.GetValueOrDefault(methodName, new MethodStats());
 
-        public void ReportCall(string method, long handlingTimeMicroseconds, bool success) =>
+        public Task ReportCall(string method, long handlingTimeMicroseconds, bool success) =>
             ReportCall(new RpcReport(method, handlingTimeMicroseconds, success));
 
-        public void ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null)
+        public Task ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null)
         {
             if (string.IsNullOrWhiteSpace(report.Method))
             {
-                return;
+                return Task.CompletedTask;
             }
 
             if (!_logger.IsInfo)
             {
-                return;
+                return Task.CompletedTask;
             }
 
             // we don't want to block RPC calls any longer than required
-            Task.Run(() =>
+            return Task.Run(() =>
             {
                 BuildReport();
 
@@ -97,16 +97,15 @@ namespace Nethermind.JsonRpc
             });
         }
 
-
         private const string ReportHeader = "method                                  | " +
-                                    "successes | " +
-                                    " avg time (µs) | " +
-                                    " max time (µs) | " +
-                                    "   errors | " +
-                                    " avg time (µs) | " +
-                                    " max time (µs) |" +
-                                    " avg size |" +
-                                    " total size |";
+                                            "successes | " +
+                                            " avg time (µs) | " +
+                                            " max time (µs) | " +
+                                            "   errors | " +
+                                            " avg time (µs) | " +
+                                            " max time (µs) |" +
+                                            " avg size |" +
+                                            " total size |";
 
         private static readonly string _divider = new('-', ReportHeader.Length);
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc
 {
@@ -20,7 +21,7 @@ namespace Nethermind.JsonRpc
 
     public interface IJsonRpcLocalStats
     {
-        void ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null);
+        Task ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null);
 
         MethodStats GetMethodStats(string methodName);
     }
