@@ -42,7 +42,7 @@ namespace Nethermind.Network.P2P
 
             // Running in background
             _ = SendBuffer(buffer);
-            
+
             return length;
         }
 
