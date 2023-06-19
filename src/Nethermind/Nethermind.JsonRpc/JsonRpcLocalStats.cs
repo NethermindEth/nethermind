@@ -21,7 +21,7 @@ namespace Nethermind.JsonRpc
         private ConcurrentDictionary<string, MethodStats> _currentStats = new();
         private ConcurrentDictionary<string, MethodStats> _previousStats = new();
         private readonly ConcurrentDictionary<string, MethodStats> _allTimeStats = new();
-        private DateTime _lastReport = DateTime.MinValue;
+        private DateTime _lastReport;
         private readonly ILogger _logger;
         private readonly StringBuilder _reportStringBuilder = new();
 
@@ -30,6 +30,7 @@ namespace Nethermind.JsonRpc
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _reportingInterval = TimeSpan.FromSeconds(jsonRpcConfig.ReportIntervalSeconds);
+            _lastReport = timestamper.UtcNow;
         }
 
         public MethodStats GetMethodStats(string methodName) => _allTimeStats.GetValueOrDefault(methodName, new MethodStats());
