@@ -35,13 +35,9 @@ namespace Nethermind.Evm
             _bytes = bytes;
             Head = head;
             _tracer = txTracer;
-            Register = _bytes.Slice(MaxStackSize * WordSize, WordSize);
-            Register.Clear();
         }
 
         public int Head;
-
-        public Span<byte> Register;
 
         private Span<byte> _bytes;
 
@@ -89,6 +85,18 @@ namespace Nethermind.Evm
             {
                 EvmStack.ThrowEvmStackOverflowException();
             }
+        }
+
+        public ref byte PushBytesRef()
+        {
+            ref byte bytes = ref _bytes[Head * WordSize];
+
+            if (++Head >= MaxStackSize)
+            {
+                EvmStack.ThrowEvmStackOverflowException();
+            }
+
+            return ref bytes;
         }
 
         public void PushBytes(scoped in ZeroPaddedMemory value)
@@ -323,7 +331,7 @@ namespace Nethermind.Evm
             return new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
         }
 
-        private ref byte PopBytesByRef()
+        public ref byte PopBytesByRef()
         {
             if (Head-- == 0)
             {

@@ -12,7 +12,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Evm.Precompiles.Snarks;
@@ -23,6 +22,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.VirtualMachine;
+using static System.Runtime.CompilerServices.Unsafe;
+using static System.Runtime.InteropServices.MemoryMarshal;
 
 #if DEBUG
 using Nethermind.Evm.Tracing.DebugTrace;
@@ -31,6 +32,8 @@ using Nethermind.Evm.Tracing.DebugTrace;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
 namespace Nethermind.Evm;
+
+using Nethermind.Int256;
 
 public class VirtualMachine : IVirtualMachine
 {
@@ -592,7 +595,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     private bool ChargeStorageAccessGas(
         ref long gasAvailable,
         EvmState vmState,
-        StorageCell storageCell,
+        in StorageCell storageCell,
         StorageAccessType storageAccessType,
         IReleaseSpec spec)
     {
@@ -603,13 +606,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         {
             if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
             {
-                vmState.WarmUp(storageCell);
+                vmState.WarmUp(in storageCell);
             }
 
-            if (vmState.IsCold(storageCell))
+            if (vmState.IsCold(in storageCell))
             {
                 result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
-                vmState.WarmUp(storageCell);
+                vmState.WarmUp(in storageCell);
             }
             else if (storageAccessType == StorageAccessType.SLOAD)
             {
@@ -687,12 +690,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
     /// <remarks>
     /// Struct generic parameter is used to burn out all the if statements and inner code
-    /// by typeof(TTracing) == typeof(NotTracing) checks that are evaluated to constant
+    /// by typeof(TTracingInstructions) == typeof(NotTracing) checks that are evaluated to constant
     /// values at compile time.
     /// </remarks>
     [SkipLocalsInit]
-    private CallResult ExecuteCall<TTracing>(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
-        where TTracing : struct, IIsTracing
+    private CallResult ExecuteCall<TTracingInstructions>(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+        where TTracingInstructions : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         if (!vmState.IsContinuation)
@@ -722,13 +725,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         }
 
         vmState.InitStacks();
-        EvmStack<TTracing> stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
+        EvmStack<TTracingInstructions> stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
         long gasAvailable = vmState.GasAvailable;
 
         if (previousCallResult is not null)
         {
             stack.PushBytes(previousCallResult);
-            if (typeof(TTracing) == typeof(IsTracing)) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
+            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
         }
 
         if (previousCallOutput.Length > 0)
@@ -750,14 +753,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         if (!_txTracer.IsTracingRefunds)
         {
             return _txTracer.IsTracingOpLevelStorage ?
-                ExecuteCode<TTracing, NotTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
-                ExecuteCode<TTracing, NotTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
+                ExecuteCode<TTracingInstructions, NotTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
+                ExecuteCode<TTracingInstructions, NotTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
         }
         else
         {
             return _txTracer.IsTracingOpLevelStorage ?
-                ExecuteCode<TTracing, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
-                ExecuteCode<TTracing, IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
+                ExecuteCode<TTracingInstructions, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
+                ExecuteCode<TTracingInstructions, IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
         }
 Empty:
         return CallResult.Empty;
@@ -781,11 +784,9 @@ OutOfGas:
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
         ReadOnlySpan<byte> bytes = default;
-        Unsafe.SkipInit(out UInt256 a);
-        Unsafe.SkipInit(out UInt256 b);
-        Unsafe.SkipInit(out Int256.Int256 sa);
-        Unsafe.SkipInit(out Int256.Int256 sb);
-        Unsafe.SkipInit(out UInt256 result);
+        SkipInit(out UInt256 a);
+        SkipInit(out UInt256 b);
+        SkipInit(out UInt256 result);
         object returnData;
         uint codeLength = (uint)code.Length;
         while ((uint)programCounter < codeLength)
@@ -861,21 +862,20 @@ OutOfGas:
                         if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out a);
-                        stack.PopSignedInt256(out sb);
-                        if (sb.IsZero)
+                        stack.PopUInt256(out b);
+                        if (b.IsZero)
                         {
                             stack.PushZero();
                         }
-                        else if (sb == Int256.Int256.MinusOne && a == P255)
+                        else if (As<UInt256, Int256>(ref b) == Int256.MinusOne && a == P255)
                         {
                             result = P255;
                             stack.PushUInt256(in result);
                         }
                         else
                         {
-                            sa = new(a);
-                            Int256.Int256.Divide(in sa, in sb, out Int256.Int256 res);
-                            stack.PushSignedInt256(in res);
+                            Int256.Divide(in As<UInt256, Int256>(ref a), in As<UInt256, Int256>(ref b), out As<UInt256, Int256>(ref result));
+                            stack.PushUInt256(in result);
                         }
 
                         break;
@@ -894,16 +894,17 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopSignedInt256(out sa);
-                        stack.PopSignedInt256(out sb);
-                        if (sb.IsZero || sb.IsOne)
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
+                        if (b.IsZeroOrOne)
                         {
                             stack.PushZero();
                         }
                         else
                         {
-                            sa.Mod(in sb, out Int256.Int256 mod);
-                            stack.PushSignedInt256(in mod);
+                            As<UInt256, Int256>(ref a)
+                                .Mod(in As<UInt256, Int256>(ref b), out As<UInt256, Int256>(ref result));
+                            stack.PushUInt256(in result);
                         }
 
                         break;
@@ -998,7 +999,7 @@ OutOfGas:
 
                         int position = 31 - (int)a;
 
-                        Span<byte> wbytes = stack.PopWord256();
+                        Span<byte> wbytes = stack.PeekWord256();
                         sbyte sign = (sbyte)wbytes[position];
 
                         if (sign >= 0)
@@ -1010,7 +1011,7 @@ OutOfGas:
                             BytesMax32.AsSpan(0, position).CopyTo(wbytes[..position]);
                         }
 
-                        stack.PushBytes(wbytes);
+                        // Didn't remove from stack so don't need to push back
                         break;
                     }
                 case Instruction.LT:
@@ -1051,10 +1052,10 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopSignedInt256(out sa);
-                        stack.PopSignedInt256(out sb);
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
 
-                        if (sa.CompareTo(sb) < 0)
+                        if (As<UInt256, Int256>(ref a).CompareTo(As<UInt256, Int256>(ref b)) < 0)
                         {
                             stack.PushOne();
                         }
@@ -1069,9 +1070,9 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        stack.PopSignedInt256(out sa);
-                        stack.PopSignedInt256(out sb);
-                        if (sa.CompareTo(sb) > 0)
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
+                        if (As<UInt256, Int256>(ref a).CompareTo(As<UInt256, Int256>(ref b)) > 0)
                         {
                             stack.PushOne();
                         }
@@ -1119,47 +1120,39 @@ OutOfGas:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Vector256<byte> aVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(stack.PopWord256()));
-                        Vector256<byte> bVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(stack.PopWord256()));
+                        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref stack.PopBytesByRef());
+                        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref stack.PopBytesByRef());
 
-                        Vector256.BitwiseAnd(aVec, bVec).CopyTo(stack.Register);
-
-                        stack.PushBytes(stack.Register);
+                        WriteUnaligned(ref stack.PushBytesRef(), Vector256.BitwiseAnd(aVec, bVec));
                         break;
                     }
                 case Instruction.OR:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Vector256<byte> aVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(stack.PopWord256()));
-                        Vector256<byte> bVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(stack.PopWord256()));
+                        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref stack.PopBytesByRef());
+                        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref stack.PopBytesByRef());
 
-                        Vector256.BitwiseOr(aVec, bVec).CopyTo(stack.Register);
-
-                        stack.PushBytes(stack.Register);
+                        WriteUnaligned(ref stack.PushBytesRef(), Vector256.BitwiseOr(aVec, bVec));
                         break;
                     }
                 case Instruction.XOR:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Vector256<byte> aVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(stack.PopWord256()));
-                        Vector256<byte> bVec = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(stack.PopWord256()));
+                        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref stack.PopBytesByRef());
+                        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref stack.PopBytesByRef());
 
-                        Vector256.Xor(aVec, bVec).CopyTo(stack.Register);
-
-                        stack.PushBytes(stack.Register);
+                        WriteUnaligned(ref stack.PushBytesRef(), Vector256.Xor(aVec, bVec));
                         break;
                     }
                 case Instruction.NOT:
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                        Vector256<byte> negVec = Vector256.OnesComplement(Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(stack.PopWord256())));
+                        Vector256<byte> negVec = Vector256.OnesComplement(ReadUnaligned<Vector256<byte>>(ref stack.PopBytesByRef()));
 
-                        negVec.CopyTo(stack.Register);
-
-                        stack.PushBytes(stack.Register);
+                        WriteUnaligned(ref stack.PushBytesRef(), negVec);
                         break;
                     }
                 case Instruction.BYTE:
@@ -1315,7 +1308,6 @@ OutOfGas:
                     }
                 case Instruction.EXTCODESIZE:
                     {
-                        Metrics.ExtCodeSizeOpcode++;
                         long gasCost = spec.GetExtCodeCost();
                         if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
@@ -1330,7 +1322,6 @@ OutOfGas:
                             if (nextInstruction == Instruction.ISZERO)
                             {
                                 optimizeAccess = true;
-                                Metrics.ExtCodeSizeOptimizedIsZero++;
                             }
                             // code.length > 0 || code.length == 0
                             else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ) &&
@@ -1338,14 +1329,6 @@ OutOfGas:
                             {
                                 optimizeAccess = true;
                                 stack.PopLimbo();
-                                if (nextInstruction == Instruction.GT)
-                                {
-                                    Metrics.ExtCodeSizeOptimizedGT++;
-                                }
-                                else if (nextInstruction == Instruction.EQ)
-                                {
-                                    Metrics.ExtCodeSizeOptimizedEQ++;
-                                }
                             }
 
                             if (optimizeAccess)
@@ -1380,9 +1363,7 @@ OutOfGas:
                             }
                         }
 
-                        byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-                        result = (UInt256)accountCode.Length;
-                        stack.PushUInt256(in result);
+                        InstructionExtCodeSize(address, ref stack, spec);
                         break;
                     }
                 case Instruction.EXTCODECOPY:
@@ -1625,7 +1606,7 @@ OutOfGas:
                             StorageAccessType.SLOAD,
                             spec)) goto OutOfGas;
 
-                        byte[] value = _state.Get(storageCell);
+                        byte[] value = _state.Get(in storageCell);
                         stack.PushBytes(value);
 
                         if (typeof(TTracingStorage) == typeof(IsTracing))
@@ -1656,7 +1637,7 @@ OutOfGas:
                         stack.PopUInt256(out result);
                         StorageCell storageCell = new(env.ExecutingAccount, result);
 
-                        byte[] value = _state.GetTransientState(storageCell);
+                        byte[] value = _state.GetTransientState(in storageCell);
                         stack.PushBytes(value);
 
                         if (typeof(TTracingStorage) == typeof(IsTracing))
@@ -1679,7 +1660,7 @@ OutOfGas:
                         StorageCell storageCell = new(env.ExecutingAccount, result);
                         bytes = stack.PopWord256();
 
-                        _state.SetTransientState(storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
+                        _state.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
 
                         if (typeof(TTracingStorage) == typeof(IsTracing))
                         {
@@ -1974,22 +1955,22 @@ OutOfGas:
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out a);
-                        stack.PopSignedInt256(out sb);
+                        stack.PopUInt256(out b);
                         if (a >= BigInt256)
                         {
-                            if (sb.Sign >= 0)
+                            if (As<UInt256, Int256>(ref b).Sign >= 0)
                             {
                                 stack.PushZero();
                             }
                             else
                             {
-                                stack.PushSignedInt256(in Int256.Int256.MinusOne);
+                                stack.PushSignedInt256(in Int256.MinusOne);
                             }
                         }
                         else
                         {
-                            sb.RightShift((int)a, out sa);
-                            stack.PushSignedInt256(in sa);
+                            As<UInt256, Int256>(ref b).RightShift((int)a, out As<UInt256, Int256>(ref result));
+                            stack.PushUInt256(in result);
                         }
 
                         break;
@@ -2116,6 +2097,15 @@ ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
+    {
+        byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+        UInt256 result = (UInt256)accountCode.Length;
+        stack.PushUInt256(in result);
+    }
+
+    [SkipLocalsInit]
     private EvmExceptionType InstructionCall<TTracingInstructions, TTracingRefunds>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec,
         Instruction instruction, out object returnData)
         where TTracingInstructions : struct, IIsTracing
@@ -2271,6 +2261,7 @@ ReturnFailure:
         return EvmExceptionType.None;
     }
 
+    [SkipLocalsInit]
     private static bool InstructionRevert<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, out object returnData)
         where TTracing : struct, IIsTracing
     {
@@ -2287,6 +2278,7 @@ ReturnFailure:
         return true;
     }
 
+    [SkipLocalsInit]
     private static bool InstructionReturn<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, out object returnData)
         where TTracing : struct, IIsTracing
     {
@@ -2304,6 +2296,7 @@ ReturnFailure:
         return true;
     }
 
+    [SkipLocalsInit]
     private bool InstructionSelfDestruct<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracing : struct, IIsTracing
     {
@@ -2341,6 +2334,7 @@ ReturnFailure:
         return true;
     }
 
+    [SkipLocalsInit]
     private (bool outOfGas, EvmState? callState) InstructionCreate<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec, Instruction instruction)
         where TTracing : struct, IIsTracing
     {
@@ -2474,6 +2468,7 @@ ReturnFailure:
         return (outOfGas: false, callState);
     }
 
+    [SkipLocalsInit]
     private static bool InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction)
         where TTracing : struct, IIsTracing
     {
@@ -2501,6 +2496,7 @@ ReturnFailure:
         return true;
     }
 
+    [SkipLocalsInit]
     private bool InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
@@ -2533,11 +2529,11 @@ ReturnFailure:
         if (!ChargeStorageAccessGas(
                 ref gasAvailable,
                 vmState,
-                storageCell,
+                in storageCell,
                 StorageAccessType.SSTORE,
                 spec)) return false;
 
-        Span<byte> currentValue = _state.Get(storageCell);
+        Span<byte> currentValue = _state.Get(in storageCell);
         // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
         bool currentIsZero = currentValue.IsZero();
 
@@ -2567,7 +2563,7 @@ ReturnFailure:
             }
             else // net metered, C != N
             {
-                Span<byte> originalValue = _state.GetOriginal(storageCell);
+                Span<byte> originalValue = _state.GetOriginal(in storageCell);
                 bool originalIsZero = originalValue.IsZero();
 
                 bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
@@ -2631,7 +2627,7 @@ ReturnFailure:
         if (!newSameAsCurrent)
         {
             Span<byte> valueToStore = newIsZero ? BytesZero : bytes;
-            _state.Set(storageCell, valueToStore.ToArray());
+            _state.Set(in storageCell, valueToStore.ToArray());
         }
 
         if (typeof(TTracingInstructions) == typeof(IsTracing))
