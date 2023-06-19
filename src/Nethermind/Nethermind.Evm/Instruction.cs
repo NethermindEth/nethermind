@@ -320,6 +320,7 @@ namespace Nethermind.Evm
             Instruction.LOG3 => (5, 0, 0),
             Instruction.LOG4 => (6, 0, 0),
             Instruction.CALLF => (0, 0, 2),
+            Instruction.JUMPF => (0, 0, 2),
             Instruction.RETF => (0, 0, 0),
             Instruction.CREATE => (3, 1, 0),
             Instruction.CALL => (6, 1, 0),

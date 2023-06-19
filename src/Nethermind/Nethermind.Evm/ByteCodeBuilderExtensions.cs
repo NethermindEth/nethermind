@@ -126,14 +126,6 @@ namespace Nethermind.Evm
             => @this.Op(Instruction.NOP);
         public static Prepare MSIZE(this Prepare @this)
             => @this.Op(Instruction.MSIZE);
-        public static Prepare SWAPx(this Prepare @this, byte i)
-            => @this.Op(Instruction.SWAP1 + i - 1);
-        public static Prepare SWAPn(this Prepare @this, byte i)
-            => @this.Op(Instruction.SWAPN).Data((byte)(i));
-        public static Prepare DUPx(this Prepare @this, byte i)
-            => @this.Op(Instruction.DUP1 + i - 1);
-        public static Prepare DUPn(this Prepare @this, byte i)
-            => @this.Op(Instruction.DUPN).Data((byte)(i));
         public static Prepare BEGINSUB(this Prepare @this)
             => @this.Op(Instruction.BEGINSUB);
         public static Prepare RETURNSUB(this Prepare @this)
@@ -308,7 +300,7 @@ namespace Nethermind.Evm
         public static Prepare MULMOD(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null, UInt256? mod = null)
             => @this.PushSequence(mod, rhs, lhs)
                     .Op(Instruction.MULMOD);
-        public static Prepare CREATEx(this Prepare @this, byte i, UInt256? value = null, UInt256? initCodePos = null, UInt256? initCodeLen = null)
+        public static Prepare CREATE(this Prepare @this, byte i, UInt256? value = null, UInt256? initCodePos = null, UInt256? initCodeLen = null)
             => @this.PushSequence(initCodeLen, initCodePos, value)
                     .Op(i == 2 ? Instruction.CREATE2 : Instruction.CREATE);
         public static Prepare CALLDATACOPY(this Prepare @this, UInt256? dest = null, UInt256? src = null, UInt256? len = null)
@@ -373,7 +365,7 @@ namespace Nethermind.Evm
             => @this.PushData(arguments)
                     .Op(Instruction.CALLF)
                     .Data(BitConverter.GetBytes(sectionId));
-        public static Prepare PUSHx(this Prepare @this, byte[] args)
+        public static Prepare PUSH(this Prepare @this, byte[] args)
             => @this.PushData(args);
         public static Prepare RJUMPI(this Prepare @this, Int16 to, byte[] cond = null)
             => @this.PushSingle(cond)
@@ -381,28 +373,24 @@ namespace Nethermind.Evm
                         .Data(BitConverter.GetBytes(to).Reverse().ToArray());
 
 
-        public static Prepare DUP(this Prepare @this, UInt256?[] values, bool useGeneric)
+        public static Prepare DUP(this Prepare @this, byte offset, bool useGeneric)
         {
-            byte len = (byte)values.Length;
-            var result = @this.PushSequence(values)
-                .Op(useGeneric ? Instruction.DUP1 + len - 1 : Instruction.DUPN);
+            var result = @this.Op(useGeneric ? Instruction.DUPN : Instruction.DUP1 + offset - 1);
 
             if (useGeneric)
             {
-                result.Data(len);
+                result.Data(offset);
             }
             return result;
         }
 
-        public static Prepare SWAP(this Prepare @this, UInt256?[] values, bool useGeneric)
+        public static Prepare SWAP(this Prepare @this, byte offset, bool useGeneric)
         {
-            byte len = (byte)values.Length;
-            var result = @this.PushSequence(values)
-                .Op(useGeneric ? Instruction.SWAP1 + len - 1 : Instruction.SWAPN);
+            var result = @this.Op(useGeneric ? Instruction.SWAPN : Instruction.SWAP1 + offset - 1);
 
             if (useGeneric)
             {
-                result.Data(len);
+                result.Data(offset);
             }
             return result;
         }

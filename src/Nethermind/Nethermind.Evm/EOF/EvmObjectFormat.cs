@@ -481,8 +481,8 @@ internal static class EvmObjectFormat
                             if (Logger.IsTrace) Logger.Trace($"EIP-663 : {opcode.FastToString()} Argument underflow");
                             return false;
                         }
+                        BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
 
-                        // var argCount = code[postInstructionByte];
                     }
 
                     if (opcode is Instruction.RJUMPV)
@@ -540,12 +540,12 @@ internal static class EvmObjectFormat
                         }
 
                         // begin block: might not be included in Eof2
-                        byte targetSectionOutputCount = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
-                        if (targetSectionOutputCount == 0x80)
-                        {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : CALLF into non-returning function");
-                            return false;
-                        }
+                        // byte targetSectionOutputCount = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                        // if (targetSectionOutputCount == 0x80)
+                        // {
+                        //     if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : CALLF into non-returning function");
+                        //     return false;
+                        // }
                         // end block
 
                         worklist.Enqueue(targetSectionId);
@@ -566,6 +566,7 @@ internal static class EvmObjectFormat
                         }
 
                         ushort dataSectionOffset = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthUInt16();
+                        BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
 
                         if (dataSectionOffset * 32 >= header.DataSection.Size)
                         {
@@ -584,6 +585,7 @@ internal static class EvmObjectFormat
                         }
 
                         ushort initcodeSectionId = code[postInstructionByte + ONE_BYTE_LENGTH];
+                        BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
 
                         if (initcodeSectionId >= header.ContainerSection?.Count)
                         {
@@ -661,6 +663,14 @@ internal static class EvmObjectFormat
                     int len = opcode - Instruction.PUSH0;
                     pos += len;
                 }
+                else if (opcode is Instruction.CREATE3)
+                {
+                    pos += ONE_BYTE_LENGTH;
+                }
+                else if (opcode is Instruction.DATALOADN)
+                {
+                    pos += TWO_BYTE_LENGTH;
+                }
             }
             return true;
         }
@@ -704,25 +714,23 @@ internal static class EvmObjectFormat
                             recordedStackHeight[worklet.Position] = (short)(worklet.StackHeight + 1);
                         }
 
-                        if (opcode is Instruction.CALLF or Instruction.JUMPF)
-                        {
-                            ushort sectionIndex = code.Slice(posPostInstruction, TWO_BYTE_LENGTH).ReadEthUInt16();
-                            inputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
-
-                            outputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
-                            outputs = (ushort)(outputs == 0x80 ? 0 : outputs);
-
-                            ushort maxStackHeigh = typesection.Slice(sectionIndex * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, TWO_BYTE_LENGTH).ReadEthUInt16();
-
-                            if (worklet.StackHeight + maxStackHeigh > MAX_STACK_HEIGHT)
-                            {
-                                if (Logger.IsTrace) Logger.Trace($"EIP-5450 : stack head during callf must not exceed {MAX_STACK_HEIGHT}");
-                                return false;
-                            }
-                        }
-
                         switch (opcode)
                         {
+                            case Instruction.CALLF or Instruction.JUMPF:
+                                ushort sectionIndex = code.Slice(posPostInstruction, TWO_BYTE_LENGTH).ReadEthUInt16();
+                                inputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
+
+                                outputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                                outputs = (ushort)(outputs == 0x80 ? 0 : outputs);
+
+                                ushort maxStackHeigh = typesection.Slice(sectionIndex * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, TWO_BYTE_LENGTH).ReadEthUInt16();
+
+                                if (worklet.StackHeight + maxStackHeigh > MAX_STACK_HEIGHT)
+                                {
+                                    if (Logger.IsTrace) Logger.Trace($"EIP-5450 : stack head during callf must not exceed {MAX_STACK_HEIGHT}");
+                                    return false;
+                                }
+                                break;
                             case Instruction.DUPN:
                                 byte imm = code[posPostInstruction];
                                 inputs = (ushort)(imm + 1);
@@ -803,7 +811,7 @@ internal static class EvmObjectFormat
 
                         if (opcode.IsTerminating())
                         {
-                            var expectedHeight = opcode is Instruction.RETF or Instruction.JUMPF ? typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] : worklet.StackHeight;
+                            var expectedHeight = opcode is Instruction.RETF? typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] : worklet.StackHeight;
                             if (expectedHeight != worklet.StackHeight)
                             {
                                 if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Stack state invalid required height {expectedHeight} but found {worklet.StackHeight}");

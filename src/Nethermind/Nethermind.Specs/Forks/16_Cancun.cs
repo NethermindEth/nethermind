@@ -13,7 +13,8 @@ namespace Nethermind.Specs.Forks
         protected Cancun()
         {
             Name = "Cancun";
-            IsEip633Enabled = true;
+            IsEip633Enabled  = true;
+            IsEip6206Enabled = true;
             IsEip1153Enabled = true;
             IsEip3670Enabled = true;
             IsEip3540Enabled = true;

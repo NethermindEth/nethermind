@@ -37,7 +37,7 @@ namespace Nethermind.Evm
 
         public static bool IsValidWithLegacyRules(ReadOnlySpan<byte> code)
         {
-            return code.Length >= 1 && code is not [InvalidStartingCodeByte, ..]; ;
+            return code is not [InvalidStartingCodeByte, ..]; ;
         }
 
         public static bool IsValidWithEofRules(ReadOnlySpan<byte> code, int fromVersion)
@@ -48,7 +48,7 @@ namespace Nethermind.Evm
                   && codeVersion >= fromVersion
                   && (isCodeEof ?  // this needs test cases
                        EvmObjectFormat.IsValidEof(code, out _) :
-                            fromVersion > 0 ? false : code is not [InvalidStartingCodeByte, ..]);
+                            fromVersion > 0 ? false : IsValidWithLegacyRules(code));
             return valid;
         }
 

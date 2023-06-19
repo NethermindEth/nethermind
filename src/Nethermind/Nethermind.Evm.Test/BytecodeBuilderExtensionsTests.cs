@@ -29,7 +29,7 @@ namespace Nethermind.Evm.Test
 {
     public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
     {
-        static IReleaseSpec _releaseSpec = Shanghai.Instance;
+        static IReleaseSpec _releaseSpec = Cancun.Instance;
         public class TestCase
         {
             public byte[] FluentCodes;
@@ -640,6 +640,20 @@ namespace Nethermind.Evm.Test
         public void code_emited_by_fluent_is_same_as_expected([ValueSource(nameof(FluentBuilderTestCases))] TestCase test)
         {
             test.FluentCodes.Should().BeEquivalentTo(test.ResultCodes, test.Description);
+        }
+
+
+        public static IEnumerable<string> Opcodes => Enum.GetNames(typeof(Instruction));
+
+        [Test]
+        public void all_opcode_have_fluent_method([ValueSource(nameof(Opcodes))] string opcode)
+        {
+            string[] methods = typeof(BytecodeBuilder).GetMethods(BindingFlags.Static | BindingFlags.Public).Select(m => m.Name).ToArray();
+            if (opcode is "CREATE2" or "CREATE") Assert.True(methods.Contains("CREATE"));
+            if (opcode.StartsWith("SWAP")) Assert.True(methods.Contains("SWAP"));
+            if (opcode.StartsWith("DUP")) Assert.True(methods.Contains("DUP"));
+            if (opcode.StartsWith("PUSH")) Assert.True(methods.Contains("PUSH"));
+            else Assert.True(methods.Contains(opcode.ToUpper()));
         }
     }
 }

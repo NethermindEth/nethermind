@@ -43,17 +43,17 @@ namespace Nethermind.Evm.Test
                                 new FunctionCase(
                                     2, 1, 4,
                                     Prepare.EvmCode
-                                        .DUPx(2)
+                                        .DUP(2, false)
                                         .ISZERO()
                                         .RJUMPI(0x0f - 0x05)
-                                        .DUPx(2)
+                                        .DUP(2, false)
                                         .PushSingle(01)
-                                        .SWAPx(1)
+                                        .SWAP(1, false)
                                         .SUB()
-                                        .SWAPx(2)
+                                        .SWAP(2, false)
                                         .MUL()
                                         .JUMPF(1)
-                                        .SWAPx(1)
+                                        .SWAP(1, false)
                                         .POP()
                                         .RETF()
                                         .Done
@@ -62,6 +62,32 @@ namespace Nethermind.Evm.Test
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Success, null),
+                };
+
+                yield return new TestCase(2)
+                {
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 0,
+                                    Prepare.EvmCode
+                                        .PushSequence(01, 02)
+                                        .CALLF(1)
+                                        .STOP()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 0, 0,
+                                    Prepare.EvmCode
+                                        .ADD()
+                                        .POP()
+                                        .JUMPF(1)
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Failure, "invalid stack requirements: "),
                 };
 
                 yield return new TestCase(2)
