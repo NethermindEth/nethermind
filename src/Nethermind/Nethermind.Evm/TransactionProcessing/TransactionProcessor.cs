@@ -417,7 +417,7 @@ namespace Nethermind.Evm.TransactionProcessing
             TxExecutionContext executionContext =
                 new(header, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes);
 
-            CodeInfo codeInfo = tx.IsContractCreation ? new(tx.Data.AsArray())
+            ICodeInfo codeInfo = tx.IsContractCreation ? CodeInfoFactory.CreateCodeInfo(tx.Data.AsArray(), spec)
                                     : _virtualMachine.GetCachedCodeInfo(_worldState, recipient, spec);
 
             byte[] inputData = tx.IsMessageCall ? tx.Data.AsArray() ?? Array.Empty<byte>() : Array.Empty<byte>();
