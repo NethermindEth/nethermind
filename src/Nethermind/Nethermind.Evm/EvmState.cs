@@ -226,6 +226,7 @@ namespace Nethermind.Evm
 
         public long GasAvailable { get; set; }
         public int ProgramCounter { get; set; }
+        public int SectionIndex { get; set; }
         public long Refund { get; set; }
 
         public Address To => Env.CodeSource;
