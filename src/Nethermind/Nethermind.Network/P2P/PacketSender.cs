@@ -41,10 +41,8 @@ namespace Nethermind.Network.P2P
             int length = buffer.ReadableBytes;
 
             // Running in background
-#pragma warning disable CS4014
-            SendBuffer(buffer);
-#pragma warning restore CS4014
-
+            _ = SendBuffer(buffer);
+            
             return length;
         }
 
