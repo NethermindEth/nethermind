@@ -178,12 +178,12 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
-        public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec spec = null) =>
+        public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null) =>
             instruction switch
             {
                 Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
-                Instruction.TLOAD or Instruction.BEGINSUB when spec is not null => spec.IsEip1153Enabled ? "TLOAD" : "BEGINSUB",
-                Instruction.TSTORE or Instruction.RETURNSUB when spec is not null => spec.IsEip1153Enabled ? "TSTORE" : "RETURNSUB",
+                Instruction.TLOAD or Instruction.BEGINSUB => spec?.TransientStorageEnabled == true ? "TLOAD" : "BEGINSUB",
+                Instruction.TSTORE or Instruction.RETURNSUB => spec?.TransientStorageEnabled == true ? "TSTORE" : "RETURNSUB",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null
             };
     }
