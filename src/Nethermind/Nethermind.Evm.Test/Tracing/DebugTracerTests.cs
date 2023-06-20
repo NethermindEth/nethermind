@@ -281,7 +281,7 @@ namespace Nethermind.Evm.Test
                 if (tracer.CanReadState)
                 {
                     // we pop the condition and overwrite it with a false to force breaking out of the loop
-                    EvmStack stack = new(tracer.CurrentState.DataStack, tracer.CurrentState.DataStackHead, tracer);
+                    EvmStack<VirtualMachine.NotTracing> stack = new(tracer.CurrentState.DataStack, tracer.CurrentState.DataStackHead, tracer);
                     stack.PopLimbo();
                     stack.PushByte(0x00);
 

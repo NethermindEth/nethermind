@@ -571,6 +571,7 @@ namespace Nethermind.Synchronization.Test
                 HeadHash = headHash ?? Keccak.Zero;
             }
 
+            public string Name => "Throwing";
             public Node Node { get; }
             public string ClientId => "EX peer";
             public Keccak HeadHash { get; set; }
@@ -1038,6 +1039,7 @@ namespace Nethermind.Synchronization.Test
             private IReceiptStorage _receiptStorage = new InMemoryReceiptStorage();
 
             public Response Flags { get; set; }
+            public string Name => "Mock";
 
             public SyncPeerMock(long chainLength, bool withReceipts, Response flags, bool withWithdrawals = false)
             {

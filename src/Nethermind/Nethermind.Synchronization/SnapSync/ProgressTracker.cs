@@ -18,7 +18,7 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class ProgressTracker
     {
-        private const string NO_REQUEST = "NO REQUEST";
+        private const string NO_REQUEST = "Skipped Request";
 
         private const int STORAGE_BATCH_SIZE = 1_200;
         private const int CODES_BATCH_SIZE = 1_000;
@@ -120,7 +120,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return false;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Starting the SNAP data sync from the {header.ToString(BlockHeader.Format.Short)} {header.StateRoot} root");
+            if (_logger.IsInfo) _logger.Info($"Starting the Snap data sync from the {header.ToString(BlockHeader.Format.Short)} {header.StateRoot} root");
 
             return true;
         }
@@ -234,7 +234,7 @@ namespace Nethermind.Synchronization.SnapSync
             bool rangePhaseFinished = IsSnapGetRangesFinished();
             if (rangePhaseFinished)
             {
-                _logger.Info($"SNAP - State Ranges (Phase 1) finished.");
+                _logger.Info($"Snap - State Ranges (Phase 1) finished.");
                 FinishRangePhase();
             }
 
@@ -354,7 +354,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (path == ValueKeccak.MaxValue)
                 {
-                    _logger.Info($"SNAP - State Ranges (Phase 1) is finished.");
+                    _logger.Info($"Snap - State Ranges (Phase 1) is finished.");
                     foreach (KeyValuePair<ValueKeccak, AccountRangePartition> partition in AccountRangePartitions)
                     {
                         partition.Value.MoreAccountsToRight = false;
@@ -363,7 +363,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else
                 {
-                    _logger.Info($"SNAP - State Ranges (Phase 1) progress loaded from DB:{path}");
+                    _logger.Info($"Snap - State Ranges (Phase 1) progress loaded from DB:{path}");
                 }
             }
         }
@@ -386,9 +386,9 @@ namespace Nethermind.Synchronization.SnapSync
                     totalPathProgress += nextAccount - startAccount;
                 }
 
-                double progress = 100 * totalPathProgress / (double)(256 * 256);
+                float progress = (float)(totalPathProgress / (double)(256 * 256));
 
-                if (_logger.IsInfo) _logger.Info($"SNAP - progress of State Ranges (Phase 1): {progress:f3}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}]");
+                if (_logger.IsInfo) _logger.Info($"Snap         State Ranges (Phase 1): ({progress,8:P2}) [{new string('*', (int)(progress * 71))}{new string(' ', 71 - (int)(progress * 71))}]");
             }
 
             if (_logger.IsTrace || _reqCount % 1000 == 0)
@@ -396,7 +396,7 @@ namespace Nethermind.Synchronization.SnapSync
                 int moreAccountCount = AccountRangePartitions.Count(kv => kv.Value.MoreAccountsToRight);
 
                 _logger.Info(
-                    $"SNAP - ({reqType}, diff:{_pivot.Diff}) {moreAccountCount} - Requests Account:{_activeAccountRequests} | Storage:{_activeStorageRequests} | Code:{_activeCodeRequests} | Refresh:{_activeAccRefreshRequests} - Queues Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | Refresh:{AccountsToRefresh.Count}");
+                    $"Snap - ({reqType}, diff:{_pivot.Diff}) {moreAccountCount} - Requests Account:{_activeAccountRequests} | Storage:{_activeStorageRequests} | Code:{_activeCodeRequests} | Refresh:{_activeAccRefreshRequests} - Queues Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | Refresh:{AccountsToRefresh.Count}");
             }
         }
 
