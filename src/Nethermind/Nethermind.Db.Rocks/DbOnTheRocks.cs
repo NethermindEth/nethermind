@@ -139,7 +139,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             }
 
             // ReSharper disable once VirtualMemberCallInConstructor
-            if (_logger.IsDebug) _logger.Debug($"Loading DB {Name,-13} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000}MB");
+            if (_logger.IsDebug) _logger.Debug($"Loading DB {Name,-13} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000,5} MB");
             RocksDb db = _dbsByPath.GetOrAdd(_fullPath, (s, tuple) => Open(s, tuple), (DbOptions, columnFamilies));
 
             if (dbConfig.EnableMetricsUpdater)
@@ -376,9 +376,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             Interlocked.Add(ref _maxRocksSize, _maxThisDbSize);
             if (_logger.IsDebug)
                 _logger.Debug(
-                    $"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1000 / 1000}MB ({writeBufferNumber} * {writeBufferSize / 1000 / 1000}MB + {blockCacheSize / 1000 / 1000}MB)");
-            if (_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1000 / 1000}MB");
-            ThisNodeInfo.AddInfo("Mem est DB   :", $"{_maxRocksSize / 1000 / 1000}MB".PadLeft(8));
+                    $"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1000 / 1000} MB ({writeBufferNumber} * {writeBufferSize / 1000 / 1000} MB + {blockCacheSize / 1000 / 1000} MB)");
+            if (_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1000 / 1000} MB");
+            ThisNodeInfo.AddInfo("Mem est DB   :", $"{_maxRocksSize / 1000 / 1000} MB".PadLeft(8));
         }
 
         options.SetBlockBasedTableFactory(tableOptions);
@@ -776,11 +776,16 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     internal class RocksDbBatch : IBatch
     {
+        private const int InitialBatchSize = 300;
+        private static readonly int MaxCached = Environment.ProcessorCount;
+
+        private static ConcurrentQueue<SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)>> s_cache = new();
+
         private readonly DbOnTheRocks _dbOnTheRocks;
         private WriteFlags _writeFlags = WriteFlags.None;
         private bool _isDisposed;
 
-        private SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> _batchData = new(Bytes.SpanEqualityComparer);
+        private SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> _batchData = CreateOrGetFromCache();
 
         public RocksDbBatch(DbOnTheRocks dbOnTheRocks)
         {
@@ -805,11 +810,22 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             }
             _isDisposed = true;
 
+            SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> batchData = _batchData;
+            // Clear the _batchData reference so is null if Get is called.
+            _batchData = null!;
+            if (batchData.Count == 0)
+            {
+                // No data to write, skip empty batches
+                ReturnToCache(batchData);
+                _dbOnTheRocks._currentBatches.TryRemove(this);
+                return;
+            }
+
             try
             {
                 WriteBatch rocksBatch = new();
                 // Sort the batch by key
-                foreach (var kv in _batchData.OrderBy(i => i.Key, Bytes.Comparer))
+                foreach (var kv in batchData.OrderBy(i => i.Key, Bytes.Comparer))
                 {
                     if (kv.Value.data is null)
                     {
@@ -820,8 +836,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                         rocksBatch.Put(kv.Key, kv.Value.data, kv.Value.cf);
                     }
                 }
-                // Release Dictionary early to be GC'd
-                _batchData = null!;
+                ReturnToCache(batchData);
 
                 _dbOnTheRocks._db.Write(rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
                 _dbOnTheRocks._currentBatches.TryRemove(this);
@@ -870,6 +885,25 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             _batchData[key] = (value, null);
 
             _writeFlags = flags;
+        }
+
+        private static SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> CreateOrGetFromCache()
+        {
+            if (s_cache.TryDequeue(out SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)>? batchData))
+            {
+                return batchData;
+            }
+
+            return new(InitialBatchSize, Bytes.SpanEqualityComparer);
+        }
+
+        private static void ReturnToCache(SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> batchData)
+        {
+            if (s_cache.Count >= MaxCached) return;
+
+            batchData.Clear();
+            batchData.TrimExcess(capacity: InitialBatchSize);
+            s_cache.Enqueue(batchData);
         }
     }
 
