@@ -196,7 +196,7 @@ namespace Nethermind.Runner.JsonRpc
 
                                                 first = false;
                                                 responseSize += await jsonSerializer.SerializeAsync(resultStream, entry.Response);
-                                                jsonRpcLocalStats.ReportCall(entry.Report);
+                                                _ = jsonRpcLocalStats.ReportCall(entry.Report);
 
                                                 // We reached the limit and don't want to responded to more request in the batch
                                                 if (!jsonRpcContext.IsAuthenticated && responseSize > jsonRpcConfig.MaxBatchResponseBodySize)
