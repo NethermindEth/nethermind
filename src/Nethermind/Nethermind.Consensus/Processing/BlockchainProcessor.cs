@@ -433,13 +433,13 @@ namespace Nethermind.Consensus.Processing
             return maxProcessingInterval is null || _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow;
         }
 
-        private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
+        private Block[]? TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
         {
             if ((_options.DumpOptions & dumpType) != 0)
             {
                 try
                 {
-                    _blockProcessor.Process(
+                    return _blockProcessor.Process(
                         processingBranch.Root,
                         processingBranch.BlocksToProcess,
                         options,
@@ -454,10 +454,21 @@ namespace Nethermind.Consensus.Processing
                     BlockTraceDumper.LogTraceFailure(blockTracer, processingBranch.Root, ex, _logger);
                 }
             }
+
+            return null;
         }
 
         private Block[]? ProcessBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer)
         {
+            const int maxRetries = 2;
+
+            List<Block> blocksToProcess = processingBranch.BlocksToProcess;
+            if (blocksToProcess.Count == 0)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Skipped processing of {processingBranch.Root.ToShortString()}, blocks to process is empty");
+                return null;
+            }
+
             void DeleteInvalidBlocks(Keccak invalidBlockHash)
             {
                 for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
@@ -466,54 +477,100 @@ namespace Nethermind.Consensus.Processing
                     {
                         _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
                         if (_logger.IsDebug) _logger.Debug($"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
+                        break;
                     }
                 }
             }
 
             Keccak? invalidBlockHash = null;
-            Block[]? processedBlocks;
-            try
+            Block[]? processedBlocks = null;
+            for (int i = 0; i < maxRetries; i++)
             {
-                processedBlocks = _blockProcessor.Process(
-                    processingBranch.Root,
-                    processingBranch.BlocksToProcess,
-                    options,
-                    tracer);
-            }
-            catch (InvalidBlockException ex)
-            {
-                InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs
+                try
                 {
-                    InvalidBlock = ex.InvalidBlock,
-                });
+                    processedBlocks = _blockProcessor.Process(
+                        processingBranch.Root,
+                        blocksToProcess,
+                        options,
+                        tracer);
+                    break;
+                }
+                catch (InvalidBlockException ex)
+                {
+                    // We are favouring liveness here and will retry
+                    // the block a number of times before halting the
+                    // chain for this fork.
 
-                invalidBlockHash = ex.InvalidBlock.Hash;
-                TraceFailingBranch(
-                    processingBranch,
-                    options,
-                    new BlockReceiptsTracer(),
-                    DumpOptions.Receipts);
-
-                TraceFailingBranch(
-                    processingBranch,
-                    options,
-                    new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
-                    DumpOptions.Parity);
-
-                TraceFailingBranch(
-                    processingBranch,
-                    options,
-                    new GethLikeBlockTracer(GethTraceOptions.Default),
-                    DumpOptions.Geth);
-
-                processedBlocks = null;
+                    for (int b = 0; i < blocksToProcess.Count; b++)
+                    {
+                        if (blocksToProcess[i].Hash == ex.InvalidBlock.Hash)
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"Retrying processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because {processingBranch.BlocksToProcess[b].ToString(Block.Format.FullHashAndNumber)} was invalid");
+                            break;
+                        }
+                    }
+                }
             }
 
-            finally
+            if (processedBlocks is null)
             {
-                if (invalidBlockHash is not null && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
+                // Retry failed, trace the block that failed
+                try
                 {
-                    DeleteInvalidBlocks(invalidBlockHash);
+                    processedBlocks = _blockProcessor.Process(
+                        processingBranch.Root,
+                        processingBranch.BlocksToProcess,
+                        options,
+                        tracer);
+                }
+                catch (InvalidBlockException ex)
+                {
+                    processedBlocks = TraceFailingBranch(
+                        processingBranch,
+                        options,
+                        new BlockReceiptsTracer(),
+                        DumpOptions.Receipts);
+
+                    if (processedBlocks is not null)
+                    {
+                        return processedBlocks;
+                    }
+
+                    processedBlocks = TraceFailingBranch(
+                        processingBranch,
+                        options,
+                        new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
+                        DumpOptions.Parity);
+
+                    if (processedBlocks is not null)
+                    {
+                        return processedBlocks;
+                    }
+
+                    processedBlocks = TraceFailingBranch(
+                        processingBranch,
+                        options,
+                        new GethLikeBlockTracer(GethTraceOptions.Default),
+                        DumpOptions.Geth);
+
+                    if (processedBlocks is not null)
+                    {
+                        return processedBlocks;
+                    }
+
+                    InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs
+                    {
+                        InvalidBlock = ex.InvalidBlock,
+                    });
+
+                    invalidBlockHash = ex.InvalidBlock.Hash;
+                }
+                finally
+                {
+                    if (invalidBlockHash is not null && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
+                    {
+                        DeleteInvalidBlocks(invalidBlockHash);
+                    }
                 }
             }
 
