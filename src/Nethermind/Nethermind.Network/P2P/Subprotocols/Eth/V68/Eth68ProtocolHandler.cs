@@ -16,6 +16,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V68;
@@ -38,9 +39,9 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         IPooledTxsRequestor pooledTxsRequestor,
         IGossipPolicy gossipPolicy,
         ForkInfo forkInfo,
-        ILogManager logManager)
-        : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy,
-            forkInfo, logManager)
+        ILogManager logManager,
+        ITxGossipPolicy? transactionsGossipPolicy = null)
+        : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
     {
         _pooledTxsRequestor = pooledTxsRequestor;
 
@@ -54,10 +55,19 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         switch (message.PacketType)
         {
             case Eth68MessageCode.NewPooledTransactionHashes:
-                NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
-                    Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
-                ReportIn(newPooledTxHashesMsg, size);
-                Handle(newPooledTxHashesMsg);
+                if (CanReceiveTransactions)
+                {
+                    NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
+                        Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
+                    ReportIn(newPooledTxHashesMsg, size);
+                    Handle(newPooledTxHashesMsg);
+                }
+                else
+                {
+                    const string ignored = $"{nameof(NewPooledTransactionHashesMessage68)} ignored, syncing";
+                    ReportIn(ignored, size);
+                }
+
                 break;
             default:
                 base.HandleMessage(message);

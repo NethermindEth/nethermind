@@ -39,6 +39,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps;
 
@@ -131,6 +132,11 @@ public class InitializeNetwork : IStep
         }
 
         _api.SyncModeSelector ??= CreateMultiSyncModeSelector(syncProgressResolver);
+        if (_api.TxGossipPolicy.TxGossipPolicy == ShouldGossip.Instance)
+        {
+            _api.TxGossipPolicy.TxGossipPolicy = new SyncedTxGossipPolicy(_api.SyncModeSelector);
+        }
+
         _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree!, _api.ReceiptStorage!, _syncConfig, _api.SyncModeSelector, _api.LogManager);
         _api.DisposeStack.Push(_api.SyncModeSelector);
 
@@ -526,7 +532,8 @@ public class InitializeNetwork : IStep
             peerStorage,
             forkInfo,
             _api.GossipPolicy,
-            _api.LogManager);
+            _api.LogManager,
+            _api.TxGossipPolicy);
 
         if (_syncConfig.WitnessProtocolEnabled)
         {
