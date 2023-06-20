@@ -179,11 +179,11 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
-        public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec spec = null) =>
+        public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null) =>
             instruction switch
             {
                 Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
-                Instruction.JUMPSUB or Instruction.MCOPY when spec is not null => spec.IsEip5656Enabled ? "MCOPY" : "JUMPSUB",
+                Instruction.JUMPSUB or Instruction.MCOPY => spec?.IsEip5656Enabled == true ? "MCOPY" : "JUMPSUB",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null
             };
     }
