@@ -1967,12 +1967,12 @@ OutOfGas:
                             if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
                             stack.PopUInt256(out UInt256 storageIndex);
-                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
+                            storageCell = new(env.ExecutingAccount, storageIndex);
 
                             byte[] value = _state.GetTransientState(storageCell);
                             stack.PushBytes(value);
 
-                            if (_txTracer.IsTracingOpLevelStorage)
+                            if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
                                 _txTracer.LoadOperationTransientStorage(storageCell.Address, storageIndex, value);
                             }
@@ -2013,11 +2013,11 @@ OutOfGas:
                                 newValue = BytesZero;
                             }
 
-                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
+                            storageCell = new(env.ExecutingAccount, storageIndex);
                             byte[] currentValue = newValue.ToArray();
                             _state.SetTransientState(storageCell, currentValue);
 
-                            if (_txTracer.IsTracingOpLevelStorage)
+                            if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
                                 _txTracer.SetOperationTransientStorage(storageCell.Address, storageIndex, newValue, currentValue);
                             }
