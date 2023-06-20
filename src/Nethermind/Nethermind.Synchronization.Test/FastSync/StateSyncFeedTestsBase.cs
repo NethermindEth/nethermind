@@ -222,6 +222,8 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         protected class SyncPeerMock : ISyncPeer
         {
+            public string Name => "Mock";
+
             public static Func<IList<Keccak>, Task<byte[][]>> NotPreimage = request =>
             {
                 var result = new byte[request.Count][];

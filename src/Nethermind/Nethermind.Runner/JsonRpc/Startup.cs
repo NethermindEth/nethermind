@@ -249,7 +249,7 @@ namespace Nethermind.Runner.JsonRpc
                             }
 
                             long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                            jsonRpcLocalStats.ReportCall(result.IsCollection
+                            _ = jsonRpcLocalStats.ReportCall(result.IsCollection
                                 ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, true)
                                 : result.Report.Value, handlingTimeMicroseconds, responseSize);
 

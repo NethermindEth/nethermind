@@ -552,9 +552,7 @@ public class InitializeNetwork : IStep
 
         string chainName = BlockchainIds.GetBlockchainName(_api.ChainSpec!.NetworkId).ToLowerInvariant();
         string domain = _networkConfig.DiscoveryDns ?? $"all.{chainName}.ethdisco.net";
-#pragma warning disable CS4014
-        enrDiscovery.SearchTree(domain).ContinueWith(t =>
-#pragma warning restore CS4014
+        _ = enrDiscovery.SearchTree(domain).ContinueWith(t =>
         {
             if (t.IsFaulted)
             {
