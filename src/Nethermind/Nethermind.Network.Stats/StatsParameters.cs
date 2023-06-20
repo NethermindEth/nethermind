@@ -45,7 +45,7 @@ namespace Nethermind.Stats
 
         public Dictionary<DisconnectReason, TimeSpan> DelayDueToLocalDisconnect { get; } = new()
         {
-            { DisconnectReason.UselessPeer, TimeSpan.FromMinutes(5) }
+            { DisconnectReason.UselessPeer, TimeSpan.FromMinutes(15) }
         };
 
         public Dictionary<DisconnectReason, TimeSpan> DelayDueToRemoteDisconnect { get; } = new()
