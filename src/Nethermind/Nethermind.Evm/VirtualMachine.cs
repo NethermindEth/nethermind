@@ -1960,21 +1960,18 @@ OutOfGas:
                     {
                         if (spec.TransientStorageEnabled)
                         {
-
                             Metrics.TloadOpcode++;
-                            var gasCost = GasCostOf.TLoad;
+                            if (!UpdateGas(GasCostOf.TLoad, ref gasAvailable)) goto OutOfGas;
 
-                            if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
+                            stack.PopUInt256(out result);
+                            storageCell = new(env.ExecutingAccount, result);
 
-                            stack.PopUInt256(out UInt256 storageIndex);
-                            storageCell = new(env.ExecutingAccount, storageIndex);
-
-                            byte[] value = _state.GetTransientState(storageCell);
+                            byte[] value = _state.GetTransientState(in storageCell);
                             stack.PushBytes(value);
 
                             if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
-                                _txTracer.LoadOperationTransientStorage(storageCell.Address, storageIndex, value);
+                                _txTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
                             }
 
                             break;
@@ -1990,7 +1987,7 @@ OutOfGas:
                         }
 
                     }
-                case Instruction.RETURNSUB:
+                case Instruction.RETURNSUB | Instruction.TSTORE:
                     {
                         if (spec.TransientStorageEnabled)
                         {
@@ -1998,28 +1995,18 @@ OutOfGas:
 
                             if (vmState.IsStatic) goto StaticCallViolation;
 
-                            long gasCost = GasCostOf.TStore;
-                            if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
+                            if (!UpdateGas(GasCostOf.TStore, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 storageIndex);
-                            Span<byte> newValue = stack.PopWord256();
-                            bool newIsZero = newValue.IsZero();
-                            if (!newIsZero)
-                            {
-                                newValue = newValue.WithoutLeadingZeros().ToArray();
-                            }
-                            else
-                            {
-                                newValue = BytesZero;
-                            }
+                            stack.PopUInt256(out result);
+                            storageCell = new(env.ExecutingAccount, result);
+                            bytes = stack.PopWord256();
 
-                            storageCell = new(env.ExecutingAccount, storageIndex);
-                            byte[] currentValue = newValue.ToArray();
-                            _state.SetTransientState(storageCell, currentValue);
+                            _state.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
 
                             if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
-                                _txTracer.SetOperationTransientStorage(storageCell.Address, storageIndex, newValue, currentValue);
+                                byte[] currentValue = _state.GetTransientState(in storageCell);
+                                _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
                             }
 
                             break;
