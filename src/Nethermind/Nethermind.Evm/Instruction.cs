@@ -160,8 +160,8 @@ namespace Nethermind.Evm
         LOG4 = 0xa4,
 
         // EIP-1153
-        TLOAD = 0xb3,
-        TSTORE = 0xb4,
+        TLOAD = 0x5c,
+        TSTORE = 0x5d,
 
         CREATE = 0xf0,
         CALL = 0xf1,

@@ -1721,60 +1721,6 @@ public class VirtualMachine : IVirtualMachine
 
                         break;
                     }
-                case Instruction.TLOAD:
-                    {
-                        Metrics.TloadOpcode++;
-                        if (!spec.TransientStorageEnabled) goto InvalidInstruction;
-                        var gasCost = GasCostOf.TLoad;
-
-                        if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
-
-                        stack.PopUInt256(out UInt256 storageIndex);
-                        StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
-
-                        byte[] value = _state.GetTransientState(storageCell);
-                        stack.PushBytes(value);
-
-                        if (_txTracer.IsTracingOpLevelStorage)
-                        {
-                            _txTracer.LoadOperationTransientStorage(storageCell.Address, storageIndex, value);
-                        }
-
-                        break;
-                    }
-                case Instruction.TSTORE:
-                    {
-                        Metrics.TstoreOpcode++;
-                        if (!spec.TransientStorageEnabled) goto InvalidInstruction;
-
-                        if (vmState.IsStatic) goto StaticCallViolation;
-
-                        long gasCost = GasCostOf.TStore;
-                        if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
-
-                        stack.PopUInt256(out UInt256 storageIndex);
-                        Span<byte> newValue = stack.PopWord256();
-                        bool newIsZero = newValue.IsZero();
-                        if (!newIsZero)
-                        {
-                            newValue = newValue.WithoutLeadingZeros().ToArray();
-                        }
-                        else
-                        {
-                            newValue = BytesZero;
-                        }
-
-                        StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
-                        byte[] currentValue = newValue.ToArray();
-                        _state.SetTransientState(storageCell, currentValue);
-
-                        if (_txTracer.IsTracingOpLevelStorage)
-                        {
-                            _txTracer.SetOperationTransientStorage(storageCell.Address, storageIndex, newValue, currentValue);
-                        }
-
-                        break;
-                    }
                 case Instruction.JUMP:
                     {
                         if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) goto OutOfGas;
@@ -2419,28 +2365,88 @@ public class VirtualMachine : IVirtualMachine
 
                         break;
                     }
-                case Instruction.BEGINSUB:
+                case Instruction.BEGINSUB | Instruction.TLOAD:
                     {
-                        if (!spec.SubroutinesEnabled) goto InvalidInstruction;
+                        if (spec.TransientStorageEnabled)
+                        {
 
-                        // why do we even need the cost of it?
-                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
+                            Metrics.TloadOpcode++;
+                            var gasCost = GasCostOf.TLoad;
 
-                        goto InvalidSubroutineEntry;
+                            if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
+
+                            stack.PopUInt256(out UInt256 storageIndex);
+                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
+
+                            byte[] value = _state.GetTransientState(storageCell);
+                            stack.PushBytes(value);
+
+                            if (_txTracer.IsTracingOpLevelStorage)
+                            {
+                                _txTracer.LoadOperationTransientStorage(storageCell.Address, storageIndex, value);
+                            }
+
+                            break;
+                        }
+                        else
+                        {
+                            if (!spec.SubroutinesEnabled) goto InvalidInstruction;
+
+                            // why do we even need the cost of it?
+                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
+
+                            goto InvalidSubroutineEntry;
+                        }
+
                     }
                 case Instruction.RETURNSUB:
                     {
-                        if (!spec.SubroutinesEnabled) goto InvalidInstruction;
-
-                        if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
-
-                        if (vmState.ReturnStackHead == 0)
+                        if (spec.TransientStorageEnabled)
                         {
-                            goto InvalidSubroutineReturn;
-                        }
+                            Metrics.TstoreOpcode++;
 
-                        programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
-                        break;
+                            if (vmState.IsStatic) goto StaticCallViolation;
+
+                            long gasCost = GasCostOf.TStore;
+                            if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
+
+                            stack.PopUInt256(out UInt256 storageIndex);
+                            Span<byte> newValue = stack.PopWord256();
+                            bool newIsZero = newValue.IsZero();
+                            if (!newIsZero)
+                            {
+                                newValue = newValue.WithoutLeadingZeros().ToArray();
+                            }
+                            else
+                            {
+                                newValue = BytesZero;
+                            }
+
+                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
+                            byte[] currentValue = newValue.ToArray();
+                            _state.SetTransientState(storageCell, currentValue);
+
+                            if (_txTracer.IsTracingOpLevelStorage)
+                            {
+                                _txTracer.SetOperationTransientStorage(storageCell.Address, storageIndex, newValue, currentValue);
+                            }
+
+                            break;
+                        }
+                        else
+                        {
+                            if (!spec.SubroutinesEnabled) goto InvalidInstruction;
+
+                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
+
+                            if (vmState.ReturnStackHead == 0)
+                            {
+                                goto InvalidSubroutineReturn;
+                            }
+
+                            programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
+                            break;
+                        }
                     }
                 case Instruction.JUMPSUB:
                     {
