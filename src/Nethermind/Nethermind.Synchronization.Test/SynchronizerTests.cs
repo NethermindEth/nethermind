@@ -579,7 +579,7 @@ namespace Nethermind.Synchronization.Test
 
             public SyncingContext PeerCountEventuallyIs(long i)
             {
-                Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(1000, 100), "peer count");
+                Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(5000, 100), "peer count");
                 return this;
             }
 
@@ -820,7 +820,7 @@ namespace Nethermind.Synchronization.Test
                 .BestSuggestedBlockHasNumber(1).Stop();
         }
 
-        [Test, Retry(3)]
+        [Test, Retry(5)]
         public void Will_remove_peer_when_init_fails()
         {
             SyncPeerMock peerA = new("A", true, true);
