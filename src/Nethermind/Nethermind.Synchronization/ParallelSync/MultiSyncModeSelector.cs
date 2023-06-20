@@ -216,10 +216,11 @@ namespace Nethermind.Synchronization.ParallelSync
                             CheckAddFlag(best.IsInSnapRanges, SyncMode.SnapSync, ref newModes);
                             CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
                             CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
-                            if (IsTheModeSwitchWorthMentioning(newModes))
+                            SyncMode current = Current;
+                            if (IsTheModeSwitchWorthMentioning(current, newModes))
                             {
                                 if (_logger.IsInfo)
-                                    _logger.Info($"Changing state {Current} to {newModes} at {BuildStateString(best)}");
+                                    _logger.Info($"Changing state {current} to {newModes} at {BuildStateString(best)}");
                             }
                         }
                         catch (InvalidAsynchronousStateException)
@@ -249,12 +250,12 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        private bool IsTheModeSwitchWorthMentioning(SyncMode newModes)
+        private bool IsTheModeSwitchWorthMentioning(SyncMode current, SyncMode newModes)
         {
-            return _logger.IsDebug ||
-                   newModes != Current &&
-                   (newModes != SyncMode.WaitingForBlock || Current != SyncMode.Full) &&
-                   (newModes != SyncMode.Full || Current != SyncMode.WaitingForBlock);
+            return newModes != current &&
+                   (_logger.IsDebug ||
+                   (newModes != SyncMode.WaitingForBlock || current != SyncMode.Full) &&
+                   (newModes != SyncMode.Full || current != SyncMode.WaitingForBlock));
         }
 
         private void UpdateSyncModes(SyncMode newModes, string? reason = null)
