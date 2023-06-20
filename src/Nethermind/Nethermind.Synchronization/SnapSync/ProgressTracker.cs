@@ -21,9 +21,9 @@ namespace Nethermind.Synchronization.SnapSync
         private const string NO_REQUEST = "Skipped Request";
 
         private const int STORAGE_BATCH_SIZE = 1_200;
-        private const int HIGH_STORAGE_QUEUE_SIZE = STORAGE_BATCH_SIZE * 100;
+        public const int HIGH_STORAGE_QUEUE_SIZE = STORAGE_BATCH_SIZE * 100;
         private const int CODES_BATCH_SIZE = 1_000;
-        private const int HIGH_CODES_QUEUE_SIZE = CODES_BATCH_SIZE * 5;
+        public const int HIGH_CODES_QUEUE_SIZE = CODES_BATCH_SIZE * 5;
         private readonly byte[] ACC_PROGRESS_KEY = Encoding.ASCII.GetBytes("AccountProgressKey");
 
         // This does not need to be a lot as it spawn other requests. In fact 8 is probably too much. It is severely
