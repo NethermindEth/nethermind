@@ -2028,19 +2028,18 @@ OutOfGas:
                         {
                             Metrics.MCopyOpcode++;
 
-                            stack.PopUInt256(out UInt256 dstPosition);
-                            stack.PopUInt256(out UInt256 srcPosition);
-                            stack.PopUInt256(out UInt256 length);
+                            stack.PopUInt256(out a);
+                            stack.PopUInt256(out b);
+                            stack.PopUInt256(out c);
 
-                            long baseGasCost = GasCostOf.VeryLow + GasCostOf.VeryLow * EvmPooledMemory.Div32Ceiling(length);
-                            if (!UpdateGas(baseGasCost, ref gasAvailable)
-                                || !UpdateMemoryCost(vmState, ref gasAvailable, UInt256.Max(srcPosition, dstPosition), length)) goto OutOfGas;
+                            if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.VeryLow * EvmPooledMemory.Div32Ceiling(c), ref gasAvailable)
+                                || !UpdateMemoryCost(vmState, ref gasAvailable, UInt256.Max(b, a), c)) goto OutOfGas;
 
-                            Span<byte> loadedData = vmState.Memory.LoadSpan(in srcPosition, length);
-                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(srcPosition, loadedData);
+                            bytes = vmState.Memory.LoadSpan(in b, c);
+                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(b, bytes);
 
-                            vmState.Memory.Save(in dstPosition, loadedData);
-                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(dstPosition, loadedData);
+                            vmState.Memory.Save(in a, bytes);
+                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(a, bytes);
 
                             break;
                         }
