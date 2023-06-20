@@ -84,6 +84,7 @@ namespace Nethermind.Evm
         BEGINSUB = 0x5c,
         RETURNSUB = 0x5d,
         JUMPSUB = 0x5e,
+        MCOPY = 0x5e,
 
         PUSH0 = 0x5f, // EIP-3855
         PUSH1 = 0x60,
@@ -162,7 +163,6 @@ namespace Nethermind.Evm
         // EIP-1153
         TLOAD = 0xb3,
         TSTORE = 0xb4,
-        MCOPY = 0xb7,
 
         CREATE = 0xf0,
         CALL = 0xf1,

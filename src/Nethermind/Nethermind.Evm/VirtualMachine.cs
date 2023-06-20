@@ -1547,31 +1547,6 @@ public class VirtualMachine : IVirtualMachine
 
                         break;
                     }
-                case Instruction.MCOPY:
-                    {
-                        if (!spec.MCopyIncluded)
-                        {
-                            goto InvalidInstruction;
-                        }
-
-                        Metrics.MCopyOpcode++;
-
-                        stack.PopUInt256(out UInt256 dstPosition);
-                        stack.PopUInt256(out UInt256 srcPosition);
-                        stack.PopUInt256(out UInt256 length);
-
-                        long baseGasCost = GasCostOf.VeryLow + GasCostOf.VeryLow * (((long)length + 31) / 32);
-                        if (!UpdateGas(baseGasCost, ref gasAvailable)
-                            || !UpdateMemoryCost(vmState, ref gasAvailable, UInt256.Max(srcPosition, dstPosition), length)) goto OutOfGas;
-
-                        Span<byte> loadedData = vmState.Memory.LoadSpan(in srcPosition, length);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange(srcPosition, loadedData);
-
-                        vmState.Memory.Save(in dstPosition, loadedData);
-                        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dstPosition, loadedData);
-
-                        break;
-                    }
                 case Instruction.SLOAD:
                     {
                         Metrics.SloadOpcode++;
@@ -2467,21 +2442,44 @@ public class VirtualMachine : IVirtualMachine
                         programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
                         break;
                     }
-                case Instruction.JUMPSUB:
+                case Instruction.JUMPSUB or Instruction.MCOPY:
                     {
-                        if (!spec.SubroutinesEnabled) goto InvalidInstruction;
+                        if (spec.MCopyIncluded)
+                        {
+                            Metrics.MCopyOpcode++;
 
-                        if (!UpdateGas(GasCostOf.High, ref gasAvailable)) goto OutOfGas;
+                            stack.PopUInt256(out UInt256 dstPosition);
+                            stack.PopUInt256(out UInt256 srcPosition);
+                            stack.PopUInt256(out UInt256 length);
 
-                        if (vmState.ReturnStackHead == EvmStack.ReturnStackSize) goto StackOverflow;
+                            long baseGasCost = GasCostOf.VeryLow + GasCostOf.VeryLow * EvmPooledMemory.Div32Ceiling(length);
+                            if (!UpdateGas(baseGasCost, ref gasAvailable)
+                                || !UpdateMemoryCost(vmState, ref gasAvailable, UInt256.Max(srcPosition, dstPosition), length)) goto OutOfGas;
 
-                        vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
+                            Span<byte> loadedData = vmState.Memory.LoadSpan(in srcPosition, length);
+                            if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange(srcPosition, loadedData);
 
-                        stack.PopUInt256(out UInt256 jumpDest);
-                        if (!Jump(jumpDest, ref programCounter, in env, true)) goto InvalidJumpDestination;
-                        programCounter++;
+                            vmState.Memory.Save(in dstPosition, loadedData);
+                            if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dstPosition, loadedData);
 
-                        break;
+                            break;
+                        } else
+                        {
+                            if (!spec.SubroutinesEnabled) goto InvalidInstruction;
+
+                            if (!UpdateGas(GasCostOf.High, ref gasAvailable)) goto OutOfGas;
+
+                            if (vmState.ReturnStackHead == EvmStack.ReturnStackSize) goto StackOverflow;
+
+                            vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
+
+                            stack.PopUInt256(out UInt256 jumpDest);
+                            if (!Jump(jumpDest, ref programCounter, in env, true)) goto InvalidJumpDestination;
+                            programCounter++;
+
+                            break;
+                        }
+
                     }
                 default:
                     {

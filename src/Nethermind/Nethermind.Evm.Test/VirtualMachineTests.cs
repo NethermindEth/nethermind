@@ -467,7 +467,7 @@ namespace Nethermind.Evm.Test
 
 
         [Test]
-        public void MCopy_Overwrite_areas()
+        public void MCopy_Overwrite_areas_copy_right()
         {
             int SLICE_SIZE = 8;
             byte[] data = Bytes.FromHexString("0102030405060708000000000000000000000000000000000000000000000000");
@@ -497,6 +497,24 @@ namespace Nethermind.Evm.Test
 
             Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32)), "gas");
             Assert.That(traces.Entries.Last().Memory.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void MCopy_Overwrite_areas_copy_left()
+        {
+            int SLICE_SIZE = 8;
+            byte[] data = Bytes.FromHexString("0001020304050607080000000000000000000000000000000000000000000000");
+            byte[] bytecode = Prepare.EvmCode
+                .MSTORE(0, data)
+                .MCOPY(0, 1, (UInt256)SLICE_SIZE)
+                .STOP()
+                .Done;
+            GethLikeTxTrace traces = Execute(new GethLikeTxTracer(GethTraceOptions.Default), bytecode, MainnetSpecProvider.CancunActivation).BuildResult();
+
+            var result = traces.Entries.Last().Memory[0];
+
+            Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
+            Assert.That(result, Is.EqualTo("0102030405060708080000000000000000000000000000000000000000000000"), "memory state");
         }
 
         /// <summary>
