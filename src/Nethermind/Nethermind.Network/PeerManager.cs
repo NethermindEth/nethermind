@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using FastEnumUtility;
@@ -205,7 +206,7 @@ namespace Nethermind.Network
 
         private async Task RunPeerUpdateLoop()
         {
-            const int TIME_WAIT = 60_000;
+            const int TIME_WAIT = 5_000;
 
             int loopCount = 0;
             long previousActivePeersCount = 0;
@@ -236,7 +237,8 @@ namespace Nethermind.Network
                         continue;
                     }
 
-                    if (AvailableActivePeersCount == 0)
+                    int availableActivePeerCount = AvailableActivePeersCount;
+                    if (availableActivePeerCount == 0)
                     {
                         continue;
                     }
@@ -258,61 +260,48 @@ namespace Nethermind.Network
                         break;
                     }
 
-                    int currentPosition = 0;
-                    long lastMs = Environment.TickCount64;
-                    int peersTried = 0;
-                    while (true)
+                    Channel<Peer> taskChannel = Channel.CreateBounded<Peer>(1);
+                    List<Task>? tasks = Enumerable.Range(0, Math.Min(_parallelism, availableActivePeerCount)).Select((idx) =>
                     {
-                        if (_cancellationTokenSource.IsCancellationRequested)
+                        return Task.Run(async () =>
                         {
-                            break;
-                        }
-
-                        int nodesToTry = Math.Min(remainingCandidates.Count - currentPosition, AvailableActivePeersCount);
-                        if (nodesToTry <= 0)
-                        {
-                            break;
-                        }
-
-                        peersTried += nodesToTry;
-                        ActionBlock<Peer> workerBlock = new(
-                            SetupOutgoingPeerConnection,
-                            new ExecutionDataflowBlockOptions
+                            await foreach (Peer peer in taskChannel.Reader.ReadAllAsync(_cancellationTokenSource.Token))
                             {
-                                MaxDegreeOfParallelism = _parallelism,
-                                CancellationToken = _cancellationTokenSource.Token
-                            });
-
-                        for (int i = 0; i < nodesToTry; i++)
-                        {
-                            await workerBlock.SendAsync(remainingCandidates[currentPosition + i]);
-                        }
-
-                        currentPosition += nodesToTry;
-
-                        workerBlock.Complete();
-
-                        // Wait for all messages to propagate through the network.
-                        await workerBlock.Completion;
-
-                        Interlocked.Increment(ref _connectionRounds);
-
-                        long nowMs = Environment.TickCount64;
-                        if (peersTried > 1_000)
-                        {
-                            peersTried = 0;
-                            // Wait for sockets to clear
-                            await Task.Delay(TIME_WAIT);
-                        }
-                        else
-                        {
-                            long diffMs = nowMs - lastMs;
-                            if (diffMs < 50)
-                            {
-                                await Task.Delay(50 - (int)diffMs);
+                                await SetupOutgoingPeerConnection(peer);
                             }
+                        });
+                    }).ToList();
+
+                    try
+                    {
+                        int testedPeerCount = 0;
+                        foreach (Peer peer in remainingCandidates)
+                        {
+                            Console.Out.WriteLine($"Available peer count {AvailableActivePeersCount}");
+                            if (AvailableActivePeersCount <= 0)
+                            {
+                                // Once the connection was established, the active peer count will increase, but it might
+                                // not pass the handshake and the status check. So we wait for a bit to see if we can get
+                                // the active peer count to go down within this time window.
+                                _peerUpdateRequested.Reset();
+                                _peerUpdateRequested.Wait(Timeouts.Handshake + TimeSpan.FromMilliseconds(_networkConfig.ConnectTimeoutMs), _cancellationTokenSource.Token);
+
+                                // If not, then we stop the loop.
+                                if (AvailableActivePeersCount <= 0)
+                                {
+                                    break;
+                                }
+                            }
+
+                            testedPeerCount++;
+                            await taskChannel.Writer.WriteAsync(peer);
                         }
-                        lastMs = nowMs;
+
+                        taskChannel.Writer.Complete();
+                        await Task.WhenAll(tasks);
+                    }
+                    catch (TaskCanceledException)
+                    {
                     }
 
                     if (_logger.IsTrace)

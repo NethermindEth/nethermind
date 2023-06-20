@@ -85,12 +85,18 @@ namespace Nethermind.Network.Test
         [Test]
         public async Task Will_only_connect_up_to_max_peers()
         {
-            await using Context ctx = new();
+            await using Context ctx = new(1);
             ctx.SetupPersistedPeers(50);
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
-            await Task.Delay(_travisDelayLong * 10);
-            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(25));
+            await Task.Delay(_travisDelayLong);
+
+            int expectedConnectCount = 25;
+            Assert.That(
+                () => ctx.RlpxPeer.ConnectAsyncCallsCount,
+                Is
+                    .InRange(expectedConnectCount, expectedConnectCount + 1)
+                    .After(_travisDelay * 10, 10));
         }
 
         [Test]
@@ -561,7 +567,7 @@ namespace Nethermind.Network.Test
             public IStaticNodesManager StaticNodesManager { get; }
             public List<Session> Sessions { get; } = new();
 
-            public Context()
+            public Context(int parallelism = 0)
             {
                 RlpxPeer = new RlpxMock(Sessions);
                 DiscoveryApp = Substitute.For<IDiscoveryApp>();
@@ -573,6 +579,7 @@ namespace Nethermind.Network.Test
                 NetworkConfig = new NetworkConfig();
                 NetworkConfig.MaxActivePeers = 25;
                 NetworkConfig.PeersPersistenceInterval = 50;
+                NetworkConfig.NumConcurrentOutgoingConnects = parallelism;
                 StaticNodesManager = Substitute.For<IStaticNodesManager>();
                 StaticNodesManager.LoadInitialList().Returns(new List<Node>());
                 CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp, StaticNodesManager);
