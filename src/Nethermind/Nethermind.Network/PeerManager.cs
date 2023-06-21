@@ -122,7 +122,7 @@ namespace Nethermind.Network
                     // fire and forget - all the surrounding logic will be executed
                     // exceptions can be lost here without issues
                     // this for rapid connections to newly discovered peers without having to go through the UpdatePeerLoop
-                    SetupOutgoingPeerConnection(peer);
+                    SetupOutgoingPeerConnection(peer, cancelIfThrottled: true);
                 }
 #pragma warning restore 4014
             }
@@ -606,8 +606,12 @@ namespace Nethermind.Network
         #region Outgoing connection handling
 
         [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
-        private async Task SetupOutgoingPeerConnection(Peer peer)
+        private async Task SetupOutgoingPeerConnection(Peer peer, bool cancelIfThrottled = false)
         {
+            if (cancelIfThrottled)
+            {
+                if (_outgoingConnectionRateLimiter.IsThrottled()) return;
+            }
             await _outgoingConnectionRateLimiter.WaitAsync(_cancellationTokenSource.Token);
 
             // Can happen when In connection is received from the same peer and is initialized before we get here

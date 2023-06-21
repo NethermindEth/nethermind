@@ -54,4 +54,12 @@ public class RateLimiterTests
         Func<Task> act = async () => await waitTask;
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
+
+    [Test]
+    public async Task RateLimiter_should_return_true_on_is_throttled_if_throttled()
+    {
+        RateLimiter rateLimiter = new(1);
+        await rateLimiter.WaitAsync(CancellationToken.None);
+        rateLimiter.IsThrottled().Should().BeTrue();
+    }
 }

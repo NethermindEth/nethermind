@@ -27,6 +27,11 @@ public class RateLimiter
         _nextSlot = DateTimeOffset.Now;
     }
 
+    public bool IsThrottled()
+    {
+        return DateTimeOffset.Now < _nextSlot;
+    }
+
     public async Task WaitAsync(CancellationToken ctx)
     {
         while (true)
