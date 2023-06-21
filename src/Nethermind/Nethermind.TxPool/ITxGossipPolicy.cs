@@ -16,8 +16,7 @@ public interface ITxGossipPolicy
 
 public class CompositeTxGossipPolicy : ITxGossipPolicy
 {
-    public List<ITxGossipPolicy> Policies { get; } = new() { ShouldGossip.Instance };
-
+    public List<ITxGossipPolicy> Policies { get; } = new();
     public bool CanGossipTransactions => Policies.All(static p => p.CanGossipTransactions);
     public bool ShouldGossipTransaction(Transaction tx) => Policies.All(p => p.ShouldGossipTransaction(tx));
 }

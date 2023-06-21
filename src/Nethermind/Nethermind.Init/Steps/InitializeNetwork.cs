@@ -132,7 +132,6 @@ public class InitializeNetwork : IStep
         }
 
         _api.SyncModeSelector ??= CreateMultiSyncModeSelector(syncProgressResolver);
-        _api.TxGossipPolicy.Policies.Remove(ShouldGossip.Instance);
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
 
         _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree!, _api.ReceiptStorage!, _syncConfig, _api.SyncModeSelector, _api.LogManager);
