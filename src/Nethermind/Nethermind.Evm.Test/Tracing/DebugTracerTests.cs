@@ -4,12 +4,7 @@
 #if DEBUG
 using Nethermind.Evm.Tracing.DebugTrace;
 using Nethermind.Evm.Tracing.GethStyle;
-using System.Threading.Tasks;
-using System;
-using Nethermind.Int256;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
-using System.Text.Json;
 using System.Threading;
 using Nethermind.Core.Extensions;
 
@@ -28,7 +23,7 @@ namespace Nethermind.Evm.Test
         [TestCase("0x5b601760005600")]
         public void Debugger_Halts_Execution_On_Breakpoint(string bytecodeHex)
         {
-            // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :  
+            // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
             (int depth, int pc) JUMP_OPCODE_PTR_BREAK_POINT = (0, 5);
@@ -78,7 +73,7 @@ namespace Nethermind.Evm.Test
         [TestCase("0x5b601760005600")]
         public void Debugger_Halts_Execution_On_Breakpoint_If_Condition_Is_True(string bytecodeHex)
         {
-            // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :  
+            // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
             (int depth, int pc) JUMP_OPCODE_PTR_BREAK_POINT = (0, 5);
@@ -231,7 +226,7 @@ namespace Nethermind.Evm.Test
         [TestCase("0x5b601760005600")]
         public void Debugger_Can_Alter_Program_Counter(string bytecodeHex)
         {
-            // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :  
+            // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
             (int depth, int pc) JUMP_OPCODE_PTR_BREAK_POINT = (0, 5);
@@ -262,11 +257,11 @@ namespace Nethermind.Evm.Test
         [TestCase("5b6017600160005700")]
         public void Debugger_Can_Alter_Data_Stack(string bytecodeHex)
         {
-            // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :  
+            // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
             (int depth, int pc) JUMP_OPCODE_PTR_BREAK_POINT = (0, 5);
-            using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+            using DebugTracer tracer = new(GethLikeTxTracer)
             {
                 IsStepByStepModeOn = false,
             };
@@ -281,7 +276,7 @@ namespace Nethermind.Evm.Test
                 if (tracer.CanReadState)
                 {
                     // we pop the condition and overwrite it with a false to force breaking out of the loop
-                    EvmStack stack = new(tracer.CurrentState.DataStack, tracer.CurrentState.DataStackHead, tracer);
+                    EvmStack<VirtualMachine.IsTracing> stack = new(tracer.CurrentState.DataStack, tracer.CurrentState.DataStackHead, tracer);
                     stack.PopLimbo();
                     stack.PushByte(0x00);
 
@@ -297,7 +292,7 @@ namespace Nethermind.Evm.Test
         [TestCase("6017806000526000511460005260206000f3")]
         public void Debugger_Can_Alter_Memory(string bytecodeHex)
         {
-            // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :  
+            // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
             (int depth, int pc) MSTORE_OPCODE_PTR_BREAK_POINT = (0, 6);
@@ -330,7 +325,7 @@ namespace Nethermind.Evm.Test
         [TestCase("6017806000526000511460005260206000f3")]
         public void Use_Debug_Tracer_To_Check_Assertion_Live(string bytecodeHex)
         {
-            // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :  
+            // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
             (int depth, int pc) MSTORE_OPCODE_PTR_BREAK_POINT = (0, 6);
