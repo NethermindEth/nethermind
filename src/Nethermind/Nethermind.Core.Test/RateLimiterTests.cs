@@ -12,12 +12,10 @@ namespace Nethermind.Core.Test;
 
 public class RateLimiterTests
 {
-    [TestCase(10, 1, 1000)]
-    [TestCase(10, 1, 100)]
+    [TestCase(100, 1, 1000)]
     [TestCase(100, 1, 100)]
     [TestCase(1000, 1, 100)]
-    [TestCase(10, 4, 1000)]
-    [TestCase(10, 4, 100)]
+    [TestCase(100, 4, 1000)]
     [TestCase(100, 4, 100)]
     [TestCase(1000, 4, 100)]
     public async Task RateLimiter_should_delay_wait_to_rate_limit(int eventPerSec, int concurrency, int durationMs)
@@ -41,7 +39,7 @@ public class RateLimiterTests
         Task.WaitAll(tasks);
 
         int effectivePerSec = (int)(counter / (DateTimeOffset.Now - startTime).TotalSeconds);
-        effectivePerSec.Should().BeInRange(eventPerSec - 10, eventPerSec + 10);
+        effectivePerSec.Should().BeInRange((int)(eventPerSec * 0.9), (int)(eventPerSec * 1.1));
     }
 
     [Test]

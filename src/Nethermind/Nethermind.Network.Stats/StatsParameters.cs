@@ -41,7 +41,7 @@ namespace Nethermind.Stats
 
         public int[] FailedConnectionDelays { get; }
 
-        public int[] DisconnectDelays { get; }
+        public int[] DisconnectDelays { get; set;  }
 
         public Dictionary<DisconnectReason, TimeSpan> DelayDueToLocalDisconnect { get; } = new()
         {

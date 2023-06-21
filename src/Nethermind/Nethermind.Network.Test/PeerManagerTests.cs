@@ -298,21 +298,23 @@ namespace Nethermind.Network.Test
 
             TimeSpan prevConnectingDelay = StatsParameters.Instance.DelayDueToEvent[NodeStatsEventType.Connecting];
             StatsParameters.Instance.DelayDueToEvent[NodeStatsEventType.Connecting] = TimeSpan.Zero;
+            int[] prevDisconnectDelays = StatsParameters.Instance.DisconnectDelays;
+            StatsParameters.Instance.DisconnectDelays = new[] { 0 };
 
             try
             {
-                int currentCount = 0;
                 for (int i = 0; i < 10; i++)
                 {
-                    currentCount += 25;
-                    await Task.Delay(_travisDelayLonger);
-                    Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(currentCount));
+                    Assert.That(
+                        () => ctx.PeerPool.ActivePeers.Count(),
+                        Is.AtLeast(25).After(_travisDelayLonger * 2, 10));
                     ctx.DisconnectAllSessions();
                 }
             }
             finally
             {
                 StatsParameters.Instance.DelayDueToEvent[NodeStatsEventType.Connecting] = prevConnectingDelay;
+                StatsParameters.Instance.DisconnectDelays = prevDisconnectDelays;
             }
         }
 
@@ -580,6 +582,7 @@ namespace Nethermind.Network.Test
                 NetworkConfig.MaxActivePeers = 25;
                 NetworkConfig.PeersPersistenceInterval = 50;
                 NetworkConfig.NumConcurrentOutgoingConnects = parallelism;
+                NetworkConfig.MaxOutgoingConnectPerSec = 1000000; // no limit in unit test
                 StaticNodesManager = Substitute.For<IStaticNodesManager>();
                 StaticNodesManager.LoadInitialList().Returns(new List<Node>());
                 CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp, StaticNodesManager);
@@ -661,7 +664,7 @@ namespace Nethermind.Network.Test
 
                 foreach (Session session in clone)
                 {
-                    session.MarkDisconnected(DisconnectReason.TooManyPeers, DisconnectType.Remote, "test");
+                    session.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Remote, "test");
                 }
             }
 

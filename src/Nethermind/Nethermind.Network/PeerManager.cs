@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -10,8 +9,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using System.Threading.Tasks.Dataflow;
 using FastEnumUtility;
+using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -21,7 +20,6 @@ using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization.Peers;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Network
@@ -38,6 +36,7 @@ namespace Nethermind.Network
         private readonly PeerComparer _peerComparer = new();
         private readonly IPeerPool _peerPool;
         private readonly List<PeerStats> _candidates;
+        private readonly RateLimiter _outgoingConnectionRateLimiter;
 
         private int _pending;
         private int _tryCount;
@@ -52,10 +51,9 @@ namespace Nethermind.Network
 
         private bool _isStarted;
         private int _logCounter = 1;
-        private Task _peerUpdateLoopTask;
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
-        private readonly int _parallelism;
+        private readonly int _outgoingConnectParallelism;
 
         public PeerManager(
             IRlpxHost rlpxHost,
@@ -68,11 +66,12 @@ namespace Nethermind.Network
             _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
             _stats = stats ?? throw new ArgumentNullException(nameof(stats));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-            _parallelism = networkConfig.NumConcurrentOutgoingConnects;
-            if (_parallelism == 0)
+            _outgoingConnectParallelism = networkConfig.NumConcurrentOutgoingConnects;
+            if (_outgoingConnectParallelism == 0)
             {
-                _parallelism = Environment.ProcessorCount;
+                _outgoingConnectParallelism = Environment.ProcessorCount;
             }
+            _outgoingConnectionRateLimiter = new RateLimiter(networkConfig.MaxOutgoingConnectPerSec);
 
             _peerPool = peerPool;
             _candidates = new List<PeerStats>(networkConfig.MaxActivePeers * 2);
@@ -159,7 +158,7 @@ namespace Nethermind.Network
 
             StartPeerUpdateLoop();
 
-            _peerUpdateLoopTask = Task.Factory.StartNew(
+            Task.Factory.StartNew(
                 RunPeerUpdateLoop,
                 _cancellationTokenSource.Token,
                 TaskCreationOptions.LongRunning,
@@ -206,7 +205,17 @@ namespace Nethermind.Network
 
         private async Task RunPeerUpdateLoop()
         {
-            const int TIME_WAIT = 5_000;
+            Channel<Peer> taskChannel = Channel.CreateBounded<Peer>(1);
+            List<Task>? tasks = Enumerable.Range(0, _outgoingConnectParallelism).Select((idx) =>
+            {
+                return Task.Run(async () =>
+                {
+                    await foreach (Peer peer in taskChannel.Reader.ReadAllAsync(_cancellationTokenSource.Token))
+                    {
+                        await SetupOutgoingPeerConnection(peer);
+                    }
+                });
+            }).ToList();
 
             int loopCount = 0;
             long previousActivePeersCount = 0;
@@ -260,48 +269,18 @@ namespace Nethermind.Network
                         break;
                     }
 
-                    Channel<Peer> taskChannel = Channel.CreateBounded<Peer>(1);
-                    List<Task>? tasks = Enumerable.Range(0, Math.Min(_parallelism, availableActivePeerCount)).Select((idx) =>
+                    // We only loop through the top candidates as the reputation take into account things like ping
+                    // message. So we resort instead of going through all peers.
+                    foreach (Peer peer in remainingCandidates.Take(512))
                     {
-                        return Task.Run(async () =>
+                        if (!EnsureAvailableActivePeer())
                         {
-                            await foreach (Peer peer in taskChannel.Reader.ReadAllAsync(_cancellationTokenSource.Token))
-                            {
-                                await SetupOutgoingPeerConnection(peer);
-                            }
-                        });
-                    }).ToList();
-
-                    try
-                    {
-                        int testedPeerCount = 0;
-                        foreach (Peer peer in remainingCandidates)
-                        {
-                            Console.Out.WriteLine($"Available peer count {AvailableActivePeersCount}");
-                            if (AvailableActivePeersCount <= 0)
-                            {
-                                // Once the connection was established, the active peer count will increase, but it might
-                                // not pass the handshake and the status check. So we wait for a bit to see if we can get
-                                // the active peer count to go down within this time window.
-                                _peerUpdateRequested.Reset();
-                                _peerUpdateRequested.Wait(Timeouts.Handshake + TimeSpan.FromMilliseconds(_networkConfig.ConnectTimeoutMs), _cancellationTokenSource.Token);
-
-                                // If not, then we stop the loop.
-                                if (AvailableActivePeersCount <= 0)
-                                {
-                                    break;
-                                }
-                            }
-
-                            testedPeerCount++;
-                            await taskChannel.Writer.WriteAsync(peer);
+                            // Some new connection are in flight at this point, but statistically speaking, they
+                            // are going to fail, so its fine.
+                            break;
                         }
 
-                        taskChannel.Writer.Complete();
-                        await Task.WhenAll(tasks);
-                    }
-                    catch (TaskCanceledException)
-                    {
+                        await taskChannel.Writer.WriteAsync(peer);
                     }
 
                     if (_logger.IsTrace)
@@ -333,11 +312,8 @@ namespace Nethermind.Network
                         _logCounter++;
                     }
 
-                    if (_peerPool.ActivePeerCount < MaxActivePeers)
+                    if (EnsureAvailableActivePeer())
                     {
-                        // We been though all the peers once, so wait TIME-WAIT additional delay before
-                        // trying them again to avoid busy loop or exhausting sockets.
-                        await Task.Delay(TIME_WAIT);
                         _peerUpdateRequested.Set();
                     }
 
@@ -369,7 +345,33 @@ namespace Nethermind.Network
 
                 _peerUpdateTimer.Start();
             }
+
+            taskChannel.Writer.Complete();
+            await Task.WhenAll(tasks);
         }
+
+        private bool EnsureAvailableActivePeer()
+        {
+            if (AvailableActivePeersCount > 0)
+            {
+                return true;
+            }
+
+            // Once the connection was established, the active peer count will increase, but it might
+            // not pass the handshake and the status check. So we wait for a bit to see if we can get
+            // the active peer count to go down within this time window.
+            DateTimeOffset deadline = DateTimeOffset.Now + Timeouts.Handshake +
+                                      TimeSpan.FromMilliseconds(_networkConfig.ConnectTimeoutMs);
+            while (DateTimeOffset.Now < deadline && AvailableActivePeersCount <= 0)
+            {
+                // The signal is not very reliable. So we just do like a simple pool.
+                _peerUpdateRequested.Reset();
+                _peerUpdateRequested.Wait(TimeSpan.FromMilliseconds(10));
+            }
+
+            return AvailableActivePeersCount > 0;
+        }
+
 
         private static readonly IReadOnlyList<ActivePeerSelectionCounter> _enumValues = FastEnum.GetValues<ActivePeerSelectionCounter>();
 
@@ -615,6 +617,8 @@ namespace Nethermind.Network
                 if (_logger.IsTrace) _logger.Trace($"Active peer was already added to collection: {peer.Node.Id}");
                 return;
             }
+
+            await _outgoingConnectionRateLimiter.WaitAsync(_cancellationTokenSource.Token);
 
             Interlocked.Increment(ref _tryCount);
             Interlocked.Increment(ref _pending);
