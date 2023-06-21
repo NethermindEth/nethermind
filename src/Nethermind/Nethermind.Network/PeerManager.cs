@@ -269,12 +269,9 @@ namespace Nethermind.Network
                         break;
                     }
 
-                    // We only loop through the top candidates as the reputation take into account things like ping
-                    // message. So we resort instead of going through all peers. 1200 is the default outgoing call rate
-                    // multiply by 60 second, so this should finish and try (probably) another set of peers in 60 second.
-                    foreach (Peer peer in remainingCandidates.Take(1200))
+                    foreach (Peer peer in remainingCandidates)
                     {
-                        if (!EnsureAvailableActivePeer())
+                        if (!EnsureAvailableActivePeerSlot())
                         {
                             // Some new connection are in flight at this point, but statistically speaking, they
                             // are going to fail, so its fine.
@@ -313,7 +310,7 @@ namespace Nethermind.Network
                         _logCounter++;
                     }
 
-                    if (EnsureAvailableActivePeer())
+                    if (EnsureAvailableActivePeerSlot())
                     {
                         _peerUpdateRequested.Set();
                     }
@@ -351,9 +348,9 @@ namespace Nethermind.Network
             await Task.WhenAll(tasks);
         }
 
-        private bool EnsureAvailableActivePeer()
+        private bool EnsureAvailableActivePeerSlot()
         {
-            if (AvailableActivePeersCount > 0)
+            if (_pending < AvailableActivePeersCount)
             {
                 return true;
             }
@@ -363,14 +360,14 @@ namespace Nethermind.Network
             // the active peer count to go down within this time window.
             DateTimeOffset deadline = DateTimeOffset.Now + Timeouts.Handshake +
                                       TimeSpan.FromMilliseconds(_networkConfig.ConnectTimeoutMs);
-            while (DateTimeOffset.Now < deadline && AvailableActivePeersCount <= 0)
+            while (DateTimeOffset.Now < deadline && _pending >= AvailableActivePeersCount)
             {
                 // The signal is not very reliable. So we just do like a simple pool.
                 _peerUpdateRequested.Reset();
                 _peerUpdateRequested.Wait(TimeSpan.FromMilliseconds(10));
             }
 
-            return AvailableActivePeersCount > 0;
+            return _pending < AvailableActivePeersCount;
         }
 
 
