@@ -19,6 +19,8 @@ using Nethermind.State.Tracing;
 using static Nethermind.Core.Extensions.MemoryExtensions;
 using Transaction = Nethermind.Core.Transaction;
 
+using static Nethermind.Evm.VirtualMachine;
+
 namespace Nethermind.Evm.TransactionProcessing
 {
     public class TransactionProcessor : ITransactionProcessor
@@ -484,7 +486,15 @@ namespace Nethermind.Evm.TransactionProcessing
                         state.WarmUp(header.GasBeneficiary);
                     }
 
-                    substate = _virtualMachine.Run(state, _worldState, tracer);
+                    if (!tracer.IsTracingActions)
+                    {
+                        substate = _virtualMachine.Run<NotTracing>(state, _worldState, tracer);
+                    }
+                    else
+                    {
+                        substate = _virtualMachine.Run<IsTracing>(state, _worldState, tracer);
+                    }
+
                     unspentGas = state.GasAvailable;
 
                     if (tracer.IsTracingAccess)

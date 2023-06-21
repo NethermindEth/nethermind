@@ -20,7 +20,7 @@ namespace Nethermind.Evm
         public const int WordSize = 32;
         private static readonly UInt256 WordSize256 = WordSize;
 
-        private static readonly ArrayPool<byte> Pool = LargerArrayPool.Shared;
+        private static readonly LargerArrayPool Pool = LargerArrayPool.Shared;
 
         private int _lastZeroedSize;
 
@@ -100,7 +100,7 @@ namespace Nethermind.Evm
             Array.Copy(value, 0, _memory!, (long)location, value.Length);
         }
 
-        public void Save(in UInt256 location, ZeroPaddedSpan value)
+        public void Save(in UInt256 location, in ZeroPaddedSpan value)
         {
             if (value.Length == 0)
             {
@@ -116,7 +116,7 @@ namespace Nethermind.Evm
             _memory.AsSpan(intLocation + value.Span.Length, value.PaddingLength).Clear();
         }
 
-        public void Save(in UInt256 location, ZeroPaddedMemory value)
+        public void Save(in UInt256 location, in ZeroPaddedMemory value)
         {
             if (value.Length == 0)
             {
@@ -140,7 +140,7 @@ namespace Nethermind.Evm
             return _memory.AsSpan((int)location, WordSize);
         }
 
-        public Span<byte> LoadSpan(in UInt256 location, in UInt256 length)
+        public Span<byte> LoadSpan(scoped in UInt256 location, scoped in UInt256 length)
         {
             if (length.IsZero)
             {
@@ -253,6 +253,7 @@ namespace Nethermind.Evm
             if (_memory is not null)
             {
                 Pool.Return(_memory);
+                _memory = null;
             }
         }
 

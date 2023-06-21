@@ -21,7 +21,9 @@ namespace Nethermind.Synchronization.SnapSync
         private const string NO_REQUEST = "Skipped Request";
 
         private const int STORAGE_BATCH_SIZE = 1_200;
+        public const int HIGH_STORAGE_QUEUE_SIZE = STORAGE_BATCH_SIZE * 100;
         private const int CODES_BATCH_SIZE = 1_000;
+        public const int HIGH_CODES_QUEUE_SIZE = CODES_BATCH_SIZE * 5;
         private readonly byte[] ACC_PROGRESS_KEY = Encoding.ASCII.GetBytes("AccountProgressKey");
 
         // This does not need to be a lot as it spawn other requests. In fact 8 is probably too much. It is severely
@@ -142,93 +144,37 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (!AccountsToRefresh.IsEmpty)
             {
-                Interlocked.Increment(ref _activeAccRefreshRequests);
-
-                LogRequest($"AccountsToRefresh:{AccountsToRefresh.Count}");
-
-                int queueLength = AccountsToRefresh.Count;
-                AccountWithStorageStartingHash[] paths = new AccountWithStorageStartingHash[queueLength];
-
-                for (int i = 0; i < queueLength && AccountsToRefresh.TryDequeue(out var acc); i++)
-                {
-                    paths[i] = acc;
-                }
-
-                request.AccountsToRefreshRequest = new AccountsToRefreshRequest() { RootHash = rootHash, Paths = paths };
-
-                return (request, false);
-
+                return DequeAccountToRefresh(request, rootHash);
             }
 
             if (ShouldRequestAccountRequests() && AccountRangeReadyForRequest.TryDequeue(out AccountRangePartition partition))
             {
-                Interlocked.Increment(ref _activeAccountRequests);
-
-                AccountRange range = new(
-                    rootHash,
-                    partition.NextAccountPath,
-                    partition.AccountPathLimit,
-                    blockNumber);
-
-                LogRequest("AccountRange");
-
-                request.AccountRangeRequest = range;
-
-                return (request, false);
+                return CreateAccountRangeRequest(rootHash, partition, blockNumber, request);
             }
-            else if (TryDequeNextSlotRange(out StorageRange slotRange))
+
+            if (TryDequeNextSlotRange(out StorageRange slotRange))
             {
-                slotRange.RootHash = rootHash;
-                slotRange.BlockNumber = blockNumber;
-
-                LogRequest($"NextSlotRange:{slotRange.Accounts.Length}");
-
-                request.StorageRangeRequest = slotRange;
-
-                return (request, false);
+                return CreateNextSlowRangeRequest(slotRange, rootHash, blockNumber, request);
             }
-            else if (!StoragesToRetrieve.IsEmpty)
+
+            if (StoragesToRetrieve.Count >= HIGH_STORAGE_QUEUE_SIZE)
             {
-                Interlocked.Increment(ref _activeStorageRequests);
-
-                // TODO: optimize this
-                List<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
-                for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
-                {
-                    storagesToQuery.Add(storage);
-                }
-
-                StorageRange storageRange = new()
-                {
-                    RootHash = rootHash,
-                    Accounts = storagesToQuery.ToArray(),
-                    StartingHash = ValueKeccak.Zero,
-                    BlockNumber = blockNumber
-                };
-
-                LogRequest($"StoragesToRetrieve:{storagesToQuery.Count}");
-
-                request.StorageRangeRequest = storageRange;
-
-                return (request, false);
+                return DequeStorageToRetrieveRequest(rootHash, blockNumber, request);
             }
-            else if (!CodesToRetrieve.IsEmpty)
+
+            if (CodesToRetrieve.Count >= HIGH_CODES_QUEUE_SIZE)
             {
-                Interlocked.Increment(ref _activeCodeRequests);
+                return DequeCodeRequest(request);
+            }
 
-                // TODO: optimize this
-                List<ValueKeccak> codesToQuery = new(CODES_BATCH_SIZE);
-                for (int i = 0; i < CODES_BATCH_SIZE && CodesToRetrieve.TryDequeue(out ValueKeccak codeHash); i++)
-                {
-                    codesToQuery.Add(codeHash);
-                }
-                codesToQuery.Sort();
+            if (!StoragesToRetrieve.IsEmpty)
+            {
+                return DequeStorageToRetrieveRequest(rootHash, blockNumber, request);
+            }
 
-                LogRequest($"CodesToRetrieve:{codesToQuery.Count}");
-
-                request.CodesRequest = codesToQuery.ToArray();
-
-                return (request, false);
+            if (!CodesToRetrieve.IsEmpty)
+            {
+                return DequeCodeRequest(request);
             }
 
             bool rangePhaseFinished = IsSnapGetRangesFinished();
@@ -243,9 +189,109 @@ namespace Nethermind.Synchronization.SnapSync
             return (null, IsSnapGetRangesFinished());
         }
 
+        private (SnapSyncBatch request, bool finished) DequeCodeRequest(SnapSyncBatch request)
+        {
+            Interlocked.Increment(ref _activeCodeRequests);
+
+            // TODO: optimize this
+            List<ValueKeccak> codesToQuery = new(CODES_BATCH_SIZE);
+            for (int i = 0; i < CODES_BATCH_SIZE && CodesToRetrieve.TryDequeue(out ValueKeccak codeHash); i++)
+            {
+                codesToQuery.Add(codeHash);
+            }
+
+            codesToQuery.Sort();
+
+            LogRequest($"CodesToRetrieve:{codesToQuery.Count}");
+
+            request.CodesRequest = codesToQuery.ToArray();
+
+            return (request, false);
+        }
+
+        private (SnapSyncBatch request, bool finished) DequeStorageToRetrieveRequest(Keccak rootHash, long blockNumber,
+            SnapSyncBatch request)
+        {
+            Interlocked.Increment(ref _activeStorageRequests);
+
+            // TODO: optimize this
+            List<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
+            for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
+            {
+                storagesToQuery.Add(storage);
+            }
+
+            StorageRange storageRange = new()
+            {
+                RootHash = rootHash,
+                Accounts = storagesToQuery.ToArray(),
+                StartingHash = ValueKeccak.Zero,
+                BlockNumber = blockNumber
+            };
+
+            LogRequest($"StoragesToRetrieve:{storagesToQuery.Count}");
+
+            request.StorageRangeRequest = storageRange;
+
+            return (request, false);
+        }
+
+        private (SnapSyncBatch request, bool finished) CreateNextSlowRangeRequest(StorageRange slotRange, Keccak rootHash,
+            long blockNumber, SnapSyncBatch request)
+        {
+            slotRange.RootHash = rootHash;
+            slotRange.BlockNumber = blockNumber;
+
+            LogRequest($"NextSlotRange:{slotRange.Accounts.Length}");
+
+            request.StorageRangeRequest = slotRange;
+
+            return (request, false);
+        }
+
+        private (SnapSyncBatch request, bool finished) CreateAccountRangeRequest(Keccak rootHash,
+            AccountRangePartition partition, long blockNumber, SnapSyncBatch request)
+        {
+            Interlocked.Increment(ref _activeAccountRequests);
+
+            AccountRange range = new(
+                rootHash,
+                partition.NextAccountPath,
+                partition.AccountPathLimit,
+                blockNumber);
+
+            LogRequest("AccountRange");
+
+            request.AccountRangeRequest = range;
+
+            return (request, false);
+        }
+
+        private (SnapSyncBatch request, bool finished) DequeAccountToRefresh(SnapSyncBatch request, Keccak rootHash)
+        {
+            Interlocked.Increment(ref _activeAccRefreshRequests);
+
+            LogRequest($"AccountsToRefresh:{AccountsToRefresh.Count}");
+
+            int queueLength = AccountsToRefresh.Count;
+            AccountWithStorageStartingHash[] paths = new AccountWithStorageStartingHash[queueLength];
+
+            for (int i = 0; i < queueLength && AccountsToRefresh.TryDequeue(out var acc); i++)
+            {
+                paths[i] = acc;
+            }
+
+            request.AccountsToRefreshRequest = new AccountsToRefreshRequest() { RootHash = rootHash, Paths = paths };
+
+            return (request, false);
+        }
+
         private bool ShouldRequestAccountRequests()
         {
-            return _activeAccountRequests < _accountRangePartitionCount && NextSlotRange.Count < 10 && StoragesToRetrieve.Count < 5 * STORAGE_BATCH_SIZE && CodesToRetrieve.Count < 5 * CODES_BATCH_SIZE;
+            return _activeAccountRequests < _accountRangePartitionCount
+                   && NextSlotRange.Count < 10
+                   && StoragesToRetrieve.Count < HIGH_STORAGE_QUEUE_SIZE
+                   && CodesToRetrieve.Count < HIGH_CODES_QUEUE_SIZE;
         }
 
         public void EnqueueCodeHashes(ReadOnlySpan<ValueKeccak> codeHashes)
