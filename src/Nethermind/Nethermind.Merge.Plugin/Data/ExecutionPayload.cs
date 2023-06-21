@@ -9,10 +9,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
-using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -39,8 +37,6 @@ public class ExecutionPayload
         Timestamp = block.Timestamp;
         BaseFeePerGas = block.BaseFeePerGas;
         Withdrawals = block.Withdrawals;
-        DataGasUsed = block.DataGasUsed;
-        ExcessDataGas = block.ExcessDataGas;
 
         SetTransactions(block.Transactions);
     }
@@ -94,20 +90,6 @@ public class ExecutionPayload
     /// </summary>
     public IEnumerable<Withdrawal>? Withdrawals { get; set; }
 
-    /// <summary>
-    /// Gets or sets <see cref="Block.DataGasUsed"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
-    /// </summary>
-    [JsonProperty(ItemConverterType = typeof(NullableUInt256Converter), NullValueHandling = NullValueHandling.Ignore)]
-    public ulong? DataGasUsed { get; set; }
-
-    /// <summary>
-    /// Gets or sets <see cref="Block.ExcessDataGas"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
-    /// </summary>
-    [JsonProperty(ItemConverterType = typeof(NullableUInt256Converter), NullValueHandling = NullValueHandling.Ignore)]
-    public ulong? ExcessDataGas { get; set; }
-
 
     /// <summary>
     /// Creates the execution block from payload.
@@ -128,9 +110,7 @@ public class ExecutionPayload
                 BlockNumber,
                 GasLimit,
                 Timestamp,
-                ExtraData,
-                DataGasUsed,
-                ExcessDataGas)
+                ExtraData)
             {
                 Hash = BlockHash,
                 ReceiptsRoot = ReceiptsRoot,
@@ -195,11 +175,17 @@ public static class ExecutionPayloadExtensions
         int version,
         [NotNullWhen(false)] out string? error)
     {
+        if (spec.IsEip4844Enabled && executionPayload is not ExecutionPayloadV3)
+        {
+            error = $"ExecutionPayloadV3 expected";
+            return false;
+        }
+
         int actualVersion = executionPayload.GetVersion();
 
         error = actualVersion switch
         {
-            1 when spec.WithdrawalsEnabled => "ExecutionPayloadV2 expected",
+            1 when spec.WithdrawalsEnabled => $"ExecutionPayloadV2 expected",
             > 1 when !spec.WithdrawalsEnabled => "ExecutionPayloadV1 expected",
             _ => actualVersion > version ? $"ExecutionPayloadV{version} expected" : null
         };
@@ -215,4 +201,11 @@ public static class ExecutionPayloadExtensions
             specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp),
             version,
             out error);
+
+    public static bool IsProperFork(this ExecutionPayload executionPayload, ISpecProvider specProvider)
+        => executionPayload switch
+        {
+            ExecutionPayloadV3 _ => specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp).IsEip4844Enabled,
+            _ => true,
+        };
 }

@@ -4,6 +4,7 @@
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -15,12 +16,15 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult> : IAsyncHandler<b
 {
     private readonly int _apiVersion;
     private readonly IPayloadPreparationService _payloadPreparationService;
+    private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
 
-    protected GetPayloadHandlerBase(int apiVersion, IPayloadPreparationService payloadPreparationService, ILogManager logManager)
+    protected GetPayloadHandlerBase(int apiVersion, IPayloadPreparationService payloadPreparationService,
+        ISpecProvider specProvider, ILogManager logManager)
     {
         _apiVersion = apiVersion;
         _payloadPreparationService = payloadPreparationService;
+        _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
     }
 
@@ -37,11 +41,19 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult> : IAsyncHandler<b
             return ResultWrapper<TGetPayloadResult?>.Fail("unknown payload", MergeErrorCodes.UnknownPayload);
         }
 
+        TGetPayloadResult getPayloadResult = GetPayloadResultFromBlock(blockContext);
+
+        if (getPayloadResult is GetPayloadV2Result getPayloadWrapperResult && !getPayloadWrapperResult.ExecutionPayload.IsProperFork(_specProvider))
+        {
+            if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
+            return ResultWrapper<TGetPayloadResult?>.Fail("unsupported fork", ErrorCodes.UnsupportedFork);
+        }
+
         if (_logger.IsInfo) _logger.Info($"GetPayloadV{_apiVersion} result: {block.Header.ToString(BlockHeader.Format.Full)}.");
 
         Metrics.GetPayloadRequests++;
         Metrics.NumberOfTransactionsInGetPayload = block.Transactions.Length;
-        return ResultWrapper<TGetPayloadResult?>.Success(GetPayloadResultFromBlock(blockContext));
+        return ResultWrapper<TGetPayloadResult?>.Success(getPayloadResult);
     }
 
     protected abstract TGetPayloadResult GetPayloadResultFromBlock(IBlockProductionContext blockProductionContext);

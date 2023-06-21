@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
-using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -17,7 +16,7 @@ public class GetPayloadV2Result
 
     public UInt256 BlockValue { get; }
 
-    public ExecutionPayload ExecutionPayload { get; }
+    public virtual ExecutionPayload ExecutionPayload { get; }
 
     public override string ToString() => $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}}}";
 }
