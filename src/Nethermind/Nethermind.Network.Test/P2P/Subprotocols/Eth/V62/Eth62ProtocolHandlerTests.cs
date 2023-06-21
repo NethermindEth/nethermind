@@ -38,14 +38,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
     [TestFixture, Parallelizable(ParallelScope.Self)]
     public class Eth62ProtocolHandlerTests
     {
-        private ISession _session;
-        private IMessageSerializationService _svc;
-        private ISyncServer _syncManager;
-        private ITxPool _transactionPool;
-        private Block _genesisBlock;
-        private Eth62ProtocolHandler _handler;
-        private IGossipPolicy _gossipPolicy;
+        private ISession _session = null!;
+        private IMessageSerializationService _svc = null!;
+        private ISyncServer _syncManager = null!;
+        private ITxPool _transactionPool = null!;
+        private Block _genesisBlock = null!;
+        private Eth62ProtocolHandler _handler = null!;
+        private IGossipPolicy _gossipPolicy = null!;
         private readonly TxDecoder _txDecoder = new();
+        private ITxGossipPolicy _txGossipPolicy = null!;
 
         [SetUp]
         public void Setup()
@@ -67,6 +68,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _gossipPolicy.CanGossipBlocks.Returns(true);
             _gossipPolicy.ShouldGossipBlock(Arg.Any<BlockHeader>()).Returns(true);
             _gossipPolicy.ShouldDisconnectGossipingNodes.Returns(false);
+            _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
+            _txGossipPolicy.CanGossipTransactions.Returns(true);
+            _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
             _handler = new Eth62ProtocolHandler(
                 _session,
                 _svc,
@@ -74,7 +78,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _syncManager,
                 _transactionPool,
                 _gossipPolicy,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                _txGossipPolicy);
             _handler.Init();
         }
 
@@ -376,12 +381,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Can_handle_transactions()
+        public void Can_handle_transactions([Values(true, false)] bool canGossipTransactions)
         {
+            _txGossipPolicy.CanGossipTransactions.Returns(canGossipTransactions);
             TransactionsMessage msg = new(new List<Transaction>(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3)));
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
+            _transactionPool.Received(canGossipTransactions ? 3 : 0).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
         }
 
         [Test]
@@ -550,9 +557,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
         private void HandleIncomingStatusMessage()
         {
-            var statusMsg = new StatusMessage();
-            statusMsg.GenesisHash = _genesisBlock.Hash;
-            statusMsg.BestHash = _genesisBlock.Hash;
+            var statusMsg = new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
 
             IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
             statusPacket.ReadByte();

@@ -259,7 +259,7 @@ namespace Nethermind.TxPool
                 try
                 {
 
-                    peer.SendNewTransactions(txs.Where(t => _txGossipPolicy.CanGossipTransaction(t)), sendFullTx);
+                    peer.SendNewTransactions(txs.Where(t => _txGossipPolicy.ShouldGossipTransaction(t)), sendFullTx);
                     if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transactions.");
                 }
                 catch (Exception e)
@@ -271,7 +271,7 @@ namespace Nethermind.TxPool
 
         private void NotifyPeersAboutLocalTx(Transaction tx)
         {
-            if (_txGossipPolicy.CanGossipTransaction(tx))
+            if (_txGossipPolicy.CanGossipTransactions && _txGossipPolicy.ShouldGossipTransaction(tx))
             {
                 if (_logger.IsDebug) _logger.Debug($"Broadcasting new local transaction {tx.Hash} to all peers");
 
