@@ -94,14 +94,15 @@ public class ProgressTrackerTests
 
         for (int i = 0; i < ProgressTracker.HIGH_STORAGE_QUEUE_SIZE - 1; i++)
         {
-            progressTracker.EnqueueAccountStorage(new PathWithAccount() {
+            progressTracker.EnqueueAccountStorage(new PathWithAccount()
+            {
                 Path = TestItem.ValueKeccaks[0]
             });
         }
 
         for (int i = 0; i < ProgressTracker.HIGH_CODES_QUEUE_SIZE; i++)
         {
-            progressTracker.EnqueueCodeHashes(new ValueKeccak[] {TestItem.ValueKeccaks[0]});
+            progressTracker.EnqueueCodeHashes(new ValueKeccak[] { TestItem.ValueKeccaks[0] });
         }
 
         (SnapSyncBatch request, bool _) = progressTracker.GetNextRequest();
@@ -118,14 +119,15 @@ public class ProgressTrackerTests
 
         for (int i = 0; i < ProgressTracker.HIGH_STORAGE_QUEUE_SIZE; i++)
         {
-            progressTracker.EnqueueAccountStorage(new PathWithAccount() {
+            progressTracker.EnqueueAccountStorage(new PathWithAccount()
+            {
                 Path = TestItem.ValueKeccaks[0]
             });
         }
 
         for (int i = 0; i < ProgressTracker.HIGH_CODES_QUEUE_SIZE; i++)
         {
-            progressTracker.EnqueueCodeHashes(new ValueKeccak[] {TestItem.ValueKeccaks[0]});
+            progressTracker.EnqueueCodeHashes(new ValueKeccak[] { TestItem.ValueKeccaks[0] });
         }
 
         (SnapSyncBatch request, bool _) = progressTracker.GetNextRequest();
