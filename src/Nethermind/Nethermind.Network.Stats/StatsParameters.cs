@@ -45,7 +45,10 @@ namespace Nethermind.Stats
 
         public Dictionary<DisconnectReason, TimeSpan> DelayDueToLocalDisconnect { get; } = new()
         {
-            { DisconnectReason.UselessPeer, TimeSpan.FromMinutes(15) }
+            { DisconnectReason.UselessPeer, TimeSpan.FromMinutes(15) },
+
+            // Its actually protocol init timeout, when status message is not received in time.
+            { DisconnectReason.ReceiveMessageTimeout, TimeSpan.FromMinutes(5) },
         };
 
         public Dictionary<DisconnectReason, TimeSpan> DelayDueToRemoteDisconnect { get; } = new()
@@ -57,7 +60,7 @@ namespace Nethermind.Stats
 
             // This is pretty much 80% of the disconnect reason. We don't wanna delay this though... it could be
             // that other peer disconnect from the peer.
-            { DisconnectReason.TooManyPeers, TimeSpan.FromMinutes(1) }
+            { DisconnectReason.TooManyPeers, TimeSpan.FromMinutes(1) },
         };
 
         public Dictionary<NodeStatsEventType, TimeSpan> DelayDueToEvent { get; } = new()

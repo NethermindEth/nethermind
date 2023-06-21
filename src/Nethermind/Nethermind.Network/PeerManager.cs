@@ -247,7 +247,7 @@ namespace Nethermind.Network
                     }
 
                     int availableActivePeerCount = AvailableActivePeersCount;
-                    if (availableActivePeerCount == 0)
+                    if (availableActivePeerCount <= 0)
                     {
                         continue;
                     }
@@ -270,8 +270,9 @@ namespace Nethermind.Network
                     }
 
                     // We only loop through the top candidates as the reputation take into account things like ping
-                    // message. So we resort instead of going through all peers.
-                    foreach (Peer peer in remainingCandidates.Take(512))
+                    // message. So we resort instead of going through all peers. 1200 is the default outgoing call rate
+                    // multiply by 60 second, so this should finish and try (probably) another set of peers in 60 second.
+                    foreach (Peer peer in remainingCandidates.Take(1200))
                     {
                         if (!EnsureAvailableActivePeer())
                         {
@@ -610,6 +611,8 @@ namespace Nethermind.Network
         [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
         private async Task SetupOutgoingPeerConnection(Peer peer)
         {
+            await _outgoingConnectionRateLimiter.WaitAsync(_cancellationTokenSource.Token);
+
             // Can happen when In connection is received from the same peer and is initialized before we get here
             // In this case we do not initialize OUT connection
             if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
@@ -617,8 +620,6 @@ namespace Nethermind.Network
                 if (_logger.IsTrace) _logger.Trace($"Active peer was already added to collection: {peer.Node.Id}");
                 return;
             }
-
-            await _outgoingConnectionRateLimiter.WaitAsync(_cancellationTokenSource.Token);
 
             Interlocked.Increment(ref _tryCount);
             Interlocked.Increment(ref _pending);
