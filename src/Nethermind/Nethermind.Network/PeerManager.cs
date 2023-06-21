@@ -350,7 +350,7 @@ namespace Nethermind.Network
 
         private bool EnsureAvailableActivePeerSlot()
         {
-            if (_pending < AvailableActivePeersCount)
+            if (AvailableActivePeersCount - _pending > 0)
             {
                 return true;
             }
@@ -360,14 +360,14 @@ namespace Nethermind.Network
             // the active peer count to go down within this time window.
             DateTimeOffset deadline = DateTimeOffset.Now + Timeouts.Handshake +
                                       TimeSpan.FromMilliseconds(_networkConfig.ConnectTimeoutMs);
-            while (DateTimeOffset.Now < deadline && _pending >= AvailableActivePeersCount)
+            while (DateTimeOffset.Now < deadline && (AvailableActivePeersCount - _pending) <= 0)
             {
                 // The signal is not very reliable. So we just do like a simple pool.
                 _peerUpdateRequested.Reset();
                 _peerUpdateRequested.Wait(TimeSpan.FromMilliseconds(10));
             }
 
-            return _pending < AvailableActivePeersCount;
+            return AvailableActivePeersCount - _pending > 0;
         }
 
 
