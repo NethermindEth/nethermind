@@ -278,7 +278,7 @@ namespace Nethermind.Network
                             break;
                         }
 
-                        await taskChannel.Writer.WriteAsync(peer);
+                        await taskChannel.Writer.WriteAsync(peer, _cancellationTokenSource.Token);
                     }
 
                     if (_logger.IsTrace)
