@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.TxPool;
@@ -14,9 +16,10 @@ public interface ITxGossipPolicy
 
 public class CompositeTxGossipPolicy : ITxGossipPolicy
 {
-    public ITxGossipPolicy TxGossipPolicy { get; set; } = ShouldGossip.Instance;
-    public bool CanGossipTransactions => TxGossipPolicy.CanGossipTransactions;
-    public bool ShouldGossipTransaction(Transaction tx) => TxGossipPolicy.ShouldGossipTransaction(tx);
+    public List<ITxGossipPolicy> Policies { get; } = new() { ShouldGossip.Instance };
+
+    public bool CanGossipTransactions => Policies.All(static p => p.CanGossipTransactions);
+    public bool ShouldGossipTransaction(Transaction tx) => Policies.All(p => p.ShouldGossipTransaction(tx));
 }
 
 public class ShouldGossip : ITxGossipPolicy
