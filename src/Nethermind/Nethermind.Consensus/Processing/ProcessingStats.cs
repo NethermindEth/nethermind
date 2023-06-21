@@ -38,6 +38,7 @@ namespace Nethermind.Consensus.Processing
         private bool _isDebugMode = false;
         private decimal _processingMicroseconds;
         private long _lastTotalCreates;
+        private long _lastReportMs;
 
         public ProcessingStats(ILogger logger)
         {
@@ -92,7 +93,8 @@ namespace Nethermind.Consensus.Processing
             long runningMicroseconds = _runStopwatch.ElapsedMicroseconds();
             decimal runMicroseconds = (runningMicroseconds - _lastElapsedRunningMicroseconds);
 
-            if (runMicroseconds > 1 * 1000 * 1000)
+            long reportMs = Environment.TickCount64;
+            if (reportMs - _lastReportMs > 1000)
             {
                 long currentStateDbReads = Db.Metrics.StateDbReads;
                 long currentStateDbWrites = Db.Metrics.StateDbWrites;
@@ -151,21 +153,27 @@ namespace Nethermind.Consensus.Processing
                     _logger.Info($"- Block{(chunkBlocks > 1 ? "s" : " ")}{(chunkBlocks == 1 ? mgasColor : "")}           {chunkMGas,7:F2}{resetColor} MGas   | {chunkTx,6:N0}    txs | calls {chunkCalls,6:N0} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor}  | sload {chunkSload,7:N0} | sstore {chunkSstore,6:N0} | create {chunkCreates,3:N0}{(currentSelfDestructs - _lastSelfDestructs > 0 ? $"{darkGreyText}({-(currentSelfDestructs - _lastSelfDestructs),3:N0}){resetColor}" : "")}");
                     _logger.Info($"- Block throughput {mgasPerSecond,7:F2} MGas/s | {txps,9:F2} t/s |         {bps,7:F2} b/s | recv  {recoveryQueueSize,7:N0} | proc   {blockQueueSize,6:N0}");
                     // Only output the total throughput in debug mode
-                    _logger.Debug($"- Total throughput {totalMgasPerSecond,7:F2} MGas/s | {totalTxPerSecond,9:F2} t/s |         {totalBlocksPerSecond,7:F2} b/s | Gas gwei: {Evm.Metrics.MinGasPrice:N2} .. {Math.Max(Evm.Metrics.MinGasPrice, Evm.Metrics.EstMedianGasPrice):N2} ({Evm.Metrics.AveGasPrice:N2}) .. {Evm.Metrics.MaxGasPrice:N2}");
-                }
-                if (_logger.IsTrace)
-                {
-                    long currentGen0 = GC.CollectionCount(0);
-                    long currentGen1 = GC.CollectionCount(1);
-                    long currentGen2 = GC.CollectionCount(2);
-                    long currentMemory = GC.GetTotalMemory(false);
-                    _maxMemory = Math.Max(_maxMemory, currentMemory);
-                    _logger.Trace($"Gen0 {currentGen0 - _lastGen0,6}, Gen1 {currentGen1 - _lastGen1,6}, Gen2 {currentGen2 - _lastGen2,6}, maxmem {_maxMemory / 1000000,5}, mem {currentMemory / 1000000,5}, reads {currentStateDbReads - _lastStateDbReads,9}, writes {currentStateDbWrites - _lastStateDbWrites,9}, rlp {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions {evmExceptions - _lastEvmExceptions}, selfdstrcs {currentSelfDestructs - _lastSelfDestructs}");
-                    _lastGen0 = currentGen0;
-                    _lastGen1 = currentGen1;
-                    _lastGen2 = currentGen2;
+                    if (_logger.IsDebug)
+                    {
+                        _logger.Debug($"- Total throughput {totalMgasPerSecond,7:F2} MGas/s | {totalTxPerSecond,9:F2} t/s |         {totalBlocksPerSecond,7:F2} b/s | Gas gwei: {Evm.Metrics.MinGasPrice:N2} .. {Math.Max(Evm.Metrics.MinGasPrice, Evm.Metrics.EstMedianGasPrice):N2} ({Evm.Metrics.AveGasPrice:N2}) .. {Evm.Metrics.MaxGasPrice:N2}");
+                    }
+
+                    if (_logger.IsTrace)
+                    {
+                        long currentGen0 = GC.CollectionCount(0);
+                        long currentGen1 = GC.CollectionCount(1);
+                        long currentGen2 = GC.CollectionCount(2);
+                        long currentMemory = GC.GetTotalMemory(false);
+                        _maxMemory = Math.Max(_maxMemory, currentMemory);
+                        _logger.Trace($"Gen0 {currentGen0 - _lastGen0,6}, Gen1 {currentGen1 - _lastGen1,6}, Gen2 {currentGen2 - _lastGen2,6}, maxmem {_maxMemory / 1000000,5}, mem {currentMemory / 1000000,5}, reads {currentStateDbReads - _lastStateDbReads,9}, writes {currentStateDbWrites - _lastStateDbWrites,9}, rlp {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions {evmExceptions - _lastEvmExceptions}, selfdstrcs {currentSelfDestructs - _lastSelfDestructs}");
+                        _lastGen0 = currentGen0;
+                        _lastGen1 = currentGen1;
+                        _lastGen2 = currentGen2;
+                    }
+
                 }
 
+                _lastReportMs = reportMs;
                 _lastBlockNumber = Metrics.Blocks;
                 _lastTotalMGas = Metrics.Mgas;
                 _lastElapsedRunningMicroseconds = runningMicroseconds;
@@ -189,6 +197,7 @@ namespace Nethermind.Consensus.Processing
             _processingStopwatch.Start();
             if (!_runStopwatch.IsRunning)
             {
+                _lastReportMs = Environment.TickCount64;
                 _runStopwatch.Start();
             }
         }
