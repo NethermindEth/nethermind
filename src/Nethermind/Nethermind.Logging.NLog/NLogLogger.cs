@@ -11,10 +11,9 @@ using NLog;
 
 namespace Nethermind.Logging.NLog
 {
-    public class NLogLogger : ILogger, IThreadPoolWorkItem
+    public class NLogLogger : ILogger
     {
-        private readonly ConcurrentQueue<LogEntry> _workItems = new();
-        private int _doingWork;
+        private readonly static LogQueue _logQueue = new();
 
         public bool IsError { get; }
         public bool IsWarn { get; }
@@ -50,107 +49,115 @@ namespace Nethermind.Logging.NLog
         public void Info(string text)
         {
             if (IsInfo)
-                Log(LogLevel.Info, text);
+                _logQueue.Log(_logger, LogLevel.Info, text);
         }
 
         public void Warn(string text)
         {
             if (IsWarn)
-                Log(LogLevel.Warn, text);
+                _logQueue.Log(_logger, LogLevel.Warn, text);
         }
 
         public void Debug(string text)
         {
             if (IsDebug)
-                Log(LogLevel.Debug, text);
+                _logQueue.Log(_logger, LogLevel.Debug, text);
         }
 
         public void Trace(string text)
         {
             if (IsTrace)
-                Log(LogLevel.Trace, text);
+                _logQueue.Log(_logger, LogLevel.Trace, text);
         }
 
         public void Error(string text, Exception? ex = null)
         {
             if (IsError)
-                Log(LogLevel.Error, text, ex);
+                _logQueue.Log(_logger, LogLevel.Error, text, ex);
         }
 
-        private void Log(LogLevel level, string text, Exception? ex = null)
+        private class LogQueue : IThreadPoolWorkItem
         {
-            _workItems.Enqueue(new(level, text, ex));
+            private readonly ConcurrentQueue<LogEntry> _workItems = new();
+            private int _doingWork;
 
-            // Set working if it wasn't (via atomic Interlocked).
-            if (Interlocked.CompareExchange(ref _doingWork, 1, 0) == 0)
+            public void Log(Logger logger, LogLevel level, string text, Exception? ex = null)
             {
-                // Wasn't working, schedule.
-                ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+                _workItems.Enqueue(new(logger, level, text, ex));
+
+                // Set working if it wasn't (via atomic Interlocked).
+                if (Interlocked.CompareExchange(ref _doingWork, 1, 0) == 0)
+                {
+                    // Wasn't working, schedule.
+                    ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+                }
             }
-        }
 
-        void IThreadPoolWorkItem.Execute()
-        {
-            while (true)
+            void IThreadPoolWorkItem.Execute()
             {
-                while (_workItems.TryDequeue(out LogEntry item))
+                while (true)
                 {
-                    switch (item.Level)
+                    while (_workItems.TryDequeue(out LogEntry item))
                     {
-                        case LogLevel.Error:
-                            _logger.Error(item.Exception, item.Message);
-                            break;
-                        case LogLevel.Warn:
-                            _logger.Warn(item.Message);
-                            break;
-                        case LogLevel.Info:
-                            _logger.Info(item.Message);
-                            break;
-                        case LogLevel.Debug:
-                            _logger.Debug(item.Message);
-                            break;
-                        case LogLevel.Trace:
-                            _logger.Trace(item.Message);
-                            break;
+                        switch (item.Level)
+                        {
+                            case LogLevel.Error:
+                                item.Logger.Error(item.Exception, item.Message);
+                                break;
+                            case LogLevel.Warn:
+                                item.Logger.Warn(item.Message);
+                                break;
+                            case LogLevel.Info:
+                                item.Logger.Info(item.Message);
+                                break;
+                            case LogLevel.Debug:
+                                item.Logger.Debug(item.Message);
+                                break;
+                            case LogLevel.Trace:
+                                item.Logger.Trace(item.Message);
+                                break;
+                        }
                     }
+
+                    // All work done.
+
+                    // Set _doingWork (0 == false) prior to checking IsEmpty to catch any missed work in interim.
+                    // This doesn't need to be volatile due to the following barrier (i.e. it is volatile).
+                    _doingWork = 0;
+
+                    // Ensure _doingWork is written before IsEmpty is read.
+                    // As they are two different memory locations, we insert a barrier to guarantee ordering.
+                    Thread.MemoryBarrier();
+
+                    // Check if there is work to do
+                    if (_workItems.IsEmpty)
+                    {
+                        // Nothing to do, exit.
+                        break;
+                    }
+
+                    // Is work, can we set it as active again (via atomic Interlocked), prior to scheduling?
+                    if (Interlocked.Exchange(ref _doingWork, 1) == 1)
+                    {
+                        // Execute has been rescheduled already, exit.
+                        break;
+                    }
+
+                    // Is work, wasn't already scheduled so continue loop.
                 }
-
-                // All work done.
-
-                // Set _doingWork (0 == false) prior to checking IsEmpty to catch any missed work in interim.
-                // This doesn't need to be volatile due to the following barrier (i.e. it is volatile).
-                _doingWork = 0;
-
-                // Ensure _doingWork is written before IsEmpty is read.
-                // As they are two different memory locations, we insert a barrier to guarantee ordering.
-                Thread.MemoryBarrier();
-
-                // Check if there is work to do
-                if (_workItems.IsEmpty)
-                {
-                    // Nothing to do, exit.
-                    break;
-                }
-
-                // Is work, can we set it as active again (via atomic Interlocked), prior to scheduling?
-                if (Interlocked.Exchange(ref _doingWork, 1) == 1)
-                {
-                    // Execute has been rescheduled already, exit.
-                    break;
-                }
-
-                // Is work, wasn't already scheduled so continue loop.
             }
         }
 
         private readonly struct LogEntry
         {
+            public readonly Logger Logger;
             public readonly LogLevel Level;
             public readonly string Message;
             public readonly Exception? Exception;
 
-            public LogEntry(LogLevel level, string message, Exception? exception)
+            public LogEntry(Logger logger, LogLevel level, string message, Exception? exception)
             {
+                Logger = logger;
                 Level = level;
                 Message = message;
                 Exception = exception;
