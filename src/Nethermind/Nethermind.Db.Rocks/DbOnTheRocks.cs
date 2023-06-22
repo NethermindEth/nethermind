@@ -12,6 +12,7 @@ using System.Threading;
 using ConcurrentCollections;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
@@ -915,6 +916,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         }
 
         InnerFlush();
+    }
+
+    public void Compact()
+    {
+        _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
     }
 
     private void InnerFlush()

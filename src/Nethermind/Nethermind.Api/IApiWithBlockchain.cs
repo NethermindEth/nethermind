@@ -68,6 +68,7 @@ namespace Nethermind.Api
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
+        CompositeTxGossipPolicy TxGossipPolicy { get; }
         IWitnessCollector? WitnessCollector { get; set; }
         IWitnessRepository? WitnessRepository { get; set; }
         IHealthHintService? HealthHintService { get; set; }

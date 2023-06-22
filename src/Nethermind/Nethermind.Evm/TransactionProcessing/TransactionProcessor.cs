@@ -18,6 +18,8 @@ using Nethermind.State;
 using Nethermind.State.Tracing;
 using static Nethermind.Core.Extensions.MemoryExtensions;
 
+using static Nethermind.Evm.VirtualMachine;
+
 namespace Nethermind.Evm.TransactionProcessing
 {
     public class TransactionProcessor : ITransactionProcessor
@@ -296,7 +298,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (!_worldState.AccountExists(tx.SenderAddress))
             {
-                _logger.Warn($"TX sender account does not exist {tx.SenderAddress} - trying to recover it");
+                if (_logger.IsDebug) _logger.Debug($"TX sender account does not exist {tx.SenderAddress} - trying to recover it");
 
                 Address prevSender = tx.SenderAddress;
                 // hacky fix for the potential recovery issue
@@ -507,7 +509,15 @@ namespace Nethermind.Evm.TransactionProcessing
                         state.WarmUp(header.GasBeneficiary);
                     }
 
-                    substate = _virtualMachine.Run(state, _worldState, tracer);
+                    if (!tracer.IsTracingActions)
+                    {
+                        substate = _virtualMachine.Run<NotTracing>(state, _worldState, tracer);
+                    }
+                    else
+                    {
+                        substate = _virtualMachine.Run<IsTracing>(state, _worldState, tracer);
+                    }
+
                     unspentGas = state.GasAvailable;
 
                     if (tracer.IsTracingAccess)

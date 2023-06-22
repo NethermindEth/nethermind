@@ -16,7 +16,7 @@ public class GnosisSpecProvider : ISpecProvider
     public const long BerlinBlockNumber = 16_101_500;
     public const long LondonBlockNumber = 19_040_000;
     public const ulong BeaconChainGenesisTimestamp = 0x61b10dbc;
-    public const ulong ShanghaiTimestamp = long.MaxValue;
+    public const ulong ShanghaiTimestamp = 0x64c8edbc;
 
     private GnosisSpecProvider() { }
 

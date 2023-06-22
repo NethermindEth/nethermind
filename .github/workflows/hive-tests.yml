@@ -41,10 +41,6 @@ on:
         default: master
         type: string
 
-env:
-  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
-  TERM: xterm
-
 jobs:
   test:
     name: Build and run tests

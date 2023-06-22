@@ -13,5 +13,6 @@ namespace Nethermind.Stats.Model
         OpenEthereum,
         Trinity,
         Erigon,
+        Reth,
     }
 }
