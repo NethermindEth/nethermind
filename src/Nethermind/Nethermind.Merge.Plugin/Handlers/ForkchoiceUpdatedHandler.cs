@@ -80,7 +80,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
         if (newHeadBlock is null) // if a head is unknown we are syncing
         {
-            string simpleRequestStr = payloadAttributes is null ? forkchoiceState.ToString() : $"{forkchoiceState} {payloadAttributes}");
+            string simpleRequestStr = payloadAttributes is null ? forkchoiceState.ToString() : $"{forkchoiceState} {payloadAttributes}";
             if (_logger.IsInfo) _logger.Info($"Received {simpleRequestStr}");
 
             if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
