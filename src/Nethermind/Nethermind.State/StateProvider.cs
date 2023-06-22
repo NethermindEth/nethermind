@@ -26,6 +26,9 @@ namespace Nethermind.State
         private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
         private readonly ResettableHashSet<Address> _committedThisRound = new();
         // Only guarding against hot duplicates so filter doesn't need to be too big
+        // Note:
+        // False negatives are fine as they will just result in a overwrite set
+        // False positives would be problematic as the code _must_ be persisted
         private readonly LruKeyCache<Keccak> _codeInsertFilter = new(2048, "Code Insert Filter");
 
         private readonly List<Change> _keptInCache = new();
