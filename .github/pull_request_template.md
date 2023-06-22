@@ -35,6 +35,22 @@ _Please choose one of the keywords above to refer to the issue this PR solves fo
 
 _Optional. Remove if not applicable._
 
+## Documentation
+
+#### Requires documentation change?
+
+- [ ] Yes
+- [ ] No
+
+_Link to documentation or issue about change added with "docs" label_
+
+#### Requires better explanation in Release Notes?
+
+- [ ] Yes
+- [ ] No
+
+_If yes, please put some better description (new parameters, how it affect node and user expeirence) here._
+
 ## Remarks
 
 _Optional. Remove if not applicable._
