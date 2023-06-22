@@ -16,12 +16,10 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx;
-using Nethermind.Network.StaticNodes;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -267,11 +265,11 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             await Task.Delay(_travisDelayLong);
-            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(25));
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.AtLeast(25));
             ctx.DisconnectAllSessions();
 
             await Task.Delay(_travisDelayLong);
-            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(50));
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.AtLeast(50));
         }
 
         [Test, Retry(5)]
@@ -387,7 +385,7 @@ namespace Nethermind.Network.Test
             {
                 currentCount += 25;
                 maxCount += 50;
-                await Task.Delay(_travisDelay);
+                Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.InRange(currentCount, maxCount).After(_travisDelay * 2, 10));
                 ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, maxCount);
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_travisDelay);

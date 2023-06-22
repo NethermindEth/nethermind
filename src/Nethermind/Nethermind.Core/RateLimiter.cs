@@ -64,7 +64,7 @@ public class RateLimiter
                 return;
             }
 
-            long toWait = _nextSlot - now;
+            long toWait = originalNextSlot - now;
             if (toWait < 0) continue;
 
             await Task.Delay(TimeSpan.FromMilliseconds(TickToMs(toWait)), ctx);

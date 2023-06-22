@@ -10,6 +10,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
+[Parallelizable(ParallelScope.Self)]
 public class RateLimiterTests
 {
     [TestCase(100, 1, 1000)]
