@@ -88,7 +88,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
         string requestStr = $"new block: {request}";
-        if (_logger.IsInfo) { _logger.Info($"Received {requestStr}"); }
+        if (_logger.IsInfo) { _logger.Info($"Received  {requestStr}"); }
 
         if (!request.TryGetBlock(out Block? block, _poSSwitcher.FinalTotalDifficulty))
         {

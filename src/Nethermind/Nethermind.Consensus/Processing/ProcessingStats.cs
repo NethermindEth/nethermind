@@ -140,7 +140,7 @@ namespace Nethermind.Consensus.Processing
                             < 2000 => orangeText,
                             _ => redText
                         };
-                        _logger.Info($"Processed            {block.Number,9}    | {chunkColor}{chunkMs,9:N2}{resetColor} ms  | slot {runMs,7:N0} ms     |{blockGas}");
+                        _logger.Info($"Processed           {block.Number,9}    | {chunkColor}{chunkMs,9:N2}{resetColor} ms  | slot {runMs,7:N0} ms     |{blockGas}");
                     }
 
                     var mgasColor = chunkMGas switch
