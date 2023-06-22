@@ -271,21 +271,20 @@ namespace Nethermind.TxPool
 
         private void NotifyPeersAboutLocalTx(Transaction tx)
         {
-            if (_txGossipPolicy.CanGossipTransactions && _txGossipPolicy.ShouldGossipTransaction(tx))
-            {
-                if (_logger.IsDebug) _logger.Debug($"Broadcasting new local transaction {tx.Hash} to all peers");
+            if (!_txGossipPolicy.CanGossipTransactions || !_txGossipPolicy.ShouldGossipTransaction(tx)) return;
 
-                foreach ((_, ITxPoolPeer peer) in _peers)
+            if (_logger.IsDebug) _logger.Debug($"Broadcasting new local transaction {tx.Hash} to all peers");
+
+            foreach ((_, ITxPoolPeer peer) in _peers)
+            {
+                try
                 {
-                    try
-                    {
-                        peer.SendNewTransaction(tx);
-                        if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transaction {tx.Hash}.");
-                    }
-                    catch (Exception e)
-                    {
-                        if (_logger.IsError) _logger.Error($"Failed to notify {peer} about transaction {tx.Hash}.", e);
-                    }
+                    peer.SendNewTransaction(tx);
+                    if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transaction {tx.Hash}.");
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error($"Failed to notify {peer} about transaction {tx.Hash}.", e);
                 }
             }
         }
