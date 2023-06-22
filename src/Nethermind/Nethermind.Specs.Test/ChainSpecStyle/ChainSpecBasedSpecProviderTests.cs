@@ -22,7 +22,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle;
 [TestFixture]
 public class ChainSpecBasedSpecProviderTests
 {
-    private const ulong GnosisBlockTime = 5;
+    private const double GnosisBlockTime = 5;
 
     [TestCase(0, null, false)]
     [TestCase(0, 0ul, false)]
@@ -265,15 +265,14 @@ public class ChainSpecBasedSpecProviderTests
 
         VerifyGnosisPreShanghaiExceptions(provider);
 
-        /* ToDo uncomment with Gnosis fork specified
         IReleaseSpec? preShanghaiSpec = provider.GetSpec((GnosisSpecProvider.LondonBlockNumber + 1,
             GnosisSpecProvider.ShanghaiTimestamp - 1));
         IReleaseSpec? postShanghaiSpec = provider.GetSpec((GnosisSpecProvider.LondonBlockNumber + 1,
             GnosisSpecProvider.ShanghaiTimestamp));
 
-        VerifyGnosisPreShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
+        VerifyGnosisShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue()); */
+            t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
     }
 
     private void VerifyGnosisShanghaiExceptions(IReleaseSpec preShanghaiSpec, IReleaseSpec postShanghaiSpec)
@@ -832,6 +831,8 @@ public class ChainSpecBasedSpecProviderTests
     /// <param name="genesisTimestamp">The network's genesis timestamp</param>
     /// <param name="blockTime">The network's block time in seconds</param>
     /// <returns><c>true</c> if the timestamp is valid; otherwise, <c>false</c>.</returns>
-    private static bool ValidateSlotByTimestamp(ulong timestamp, ulong genesisTimestamp, ulong blockTime = 12) =>
-        timestamp > genesisTimestamp && (timestamp - genesisTimestamp) / blockTime % 0x2000 == 0;
+    private static bool ValidateSlotByTimestamp(ulong timestamp, ulong genesisTimestamp, double blockTime = 12) =>
+        timestamp > genesisTimestamp &&
+        Math.Round((timestamp - genesisTimestamp) / blockTime) % 0x2000 == 0 &&
+        Math.Ceiling((timestamp - genesisTimestamp) / blockTime) % 0x2000 == 0;
 }
