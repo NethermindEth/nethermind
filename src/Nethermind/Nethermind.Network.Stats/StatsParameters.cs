@@ -54,10 +54,6 @@ namespace Nethermind.Stats
         public Dictionary<DisconnectReason, TimeSpan> DelayDueToRemoteDisconnect { get; } = new()
         {
             { DisconnectReason.ClientQuitting, TimeSpan.FromMinutes(1) },
-
-            // This is pretty much 80% of the disconnect reason. We don't wanna delay this too much though... it could be
-            // that other peer disconnect from the peer.
-            { DisconnectReason.TooManyPeers, TimeSpan.FromMinutes(1) },
         };
 
         public Dictionary<NodeStatsEventType, TimeSpan> DelayDueToEvent { get; } = new()
