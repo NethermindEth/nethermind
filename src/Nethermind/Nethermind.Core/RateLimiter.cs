@@ -24,7 +24,7 @@ public class RateLimiter
 
     private RateLimiter(double intervalSec)
     {
-        _delay = (long) (Stopwatch.Frequency * intervalSec);
+        _delay = (long)(Stopwatch.Frequency * intervalSec);
 
         _nextSlot = GetCurrentTick();
     }
