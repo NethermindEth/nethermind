@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.Reporting
         private readonly IPivot _pivot;
         private readonly ILogger _logger;
 
-        private SyncPeersReport _syncPeersReport;
+        private readonly SyncPeersReport _syncPeersReport;
         private int _reportId;
         private const int SyncReportFrequency = 1;
         private const int PeerCountFrequency = 15;
