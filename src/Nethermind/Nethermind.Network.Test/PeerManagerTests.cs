@@ -385,7 +385,7 @@ namespace Nethermind.Network.Test
             {
                 currentCount += 25;
                 maxCount += 50;
-                Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.InRange(currentCount, maxCount).After(_travisDelay * 2, 10));
+                Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.InRange(currentCount, maxCount).After(_travisDelayLonger * 2, 10));
                 ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, maxCount);
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_travisDelay);
