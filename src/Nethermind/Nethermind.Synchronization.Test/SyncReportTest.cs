@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Timers;
@@ -56,6 +57,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(true)]
         public void Ancient_bodies_and_receipts_are_reported_correctly(bool setBarriers)
         {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
             pool.InitializedPeersCount.Returns(1);
