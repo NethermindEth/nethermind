@@ -120,7 +120,7 @@ namespace Nethermind.Synchronization.Reporting
 
         private static string Pad(decimal value, int length)
         {
-            string valueString = $"{value:N2}";
+            string valueString = $"{value:N0}";
             return valueString.PadLeft(length + 3, ' ');
         }
 

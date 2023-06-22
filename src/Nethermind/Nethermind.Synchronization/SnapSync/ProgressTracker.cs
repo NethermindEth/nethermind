@@ -271,7 +271,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             Interlocked.Increment(ref _activeAccRefreshRequests);
 
-            LogRequest($"AccountsToRefresh:{AccountsToRefresh.Count}");
+            LogRequest($"AccountsToRefresh: {AccountsToRefresh.Count}");
 
             int queueLength = AccountsToRefresh.Count;
             AccountWithStorageStartingHash[] paths = new AccountWithStorageStartingHash[queueLength];
@@ -442,7 +442,7 @@ namespace Nethermind.Synchronization.SnapSync
                 int moreAccountCount = AccountRangePartitions.Count(kv => kv.Value.MoreAccountsToRight);
 
                 _logger.Info(
-                    $"Snap - ({reqType}, diff:{_pivot.Diff}) {moreAccountCount} - Requests Account:{_activeAccountRequests} | Storage:{_activeStorageRequests} | Code:{_activeCodeRequests} | Refresh:{_activeAccRefreshRequests} - Queues Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | Refresh:{AccountsToRefresh.Count}");
+                    $"Snap - ({reqType}, diff: {_pivot.Diff}) {moreAccountCount} - Requests Account: {_activeAccountRequests} | Storage: {_activeStorageRequests} | Code: {_activeCodeRequests} | Refresh: {_activeAccRefreshRequests} - Queues Slots: {NextSlotRange.Count} | Storages: {StoragesToRetrieve.Count} | Codes: {CodesToRetrieve.Count} | Refresh: {AccountsToRefresh.Count}");
             }
         }
 
