@@ -229,8 +229,7 @@ public partial class BlockProcessor : IBlockProcessor
 
         if (spec.IsEip4844Enabled)
         {
-            block.Header.DataGasUsed = DataGasCalculator.CalculateDataGas(
-                block.Transactions.Sum(tx => tx.BlobVersionedHashes?.Length ?? 0));
+            block.Header.DataGasUsed = DataGasCalculator.CalculateDataGas(block.Transactions);
         }
 
         block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);

@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -234,7 +232,7 @@ public class BlockValidator : IBlockValidator
             }
             if (transaction.MaxFeePerDataGas < dataGasPrice)
             {
-                error = $"A transaction has unsufficient MaxFeePerDataGas {transaction.MaxFeePerDataGas} < {dataGasPrice}.";
+                error = $"A transaction has unsufficient {nameof(transaction.MaxFeePerDataGas)} to cover current data gas fee: {transaction.MaxFeePerDataGas} < {dataGasPrice}.";
                 if (_logger.IsWarn) _logger.Warn(error);
                 return false;
             }
@@ -252,7 +250,7 @@ public class BlockValidator : IBlockValidator
 
         if (dataGasUsed != block.Header.DataGasUsed)
         {
-            error = $"DataGasUsed does not match actual data gas used: {block.Header.DataGasUsed} != {dataGasUsed}.";
+            error = $"{nameof(BlockHeader.DataGasUsed)} declared in the block header does not match actual data gas used: {block.Header.DataGasUsed} != {dataGasUsed}.";
             if (_logger.IsWarn) _logger.Warn(error);
             return false;
         }

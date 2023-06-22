@@ -79,8 +79,8 @@ namespace Nethermind.Serialization.Rlp
 
                 if (itemsRemaining == 3 && decoderContext.Position != headerCheck)
                 {
-                    blockHeader.DataGasUsed = decoderContext.DecodeULong();
-                    blockHeader.ExcessDataGas = decoderContext.DecodeULong();
+                    blockHeader.DataGasUsed = decoderContext.DecodeULong(allowLeadingZeroBytes: false);
+                    blockHeader.ExcessDataGas = decoderContext.DecodeULong(allowLeadingZeroBytes: false);
                 }
             }
 

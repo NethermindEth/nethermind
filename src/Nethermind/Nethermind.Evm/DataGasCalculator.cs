@@ -16,6 +16,20 @@ public static class DataGasCalculator
     public static ulong CalculateDataGas(Transaction transaction) =>
         CalculateDataGas(transaction.BlobVersionedHashes?.Length ?? 0);
 
+    public static ulong CalculateDataGas(Transaction[] transactions)
+    {
+        int blobCount = 0;
+        foreach (Transaction tx in transactions)
+        {
+            if (tx.SupportsBlobs)
+            {
+                blobCount += tx.BlobVersionedHashes!.Length;
+            }
+        }
+
+        return CalculateDataGas(blobCount);
+    }
+
     public static bool TryCalculateDataGasPrice(BlockHeader header, Transaction transaction, out UInt256 dataGasPrice)
     {
         if (!TryCalculateDataGasPricePerUnit(header.ExcessDataGas.Value, out UInt256 dataGasPricePerUnit))
