@@ -35,6 +35,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -332,7 +333,8 @@ namespace Nethermind.Init.Steps
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
                 _api.LogManager,
-                CreateTxPoolTxComparer());
+                CreateTxPoolTxComparer(),
+                _api.TxGossipPolicy);
 
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 
