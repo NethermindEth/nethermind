@@ -10,13 +10,15 @@ namespace Nethermind.TxPool;
 
 public interface ITxGossipPolicy
 {
-    bool CanGossipTransactions { get; }
-    bool ShouldGossipTransaction(Transaction tx) => CanGossipTransactions;
+    bool ShouldListenToGossippedTransactions => true;
+    bool CanGossipTransactions => true;
+    bool ShouldGossipTransaction(Transaction tx) => true;
 }
 
 public class CompositeTxGossipPolicy : ITxGossipPolicy
 {
     public List<ITxGossipPolicy> Policies { get; } = new();
+    public bool ShouldListenToGossippedTransactions => Policies.All(static p => p.ShouldListenToGossippedTransactions);
     public bool CanGossipTransactions => Policies.All(static p => p.CanGossipTransactions);
     public bool ShouldGossipTransaction(Transaction tx) => Policies.All(p => p.ShouldGossipTransaction(tx));
 }
@@ -24,5 +26,4 @@ public class CompositeTxGossipPolicy : ITxGossipPolicy
 public class ShouldGossip : ITxGossipPolicy
 {
     public static readonly ShouldGossip Instance = new();
-    public bool CanGossipTransactions => true;
 }

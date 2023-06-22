@@ -66,7 +66,7 @@ public class Eth68ProtocolHandlerTests
         _syncManager.Genesis.Returns(_genesisBlock.Header);
         ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
-        _txGossipPolicy.CanGossipTransactions.Returns(true);
+        _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(true);
         _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
         _handler = new Eth68ProtocolHandler(
             _session,
@@ -104,7 +104,7 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public void Can_handle_NewPooledTransactions_message([Values(0, 1, 2, 100)] int txCount, [Values(true, false)] bool canGossipTransactions)
     {
-        _txGossipPolicy.CanGossipTransactions.Returns(canGossipTransactions);
+        _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(canGossipTransactions);
 
         GenerateLists(txCount, out List<byte> types, out List<int> sizes, out List<Keccak> hashes);
 

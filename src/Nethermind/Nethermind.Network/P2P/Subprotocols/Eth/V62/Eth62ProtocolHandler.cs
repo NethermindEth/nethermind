@@ -63,7 +63,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         public override int MessageIdSpaceSize => 8;
         public override string Name => "eth62";
         protected override TimeSpan InitTimeout => Timeouts.Eth62Status;
-        protected bool CanReceiveTransactions => _txGossipPolicy.CanGossipTransactions;
+        protected bool CanReceiveTransactions => _txGossipPolicy.ShouldListenToGossippedTransactions;
 
         public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 

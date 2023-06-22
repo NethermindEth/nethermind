@@ -62,7 +62,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             _syncManager.Genesis.Returns(_genesisBlock.Header);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
-            _txGossipPolicy.CanGossipTransactions.Returns(true);
+            _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(true);
             _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
             _handler = new Eth65ProtocolHandler(
                 _session,
@@ -178,7 +178,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void should_handle_NewPooledTransactionHashesMessage([Values(true, false)] bool canGossipTransactions)
         {
-            _txGossipPolicy.CanGossipTransactions.Returns(canGossipTransactions);
+            _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(canGossipTransactions);
             NewPooledTransactionHashesMessage msg = new(new[] { TestItem.KeccakA, TestItem.KeccakB });
             IMessageSerializationService serializationService = Build.A.SerializationService().WithEth65().TestObject;
 

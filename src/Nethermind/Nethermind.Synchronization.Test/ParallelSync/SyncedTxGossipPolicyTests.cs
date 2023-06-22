@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.ParallelSync;
@@ -22,6 +23,7 @@ public class SyncedTxGossipPolicyTests
     [TestCase(SyncMode.Full, ExpectedResult = false)]
     [TestCase(SyncMode.DbLoad, ExpectedResult = false)]
     [TestCase(SyncMode.Disconnected, ExpectedResult = false)]
+    [TestCase(SyncMode.UpdatingPivot, ExpectedResult = false)]
     public bool can_gossip(SyncMode mode) =>
-        new SyncedTxGossipPolicy(new StaticSelector(mode)).CanGossipTransactions;
+        ((ITxGossipPolicy)new SyncedTxGossipPolicy(new StaticSelector(mode))).ShouldListenToGossippedTransactions;
 }
