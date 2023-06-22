@@ -22,7 +22,7 @@ namespace Nethermind.Trie
         public int MaxDegreeOfParallelism
         {
             get => _maxDegreeOfParallelism;
-            internal init => _maxDegreeOfParallelism = value == 0 ? Math.Max(Environment.ProcessorCount / 4, 1) : value;
+            internal init => _maxDegreeOfParallelism = VisitingOptions.AdjustMaxDegreeOfParallelism(value);
         }
 
         public SemaphoreSlim Semaphore

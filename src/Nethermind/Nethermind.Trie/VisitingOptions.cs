@@ -26,7 +26,7 @@ namespace Nethermind.Trie
             get => _maxDegreeOfParallelism;
             init
             {
-                _maxDegreeOfParallelism = value == 0 ? Math.Max(Environment.ProcessorCount / 4, 1) : value;
+                _maxDegreeOfParallelism = AdjustMaxDegreeOfParallelism(value);
             }
         }
 
@@ -38,5 +38,14 @@ namespace Nethermind.Trie
         /// with slower SSD. Set to 0 to disable batched trie visitor.
         /// </summary>
         public long FullScanMemoryBudget { get; set; }
+
+        public static int AdjustMaxDegreeOfParallelism(int rawMaxDegreeOfParallelism)
+        {
+            if (rawMaxDegreeOfParallelism == 0)
+                return Math.Max(Environment.ProcessorCount / 4, 1);
+            if (rawMaxDegreeOfParallelism <= -1)
+                return Environment.ProcessorCount;
+            return rawMaxDegreeOfParallelism;
+        }
     }
 }
