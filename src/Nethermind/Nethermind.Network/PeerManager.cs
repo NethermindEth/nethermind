@@ -608,10 +608,8 @@ namespace Nethermind.Network
         [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
         private async Task SetupOutgoingPeerConnection(Peer peer, bool cancelIfThrottled = false)
         {
-            if (cancelIfThrottled)
-            {
-                if (_outgoingConnectionRateLimiter.IsThrottled()) return;
-            }
+            if (cancelIfThrottled && _outgoingConnectionRateLimiter.IsThrottled()) return;
+
             await _outgoingConnectionRateLimiter.WaitAsync(_cancellationTokenSource.Token);
 
             // Can happen when In connection is received from the same peer and is initialized before we get here
@@ -647,6 +645,7 @@ namespace Nethermind.Network
             }
 
             Interlocked.Increment(ref _newActiveNodes);
+            _peerUpdateRequested.Set();
         }
 
         private async Task<bool> InitializeOutgoingPeerConnection(Peer candidate)
