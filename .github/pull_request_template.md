@@ -42,7 +42,7 @@ _Optional. Remove if not applicable._
 - [ ] Yes
 - [ ] No
 
-_Link to documentation or issue about change added with "docs" label_
+_Link to documentation or issue about change which needs to be added with "docs" label (example: https://github.com/NethermindEth/nethermind/issues/5856)_
 
 #### Requires better explanation in Release Notes?
 
