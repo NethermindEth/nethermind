@@ -99,8 +99,8 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         BlockHeader? safeBlockHeader = ValidateBlockHash(forkchoiceState.SafeBlockHash, out string? safeBlockErrorMsg);
         BlockHeader? finalizedHeader = ValidateBlockHash(forkchoiceState.FinalizedBlockHash, out string? finalizationErrorMsg);
         string requestStr = payloadAttributes is null
-            ? forkchoiceState.ToString(blockInfo?.BlockNumber, safeBlockHeader?.Number, finalizedHeader?.Number)
-            : $"{forkchoiceState.ToString(blockInfo?.BlockNumber, safeBlockHeader?.Number, finalizedHeader?.Number)} {payloadAttributes}";
+            ? forkchoiceState.ToString(newHeadBlock.Number, safeBlockHeader?.Number, finalizedHeader?.Number)
+            : $"{forkchoiceState.ToString(newHeadBlock.Number, safeBlockHeader?.Number, finalizedHeader?.Number)} {payloadAttributes}";
 
         if (_logger.IsInfo) _logger.Info($"Received {requestStr}");
 
@@ -220,7 +220,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         if (shouldUpdateHead)
         {
             _poSSwitcher.ForkchoiceUpdated(newHeadBlock.Header, forkchoiceState.FinalizedBlockHash);
-            if (_logger.IsInfo) _logger.Info($"Synced chain Head to  {newHeadBlock.ToString(Block.Format.FullHashAndNumber)}");
+            if (_logger.IsInfo) _logger.Info($"Synced chain Head to {newHeadBlock.ToString(Block.Format.FullHashAndNumber)}");
         }
 
         string? payloadId = null;
