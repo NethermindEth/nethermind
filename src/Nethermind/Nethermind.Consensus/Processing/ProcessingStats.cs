@@ -127,7 +127,7 @@ namespace Nethermind.Consensus.Processing
                     string blockGas = Evm.Metrics.BlockMinGasPrice != decimal.MaxValue ? $" Gas gwei: {Evm.Metrics.BlockMinGasPrice:N2} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N2}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N2}) .. {Evm.Metrics.BlockMaxGasPrice:N2}" : "";
                     if (chunkBlocks > 1)
                     {
-                        _logger.Info($"Processed   {block.Number - chunkBlocks + 1,9}...{block.Number,9} | {chunkMs,9:N2} ms  |     slot {runMs,7:N0} ms |{blockGas}");
+                        _logger.Info($"Processed   {block.Number - chunkBlocks + 1,9}...{block.Number,9} | {chunkMs,9:N2} ms  |  slot    {runMs,7:N0} ms |{blockGas}");
                     }
                     else
                     {
@@ -140,7 +140,7 @@ namespace Nethermind.Consensus.Processing
                             < 2000 => orangeText,
                             _ => redText
                         };
-                        _logger.Info($"Processed           {block.Number,9}     | {chunkColor}{chunkMs,9:N2}{resetColor} ms  |     slot {runMs,7:N0} ms |{blockGas}");
+                        _logger.Info($"Processed           {block.Number,9}     | {chunkColor}{chunkMs,9:N2}{resetColor} ms  |  slot    {runMs,7:N0} ms |{blockGas}");
                     }
 
                     var mgasColor = chunkMGas switch
