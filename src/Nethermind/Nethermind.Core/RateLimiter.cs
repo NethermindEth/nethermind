@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core;
 
@@ -13,9 +15,8 @@ namespace Nethermind.Core;
 /// </summary>
 public class RateLimiter
 {
-    private TimeSpan _delay;
-    private DateTimeOffset _nextSlot;
-    private SpinLock _spinLock = new();
+    private readonly long _delay;
+    private long _nextSlot;
 
     public RateLimiter(int eventPerSec) : this(1.0 / eventPerSec)
     {
@@ -23,44 +24,50 @@ public class RateLimiter
 
     private RateLimiter(double intervalSec)
     {
-        _delay = TimeSpan.FromSeconds(intervalSec);
-        _nextSlot = DateTimeOffset.Now;
+        _delay = (long) (Stopwatch.Frequency * intervalSec);
+
+        _nextSlot = GetCurrentTick();
     }
 
+    public static long GetCurrentTick()
+    {
+        return Stopwatch.GetTimestamp();
+    }
+
+    private static double TickToMs(long tick)
+    {
+        return tick * 1000.0 / Stopwatch.Frequency;
+    }
+
+    /// <summary>
+    /// Return true if its definitely will be throttled when calling WaitAsync. May still get throttled even if this
+    /// return false.
+    /// </summary>
+    /// <returns></returns>
     public bool IsThrottled()
     {
-        return DateTimeOffset.Now < _nextSlot;
+        return GetCurrentTick() < _nextSlot;
     }
 
-    public async Task WaitAsync(CancellationToken ctx)
+    public async ValueTask WaitAsync(CancellationToken ctx)
     {
         while (true)
         {
-            TimeSpan toWait;
-            bool taken = false;
-            while (!taken)
-            {
-                _spinLock.Enter(ref taken);
-            }
-            try
-            {
-                DateTimeOffset now = DateTimeOffset.Now;
-                if (now >= _nextSlot)
-                {
-                    _nextSlot = now + _delay;
-                    return;
-                }
+            long originalNextSlot = _nextSlot;
 
-                toWait = _nextSlot - now;
-            }
-            finally
+            // Technically its possible that two `GetCurrentTick()` call at the same time can return same value,
+            // but its very unlikely.
+            long now = GetCurrentTick();
+            if (now >= originalNextSlot
+                && Interlocked.CompareExchange(ref _nextSlot, now + _delay, originalNextSlot) == originalNextSlot)
             {
-                _spinLock.Exit();
+                return;
             }
 
-            if (toWait < TimeSpan.Zero) continue;
+            long toWait = _nextSlot - now;
+            if (toWait < 0) continue;
 
-            await Task.Delay(toWait, ctx);
+            await Task.Delay(TimeSpan.FromMilliseconds(TickToMs(toWait)), ctx);
         }
     }
 }

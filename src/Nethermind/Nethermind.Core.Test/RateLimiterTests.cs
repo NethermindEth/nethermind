@@ -48,7 +48,7 @@ public class RateLimiterTests
         RateLimiter rateLimiter = new(1);
         await rateLimiter.WaitAsync(CancellationToken.None);
         CancellationTokenSource cts = new();
-        Task waitTask = rateLimiter.WaitAsync(cts.Token);
+        ValueTask waitTask = rateLimiter.WaitAsync(cts.Token);
         cts.Cancel();
 
         Func<Task> act = async () => await waitTask;
