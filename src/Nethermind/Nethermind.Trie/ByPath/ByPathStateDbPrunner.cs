@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -84,6 +85,8 @@ public class ByPathStateDbPrunner
     {
         return new Task(() =>
         {
+            int removed = 0;
+            Stopwatch sw = new();
             while (!_cleanupQueue.IsCompleted)
             {
                 KeyRange toBeRemoved = null;
@@ -101,8 +104,16 @@ public class ByPathStateDbPrunner
                 if (toBeRemoved is not null)
                 {
                     _keyValueStore.DeleteByRange(toBeRemoved.From, toBeRemoved.To);
+                    Interlocked.Increment(ref removed);
+                    if (removed > 100_000)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Executed 100 000 deletions in {sw.ElapsedMilliseconds} ms");
+                        sw.Restart();
+                        Interlocked.Exchange(ref removed, 0);
+                    }
                 }
             }
+            sw.Stop();
         });
     }
 
