@@ -218,6 +218,7 @@ namespace Nethermind.Trie
             {
                 if (nibbles[i] == 0x0f)
                 {
+                    nibbles[i] = 0;
                     omitted++;
                     continue;
                 }

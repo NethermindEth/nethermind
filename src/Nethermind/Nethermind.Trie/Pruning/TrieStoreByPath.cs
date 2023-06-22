@@ -809,7 +809,7 @@ namespace Nethermind.Trie.Pruning
                 for (int i = 0; i < pathNibbles.Length / 2 - 1; i++)
                     targetBytes[i + 1] = Nibbles.ToByte(pathNibbles[2 * i + oddityOverride], pathNibbles[2 * i + 1 + oddityOverride]);
 
-                targetBytes[0] = Nibbles.ToByte(1, pathNibbles[0]);
+                targetBytes[0] = Nibbles.ToByte(1, pathNibbles.Length > 0 ? pathNibbles[0] : (byte)0);
                 targetBytes[pathNibbles.Length / 2] = Nibbles.ToByte(pathNibbles[^1], 0);
             }
             return targetBytes;
@@ -819,6 +819,9 @@ namespace Nethermind.Trie.Pruning
         {
             int fullKeyLength = fullPathNibbles.Length >= 66 ? 66 : 33;
             byte[] from, to;
+
+            if (pathToNodeNibbles.Length == 0)
+                return;
 
             //edge cases
             Span<byte> keySlice = fullPathNibbles.Slice(pathToNodeNibbles.Length);
@@ -839,7 +842,7 @@ namespace Nethermind.Trie.Pruning
             {
                 Span<byte> fullPathIncremented = stackalloc byte[fullPathNibbles.Length];
                 fullPathNibbles.CopyTo(fullPathIncremented);
-                Span<byte> endNibbles = fromNibblesKey.Slice(0, pathToNodeNibbles.Length).IncrementNibble();
+                Span<byte> endNibbles = fromNibblesKey.Slice(0, pathToNodeNibbles.Length).IncrementNibble(true);
                 (from, to) = GetDeleteKeyFromNibbles2(fullPathIncremented.IncrementNibble(), endNibbles, fullKeyLength, 0);
                 _dbPrunner.EnqueueRange(from, to);
 
@@ -910,7 +913,7 @@ namespace Nethermind.Trie.Pruning
 
             if (ind1 is not null)
             {
-                Span<byte> nextSiblingPath = childPathTo.Slice(0, branchNode.FullPath.Length).IncrementNibble();
+                Span<byte> nextSiblingPath = childPathTo.Slice(0, branchNode.FullPath.Length).IncrementNibble(true);
                 GenerateRangesAndRequest(childPathFrom, nextSiblingPath, ind1, null, 0x00);
                 ind1 = null;
             }
@@ -936,7 +939,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool CanAccessByPath()
         {
-            return _dbPrunner.IsPruningComplete;
+            return _dbPrunner?.IsPruningComplete == true;
         }
 
         public Task GetTask()
