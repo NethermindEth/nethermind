@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
@@ -23,6 +25,8 @@ namespace Nethermind.State
         private const int StartCapacity = Resettable.StartCapacity;
         private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
         private readonly ResettableHashSet<Address> _committedThisRound = new();
+        // Only guarding against hot duplicates so filter doesn't need to be too big
+        private readonly LruKeyCache<Keccak> _codeInsertFilter = new(2048, "Code Insert Filter");
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
@@ -141,7 +145,29 @@ namespace Nethermind.State
         {
             _needsStateRootUpdate = true;
             Keccak codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
-            _codeDb[codeHash.Bytes] = code.ToArray();
+
+            // Don't reinsert if already inserted. This can be the case when the same
+            // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
+            // or people copy and pasting popular contracts
+            if (!_codeInsertFilter.Get(codeHash))
+            {
+                if (_codeDb is IDbWithSpan dbWithSpan)
+                {
+                    dbWithSpan.PutSpan(codeHash.Bytes, code.Span);
+                }
+                else if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
+                        && codeArray.Offset == 0
+                        && codeArray.Count == code.Length)
+                {
+                    _codeDb[codeHash.Bytes] = codeArray.Array;
+                }
+                else
+                {
+                    _codeDb[codeHash.Bytes] = code.ToArray();
+                }
+
+                _codeInsertFilter.Set(codeHash);
+            }
 
             Account? account = GetThroughCache(address);
             if (account is null)
