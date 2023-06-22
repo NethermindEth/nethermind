@@ -246,8 +246,7 @@ namespace Nethermind.Network
                         continue;
                     }
 
-                    int availableActivePeerCount = AvailableActivePeersCount;
-                    if (availableActivePeerCount <= 0)
+                    if (!EnsureAvailableActivePeerSlot())
                     {
                         continue;
                     }
@@ -261,6 +260,9 @@ namespace Nethermind.Network
                     List<Peer> remainingCandidates = _currentSelection.Candidates;
                     if (remainingCandidates.Count == 0)
                     {
+                        // Delay to prevent high CPU use. There is a shortcut path for newly discovered peer, so having
+                        // a lower delay probably wont do much.
+                        await Task.Delay(TimeSpan.FromSeconds(1));
                         continue;
                     }
 
@@ -364,7 +366,7 @@ namespace Nethermind.Network
             {
                 // The signal is not very reliable. So we just do like a simple pool.
                 _peerUpdateRequested.Reset();
-                _peerUpdateRequested.Wait(TimeSpan.FromMilliseconds(10));
+                _peerUpdateRequested.Wait(TimeSpan.FromMilliseconds(100));
             }
 
             return AvailableActivePeersCount - _pending > 0;
@@ -626,6 +628,7 @@ namespace Nethermind.Network
             // for some time we will have a peer in active that has no session assigned - analyze this?
 
             Interlocked.Decrement(ref _pending);
+            _peerUpdateRequested.Set();
             if (_logger.IsTrace) _logger.Trace($"Connecting to {_stats.GetCurrentReputation(peer.Node)} rep node - {result}, ACTIVE: {_peerPool.ActivePeerCount}, CAND: {_peerPool.PeerCount}");
 
             if (!result)
@@ -645,7 +648,6 @@ namespace Nethermind.Network
             }
 
             Interlocked.Increment(ref _newActiveNodes);
-            _peerUpdateRequested.Set();
         }
 
         private async Task<bool> InitializeOutgoingPeerConnection(Peer candidate)
