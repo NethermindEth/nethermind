@@ -9,11 +9,8 @@ namespace Nethermind.Core
 
         public string? Error { get; set; }
 
-        public static Result Fail(string error)
-        {
-            return new() { ResultType = ResultType.Failure, Error = error };
-        }
-
+        public static Result Fail(string error) => new() { ResultType = ResultType.Failure, Error = error };
+        public static Result TemporaryFail(string error) => new() { ResultType = ResultType.TemporaryFailure, Error = error };
         public static Result Success { get; } = new() { ResultType = ResultType.Success };
     }
 }

@@ -19,65 +19,43 @@ namespace Nethermind.JsonRpc
         {
         }
 
-        public static ResultWrapper<T> Fail<TSearch>(SearchResult<TSearch> searchResult) where TSearch : class
-        {
-            return new() { Result = Result.Fail(searchResult.Error), ErrorCode = searchResult.ErrorCode };
-        }
+        public static ResultWrapper<T> Fail<TSearch>(SearchResult<TSearch> searchResult) where TSearch : class =>
+            new() { Result = Result.Fail(searchResult.Error!), ErrorCode = searchResult.ErrorCode };
 
-        public static ResultWrapper<T> Fail(string error)
-        {
-            return new() { Result = Result.Fail(error), ErrorCode = ErrorCodes.InternalError };
-        }
+        public static ResultWrapper<T> Fail(string error) =>
+            new() { Result = Result.Fail(error), ErrorCode = ErrorCodes.InternalError };
 
-        public static ResultWrapper<T> Fail(Exception e)
-        {
-            return new() { Result = Result.Fail(e.ToString()), ErrorCode = ErrorCodes.InternalError };
-        }
+        public static ResultWrapper<T> Fail(Exception e) =>
+            new() { Result = Result.Fail(e.ToString()), ErrorCode = ErrorCodes.InternalError };
 
-        public static ResultWrapper<T> Fail(string error, int errorCode, T outputData)
-        {
-            return new() { Result = Result.Fail(error), ErrorCode = errorCode, Data = outputData };
-        }
+        public static ResultWrapper<T> Fail(string error, int errorCode, T outputData) =>
+            new() { Result = Result.Fail(error), ErrorCode = errorCode, Data = outputData };
 
-        public static ResultWrapper<T> Fail(string error, int errorCode)
-        {
-            return new() { Result = Result.Fail(error), ErrorCode = errorCode };
-        }
+        public static ResultWrapper<T> Fail(string error, int errorCode) =>
+            new() { Result = Result.Fail(error), ErrorCode = errorCode };
 
-        public static ResultWrapper<T> Fail(string error, T data)
-        {
-            return new() { Data = data, Result = Result.Fail(error) };
-        }
+        public static ResultWrapper<T> Fail(string error, T data) =>
+            new() { Data = data, Result = Result.Fail(error) };
 
-        public static ResultWrapper<T> Success(T data)
-        {
-            return new() { Data = data, Result = Result.Success };
-        }
+        public static ResultWrapper<T> Success(T data) =>
+            new() { Data = data, Result = Result.Success };
 
-        public Result GetResult()
-        {
-            return Result;
-        }
+        public static ResultWrapper<T> TemporaryFail(string error, int errorCode) =>
+            new() { Result = Result.TemporaryFail(error), ErrorCode = errorCode };
 
-        public object? GetData()
-        {
-            return Data;
-        }
+        public static ResultWrapper<T> TemporaryFail<TSearch>(SearchResult<TSearch> searchResult) where TSearch : class =>
+            new() { Result = Result.TemporaryFail(searchResult.Error!), ErrorCode = searchResult.ErrorCode };
 
-        public int GetErrorCode()
-        {
-            return ErrorCode;
-        }
+        public Result GetResult() => Result;
 
-        public static ResultWrapper<T> From(RpcResult<T>? rpcResult)
-        {
-            if (rpcResult is null)
-            {
-                return Fail("Missing result.");
-            }
+        public object? GetData() => Data;
 
-            return rpcResult.IsValid ? Success(rpcResult.Result) : Fail(rpcResult.Error.Message);
-        }
+        public int GetErrorCode() => ErrorCode;
+
+        public static ResultWrapper<T> From(RpcResult<T>? rpcResult) =>
+            rpcResult is null
+                ? Fail("Missing result.")
+                : rpcResult.IsValid ? Success(rpcResult.Result) : Fail(rpcResult.Error.Message);
 
         public static implicit operator Task<ResultWrapper<T>>(ResultWrapper<T> resultWrapper) => Task.FromResult(resultWrapper);
     }
