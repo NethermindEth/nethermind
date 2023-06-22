@@ -37,19 +37,19 @@ _Optional. Remove if not applicable._
 
 ## Documentation
 
-#### Requires documentation change?
+#### Requires documentation update
 
 - [ ] Yes
 - [ ] No
 
-_Link to documentation or issue about change which needs to be added with "docs" label (example: https://github.com/NethermindEth/nethermind/issues/5856)_
+_If yes, fill in the details here or link the PR to docs update. Remove if not applicable._
 
-#### Requires better explanation in Release Notes?
+#### Requires explanation in Release Notes
 
 - [ ] Yes
 - [ ] No
 
-_If yes, please put some better description (new parameters, how it affect node and user expeirence) here._
+_If yes, fill in the details here. Remove if not applicable._
 
 ## Remarks
 
