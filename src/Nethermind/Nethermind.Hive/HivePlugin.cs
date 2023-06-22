@@ -52,6 +52,8 @@ namespace Nethermind.Hive
                 if (_api.FileSystem is null) throw new ArgumentNullException(nameof(_api.FileSystem));
                 if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
 
+                _api.TxGossipPolicy.Policies.Clear();
+
                 HiveRunner hiveRunner = new(
                     _api.BlockTree,
                     _api.BlockProcessingQueue,
