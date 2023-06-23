@@ -539,7 +539,7 @@ namespace Nethermind.Consensus.Processing
                     {
                         if (_logger.IsInfo)
                             _logger.Info(
-                                $"Rerunning block after reorg or pruning: {block.ToString(Block.Format.FullHashAndNumber)}");
+                                $"Rerunning block after reorg or pruning: {block.ToString(Block.Format.Short)}");
                     }
 
                     blocksToProcess.Add(block);

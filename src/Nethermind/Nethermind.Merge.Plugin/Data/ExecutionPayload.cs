@@ -171,7 +171,7 @@ public class ExecutionPayload
         _transactions = transactions;
     }
 
-    public override string ToString() => $"{BlockNumber} ({BlockHash})";
+    public override string ToString() => $"{BlockNumber} ({BlockHash.ToShortString()})";
 }
 
 public static class ExecutionPayloadExtensions

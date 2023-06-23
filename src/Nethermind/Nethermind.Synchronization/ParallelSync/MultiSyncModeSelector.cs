@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.ParallelSync
     ///     - Beacon modes are allied directly.
     ///     - If no Beacon mode is applied and we have good peers on the network we apply <see cref="SyncMode.Full"/>,.
     /// </remarks>
-    public class MultiSyncModeSelector : ISyncModeSelector, IDisposable
+    public class MultiSyncModeSelector : ISyncModeSelector
     {
         /// <summary>
         /// Number of blocks before the best peer's head when we switch from fast sync to full sync
@@ -286,22 +286,10 @@ namespace Nethermind.Synchronization.ParallelSync
         /// <param name="best">Snapshot of the best known states</param>
         /// <returns>A string describing the state of sync</returns>
         private static string BuildStateString(Snapshot best) =>
-            $"processed:{best.Processed}|" +
-            $"state:{best.State}|" +
-            $"block:{best.Block}|" +
-            $"header:{best.Header}|" +
-            $"target block:{best.TargetBlock}|" +
-            $"peer block:{best.Peer.Block}";
+            $"processed: {best.Processed} | state: {best.State} | block: {best.Block} | header: {best.Header} | target block: {best.TargetBlock} | peer block: {best.Peer.Block}";
 
         private static string BuildStateStringDebug(Snapshot best) =>
-            $"processed:{best.Processed}|" +
-            $"state:{best.State}|" +
-            $"block:{best.Block}|" +
-            $"header:{best.Header}|" +
-            $"chain difficulty:{best.ChainDifficulty}|" +
-            $"target block:{best.TargetBlock}|" +
-            $"peer block:{best.Peer.Block}|" +
-            $"peer total difficulty:{best.Peer.TotalDifficulty}";
+            $"processed: {best.Processed} | state: {best.State} | block: {best.Block} | header: {best.Header} | chain difficulty: {best.ChainDifficulty} | target block: {best.TargetBlock} | peer block: {best.Peer.Block} | peer total difficulty: {best.Peer.TotalDifficulty}";
 
         private bool IsInAStickyFullSyncMode(Snapshot best)
         {
