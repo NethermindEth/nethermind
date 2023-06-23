@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Analyzers
@@ -11,6 +12,8 @@ namespace Nethermind.Network.P2P.Analyzers
         {
             if (type == DisconnectType.Remote)
             {
+                Metrics.RemoteDisconnectReasons.Increment(reason);
+
                 switch (reason.ToEthDisconnectReason())
                 {
                     case EthDisconnectReason.BreachOfProtocol:
@@ -57,6 +60,8 @@ namespace Nethermind.Network.P2P.Analyzers
 
             if (type == DisconnectType.Local)
             {
+                Metrics.LocalDisconnectReasons.Increment(reason);
+
                 switch (reason.ToEthDisconnectReason())
                 {
                     case EthDisconnectReason.BreachOfProtocol:

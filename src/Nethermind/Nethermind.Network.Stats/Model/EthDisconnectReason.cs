@@ -23,7 +23,8 @@ namespace Nethermind.Stats.Model
         Other = 0x10
     }
 
-    public static class EthDisconnectReasonExtensions {
+    public static class EthDisconnectReasonExtensions
+    {
         public static DisconnectReason ToDisconnectReason(this EthDisconnectReason reason)
         {
             switch (reason)

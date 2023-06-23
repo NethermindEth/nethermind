@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics.Metrics;
@@ -24,6 +25,7 @@ namespace Nethermind.Monitoring.Metrics
         private Timer _timer;
         private readonly Dictionary<Type, (MemberInfo, string, Func<double>)[]> _membersCache = new();
         private readonly Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicPropCache = new();
+        private readonly Dictionary<Type, (MemberInfo, string GaugeName, string LabelName, IEnumerable)[]> _labelledDictionaryCache = new();
         private readonly HashSet<Type> _metricTypes = new();
 
         public readonly Dictionary<string, Gauge> _gauges = new();
@@ -50,9 +52,14 @@ namespace Nethermind.Monitoring.Metrics
 
                 _gauges[gaugeName] = CreateMemberInfoMetricsGauge(member);
             }
+
+            foreach ((MemberInfo member, string gaugeName, string labelName, IEnumerable _) in _labelledDictionaryCache[type])
+            {
+                _gauges[gaugeName] = CreateMemberInfoMetricsGauge(member, labelName);
+            }
         }
 
-        private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member)
+        private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member, params string[] labels)
         {
             string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
             string name = BuildGaugeName(member);
@@ -60,13 +67,13 @@ namespace Nethermind.Monitoring.Metrics
             bool haveTagAttributes = member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().Any();
             if (!haveTagAttributes)
             {
-                return CreateGauge(name, description, _commonStaticTags);
+                return CreateGauge(name, description, _commonStaticTags, labels);
             }
 
             Dictionary<string, string> tags = new(_commonStaticTags);
             member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().ForEach(attribute =>
                 tags.Add(attribute.Label, GetStaticMemberInfo(attribute.Informer, attribute.Label)));
-            return CreateGauge(name, description, tags);
+            return CreateGauge(name, description, tags, labels);
         }
 
         // Tags that all metrics share
@@ -140,11 +147,26 @@ namespace Nethermind.Monitoring.Metrics
 
             if (!_dynamicPropCache.ContainsKey(type))
             {
-                var p = type.GetProperties().FirstOrDefault(p => p.PropertyType.IsAssignableTo(typeof(IDictionary<string, long>)));
+                var p = type.GetProperties()
+                    .Where(p => p.GetCustomAttribute<KeyIsLabel>() == null)
+                    .FirstOrDefault(p => p.PropertyType.IsAssignableTo(typeof(IDictionary<string, long>)));
                 if (p != null)
                 {
                     _dynamicPropCache[type] = (p.Name, (IDictionary<string, long>)p.GetValue(null));
                 }
+            }
+
+            if (!_labelledDictionaryCache.ContainsKey(type))
+            {
+                _labelledDictionaryCache[type] = type.GetProperties()
+                    .Where(p => p.GetCustomAttribute<KeyIsLabel>() != null)
+                    .Where(p =>
+                    {
+                        var propType = p.PropertyType;
+                        return propType.IsGenericType && propType.GetGenericTypeDefinition() == typeof(IDictionary<,>);
+                    })
+                    .Select(p => ((MemberInfo)p, GetGaugeNameKey(type.Name, p.Name), p.GetCustomAttribute<KeyIsLabel>().LabelName, (IEnumerable)p.GetValue(null)))
+                    .ToArray();
             }
         }
 
@@ -154,9 +176,9 @@ namespace Nethermind.Monitoring.Metrics
         private static string BuildGaugeName(string propertyName) =>
             $"nethermind_{GetGaugeNameRegex().Replace(propertyName, "$1_$2").ToLowerInvariant()}";
 
-        private static Gauge CreateGauge(string name, string help = null, IDictionary<string, string> labels = null) => labels is null
-            ? Prometheus.Metrics.CreateGauge(name, help ?? string.Empty)
-            : Prometheus.Metrics.WithLabels(labels).CreateGauge(name, help ?? string.Empty);
+        private static Gauge CreateGauge(string name, string help = null, IDictionary<string, string> staticLabels = null, params string[] labels) => staticLabels is null
+            ? Prometheus.Metrics.CreateGauge(name, help ?? string.Empty, labels)
+            : Prometheus.Metrics.WithLabels(staticLabels).CreateGauge(name, help ?? string.Empty, labels);
 
         public MetricsController(IMetricsConfig metricsConfig)
         {
@@ -211,12 +233,30 @@ namespace Nethermind.Monitoring.Metrics
                 }
             }
 
-            Gauge ReplaceValueIfChanged(double value, string gaugeName)
+            foreach ((MemberInfo _, string gaugeName, string _, IEnumerable enumerable) in _labelledDictionaryCache[type])
+            {
+                foreach (DictionaryEntry kv in enumerable)
+                {
+                    double value = Convert.ToDouble(kv.Value);
+                    ReplaceValueIfChanged(value, gaugeName, kv.Key.ToString());
+                }
+            }
+
+            Gauge ReplaceValueIfChanged(double value, string gaugeName, params string[] labels)
             {
                 if (_gauges.TryGetValue(gaugeName, out Gauge gauge))
                 {
-                    if (Math.Abs(gauge.Value - value) > double.Epsilon)
-                        gauge.Set(value);
+                    if (labels.Length > 0)
+                    {
+                        Gauge.Child ch = gauge.WithLabels(labels);
+                        if (Math.Abs(ch.Value - value) > double.Epsilon)
+                            ch.Set(value);
+                    }
+                    else
+                    {
+                        if (Math.Abs(gauge.Value - value) > double.Epsilon)
+                            gauge.Set(value);
+                    }
                 }
 
                 return gauge;

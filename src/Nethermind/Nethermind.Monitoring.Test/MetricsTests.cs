@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -9,6 +11,7 @@ using System.Reflection;
 using System.Runtime.Serialization;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
@@ -27,6 +30,16 @@ namespace Nethermind.Monitoring.Test
             [System.ComponentModel.Description("Another test description.")]
             [DataMember(Name = "one_two_three")]
             public static long OneTwoThreeSpecial { get; set; }
+
+            [System.ComponentModel.Description("Another test description.")]
+            [KeyIsLabel("somelabel")]
+            public static IDictionary<SomeEnum, long> WithLabelledDictionary { get; set; } = new ConcurrentDictionary<SomeEnum, long>();
+        }
+
+        public enum SomeEnum
+        {
+            Option1,
+            Option2,
         }
 
         [Test]
@@ -41,12 +54,14 @@ namespace Nethermind.Monitoring.Test
             var gauges = metricsController._gauges;
             var keyDefault = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}";
             var keySpecial = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThreeSpecial)}";
+            var keyDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithLabelledDictionary)}";
 
             Assert.Contains(keyDefault, gauges.Keys);
             Assert.Contains(keySpecial, gauges.Keys);
 
             Assert.That(gauges[keyDefault].Name, Is.EqualTo("nethermind_one_two_three"));
             Assert.That(gauges[keySpecial].Name, Is.EqualTo("one_two_three"));
+            Assert.That(gauges[keyDictionary].Name, Is.EqualTo("nethermind_with_labelled_dictionary"));
         }
 
         [Test]

@@ -105,6 +105,11 @@ public static class ConcurrentDictionaryExtensions
     public static ConcurrentDictionaryLock<TKey, TValue>.Lock AcquireLock<TKey, TValue>(this ConcurrentDictionary<TKey, TValue> dictionary)
         where TKey : notnull =>
         ConcurrentDictionaryLock<TKey, TValue>.Acquire(dictionary);
+
+    public static void Increment<TKey>(this ConcurrentDictionary<TKey, long> dictionary, TKey key) where TKey : notnull
+    {
+        dictionary.AddOrUpdate(key, 1, (_, value) => value + 1);
+    }
 }
 
 

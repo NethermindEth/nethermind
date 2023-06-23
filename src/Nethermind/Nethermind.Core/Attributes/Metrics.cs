@@ -16,3 +16,14 @@ public sealed class CounterMetricAttribute : Attribute { }
 /// </summary>
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
 public sealed class GaugeMetricAttribute : Attribute { }
+
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class KeyIsLabel : Attribute
+{
+    public string LabelName { get; }
+
+    public KeyIsLabel(string labelName)
+    {
+        LabelName = labelName;
+    }
+}
