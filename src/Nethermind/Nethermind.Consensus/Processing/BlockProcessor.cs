@@ -44,6 +44,10 @@ public partial class BlockProcessor : IBlockProcessor
     /// </summary>
     private readonly BlockReceiptsTracer _receiptsTracer;
 
+    // We can maintain the cache if next block is next in orderof the one that last cached.
+    private long _cacheBlockNumber;
+    private Keccak _cacheBlockStateRoot;
+
     public BlockProcessor(
         ISpecProvider? specProvider,
         IBlockValidator? blockValidator,
@@ -88,7 +92,7 @@ public partial class BlockProcessor : IBlockProcessor
            In case of invalid blocks on the new branch we will discard the entire branch and come back to
            the previous head state.*/
         Keccak previousBranchStateRoot = CreateCheckpoint();
-        InitBranch(newBranchStateRoot);
+        InitBranch(suggestedBlocks[0].Number, newBranchStateRoot);
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
@@ -125,8 +129,12 @@ public partial class BlockProcessor : IBlockProcessor
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                     previousBranchStateRoot = CreateCheckpoint();
                     Keccak? newStateRoot = suggestedBlocks[i].StateRoot;
-                    InitBranch(newStateRoot, false);
+                    InitBranch(processedBlock.Number, newStateRoot, incrementReorgMetric: false);
                 }
+
+                // Update the blocks/branch data where the cache is valid from
+                _cacheBlockNumber = processedBlock.Number;
+                _cacheBlockStateRoot = processedBlock.StateRoot;
             }
 
             if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
@@ -147,7 +155,7 @@ public partial class BlockProcessor : IBlockProcessor
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
     // TODO: move to branch processor
-    private void InitBranch(Keccak branchStateRoot, bool incrementReorgMetric = true)
+    private void InitBranch(long blockNumber, Keccak branchStateRoot, bool incrementReorgMetric = true)
     {
         /* Please note that we do not reset the state if branch state root is null.
            That said, I do not remember in what cases we receive null here.*/
@@ -158,9 +166,17 @@ public partial class BlockProcessor : IBlockProcessor
                by blocks that are being reorganized out.*/
 
             if (incrementReorgMetric)
+            {
                 Metrics.Reorganizations++;
-            _stateProvider.Reset();
+            }
+
             _stateProvider.StateRoot = branchStateRoot;
+        }
+
+        if (_cacheBlockNumber + 1 != blockNumber || branchStateRoot != _cacheBlockStateRoot)
+        {
+            // Clear cache if not in next in order or cache state root doesn't match
+            _stateProvider.Reset();
         }
     }
 
@@ -181,7 +197,7 @@ public partial class BlockProcessor : IBlockProcessor
     private void RestoreBranch(Keccak branchingPointStateRoot)
     {
         if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
-        _stateProvider.Reset();
+        //_stateProvider.Reset();
         _stateProvider.StateRoot = branchingPointStateRoot;
         if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
     }

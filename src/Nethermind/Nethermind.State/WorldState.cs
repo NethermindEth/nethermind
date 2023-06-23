@@ -26,6 +26,9 @@ namespace Nethermind.State
         private readonly StateProvider _stateProvider;
         private readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
+        
+        // this should take no more than 16MB
+        private const int DefaultCellCacheSize = 64 * 1024;
 
         public Keccak StateRoot
         {
@@ -33,10 +36,10 @@ namespace Nethermind.State
             set => _stateProvider.StateRoot = value;
         }
 
-        public WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+        public WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, int cellCacheSize = DefaultCellCacheSize)
         {
             _stateProvider = new StateProvider(trieStore, codeDb, logManager);
-            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager);
+            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, cellCacheSize);
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
         public Account GetAccount(Address address)

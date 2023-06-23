@@ -180,5 +180,9 @@ namespace Nethermind.Db
 
         [Description("Metrics extracted from RocksDB Compaction Stats and DB Statistics")]
         public static IDictionary<string, long> DbStats { get; set; } = new ConcurrentDictionary<string, long>();
+
+        [CounterMetric]
+        [Description("Number of storge trie reads served from cache.")]
+        public static long StorageTreeCacheReads { get; set; }
     }
 }

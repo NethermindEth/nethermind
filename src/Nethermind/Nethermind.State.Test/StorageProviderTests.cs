@@ -14,6 +14,8 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Int256;
+using Nethermind.Trie;
 
 namespace Nethermind.Store.Test
 {
@@ -409,6 +411,44 @@ namespace Nethermind.Store.Test
             _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)));
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Recently_used_StorageCells_are_cached_across_blocks(bool useCellCache)
+        {
+            MockedTrieStore trieStore =
+                new(new TrieStore(new MemDb(), No.Pruning, new ConstantInterval(1), LimboLogs.Instance));
+
+            Context ctx = new(trieStore, useCellCache ? 1 : 0);
+            WorldState state = ctx.StateProvider;
+
+            byte[] expected = new byte[32];
+            TestContext.CurrentContext.Random.NextBytes(expected);
+
+            const int block1 = 1;
+
+            StorageCell cell = new(ctx.Address1, UInt256.One);
+            state.Set(cell, expected);
+
+            // make the changes captured in tries, persistent
+            state.Commit(SpuriousDragon.Instance);
+
+            // make transient changes represented in the tries
+            state.CommitTree(block1);
+
+            using IDisposable scope = trieStore.Arm();
+            {
+                if (useCellCache)
+                {
+                    byte[] actual = state.Get(cell);
+                    CollectionAssert.AreEqual(expected, actual);
+                }
+                else
+                {
+                    Assert.Throws<Exception>(() => state.Get(cell));
+                }
+            }
+        }
+
         private class Context
         {
             public WorldState StateProvider { get; }
@@ -416,12 +456,114 @@ namespace Nethermind.Store.Test
             public readonly Address Address1 = new(Keccak.Compute("1"));
             public readonly Address Address2 = new(Keccak.Compute("2"));
 
-            public Context()
+            public Context(ITrieStore store = null, int cellCacheSize = 0)
             {
-                StateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+                StateProvider = new WorldState(store ?? new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, cellCacheSize);
                 StateProvider.CreateAccount(Address1, 0);
                 StateProvider.CreateAccount(Address2, 0);
                 StateProvider.Commit(Frontier.Instance);
+            }
+        }
+
+        private class MockedTrieStore : ITrieStore
+        {
+            private readonly ITrieStore _store;
+            private int _armed;
+
+            public MockedTrieStore(ITrieStore store)
+            {
+                _store = store;
+            }
+
+            /// <summary>
+            /// Arms the mock into the throwing state
+            /// </summary>
+            public IDisposable Arm()
+            {
+                _armed++;
+                return new Armed(this);
+            }
+
+            class Armed : IDisposable
+            {
+                private readonly MockedTrieStore _store;
+
+                public Armed(MockedTrieStore store) => _store = store;
+
+                public void Dispose() => _store._armed--;
+            }
+
+            private void ThrowOnArmed()
+            {
+                if (_armed > 0) throw new Exception("Should not call!");
+            }
+
+            public TrieNode FindCachedOrUnknown(Keccak hash)
+            {
+                ThrowOnArmed();
+                return _store.FindCachedOrUnknown(hash);
+            }
+
+            public byte[] LoadRlp(Keccak hash, ReadFlags readFlags = ReadFlags.None)
+            {
+                ThrowOnArmed();
+                return _store.LoadRlp(hash, readFlags);
+            }
+
+            public byte[] this[ReadOnlySpan<byte> key]
+            {
+                get
+                {
+                    ThrowOnArmed();
+                    return _store[key];
+                }
+            }
+
+            public void Dispose()
+            {
+                ThrowOnArmed();
+                _store.Dispose();
+            }
+
+            public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+            {
+                ThrowOnArmed();
+                _store.CommitNode(blockNumber, nodeCommitInfo, writeFlags);
+            }
+
+            public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode root, WriteFlags writeFlags = WriteFlags.None)
+            {
+                ThrowOnArmed();
+                _store.FinishBlockCommit(trieType, blockNumber, root, writeFlags);
+            }
+
+            public bool IsPersisted(in ValueKeccak keccak)
+            {
+                ThrowOnArmed();
+                return _store.IsPersisted(keccak);
+            }
+
+            public bool IsPersisted(Keccak keccak)
+            {
+                ThrowOnArmed();
+                return _store.IsPersisted(keccak);
+            }
+
+            public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
+            {
+                ThrowOnArmed();
+                return _store.AsReadOnly(keyValueStore);
+            }
+
+            public byte[] Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+            {
+                return _store.Get(key, flags);
+            }
+
+            public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
+            {
+                add => _store.ReorgBoundaryReached += value;
+                remove => _store.ReorgBoundaryReached -= value;
             }
         }
     }

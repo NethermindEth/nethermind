@@ -3,7 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -24,18 +30,35 @@ namespace Nethermind.State
         private readonly StateProvider _stateProvider;
         private readonly ILogManager? _logManager;
         private readonly ResettableDictionary<Address, StorageTree> _storages = new();
+        private readonly Dictionary<Address, int> _accessedStorages = new();
         /// <summary>
         /// EIP-1283
         /// </summary>
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
-        public PersistentStorageProvider(ITrieStore? trieStore, StateProvider? stateProvider, ILogManager? logManager)
+        // state root aware caching
+        private const int SingeCacheEntryRoughEstimate =
+            32 + // StorageCell.Index
+            20 + MemorySizes.SmallObjectOverhead + MemorySizes.ArrayOverhead + // Storage.Access
+            32 + MemorySizes.ArrayOverhead + // value + MemorySizes.ArrayOverhead
+            MemorySizes.SmallObjectOverhead + MemorySizes.RefSize +
+            MemorySizes.RefSize + // LinkedListNode, plus its refs
+            MemorySizes.SmallObjectOverhead; // for dictionary
+
+        private const int BlockAccessDecay = 10;
+        private readonly LruCache<StorageCell, byte[]>? _cellCache;
+
+        public PersistentStorageProvider(ITrieStore? trieStore, StateProvider? stateProvider, ILogManager? logManager,
+            int cellCacheSize)
             : base(logManager)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _cellCache = cellCacheSize > 0
+                ? new LruCache<StorageCell, byte[]>(cellCacheSize, "Storage Cell Cache")
+                : null;
         }
 
         /// <summary>
@@ -45,6 +68,8 @@ namespace Nethermind.State
         {
             base.Reset();
             _storages.Reset();
+            _cellCache?.Clear();
+            _accessedStorages.Clear();
             _originalValues.Clear();
             _committedThisRound.Clear();
         }
@@ -54,8 +79,11 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected override byte[] GetCurrentValue(in StorageCell storageCell) =>
-            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+        protected override byte[] GetCurrentValue(in StorageCell storageCell)
+        {
+            _accessedStorages[storageCell.Address] = BlockAccessDecay;
+            return TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+        }
 
         /// <summary>
         /// Return the original persistent storage value from the storage cell
@@ -163,7 +191,10 @@ namespace Nethermind.State
                         StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
                         Db.Metrics.StorageTreeWrites++;
                         toUpdateRoots.Add(change.StorageCell.Address);
+                        // set in the tree
                         tree.Set(change.StorageCell.Index, change.Value);
+                        // and in the cache
+                        _cellCache?.Set(change.StorageCell, change.Value);
                         if (isTracing)
                         {
                             trace![change.StorageCell] = new ChangeTrace(change.Value);
@@ -199,12 +230,11 @@ namespace Nethermind.State
         }
 
         /// <summary>
-        /// Commit persisent storage trees
+        /// Commit persistent storage trees
         /// </summary>
         /// <param name="blockNumber">Current block number</param>
         public void CommitTrees(long blockNumber)
         {
-            // _logger.Warn($"Storage block commit {blockNumber}");
             foreach (KeyValuePair<Address, StorageTree> storage in _storages)
             {
                 storage.Value.Commit(blockNumber);
@@ -212,29 +242,77 @@ namespace Nethermind.State
 
             // TODO: maybe I could update storage roots only now?
 
-            // only needed here as there is no control over cached storage size otherwise
-            _storages.Reset();
+            foreach (KeyValuePair<Address, StorageTree> storage in _storages)
+            {
+                ref int blockAccessDecay = ref CollectionsMarshal.GetValueRefOrNullRef(_accessedStorages, storage.Key);
+                if (Unsafe.IsNullRef(ref blockAccessDecay))
+                {
+                    ThrowInvalidOperation();
+                }
+
+                int decay = (--blockAccessDecay);
+                if (decay <= 0)
+                {
+                    // Storage hasn't been accessed in BlockAccessDecay blocks, so we can remove it from the cache
+                    _accessedStorages.Remove(storage.Key);
+                    _storages.Remove(storage.Key);
+                }
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowInvalidOperation()
+            {
+                throw new InvalidOperationException("Access decay was null");
+            }
         }
 
         private StorageTree GetOrCreateStorage(Address address)
         {
-            if (!_storages.ContainsKey(address))
+            _accessedStorages[address] = BlockAccessDecay;
+            if (!_storages.TryGetValue(address, out StorageTree storageTree))
             {
-                StorageTree storageTree = new(_trieStore, _stateProvider.GetStorageRoot(address), _logManager);
-                return _storages[address] = storageTree;
+                storageTree = new(_trieStore, _stateProvider.GetStorageRoot(address), _logManager);
+                _storages[address] = storageTree;
+                return storageTree;
             }
 
-            return _storages[address];
+            return storageTree;
         }
 
         private byte[] LoadFromTree(in StorageCell storageCell)
         {
-            StorageTree tree = GetOrCreateStorage(storageCell.Address);
+            if (!TryLoadFromCache(storageCell, out byte[]? value))
+            {
+                StorageTree tree = GetOrCreateStorage(storageCell.Address);
 
-            Db.Metrics.StorageTreeReads++;
-            byte[] value = tree.Get(storageCell.Index);
+                Db.Metrics.StorageTreeReads++;
+                value = tree.Get(storageCell.Index);
+                // cache write-through
+                _cellCache?.Set(storageCell, value);
+            }
+            else
+            {
+                _accessedStorages[storageCell.Address] = BlockAccessDecay;
+            }
+
             PushToRegistryOnly(storageCell, value);
             return value;
+        }
+
+        /// <summary>
+        /// Tries to retrieve the storage cell from an LRU cache.
+        /// </summary>
+        private bool TryLoadFromCache(in StorageCell storageCell, out byte[]? value)
+        {
+            if (_cellCache != null && _cellCache.TryGet(storageCell, out value))
+            {
+                Db.Metrics.StorageTreeCacheReads++;
+                return true;
+            }
+
+            value = default;
+            return false;
         }
 
         private void PushToRegistryOnly(in StorageCell cell, byte[] value)
@@ -280,6 +358,11 @@ namespace Nethermind.State
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
             _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
+            // Mark it as unaccessed
+            _accessedStorages[address] = 0;
+            // TODO: big penalty on clearing storage, potentially, could benefit from less a-bomb cleanup
+            // for a given address only
+            _cellCache?.Clear();
         }
     }
 }

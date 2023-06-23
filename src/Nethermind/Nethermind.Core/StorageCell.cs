@@ -38,7 +38,9 @@ namespace Nethermind.Core
         {
             unchecked
             {
-                return (Address.GetHashCode() * 397) ^ Index.GetHashCode();
+                ulong hash = (ulong)(Address.GetHashCode() * 397);
+                hash ^= Index.u0 ^ Index.u1 ^ Index.u2 ^ Index.u3;
+                return (int)(hash ^ (hash >> 32));
             }
         }
 
