@@ -129,8 +129,8 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                     ReportIn(disconnectMessage, size);
                     if (Logger.IsTrace)
                     {
-                        string reason = FastEnum.IsDefined<DisconnectReason>((byte)disconnectMessage.Reason)
-                            ? ((DisconnectReason)disconnectMessage.Reason).ToName()
+                        string reason = FastEnum.IsDefined<EthDisconnectReason>((byte)disconnectMessage.Reason)
+                            ? ((EthDisconnectReason)disconnectMessage.Reason).ToName()
                             : disconnectMessage.Reason.ToString();
                         Logger.Trace($"{Session} Received disconnect ({reason}) on {Session.RemotePort}");
                     }
@@ -288,14 +288,14 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         }
     }
 
-    public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
+    public override void DisconnectProtocol(EthDisconnectReason ethDisconnectReason, string details)
     {
         if (Logger.IsTrace)
-            Logger.Trace($"Sending disconnect {disconnectReason} ({details}) to {Session.Node:s}");
-        DisconnectMessage message = new(disconnectReason);
+            Logger.Trace($"Sending disconnect {ethDisconnectReason} ({details}) to {Session.Node:s}");
+        DisconnectMessage message = new(ethDisconnectReason);
         Send(message);
         if (NetworkDiagTracer.IsEnabled)
-            NetworkDiagTracer.ReportDisconnect(Session.Node.Address, $"Local {disconnectReason} {details}");
+            NetworkDiagTracer.ReportDisconnect(Session.Node.Address, $"Local {ethDisconnectReason} {details}");
     }
 
     private void SendHello()
@@ -328,21 +328,21 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     private void Close(int disconnectReasonId)
     {
-        DisconnectReason disconnectReason = (DisconnectReason)disconnectReasonId;
+        EthDisconnectReason ethDisconnectReason = (EthDisconnectReason)disconnectReasonId;
 
-        if (disconnectReason != DisconnectReason.TooManyPeers &&
-            disconnectReason != DisconnectReason.Other &&
-            disconnectReason != DisconnectReason.DisconnectRequested)
+        if (ethDisconnectReason != EthDisconnectReason.TooManyPeers &&
+            ethDisconnectReason != EthDisconnectReason.Other &&
+            ethDisconnectReason != EthDisconnectReason.DisconnectRequested)
         {
-            if (Logger.IsDebug) Logger.Debug($"{Session} received disconnect [{disconnectReason}]");
+            if (Logger.IsDebug) Logger.Debug($"{Session} received disconnect [{ethDisconnectReason}]");
         }
         else
         {
-            if (Logger.IsTrace) Logger.Trace($"{Session} P2P received disconnect [{disconnectReason}]");
+            if (Logger.IsTrace) Logger.Trace($"{Session} P2P received disconnect [{ethDisconnectReason}]");
         }
 
         // Received disconnect message, triggering direct TCP disconnection
-        Session.MarkDisconnected(disconnectReason, DisconnectType.Remote, "message");
+        Session.MarkDisconnected(ethDisconnectReason, DisconnectType.Remote, "message");
     }
 
     public override string Name => Protocol.P2P;

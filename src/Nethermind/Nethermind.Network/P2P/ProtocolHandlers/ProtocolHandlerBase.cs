@@ -140,7 +140,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public abstract void HandleMessage(Packet message);
 
-        public abstract void DisconnectProtocol(DisconnectReason disconnectReason, string details);
+        public abstract void DisconnectProtocol(EthDisconnectReason ethDisconnectReason, string details);
 
         public abstract event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
 

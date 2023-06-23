@@ -6,7 +6,7 @@ namespace Nethermind.Stats.Model
     /// <summary>
     /// Eth network level disconnect reason
     /// </summary>
-    public enum DisconnectReason : byte
+    public enum EthDisconnectReason : byte
     {
         DisconnectRequested = 0x00,
         TcpSubSystemError = 0x01,

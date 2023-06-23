@@ -36,14 +36,14 @@ namespace Nethermind.Network.P2P.Messages
         {
             if (msgBytes.ReadableBytes == 1)
             {
-                return new DisconnectMessage((DisconnectReason)msgBytes.GetByte(0));
+                return new DisconnectMessage((EthDisconnectReason)msgBytes.GetByte(0));
             }
 
             Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
             if (msg.SequenceEqual(breach1)
                 || msg.SequenceEqual(breach2))
             {
-                return new DisconnectMessage(DisconnectReason.Other);
+                return new DisconnectMessage(EthDisconnectReason.Other);
             }
 
             Rlp.ValueDecoderContext rlpStream = msg.AsRlpValueContext();

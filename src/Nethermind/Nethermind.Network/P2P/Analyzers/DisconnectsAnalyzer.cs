@@ -30,13 +30,13 @@ namespace Nethermind.Network.P2P.Analyzers
 
         private readonly struct DisconnectCategory
         {
-            public DisconnectCategory(DisconnectReason reason, DisconnectType type)
+            public DisconnectCategory(EthDisconnectReason reason, DisconnectType type)
             {
                 Reason = reason;
                 Type = type;
             }
 
-            public DisconnectReason Reason { get; }
+            public EthDisconnectReason Reason { get; }
 
             public DisconnectType Type { get; }
         }
@@ -82,7 +82,7 @@ namespace Nethermind.Network.P2P.Analyzers
             _timer.Enabled = true;
         }
 
-        public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string? details)
+        public void ReportDisconnect(EthDisconnectReason reason, DisconnectType type, string? details)
         {
             Interlocked.Increment(ref _disconnectCount);
             _disconnects.AddOrUpdate(new DisconnectCategory(reason, type), _ => 1, (_, i) => i + 1);

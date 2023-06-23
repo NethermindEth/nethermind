@@ -47,47 +47,47 @@ public enum InitiateDisconnectReason : byte
 
 public static class InitiateDisconnectReasonExtension
 {
-    public static DisconnectReason ToDisconnectReason(this InitiateDisconnectReason initiateDisconnectReason)
+    public static EthDisconnectReason ToDisconnectReason(this InitiateDisconnectReason initiateDisconnectReason)
     {
         switch (initiateDisconnectReason)
         {
             case InitiateDisconnectReason.TooManyPeers:
-                return DisconnectReason.TooManyPeers;
+                return EthDisconnectReason.TooManyPeers;
             case InitiateDisconnectReason.SessionAlreadyExist:
             case InitiateDisconnectReason.ReplacingSessionWithOppositeDirection:
             case InitiateDisconnectReason.OppositeDirectionCleanup:
-                return DisconnectReason.AlreadyConnected;
+                return EthDisconnectReason.AlreadyConnected;
 
             case InitiateDisconnectReason.SnapServerNotImplemented:
-                return DisconnectReason.UselessPeer;
+                return EthDisconnectReason.UselessPeer;
             case InitiateDisconnectReason.IncompatibleP2PVersion:
-                return DisconnectReason.IncompatibleP2PVersion;
+                return EthDisconnectReason.IncompatibleP2PVersion;
             case InitiateDisconnectReason.InvalidNetworkId:
-                return DisconnectReason.UselessPeer;
+                return EthDisconnectReason.UselessPeer;
             case InitiateDisconnectReason.InvalidGenesis:
             case InitiateDisconnectReason.MissingForkId:
             case InitiateDisconnectReason.InvalidForkId:
-                return DisconnectReason.BreachOfProtocol;
+                return EthDisconnectReason.BreachOfProtocol;
             case InitiateDisconnectReason.ProtocolInitTimeout:
-                return DisconnectReason.ReceiveMessageTimeout;
+                return EthDisconnectReason.ReceiveMessageTimeout;
             case InitiateDisconnectReason.TxFlooding:
-                return DisconnectReason.UselessPeer;
+                return EthDisconnectReason.UselessPeer;
             case InitiateDisconnectReason.NoCapabilityMatched:
-                return DisconnectReason.UselessPeer;
+                return EthDisconnectReason.UselessPeer;
 
             case InitiateDisconnectReason.DropWorstPeer:
-                return DisconnectReason.TooManyPeers;
+                return EthDisconnectReason.TooManyPeers;
             case InitiateDisconnectReason.PeerRefreshFailed:
-                return DisconnectReason.DisconnectRequested;
+                return EthDisconnectReason.DisconnectRequested;
 
             case InitiateDisconnectReason.ForwardSyncFailed:
-                return DisconnectReason.DisconnectRequested;
+                return EthDisconnectReason.DisconnectRequested;
             case InitiateDisconnectReason.GossipingInPoS:
-                return DisconnectReason.BreachOfProtocol;
+                return EthDisconnectReason.BreachOfProtocol;
             case InitiateDisconnectReason.SessionIdAlreadyExists:
-                return DisconnectReason.AlreadyConnected;
+                return EthDisconnectReason.AlreadyConnected;
             case InitiateDisconnectReason.AppClosing:
-                return DisconnectReason.ClientQuitting;
+                return EthDisconnectReason.ClientQuitting;
 
             case InitiateDisconnectReason.InvalidTxOrUncle:
             case InitiateDisconnectReason.HeaderResponseTooLong:
@@ -97,9 +97,9 @@ public static class InitiateDisconnectReasonExtension
             case InitiateDisconnectReason.UnexpectedParentHeader:
             case InitiateDisconnectReason.InvalidHeader:
             case InitiateDisconnectReason.InvalidReceiptRoot:
-                return DisconnectReason.BreachOfProtocol;
+                return EthDisconnectReason.BreachOfProtocol;
         }
 
-        return DisconnectReason.Other;
+        return EthDisconnectReason.Other;
     }
 }

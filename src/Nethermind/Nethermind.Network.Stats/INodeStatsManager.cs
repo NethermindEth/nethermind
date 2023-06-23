@@ -18,7 +18,7 @@ namespace Nethermind.Stats
         void ReportP2PInitializationEvent(Node node, P2PNodeDetails p2PNodeDetails);
         void ReportSyncPeerInitializeEvent(string Protocol, Node node, SyncPeerNodeDetails ethNodeDetails);
         void ReportFailedValidation(Node node, CompatibilityValidationType p2PVersion);
-        void ReportDisconnect(Node node, DisconnectType disconnectType, DisconnectReason disconnectReason);
+        void ReportDisconnect(Node node, DisconnectType disconnectType, EthDisconnectReason ethDisconnectReason);
         long GetNewPersistedReputation(Node node);
         void ReportSyncEvent(Node node, NodeStatsEventType nodeStatsEvent);
         bool HasFailedValidation(Node node);

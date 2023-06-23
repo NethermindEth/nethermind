@@ -6,6 +6,6 @@ namespace Nethermind.Stats.Model
     public class DisconnectDetails
     {
         public DisconnectType DisconnectType { get; set; }
-        public DisconnectReason DisconnectReason { get; set; }
+        public EthDisconnectReason EthDisconnectReason { get; set; }
     }
 }

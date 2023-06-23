@@ -69,7 +69,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         public void Can_disconnect()
         {
             Context context = new();
-            context.WitProtocolHandler.DisconnectProtocol(DisconnectReason.Other, "just because");
+            context.WitProtocolHandler.DisconnectProtocol(EthDisconnectReason.Other, "just because");
             context.WitProtocolHandler.Dispose();
         }
 

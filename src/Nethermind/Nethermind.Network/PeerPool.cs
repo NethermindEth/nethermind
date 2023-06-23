@@ -124,8 +124,8 @@ namespace Nethermind.Network
             if (Peers.TryRemove(id, out peer))
             {
                 _staticPeers.TryRemove(id, out _);
-                peer.InSession?.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local, "admin_removePeer");
-                peer.OutSession?.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local, "admin_removePeer");
+                peer.InSession?.MarkDisconnected(EthDisconnectReason.DisconnectRequested, DisconnectType.Local, "admin_removePeer");
+                peer.OutSession?.MarkDisconnected(EthDisconnectReason.DisconnectRequested, DisconnectType.Local, "admin_removePeer");
                 peer.InSession = null;
                 peer.OutSession = null;
                 PeerRemoved?.Invoke(this, new PeerEventArgs(peer));

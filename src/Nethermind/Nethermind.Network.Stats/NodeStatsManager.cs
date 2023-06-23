@@ -141,10 +141,10 @@ namespace Nethermind.Stats
             stats.FailedCompatibilityValidation = validationType;
         }
 
-        public void ReportDisconnect(Node node, DisconnectType disconnectType, DisconnectReason disconnectReason)
+        public void ReportDisconnect(Node node, DisconnectType disconnectType, EthDisconnectReason ethDisconnectReason)
         {
             INodeStats stats = GetOrAdd(node);
-            stats.AddNodeStatsDisconnectEvent(disconnectType, disconnectReason);
+            stats.AddNodeStatsDisconnectEvent(disconnectType, ethDisconnectReason);
         }
 
         public long GetNewPersistedReputation(Node node)

@@ -135,7 +135,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
 
         private int _isDisposed;
 
-        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
+        public override void DisconnectProtocol(EthDisconnectReason ethDisconnectReason, string details)
         {
             Dispose();
         }

@@ -339,26 +339,26 @@ namespace Nethermind.Network.P2P
 
         public void InitiateDisconnect(InitiateDisconnectReason initiateDisconnectReason, string? details = null)
         {
-            DisconnectReason disconnectReason = initiateDisconnectReason.ToDisconnectReason();
+            EthDisconnectReason ethDisconnectReason = initiateDisconnectReason.ToDisconnectReason();
 
             bool ShouldDisconnectStaticNode()
             {
-                switch (disconnectReason)
+                switch (ethDisconnectReason)
                 {
-                    case DisconnectReason.DisconnectRequested:
-                    case DisconnectReason.TcpSubSystemError:
-                    case DisconnectReason.UselessPeer:
-                    case DisconnectReason.TooManyPeers:
-                    case DisconnectReason.Other:
+                    case EthDisconnectReason.DisconnectRequested:
+                    case EthDisconnectReason.TcpSubSystemError:
+                    case EthDisconnectReason.UselessPeer:
+                    case EthDisconnectReason.TooManyPeers:
+                    case EthDisconnectReason.Other:
                         return false;
-                    case DisconnectReason.ReceiveMessageTimeout:
-                    case DisconnectReason.BreachOfProtocol:
-                    case DisconnectReason.AlreadyConnected:
-                    case DisconnectReason.IncompatibleP2PVersion:
-                    case DisconnectReason.NullNodeIdentityReceived:
-                    case DisconnectReason.ClientQuitting:
-                    case DisconnectReason.UnexpectedIdentity:
-                    case DisconnectReason.IdentitySameAsSelf:
+                    case EthDisconnectReason.ReceiveMessageTimeout:
+                    case EthDisconnectReason.BreachOfProtocol:
+                    case EthDisconnectReason.AlreadyConnected:
+                    case EthDisconnectReason.IncompatibleP2PVersion:
+                    case EthDisconnectReason.NullNodeIdentityReceived:
+                    case EthDisconnectReason.ClientQuitting:
+                    case EthDisconnectReason.UnexpectedIdentity:
+                    case EthDisconnectReason.IdentitySameAsSelf:
                         return true;
                     default:
                         return true;
@@ -367,7 +367,7 @@ namespace Nethermind.Network.P2P
 
             if (Node?.IsStatic == true && !ShouldDisconnectStaticNode())
             {
-                if (_logger.IsTrace) _logger.Trace($"{this} not disconnecting for static peer on {disconnectReason} ({details})");
+                if (_logger.IsTrace) _logger.Trace($"{this} not disconnecting for static peer on {ethDisconnectReason} ({details})");
                 return;
             }
 
@@ -391,7 +391,7 @@ namespace Nethermind.Network.P2P
                     {
                         if (_logger.IsTrace)
                             _logger.Trace($"{this} disconnecting {protocolHandler.Name} {initiateDisconnectReason} ({details})");
-                        protocolHandler.DisconnectProtocol(disconnectReason, details);
+                        protocolHandler.DisconnectProtocol(ethDisconnectReason, details);
                     }
                     catch (Exception e)
                     {
@@ -401,7 +401,7 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            MarkDisconnected(disconnectReason, DisconnectType.Local, details);
+            MarkDisconnected(ethDisconnectReason, DisconnectType.Local, details);
         }
 
         private object _sessionStateLock = new();
@@ -421,14 +421,14 @@ namespace Nethermind.Network.P2P
 
         public SessionState BestStateReached { get; private set; }
 
-        public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
+        public void MarkDisconnected(EthDisconnectReason ethDisconnectReason, DisconnectType disconnectType, string details)
         {
             lock (_sessionStateLock)
             {
                 if (State >= SessionState.Disconnecting)
                 {
                     if (_logger.IsTrace)
-                        _logger.Trace($"{this} already disconnected {disconnectReason} {disconnectType}");
+                        _logger.Trace($"{this} already disconnected {ethDisconnectReason} {disconnectType}");
                     return;
                 }
 
@@ -437,15 +437,15 @@ namespace Nethermind.Network.P2P
 
             if (_isTracked)
             {
-                _logger.Warn($"Tracked {this} -> disconnected {disconnectType} {disconnectReason} {details}");
+                _logger.Warn($"Tracked {this} -> disconnected {disconnectType} {ethDisconnectReason} {details}");
             }
 
-            _disconnectsAnalyzer.ReportDisconnect(disconnectReason, disconnectType, details);
+            _disconnectsAnalyzer.ReportDisconnect(ethDisconnectReason, disconnectType, details);
 
             if (NetworkDiagTracer.IsEnabled && RemoteHost is not null)
-                NetworkDiagTracer.ReportDisconnect(Node.Address, $"{disconnectType} {disconnectReason} {details}");
+                NetworkDiagTracer.ReportDisconnect(Node.Address, $"{disconnectType} {ethDisconnectReason} {details}");
 
-            if (BestStateReached >= SessionState.Initialized && disconnectReason != DisconnectReason.TooManyPeers)
+            if (BestStateReached >= SessionState.Initialized && ethDisconnectReason != EthDisconnectReason.TooManyPeers)
             {
                 // TooManyPeers is a benign disconnect that we should not be worried about - many peers are running at their limit
                 // also any disconnects before the handshake and init do not have to be logged as they are most likely just rejecting any connections
@@ -453,16 +453,16 @@ namespace Nethermind.Network.P2P
                 {
                     if (_logger.IsError)
                         _logger.Error(
-                            $"{this} invoking 'Disconnecting' event {disconnectReason} {disconnectType} {details}");
+                            $"{this} invoking 'Disconnecting' event {ethDisconnectReason} {disconnectType} {details}");
                 }
             }
             else
             {
                 if (_logger.IsTrace)
-                    _logger.Trace($"{this} invoking 'Disconnecting' event {disconnectReason} {disconnectType} {details}");
+                    _logger.Trace($"{this} invoking 'Disconnecting' event {ethDisconnectReason} {disconnectType} {details}");
             }
 
-            Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
+            Disconnecting?.Invoke(this, new DisconnectEventArgs(ethDisconnectReason, disconnectType, details));
 
             //Possible in case of disconnect before p2p initialization
             if (_context is null)
@@ -500,8 +500,8 @@ namespace Nethermind.Network.P2P
             if (Disconnected is not null)
             {
                 if (_logger.IsTrace)
-                    _logger.Trace($"|NetworkTrace| {this} disconnected event {disconnectReason} {disconnectType}");
-                Disconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
+                    _logger.Trace($"|NetworkTrace| {this} disconnected event {ethDisconnectReason} {disconnectType}");
+                Disconnected?.Invoke(this, new DisconnectEventArgs(ethDisconnectReason, disconnectType, details));
             }
             else if (_logger.IsDebug)
                 _logger.Error($"DEBUG/ERROR  No subscriptions for session disconnected event on {this}");

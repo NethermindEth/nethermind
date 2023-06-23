@@ -35,8 +35,8 @@ namespace Nethermind.Stats
         private readonly int[] _statCountersArray;
         private readonly object _speedLock = new();
 
-        private DisconnectReason? _lastLocalDisconnect;
-        private DisconnectReason? _lastRemoteDisconnect;
+        private EthDisconnectReason? _lastLocalDisconnect;
+        private EthDisconnectReason? _lastRemoteDisconnect;
 
         private DateTime? _lastDisconnectTime;
         private DateTime? _lastFailedConnectionTime;
@@ -96,29 +96,29 @@ namespace Nethermind.Stats
             Increment(NodeStatsEventType.HandshakeCompleted);
         }
 
-        public void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason)
+        public void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, EthDisconnectReason ethDisconnectReason)
         {
             DateTime nowUTC = DateTime.UtcNow;
             _lastDisconnectTime = nowUTC;
             if (disconnectType == DisconnectType.Local)
             {
-                _lastLocalDisconnect = disconnectReason;
+                _lastLocalDisconnect = ethDisconnectReason;
             }
             else
             {
-                _lastRemoteDisconnect = disconnectReason;
+                _lastRemoteDisconnect = ethDisconnectReason;
             }
 
             if (disconnectType == DisconnectType.Local)
             {
-                if (_statsParameters.DelayDueToLocalDisconnect.TryGetValue(disconnectReason, out TimeSpan delay))
+                if (_statsParameters.DelayDueToLocalDisconnect.TryGetValue(ethDisconnectReason, out TimeSpan delay))
                 {
                     UpdateDelayConnectDeadline(nowUTC, delay, NodeStatsEventType.LocalDisconnectDelay);
                 }
             }
             else if (disconnectType == DisconnectType.Remote)
             {
-                if (_statsParameters.DelayDueToRemoteDisconnect.TryGetValue(disconnectReason, out TimeSpan delay))
+                if (_statsParameters.DelayDueToRemoteDisconnect.TryGetValue(ethDisconnectReason, out TimeSpan delay))
                 {
                     UpdateDelayConnectDeadline(nowUTC, delay, NodeStatsEventType.RemoteDisconnectDelay);
                 }
@@ -340,17 +340,17 @@ namespace Nethermind.Stats
 
             if (HasDisconnectedOnce)
             {
-                if (_lastLocalDisconnect == DisconnectReason.Other || _lastRemoteDisconnect == DisconnectReason.Other)
+                if (_lastLocalDisconnect == EthDisconnectReason.Other || _lastRemoteDisconnect == EthDisconnectReason.Other)
                 {
                     rlpxReputation = (long)(rlpxReputation * 0.3);
                 }
-                else if (_lastLocalDisconnect != DisconnectReason.DisconnectRequested)
+                else if (_lastLocalDisconnect != EthDisconnectReason.DisconnectRequested)
                 {
-                    if (_lastRemoteDisconnect == DisconnectReason.TooManyPeers)
+                    if (_lastRemoteDisconnect == EthDisconnectReason.TooManyPeers)
                     {
                         rlpxReputation = (long)(rlpxReputation * 0.3);
                     }
-                    else if (_lastRemoteDisconnect != DisconnectReason.DisconnectRequested)
+                    else if (_lastRemoteDisconnect != EthDisconnectReason.DisconnectRequested)
                     {
                         rlpxReputation = (long)(rlpxReputation * 0.2);
                     }
@@ -398,7 +398,7 @@ namespace Nethermind.Stats
 
             if (_statsParameters.PenalizedReputationRemoteDisconnectReasons.Contains(_lastRemoteDisconnect.Value))
             {
-                if (_lastRemoteDisconnect == DisconnectReason.TooManyPeers || _lastRemoteDisconnect == DisconnectReason.AlreadyConnected)
+                if (_lastRemoteDisconnect == EthDisconnectReason.TooManyPeers || _lastRemoteDisconnect == EthDisconnectReason.AlreadyConnected)
                 {
                     double timeFromLastDisconnect = nowUTC.Subtract(_lastDisconnectTime ?? DateTime.MinValue).TotalMilliseconds;
                     return timeFromLastDisconnect < _statsParameters.PenalizedReputationTooManyPeersTimeout;

@@ -239,7 +239,7 @@ namespace Nethermind.Network.Rlpx
                 await Task.Delay(TimeSpan.FromSeconds(1));
 
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} channel disconnected");
-                session.MarkDisconnected(DisconnectReason.TcpSubSystemError, DisconnectType.Remote, "channel disconnected");
+                session.MarkDisconnected(EthDisconnectReason.TcpSubSystemError, DisconnectType.Remote, "channel disconnected");
             });
         }
 

@@ -174,7 +174,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (TrieNodes). Peer: {Session.Node.ClientId}");
         }
 
-        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
+        public override void DisconnectProtocol(EthDisconnectReason ethDisconnectReason, string details)
         {
             Dispose();
         }
