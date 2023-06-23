@@ -127,15 +127,25 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                 {
                     DisconnectMessage disconnectMessage = Deserialize<DisconnectMessage>(msg.Data);
                     ReportIn(disconnectMessage, size);
+
+                    EthDisconnectReason disconnectReason =
+                        FastEnum.IsDefined<EthDisconnectReason>((byte)disconnectMessage.Reason)
+                            ? ((EthDisconnectReason)disconnectMessage.Reason)
+                            : EthDisconnectReason.Other;
+
                     if (Logger.IsTrace)
                     {
-                        string reason = FastEnum.IsDefined<EthDisconnectReason>((byte)disconnectMessage.Reason)
-                            ? ((EthDisconnectReason)disconnectMessage.Reason).ToName()
-                            : disconnectMessage.Reason.ToString();
-                        Logger.Trace($"{Session} Received disconnect ({reason}) on {Session.RemotePort}");
+                        if (!FastEnum.IsDefined<EthDisconnectReason>((byte)disconnectMessage.Reason))
+                        {
+                            Logger.Trace($"{Session} unknown disconnect reason ({disconnectMessage.Reason}) on {Session.RemotePort}");
+                        }
+                        else
+                        {
+                            Logger.Trace($"{Session} Received disconnect ({disconnectReason}) on {Session.RemotePort}");
+                        }
                     }
 
-                    Close(disconnectMessage.Reason);
+                    Close(disconnectReason);
                     break;
                 }
             case P2PMessageCode.Ping:
@@ -326,10 +336,8 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         Send(PongMessage.Instance);
     }
 
-    private void Close(int disconnectReasonId)
+    private void Close(EthDisconnectReason ethDisconnectReason)
     {
-        EthDisconnectReason ethDisconnectReason = (EthDisconnectReason)disconnectReasonId;
-
         if (ethDisconnectReason != EthDisconnectReason.TooManyPeers &&
             ethDisconnectReason != EthDisconnectReason.Other &&
             ethDisconnectReason != EthDisconnectReason.DisconnectRequested)

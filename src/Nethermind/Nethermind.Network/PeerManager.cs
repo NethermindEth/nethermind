@@ -734,7 +734,7 @@ namespace Nethermind.Network
 
                 if (initCount >= MaxActivePeers)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with {session} {EthDisconnectReason.TooManyPeers} {DisconnectType.Local}");
+                    if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with {session} {DisconnectReason.TooManyPeers} {DisconnectType.Local}");
                     session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"{initCount}");
                     return;
                 }

@@ -367,7 +367,7 @@ namespace Nethermind.Network.P2P
 
             if (Node?.IsStatic == true && !ShouldDisconnectStaticNode())
             {
-                if (_logger.IsTrace) _logger.Trace($"{this} not disconnecting for static peer on {ethDisconnectReason} ({details})");
+                if (_logger.IsTrace) _logger.Trace($"{this} not disconnecting for static peer on {disconnectReason} ({details})");
                 return;
             }
 

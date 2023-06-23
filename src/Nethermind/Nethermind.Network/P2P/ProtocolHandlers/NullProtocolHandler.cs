@@ -32,7 +32,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
         }
 
-        public void DisconnectProtocol(DisconnectReason ethDisconnectReason, string details)
+        public void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
         }
 
