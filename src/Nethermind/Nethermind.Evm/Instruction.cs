@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm
 {
@@ -84,6 +85,7 @@ namespace Nethermind.Evm
         BEGINSUB = 0x5c,
         RETURNSUB = 0x5d,
         JUMPSUB = 0x5e,
+        MCOPY = 0x5e,
 
         PUSH0 = 0x5f, // EIP-3855
         PUSH1 = 0x60,
@@ -177,12 +179,13 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
-        public static string? GetName(this Instruction instruction, bool isPostMerge = false) =>
-            (instruction == Instruction.PREVRANDAO && !isPostMerge)
-                ? "DIFFICULTY"
-                : FastEnum.IsDefined(instruction)
-                    ? FastEnum.GetName(instruction)
-                    : null;
+        public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null) =>
+            instruction switch
+            {
+                Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
+                Instruction.JUMPSUB or Instruction.MCOPY => spec?.IsEip5656Enabled == true ? "MCOPY" : "JUMPSUB",
+                _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null
+            };
     }
 }
 

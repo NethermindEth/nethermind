@@ -2022,21 +2022,43 @@ OutOfGas:
                         programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
                         break;
                     }
-                case Instruction.JUMPSUB:
+                case Instruction.JUMPSUB or Instruction.MCOPY:
                     {
-                        if (!spec.SubroutinesEnabled) goto InvalidInstruction;
+                        if (spec.MCopyIncluded)
+                        {
+                            Metrics.MCopyOpcode++;
 
-                        if (!UpdateGas(GasCostOf.High, ref gasAvailable)) goto OutOfGas;
+                            stack.PopUInt256(out a);
+                            stack.PopUInt256(out b);
+                            stack.PopUInt256(out c);
 
-                        if (vmState.ReturnStackHead == EvmStack.ReturnStackSize) goto StackOverflow;
+                            if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.VeryLow * EvmPooledMemory.Div32Ceiling(c), ref gasAvailable)
+                                || !UpdateMemoryCost(vmState, ref gasAvailable, UInt256.Max(b, a), c)) goto OutOfGas;
 
-                        vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
+                            bytes = vmState.Memory.LoadSpan(in b, c);
+                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(b, bytes);
 
-                        stack.PopUInt256(out result);
-                        if (!Jump(result, ref programCounter, in env, true)) goto InvalidJumpDestination;
-                        programCounter++;
+                            vmState.Memory.Save(in a, bytes);
+                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(a, bytes);
 
-                        break;
+                            break;
+                        }
+                        else
+                        {
+                            if (!spec.SubroutinesEnabled) goto InvalidInstruction;
+
+                            if (!UpdateGas(GasCostOf.High, ref gasAvailable)) goto OutOfGas;
+
+                            if (vmState.ReturnStackHead == EvmStack.ReturnStackSize) goto StackOverflow;
+
+                            vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
+
+                            stack.PopUInt256(out UInt256 jumpDest);
+                            if (!Jump(jumpDest, ref programCounter, in env, true)) goto InvalidJumpDestination;
+                            programCounter++;
+
+                            break;
+                        }
                     }
                 default:
                     {
