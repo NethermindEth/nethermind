@@ -295,7 +295,7 @@ public class VirtualMachine : IVirtualMachine
                             int containerIndex = callResult.Output.Index.Value;
                             byte[] auxExtraData = callResult.Output.Bytes;
                             (int start, int size) = previousState.Env.CodeInfo.ContainerOffset(containerIndex);
-                            ReadOnlySpan<byte> container = previousState.Env.CodeInfo.CodeSection.Slice(start, size).Span;
+                            ReadOnlySpan<byte> container = previousState.Env.CodeInfo.ContainerSection.Slice(start, size).Span;
                             bool invalidCode = !EvmObjectFormat.IsValidEof(container, out EofHeader? header);
                             byte[] bytecodeResultArray = null;
 
