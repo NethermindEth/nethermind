@@ -235,6 +235,8 @@ namespace Nethermind.Monitoring.Metrics
 
             foreach ((MemberInfo _, string gaugeName, string _, IDictionary labelledDict) in _labelledDictionaryCache[type])
             {
+                // Its fine that the key here need to call `ToString()`. Better here then in the metrics, where it might
+                // impact the performance of whatever is updating the metrics.
                 foreach (object key in labelledDict.Keys)
                 {
                     double value = Convert.ToDouble(labelledDict[key]);

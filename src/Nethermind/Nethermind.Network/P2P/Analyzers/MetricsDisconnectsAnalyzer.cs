@@ -12,7 +12,7 @@ namespace Nethermind.Network.P2P.Analyzers
         {
             if (type == DisconnectType.Remote)
             {
-                Metrics.RemoteDisconnectReasons.Increment(reason);
+                Metrics.RemoteDisconnectsTotal.Increment(reason);
 
                 switch (reason.ToEthDisconnectReason())
                 {
@@ -60,7 +60,7 @@ namespace Nethermind.Network.P2P.Analyzers
 
             if (type == DisconnectType.Local)
             {
-                Metrics.LocalDisconnectReasons.Increment(reason);
+                Metrics.LocalDisconnectsTotal.Increment(reason);
 
                 switch (reason.ToEthDisconnectReason())
                 {

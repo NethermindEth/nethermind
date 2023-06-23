@@ -14,11 +14,11 @@ namespace Nethermind.Network
     {
         [KeyIsLabel("reason")]
         [Description("Number of local disconnects")]
-        public static ConcurrentDictionary<DisconnectReason, long> LocalDisconnectReasons { get; } = new();
+        public static ConcurrentDictionary<DisconnectReason, long> LocalDisconnectsTotal { get; } = new();
 
         [KeyIsLabel("reason")]
         [Description("Number of remote disconnects")]
-        public static ConcurrentDictionary<DisconnectReason, long> RemoteDisconnectReasons { get; } = new();
+        public static ConcurrentDictionary<DisconnectReason, long> RemoteDisconnectsTotal { get; } = new();
 
         [CounterMetric]
         [Description("Number of incoming connection.")]
