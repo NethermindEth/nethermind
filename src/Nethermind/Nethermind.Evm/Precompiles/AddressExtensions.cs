@@ -12,10 +12,10 @@ public static class AddressExtensions
 {
     public static bool IsPrecompile(this Address address, IReleaseSpec releaseSpec)
     {
-        Span<int> data = MemoryMarshal.Cast<byte, int>(address.Bytes.AsSpan());
+        Span<uint> data = MemoryMarshal.Cast<byte, uint>(address.Bytes.AsSpan());
         return (data[4] & 0x00ffffff) == 0
             && data[3] == 0 && data[2] == 0 && data[1] == 0 && data[0] == 0
-            && address[Address.ByteLength - 1] switch
+            && (data[4] >>> 24) switch
             {
                 0x01 => true,
                 0x02 => true,
