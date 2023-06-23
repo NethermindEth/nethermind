@@ -309,19 +309,19 @@ namespace Nethermind.Trie
                 int nibblesCount = 2 * rawKey.Length;
                 byte[] array = null;
                 Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
-                    ? stackalloc byte[MaxKeyStackAlloc]
-                    : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
-                [..nibblesCount]; // Slice to exact size;
-				
-				try
-				{
-	                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-	                return  Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
-				}
-				finally
-				{
-	                if (array is not null) ArrayPool<byte>.Shared.Return(array);
-				}
+                        ? stackalloc byte[MaxKeyStackAlloc]
+                        : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
+                    [..nibblesCount]; // Slice to exact size;
+
+                try
+                {
+                    Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+                    return Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
+                }
+                finally
+                {
+                    if (array is not null) ArrayPool<byte>.Shared.Return(array);
+                }
             }
             catch (TrieException e)
             {
@@ -339,19 +339,19 @@ namespace Nethermind.Trie
             int nibblesCount = 2 * rawKey.Length;
             byte[] array = null;
             Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
-                ? stackalloc byte[MaxKeyStackAlloc] // Fixed size stack allocation
-                : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
+                    ? stackalloc byte[MaxKeyStackAlloc] // Fixed size stack allocation
+                    : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                 [..nibblesCount]; // Slice to exact size
 
-			try
-			{
-    	        Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-	            Run(nibbles, nibblesCount, value, true);
-			}
-			finally
-			{
-	            if (array is not null) ArrayPool<byte>.Shared.Return(array);
-			}
+            try
+            {
+                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+                Run(nibbles, nibblesCount, value, true);
+            }
+            finally
+            {
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
+            }
         }
 
         [DebuggerStepThrough]
