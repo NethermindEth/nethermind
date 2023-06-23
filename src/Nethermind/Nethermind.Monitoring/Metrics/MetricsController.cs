@@ -25,7 +25,7 @@ namespace Nethermind.Monitoring.Metrics
         private Timer _timer;
         private readonly Dictionary<Type, (MemberInfo, string, Func<double>)[]> _membersCache = new();
         private readonly Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicPropCache = new();
-        private readonly Dictionary<Type, (MemberInfo, string GaugeName, string LabelName, IEnumerable)[]> _labelledDictionaryCache = new();
+        private readonly Dictionary<Type, (MemberInfo, string GaugeName, string LabelName, IDictionary)[]> _labelledDictionaryCache = new();
         private readonly HashSet<Type> _metricTypes = new();
 
         public readonly Dictionary<string, Gauge> _gauges = new();
@@ -163,9 +163,9 @@ namespace Nethermind.Monitoring.Metrics
                     .Where(p =>
                     {
                         var propType = p.PropertyType;
-                        return propType.IsGenericType && propType.GetGenericTypeDefinition() == typeof(IDictionary<,>);
+                        return propType.IsGenericType && propType.GetGenericTypeDefinition().IsAssignableTo(typeof(IDictionary));
                     })
-                    .Select(p => ((MemberInfo)p, GetGaugeNameKey(type.Name, p.Name), p.GetCustomAttribute<KeyIsLabel>().LabelName, (IEnumerable)p.GetValue(null)))
+                    .Select(p => ((MemberInfo)p, GetGaugeNameKey(type.Name, p.Name), p.GetCustomAttribute<KeyIsLabel>().LabelName, (IDictionary)p.GetValue(null)))
                     .ToArray();
             }
         }
@@ -233,12 +233,12 @@ namespace Nethermind.Monitoring.Metrics
                 }
             }
 
-            foreach ((MemberInfo _, string gaugeName, string _, IEnumerable enumerable) in _labelledDictionaryCache[type])
+            foreach ((MemberInfo _, string gaugeName, string _, IDictionary labelledDict) in _labelledDictionaryCache[type])
             {
-                foreach (DictionaryEntry kv in enumerable)
+                foreach (object key in labelledDict.Keys)
                 {
-                    double value = Convert.ToDouble(kv.Value);
-                    ReplaceValueIfChanged(value, gaugeName, kv.Key.ToString());
+                    double value = Convert.ToDouble(labelledDict[key]);
+                    ReplaceValueIfChanged(value, gaugeName, key.ToString());
                 }
             }
 

@@ -33,7 +33,7 @@ namespace Nethermind.Monitoring.Test
 
             [System.ComponentModel.Description("Another test description.")]
             [KeyIsLabel("somelabel")]
-            public static IDictionary<SomeEnum, long> WithLabelledDictionary { get; set; } = new ConcurrentDictionary<SomeEnum, long>();
+            public static ConcurrentDictionary<SomeEnum, long> WithLabelledDictionary { get; set; } = new();
         }
 
         public enum SomeEnum
@@ -43,7 +43,7 @@ namespace Nethermind.Monitoring.Test
         }
 
         [Test]
-        public void Test_gauge_names()
+        public void Test_update_correct_gauge()
         {
             MetricsConfig metricsConfig = new()
             {
@@ -62,6 +62,17 @@ namespace Nethermind.Monitoring.Test
             Assert.That(gauges[keyDefault].Name, Is.EqualTo("nethermind_one_two_three"));
             Assert.That(gauges[keySpecial].Name, Is.EqualTo("one_two_three"));
             Assert.That(gauges[keyDictionary].Name, Is.EqualTo("nethermind_with_labelled_dictionary"));
+
+            TestMetrics.OneTwoThree = 123;
+            TestMetrics.OneTwoThreeSpecial = 1234;
+            TestMetrics.WithLabelledDictionary[SomeEnum.Option1] = 2;
+            TestMetrics.WithLabelledDictionary[SomeEnum.Option2] = 3;
+            metricsController.UpdateMetrics(null);
+
+            gauges[keyDefault].Value.Should().Be(123);
+            gauges[keySpecial].Value.Should().Be(1234);
+            gauges[keyDictionary].WithLabels(SomeEnum.Option1.ToString()).Value.Should().Be(2);
+            gauges[keyDictionary].WithLabels(SomeEnum.Option2.ToString()).Value.Should().Be(3);
         }
 
         [Test]
