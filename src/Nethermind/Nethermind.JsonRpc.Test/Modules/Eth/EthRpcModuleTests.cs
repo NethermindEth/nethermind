@@ -770,7 +770,7 @@ public partial class EthRpcModuleTests
 
         string serialized = ctx.Test.TestEthRpc("eth_getAccount", account_address, "0xffff");
 
-        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"header not found\"},\"id\":67}");
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"65535 could not be found\"},\"id\":67}");
     }
 
     [Test]
