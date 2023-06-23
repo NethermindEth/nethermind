@@ -11,16 +11,18 @@ namespace Nethermind.JsonRpc
 {
     public class ResultWrapper<T> : IResultWrapper
     {
-        public T Data { get; set; }
-        public Result Result { get; set; } = null!;
-        public int ErrorCode { get; set; }
+        object IResultWrapper.Data => Data;
+        public T Data { get; init; }
+        public Result Result { get; init; } = Result.Success;
+        public int ErrorCode { get; init; }
+        public bool IsTemporary { get; init; }
 
         private ResultWrapper()
         {
         }
 
-        public static ResultWrapper<T> Fail<TSearch>(SearchResult<TSearch> searchResult) where TSearch : class =>
-            new() { Result = Result.Fail(searchResult.Error!), ErrorCode = searchResult.ErrorCode };
+        public static ResultWrapper<T> Fail<TSearch>(SearchResult<TSearch> searchResult, bool isTemporary = false) where TSearch : class =>
+            new() { Result = Result.Fail(searchResult.Error!), ErrorCode = searchResult.ErrorCode, IsTemporary = isTemporary};
 
         public static ResultWrapper<T> Fail(string error) =>
             new() { Result = Result.Fail(error), ErrorCode = ErrorCodes.InternalError };
@@ -31,26 +33,14 @@ namespace Nethermind.JsonRpc
         public static ResultWrapper<T> Fail(string error, int errorCode, T outputData) =>
             new() { Result = Result.Fail(error), ErrorCode = errorCode, Data = outputData };
 
-        public static ResultWrapper<T> Fail(string error, int errorCode) =>
-            new() { Result = Result.Fail(error), ErrorCode = errorCode };
+        public static ResultWrapper<T> Fail(string error, int errorCode, bool isTemporary = false) =>
+            new() { Result = Result.Fail(error), ErrorCode = errorCode, IsTemporary = isTemporary };
 
         public static ResultWrapper<T> Fail(string error, T data) =>
             new() { Data = data, Result = Result.Fail(error) };
 
         public static ResultWrapper<T> Success(T data) =>
             new() { Data = data, Result = Result.Success };
-
-        public static ResultWrapper<T> TemporaryFail(string error, int errorCode) =>
-            new() { Result = Result.TemporaryFail(error), ErrorCode = errorCode };
-
-        public static ResultWrapper<T> TemporaryFail<TSearch>(SearchResult<TSearch> searchResult) where TSearch : class =>
-            new() { Result = Result.TemporaryFail(searchResult.Error!), ErrorCode = searchResult.ErrorCode };
-
-        public Result GetResult() => Result;
-
-        public object? GetData() => Data;
-
-        public int GetErrorCode() => ErrorCode;
 
         public static ResultWrapper<T> From(RpcResult<T>? rpcResult) =>
             rpcResult is null

@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
     public static class SyncModeExtensions
     {
-        public static bool NotSyncing(this SyncMode syncMode) => syncMode == SyncMode.WaitingForBlock || syncMode == SyncMode.Disconnected;
+        public static bool NotSyncing(this SyncMode syncMode) => syncMode is SyncMode.WaitingForBlock or SyncMode.Disconnected;
 
         public static bool IsSyncingBodies(this SyncMode syncMode) =>
             syncMode.HasFlag(SyncMode.FastHeaders) ||

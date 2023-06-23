@@ -736,17 +736,11 @@ public partial class EthRpcModule : IEthRpcModule
     }
 
     private static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>
-        isTemporary && searchResult.ErrorCode == ErrorCodes.ResourceNotFound
-            ? ResultWrapper<TResult>.TemporaryFail(searchResult)
-            : ResultWrapper<TResult>.Fail(searchResult);
+        ResultWrapper<TResult>.Fail(searchResult, isTemporary && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
 
     private static ResultWrapper<TResult> GetFailureResult<TResult>(ResourceNotFoundException exception, bool isTemporary) =>
-        isTemporary
-            ? ResultWrapper<TResult>.TemporaryFail(exception.Message, ErrorCodes.ResourceNotFound)
-            : ResultWrapper<TResult>.Fail(exception.Message, ErrorCodes.ResourceNotFound);
+        ResultWrapper<TResult>.Fail(exception.Message, ErrorCodes.ResourceNotFound, isTemporary);
 
     private ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
-        _ethSyncingInfo.SyncMode.IsSyncingState()
-            ? ResultWrapper<TResult>.TemporaryFail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable)
-            : ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+        ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable, _ethSyncingInfo.SyncMode.IsSyncingState());
 }

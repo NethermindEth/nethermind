@@ -6,7 +6,6 @@ namespace Nethermind.Core
     public enum ResultType
     {
         Success,
-        Failure,
-        TemporaryFailure
+        Failure
     }
 }

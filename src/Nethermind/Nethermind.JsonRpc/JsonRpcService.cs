@@ -219,16 +219,11 @@ public class JsonRpcService : IJsonRpcService
             return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, request.Id, returnAction);
         }
 
-        Result? result = resultWrapper.GetResult();
-        if (result is null)
-        {
-            if (_logger.IsError) _logger.Error($"Error during method: {methodName} execution: no result");
-            return GetErrorResponse(methodName, resultWrapper.GetErrorCode(), "Internal error", resultWrapper.GetData(), request.Id, returnAction);
-        }
+        Result? result = resultWrapper.Result;
 
         return result.ResultType != ResultType.Success
-            ? GetErrorResponse(methodName, resultWrapper.GetErrorCode(), result.Error, resultWrapper.GetData(), request.Id, returnAction, result.ResultType == ResultType.TemporaryFailure)
-            : GetSuccessResponse(methodName, resultWrapper.GetData(), request.Id, returnAction);
+            ? GetErrorResponse(methodName, resultWrapper.ErrorCode, result.Error, resultWrapper.Data, request.Id, returnAction, resultWrapper.IsTemporary)
+            : GetSuccessResponse(methodName, resultWrapper.Data, request.Id, returnAction);
     }
 
     private void LogRequest(string methodName, string?[] providedParameters, ParameterInfo[] expectedParameters)
