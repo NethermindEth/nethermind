@@ -17,24 +17,24 @@ namespace Nethermind.Stats
 
         public static StatsParameters Instance { get; } = new StatsParameters();
 
-        public HashSet<EthDisconnectReason> PenalizedReputationLocalDisconnectReasons { get; set; } =
-            new HashSet<EthDisconnectReason>
+        public HashSet<DisconnectReason> PenalizedReputationLocalDisconnectReasons { get; set; } =
+            new HashSet<DisconnectReason>
             {
-                EthDisconnectReason.UnexpectedIdentity,
-                EthDisconnectReason.IncompatibleP2PVersion,
-                EthDisconnectReason.UselessPeer,
-                EthDisconnectReason.BreachOfProtocol
+                DisconnectReason.UnexpectedIdentity,
+                DisconnectReason.IncompatibleP2PVersion,
+                DisconnectReason.UselessPeer,
+                DisconnectReason.BreachOfProtocol
             };
 
-        public HashSet<EthDisconnectReason> PenalizedReputationRemoteDisconnectReasons { get; set; } =
-            new HashSet<EthDisconnectReason>
+        public HashSet<DisconnectReason> PenalizedReputationRemoteDisconnectReasons { get; set; } =
+            new HashSet<DisconnectReason>
             {
-                EthDisconnectReason.UnexpectedIdentity,
-                EthDisconnectReason.IncompatibleP2PVersion,
-                EthDisconnectReason.UselessPeer,
-                EthDisconnectReason.BreachOfProtocol,
-                EthDisconnectReason.TooManyPeers,
-                EthDisconnectReason.AlreadyConnected
+                DisconnectReason.UnexpectedIdentity,
+                DisconnectReason.IncompatibleP2PVersion,
+                DisconnectReason.UselessPeer,
+                DisconnectReason.BreachOfProtocol,
+                DisconnectReason.TooManyPeers,
+                DisconnectReason.AlreadyConnected
             };
 
         public long PenalizedReputationTooManyPeersTimeout { get; } = 10 * 1000;
@@ -43,17 +43,17 @@ namespace Nethermind.Stats
 
         public int[] DisconnectDelays { get; set; }
 
-        public Dictionary<EthDisconnectReason, TimeSpan> DelayDueToLocalDisconnect { get; } = new()
+        public Dictionary<DisconnectReason, TimeSpan> DelayDueToLocalDisconnect { get; } = new()
         {
-            { EthDisconnectReason.UselessPeer, TimeSpan.FromMinutes(15) },
+            { DisconnectReason.UselessPeer, TimeSpan.FromMinutes(15) },
 
             // Its actually protocol init timeout, when status message is not received in time.
-            { EthDisconnectReason.ReceiveMessageTimeout, TimeSpan.FromMinutes(5) },
+            { DisconnectReason.ReceiveMessageTimeout, TimeSpan.FromMinutes(5) },
         };
 
-        public Dictionary<EthDisconnectReason, TimeSpan> DelayDueToRemoteDisconnect { get; } = new()
+        public Dictionary<DisconnectReason, TimeSpan> DelayDueToRemoteDisconnect { get; } = new()
         {
-            { EthDisconnectReason.ClientQuitting, TimeSpan.FromMinutes(1) },
+            { DisconnectReason.ClientQuitting, TimeSpan.FromMinutes(1) },
         };
 
         public Dictionary<NodeStatsEventType, TimeSpan> DelayDueToEvent { get; } = new()

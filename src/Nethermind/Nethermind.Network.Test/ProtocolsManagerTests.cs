@@ -200,7 +200,7 @@ namespace Nethermind.Network.Test
 
             public Context Disconnect()
             {
-                _currentSession.MarkDisconnected(EthDisconnectReason.TooManyPeers, DisconnectType.Local, "test");
+                _currentSession.MarkDisconnected(DisconnectReason.TooManyPeers, DisconnectType.Local, "test");
                 return this;
             }
 

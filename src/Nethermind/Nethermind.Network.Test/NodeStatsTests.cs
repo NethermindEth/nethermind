@@ -65,7 +65,7 @@ namespace Nethermind.Network.Test
             var isConnDelayed = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
             Assert.IsFalse(isConnDelayed.Result, "before disconnect");
 
-            _nodeStats.AddNodeStatsDisconnectEvent(DisconnectType.Remote, EthDisconnectReason.Other);
+            _nodeStats.AddNodeStatsDisconnectEvent(DisconnectType.Remote, DisconnectReason.Other);
             isConnDelayed = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
             Assert.IsTrue(isConnDelayed.Result, "just after disconnect");
             Assert.That(isConnDelayed.DelayReason, Is.EqualTo(NodeStatsEventType.Disconnect));
@@ -90,9 +90,9 @@ namespace Nethermind.Network.Test
             isConnDelayed.Should().Be(connectionDelayed);
         }
 
-        [TestCase(DisconnectType.Local, EthDisconnectReason.UselessPeer, true)]
-        [TestCase(DisconnectType.Remote, EthDisconnectReason.ClientQuitting, true)]
-        public async Task DisconnectDelayDueToDisconnect(DisconnectType disconnectType, EthDisconnectReason reason, bool connectionDelayed)
+        [TestCase(DisconnectType.Local, DisconnectReason.UselessPeer, true)]
+        [TestCase(DisconnectType.Remote, DisconnectReason.ClientQuitting, true)]
+        public async Task DisconnectDelayDueToDisconnect(DisconnectType disconnectType, DisconnectReason reason, bool connectionDelayed)
         {
             _nodeStats = new NodeStatsLight(_node);
 

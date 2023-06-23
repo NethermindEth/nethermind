@@ -391,7 +391,7 @@ namespace Nethermind.Network.P2P
                     {
                         if (_logger.IsTrace)
                             _logger.Trace($"{this} disconnecting {protocolHandler.Name} {disconnectReason} ({details})");
-                        protocolHandler.DisconnectProtocol(ethDisconnectReason, details);
+                        protocolHandler.DisconnectProtocol(disconnectReason, details);
                     }
                     catch (Exception e)
                     {
@@ -401,7 +401,7 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            MarkDisconnected(ethDisconnectReason, DisconnectType.Local, details);
+            MarkDisconnected(disconnectReason, DisconnectType.Local, details);
         }
 
         private object _sessionStateLock = new();
@@ -421,14 +421,14 @@ namespace Nethermind.Network.P2P
 
         public SessionState BestStateReached { get; private set; }
 
-        public void MarkDisconnected(EthDisconnectReason ethDisconnectReason, DisconnectType disconnectType, string details)
+        public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {
             lock (_sessionStateLock)
             {
                 if (State >= SessionState.Disconnecting)
                 {
                     if (_logger.IsTrace)
-                        _logger.Trace($"{this} already disconnected {ethDisconnectReason} {disconnectType}");
+                        _logger.Trace($"{this} already disconnected {disconnectReason} {disconnectType}");
                     return;
                 }
 
@@ -437,15 +437,15 @@ namespace Nethermind.Network.P2P
 
             if (_isTracked)
             {
-                _logger.Warn($"Tracked {this} -> disconnected {disconnectType} {ethDisconnectReason} {details}");
+                _logger.Warn($"Tracked {this} -> disconnected {disconnectType} {disconnectReason} {details}");
             }
 
-            _disconnectsAnalyzer.ReportDisconnect(ethDisconnectReason, disconnectType, details);
+            _disconnectsAnalyzer.ReportDisconnect(disconnectReason, disconnectType, details);
 
             if (NetworkDiagTracer.IsEnabled && RemoteHost is not null)
-                NetworkDiagTracer.ReportDisconnect(Node.Address, $"{disconnectType} {ethDisconnectReason} {details}");
+                NetworkDiagTracer.ReportDisconnect(Node.Address, $"{disconnectType} {disconnectReason} {details}");
 
-            if (BestStateReached >= SessionState.Initialized && ethDisconnectReason != EthDisconnectReason.TooManyPeers)
+            if (BestStateReached >= SessionState.Initialized && disconnectReason != DisconnectReason.TooManyPeers)
             {
                 // TooManyPeers is a benign disconnect that we should not be worried about - many peers are running at their limit
                 // also any disconnects before the handshake and init do not have to be logged as they are most likely just rejecting any connections
@@ -453,16 +453,16 @@ namespace Nethermind.Network.P2P
                 {
                     if (_logger.IsError)
                         _logger.Error(
-                            $"{this} invoking 'Disconnecting' event {ethDisconnectReason} {disconnectType} {details}");
+                            $"{this} invoking 'Disconnecting' event {disconnectReason} {disconnectType} {details}");
                 }
             }
             else
             {
                 if (_logger.IsTrace)
-                    _logger.Trace($"{this} invoking 'Disconnecting' event {ethDisconnectReason} {disconnectType} {details}");
+                    _logger.Trace($"{this} invoking 'Disconnecting' event {disconnectReason} {disconnectType} {details}");
             }
 
-            Disconnecting?.Invoke(this, new DisconnectEventArgs(ethDisconnectReason, disconnectType, details));
+            Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
 
             //Possible in case of disconnect before p2p initialization
             if (_context is null)
@@ -500,8 +500,8 @@ namespace Nethermind.Network.P2P
             if (Disconnected is not null)
             {
                 if (_logger.IsTrace)
-                    _logger.Trace($"|NetworkTrace| {this} disconnected event {ethDisconnectReason} {disconnectType}");
-                Disconnected?.Invoke(this, new DisconnectEventArgs(ethDisconnectReason, disconnectType, details));
+                    _logger.Trace($"|NetworkTrace| {this} disconnected event {disconnectReason} {disconnectType}");
+                Disconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
             }
             else if (_logger.IsDebug)
                 _logger.Error($"DEBUG/ERROR  No subscriptions for session disconnected event on {this}");

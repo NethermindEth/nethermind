@@ -7,6 +7,6 @@ namespace Nethermind.Network.P2P.Analyzers
 {
     public interface IDisconnectsAnalyzer
     {
-        void ReportDisconnect(EthDisconnectReason reason, DisconnectType type, string details);
+        void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details);
     }
 }

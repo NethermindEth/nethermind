@@ -11,7 +11,7 @@ namespace Nethermind.Stats
     {
         void AddNodeStatsEvent(NodeStatsEventType nodeStatsEventType);
         void AddNodeStatsHandshakeEvent(ConnectionDirection connectionDirection);
-        void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, EthDisconnectReason ethDisconnectReason);
+        void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason);
         void AddNodeStatsP2PInitializedEvent(P2PNodeDetails nodeDetails);
         void AddNodeStatsEth62InitializedEvent(SyncPeerNodeDetails nodeDetails);
         void AddNodeStatsLesInitializedEvent(SyncPeerNodeDetails nodeDetails);

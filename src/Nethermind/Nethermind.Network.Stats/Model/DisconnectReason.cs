@@ -8,11 +8,18 @@ namespace Nethermind.Stats.Model;
 /// </summary>
 public enum DisconnectReason : byte
 {
+    // Connection related
+    SessionIdAlreadyExists,
+    ConnectionClosed,
+    OutgoingConnectionFailed,
+    DuplicatedConnection,
+    PeerRemoved,
     TooManyPeers,
     SessionAlreadyExist,
     ReplacingSessionWithOppositeDirection,
     OppositeDirectionCleanup,
 
+    // Non sync, non connection related disconnect
     SnapServerNotImplemented,
     IncompatibleP2PVersion,
     InvalidNetworkId,
@@ -22,16 +29,13 @@ public enum DisconnectReason : byte
     ProtocolInitTimeout,
     TxFlooding,
     NoCapabilityMatched,
-
+    AppClosing,
     DropWorstPeer,
     PeerRefreshFailed,
-
-    ForwardSyncFailed,
     GossipingInPoS,
-    SessionIdAlreadyExists,
-    AppClosing,
 
     // Sync related
+    ForwardSyncFailed,
     InvalidTxOrUncle,
     HeaderResponseTooLong,
     InconsistentHeaderBatch,
@@ -40,6 +44,18 @@ public enum DisconnectReason : byte
     UnexpectedParentHeader,
     InvalidHeader,
     InvalidReceiptRoot,
+
+    // These are from EthDisconnectReason which does not necessarily used in Nethermind.
+    EthDisconnectRequested,
+    TcpSubSystemError,
+    BreachOfProtocol,
+    UselessPeer,
+    AlreadyConnected,
+    NullNodeIdentityReceived,
+    ClientQuitting,
+    UnexpectedIdentity,
+    IdentitySameAsSelf,
+    ReceiveMessageTimeout,
 
     // Try not to use this. Instead create a new one.
     Other,
@@ -56,6 +72,12 @@ public static class InitiateDisconnectReasonExtension
             case DisconnectReason.SessionAlreadyExist:
             case DisconnectReason.ReplacingSessionWithOppositeDirection:
             case DisconnectReason.OppositeDirectionCleanup:
+                return EthDisconnectReason.AlreadyConnected;
+            case DisconnectReason.ConnectionClosed:
+                return EthDisconnectReason.TcpSubSystemError;
+            case DisconnectReason.OutgoingConnectionFailed:
+                return EthDisconnectReason.TcpSubSystemError;
+            case DisconnectReason.DuplicatedConnection:
                 return EthDisconnectReason.AlreadyConnected;
 
             case DisconnectReason.SnapServerNotImplemented:
@@ -77,6 +99,7 @@ public static class InitiateDisconnectReasonExtension
 
             case DisconnectReason.DropWorstPeer:
                 return EthDisconnectReason.TooManyPeers;
+            case DisconnectReason.PeerRemoved:
             case DisconnectReason.PeerRefreshFailed:
                 return EthDisconnectReason.DisconnectRequested;
 
@@ -98,6 +121,27 @@ public static class InitiateDisconnectReasonExtension
             case DisconnectReason.InvalidHeader:
             case DisconnectReason.InvalidReceiptRoot:
                 return EthDisconnectReason.BreachOfProtocol;
+
+            case DisconnectReason.EthDisconnectRequested:
+                return EthDisconnectReason.DisconnectRequested;
+            case DisconnectReason.TcpSubSystemError:
+                return EthDisconnectReason.TcpSubSystemError;
+            case DisconnectReason.BreachOfProtocol:
+                return EthDisconnectReason.BreachOfProtocol;
+            case DisconnectReason.UselessPeer:
+                return EthDisconnectReason.UselessPeer;
+            case DisconnectReason.AlreadyConnected:
+                return EthDisconnectReason.AlreadyConnected;
+            case DisconnectReason.NullNodeIdentityReceived:
+                return EthDisconnectReason.NullNodeIdentityReceived;
+            case DisconnectReason.ClientQuitting:
+                return EthDisconnectReason.ClientQuitting;
+            case DisconnectReason.UnexpectedIdentity:
+                return EthDisconnectReason.UnexpectedIdentity;
+            case DisconnectReason.IdentitySameAsSelf:
+                return EthDisconnectReason.IdentitySameAsSelf;
+            case DisconnectReason.ReceiveMessageTimeout:
+                return EthDisconnectReason.ReceiveMessageTimeout;
         }
 
         return EthDisconnectReason.Other;

@@ -163,9 +163,9 @@ namespace Nethermind.AccountAbstraction.Network
             if (Logger.IsTrace) Logger.Trace($"Sent {uopsToSend.Count} uops to {_session.Node:c}");
         }
 
-        public override void DisconnectProtocol(EthDisconnectReason ethDisconnectReason, string details)
+        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
-            if (Logger.IsDebug) Logger.Debug($"AA network protocol disconnected because of {ethDisconnectReason} {details}");
+            if (Logger.IsDebug) Logger.Debug($"AA network protocol disconnected because of {disconnectReason} {details}");
             Dispose();
         }
 

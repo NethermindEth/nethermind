@@ -22,4 +22,39 @@ namespace Nethermind.Stats.Model
         ReceiveMessageTimeout = 0x0b,
         Other = 0x10
     }
+
+    public static class EthDisconnectReasonExtensions {
+        public static DisconnectReason ToDisconnectReason(this EthDisconnectReason reason)
+        {
+            switch (reason)
+            {
+                case EthDisconnectReason.DisconnectRequested:
+                    return DisconnectReason.EthDisconnectRequested;
+                case EthDisconnectReason.TcpSubSystemError:
+                    return DisconnectReason.TcpSubSystemError;
+                case EthDisconnectReason.BreachOfProtocol:
+                    return DisconnectReason.BreachOfProtocol;
+                case EthDisconnectReason.UselessPeer:
+                    return DisconnectReason.UselessPeer;
+                case EthDisconnectReason.TooManyPeers:
+                    return DisconnectReason.TooManyPeers;
+                case EthDisconnectReason.AlreadyConnected:
+                    return DisconnectReason.AlreadyConnected;
+                case EthDisconnectReason.IncompatibleP2PVersion:
+                    return DisconnectReason.IncompatibleP2PVersion;
+                case EthDisconnectReason.NullNodeIdentityReceived:
+                    return DisconnectReason.NullNodeIdentityReceived;
+                case EthDisconnectReason.ClientQuitting:
+                    return DisconnectReason.ClientQuitting;
+                case EthDisconnectReason.UnexpectedIdentity:
+                    return DisconnectReason.UnexpectedIdentity;
+                case EthDisconnectReason.IdentitySameAsSelf:
+                    return DisconnectReason.IdentitySameAsSelf;
+                case EthDisconnectReason.ReceiveMessageTimeout:
+                    return DisconnectReason.ReceiveMessageTimeout;
+                default:
+                    return DisconnectReason.Other;
+            }
+        }
+    }
 }

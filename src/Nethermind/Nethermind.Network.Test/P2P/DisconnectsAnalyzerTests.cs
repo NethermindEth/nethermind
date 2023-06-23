@@ -32,15 +32,15 @@ namespace Nethermind.Network.Test.P2P
         public void Can_pass_null_details()
         {
             Context ctx = new();
-            ctx.DisconnectsAnalyzer.ReportDisconnect(EthDisconnectReason.TooManyPeers, DisconnectType.Local, null);
+            ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
         }
 
         [Test]
         public void Will_add_of_same_type()
         {
             Context ctx = new();
-            ctx.DisconnectsAnalyzer.ReportDisconnect(EthDisconnectReason.TooManyPeers, DisconnectType.Local, null);
-            ctx.DisconnectsAnalyzer.ReportDisconnect(EthDisconnectReason.TooManyPeers, DisconnectType.Local, null);
+            ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
+            ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
 
             // GitHub actions not handling these tests well
             // ctx.TestLogger.LogList.Any(l => l.Contains("Local")).Should().BeTrue(string.Join(", ", ctx.TestLogger.LogList));
@@ -50,8 +50,8 @@ namespace Nethermind.Network.Test.P2P
         public void Will_add_of_different_types()
         {
             Context ctx = new();
-            ctx.DisconnectsAnalyzer.ReportDisconnect(EthDisconnectReason.TooManyPeers, DisconnectType.Local, null);
-            ctx.DisconnectsAnalyzer.ReportDisconnect(EthDisconnectReason.TooManyPeers, DisconnectType.Remote, null);
+            ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
+            ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Remote, null);
             Thread.Sleep(15);
 
             // GitHub actions not handling these tests well
@@ -63,9 +63,9 @@ namespace Nethermind.Network.Test.P2P
         public void Will_clear_after_report()
         {
             Context ctx = new();
-            ctx.DisconnectsAnalyzer.ReportDisconnect(EthDisconnectReason.TooManyPeers, DisconnectType.Local, null);
+            ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
             Thread.Sleep(15);
-            ctx.DisconnectsAnalyzer.ReportDisconnect(EthDisconnectReason.TooManyPeers, DisconnectType.Local, null);
+            ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
             Thread.Sleep(15);
 
             // GitHub actions not handling these tests well

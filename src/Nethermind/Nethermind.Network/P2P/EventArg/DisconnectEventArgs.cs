@@ -7,15 +7,15 @@ namespace Nethermind.Network.P2P.EventArg
 {
     public class DisconnectEventArgs : System.EventArgs
     {
-        public EthDisconnectReason EthDisconnectReason { get; }
+        public DisconnectReason DisconnectReason { get; }
 
         public DisconnectType DisconnectType { get; }
 
         public string Details { get; }
 
-        public DisconnectEventArgs(EthDisconnectReason ethDisconnectReason, DisconnectType disconnectType, string details)
+        public DisconnectEventArgs(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {
-            EthDisconnectReason = ethDisconnectReason;
+            DisconnectReason = disconnectReason;
             DisconnectType = disconnectType;
             Details = details;
         }

@@ -419,7 +419,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected abstract void OnDisposed();
 
-        public override void DisconnectProtocol(EthDisconnectReason ethDisconnectReason, string details)
+        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
             Dispose();
         }

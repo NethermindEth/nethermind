@@ -638,7 +638,7 @@ namespace Nethermind.Network
                 if (peer.OutSession is not null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
-                    peer.OutSession?.MarkDisconnected(EthDisconnectReason.ReceiveMessageTimeout, DisconnectType.Local, "timeout");
+                    peer.OutSession?.MarkDisconnected(DisconnectReason.OutgoingConnectionFailed, DisconnectType.Local, "timeout");
                 }
 
                 peer.IsAwaitingConnection = false;
@@ -688,7 +688,7 @@ namespace Nethermind.Network
 
             if (!_peerPool.ActivePeers.TryGetValue(id, out Peer peer))
             {
-                session.MarkDisconnected(EthDisconnectReason.DisconnectRequested, DisconnectType.Local, "peer removed");
+                session.MarkDisconnected(DisconnectReason.DuplicatedConnection, DisconnectType.Local, "peer removed");
                 return;
             }
 
@@ -925,7 +925,7 @@ namespace Nethermind.Network
                 throw new InvalidAsynchronousStateException($"Invalid session state in {nameof(OnDisconnected)} - {session.State}");
             }
 
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| peer disconnected event in PeerManager - {session} {e.EthDisconnectReason} {e.DisconnectType}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| peer disconnected event in PeerManager - {session} {e.DisconnectReason} {e.DisconnectType}");
 
             if (session.RemoteNodeId is null)
             {
@@ -943,7 +943,7 @@ namespace Nethermind.Network
             if (_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer activePeer))
             {
                 //we want to update reputation always
-                _stats.ReportDisconnect(session.Node, e.DisconnectType, e.EthDisconnectReason);
+                _stats.ReportDisconnect(session.Node, e.DisconnectType, e.DisconnectReason);
                 if (activePeer.InSession?.SessionId != session.SessionId && activePeer.OutSession?.SessionId != session.SessionId)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Received disconnect on a different session than the active peer runs. Ignoring. Id: {activePeer.Node.Id}");

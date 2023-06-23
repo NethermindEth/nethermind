@@ -288,14 +288,14 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         }
     }
 
-    public override void DisconnectProtocol(EthDisconnectReason ethDisconnectReason, string details)
+    public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
     {
         if (Logger.IsTrace)
-            Logger.Trace($"Sending disconnect {ethDisconnectReason} ({details}) to {Session.Node:s}");
-        DisconnectMessage message = new(ethDisconnectReason);
+            Logger.Trace($"Sending disconnect {disconnectReason} ({details}) to {Session.Node:s}");
+        DisconnectMessage message = new(disconnectReason.ToEthDisconnectReason());
         Send(message);
         if (NetworkDiagTracer.IsEnabled)
-            NetworkDiagTracer.ReportDisconnect(Session.Node.Address, $"Local {ethDisconnectReason} {details}");
+            NetworkDiagTracer.ReportDisconnect(Session.Node.Address, $"Local {disconnectReason} {details}");
     }
 
     private void SendHello()
@@ -342,7 +342,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         }
 
         // Received disconnect message, triggering direct TCP disconnection
-        Session.MarkDisconnected(ethDisconnectReason, DisconnectType.Remote, "message");
+        Session.MarkDisconnected(ethDisconnectReason.ToDisconnectReason(), DisconnectType.Remote, "message");
     }
 
     public override string Name => Protocol.P2P;
