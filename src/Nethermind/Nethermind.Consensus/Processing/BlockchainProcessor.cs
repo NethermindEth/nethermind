@@ -433,7 +433,7 @@ namespace Nethermind.Consensus.Processing
             return maxProcessingInterval is null || _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow;
         }
 
-        private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
+        private void TraceFailingBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
         {
             if ((_options.DumpOptions & dumpType) != 0)
             {
@@ -456,9 +456,9 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        private Block[]? ProcessBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer)
+        private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer)
         {
-            void DeleteInvalidBlocks(Keccak invalidBlockHash)
+            void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Keccak invalidBlockHash)
             {
                 for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
                 {
@@ -513,7 +513,7 @@ namespace Nethermind.Consensus.Processing
             {
                 if (invalidBlockHash is not null && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
                 {
-                    DeleteInvalidBlocks(invalidBlockHash);
+                    DeleteInvalidBlocks(in processingBranch, invalidBlockHash);
                 }
             }
 
