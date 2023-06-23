@@ -105,6 +105,7 @@ namespace Nethermind.Init.Steps
                 .WitnessedBy(witnessCollector);
 
             TrieStore trieStore;
+            IWorldState worldState;
             IKeyValueStoreWithBatching stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
             if (pruningConfig.Mode.IsMemory())
             {
@@ -131,6 +132,11 @@ namespace Nethermind.Init.Steps
                         trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
                     };
                 }
+
+                worldState = setApi.WorldState = new HealingWorldState(
+                    trieStore,
+                    codeDb,
+                    getApi.LogManager);
             }
             else
             {
@@ -139,6 +145,11 @@ namespace Nethermind.Init.Steps
                     No.Pruning,
                     Persist.EveryBlock,
                     getApi.LogManager);
+
+                worldState = setApi.WorldState = new WorldState(
+                    trieStore,
+                    codeDb,
+                    getApi.LogManager);
             }
 
             TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);
@@ -146,11 +157,6 @@ namespace Nethermind.Init.Steps
             getApi.DisposeStack.Push(trieStore);
 
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
-
-            IWorldState worldState = setApi.WorldState = new HealingWorldState(
-                trieStore,
-                codeDb,
-                getApi.LogManager);
 
             ReadOnlyDbProvider readOnly = new(getApi.DbProvider, false);
 
@@ -258,7 +264,10 @@ namespace Nethermind.Init.Steps
                 {
                     StoreReceiptsByDefault = initConfig.StoreReceipts,
                     DumpOptions = initConfig.AutoDump
-                });
+                })
+            {
+                IsMainProcessor = true
+            };
 
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;

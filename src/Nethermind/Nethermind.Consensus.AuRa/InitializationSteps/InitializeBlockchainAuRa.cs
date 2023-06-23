@@ -144,7 +144,8 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
                 _api.EngineSigner,
                 _api.SpecProvider,
                 _api.GasPriceOracle,
-                _api.ReportingContractValidatorCache, chainSpecAuRa.PosdaoTransition, false)
+                _api.ReportingContractValidatorCache,
+                chainSpecAuRa.PosdaoTransition, false)
             .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);
 
         if (validator is IDisposable disposableValidator)
