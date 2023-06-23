@@ -6,7 +6,7 @@ namespace Nethermind.Stats.Model;
 /// <summary>
 /// Nethermind level disconnect reason. Don't forget to add the corresponding Eth level disconnect reason in `InitiateDisconnectReasonExtension`.
 /// </summary>
-public enum InitiateDisconnectReason : byte
+public enum DisconnectReason : byte
 {
     TooManyPeers,
     SessionAlreadyExist,
@@ -47,56 +47,56 @@ public enum InitiateDisconnectReason : byte
 
 public static class InitiateDisconnectReasonExtension
 {
-    public static EthDisconnectReason ToDisconnectReason(this InitiateDisconnectReason initiateDisconnectReason)
+    public static EthDisconnectReason ToEthDisconnectReason(this DisconnectReason disconnectReason)
     {
-        switch (initiateDisconnectReason)
+        switch (disconnectReason)
         {
-            case InitiateDisconnectReason.TooManyPeers:
+            case DisconnectReason.TooManyPeers:
                 return EthDisconnectReason.TooManyPeers;
-            case InitiateDisconnectReason.SessionAlreadyExist:
-            case InitiateDisconnectReason.ReplacingSessionWithOppositeDirection:
-            case InitiateDisconnectReason.OppositeDirectionCleanup:
+            case DisconnectReason.SessionAlreadyExist:
+            case DisconnectReason.ReplacingSessionWithOppositeDirection:
+            case DisconnectReason.OppositeDirectionCleanup:
                 return EthDisconnectReason.AlreadyConnected;
 
-            case InitiateDisconnectReason.SnapServerNotImplemented:
+            case DisconnectReason.SnapServerNotImplemented:
                 return EthDisconnectReason.UselessPeer;
-            case InitiateDisconnectReason.IncompatibleP2PVersion:
+            case DisconnectReason.IncompatibleP2PVersion:
                 return EthDisconnectReason.IncompatibleP2PVersion;
-            case InitiateDisconnectReason.InvalidNetworkId:
+            case DisconnectReason.InvalidNetworkId:
                 return EthDisconnectReason.UselessPeer;
-            case InitiateDisconnectReason.InvalidGenesis:
-            case InitiateDisconnectReason.MissingForkId:
-            case InitiateDisconnectReason.InvalidForkId:
+            case DisconnectReason.InvalidGenesis:
+            case DisconnectReason.MissingForkId:
+            case DisconnectReason.InvalidForkId:
                 return EthDisconnectReason.BreachOfProtocol;
-            case InitiateDisconnectReason.ProtocolInitTimeout:
+            case DisconnectReason.ProtocolInitTimeout:
                 return EthDisconnectReason.ReceiveMessageTimeout;
-            case InitiateDisconnectReason.TxFlooding:
+            case DisconnectReason.TxFlooding:
                 return EthDisconnectReason.UselessPeer;
-            case InitiateDisconnectReason.NoCapabilityMatched:
+            case DisconnectReason.NoCapabilityMatched:
                 return EthDisconnectReason.UselessPeer;
 
-            case InitiateDisconnectReason.DropWorstPeer:
+            case DisconnectReason.DropWorstPeer:
                 return EthDisconnectReason.TooManyPeers;
-            case InitiateDisconnectReason.PeerRefreshFailed:
+            case DisconnectReason.PeerRefreshFailed:
                 return EthDisconnectReason.DisconnectRequested;
 
-            case InitiateDisconnectReason.ForwardSyncFailed:
+            case DisconnectReason.ForwardSyncFailed:
                 return EthDisconnectReason.DisconnectRequested;
-            case InitiateDisconnectReason.GossipingInPoS:
+            case DisconnectReason.GossipingInPoS:
                 return EthDisconnectReason.BreachOfProtocol;
-            case InitiateDisconnectReason.SessionIdAlreadyExists:
+            case DisconnectReason.SessionIdAlreadyExists:
                 return EthDisconnectReason.AlreadyConnected;
-            case InitiateDisconnectReason.AppClosing:
+            case DisconnectReason.AppClosing:
                 return EthDisconnectReason.ClientQuitting;
 
-            case InitiateDisconnectReason.InvalidTxOrUncle:
-            case InitiateDisconnectReason.HeaderResponseTooLong:
-            case InitiateDisconnectReason.InconsistentHeaderBatch:
-            case InitiateDisconnectReason.UnexpectedHeaderHash:
-            case InitiateDisconnectReason.HeaderBatchOnDifferentBranch:
-            case InitiateDisconnectReason.UnexpectedParentHeader:
-            case InitiateDisconnectReason.InvalidHeader:
-            case InitiateDisconnectReason.InvalidReceiptRoot:
+            case DisconnectReason.InvalidTxOrUncle:
+            case DisconnectReason.HeaderResponseTooLong:
+            case DisconnectReason.InconsistentHeaderBatch:
+            case DisconnectReason.UnexpectedHeaderHash:
+            case DisconnectReason.HeaderBatchOnDifferentBranch:
+            case DisconnectReason.UnexpectedParentHeader:
+            case DisconnectReason.InvalidHeader:
+            case DisconnectReason.InvalidReceiptRoot:
                 return EthDisconnectReason.BreachOfProtocol;
         }
 

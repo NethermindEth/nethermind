@@ -227,7 +227,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         {
             _nodeStatsManager.ReportFailedValidation(Session.Node, CompatibilityValidationType.Capabilities);
             Session.InitiateDisconnect(
-                InitiateDisconnectReason.NoCapabilityMatched,
+                DisconnectReason.NoCapabilityMatched,
                 $"capabilities: {string.Join(", ", capabilities)}");
         }
 

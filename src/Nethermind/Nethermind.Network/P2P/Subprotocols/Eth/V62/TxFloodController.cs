@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 {
                     if (_logger.IsDebug) _logger.Debug($"Disconnecting {_protocolHandler} due to tx flooding");
                     _protocolHandler.Disconnect(
-                        InitiateDisconnectReason.TxFlooding,
+                        DisconnectReason.TxFlooding,
                         $"tx flooding {_notAcceptedSinceLastCheck}/{_checkInterval.TotalSeconds > 100}");
                 }
             }

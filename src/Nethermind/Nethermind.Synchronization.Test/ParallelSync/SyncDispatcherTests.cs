@@ -63,7 +63,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
-            public void ReportBreachOfProtocol(PeerInfo peerInfo, InitiateDisconnectReason initiateDisconnectReason, string details)
+            public void ReportBreachOfProtocol(PeerInfo peerInfo, DisconnectReason disconnectReason, string details)
             {
             }
 
