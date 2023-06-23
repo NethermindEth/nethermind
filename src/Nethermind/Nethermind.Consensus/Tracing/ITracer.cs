@@ -14,12 +14,18 @@ namespace Nethermind.Consensus.Tracing
     public interface ITracer
     {
         /// <summary>
-        /// Allows to trace an arbitrarily constructed block.
+        /// Allows to trace an arbitrarily constructed block. Do NOT subtract gas from sender account
         /// </summary>
         /// <param name="block">Block to trace.</param>
         /// <param name="tracer">Trace to act on block processing events.</param>
-        /// <returns>Processed block</returns>
-        Block? Trace(Block block, IBlockTracer tracer);
+        void Trace(Block block, IBlockTracer tracer);
+
+        /// <summary>
+        /// Allows to trace and verify arbitrary constructed block. Subtracts gas from sender account
+        /// </summary>
+        /// <param name="block">Block to trace.</param>
+        /// <param name="tracer">Trace to act on block processing events.</param>
+        void Execute(Block block, IBlockTracer tracer);
 
         void Accept(ITreeVisitor visitor, Keccak stateRoot);
     }

@@ -238,7 +238,7 @@ public class PivotUpdator
             pivotData.Encode(finalizedBlockHash);
             _metadataDb.Set(MetadataDbKeys.UpdatedPivotData, pivotData.Data!);
 
-            if (_logger.IsInfo) _logger.Info($"New pivot block has been set based on FCU from CL. Pivot block number: {finalizedBlockNumber}, hash: {finalizedBlockHash}");
+            if (_logger.IsInfo) _logger.Info($"New pivot block has been set based on ForkChoiceUpdate from CL. Pivot block number: {finalizedBlockNumber}, hash: {finalizedBlockHash}");
             return true;
         }
 

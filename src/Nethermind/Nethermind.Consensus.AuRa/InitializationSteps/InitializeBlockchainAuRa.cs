@@ -279,6 +279,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.TxValidator,
             _api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
+            _api.TxGossipPolicy,
             new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager),
             txPriorityContract is not null || localDataSource is not null);
     }
