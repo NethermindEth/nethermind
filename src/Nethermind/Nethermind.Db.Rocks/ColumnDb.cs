@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks;
@@ -107,6 +108,11 @@ public class ColumnDb : IDbWithSpan
     public void Flush()
     {
         _mainDb.Flush();
+    }
+
+    public void Compact()
+    {
+        _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
     }
 
     /// <summary>
