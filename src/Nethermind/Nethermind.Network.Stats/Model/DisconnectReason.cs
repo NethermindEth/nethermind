@@ -69,36 +69,38 @@ public static class InitiateDisconnectReasonExtension
         {
             case DisconnectReason.TooManyPeers:
                 return EthDisconnectReason.TooManyPeers;
+
             case DisconnectReason.SessionAlreadyExist:
             case DisconnectReason.ReplacingSessionWithOppositeDirection:
             case DisconnectReason.OppositeDirectionCleanup:
-                return EthDisconnectReason.AlreadyConnected;
-            case DisconnectReason.ConnectionClosed:
-                return EthDisconnectReason.TcpSubSystemError;
-            case DisconnectReason.OutgoingConnectionFailed:
-                return EthDisconnectReason.TcpSubSystemError;
             case DisconnectReason.DuplicatedConnection:
+            case DisconnectReason.SessionIdAlreadyExists:
                 return EthDisconnectReason.AlreadyConnected;
 
-            case DisconnectReason.SnapServerNotImplemented:
-                return EthDisconnectReason.UselessPeer;
+            case DisconnectReason.ConnectionClosed:
+            case DisconnectReason.OutgoingConnectionFailed:
+                return EthDisconnectReason.TcpSubSystemError;
+
             case DisconnectReason.IncompatibleP2PVersion:
                 return EthDisconnectReason.IncompatibleP2PVersion;
+
             case DisconnectReason.InvalidNetworkId:
-                return EthDisconnectReason.UselessPeer;
             case DisconnectReason.InvalidGenesis:
             case DisconnectReason.MissingForkId:
             case DisconnectReason.InvalidForkId:
                 return EthDisconnectReason.BreachOfProtocol;
+
             case DisconnectReason.ProtocolInitTimeout:
                 return EthDisconnectReason.ReceiveMessageTimeout;
+
+            case DisconnectReason.SnapServerNotImplemented:
             case DisconnectReason.TxFlooding:
-                return EthDisconnectReason.UselessPeer;
             case DisconnectReason.NoCapabilityMatched:
                 return EthDisconnectReason.UselessPeer;
 
             case DisconnectReason.DropWorstPeer:
                 return EthDisconnectReason.TooManyPeers;
+
             case DisconnectReason.PeerRemoved:
             case DisconnectReason.PeerRefreshFailed:
                 return EthDisconnectReason.DisconnectRequested;
@@ -107,8 +109,6 @@ public static class InitiateDisconnectReasonExtension
                 return EthDisconnectReason.DisconnectRequested;
             case DisconnectReason.GossipingInPoS:
                 return EthDisconnectReason.BreachOfProtocol;
-            case DisconnectReason.SessionIdAlreadyExists:
-                return EthDisconnectReason.AlreadyConnected;
             case DisconnectReason.AppClosing:
                 return EthDisconnectReason.ClientQuitting;
 
