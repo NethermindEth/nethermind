@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc
         }
 
         public static ResultWrapper<T> Fail<TSearch>(SearchResult<TSearch> searchResult, bool isTemporary = false) where TSearch : class =>
-            new() { Result = Result.Fail(searchResult.Error!), ErrorCode = searchResult.ErrorCode, IsTemporary = isTemporary};
+            new() { Result = Result.Fail(searchResult.Error!), ErrorCode = searchResult.ErrorCode, IsTemporary = isTemporary };
 
         public static ResultWrapper<T> Fail(string error) =>
             new() { Result = Result.Fail(error), ErrorCode = ErrorCodes.InternalError };
