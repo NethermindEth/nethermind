@@ -11,6 +11,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
@@ -29,7 +30,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
             ForkInfo forkInfo,
-            ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager)
+            ILogManager logManager,
+            ITxGossipPolicy? transactionsGossipPolicy = null)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
             _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
         }

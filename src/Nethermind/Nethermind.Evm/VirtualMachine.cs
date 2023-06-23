@@ -2448,6 +2448,16 @@ ReturnFailure:
         }
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+
+        ValueKeccak codeHash = ValueKeccak.Compute(initCode);
+        // Prefer code from code cache (e.g. if create from a factory contract or copypasta)
+        if (!_codeCache.TryGet(codeHash, out CodeInfo codeInfo))
+        {
+            codeInfo = new(initCode.ToArray());
+            // Prime the code cache as likely to be used by more txs
+            _codeCache.Set(codeHash, codeInfo);
+        }
+
         ExecutionEnvironment callEnv = new
         (
             txExecutionContext: env.TxExecutionContext,
@@ -2455,7 +2465,7 @@ ReturnFailure:
             caller: env.ExecutingAccount,
             executingAccount: contractAddress,
             codeSource: null,
-            codeInfo: new CodeInfo(initCode.ToArray()),
+            codeInfo: codeInfo,
             inputData: default,
             transferValue: value,
             value: value

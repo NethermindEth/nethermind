@@ -138,7 +138,7 @@ namespace Nethermind.Blockchain.FullPruning
                         BlockHeader? header = _blockTree.FindHeader(_stateToCopy);
                         if (header is not null && Interlocked.CompareExchange(ref _waitingForStateReady, 0, 1) == 1)
                         {
-                            if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {_stateToCopy} with root {header.StateRoot}.");
+                            if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {_stateToCopy} with root {header.StateRoot}");
                             Task.Run(() => RunPruning(_currentPruning, header.StateRoot!));
                             _blockTree.OnUpdateMainChain -= OnUpdateMainChain;
                         }
@@ -222,6 +222,7 @@ namespace Nethermind.Blockchain.FullPruning
                     MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,
                     FullScanMemoryBudget = ((long)_pruningConfig.FullPruningMemoryBudgetMb).MiB(),
                 };
+                if (_logger.IsInfo) _logger.Info($"Full pruning started with MaxDegreeOfParallelism: {visitingOptions.MaxDegreeOfParallelism} and FullScanMemoryBudget: {visitingOptions.FullScanMemoryBudget}");
                 _stateReader.RunTreeVisitor(copyTreeVisitor, statRoot, visitingOptions);
 
                 if (!pruning.CancellationTokenSource.IsCancellationRequested)
