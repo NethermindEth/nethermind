@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -40,7 +41,7 @@ namespace Nethermind.State
                 return new byte[] { 0 };
             }
 
-            Metrics.StorageTreeReads++;
+            Metrics.ReadOnlyStorageTreeReads++;
             return _storage.Get(index, storageRoot);
         }
 
@@ -77,9 +78,8 @@ namespace Nethermind.State
                 return null;
             }
 
-            Metrics.StateTreeReads++;
-            Account? account = _state.Get(address, stateRoot);
-            return account;
+            Metrics.ReadOnlyStateTreeReads++;
+            return _state.Get(address, stateRoot);
         }
     }
 }

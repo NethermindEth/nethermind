@@ -184,5 +184,21 @@ namespace Nethermind.Db
         [CounterMetric]
         [Description("Number of storge trie reads served from cache.")]
         public static long StorageTreeCacheReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of state trie reads served from cache.")]
+        public static long StateTreeCacheReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of readonly storage trie reads.")]
+        public static long ReadOnlyStorageTreeReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of readonly state trie reads.")]
+        public static long ReadOnlyStateTreeReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of readonly state trie reads served from cache.")]
+        public static long ReadOnlyStateTreeCacheReads { get; set; }
     }
 }

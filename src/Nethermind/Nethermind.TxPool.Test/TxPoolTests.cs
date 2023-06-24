@@ -280,6 +280,8 @@ namespace Nethermind.TxPool.Test
 
             // LatestPendingNonce=1, when the current nonce of the account=1 and no pending transactions
             _stateProvider.IncrementNonce(TestItem.AddressA);
+            // Updated state provider directly, so need to flush the txPool cache
+            _txPool.ResetCache();
             latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
             Assert.That((UInt256)1, Is.EqualTo(latestNonce));
 
@@ -571,6 +573,8 @@ namespace Nethermind.TxPool.Test
                 if (i < numberOfStaleTxsInBucket)
                 {
                     _stateProvider.IncrementNonce(TestItem.AddressA);
+                    // Updated state provider directly, so need to flush the txPool cache
+                    _txPool.ResetCache();
                 }
             }
 
@@ -1045,11 +1049,15 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(config: new TxPoolConfig() { Size = 1 });
 
             EnsureSenderBalance(transaction);
+            // Updated state provider directly, so need to flush the txPool cache
+            _txPool.ResetCache();
             _txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
             _txPool.TryGetPendingTransaction(transaction.Hash, out var retrievedTransaction).Should().BeTrue();
             retrievedTransaction.Should().BeEquivalentTo(transaction);
 
             EnsureSenderBalance(transactionWithHigherFee);
+            // Updated state provider directly, so need to flush the txPool cache
+            _txPool.ResetCache();
             _txPool.SubmitTx(transactionWithHigherFee, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             _txPool.TryGetPendingTransaction(transactionWithHigherFee.Hash, out var retrievedTransactionWithHigherFee).Should().BeTrue();
             retrievedTransactionWithHigherFee.Should().BeEquivalentTo(transactionWithHigherFee);

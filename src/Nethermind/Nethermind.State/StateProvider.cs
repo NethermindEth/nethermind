@@ -31,6 +31,8 @@ namespace Nethermind.State
         // False positives would be problematic as the code _must_ be persisted
         private readonly LruKeyCache<Keccak> _codeInsertFilter = new(2048, "Code Insert Filter");
 
+        private readonly LruCache<Address, Account> _lastAccessedAccounts = new(32_768, "Recent Accounts");
+
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
         private readonly IKeyValueStore _codeDb;
@@ -672,13 +674,23 @@ namespace Nethermind.State
 
         private Account? GetState(Address address)
         {
-            Metrics.StateTreeReads++;
-            Account? account = _tree.Get(address);
+            if (!_lastAccessedAccounts.TryGet(address, out Account? account))
+            {
+                Metrics.StateTreeReads++;
+                account = _tree.Get(address);
+            }
+            else
+            {
+                Metrics.StateTreeCacheReads++;
+            }
+
             return account;
         }
 
         private void SetState(Address address, Account? account)
         {
+            _lastAccessedAccounts.Set(address, account);
+
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
             _tree.Set(address, account);
@@ -798,6 +810,7 @@ namespace Nethermind.State
             _intraBlockCache.Reset();
             _committedThisRound.Reset();
             _readsForTracing.Clear();
+            _lastAccessedAccounts.Clear();
             _currentPosition = Resettable.EmptyPosition;
             Array.Clear(_changes, 0, _changes.Length);
             _needsStateRootUpdate = false;
@@ -818,7 +831,7 @@ namespace Nethermind.State
             // placeholder for the three level Commit->CommitBlock->CommitBranch
         }
 
-        // used in EtheereumTests
+        // used in EthereumTests
         internal void SetNonce(Address address, in UInt256 nonce)
         {
             _needsStateRootUpdate = true;

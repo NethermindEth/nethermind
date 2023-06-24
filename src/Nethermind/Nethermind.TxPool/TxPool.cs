@@ -42,7 +42,7 @@ namespace Nethermind.TxPool
 
         private readonly IChainHeadSpecProvider _specProvider;
 
-        private readonly IAccountStateProvider _accounts;
+        private readonly AccountCache _accounts;
 
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
@@ -88,7 +88,7 @@ namespace Nethermind.TxPool
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
-            _accounts = _headInfo.AccountStateProvider;
+            _accounts = new(_headInfo.AccountStateProvider);
             _specProvider = _headInfo.SpecProvider;
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
@@ -159,6 +159,7 @@ namespace Nethermind.TxPool
             {
                 // Clear snapshot
                 _transactionSnapshot = null;
+                _accounts.Reset();
                 _hashCache.ClearCurrentBlockCache();
                 _headBlocksChannel.Writer.TryWrite(e);
             }
@@ -629,6 +630,49 @@ namespace Nethermind.TxPool
             WriteTxPoolReport(_logger);
 
             _timer!.Enabled = true;
+        }
+
+        public void ResetCache()
+        {
+            _accounts.Reset();
+        }
+
+        private sealed class AccountCache : IAccountStateProvider
+        {
+            private readonly LruCache<Address, Account?> _lastAccessedAccounts = new(32_768, "Recent Accounts");
+            private readonly IAccountStateProvider _accounts;
+
+            public AccountCache(IAccountStateProvider accounts)
+            {
+                _accounts = accounts;
+            }
+
+            public Account GetAccount(Address address)
+            {
+                if (_lastAccessedAccounts.TryGet(address, out Account? account))
+                {
+                    Db.Metrics.ReadOnlyStateTreeCacheReads++;
+                    return account!;
+                }
+
+                account = _accounts.GetAccount(address);
+                _lastAccessedAccounts.Set(address, account);
+
+                return account;
+            }
+
+            public void Reset()
+            {
+                // TODO: invalidate or update based on only
+                // accounts changed in produced blocks.
+                // i.e. from intra-block to inter-block caching.
+                // This changes the cache hit rate from 1% to 99%
+                _lastAccessedAccounts.Clear();
+                // This effectiveness is simple to test by
+                // commenting out the line above and seeing the switch in metrics from
+                // ReadOnlyStateTreeReads to ReadOnlyStateTreeCacheReads, however since
+                // the cache is not invalidated and data becomes stale, the txPool rejection rate will also jump.
+            }
         }
 
         private static void WriteTxPoolReport(ILogger logger)

@@ -197,8 +197,8 @@ public partial class BlockProcessor : IBlockProcessor
     private void RestoreBranch(Keccak branchingPointStateRoot)
     {
         if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
-        //_stateProvider.Reset();
         _stateProvider.StateRoot = branchingPointStateRoot;
+        _stateProvider.RecalculateStateRoot();
         if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
     }
 

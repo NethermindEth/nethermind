@@ -26,7 +26,7 @@ namespace Nethermind.State
         private readonly StateProvider _stateProvider;
         private readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
-        
+
         // this should take no more than 16MB
         private const int DefaultCellCacheSize = 64 * 1024;
 
