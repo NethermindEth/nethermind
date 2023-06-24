@@ -9,8 +9,8 @@
     <Copyright>Demerzel Solutions Limited</Copyright>
     <Product>Nethermind</Product>
     <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit.Substring(0, 8))</SourceRevisionId>
-    <VersionPrefix>1.21.0-unstable</VersionPrefix>
-    <VersionSuffix></VersionSuffix>
+    <VersionPrefix>1.21.0</VersionPrefix>
+    <VersionSuffix>unstable</VersionSuffix>
   </PropertyGroup>
 
   <ItemGroup Label="AssemblyCustomMetadata">
