@@ -37,7 +37,7 @@ namespace Nethermind.Evm.Test
         private readonly ISpecProvider _specProvider;
         private IEthereumEcdsa _ethereumEcdsa;
         private TransactionProcessor _transactionProcessor;
-        private IStateProvider _stateProvider;
+        private IWorldState _stateProvider;
 
         public TransactionProcessorTests(bool eip155Enabled)
         {
@@ -50,14 +50,13 @@ namespace Nethermind.Evm.Test
         {
             MemDb stateDb = new();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            _stateProvider = new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
+            _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
             _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
             _stateProvider.Commit(_specProvider.GenesisSpec);
             _stateProvider.CommitTree(0);
 
-            StorageProvider storageProvider = new(trieStore, _stateProvider, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, LimboLogs.Instance);
-            _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
+            _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, LimboLogs.Instance);
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
         }
 
@@ -268,7 +267,7 @@ namespace Nethermind.Evm.Test
             Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
         }
 
-        [Test]
+        [TestCase]
         public void Balance_is_not_changed_on_call_and_restore()
         {
             long gasLimit = 100000;
@@ -280,7 +279,7 @@ namespace Nethermind.Evm.Test
             _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether());
         }
 
-        [Test]
+        [TestCase]
         public void Account_is_not_created_on_call_and_restore()
         {
             long gasLimit = 100000;
@@ -297,7 +296,7 @@ namespace Nethermind.Evm.Test
             _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
         }
 
-        [Test]
+        [TestCase]
         public void Nonce_is_not_changed_on_call_and_restore()
         {
             long gasLimit = 100000;
@@ -308,8 +307,65 @@ namespace Nethermind.Evm.Test
             _stateProvider.GetNonce(TestItem.PrivateKeyA.Address).Should().Be(0);
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Can_estimate_with_value(bool systemUser)
+        {
+            long gasLimit = 100000;
+            Transaction tx = Build.A.Transaction.WithValue(UInt256.MaxValue).WithGasLimit(gasLimit)
+                .WithSenderAddress(systemUser ? Address.SystemUser : TestItem.AddressA).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+
+            EstimateGasTracer tracer = new();
+            Action action = () => _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
+            if (!systemUser)
+            {
+                action.Should().Throw<InsufficientBalanceException>();
+            }
+            else
+            {
+                action.Should().NotThrow();
+                tracer.GasSpent.Should().Be(21000);
+            }
+        }
 
         [Test]
+        public void Should_reject_tx_with_high_value()
+        {
+            Transaction tx = Build.A.Transaction.WithValue(UInt256.MaxValue).WithGasLimit(21000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+                .TestObject;
+
+            long blockNumber = _isEip155Enabled
+                ? MainnetSpecProvider.ByzantiumBlockNumber
+                : MainnetSpecProvider.ByzantiumBlockNumber - 1;
+            Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, true, true);
+
+            Execute(tracer, tx, block);
+
+            tracer.TxReceipts[0].StatusCode.Should().Be(StatusCode.Failure);
+        }
+
+        [TestCase(562949953421312ul)]
+        [TestCase(562949953421311ul)]
+        public void Should_reject_tx_with_high_max_fee_per_gas(ulong topDigit)
+        {
+            Transaction tx = Build.A.Transaction.WithMaxFeePerGas(new(0, 0, 0, topDigit)).WithGasLimit(32768)
+                .WithType(TxType.EIP1559).WithValue(0)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+                .TestObject;
+
+            long blockNumber = MainnetSpecProvider.LondonBlockNumber;
+            Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, true, true);
+
+            Execute(tracer, tx, block);
+
+            tracer.TxReceipts[0].StatusCode.Should().Be(StatusCode.Failure);
+        }
+
+        [TestCase]
         public void Can_estimate_simple()
         {
             long gasLimit = 100000;
@@ -325,7 +381,7 @@ namespace Nethermind.Evm.Test
             estimator.Estimate(tx, block.Header, tracer).Should().Be(21000);
         }
 
-        [Test]
+        [TestCase]
         public void Can_estimate_with_refund()
         {
             byte[] initByteCode = Prepare.EvmCode
@@ -438,7 +494,7 @@ namespace Nethermind.Evm.Test
         }
 
 
-        [Test]
+        [TestCase]
         public void Can_estimate_with_stipend()
         {
             byte[] initByteCode = Prepare.EvmCode
@@ -476,7 +532,7 @@ namespace Nethermind.Evm.Test
 
 
 
-        [Test]
+        [TestCase]
         public void Can_estimate_with_stipend_and_refund()
         {
             byte[] initByteCode = Prepare.EvmCode
@@ -520,7 +576,7 @@ namespace Nethermind.Evm.Test
 
 
 
-        [Test]
+        [TestCase]
         public void Can_estimate_with_single_call()
         {
             byte[] initByteCode = Prepare.EvmCode
@@ -560,7 +616,7 @@ namespace Nethermind.Evm.Test
 
 
 
-        [Test]
+        [TestCase]
         public void Disables_Eip158_for_system_transactions()
         {
             long blockNumber = MainnetSpecProvider.SpuriousDragonBlockNumber + 1;
@@ -581,14 +637,14 @@ namespace Nethermind.Evm.Test
 
 
 
-        [Test]
+        [TestCase]
         public void Balance_is_changed_on_buildup_and_restored()
         {
             long gasLimit = 100000;
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(0).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-            int state = _stateProvider.TakeSnapshot();
+            Snapshot state = _stateProvider.TakeSnapshot();
             _transactionProcessor.BuildUp(tx, block.Header, NullTxTracer.Instance);
             _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether() - 21000);
 
@@ -598,7 +654,7 @@ namespace Nethermind.Evm.Test
 
 
 
-        [Test]
+        [TestCase]
         public void Account_is_not_created_on_buildup_and_restore()
         {
             long gasLimit = 100000;
@@ -611,7 +667,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
             _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
-            int state = _stateProvider.TakeSnapshot();
+            Snapshot state = _stateProvider.TakeSnapshot();
             _transactionProcessor.BuildUp(tx, block.Header, NullTxTracer.Instance);
             _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeTrue();
             _stateProvider.Restore(state);
@@ -620,14 +676,14 @@ namespace Nethermind.Evm.Test
 
 
 
-        [Test]
+        [TestCase]
         public void Nonce_is_not_changed_on_buildup_and_restore()
         {
             long gasLimit = 100000;
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(1.Ether() - (UInt256)gasLimit).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-            int state = _stateProvider.TakeSnapshot();
+            Snapshot state = _stateProvider.TakeSnapshot();
             _transactionProcessor.BuildUp(tx, block.Header, NullTxTracer.Instance);
             _stateProvider.GetNonce(TestItem.PrivateKeyA.Address).Should().Be(1);
             _stateProvider.Restore(state);
@@ -636,7 +692,7 @@ namespace Nethermind.Evm.Test
 
 
 
-        [Test]
+        [TestCase]
         public void State_changed_twice_in_buildup_should_have_correct_gas_cost()
         {
             long gasLimit = 100000;
@@ -644,7 +700,7 @@ namespace Nethermind.Evm.Test
             Transaction tx2 = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(0).WithNonce(1).WithGasPrice(1).WithGasLimit(21000).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx1, tx2).WithGasLimit(gasLimit).TestObject;
 
-            int state = _stateProvider.TakeSnapshot();
+            Snapshot state = _stateProvider.TakeSnapshot();
             _transactionProcessor.BuildUp(tx1, block.Header, NullTxTracer.Instance);
             _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether() - 21000);
 

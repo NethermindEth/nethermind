@@ -21,7 +21,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         {
             Parameters = new ChainParameters
             {
-                TerminalPowBlockNumber = terminalBlockNumber
+                TerminalPoWBlockNumber = terminalBlockNumber
             }
         };
 

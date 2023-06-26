@@ -53,7 +53,7 @@ namespace Nethermind.Network.Benchmarks
             NodeStatsManager stats = new NodeStatsManager(TimerFactory.Default, LimboLogs.Instance);
             var ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance);
             var tree = Build.A.BlockTree().TestObject;
-            var stateProvider = new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
+            var stateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
             var specProvider = MainnetSpecProvider.Instance;
             TxPool.TxPool txPool = new TxPool.TxPool(
                 ecdsa,
@@ -65,7 +65,7 @@ namespace Nethermind.Network.Benchmarks
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
             BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
             syncSrv.Head.Returns(head);
-            _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, txPool, ShouldGossip.Instance, LimboLogs.Instance);
+            _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, txPool, Consensus.ShouldGossip.Instance, LimboLogs.Instance);
             _handler.DisableTxFiltering();
 
             StatusMessage statusMessage = new StatusMessage();

@@ -58,17 +58,17 @@ namespace Nethermind.Api
         /// <remarks>
         /// DO NOT USE OUTSIDE OF PROCESSING BLOCK CONTEXT!
         /// </remarks>
-        IStateProvider? StateProvider { get; set; }
+        IWorldState? WorldState { get; set; }
         IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
         IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         IStateReader? StateReader { get; set; }
-        IStorageProvider? StorageProvider { get; set; }
         ITransactionProcessor? TransactionProcessor { get; set; }
         ITrieStore? TrieStore { get; set; }
         ITxSender? TxSender { get; set; }
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
+        CompositeTxGossipPolicy TxGossipPolicy { get; }
         IWitnessCollector? WitnessCollector { get; set; }
         IWitnessRepository? WitnessRepository { get; set; }
         IHealthHintService? HealthHintService { get; set; }

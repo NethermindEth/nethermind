@@ -104,8 +104,8 @@ namespace Nethermind.Crypto
                     chainId = tx.ChainId!.Value;
                     break;
             }
-
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
+
             return RecoverAddress(tx.Signature, hash);
         }
 
@@ -119,7 +119,7 @@ namespace Nethermind.Crypto
         public Address? RecoverAddress(Span<byte> signatureBytes, Keccak message)
         {
             Span<byte> publicKey = stackalloc byte[65];
-            bool success = SecP256k1.RecoverKeyFromCompact(
+            bool success = SpanSecP256k1.RecoverKeyFromCompact(
                 publicKey,
                 message.Bytes,
                 signatureBytes[..64],

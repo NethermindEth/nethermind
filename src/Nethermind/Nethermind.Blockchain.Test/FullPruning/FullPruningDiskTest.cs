@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using FluentAssertions.Extensions;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -38,6 +39,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();
             public FullTestPruner FullPruner { get; private set; }
             public IPruningConfig PruningConfig { get; set; } = new PruningConfig();
+            public IDriveInfo DriveInfo { get; set; } = Substitute.For<IDriveInfo>();
+            public IChainEstimations _chainEstimations = Substitute.For<IChainEstimations>();
             public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
 
             public PruningTestBlockchain()
@@ -49,7 +52,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 PruningDb = (IFullPruningDb)DbProvider.StateDb;
-                FullPruner = new FullTestPruner(PruningDb, PruningTrigger, PruningConfig, BlockTree, StateReader, ProcessExitSource, LogManager);
+                DriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
+                _chainEstimations.StateSize.Returns((long?)null);
+                FullPruner = new FullTestPruner(PruningDb, PruningTrigger, PruningConfig, BlockTree, StateReader, ProcessExitSource, DriveInfo, _chainEstimations, LogManager);
                 return chain;
             }
 
@@ -88,8 +93,10 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     IBlockTree blockTree,
                     IStateReader stateReader,
                     IProcessExitSource processExitSource,
+                    IDriveInfo driveInfo,
+                    IChainEstimations chainEstimations,
                     ILogManager logManager)
-                    : base(pruningDb, pruningTrigger, pruningConfig, blockTree, stateReader, processExitSource, logManager)
+                    : base(pruningDb, pruningTrigger, pruningConfig, blockTree, stateReader, processExitSource, chainEstimations, driveInfo, logManager)
                 {
                 }
 
@@ -121,6 +128,20 @@ namespace Nethermind.Blockchain.Test.FullPruning
             }
         }
 
+        [TestCase(100, 150, false)]
+        [TestCase(200, 100, true)]
+        [TestCase(130, 100, true)]
+        [TestCase(130, 101, false)]
+        public async Task should_check_available_space_before_running(long availableSpace, long requiredSpace, bool isEnoughSpace)
+        {
+            using PruningTestBlockchain chain = await PruningTestBlockchain.Create();
+            chain._chainEstimations.PruningSize.Returns(requiredSpace);
+            chain.DriveInfo.AvailableFreeSpace.Returns(availableSpace);
+            PruningTriggerEventArgs args = new();
+            chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>(args);
+            args.Status.Should().Be(isEnoughSpace ? PruningStatus.Starting : PruningStatus.NotEnoughDiskSpace);
+        }
+
         private static async Task RunPruning(PruningTestBlockchain chain, int time, bool onlyFirstRuns)
         {
             chain.FullPruner.WaitHandle.Reset();
@@ -141,7 +162,10 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
                 await WriteFileStructure(chain);
 
-                chain.PruningDb.InnerDbName.Should().Be($"State{time + 1}");
+                Assert.That(
+                    () => chain.PruningDb.InnerDbName,
+                    Is.EqualTo($"State{time + 1}").After(1000, 100)
+                    );
 
                 HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
                 currentItems.IsSubsetOf(allItems).Should().BeTrue();

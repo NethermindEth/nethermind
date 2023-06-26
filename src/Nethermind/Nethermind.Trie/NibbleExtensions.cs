@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Trie
 {
@@ -26,13 +27,24 @@ namespace Nethermind.Trie
             return nibbles;
         }
 
-        public static void BytesToNibbleBytes(Span<byte> bytes, Span<byte> nibbles)
+        public static void BytesToNibbleBytes(ReadOnlySpan<byte> bytes, Span<byte> nibbles)
         {
-            Debug.Assert(nibbles.Length == 2 * bytes.Length);
+            if (nibbles.Length != 2 * bytes.Length)
+            {
+                ThrowArgumentException();
+            }
+
             for (int i = 0; i < bytes.Length; i++)
             {
                 nibbles[i * 2] = (byte)((bytes[i] & 240) >> 4);
                 nibbles[i * 2 + 1] = (byte)(bytes[i] & 15);
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowArgumentException()
+            {
+                throw new ArgumentException("Nibbles length must be twice the bytes length");
             }
         }
 

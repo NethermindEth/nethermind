@@ -33,15 +33,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V67;
 [TestFixture, Parallelizable(ParallelScope.Self)]
 public class Eth67ProtocolHandlerTests
 {
-    private ISession _session;
-    private IMessageSerializationService _svc;
-    private ISyncServer _syncManager;
-    private ITxPool _transactionPool;
-    private IPooledTxsRequestor _pooledTxsRequestor;
-    private IGossipPolicy _gossipPolicy;
-    private ISpecProvider _specProvider;
-    private Block _genesisBlock;
-    private Eth66ProtocolHandler _handler;
+    private ISession _session = null!;
+    private IMessageSerializationService _svc = null!;
+    private ISyncServer _syncManager = null!;
+    private ITxPool _transactionPool = null!;
+    private IPooledTxsRequestor _pooledTxsRequestor = null!;
+    private IGossipPolicy _gossipPolicy = null!;
+    private ISpecProvider _specProvider = null!;
+    private Block _genesisBlock = null!;
+    private Eth66ProtocolHandler _handler = null!;
 
     [SetUp]
     public void Setup()

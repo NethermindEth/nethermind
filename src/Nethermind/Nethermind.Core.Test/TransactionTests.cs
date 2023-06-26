@@ -3,9 +3,7 @@
 
 using System;
 using FluentAssertions;
-using System.Collections.Generic;
-using Nethermind.Int256;
-using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -40,6 +38,20 @@ namespace Nethermind.Core.Test
             transaction.Type = TxType.EIP1559;
             Assert.That(transaction.DecodedMaxFeePerGas, Is.EqualTo(transaction.MaxFeePerGas));
             Assert.That(transaction.Supports1559, Is.EqualTo(expectedSupports1559));
+        }
+    }
+
+    public static class TransactionTestExtensions
+    {
+        public static void EqualToTransaction(this Transaction subject, Transaction expectation)
+        {
+            subject.Should().BeEquivalentTo(
+                expectation,
+                o => o
+                    .ComparingByMembers<Transaction>()
+                    .Using<Memory<byte>>(ctx => ctx.Subject.AsArray().Should().BeEquivalentTo(ctx.Expectation.AsArray()))
+                    .WhenTypeIs<Memory<byte>>()
+                );
         }
     }
 }

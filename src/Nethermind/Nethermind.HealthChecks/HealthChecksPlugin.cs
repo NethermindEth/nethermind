@@ -14,7 +14,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
-using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.HealthChecks
 {
@@ -211,7 +211,9 @@ namespace Nethermind.HealthChecks
             {
                 if (!_nodeHealthService.CheckClAlive())
                 {
-                    if (_logger.IsWarn) _logger.Warn("No incoming messages from Consensus Client. Please make sure that it's working properly");
+                    if (_logger.IsWarn)
+                        _logger.Warn(
+                            "No incoming messages from Consensus Client. Consensus Client is required to sync the node. Please make sure that it's working properly.");
                 }
             }
         }

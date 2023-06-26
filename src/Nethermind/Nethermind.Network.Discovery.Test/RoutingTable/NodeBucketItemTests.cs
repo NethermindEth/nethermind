@@ -41,7 +41,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
         {
             Node node = new(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30000);
             NodeBucketItem nodeBucketItem = new(node, DateTime.UtcNow);
-            nodeBucketItem.IsBonded.Should().BeTrue();
+            nodeBucketItem.IsBonded(DateTime.UtcNow).Should().BeTrue();
         }
 
         [Test]

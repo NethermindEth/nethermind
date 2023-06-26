@@ -2,22 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using FluentAssertions;
-using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Synchronization;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Repositories;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -27,65 +25,98 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
     [TestFixture]
     public class ReceiptMigrationTests
     {
-        [TestCase(null)]
-        [TestCase(5)]
-        public void RunMigration(int? migratedBlockNumber)
+        [TestCase(null, 0, false, false, false, false)] // No change to migrate
+        [TestCase(5, 5, false, false, false, true)] // Explicit command and partially migrated
+        [TestCase(null, 5, true, false, false, true)] // Partially migrated
+        [TestCase(5, 0, false, false, false, true)] // Explicit command
+        [TestCase(null, 0, true, false, false, true)] // Force reset
+        [TestCase(null, 0, false, false, true, true)] // Encoding mismatch
+        [TestCase(null, 0, false, true, false, true)] // Encoding mismatch
+        [TestCase(null, 0, false, true, true, false)] // Encoding match
+        public void RunMigration(int? commandStartBlockNumber, long currentMigratedBlockNumber, bool forceReset, bool receiptIsCompact, bool useCompactEncoding, bool wasMigrated)
         {
             int chainLength = 10;
-            IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(chainLength);
-            InMemoryReceiptStorage inMemoryReceiptStorage = new() { MigratedBlockNumber = migratedBlockNumber is not null ? 0 : long.MaxValue };
-            InMemoryReceiptStorage outMemoryReceiptStorage = new() { MigratedBlockNumber = migratedBlockNumber is not null ? 0 : long.MaxValue };
-            NethermindApi context = new(configProvider, new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec())
+            IReceiptConfig receiptConfig = new ReceiptConfig()
             {
-                ReceiptStorage = new TestReceiptStorage(inMemoryReceiptStorage, outMemoryReceiptStorage),
-                DbProvider = Substitute.For<IDbProvider>(),
-                BlockTree = blockTreeBuilder.TestObject,
-                Synchronizer = Substitute.For<ISynchronizer>(),
-                ChainLevelInfoRepository = blockTreeBuilder.ChainLevelInfoRepository,
-                SyncModeSelector = Substitute.For<ISyncModeSelector>()
+                ForceReceiptsMigration = forceReset,
+                StoreReceipts = true,
+                ReceiptsMigration = true,
+                CompactReceiptStore = useCompactEncoding
             };
 
-            configProvider.GetConfig<IReceiptConfig>().StoreReceipts.Returns(true);
-            configProvider.GetConfig<IReceiptConfig>().ReceiptsMigration.Returns(true);
-            context.SyncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
+            BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(chainLength);
+            IBlockTree blockTree = blockTreeBuilder.TestObject;
+            ChainLevelInfoRepository chainLevelInfoRepository = blockTreeBuilder.ChainLevelInfoRepository;
 
+            InMemoryReceiptStorage inMemoryReceiptStorage = new(true) { MigratedBlockNumber = currentMigratedBlockNumber };
+            InMemoryReceiptStorage outMemoryReceiptStorage = new(true) { MigratedBlockNumber = currentMigratedBlockNumber };
+            TestReceiptStorage receiptStorage = new(inMemoryReceiptStorage, outMemoryReceiptStorage);
+            ReceiptArrayStorageDecoder receiptArrayStorageDecoder = new(receiptIsCompact);
+
+            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+            syncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
+
+            // Insert the blocks
             int txIndex = 0;
             for (int i = 1; i < chainLength; i++)
             {
-                Block block = context.BlockTree.FindBlock(i);
+                Block block = blockTree.FindBlock(i);
                 inMemoryReceiptStorage.Insert(block, new[] {
-                        Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject,
-                        Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject
-                    });
+                    Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject,
+                    Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject
+                });
+            }
+
+            TestMemColumnsDb<ReceiptsColumns> receiptColumnDb = new();
+
+            // Put the last block receipt encoding
+            Block lastBlock = blockTree.FindBlock(chainLength - 1);
+            TxReceipt[] receipts = inMemoryReceiptStorage.Get(lastBlock);
+            using (NettyRlpStream nettyStream = receiptArrayStorageDecoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage))
+            {
+                receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)
+                    .Set(Bytes.Concat(lastBlock.Number.ToBigEndianByteArray(), lastBlock.Hash.BytesToArray()), nettyStream.AsSpan());
             }
 
             ManualResetEvent guard = new(false);
-            Keccak lastTransaction = TestItem.Keccaks[txIndex - 1];
+            ReceiptMigration migration = new(
+                receiptStorage,
+                new DisposableStack(),
+                blockTree,
+                syncModeSelector,
+                chainLevelInfoRepository,
+                receiptConfig,
+                receiptColumnDb,
+                Substitute.For<IReceiptsRecovery>(),
+                LimboLogs.Instance
+            );
 
-            TestReceiptColumenDb receiptColumenDb = new();
-            context.DbProvider.ReceiptsDb.Returns(receiptColumenDb);
-            receiptColumenDb.RemoveFunc = (key) =>
+            if (commandStartBlockNumber.HasValue)
             {
-                if (key.Equals(lastTransaction.Bytes)) guard.Set();
-            };
-
-            ReceiptMigration migration = new(context);
-            if (migratedBlockNumber.HasValue)
-            {
-                _ = migration.Run(migratedBlockNumber.Value);
+                _ = migration.Run(commandStartBlockNumber.Value);
             }
             else
             {
                 migration.Run();
             }
 
+            migration._migrationTask?.Wait();
 
-            guard.WaitOne(TimeSpan.FromSeconds(1));
-            int txCount = ((migratedBlockNumber ?? chainLength) - 1 - 1) * 2;
+            Assert.That(() => outMemoryReceiptStorage.MigratedBlockNumber, Is.InRange(0, 1).After(1000, 10));
 
-            receiptColumenDb.KeyWasRemoved(_ => true, txCount);
-            outMemoryReceiptStorage.Count.Should().Be(txCount);
+            if (wasMigrated)
+            {
+                int blockNum = (commandStartBlockNumber ?? chainLength) - 1 - 1;
+                int txCount = blockNum * 2;
+                receiptColumnDb
+                    .KeyWasWritten((item => item.Item2 == null), txCount);
+                ((TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRemoved((_ => true), blockNum);
+                outMemoryReceiptStorage.Count.Should().Be(txCount);
+            }
+            else
+            {
+                receiptColumnDb.KeyWasWritten((item => item.Item2 == null), 0);
+            }
         }
 
         private class TestReceiptStorage : IReceiptStorage
@@ -106,7 +137,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             public TxReceipt[] Get(Keccak blockHash) => _inStorage.Get(blockHash);
 
             public bool CanGetReceiptsByHash(long blockNumber) => _inStorage.CanGetReceiptsByHash(blockNumber);
-            public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator) => _outStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+            public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator) => _inStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
 
             public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical) => _outStorage.Insert(block, txReceipts);
 
@@ -131,16 +162,6 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
 
             public event EventHandler<ReceiptsEventArgs> ReceiptsInserted { add { } remove { } }
-        }
-
-        class TestReceiptColumenDb : TestMemDb, IColumnsDb<ReceiptsColumns>
-        {
-            public IDbWithSpan GetColumnDb(ReceiptsColumns key)
-            {
-                return this;
-            }
-
-            public IEnumerable<ReceiptsColumns> ColumnKeys { get; }
         }
     }
 }

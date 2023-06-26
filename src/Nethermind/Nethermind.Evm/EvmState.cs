@@ -260,7 +260,7 @@ namespace Nethermind.Evm
 
         public bool IsCold(Address? address) => !_accessedAddresses.Contains(address);
 
-        public bool IsCold(StorageCell storageCell) => !_accessedStorageCells.Contains(storageCell);
+        public bool IsCold(in StorageCell storageCell) => !_accessedStorageCells.Contains(storageCell);
 
         public void WarmUp(AccessList? accessList)
         {
@@ -279,7 +279,7 @@ namespace Nethermind.Evm
 
         public void WarmUp(Address address) => _accessedAddresses.Add(address);
 
-        public void WarmUp(StorageCell storageCell) => _accessedStorageCells.Add(storageCell);
+        public void WarmUp(in StorageCell storageCell) => _accessedStorageCells.Add(storageCell);
 
         public void CommitToParent(EvmState parentState)
         {

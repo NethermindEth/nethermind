@@ -172,9 +172,11 @@ public class TxBroadcasterTests
 
         for (int i = 0; i < addedTxsCount; i++)
         {
+            bool isBlob = i % 10 == 0;
             transactions[i] = Build.A.Transaction
                 .WithGasPrice((addedTxsCount - i - 1).GWei())
-                .WithType(i % 10 == 0 ? TxType.Blob : TxType.Legacy) //some part of txs (10%) is blob type
+                .WithType(isBlob ? TxType.Blob : TxType.Legacy) //some part of txs (10%) is blob type
+                .WithShardBlobTxTypeAndFieldsIfBlobTx()
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
 
@@ -213,7 +215,7 @@ public class TxBroadcasterTests
         {
             Transaction tx = transactions[i];
 
-            if (tx.Type != TxType.Blob)
+            if (!tx.SupportsBlobs)
             {
                 expectedTxs.Add(tx);
             }
@@ -430,7 +432,7 @@ public class TxBroadcasterTests
             Substitute.For<ILogManager>());
 
         Transaction localTx = Build.A.Transaction
-            .WithType(TxType.Blob)
+            .WithShardBlobTxTypeAndFields()
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
             .TestObject;
 
@@ -496,5 +498,40 @@ public class TxBroadcasterTests
             session68.Received(1).DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
         }
         session68.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage>());
+    }
+
+    [TestCase(true, true, 1)]
+    [TestCase(false, true, 0)]
+    [TestCase(true, false, 0)]
+    [TestCase(false, false, 0)]
+    public void should_check_tx_policy_for_broadcast(bool canGossipTransactions, bool shouldGossipTransaction, int received)
+    {
+        ITxGossipPolicy txGossipPolicy = Substitute.For<ITxGossipPolicy>();
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager, txGossipPolicy);
+        _headInfo.CurrentBaseFee.Returns(0.GWei());
+
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
+        ITxPoolPeer eth68Handler = new Eth68ProtocolHandler(session,
+            Substitute.For<IMessageSerializationService>(),
+            Substitute.For<INodeStatsManager>(),
+            Substitute.For<ISyncServer>(),
+            Substitute.For<ITxPool>(),
+            Substitute.For<IPooledTxsRequestor>(),
+            Substitute.For<IGossipPolicy>(),
+            new ForkInfo(_specProvider, Keccak.Zero),
+            Substitute.For<ILogManager>());
+        _broadcaster.AddPeer(eth68Handler);
+
+        Transaction localTx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        txGossipPolicy.CanGossipTransactions.Returns(canGossipTransactions);
+        txGossipPolicy.ShouldGossipTransaction(localTx).Returns(shouldGossipTransaction);
+
+        _broadcaster.Broadcast(localTx, true);
+
+        session.Received(received).DeliverMessage(Arg.Any<TransactionsMessage>());
     }
 }

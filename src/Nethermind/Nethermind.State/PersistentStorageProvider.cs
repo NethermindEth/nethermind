@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
+using Nethermind.State.Tracing;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
@@ -17,10 +18,10 @@ namespace Nethermind.State
     /// Manages persistent storage allowing for snapshotting and restoring
     /// Persists data to ITrieStore
     /// </summary>
-    public class PersistentStorageProvider : PartialStorageProviderBase
+    internal class PersistentStorageProvider : PartialStorageProviderBase
     {
         private readonly ITrieStore _trieStore;
-        private readonly IStateProvider _stateProvider;
+        private readonly StateProvider _stateProvider;
         private readonly ILogManager? _logManager;
         private readonly ResettableDictionary<Address, StorageTree> _storages = new();
         /// <summary>
@@ -29,7 +30,7 @@ namespace Nethermind.State
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
-        public PersistentStorageProvider(ITrieStore? trieStore, IStateProvider? stateProvider, ILogManager? logManager)
+        public PersistentStorageProvider(ITrieStore? trieStore, StateProvider? stateProvider, ILogManager? logManager)
             : base(logManager)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));

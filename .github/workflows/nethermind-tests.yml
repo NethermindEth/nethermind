@@ -19,6 +19,9 @@ on:
 env:
   COLLECT_COVERAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event.inputs.coverage }}
   DOTNET_VERSION: 7
+  RETENTION: 1
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
+  TERM: xterm
 
 jobs:
   nethermind-tests:
@@ -27,7 +30,6 @@ jobs:
     continue-on-error: true
     outputs:
       collect_coverage: ${{ env.COLLECT_COVERAGE }}
-      failed: ${{ steps.test-failure.outputs.failed }}
     strategy:
       matrix:
         project:
@@ -90,32 +92,41 @@ jobs:
       run: |
         dotnet test src/Nethermind/${{ matrix.project }} -c release \
           ${{ env.COLLECT_COVERAGE == 'true' && '-p:CollectCoverage=true -p:CoverletOutputFormat=opencover' || '' }}
-    - name: Report test failure
-      id: test-failure
-      if: failure() && steps.test.outcome != 'success'
-      run: echo "failed=true" >> $GITHUB_OUTPUT
+    - name: Save test outcome
+      if: success() || failure()
+      run: echo "${{ steps.test.outcome == 'success' }}," >> nethermind.outcome
+    - name: Upload test outcome
+      if: success() || failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.project }}-outcome
+        path: nethermind.outcome
+        retention-days: ${{ env.RETENTION }}
     - name: Upload coverage report
       if: env.COLLECT_COVERAGE == 'true'
       uses: actions/upload-artifact@v3
       with:
         name: ${{ matrix.project }}-coverage
         path: src/Nethermind/${{ matrix.project }}/coverage.opencover.xml
-    
+        retention-days: ${{ env.RETENTION }}
 
   nethermind-tests-status:
     name: Nethermind tests
     needs: nethermind-tests
     runs-on: ubuntu-latest
     steps:
+    - name: Download test outcomes
+      uses: actions/download-artifact@v3
     - name: Ensure tests passed
-      run: exit ${{ needs.nethermind-tests.outputs.failed == 'true' && '1' || '0' }}
+      run: |
+        data=$(cat **/nethermind.outcome) && data=${data%?}
+        passed=$(echo "[$data]" | jq -r 'all')
+        [ $passed = 'true' ] && exit 0 || exit 1
 
   ethereum-tests:
     name: Run ${{ matrix.project }}
     runs-on: ubuntu-latest
     continue-on-error: true
-    outputs:
-      failed: ${{ steps.test-failure.outputs.failed }}
     strategy:
       matrix:
         project:
@@ -152,25 +163,36 @@ jobs:
       run: |
         dotnet test src/Nethermind/${{ matrix.project }} -c release \
           ${{ env.COLLECT_COVERAGE == 'true' && '-p:CollectCoverage=true -p:CoverletOutputFormat=opencover -p:Exclude="[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Ethereum.Test.Base]*"' || '' }}
-    - name: Report test failure
-      id: test-failure
-      if: failure() && steps.test.outcome != 'success'
-      run: echo "failed=true" >> $GITHUB_OUTPUT
+    - name: Save test outcome
+      if: success() || failure()
+      run: echo "${{ steps.test.outcome == 'success' }}," >> ethereum.outcome
+    - name: Upload test outcome
+      if: success() || failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.project }}-outcome
+        path: ethereum.outcome
+        retention-days: ${{ env.RETENTION }}
     - name: Upload coverage report
       if: env.COLLECT_COVERAGE == 'true'
       uses: actions/upload-artifact@v3
       with:
         name: ${{ matrix.project }}-coverage
         path: src/Nethermind/${{ matrix.project }}/coverage.opencover.xml
-        retention-days: 1
+        retention-days: ${{ env.RETENTION }}
 
   ethereum-tests-status:
     name: Ethereum tests
     needs: ethereum-tests
     runs-on: ubuntu-latest
     steps:
+    - name: Download test outcomes
+      uses: actions/download-artifact@v3
     - name: Ensure tests passed
-      run: exit ${{ needs.ethereum-tests.outputs.failed == 'true' && '1' || '0' }}
+      run: |
+        data=$(cat **/ethereum.outcome) && data=${data%?}
+        passed=$(echo "[$data]" | jq -r 'all')
+        [ $passed = 'true' ] && exit 0 || exit 1
 
   codecov-upload:
     name: Upload Codecov reports

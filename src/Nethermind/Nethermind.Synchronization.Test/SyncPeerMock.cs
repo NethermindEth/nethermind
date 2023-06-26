@@ -18,6 +18,7 @@ namespace Nethermind.Synchronization.Test
 {
     public class SyncPeerMock : ISyncPeer
     {
+        public string Name => "Mock";
         private readonly IBlockTree _remoteTree;
         private readonly ISyncServer? _remoteSyncServer;
         private readonly TaskCompletionSource _closeTaskCompletionSource = new();
@@ -164,9 +165,9 @@ namespace Nethermind.Synchronization.Test
 
         public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-        public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+        public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
         {
-            TxReceipt[][] result = new TxReceipt[blockHash.Count][];
+            TxReceipt[]?[] result = new TxReceipt[blockHash.Count][];
             for (int i = 0; i < blockHash.Count; i++)
             {
                 result[i] = _remoteSyncServer?.GetReceipts(blockHash[i])!;

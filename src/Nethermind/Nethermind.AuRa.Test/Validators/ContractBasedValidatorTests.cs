@@ -37,7 +37,7 @@ namespace Nethermind.AuRa.Test.Validators
 {
     public class ContractBasedValidatorTests
     {
-        private IStateProvider _stateProvider;
+        private IWorldState _stateProvider;
         private IAbiEncoder _abiEncoder;
         private ILogManager _logManager;
         private AuRaParameters.Validator _validator;
@@ -61,7 +61,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             _validatorStore = new ValidatorStore(new MemDb());
             _validSealerStrategy = new ValidSealerStrategy();
-            _stateProvider = Substitute.For<IStateProvider>();
+            _stateProvider = Substitute.For<IWorldState>();
             _abiEncoder = Substitute.For<IAbiEncoder>();
             _logManager = LimboLogs.Instance;
             _blockTree = Substitute.For<IBlockTree>();
@@ -652,7 +652,7 @@ namespace Nethermind.AuRa.Test.Validators
 
         private bool CheckTransaction(Transaction t, (Address Sender, byte[] TransactionData) transactionInfo)
         {
-            return t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data == transactionInfo.TransactionData;
+            return t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data.AsArray() == transactionInfo.TransactionData;
         }
 
         public class ConsecutiveInitiateChangeTestParameters

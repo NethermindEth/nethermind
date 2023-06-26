@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -141,7 +140,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithBlobVersionedHashes(byte[][] blobVersionedHashes)
+        public TransactionBuilder<T> WithBlobVersionedHashes(byte[][]? blobVersionedHashes)
         {
             TestObjectInternal.BlobVersionedHashes = blobVersionedHashes;
             return this;
@@ -163,14 +162,10 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithBlobs(byte[] blobs)
-        {
-            TestObjectInternal.Blobs = blobs;
+        public TransactionBuilder<T> WithShardBlobTxTypeAndFieldsIfBlobTx(int blobCount = 1, bool isMempoolTx = true)
+            => TestObjectInternal.Type == TxType.Blob ? WithShardBlobTxTypeAndFields(blobCount, isMempoolTx) : this;
 
-            return this;
-        }
-
-        public TransactionBuilder<T> WithShardBlobTxTypeAndFields(int blobCount)
+        public TransactionBuilder<T> WithShardBlobTxTypeAndFields(int blobCount = 1, bool isMempoolTx = true)
         {
             if (blobCount is 0)
             {
@@ -179,34 +174,53 @@ namespace Nethermind.Core.Test.Builders
 
             TestObjectInternal.Type = TxType.Blob;
             TestObjectInternal.MaxFeePerDataGas ??= 1;
-            TestObjectInternal.Blobs = new byte[Ckzg.Ckzg.BytesPerBlob * blobCount];
-            TestObjectInternal.BlobKzgs = new byte[Ckzg.Ckzg.BytesPerCommitment * blobCount];
-            TestObjectInternal.BlobProofs = new byte[Ckzg.Ckzg.BytesPerProof * blobCount];
-            TestObjectInternal.BlobVersionedHashes = new byte[blobCount][];
-            for (int i = 0; i < blobCount; i++)
+
+            if (isMempoolTx)
             {
-                TestObjectInternal.BlobVersionedHashes[i] = new byte[32];
-                TestObjectInternal.Blobs[Ckzg.Ckzg.BytesPerBlob * i] = 1;
-                KzgPolynomialCommitments.KzgifyBlob(
-                    TestObjectInternal.Blobs.AsSpan(Ckzg.Ckzg.BytesPerBlob * i, Ckzg.Ckzg.BytesPerBlob * (i + 1)),
-                    TestObjectInternal.BlobKzgs.AsSpan(Ckzg.Ckzg.BytesPerCommitment * i, Ckzg.Ckzg.BytesPerCommitment * (i + 1)),
-                    TestObjectInternal.BlobProofs.AsSpan(Ckzg.Ckzg.BytesPerProof * i, Ckzg.Ckzg.BytesPerProof * (i + 1)),
-                    TestObjectInternal.BlobVersionedHashes[i].AsSpan());
+                TestObjectInternal.BlobVersionedHashes = new byte[blobCount][];
+                ShardBlobNetworkWrapper wrapper = new(
+                    blobs: new byte[blobCount][],
+                    commitments: new byte[blobCount][],
+                    proofs: new byte[blobCount][]
+                    );
+
+                for (int i = 0; i < blobCount; i++)
+                {
+                    TestObjectInternal.BlobVersionedHashes[i] = new byte[32];
+                    wrapper.Blobs[i] = new byte[Ckzg.Ckzg.BytesPerBlob];
+                    wrapper.Blobs[i][0] = (byte)(i % 256);
+                    wrapper.Commitments[i] = new byte[Ckzg.Ckzg.BytesPerCommitment];
+                    wrapper.Proofs[i] = new byte[Ckzg.Ckzg.BytesPerProof];
+
+                    if (KzgPolynomialCommitments.IsInitialized)
+                    {
+                        KzgPolynomialCommitments.KzgifyBlob(
+                            wrapper.Blobs[i],
+                            wrapper.Commitments[i],
+                            wrapper.Proofs[i],
+                            TestObjectInternal.BlobVersionedHashes[i].AsSpan());
+                    }
+                    else
+                    {
+                        TestObjectInternal.BlobVersionedHashes[i]![0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+                        wrapper.Commitments[i][0] = (byte)(i % 256);
+                        wrapper.Proofs[i][0] = (byte)(i % 256);
+                    }
+                }
+
+                TestObjectInternal.NetworkWrapper = wrapper;
+            }
+            else
+            {
+                return WithBlobVersionedHashes(blobCount);
             }
 
-
             return this;
         }
 
-        public TransactionBuilder<T> WithBlobKzgs(byte[] blobKzgs)
+        public TransactionBuilder<T> With(Action<T> anyChange)
         {
-            TestObjectInternal.BlobKzgs = blobKzgs;
-            return this;
-        }
-
-        public TransactionBuilder<T> WithProofs(byte[] proofs)
-        {
-            TestObjectInternal.BlobProofs = proofs;
+            anyChange(TestObjectInternal);
             return this;
         }
 

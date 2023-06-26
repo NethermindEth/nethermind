@@ -29,7 +29,7 @@ namespace Nethermind.State
             {
                 UInt256 index = (UInt256)i;
                 index.ToBigEndian(buffer);
-                Cache[index] = Keccak.Compute(buffer).Bytes;
+                Cache[index] = Keccak.Compute(buffer).BytesToArray();
             }
         }
 
@@ -84,12 +84,12 @@ namespace Nethermind.State
             SetInternal(key, value);
         }
 
-        public void Set(Keccak key, byte[] value, bool rlpEncode = true)
+        public void Set(in ValueKeccak key, byte[] value, bool rlpEncode = true)
         {
             SetInternal(key.Bytes, value, rlpEncode);
         }
 
-        private void SetInternal(Span<byte> rawKey, byte[] value, bool rlpEncode = true)
+        private void SetInternal(ReadOnlySpan<byte> rawKey, byte[] value, bool rlpEncode = true)
         {
             if (value.IsZero())
             {

@@ -333,10 +333,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             PathWithAccount[] receiptAccounts = TestItem.Tree.AccountsWithPaths[0..2];
 
-            bool HasMoreChildren(Keccak limitHash)
+            bool HasMoreChildren(ValueKeccak limitHash)
             {
-                (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<Keccak> _) =
-                    SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash, receiptAccounts, proofs);
+                (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<ValueKeccak> _) =
+                    SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash.ToKeccak(), receiptAccounts, proofs);
                 return moreChildrenToRight;
             }
 
@@ -387,10 +387,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             PathWithAccount[] receiptAccounts = { ac1, ac2 };
 
-            bool HasMoreChildren(Keccak limitHash)
+            bool HasMoreChildren(ValueKeccak limitHash)
             {
-                (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<Keccak> _) =
-                    SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash, receiptAccounts, proofs);
+                (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<ValueKeccak> _) =
+                    SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash.ToKeccak(), receiptAccounts, proofs);
                 return moreChildrenToRight;
             }
 
