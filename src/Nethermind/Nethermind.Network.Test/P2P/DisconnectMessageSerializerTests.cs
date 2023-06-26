@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Stats.Model;
@@ -32,14 +33,16 @@ namespace Nethermind.Network.Test.P2P
             Assert.That((EthDisconnectReason)deserialized.Reason, Is.EqualTo(EthDisconnectReason.Other), "reason");
         }
 
-        // does this format happen more often?
-        //        [Test]
-        //        public void Can_read_other_format_message()
-        //        {
-        //            DisconnectMessageSerializer serializer = new DisconnectMessageSerializer();
-        //            byte[] serialized = Bytes.FromHexString("0204c108");
-        //            DisconnectMessage deserialized = serializer.Deserialize(serialized);
-        //            Assert.AreEqual(DisconnectReason.Other, (DisconnectReason)deserialized.Reason, "reason");
-        //        }
+        [TestCase("", DisconnectReason.DisconnectRequested)]
+        [TestCase("00", DisconnectReason.DisconnectRequested)]
+        [TestCase("10", DisconnectReason.Other)]
+        [TestCase("82c104", DisconnectReason.TooManyPeers)]
+        public void Can_read_other_format_message(string hex, DisconnectReason expectedReason)
+        {
+            DisconnectMessageSerializer serializer = new DisconnectMessageSerializer();
+            byte[] serialized = Bytes.FromHexString(hex);
+            DisconnectMessage deserialized = serializer.Deserialize(serialized);
+            deserialized.Reason.Should().Be((int)expectedReason);
+        }
     }
 }

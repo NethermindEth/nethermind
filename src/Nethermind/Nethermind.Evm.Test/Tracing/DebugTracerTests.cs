@@ -409,10 +409,11 @@ namespace Nethermind.Evm.Test
             {
                 if (tracer.CanReadState)
                 {
-                    if(tracer.CurrentState.Env.CallDepth == TARGET_OPCODE_PTR_BREAK_POINT.depth && tracer.CurrentState.ProgramCounter == TARGET_OPCODE_PTR_BREAK_POINT.pc)
+                    if (tracer.CurrentState.Env.CallDepth == TARGET_OPCODE_PTR_BREAK_POINT.depth && tracer.CurrentState.ProgramCounter == TARGET_OPCODE_PTR_BREAK_POINT.pc)
                     {
                         stoppedAtCorrectBreakpoint = true;
-                    } else
+                    }
+                    else
                     {
                         stoppedAtCorrectBreakpoint = false;
                     }

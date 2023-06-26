@@ -179,7 +179,7 @@ namespace Nethermind.Core.Test
 
         [TestCaseSource(nameof(PointEvaluationPrecompileTestCases))]
         public bool Is_PointEvaluationPrecompile_properly_activated(IReleaseSpec spec) =>
-            Address.FromNumber(0x14).IsPrecompile(spec);
+            Address.FromNumber(0x0a).IsPrecompile(spec);
 
         public static IEnumerable PointEvaluationPrecompileTestCases
         {
