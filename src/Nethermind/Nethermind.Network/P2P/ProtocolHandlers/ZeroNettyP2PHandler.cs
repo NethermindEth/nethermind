@@ -65,7 +65,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 try
                 {
                     int length = SnappyCodec.Uncompress(content.Array, content.ArrayOffset + content.ReaderIndex,
-                        content.ReadableBytes, output.Array, output.ArrayOffset);
+                        content.ReadableBytes, output.Array, output.ArrayOffset + output.WriterIndex);
                     output.SetWriterIndex(output.WriterIndex + length);
                 }
                 catch (InvalidDataException)
