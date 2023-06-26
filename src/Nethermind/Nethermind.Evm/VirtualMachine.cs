@@ -2662,8 +2662,7 @@ ReturnFailure:
 
         if (!newSameAsCurrent)
         {
-            Span<byte> valueToStore = newIsZero ? BytesZero : bytes;
-            _state.Set(in storageCell, valueToStore.ToArray());
+            _state.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
         }
 
         if (typeof(TTracingInstructions) == typeof(IsTracing))
