@@ -36,6 +36,12 @@ namespace Nethermind.Network.P2P.Messages
                 return new DisconnectMessage((DisconnectReason)msgBytes.GetByte(0));
             }
 
+            if (msgBytes.ReadableBytes == 0)
+            {
+                // Sometimes 0x00 was sent, uncompressed, which interpreted as empty buffer by snappy.
+                return new DisconnectMessage(DisconnectReason.DisconnectRequested);
+            }
+
             Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
             Rlp.ValueDecoderContext rlpStream = msg.AsRlpValueContext();
             if (!rlpStream.IsSequenceNext())

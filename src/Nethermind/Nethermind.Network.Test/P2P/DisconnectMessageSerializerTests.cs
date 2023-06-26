@@ -33,6 +33,9 @@ namespace Nethermind.Network.Test.P2P
             Assert.That((DisconnectReason)deserialized.Reason, Is.EqualTo(DisconnectReason.Other), "reason");
         }
 
+        [TestCase("", DisconnectReason.DisconnectRequested)]
+        [TestCase("00", DisconnectReason.DisconnectRequested)]
+        [TestCase("10", DisconnectReason.Other)]
         [TestCase("82c104", DisconnectReason.TooManyPeers)]
         public void Can_read_other_format_message(string hex, DisconnectReason expectedReason)
         {
