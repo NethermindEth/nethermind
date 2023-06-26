@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Net.Sockets;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
@@ -63,22 +64,22 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
                 try
                 {
-                    int length = SnappyCodec.Uncompress(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes, output.Array, output.ArrayOffset);
+                    int length = SnappyCodec.Uncompress(content.Array, content.ArrayOffset + content.ReaderIndex,
+                        content.ReadableBytes, output.Array, output.ArrayOffset);
                     output.SetWriterIndex(output.WriterIndex + length);
+                }
+                catch (InvalidDataException)
+                {
+                    output.SafeRelease();
+                    // Data is not compressed sometimes, so we pass directly.
+                    _session.ReceiveMessage(input);
+                    return;
                 }
                 catch (Exception)
                 {
-                    if (content.ReadableBytes == 2 && content.ReadByte() == 193)
-                    {
-                        // this is a Parity disconnect sent as a non-snappy-encoded message
-                        // e.g. 0xc103
-                    }
-                    else
-                    {
-                        content.SkipBytes(content.ReadableBytes);
-                        output.SafeRelease();
-                        throw;
-                    }
+                    content.SkipBytes(content.ReadableBytes);
+                    output.SafeRelease();
+                    throw;
                 }
 
                 content.SkipBytes(content.ReadableBytes);
