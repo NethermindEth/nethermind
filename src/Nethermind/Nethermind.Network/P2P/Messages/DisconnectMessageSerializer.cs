@@ -29,9 +29,6 @@ namespace Nethermind.Network.P2P.Messages
         }
 
 
-        private byte[] breach1 = Bytes.FromHexString("0204c104");
-        private byte[] breach2 = Bytes.FromHexString("0204c180");
-
         public DisconnectMessage Deserialize(IByteBuffer msgBytes)
         {
             if (msgBytes.ReadableBytes == 1)
@@ -40,13 +37,12 @@ namespace Nethermind.Network.P2P.Messages
             }
 
             Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
-            if (msg.SequenceEqual(breach1)
-                || msg.SequenceEqual(breach2))
+            Rlp.ValueDecoderContext rlpStream = msg.AsRlpValueContext();
+            if (!rlpStream.IsSequenceNext())
             {
-                return new DisconnectMessage(DisconnectReason.Other);
+                rlpStream = new Rlp.ValueDecoderContext(rlpStream.DecodeByteArraySpan());
             }
 
-            Rlp.ValueDecoderContext rlpStream = msg.AsRlpValueContext();
             rlpStream.ReadSequenceLength();
             int reason = rlpStream.DecodeInt();
             DisconnectMessage disconnectMessage = new DisconnectMessage(reason);
