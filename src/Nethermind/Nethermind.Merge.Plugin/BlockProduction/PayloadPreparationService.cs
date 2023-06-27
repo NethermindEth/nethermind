@@ -74,7 +74,7 @@ public class PayloadPreparationService : IPayloadPreparationService
 
     public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
-        string payloadId = payloadAttributes.ComputePayloadId(parentHeader);
+        string payloadId = payloadAttributes.GetPayloadId(parentHeader);
         if (!_payloadStorage.ContainsKey(payloadId))
         {
             Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);

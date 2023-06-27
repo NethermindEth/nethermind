@@ -270,10 +270,10 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        private IEnumerable<Transaction> GetTransactions(BlockHeader parent)
+        private IEnumerable<Transaction> GetTransactions(BlockHeader parent, PayloadAttributes? payloadAttributes)
         {
-            long gasLimit = _gasLimitCalculator.GetGasLimit(parent);
-            return _txSource.GetTransactions(parent, gasLimit);
+            long gasLimit = payloadAttributes?.GetGasLimit() ?? _gasLimitCalculator.GetGasLimit(parent);
+            return _txSource.GetTransactions(parent, gasLimit, payloadAttributes);
         }
 
         protected virtual BlockHeader PrepareBlockHeader(BlockHeader parent,
@@ -287,7 +287,7 @@ namespace Nethermind.Consensus.Producers
                 blockAuthor,
                 UInt256.Zero,
                 parent.Number + 1,
-                payloadAttributes?.GasLimit ?? _gasLimitCalculator.GetGasLimit(parent),
+                payloadAttributes?.GetGasLimit() ?? _gasLimitCalculator.GetGasLimit(parent),
                 timestamp,
                 _blocksConfig.GetExtraDataBytes())
             {
@@ -308,7 +308,7 @@ namespace Nethermind.Consensus.Producers
         {
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
-            IEnumerable<Transaction> transactions = GetTransactions(parent);
+            IEnumerable<Transaction> transactions = GetTransactions(parent, payloadAttributes);
 
             if (_specProvider.GetSpec(header).IsEip4844Enabled)
             {

@@ -39,11 +39,13 @@ public partial class EngineModuleTests
             .Returns(c =>
             {
                 PayloadAttributes payloadAttributes = c.Arg<PayloadAttributes>();
-                payloadAttributes.SuggestedFeeRecipient = TestItem.AddressA;
-                payloadAttributes.PrevRandao = TestItem.KeccakA;
-                payloadAttributes.Timestamp += 1;
-                payloadAttributes.GasLimit = 10_000_000L;
-                return payloadAttributes;
+                return new BoostPayloadAttributes
+                {
+                    SuggestedFeeRecipient = TestItem.AddressA,
+                    PrevRandao = TestItem.KeccakA,
+                    Timestamp = payloadAttributes.Timestamp + 1,
+                    GasLimit  = 10_000_000L,
+                };
             });
 
         BoostBlockImprovementContextFactory improvementContextFactory = new(chain.BlockProductionTrigger, TimeSpan.FromSeconds(5), boostRelay, chain.StateReader);
@@ -190,7 +192,7 @@ public partial class EngineModuleTests
         {
             IBoostRelay boostRelay = Substitute.For<IBoostRelay>();
             boostRelay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
-                .Returns(c => c.Arg<PayloadAttributes>());
+                .Returns(c => (BoostPayloadAttributes)c.Arg<PayloadAttributes>());
 
             improvementContextFactory = new BoostBlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(5), boostRelay, chain.StateReader);
         }
@@ -214,7 +216,7 @@ public partial class EngineModuleTests
         Address feeRecipient = Address.Zero;
 
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
-                new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random, GasLimit = 10_000_000L }).Result.Data
+                new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data
             .PayloadId!;
 
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));

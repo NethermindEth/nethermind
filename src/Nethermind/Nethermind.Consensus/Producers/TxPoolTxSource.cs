@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Producers
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
         {
             long blockNumber = parent.Number + 1;
             IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(blockNumber);

@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             Span<byte> signersData = blockHeader.ExtraData.AsSpan(Clique.ExtraVanityLength, (blockHeader.ExtraData.Length - Clique.ExtraSealLength));
-            Address[] signers = new Address[signersData.Length / Address.ByteLength];
+            Address[] signers = new Address[signersData.Length / Address.Size];
             for (int i = 0; i < signers.Length; i++)
             {
                 signers[i] = new Address(signersData.Slice(i * 20, 20).ToArray());

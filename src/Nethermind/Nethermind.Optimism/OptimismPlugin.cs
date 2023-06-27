@@ -1,34 +1,28 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.BlockProduction;
 
 namespace Nethermind.Optimism;
 
-public class OptimismPlugin : INethermindPlugin
+public class OptimismPlugin : MergePlugin, IInitializationPlugin
 {
-    public string Name => "Optimism";
+    public override string Name => "Optimism";
 
-    public string Description => "Optimism support for Nethermind";
+    public override string Description => "Optimism support for Nethermind";
 
-    public string Author => "Nethermind";
+    protected override bool MergeEnabled => ShouldRunSteps(_api);
 
-    public ValueTask DisposeAsync()
+    public bool ShouldRunSteps(INethermindApi api) => api.Config<IOptimismConfig>().Enabled; // we can also make it chain spec based
+
+    protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()
     {
-        return ValueTask.CompletedTask;
-    }
-
-    public Task Init(INethermindApi nethermindApi)
-    {
-        return Task.CompletedTask;
-    }
-
-    public Task InitNetworkProtocol()
-    {
-        return Task.CompletedTask;
-    }
-
-    public Task InitRpcModules()
-    {
-        return Task.CompletedTask;
+        return new OptimismPostMergeBlockProducerFactory(
+            _api.SpecProvider!,
+            _api.SealEngine,
+            _manualTimestamper!,
+            _blocksConfig,
+            _api.LogManager);
     }
 }

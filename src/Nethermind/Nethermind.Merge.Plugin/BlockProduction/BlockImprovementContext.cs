@@ -33,7 +33,6 @@ public class BlockImprovementContext : IBlockImprovementContext
     }
 
     public Task<Block?> ImprovementTask { get; }
-
     public Block? CurrentBestBlock { get; private set; }
     public UInt256 BlockFees { get; private set; }
 

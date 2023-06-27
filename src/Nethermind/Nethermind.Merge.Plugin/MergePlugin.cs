@@ -54,12 +54,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
     public virtual string Description => "Merge plugin for ETH1-ETH2";
     public string Author => "Nethermind";
 
-    public virtual bool MergeEnabled => _mergeConfig.Enabled &&
-                                        !IsPreMergeConsensusAuRa(_api); // AuRa has dedicated plugin AuRaMergePlugin
-    protected bool IsPreMergeConsensusAuRa(INethermindApi api)
-    {
-        return api.ChainSpec?.SealEngineType == SealEngineType.AuRa;
-    }
+    protected virtual bool MergeEnabled => _mergeConfig.Enabled &&
+                                           _api.ChainSpec.SealEngineType is SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.Ethash;
 
     // Don't remove default constructor. It is used by reflection when we're loading plugins
     public MergePlugin() { }

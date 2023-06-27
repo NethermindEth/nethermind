@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -37,7 +38,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             IList<IRandomContract> contracts,
             IEciesCipher eciesCipher,
             ISigner signer,
-            ProtectedPrivateKey previousCryptoKey, // this is for backwards-compability when upgrading validator node 
+            ProtectedPrivateKey previousCryptoKey, // this is for backwards-compability when upgrading validator node
             ICryptoRandom cryptoRandom,
             ILogManager logManager)
         {
@@ -49,7 +50,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<RandomContractTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
         {
             if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
             {

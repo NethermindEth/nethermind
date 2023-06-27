@@ -758,7 +758,7 @@ public partial class EngineModuleTests
             Withdrawals = input.Withdrawals
         };
 
-        var payloadId = payloadAttributes.ComputePayloadId(blockHeader);
+        var payloadId = payloadAttributes.GetPayloadId(blockHeader);
 
         payloadId.Should().Be(input.PayloadId);
     }

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Transactions
@@ -27,11 +28,11 @@ namespace Nethermind.Consensus.Transactions
             _transactionSources.Insert(0, txSource);
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
         {
             for (int i = 0; i < _transactionSources.Count; i++)
             {
-                IEnumerable<Transaction> transactions = _transactionSources[i].GetTransactions(parent, gasLimit);
+                IEnumerable<Transaction> transactions = _transactionSources[i].GetTransactions(parent, gasLimit, payloadAttributes);
                 foreach (Transaction tx in transactions)
                 {
                     yield return tx;

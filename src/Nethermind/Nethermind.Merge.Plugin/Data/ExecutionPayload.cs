@@ -144,7 +144,6 @@ public class ExecutionPayload
         catch (Exception)
         {
             block = null;
-
             return false;
         }
     }
@@ -156,8 +155,17 @@ public class ExecutionPayload
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
     public Transaction[] GetTransactions() => _transactions ??= Transactions
-        .Select(t => Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping))
-        .ToArray();
+        .Select((t, i) =>
+        {
+            try
+            {
+                return Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping);
+            }
+            catch (RlpException e)
+            {
+                throw new RlpException($"Transaction {i} is not valid", e);
+            }
+        }).ToArray();
 
     /// <summary>
     /// RLP-encodes and sets the transactions specified to <see cref="Transactions"/>.

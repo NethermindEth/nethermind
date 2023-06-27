@@ -25,7 +25,7 @@ namespace Nethermind.Core
                 return 1;
             }
 
-            for (int i = 0; i < Address.ByteLength; i++)
+            for (int i = 0; i < Address.Size; i++)
             {
                 if (x.Bytes[i] < y.Bytes[i])
                 {

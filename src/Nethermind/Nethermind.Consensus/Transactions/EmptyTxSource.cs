@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Transactions
@@ -13,7 +14,7 @@ namespace Nethermind.Consensus.Transactions
 
         public static ITxSource Instance { get; } = new EmptyTxSource();
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
         {
             return Array.Empty<Transaction>();
         }
