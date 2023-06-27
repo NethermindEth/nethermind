@@ -42,7 +42,7 @@ _Optional. Remove if not applicable._
 - [ ] Yes
 - [ ] No
 
-_If yes, fill in the details here or link the PR to docs update. Remove if not applicable._
+_If yes, link the PR to the docs update or the issue with the details labeled `docs`. Remove if not applicable._
 
 #### Requires explanation in Release Notes
 
