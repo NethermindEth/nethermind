@@ -384,6 +384,7 @@ namespace Nethermind.Synchronization.Test
                 pivot,
                 syncReport,
                 null,
+                null,
                 logManager);
             SyncServer syncServer = new(
                 trieStoreByPath,

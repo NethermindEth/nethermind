@@ -378,6 +378,8 @@ namespace Nethermind.Synchronization.Test
                         poSSwitcher,
                         mergeConfig,
                         invalidChainTracker,
+                        null,
+                        null,
                         _logManager,
                         syncReport);
                 }
@@ -408,6 +410,7 @@ namespace Nethermind.Synchronization.Test
                         blockDownloaderFactory,
                         pivot,
                         syncReport,
+                        null,
                         null,
                         _logManager);
                 }

@@ -43,7 +43,7 @@ public class ByPathStateDbPrunner
             if (_logger.IsInfo) _logger.Info("Cleanup queue not available");
             return;
         }
-        if (_logger.IsInfo) _logger.Info($"Cleanup requests ccmpleted - queue size {_cleanupQueue.Count}");
+        if (_logger.IsInfo) _logger.Info($"Cleanup requests completed - queue size {_cleanupQueue.Count}");
         _cleanupQueue.CompleteAdding();
     }
 
@@ -105,15 +105,16 @@ public class ByPathStateDbPrunner
                 {
                     _keyValueStore.DeleteByRange(toBeRemoved.From, toBeRemoved.To);
                     Interlocked.Increment(ref removed);
-                    if (removed > 100_000)
+                    if (removed > 10_000)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Executed 100 000 deletions in {sw.ElapsedMilliseconds} ms");
+                        if (_logger.IsWarn) _logger.Warn($"Executed 10 000 deletions in {sw.ElapsedMilliseconds} ms");
                         sw.Restart();
                         Interlocked.Exchange(ref removed, 0);
                     }
                 }
             }
             sw.Stop();
+            if (_logger.IsWarn) _logger.Warn($"Executed {removed} deletions in {sw.ElapsedMilliseconds} ms");
         });
     }
 

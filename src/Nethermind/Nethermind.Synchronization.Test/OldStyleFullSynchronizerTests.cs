@@ -93,6 +93,7 @@ namespace Nethermind.Synchronization.Test
                 pivot,
                 syncReport,
                 null,
+                null,
                 LimboLogs.Instance);
             _syncServer = new SyncServer(
                 trieStore,
