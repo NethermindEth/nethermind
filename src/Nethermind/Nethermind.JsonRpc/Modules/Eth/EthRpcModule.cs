@@ -160,7 +160,7 @@ public partial class EthRpcModule : IEthRpcModule
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return Task.FromResult(GetFailureResult<UInt256?, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.IsSyncingHeaders()));
+            return Task.FromResult(GetFailureResult<UInt256?, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet()));
         }
 
         BlockHeader header = searchResult.Object;
@@ -179,7 +179,7 @@ public partial class EthRpcModule : IEthRpcModule
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return GetFailureResult<byte[], BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.IsSyncingHeaders());
+            return GetFailureResult<byte[], BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
         }
 
         BlockHeader? header = searchResult.Object;
@@ -204,7 +204,7 @@ public partial class EthRpcModule : IEthRpcModule
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return Task.FromResult(GetFailureResult<UInt256, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.IsSyncingHeaders()));
+            return Task.FromResult(GetFailureResult<UInt256, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet()));
         }
 
         BlockHeader header = searchResult.Object;
@@ -223,7 +223,7 @@ public partial class EthRpcModule : IEthRpcModule
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
         return searchResult.IsError
-            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.IsSyncingBodies())
+            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Transactions.Length);
     }
 
@@ -231,7 +231,7 @@ public partial class EthRpcModule : IEthRpcModule
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         return searchResult.IsError
-            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.IsSyncingBodies())
+            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Transactions.Length);
     }
 
@@ -239,7 +239,7 @@ public partial class EthRpcModule : IEthRpcModule
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
         return searchResult.IsError
-            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.IsSyncingBodies())
+            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Uncles.Length);
     }
 
@@ -247,7 +247,7 @@ public partial class EthRpcModule : IEthRpcModule
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         return searchResult.IsError
-            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.IsSyncingBodies())
+            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Uncles.Length);
     }
 
@@ -256,7 +256,7 @@ public partial class EthRpcModule : IEthRpcModule
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return GetFailureResult<byte[], BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.IsSyncingHeaders());
+            return GetFailureResult<byte[], BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
         }
 
         BlockHeader header = searchResult.Object;
@@ -371,7 +371,7 @@ public partial class EthRpcModule : IEthRpcModule
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, true);
         if (searchResult.IsError)
         {
-            return GetFailureResult<BlockForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.IsSyncingBodies());
+            return GetFailureResult<BlockForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
         }
 
         Block? block = searchResult.Object;
@@ -429,7 +429,7 @@ public partial class EthRpcModule : IEthRpcModule
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
         if (searchResult.IsError)
         {
-            return GetFailureResult<TransactionForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.IsSyncingBodies());
+            return GetFailureResult<TransactionForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
         }
 
         Block block = searchResult.Object;
@@ -452,7 +452,7 @@ public partial class EthRpcModule : IEthRpcModule
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return GetFailureResult<TransactionForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.IsSyncingBodies());
+            return GetFailureResult<TransactionForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
         }
 
         Block? block = searchResult.Object;
@@ -500,7 +500,7 @@ public partial class EthRpcModule : IEthRpcModule
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return GetFailureResult<BlockForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.IsSyncingBodies());
+            return GetFailureResult<BlockForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
         }
 
         Block block = searchResult.Object;
@@ -592,7 +592,7 @@ public partial class EthRpcModule : IEthRpcModule
         catch (ResourceNotFoundException exception)
         {
             cancellationTokenSource.Dispose();
-            return GetFailureResult<IEnumerable<FilterLog>>(exception, _ethSyncingInfo.SyncMode.IsSyncingReceipts());
+            return GetFailureResult<IEnumerable<FilterLog>>(exception, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
         }
     }
 
@@ -614,7 +614,7 @@ public partial class EthRpcModule : IEthRpcModule
             if (toBlockResult.IsError)
             {
                 cancellationTokenSource.Dispose();
-                return GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(toBlockResult, _ethSyncingInfo.SyncMode.IsSyncingHeaders());
+                return GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(toBlockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -624,7 +624,7 @@ public partial class EthRpcModule : IEthRpcModule
         if (fromBlockResult.IsError)
         {
             cancellationTokenSource.Dispose();
-            return GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(fromBlockResult, _ethSyncingInfo.SyncMode.IsSyncingHeaders());
+            return GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(fromBlockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -647,7 +647,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
         catch (ResourceNotFoundException exception)
         {
-            return GetFailureResult<IEnumerable<FilterLog>>(exception, _ethSyncingInfo.SyncMode.IsSyncingReceipts());
+            return GetFailureResult<IEnumerable<FilterLog>>(exception, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
         }
     }
 
@@ -673,7 +673,7 @@ public partial class EthRpcModule : IEthRpcModule
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return GetFailureResult<AccountProof, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.IsSyncingHeaders());
+            return GetFailureResult<AccountProof, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
         }
 
         BlockHeader header = searchResult.Object;
@@ -722,7 +722,7 @@ public partial class EthRpcModule : IEthRpcModule
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return GetFailureResult<AccountForRpc, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.IsSyncingHeaders());
+            return GetFailureResult<AccountForRpc, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
         }
 
         BlockHeader header = searchResult.Object;
@@ -742,5 +742,5 @@ public partial class EthRpcModule : IEthRpcModule
         ResultWrapper<TResult>.Fail(exception.Message, ErrorCodes.ResourceNotFound, isTemporary);
 
     private ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
-        ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable, _ethSyncingInfo.SyncMode.IsSyncingState());
+        ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet());
 }
