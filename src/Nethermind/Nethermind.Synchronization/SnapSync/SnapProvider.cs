@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.SnapSync
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
             _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(_dbProvider.StateDb, logManager));
-            _pathBasedTrieStorePool = new DefaultObjectPool<ITrieStore>(new PathBasedTrieStorePoolPolicy(_dbProvider.StateDb, logManager));
+            _pathBasedTrieStorePool = new DefaultObjectPool<ITrieStore>(new PathBasedTrieStorePoolPolicy(_dbProvider.StateDb.GetColumnDb(StateColumns.State), logManager));
             _pathBasedTrieStoreStoragePool = new DefaultObjectPool<ITrieStore>(new PathBasedTrieStorePoolPolicy(_dbProvider.StateDb.GetColumnDb(StateColumns.Storage), logManager));
 
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -108,6 +108,7 @@ namespace Nethermind.Synchronization.SnapSync
             finally
             {
                 _pathBasedTrieStorePool.Return(store);
+                _pathBasedTrieStoreStoragePool.Return(storageStore);
             }
         }
 
@@ -203,7 +204,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             finally
             {
-                _pathBasedTrieStorePool.Return(store);
+                _pathBasedTrieStoreStoragePool.Return(store);
             }
         }
 
