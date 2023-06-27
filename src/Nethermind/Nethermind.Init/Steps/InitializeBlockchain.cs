@@ -102,20 +102,24 @@ namespace Nethermind.Init.Steps
                 setApi.WitnessRepository = NullWitnessCollector.Instance;
             }
 
-            setApi.MainStateDbWithCache = getApi.DbProvider.StateDb;
+            setApi.MainStateDbWithCache = getApi.DbProvider.StateDb.GetColumnDb(StateColumns.State);
 
             IKeyValueStore codeDb = getApi.DbProvider.CodeDb
                 .WitnessedBy(witnessCollector);
 
             ITrieStore trieStore;
             IKeyValueStoreWithBatching stateWitnessedBy = setApi.MainStateDbWithCache;
+
+            //_api.ByPathDbPrunner = new ByPathStateDbPrunner(stateWitnessedBy, _api.LogManager);
+            _api.ByPathDbPrunnerState = new ByPathStateDbPrunner(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.State), _api.LogManager);
+            _api.ByPathDbPrunnerStorage = new ByPathStateDbPrunner(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), _api.LogManager);
+            //_api.ByPathDbPrunner = null;
+
             setApi.TrieStore = trieStore = new TrieStoreByPath(
                     stateWitnessedBy,
                     No.Pruning,
                     Persist.EveryBlock,
-                    getApi.LogManager, 128);
-
-            _api.ByPathDbPrunner = new ByPathStateDbPrunner(stateWitnessedBy, _api.LogManager);
+                    getApi.LogManager, 128, _api.ByPathDbPrunnerState!);
 
             ITrieStore storageTrieStore;
             storageTrieStore = new TrieStoreByPath(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.EveryBlock, _api.LogManager, 128);

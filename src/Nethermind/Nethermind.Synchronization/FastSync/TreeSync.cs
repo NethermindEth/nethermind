@@ -82,9 +82,10 @@ namespace Nethermind.Synchronization.FastSync
         private long _blockNumber;
         private SyncMode _syncMode;
 
-        private ByPathStateDbPrunner _dbPrunner;
+        private ByPathStateDbPrunner _dbPrunnerState;
+        private ByPathStateDbPrunner _dbPrunnerStorage;
 
-        public TreeSync(SyncMode syncMode, IDb codeDb, IColumnsDb<StateColumns> stateDb, IBlockTree blockTree, TrieNodeResolverCapability resolverCapability, ILogManager logManager, ByPathStateDbPrunner dbPrunner)
+        public TreeSync(SyncMode syncMode, IDb codeDb, IColumnsDb<StateColumns> stateDb, IBlockTree blockTree, TrieNodeResolverCapability resolverCapability, ILogManager logManager, ByPathStateDbPrunner dbPrunnerState, ByPathStateDbPrunner dbPrunnerStorage)
         {
             _syncMode = syncMode;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -104,9 +105,10 @@ namespace Nethermind.Synchronization.FastSync
             }
             else if (resolverCapability == TrieNodeResolverCapability.Path)
             {
-                _dbPrunner = dbPrunner;
-                _stateStore = new TrieStoreByPath(stateDb, Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0, dbPrunner);
-                _storageStore = new TrieStoreByPath(stateDb.GetColumnDb(StateColumns.Storage), Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0);
+                _dbPrunnerState = dbPrunnerState;
+                _dbPrunnerStorage = dbPrunnerStorage;
+                _stateStore = new TrieStoreByPath(stateDb.GetColumnDb(StateColumns.State), Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0, _dbPrunnerState);
+                _storageStore = new TrieStoreByPath(stateDb.GetColumnDb(StateColumns.Storage), Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0, _dbPrunnerStorage);
             }
 
             _additionalLeafNibbles = new ConcurrentDictionary<Keccak, List<byte>>();
@@ -476,7 +478,10 @@ namespace Nethermind.Synchronization.FastSync
                         rootChanged = true;
 
                     if (rootChanged)
-                        _dbPrunner?.Start();
+                    {
+                        _dbPrunnerState?.Start();
+                        _dbPrunnerStorage?.Start();
+                    }
 
                     _branchProgress = new BranchProgress(blockNumber, _logger);
                     _blockNumber = blockNumber;
@@ -813,7 +818,8 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
 
-                _dbPrunner?.EndOfCleanupRequests();
+                _dbPrunnerState?.EndOfCleanupRequests();
+                _dbPrunnerStorage?.EndOfCleanupRequests();
 
                 Interlocked.Exchange(ref _rootSaved, 1);
             }

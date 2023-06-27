@@ -108,7 +108,7 @@ public class InitializeNetwork : IStep
             _api.BlockTree!,
             _api.ReceiptStorage!,
             _api.DbProvider.StateDb,
-            new TrieStoreByPath(_api.DbProvider.StateDb, Trie.Pruning.No.Pruning, Persist.EveryBlock, _api.LogManager, 0),
+            new TrieStoreByPath(_api.DbProvider.StateDb.GetColumnDb(StateColumns.State), Trie.Pruning.No.Pruning, Persist.EveryBlock, _api.LogManager, 0),
             progressTracker,
             _syncConfig,
             _api.LogManager);
@@ -162,7 +162,8 @@ public class InitializeNetwork : IStep
                 _api.BlockDownloaderFactory,
                 _api.Pivot,
                 syncReport,
-                _api.ByPathDbPrunner!,
+                _api.ByPathDbPrunnerState!,
+                _api.ByPathDbPrunnerStorage!,
                 _api.LogManager);
         }
 

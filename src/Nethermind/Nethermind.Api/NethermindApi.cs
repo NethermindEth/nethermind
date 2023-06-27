@@ -232,6 +232,7 @@ namespace Nethermind.Api
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public CompositePruningTrigger PruningTrigger { get; } = new();
         public ISnapProvider SnapProvider { get; set; }
-        public ByPathStateDbPrunner? ByPathDbPrunner { get; set; }
+        public ByPathStateDbPrunner? ByPathDbPrunnerState { get; set; }
+        public ByPathStateDbPrunner? ByPathDbPrunnerStorage { get; set; }
     }
 }

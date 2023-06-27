@@ -98,6 +98,7 @@ namespace Nethermind.Api
 
         IBlockProductionPolicy BlockProductionPolicy { get; set; }
 
-        ByPathStateDbPrunner? ByPathDbPrunner { get; set; }
+        ByPathStateDbPrunner? ByPathDbPrunnerState { get; set; }
+        ByPathStateDbPrunner? ByPathDbPrunnerStorage { get; set; }
     }
 }
