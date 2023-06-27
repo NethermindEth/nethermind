@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
-            tree.Commit(blockNumber, skipRoot: false);
+            tree.Commit(blockNumber, skipRoot: true);
 
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
@@ -335,12 +335,36 @@ namespace Nethermind.Synchronization.SnapSync
             TrieNode data = node.GetData(childIndex) as TrieNode;
             if (data is not null)
             {
-
                 return data.IsBoundaryProofNode == false;
             }
 
-            Keccak childKeccak = node.GetChildHash(childIndex);
-            return childKeccak is null || store.IsPersisted(childKeccak);
+            if (store.Capability == TrieNodeResolverCapability.Hash)
+            {
+                Keccak childKeccak = node.GetChildHash(childIndex);
+                return childKeccak is null || store.IsPersisted(childKeccak);
+            }
+            else
+            {
+                Keccak childKeccak = node.GetChildHash(childIndex);
+                if (childKeccak is null)
+                    return true;
+
+                if (node.IsBranch)
+                {
+                    Span<byte> childPath = stackalloc byte[node.PathToNode.Length + 1];
+                    node.PathToNode.CopyTo(childPath);
+                    childPath[^1] = (byte)childIndex;
+                    return store.ExistsInDB(childKeccak, childPath.ToArray());
+                }
+                else if (node.IsExtension)
+                {
+                    Span<byte> childPath = stackalloc byte[node.PathToNode.Length + node.Key.Length];
+                    node.PathToNode.CopyTo(childPath);
+                    node.Key.CopyTo(childPath.Slice(node.PathToNode.Length));
+                    return store.ExistsInDB(childKeccak, childPath.ToArray());
+                }
+                return false;
+            }
         }
     }
 }
