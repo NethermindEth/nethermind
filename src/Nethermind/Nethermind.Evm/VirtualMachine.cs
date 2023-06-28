@@ -57,7 +57,7 @@ public class VirtualMachine : IVirtualMachine
         }
     }
 
-    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
+    public virtual CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
         => _evm.GetCachedCodeInfo(worldState, codeSource, spec);
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -479,7 +479,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         }
     }
 
-    public virtual CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
+    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
     {
         if (codeSource.IsPrecompile(vmSpec))
         {

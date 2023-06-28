@@ -266,7 +266,6 @@ public class MultiCallBlockchainFork : IDisposable
             txPool,
             txSender,
             wallet,
-            receiptFinder,
             logManager,
             SpecProvider,
             gasPriceOracle,
