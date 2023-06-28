@@ -246,12 +246,32 @@ namespace Nethermind.Evm.TransactionProcessing
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _worldState.GetBalance(caller);
-                if (!noValidation && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
-                                      senderReservedGasPayment + value > senderBalance))
+                UInt256 gasWithValue;
+                UInt256 rederveWithValue;
+
+                if (UInt256.AddOverflow((ulong)intrinsicGas * effectiveGasPrice, value, out gasWithValue))
                 {
                     TraceLogInvalidTx(transaction,
+                        $"VALUE_TOO_BIG");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "numeric overflow detected!");
+                    return;
+                }
+
+                if (UInt256.AddOverflow((ulong)intrinsicGas * effectiveGasPrice, value, out rederveWithValue))
+                {
+                    TraceLogInvalidTx(transaction,
+                        $"VALUE_TOO_BIG");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "numeric overflow detected!");
+                    return;
+                }
+
+                if (!noValidation && (gasWithValue > senderBalance || rederveWithValue > senderBalance))
+                {
+
+                    TraceLogInvalidTx(transaction,
                         $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled,
+                        $"insufficient sender balance {senderBalance} while {(ulong)intrinsicGas * effectiveGasPrice + value} expected");
                     return;
                 }
 
@@ -272,6 +292,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce");
                     return;
                 }
+
 
                 _worldState.IncrementNonce(caller);
             }

@@ -90,14 +90,23 @@ public partial class EthRpcModule
     public class MultiCallTxExecutor
     {
         private readonly IDbProvider _dbProvider;
+        private readonly IBlockchainBridge _blockchainBridge;
+        private readonly IBlockFinder _blockFinder;
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly ISpecProvider _specProvider;
 
-        public MultiCallTxExecutor(IDbProvider DbProvider, ISpecProvider specProvider, IJsonRpcConfig rpcConfig)
+        public MultiCallTxExecutor(IDbProvider DbProvider,
+            IBlockchainBridge blockchainBridge,
+            IBlockFinder blockFinder,
+            ISpecProvider specProvider,
+            IJsonRpcConfig rpcConfig)
         {
             _dbProvider = DbProvider;
+            _blockchainBridge = blockchainBridge;
+            _blockFinder = blockFinder;
             _specProvider = specProvider;
             _rpcConfig = rpcConfig;
+
         }
 
         private UInt256 MaxGas => GetMaxGas(_rpcConfig);
@@ -108,106 +117,26 @@ public partial class EthRpcModule
             return (UInt256)config.GasCap * (UInt256)config.GasCapMultiplier;
         }
 
-        //ToDO move to exctensions
-        private static IEnumerable<UInt256> Range(UInt256 start, UInt256 end)
-        {
-            for (UInt256 i = start; i <= end; i++) yield return i;
-        }
-
         public ResultWrapper<MultiCallBlockResult[]> Execute(ulong version,
             MultiCallBlockStateCallsModel[] blockCallsToProcess,
             BlockParameter? blockParameter, bool traceTransfers)
         {
-            //Was not able to overcome all of the protections related to setting of new block as BlockTree head so will keep it fair for now
+            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+            if (searchResult.IsError) return ResultWrapper<MultiCallBlockResult[]>.Fail(searchResult);
 
-            List<MultiCallBlockResult> results = new();
-            using (MultiCallBlockchainFork tmpChain = new(_dbProvider, _specProvider, MaxGas))
+            BlockHeader header = searchResult.Object;
+            if (!HasStateForBlock(_blockchainBridge, header))
             {
-                IEnumerable<UInt256>? selsectResults = blockCallsToProcess.Select(model =>
-                    model.BlockOverride != null
-                        ? model.BlockOverride.Number
-                        : (ulong)tmpChain.LatestBlock.Header.Number + 1);
-
-                List<MultiCallBlockStateCallsModel> blockCalls = blockCallsToProcess
-                    .OrderBy(model =>
-                        model.BlockOverride != null
-                            ? model.BlockOverride.Number
-                            : (ulong)tmpChain.LatestBlock.Header.Number + 1)
-                    .ToList();
-
-                tmpChain.BlockTracer.Trace = traceTransfers;
-                ulong logIndices = 0;
-                foreach (MultiCallBlockStateCallsModel blockCall in blockCalls)
-                {
-                    Block? block = null;
-                    try
-                    {
-                        block = tmpChain.ForgeChainBlock(blockCall);
-                    }
-                    catch (Exception ex)
-                    {
-                        return ResultWrapper<MultiCallBlockResult[]>.Fail(
-                            $"At block {(blockCall.BlockOverride != null ? blockCall.BlockOverride.Number : (ulong)tmpChain.LatestBlock.Header.Number + 1)} got exception: {ex.Message}\n{ex.StackTrace}");
-                    }
-
-                    if (selsectResults.Contains(blockCall.BlockOverride.Number))
-                    {
-                        List<MultiCallCallResult>? txResults = new();
-                        foreach (Transaction? tx in tmpChain.LatestBlock.Transactions)
-                        {
-                            TxReceipt Receipt = null;
-                            Receipt = tmpChain.receiptStorage.Get(tmpChain.LatestBlock.Hash)
-                                .ForTransaction(tx.Hash);
-
-
-                            IEnumerable<LogEntry> txActions = null;
-
-                            if (traceTransfers)
-                                txActions = tmpChain.BlockTracer.TxActions[tx.Hash];
-                            else
-                                txActions = Receipt.Logs;
-
-                            Log[] logs = txActions.Select(entry => new Log
-                            {
-                                Data = entry.Data,
-                                Address = entry.LoggersAddress,
-                                Topics = entry.Topics,
-                                BlockHash = tmpChain.LatestBlock.Hash,
-                                BlockNumber = (ulong)tmpChain.LatestBlock.Number,
-                                LogIndex = ++logIndices
-                            }).ToArray();
-
-                            txResults.Add(new MultiCallCallResult
-                            {
-                                GasUsed = (ulong)Receipt.GasUsed,
-                                Error = new Facade.Proxy.Models.MultiCall.Error
-                                {
-                                    Data = (Receipt.Error.IsNullOrEmpty() ? Receipt.Error : "") ??
-                                               string.Empty
-                                },
-                                Return = Receipt.ReturnValue,
-                                Status = Receipt.StatusCode.ToString(),
-                                Logs = logs.ToArray()
-                            }
-                            );
-                        }
-
-                        MultiCallBlockResult? result = new()
-                        {
-                            baseFeePerGas = tmpChain.LatestBlock.BaseFeePerGas,
-                            FeeRecipient = tmpChain.LatestBlock.Beneficiary,
-                            GasLimit = (ulong)tmpChain.LatestBlock.GasLimit,
-                            GasUsed = (ulong)tmpChain.LatestBlock.GasUsed,
-                            Number = (ulong)tmpChain.LatestBlock.Number,
-                            Hash = tmpChain.LatestBlock.Hash,
-                            Timestamp = tmpChain.LatestBlock.Timestamp,
-                            Calls = txResults.ToArray()
-                        };
-                        results.Add(result);
-                    }
-                }
+                return ResultWrapper<MultiCallBlockResult[]>.Fail($"No state available for block {header.Hash}",
+                    ErrorCodes.ResourceUnavailable);
             }
 
+            using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
+
+            List<MultiCallBlockResult> results = _blockchainBridge.MultiCall(header.Clone(),
+                blockCallsToProcess,
+                cancellationTokenSource.Token);
+            
             return ResultWrapper<MultiCallBlockResult[]>.Success(results.ToArray());
         }
     }

@@ -5,7 +5,7 @@ namespace Nethermind.Facade.Proxy.Models.MultiCall;
 
 public class MultiCallBlockStateCallsModel
 {
-    public BlockOverride BlockOverride { get; set; }
+    public BlockOverride? BlockOverride { get; set; }
     public AccountOverride[] StateOverrides { get; set; }
     public CallTransactionModel[] Calls { get; set; }
 }

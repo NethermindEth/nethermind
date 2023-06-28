@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -11,7 +12,9 @@ using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
+using ResultType = Nethermind.Facade.Proxy.Models.MultiCall.ResultType;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -34,6 +37,74 @@ public class EthMulticallTestsBlocksAndTransactions
         tx.Hash = tx.CalculateHash();
         return tx;
     }
+
+    [Test]
+    public async Task Test_eth_multicall_serialisation()
+    {
+        TestRpcBlockchain chain = await EthRpcMulticallTests.CreateChain();
+
+
+        var pk = new PrivateKey("0xc7ba1a2892ec0ea1940eebeae739b1effe0543b3104469d5b66625f49ca86e94");
+
+        UInt256 nonceA = chain.State.GetNonce(pk.Address);
+        Transaction txMainnetAtoBtoFail =
+            GetTransferTxData(nonceA,
+                chain.EthereumEcdsa, pk, new Address("0xA143c0eA6f8059f7B3651417ccD2bAA80FC2d4Ab"), 10_000_000);
+
+        UInt256 nextNonceA = nonceA++;
+        Transaction txMainnetAtoBToComplete =
+            GetTransferTxData(nextNonceA,
+                chain.EthereumEcdsa, pk, new Address("0xA143c0eA6f8059f7B3651417ccD2bAA80FC2d4Ab"), 4_000_000);
+
+
+        MultiCallBlockStateCallsModel[] requestMultiCall =
+        {
+            new()
+            {
+                BlockOverride = new BlockOverride()
+                {
+                   Number = 18000000
+                },
+                Calls = new[]
+                {
+                    CallTransactionModel.FromTransaction(txMainnetAtoBtoFail),
+                    CallTransactionModel.FromTransaction(txMainnetAtoBToComplete),
+                },
+                StateOverrides = new[]
+                {
+                    new AccountOverride()
+                    {
+                        Address = pk.Address,
+                        Balance = Math.Max(420_000_004_000_001UL, 1_000_000_004_000_001UL)
+                    }
+                }
+            }
+        };
+        EthereumJsonSerializer serializer = new();
+
+        string serializedCall = serializer.Serialize(requestMultiCall);
+        Console.WriteLine(serializedCall);
+
+
+        //Force persistancy of head block in main chain
+        chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
+        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
+        //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
+        EthRpcModule.MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder, chain.SpecProvider, new JsonRpcConfig());
+        ResultWrapper<MultiCallBlockResult[]> result =
+            executor.Execute(1, requestMultiCall, BlockParameter.Latest, true);
+        MultiCallBlockResult[] data = result.Data;
+
+        Assert.AreEqual(1, data.Length);
+
+        foreach (MultiCallBlockResult blockResult in data)
+        {
+            Assert.AreEqual(2, blockResult.Calls.Length);
+            Assert.AreEqual(blockResult.Calls[0].Type, ResultType.Failure);
+            Assert.AreEqual(blockResult.Calls[1].Type, ResultType.Success);
+        }
+    }
+
 
     /// <summary>
     ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
@@ -105,7 +176,7 @@ public class EthMulticallTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        EthRpcModule.MultiCallTxExecutor executor = new(chain.DbProvider, chain.SpecProvider, new JsonRpcConfig());
+        EthRpcModule.MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder,  chain.SpecProvider, new JsonRpcConfig());
         ResultWrapper<MultiCallBlockResult[]> result =
             executor.Execute(1, requestMultiCall, BlockParameter.Latest, true);
         MultiCallBlockResult[] data = result.Data;
@@ -177,7 +248,7 @@ public class EthMulticallTestsBlocksAndTransactions
         await chain.AddBlock(true, txMainnetAtoB);
         UInt256 after = chain.State.GetAccount(TestItem.AddressA).Balance;
         Assert.Less(after, before);
-
+        
         TxReceipt recept = chain.Bridge.GetReceipt(txMainnetAtoB.Hash);
         LogEntry[]? ls = recept.Logs;
 
@@ -186,10 +257,10 @@ public class EthMulticallTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        EthRpcModule.MultiCallTxExecutor executor = new(chain.DbProvider, chain.SpecProvider, new JsonRpcConfig());
+        EthRpcModule.MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder, chain.SpecProvider, new JsonRpcConfig());
+
         ResultWrapper<MultiCallBlockResult[]> result =
             executor.Execute(1, requestMultiCall, BlockParameter.Latest, true);
-        Assert.AreEqual(ErrorCodes.InternalError, result.ErrorCode);
-        Assert.IsTrue(result.Result.Error.StartsWith("At block 123 got exception:"));
+        Assert.IsTrue(result.Data[1].Calls[0].Error.Message.StartsWith("numeric overflow"));
     }
 }

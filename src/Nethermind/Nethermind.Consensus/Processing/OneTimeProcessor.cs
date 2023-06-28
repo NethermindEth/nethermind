@@ -14,10 +14,10 @@ namespace Nethermind.Consensus.Processing
     {
         public ITracerBag Tracers => _processor.Tracers;
 
-        private readonly IBlockchainProcessor _processor;
-        private readonly IReadOnlyDbProvider _readOnlyDbProvider;
+        protected readonly IBlockchainProcessor _processor;
+        protected readonly IReadOnlyDbProvider _readOnlyDbProvider;
 
-        private object _lock = new();
+        protected object _lock = new();
 
         public OneTimeChainProcessor(IReadOnlyDbProvider readOnlyDbProvider, IBlockchainProcessor processor)
         {
@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.Processing
             return _processor.StopAsync(processRemainingBlocks);
         }
 
-        public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer)
+        public virtual Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer)
         {
             lock (_lock)
             {
@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.Processing
         public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
 #pragma warning restore 67
 
-        public void Dispose()
+        public virtual void Dispose()
         {
             _processor?.Dispose();
             _readOnlyDbProvider?.Dispose();

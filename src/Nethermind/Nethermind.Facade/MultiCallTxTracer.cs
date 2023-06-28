@@ -3,23 +3,27 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
 
-namespace Nethermind.JsonRpc.Modules.Eth.Multicall;
+namespace Nethermind.Facade;
 
-//Why this is not visitor like DDD...
 internal class MultiCallTxTracer : ITxTracer
 {
     private readonly List<LogEntry> _extendedLogs;
 
-    public MultiCallTxTracer(Transaction t, List<LogEntry> extendedLogs)
+    public MultiCallCallResult TraceResult { get; set; }
+
+    public MultiCallTxTracer(Transaction t, bool logEvents = true)
     {
-        _extendedLogs = extendedLogs;
+        _extendedLogs = new();
+        IsTracingEventLogs = logEvents;
     }
 
     public bool IsTracingState { get; }
@@ -61,7 +65,7 @@ internal class MultiCallTxTracer : ITxTracer
         throw new NotImplementedException();
     }
 
-    public bool IsTracingReceipt { get; }
+    public bool IsTracingReceipt => true;
     public bool IsTracingActions => true;
     public bool IsTracingOpLevelStorage { get; }
     public bool IsTracingMemory { get; }
@@ -75,17 +79,47 @@ internal class MultiCallTxTracer : ITxTracer
 
 
     public bool IsTracing => IsTracingActions || IsTracingEventLogs;
-    public bool IsTracingEventLogs => true;
+    public bool IsTracingEventLogs { get; }
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
         Keccak? stateRoot = null)
     {
-        throw new NotImplementedException();
+        TraceResult = new MultiCallCallResult()
+        {
+            GasUsed = (ulong)gasSpent,
+            Return = output,
+            Status = StatusCode.Success.ToString(),
+            Logs = _extendedLogs.Select((entry, i) => new Log
+            {
+                Data = entry.Data,
+                Address = entry.LoggersAddress,
+                Topics = entry.Topics,
+                LogIndex = (ulong)i
+            }).ToArray()
+        };
     }
 
     public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
     {
-        throw new NotImplementedException();
+        TraceResult = new MultiCallCallResult()
+        {
+            
+            GasUsed = (ulong)gasSpent,
+            Error = new Facade.Proxy.Models.MultiCall.Error
+            {
+                Code = StatusCode.Failure,
+                Message = error
+            },
+            Return = output,
+            Status = StatusCode.Failure.ToString(),
+            Logs = _extendedLogs.Select((entry, i) => new Log
+            {
+                Data = entry.Data,
+                Address = entry.LoggersAddress,
+                Topics = entry.Topics,
+                LogIndex = (ulong)i
+            }).ToArray()
+        };
     }
 
     public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -9,25 +8,18 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing
 {
     /// <summary>
     /// Not thread safe.
     /// </summary>
-    public class ReadOnlyChainProcessingEnv : IDisposable
+    public class ReadOnlyChainProcessingEnv : ReadOnlyChainProcessingEnvBase
     {
-        private readonly ReadOnlyTxProcessingEnv _txEnv;
-
-        private readonly BlockchainProcessor _blockProcessingQueue;
-        public IBlockProcessor BlockProcessor { get; }
         public IBlockchainProcessor ChainProcessor { get; }
-        public IBlockProcessingQueue BlockProcessingQueue { get; }
-        public IWorldState StateProvider => _txEnv.StateProvider;
 
         public ReadOnlyChainProcessingEnv(
-            ReadOnlyTxProcessingEnv txEnv,
+            IReadOnlyTxProcessingEnv txEnv,
             IBlockValidator blockValidator,
             IBlockPreprocessorStep recoveryStep,
             IRewardCalculator rewardCalculator,
@@ -35,31 +27,28 @@ namespace Nethermind.Consensus.Processing
             IReadOnlyDbProvider dbProvider,
             ISpecProvider specProvider,
             ILogManager logManager,
-            IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null)
+            IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null) : base(txEnv, blockValidator, recoveryStep, rewardCalculator, receiptStorage, dbProvider, specProvider, logManager, blockTransactionsExecutor)
         {
-            _txEnv = txEnv;
-
-            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor =
-                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor, StateProvider);
-
-            BlockProcessor = new BlockProcessor(
-                specProvider,
-                blockValidator,
-                rewardCalculator,
-                transactionsExecutor,
-                StateProvider,
-                receiptStorage,
-                NullWitnessCollector.Instance,
-                logManager);
-
-            _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, _txEnv.StateReader, logManager, BlockchainProcessor.Options.NoReceipts);
-            BlockProcessingQueue = _blockProcessingQueue;
             ChainProcessor = new OneTimeChainProcessor(dbProvider, _blockProcessingQueue);
         }
+    }
 
-        public void Dispose()
+    public class MultiCallReadOnlyChainProcessingEnv : ReadOnlyChainProcessingEnvBase
+    {
+        public IBlockchainProcessor ChainProcessor { get; }
+
+        public MultiCallReadOnlyChainProcessingEnv(
+            IReadOnlyTxProcessingEnv txEnv,
+            IBlockValidator blockValidator,
+            IBlockPreprocessorStep recoveryStep,
+            IRewardCalculator rewardCalculator,
+            IReceiptStorage receiptStorage,
+            IReadOnlyDbProvider dbProvider,
+            ISpecProvider specProvider,
+            ILogManager logManager,
+            IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null) : base(txEnv, blockValidator, recoveryStep, rewardCalculator, receiptStorage, dbProvider, specProvider, logManager, blockTransactionsExecutor)
         {
-            _blockProcessingQueue?.Dispose();
+            ChainProcessor = new MultiCallChainProcessor(dbProvider, _blockProcessingQueue);
         }
     }
 }

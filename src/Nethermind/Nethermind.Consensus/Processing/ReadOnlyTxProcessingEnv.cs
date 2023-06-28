@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Crypto;
@@ -10,22 +9,17 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.Trie.Pruning;
+
 
 // ReSharper disable MemberCanBePrivate.Global
 // ReSharper disable UnusedAutoPropertyAccessor.Global
 namespace Nethermind.Consensus.Processing
 {
-    public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
+    public class ReadOnlyTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IReadOnlyTxProcessingEnv
+
     {
-        public IStateReader StateReader { get; }
-        public IWorldState StateProvider { get; }
         public ITransactionProcessor TransactionProcessor { get; set; }
-        public IBlockTree BlockTree { get; }
-        public IReadOnlyDbProvider DbProvider { get; }
-        public IBlockhashProvider BlockhashProvider { get; }
-        public IVirtualMachine Machine { get; protected set; }
 
         public ReadOnlyTxProcessingEnv(
             IDbProvider? dbProvider,
@@ -39,24 +33,14 @@ namespace Nethermind.Consensus.Processing
 
         public ReadOnlyTxProcessingEnv(
             IReadOnlyDbProvider? readOnlyDbProvider,
-            IReadOnlyTrieStore? readOnlyTrieStore,
-            IReadOnlyBlockTree? readOnlyBlockTree,
+            IReadOnlyTrieStore? trieStore,
+            IReadOnlyBlockTree? blockTree,
             ISpecProvider? specProvider,
-            ILogManager? logManager)
+            ILogManager? logManager
+            ): base(readOnlyDbProvider, trieStore, blockTree, logManager)
         {
-            if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
-
-            DbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
-            ReadOnlyDb codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
-
-            StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);
-            StateProvider = new WorldState(readOnlyTrieStore, codeDb, logManager);
-
-            BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
-            BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
-
-            Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
-            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, logManager);
+            IVirtualMachine machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
+            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, machine, logManager);
         }
 
         public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);

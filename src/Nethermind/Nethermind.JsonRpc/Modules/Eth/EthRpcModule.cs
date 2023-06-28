@@ -376,7 +376,7 @@ public partial class EthRpcModule : IEthRpcModule
     public ResultWrapper<MultiCallBlockResult[]> eth_multicall(ulong version, MultiCallBlockStateCallsModel[] blockCalls,
         BlockParameter? blockParameter = null, bool traceTransfers = true)
     {
-        return new MultiCallTxExecutor(_dbProvider, _specProvider, _rpcConfig)
+        return new MultiCallTxExecutor(_dbProvider, _blockchainBridge, _blockFinder, _specProvider, _rpcConfig)
             .Execute(version, blockCalls, blockParameter, traceTransfers);
     }
 

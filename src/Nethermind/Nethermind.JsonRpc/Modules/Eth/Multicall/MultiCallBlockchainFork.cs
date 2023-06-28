@@ -23,6 +23,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
@@ -208,10 +209,16 @@ public class MultiCallBlockchainFork : IDisposable
             new FilterManager(filterStore, BlockProcessor, txPool, logManager);
 
         //ToDO make use of our VM!!!
-        MultiCallReadOnlyTxProcessingEnv processingEnv = new(VirtualMachine,
+        ReadOnlyTxProcessingEnv processingEnv = new(
             new ReadOnlyDbProvider(DbProvider, false),
             new TrieStore(DbProvider.StateDb, logManager).AsReadOnly(),
             new ReadOnlyBlockTree(BlockTree),
+            SpecProvider,
+            logManager);
+
+        IMultiCallBlocksProcessingEnv mcProcessingEnv =
+            MultiCallReadOnlyBlocksProcessingEnv.Create(
+            new ReadOnlyDbProvider(DbProvider, true),
             SpecProvider,
             logManager);
 
@@ -226,6 +233,7 @@ public class MultiCallBlockchainFork : IDisposable
 
 
         bridge = new BlockchainBridge(processingEnv,
+            mcProcessingEnv,
             txPool,
             receiptFinder,
             filterStore,

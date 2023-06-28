@@ -4,12 +4,11 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Logging;
 using Nethermind.State;
 
-namespace Nethermind.JsonRpc.Modules.Eth.Multicall;
+namespace Nethermind.Evm;
 
 public class MultiCallVirtualMachine : VirtualMachine
 {

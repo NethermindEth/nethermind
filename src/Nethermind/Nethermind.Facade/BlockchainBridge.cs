@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -26,6 +27,12 @@ using Nethermind.Facade.Filters;
 using Nethermind.State;
 using Nethermind.Core.Extensions;
 using Nethermind.Config;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Facade.Proxy.Models.MultiCall;
+using System.Transactions;
+using Microsoft.CSharp.RuntimeBinder;
+using Transaction = Nethermind.Core.Transaction;
+using Nethermind.Specs;
 
 namespace Nethermind.Facade
 {
@@ -37,7 +44,8 @@ namespace Nethermind.Facade
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        private readonly ReadOnlyTxProcessingEnv _processingEnv;
+        private readonly IReadOnlyTxProcessingEnv _processingEnv;
+        private readonly IMultiCallBlocksProcessingEnv _multiCallProcessingEnv;
         private readonly ITxPool _txPool;
         private readonly IFilterStore _filterStore;
         private readonly IEthereumEcdsa _ecdsa;
@@ -48,7 +56,8 @@ namespace Nethermind.Facade
         private readonly ISpecProvider _specProvider;
         private readonly IBlocksConfig _blocksConfig;
 
-        public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
+        public BlockchainBridge(IReadOnlyTxProcessingEnv processingEnv,
+            IMultiCallBlocksProcessingEnv multiCallProcessingEnv,
             ITxPool? txPool,
             IReceiptFinder? receiptStorage,
             IFilterStore? filterStore,
@@ -61,6 +70,7 @@ namespace Nethermind.Facade
             bool isMining)
         {
             _processingEnv = processingEnv ?? throw new ArgumentNullException(nameof(processingEnv));
+            _multiCallProcessingEnv = multiCallProcessingEnv ?? throw new ArgumentNullException(nameof(multiCallProcessingEnv));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(_txPool));
             _receiptFinder = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
@@ -165,6 +175,16 @@ namespace Nethermind.Facade
                 OutputData = callOutputTracer.ReturnValue,
                 InputError = !tryCallResult.Success
             };
+        }
+
+
+        public List<MultiCallBlockResult> MultiCall(BlockHeader header, MultiCallBlockStateCallsModel[] blocks, CancellationToken cancellationToken)
+        {
+            MultiCallBlockTracer multiCallOutputTracer = new();
+
+            MultiCallTrace(header, blocks, multiCallOutputTracer.WithCancellation(cancellationToken));
+            
+            return multiCallOutputTracer._results;
         }
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
@@ -284,6 +304,116 @@ namespace Nethermind.Facade
             transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
         }
 
+        public void MultiCallTrace(BlockHeader parent, MultiCallBlockStateCallsModel[] blocks,
+           IBlockTracer tracer)
+        {
+            using (IMultiCallBlocksProcessingEnv? env = _multiCallProcessingEnv.Clone())
+            {
+                var processor = env.GetProcessor(env.StateProvider.StateRoot);
+                var firstBlock = blocks.FirstOrDefault();
+                var startStateRoot = parent.StateRoot;
+                if (firstBlock?.BlockOverride?.Number != null
+                    && firstBlock?.BlockOverride?.Number > UInt256.Zero
+                    && firstBlock?.BlockOverride?.Number < (ulong)long.MaxValue)
+                {
+                    BlockHeader? searchResult =
+                        _multiCallProcessingEnv.BlockTree.FindHeader((long)firstBlock?.BlockOverride.Number);
+                    if (searchResult != null)
+                    {
+                        startStateRoot = searchResult.StateRoot;
+                    }
+                }
+                
+                foreach (MultiCallBlockStateCallsModel? callInputBlock in blocks)
+                {
+                    BlockHeader callHeader = null;
+                    if (callInputBlock.BlockOverride == null)
+                    {
+                        callHeader = new BlockHeader(
+                            parent.Hash,
+                            Keccak.OfAnEmptySequenceRlp,
+                            Address.Zero,
+                            UInt256.Zero,
+                            parent.Number + 1,
+                            parent.GasLimit,
+                            parent.Timestamp + 1,
+                            Array.Empty<byte>());
+                        callHeader.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(parent));
+                    }
+                    else
+                    {
+                        callHeader = callInputBlock.BlockOverride.GetBlockHeader(parent);
+                    }
+
+                    env.StateProvider.StateRoot = parent.StateRoot;
+                    
+                    IReleaseSpec releaseSpec = _specProvider.GetSpec(parent);
+
+                    if (releaseSpec.IsEip4844Enabled)
+                    {
+                        // TODO: Calculate ExcessDataGas depending on parent ExcessDataGas and number of blobs in txs
+                        callHeader.ExcessDataGas = 0;
+                    }
+
+                    callHeader.MixHash = parent.MixHash;
+                    callHeader.IsPostMerge = parent.Difficulty == 0;
+                    
+                    var transactions = callInputBlock.Calls.Select(model => model.GetTransaction()).ToList();
+                    foreach (Transaction transaction in transactions)
+                    {
+                        transaction.SenderAddress ??= Address.SystemUser;
+
+                        Keccak stateRoot = callHeader.StateRoot!;
+
+                        if (transaction.Nonce == 0)
+                        {
+                            transaction.Nonce = env.StateProvider.GetAccount(transaction.SenderAddress).Nonce;
+                        }
+
+                        transaction.Hash = transaction.CalculateHash();
+                    }
+
+                    Block? currentBlock = new(callHeader, transactions, Array.Empty<BlockHeader>());
+
+                    var currentSpec = env.SpecProvider.GetSpec(currentBlock.Header);
+                    if (callInputBlock.StateOverrides != null)
+                    {
+                        ModifyAccounts(callInputBlock.StateOverrides, env.StateProvider, currentSpec);
+                    }
+
+                    env.StateProvider.Commit(currentSpec);
+                    env.StateProvider.CommitTree(currentBlock.Number);
+                    env.StateProvider.RecalculateStateRoot();
+
+                    currentBlock.Header.StateRoot = env.StateProvider.StateRoot;
+                    currentBlock.Header.IsPostMerge = true; //ToDo: Seal if necessary before merge 192 BPB
+                    currentBlock.Header.Hash = currentBlock.Header.CalculateHash();
+
+
+                    Block[]? currentBlocks = processor.Process(env.StateProvider.StateRoot,
+                        new List<Block> { currentBlock },
+                        ProcessingOptions.ForceProcessing |
+                        // ProcessingOptions.NoValidation |
+                        ProcessingOptions.DoNotVerifyNonce |
+                        ProcessingOptions.IgnoreParentNotOnMainChain |
+                        ProcessingOptions.MarkAsProcessed |
+                        ProcessingOptions.StoreReceipts
+                        , tracer);
+
+                    var processedBlock = currentBlocks.FirstOrDefault();
+                    if (processedBlock != null)
+                    {
+                        parent = processedBlock.Header;
+                        //env.StateProvider.CommitTree(parent.Number);
+                    }
+                    else
+                    {
+                        throw new RuntimeBinderException("Processing failed"); //Todo fix
+                    }
+                }
+            }
+        }
+
         public ulong GetChainId()
         {
             return _processingEnv.BlockTree.ChainId;
@@ -292,6 +422,62 @@ namespace Nethermind.Facade
         private UInt256 GetNonce(Keccak stateRoot, Address address)
         {
             return _processingEnv.StateReader.GetNonce(stateRoot, address);
+        }
+
+        //Apply changes to accounts and contracts states including precompiles
+        private void ModifyAccounts(AccountOverride[] StateOverrides, IWorldState? StateProvider, IReleaseSpec? CurrentSpec)
+        {
+            Account? acc;
+
+            foreach (AccountOverride accountOverride in StateOverrides)
+            {
+                Address address = accountOverride.Address;
+                bool accExists = StateProvider.AccountExists(address);
+                if (!accExists)
+                {
+                    StateProvider.CreateAccount(address, accountOverride.Balance, accountOverride.Nonce);
+                    acc = StateProvider.GetAccount(address);
+                }
+                else
+                    acc = StateProvider.GetAccount(address);
+
+                UInt256 accBalance = acc.Balance;
+                if (accBalance > accountOverride.Balance)
+                    StateProvider.SubtractFromBalance(address, accBalance - accountOverride.Balance, CurrentSpec);
+                else if (accBalance < accountOverride.Nonce)
+                    StateProvider.AddToBalance(address, accountOverride.Balance - accBalance, CurrentSpec);
+
+                UInt256 accNonce = acc.Nonce;
+                if (accNonce > accountOverride.Nonce)
+                    StateProvider.DecrementNonce(address);
+                else if (accNonce < accountOverride.Nonce) StateProvider.IncrementNonce(address);
+
+                if (acc != null)
+                {
+                    if (accountOverride.Code is not null)
+                    {
+                        _multiCallProcessingEnv.Machine.SetOverwrite(StateProvider, CurrentSpec, address,
+                            new CodeInfo(accountOverride.Code), accountOverride.MoveToAddress);
+                    }
+                }
+
+
+                if (accountOverride.State is not null)
+                {
+                    accountOverride.State = new Dictionary<UInt256, byte[]>();
+                    foreach (KeyValuePair<UInt256, byte[]> storage in accountOverride.State)
+                        StateProvider.Set(new StorageCell(address, storage.Key),
+                            storage.Value.WithoutLeadingZeros().ToArray());
+                }
+
+                if (accountOverride.StateDiff is not null)
+                {
+                    foreach (KeyValuePair<UInt256, byte[]> storage in accountOverride.StateDiff)
+                        StateProvider.Set(new StorageCell(address, storage.Key),
+                            storage.Value.WithoutLeadingZeros().ToArray());
+                }
+                StateProvider.Commit(CurrentSpec);
+            }
         }
 
         public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);

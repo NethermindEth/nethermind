@@ -66,10 +66,16 @@ namespace Nethermind.Facade.Test
                 _specProvider,
                 LimboLogs.Instance);
 
+            IMultiCallBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
+                new ReadOnlyDbProvider(_dbProvider, true),
+                _specProvider,
+                LimboLogs.Instance);
+
             processingEnv.TransactionProcessor = _transactionProcessor;
 
             _blockchainBridge = new BlockchainBridge(
                 processingEnv,
+                multiCallProcessingEnv,
                 _txPool,
                 _receiptStorage,
                 _filterStore,
@@ -209,6 +215,11 @@ namespace Nethermind.Facade.Test
                 _specProvider,
                 LimboLogs.Instance);
 
+            IMultiCallBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
+                new ReadOnlyDbProvider(_dbProvider, true),
+                _specProvider,
+                LimboLogs.Instance);
+
             Block head = Build.A.Block.WithNumber(headNumber).TestObject;
             Block bestSuggested = Build.A.Block.WithNumber(8).TestObject;
 
@@ -217,6 +228,7 @@ namespace Nethermind.Facade.Test
 
             _blockchainBridge = new BlockchainBridge(
                 processingEnv,
+                multiCallProcessingEnv,
                 _txPool,
                 _receiptStorage,
                 _filterStore,

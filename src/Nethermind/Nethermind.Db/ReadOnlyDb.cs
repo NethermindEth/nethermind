@@ -26,7 +26,7 @@ namespace Nethermind.Db
             _memDb.Dispose();
         }
 
-        public string Name { get; } = "ReadOnlyDb";
+        public string Name { get => _wrappedDb.Name; }
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
