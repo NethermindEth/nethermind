@@ -103,7 +103,7 @@ internal class MultiCallTxTracer : ITxTracer
     {
         TraceResult = new MultiCallCallResult()
         {
-            
+
             GasUsed = (ulong)gasSpent,
             Error = new Facade.Proxy.Models.MultiCall.Error
             {

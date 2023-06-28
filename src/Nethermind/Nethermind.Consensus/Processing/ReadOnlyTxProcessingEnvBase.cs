@@ -34,6 +34,6 @@ public class ReadOnlyTxProcessingEnvBase : IReadOnlyTxProcessingEnvBase
 
         BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
-            
+
     }
 }

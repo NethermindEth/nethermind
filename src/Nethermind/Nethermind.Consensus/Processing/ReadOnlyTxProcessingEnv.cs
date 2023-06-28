@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.Processing
             IReadOnlyBlockTree? blockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager
-            ): base(readOnlyDbProvider, trieStore, blockTree, logManager)
+            ) : base(readOnlyDbProvider, trieStore, blockTree, logManager)
         {
             IVirtualMachine machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
             TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, machine, logManager);

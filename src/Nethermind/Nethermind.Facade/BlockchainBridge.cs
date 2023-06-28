@@ -183,7 +183,7 @@ namespace Nethermind.Facade
             MultiCallBlockTracer multiCallOutputTracer = new();
 
             MultiCallTrace(header, blocks, multiCallOutputTracer.WithCancellation(cancellationToken));
-            
+
             return multiCallOutputTracer._results;
         }
 
@@ -323,7 +323,7 @@ namespace Nethermind.Facade
                         startStateRoot = searchResult.StateRoot;
                     }
                 }
-                
+
                 foreach (MultiCallBlockStateCallsModel? callInputBlock in blocks)
                 {
                     BlockHeader callHeader = null;
@@ -346,7 +346,7 @@ namespace Nethermind.Facade
                     }
 
                     env.StateProvider.StateRoot = parent.StateRoot;
-                    
+
                     IReleaseSpec releaseSpec = _specProvider.GetSpec(parent);
 
                     if (releaseSpec.IsEip4844Enabled)
@@ -357,7 +357,7 @@ namespace Nethermind.Facade
 
                     callHeader.MixHash = parent.MixHash;
                     callHeader.IsPostMerge = parent.Difficulty == 0;
-                    
+
                     var transactions = callInputBlock.Calls.Select(model => model.GetTransaction()).ToList();
                     foreach (Transaction transaction in transactions)
                     {

@@ -176,7 +176,7 @@ public class EthMulticallTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        EthRpcModule.MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder,  chain.SpecProvider, new JsonRpcConfig());
+        EthRpcModule.MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder, chain.SpecProvider, new JsonRpcConfig());
         ResultWrapper<MultiCallBlockResult[]> result =
             executor.Execute(1, requestMultiCall, BlockParameter.Latest, true);
         MultiCallBlockResult[] data = result.Data;
@@ -248,7 +248,7 @@ public class EthMulticallTestsBlocksAndTransactions
         await chain.AddBlock(true, txMainnetAtoB);
         UInt256 after = chain.State.GetAccount(TestItem.AddressA).Balance;
         Assert.Less(after, before);
-        
+
         TxReceipt recept = chain.Bridge.GetReceipt(txMainnetAtoB.Hash);
         LogEntry[]? ls = recept.Logs;
 

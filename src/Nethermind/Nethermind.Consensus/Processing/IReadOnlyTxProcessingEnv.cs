@@ -5,7 +5,7 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing;
 
-public interface IReadOnlyTxProcessingEnv: IReadOnlyTxProcessorSource, IReadOnlyTxProcessingEnvBase
+public interface IReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource, IReadOnlyTxProcessingEnvBase
 {
     ITransactionProcessor TransactionProcessor { get; set; }
 }

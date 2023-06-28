@@ -19,10 +19,10 @@ public class BlockOverride
     public Address FeeRecipient { get; set; } = Address.Zero;
     public UInt256 BaseFee { get; set; }
 
-    public BlockHeader GetBlockHeader(BlockHeader parent )
+    public BlockHeader GetBlockHeader(BlockHeader parent)
     {
         ulong newTime = parent.Timestamp + 1;
-        if(0 == Time) {}
+        if (0 == Time) { }
         else if (Time <= ulong.MaxValue)
             newTime = (ulong)Time;
         else
@@ -62,7 +62,7 @@ public class BlockOverride
 
         //Note we treet parent block as such 
         result.BaseFeePerGas = BaseFee != 0 ? BaseFee : parent.BaseFeePerGas;
-        
+
         UInt256 difficulty = ConstantDifficulty.One.Calculate(result, parent);
         result.Difficulty = difficulty;
         result.TotalDifficulty = parent.TotalDifficulty + difficulty;

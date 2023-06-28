@@ -136,7 +136,7 @@ public partial class EthRpcModule
             List<MultiCallBlockResult> results = _blockchainBridge.MultiCall(header.Clone(),
                 blockCallsToProcess,
                 cancellationTokenSource.Token);
-            
+
             return ResultWrapper<MultiCallBlockResult[]>.Success(results.ToArray());
         }
     }

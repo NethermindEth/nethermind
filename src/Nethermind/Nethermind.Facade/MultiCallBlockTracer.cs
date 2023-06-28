@@ -20,10 +20,10 @@ public class MultiCallBlockTracer : IBlockTracer
     private List<MultiCallTxTracer> _txTracers = new();
 
     private Block currentBlock;
-    public bool TraceDetails { get; set; } 
+    public bool TraceDetails { get; set; }
     public bool IsTracingRewards => false;
 
-    public MultiCallBlockTracer(bool traceDetails= true)
+    public MultiCallBlockTracer(bool traceDetails = true)
     {
         TraceDetails = traceDetails;
     }
@@ -68,7 +68,7 @@ public class MultiCallBlockTracer : IBlockTracer
             Timestamp = currentBlock.Timestamp,
             FeeRecipient = currentBlock.Beneficiary,
             baseFeePerGas = currentBlock.BaseFeePerGas,
-            
+
         };
         result.Calls.ForEach(callResult =>
         {

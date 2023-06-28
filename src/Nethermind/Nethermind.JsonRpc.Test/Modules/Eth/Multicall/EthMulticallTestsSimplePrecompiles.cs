@@ -93,10 +93,10 @@ contract EcrecoverProxy {
         {
             StateOverrides = new[]
             {
-                new AccountOverride { Address = EcRecoverPrecompile.Instance.Address, Code = code } 
+                new AccountOverride { Address = EcRecoverPrecompile.Instance.Address, Code = code }
 
             },
-            Calls = new [] { CallTransactionModel.FromTransaction(systemTransactionForModifiedVM) }
+            Calls = new[] { CallTransactionModel.FromTransaction(systemTransactionForModifiedVM) }
         };
 
 
@@ -111,7 +111,7 @@ contract EcrecoverProxy {
 
         var result = chain.Bridge.MultiCall(chain.BlockFinder.Head.Header, new[] { requestMultiCall }, CancellationToken.None);
         var logs = result.First().Calls.First().Logs;
-        
+
         //Check results
         /*
         byte[] addressBytes = Bytes.FromHexString(responseFromModifiedVM.Data)

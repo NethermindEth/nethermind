@@ -67,7 +67,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
         ILogManager? logManager) : base(readOnlyDbProvider, trieStore, blockTree,
         logManager)
     {
-       
+
         _trieStore = trieStore;
         _logManager = logManager;
         SpecProvider = specProvider;
