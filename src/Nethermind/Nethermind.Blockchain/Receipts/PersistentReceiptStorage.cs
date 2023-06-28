@@ -72,13 +72,14 @@ namespace Nethermind.Blockchain.Receipts
 
         private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
+            if (e.PreviousBlock != null)
+            {
+                RemoveBlockTx(e.PreviousBlock);
+            }
+
             // Dont block main loop
             Task.Run(() =>
             {
-                if (e.PreviousBlock != null)
-                {
-                    RemoveBlockTx(e.PreviousBlock);
-                }
 
                 Block newMain = e.Block;
 
