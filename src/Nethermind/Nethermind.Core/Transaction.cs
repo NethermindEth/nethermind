@@ -31,7 +31,7 @@ namespace Nethermind.Core
         // Mint is minted on L2, locked on L1, nil if no minting.
         public UInt256 Mint { get; set; }
         // Field indicating if this transaction is exempt from the L2 gas limit.
-        public bool IsL2SystemTransaction { get; set; }
+        public bool IsOPSystemTransaction { get; set; }
 
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }

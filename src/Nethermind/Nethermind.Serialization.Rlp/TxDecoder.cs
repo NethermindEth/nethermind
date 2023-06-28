@@ -221,7 +221,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Mint = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.Value = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.GasLimit = rlpStream.DecodeLong();
-            transaction.IsL2SystemTransaction = rlpStream.DecodeBool();
+            transaction.IsOPSystemTransaction = rlpStream.DecodeBool();
             transaction.Data = rlpStream.DecodeByteArray();
         }
 
@@ -291,7 +291,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Mint = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.Value = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.GasLimit = decoderContext.DecodeLong();
-            transaction.IsL2SystemTransaction = decoderContext.DecodeBool();
+            transaction.IsOPSystemTransaction = decoderContext.DecodeBool();
             transaction.Data = decoderContext.DecodeByteArray();
         }
 
@@ -353,7 +353,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.Mint);
             stream.Encode(item.Value);
             stream.Encode(item.GasLimit);
-            stream.Encode(item.IsL2SystemTransaction);
+            stream.Encode(item.IsOPSystemTransaction);
             stream.Encode(item.Data);
         }
 
@@ -736,7 +736,7 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(item.Mint)
                    + Rlp.LengthOf(item.Value)
                    + Rlp.LengthOf(item.GasLimit)
-                   + Rlp.LengthOf(item.IsL2SystemTransaction)
+                   + Rlp.LengthOf(item.IsOPSystemTransaction)
                    + Rlp.LengthOf(item.Data);
         }
 
