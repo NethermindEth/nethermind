@@ -85,8 +85,8 @@ namespace Nethermind.Evm
             => @this.Op(Instruction.SELFBALANCE);
         public static Prepare BASEFEE(this Prepare @this)
             => @this.Op(Instruction.BASEFEE);
-        public static Prepare DATAHASH(this Prepare @this)
-            => @this.Op(Instruction.DATAHASH);
+        public static Prepare BLOBHASH(this Prepare @this)
+            => @this.Op(Instruction.BLOBHASH);
         public static Prepare POP(this Prepare @this)
             => @this.Op(Instruction.POP);
         public static Prepare PC(this Prepare @this)
@@ -254,6 +254,9 @@ namespace Nethermind.Evm
         #endregion
 
         #region opcodes_with_3_args
+        public static Prepare MCOPY(this Prepare @this, UInt256? dst = null, UInt256? src = null, UInt256? len = null)
+            => @this.PushSequence(len, src, dst)
+                    .Op(Instruction.MCOPY);
         public static Prepare ADDMOD(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null, UInt256? mod = null)
             => @this.PushSequence(mod, rhs, lhs)
                     .Op(Instruction.ADDMOD);

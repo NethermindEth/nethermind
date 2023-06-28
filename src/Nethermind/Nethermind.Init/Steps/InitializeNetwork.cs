@@ -39,6 +39,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps;
 
@@ -131,6 +132,8 @@ public class InitializeNetwork : IStep
         }
 
         _api.SyncModeSelector ??= CreateMultiSyncModeSelector(syncProgressResolver);
+        _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
+
         _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree!, _api.ReceiptStorage!, _syncConfig, _api.SyncModeSelector, _api.LogManager);
         _api.DisposeStack.Push(_api.SyncModeSelector);
 
@@ -526,7 +529,8 @@ public class InitializeNetwork : IStep
             peerStorage,
             forkInfo,
             _api.GossipPolicy,
-            _api.LogManager);
+            _api.LogManager,
+            _api.TxGossipPolicy);
 
         if (_syncConfig.WitnessProtocolEnabled)
         {
@@ -552,9 +556,7 @@ public class InitializeNetwork : IStep
 
         string chainName = BlockchainIds.GetBlockchainName(_api.ChainSpec!.NetworkId).ToLowerInvariant();
         string domain = _networkConfig.DiscoveryDns ?? $"all.{chainName}.ethdisco.net";
-#pragma warning disable CS4014
-        enrDiscovery.SearchTree(domain).ContinueWith(t =>
-#pragma warning restore CS4014
+        _ = enrDiscovery.SearchTree(domain).ContinueWith(t =>
         {
             if (t.IsFaulted)
             {

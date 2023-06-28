@@ -46,7 +46,7 @@ namespace Nethermind.Mev.Test
             public static string CoinbaseDeposit = "0xd0e30db0";
             public static int CoinbaseStartingBalanceInWei = 10000000;
             public static long LargeGasLimit = 9_000_000;
-            // 1203367 gas 
+            // 1203367 gas
             public static string LooperInvokeLoop2000 = "0x0b7d796e00000000000000000000000000000000000000000000000000000000000007d0";
             // 22000 gas about
             public static string ReverterInvokeFail = "0xa9cc4718";
@@ -70,9 +70,8 @@ namespace Nethermind.Mev.Test
 
             public static async Task<Address> Deploy(TestMevRpcBlockchain chain, string code, ulong nonce = 0, int value = 1)
             {
-                Transaction createContractTx = Build.A.Transaction.WithCode(Bytes.FromHexString(code))
-                    .WithGasLimit(LargeGasLimit).WithNonce(nonce).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
-                // guarantee state change 
+                Transaction createContractTx = Build.A.Transaction.WithCode(Bytes.FromHexString(code)).WithGasLimit(LargeGasLimit).WithNonce(nonce).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
+                // guarantee state change
                 await chain.AddBlock(true, createContractTx);
 
                 TxReceipt? createContractTxReceipt = chain.Bridge.GetReceipt(createContractTx.Hash!);
@@ -84,8 +83,8 @@ namespace Nethermind.Mev.Test
 
         private static async Task<Keccak> SendSignedTransaction(TestMevRpcBlockchain chain, Transaction tx)
         {
-            ResultWrapper<Keccak>? result = await chain.EthRpcModule.eth_sendRawTransaction(EncodeTx(tx).Bytes);
-            Assert.That(result.GetResult().ResultType, Is.Not.EqualTo(ResultType.Failure));
+            ResultWrapper<Keccak> result = await chain.EthRpcModule.eth_sendRawTransaction(EncodeTx(tx).Bytes);
+            result.Result.Should().Be(Result.Success);
             return result.Data;
         }
 
@@ -109,8 +108,8 @@ namespace Nethermind.Mev.Test
             List<Keccak> revertingTxHashes = txs.Where(tx => tx.CanRevert).Select(tx => tx.Hash!).ToList();
             MevBundleRpc mevBundleRpc = new() { BlockNumber = blockNumber, Txs = bundleBytes, RevertingTxHashes = revertingTxHashes.Count > 0 ? revertingTxHashes.ToArray() : null };
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(mevBundleRpc);
-            resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
-            resultOfBundle.GetData().Should().Be(success);
+            resultOfBundle.Result.Should().Be(Result.Success);
+            resultOfBundle.Data.Should().Be(success);
             return new MevBundle(blockNumber, txs);
         }
 
@@ -129,8 +128,8 @@ namespace Nethermind.Mev.Test
                 RelaySignature = Bytes.FromHexString(relaySignature.ToString())
             };
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendMegabundle(mevMegabundleRpc);
-            resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
-            resultOfBundle.GetData().Should().Be(success);
+            resultOfBundle.Result.Should().Be(Result.Success);
+            resultOfBundle.Data.Should().Be(success);
             return mevMegabundle;
         }
 

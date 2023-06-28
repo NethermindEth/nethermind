@@ -147,7 +147,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxPool,
                 TxSender,
                 TestWallet,
-                ReceiptFinder,
                 LimboLogs.Instance,
                 SpecProvider,
                 GasPriceOracle,

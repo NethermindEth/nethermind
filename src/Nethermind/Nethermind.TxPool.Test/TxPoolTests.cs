@@ -1485,6 +1485,114 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void Should_not_replace_better_txs_by_worse_ones()
+        {
+            TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 128 };
+            _txPool = CreatePool(txPoolConfig);
+
+            // send (size - 1) standard txs from different senders
+            for (int i = 0; i < txPoolConfig.Size - 1; i++)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce(0)
+                    .WithValue(0)
+                    .WithGasPrice(10)
+                    .WithTo(TestItem.AddressB)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
+
+                EnsureSenderBalance(TestItem.PrivateKeys[i].Address, UInt256.MaxValue);
+                AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+                result.Should().Be(AcceptTxResult.Accepted);
+            }
+
+            _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size - 1);
+            _txPool.GetPendingTransactionsBySender().Keys.Count.Should().Be(txPoolConfig.Size - 1);
+
+            // send 1 cheap tx from sender X
+            PrivateKey privateKeyOfAttacker = TestItem.PrivateKeys[txPoolConfig.Size];
+            Transaction cheapTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithValue(0)
+                .WithGasPrice(1)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, privateKeyOfAttacker).TestObject;
+
+            EnsureSenderBalance(privateKeyOfAttacker.Address, UInt256.MaxValue);
+            AcceptTxResult cheapTxResult = _txPool.SubmitTx(cheapTx, TxHandlingOptions.PersistentBroadcast);
+
+            cheapTxResult.Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size);
+            _txPool.GetPendingTransactionsBySender().Keys.Count.Should().Be(txPoolConfig.Size);
+
+            // send (size - 1) expensive txs from sender X
+            for (int i = 0; i < txPoolConfig.Size - 1; i++)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce((UInt256)(i + 1))
+                    .WithValue(0)
+                    .WithGasPrice(1000)
+                    .WithTo(TestItem.AddressB)
+                    .SignedAndResolved(_ethereumEcdsa, privateKeyOfAttacker).TestObject;
+
+                AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+                result.Should().Be(AcceptTxResult.FeeTooLowToCompete);
+
+                // newly coming txs should evict themselves
+                _txPool.GetPendingTransactionsBySender().Keys.Count.Should().Be(txPoolConfig.Size);
+            }
+
+            _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size);
+        }
+
+        [TestCase(9, false)]
+        [TestCase(11, true)]
+        public void Should_not_add_underpaid_tx_even_if_lower_nonces_are_expensive(int gasPrice, bool expectedResult)
+        {
+            TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 128 };
+            _txPool = CreatePool(txPoolConfig);
+
+            // send standard txs from different senders
+            for (int i = 1; i < txPoolConfig.Size; i++)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce(0)
+                    .WithValue(0)
+                    .WithGasPrice(10)
+                    .WithTo(TestItem.AddressB)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
+
+                EnsureSenderBalance(TestItem.PrivateKeys[i].Address, UInt256.MaxValue);
+                _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            }
+            _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size - 1);
+
+            // send first tx from sender X - expensive
+            Transaction firstTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithValue(0)
+                .WithGasPrice(11)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[0]).TestObject;
+
+            EnsureSenderBalance(TestItem.PrivateKeys[0].Address, UInt256.MaxValue);
+            _txPool.SubmitTx(firstTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size);
+
+            // sender X is sending another tx with different gasprice
+            Transaction secondTx = Build.A.Transaction
+                .WithNonce(1)
+                .WithValue(0)
+                .WithGasPrice((UInt256)gasPrice)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[0]).TestObject;
+
+            AcceptTxResult result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
+
+            result.Should().Be(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLowToCompete);
+        }
+
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
         {
             var peers = new Dictionary<ITxPoolPeer, PrivateKey>();
@@ -1520,6 +1628,7 @@ namespace Nethermind.TxPool.Test
                 new TxValidator(_specProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),
+                ShouldGossip.Instance,
                 incomingTxFilter,
                 thereIsPriorityContract);
         }

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks;
@@ -45,7 +46,7 @@ public class ColumnDb : IDbWithSpan
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] =>
         _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());
 
-    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
     {
         Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
         return _mainDb.GetAllCore(iterator);
@@ -107,6 +108,11 @@ public class ColumnDb : IDbWithSpan
     public void Flush()
     {
         _mainDb.Flush();
+    }
+
+    public void Compact()
+    {
+        _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
     }
 
     /// <summary>

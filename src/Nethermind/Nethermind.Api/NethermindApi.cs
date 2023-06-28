@@ -240,5 +240,6 @@ namespace Nethermind.Api
         public CompositePruningTrigger PruningTrigger { get; } = new();
         public ISnapProvider? SnapProvider { get; set; }
         public IProcessExitSource? ProcessExit { get; set; }
+        public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
     }
 }

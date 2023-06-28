@@ -106,7 +106,8 @@ namespace Nethermind.Evm.Test
                 {
                     Instruction.TSTORE,
                     Instruction.TLOAD,
-                    Instruction.DATAHASH,
+                    Instruction.MCOPY,
+                    Instruction.BLOBHASH,
                 }
             ).ToArray();
 

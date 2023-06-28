@@ -141,7 +141,6 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullTxPool.Instance,
                 NullTxSender.Instance,
                 NullWallet.Instance,
-                Substitute.For<IReceiptFinder>(),
                 LimboLogs.Instance,
                 specProvider,
                 gasPriceOracle,

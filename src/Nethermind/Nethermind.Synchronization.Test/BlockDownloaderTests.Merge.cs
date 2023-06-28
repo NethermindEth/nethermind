@@ -486,7 +486,7 @@ public partial class BlockDownloaderTests
         }
 
         private IPeerAllocationStrategyFactory<BlocksRequest>? _peerAllocationStrategy;
-        protected virtual IPeerAllocationStrategyFactory<BlocksRequest> PeerAllocationStrategy =>
+        protected override IPeerAllocationStrategyFactory<BlocksRequest> PeerAllocationStrategy =>
             _peerAllocationStrategy ??= new MergeBlocksSyncPeerAllocationStrategyFactory(PosSwitcher, BeaconPivot, LimboLogs.Instance);
 
     }
