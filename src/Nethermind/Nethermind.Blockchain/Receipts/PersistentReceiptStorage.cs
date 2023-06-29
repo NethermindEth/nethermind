@@ -80,6 +80,7 @@ namespace Nethermind.Blockchain.Receipts
             // Dont block main loop
             Task.Run(() =>
             {
+
                 Block newMain = e.Block;
 
                 // Delete old tx index
@@ -88,18 +89,10 @@ namespace Nethermind.Blockchain.Receipts
                     Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
                     if (newOldTx != null)
                     {
-                        ClearTxIndexForBlock(newOldTx);
+                        RemoveBlockTx(newOldTx);
                     }
                 }
             });
-        }
-
-        private void ClearTxIndexForBlock(Block block)
-        {
-            foreach (Transaction transaction in block.Transactions)
-            {
-                _transactionDb[transaction.Hash.Bytes] = null;
-            }
         }
 
         public Keccak FindBlockHash(Keccak txHash)
