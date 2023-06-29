@@ -12,6 +12,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.Multicall;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule;

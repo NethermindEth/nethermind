@@ -90,7 +90,7 @@ public class EthMulticallTestsBlocksAndTransactions
         chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        EthRpcModule.MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder, chain.SpecProvider, new JsonRpcConfig());
+        MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder, chain.SpecProvider, new JsonRpcConfig());
         ResultWrapper<MultiCallBlockResult[]> result =
             executor.Execute(1, requestMultiCall, BlockParameter.Latest, true);
         MultiCallBlockResult[] data = result.Data;
@@ -176,7 +176,7 @@ public class EthMulticallTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        EthRpcModule.MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder, chain.SpecProvider, new JsonRpcConfig());
+        MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder, chain.SpecProvider, new JsonRpcConfig());
         ResultWrapper<MultiCallBlockResult[]> result =
             executor.Execute(1, requestMultiCall, BlockParameter.Latest, true);
         MultiCallBlockResult[] data = result.Data;
@@ -257,10 +257,10 @@ public class EthMulticallTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        EthRpcModule.MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder, chain.SpecProvider, new JsonRpcConfig());
+        MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder, chain.SpecProvider, new JsonRpcConfig());
 
         ResultWrapper<MultiCallBlockResult[]> result =
             executor.Execute(1, requestMultiCall, BlockParameter.Latest, true);
-        Assert.IsTrue(result.Data[1].Calls[0].Error.Message.StartsWith("numeric overflow"));
+        Assert.IsTrue(result.Data[1].Calls[0].Error.Message.StartsWith("insufficient"));
     }
 }

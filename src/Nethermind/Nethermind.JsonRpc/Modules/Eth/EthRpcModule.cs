@@ -39,8 +39,6 @@ using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-
-
 public partial class EthRpcModule : IEthRpcModule
 {
     private readonly Encoding _messageEncoding = Encoding.UTF8;
@@ -59,7 +57,7 @@ public partial class EthRpcModule : IEthRpcModule
     private readonly IFeeHistoryOracle _feeHistoryOracle;
     private readonly IDbProvider _dbProvider;
 
-    private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
+    public static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
         RootCheckVisitor rootCheckVisitor = new();
         blockchainBridge.RunTreeVisitor(rootCheckVisitor, header.StateRoot!);

@@ -18,6 +18,7 @@ using Nethermind.Crypto;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.Multicall;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
