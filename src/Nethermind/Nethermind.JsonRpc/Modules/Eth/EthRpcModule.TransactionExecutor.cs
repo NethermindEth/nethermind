@@ -125,7 +125,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 return result.InputError
                     ? GetInputError(result)
-                    : ResultWrapper<AccessListForRpc>.Fail(result.Error, ErrorCodes.ExecutionError, new(GetResultAccessList(tx, result), GetResultGas(tx, result)));
+                    : ResultWrapper<AccessListForRpc>.Fail(result.Error, ErrorCodes.ExecutionError, new AccessListForRpc(GetResultAccessList(tx, result), GetResultGas(tx, result)));
             }
 
             private static AccessListItemForRpc[] GetResultAccessList(Transaction tx, BlockchainBridge.CallOutput result)

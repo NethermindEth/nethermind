@@ -31,7 +31,7 @@ namespace Nethermind.Facade
 
         int NewBlockFilter();
         int NewPendingTransactionFilter();
-        int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, object? address = null, IEnumerable<object>? topics = null);
+        int NewFilter(BlockParameter? fromBlock, BlockParameter? toBlock, object? address = null, IEnumerable<object>? topics = null);
         void UninstallFilter(int filterId);
         bool FilterExists(int filterId);
         Keccak[] GetBlockFilterChanges(int filterId);

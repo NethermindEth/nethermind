@@ -217,7 +217,7 @@ public class PivotUpdator
             }
         }
 
-        if (_logger.IsInfo) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}. Waiting for pivot block header. {_attemptsLeft} attempts left");
+        if (_logger.IsInfo && _attemptsLeft % 10 == 0) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}. Waiting for pivot block header. {_attemptsLeft} attempts left");
         return null;
     }
 

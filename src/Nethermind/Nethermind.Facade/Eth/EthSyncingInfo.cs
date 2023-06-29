@@ -101,6 +101,8 @@ namespace Nethermind.Facade.Eth
             return _syncStopwatch.Elapsed;
         }
 
+        public SyncMode SyncMode => _syncModeSelector.Current;
+
         public bool IsSyncing()
         {
             return GetFullInfo().IsSyncing;
