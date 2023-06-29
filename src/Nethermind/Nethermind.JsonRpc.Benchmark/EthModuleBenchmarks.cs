@@ -115,6 +115,10 @@ namespace Nethermind.JsonRpc.Benchmark
                     new ReadOnlyBlockTree(blockTree),
                     specProvider,
                     LimboLogs.Instance),
+                MultiCallReadOnlyBlocksProcessingEnv.Create(
+                    new ReadOnlyDbProvider(dbProvider, true),
+                    specProvider,
+                    LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullFilterStore.Instance,
