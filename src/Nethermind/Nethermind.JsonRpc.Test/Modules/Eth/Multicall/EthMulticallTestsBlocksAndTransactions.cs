@@ -41,7 +41,7 @@ public class EthMulticallTestsBlocksAndTransactions
     [Test]
     public async Task Test_eth_multicall_serialisation()
     {
-        TestRpcBlockchain chain = await EthRpcMulticallTests.CreateChain();
+        TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
 
 
         var pk = new PrivateKey("0xc7ba1a2892ec0ea1940eebeae739b1effe0543b3104469d5b66625f49ca86e94");
@@ -114,7 +114,7 @@ public class EthMulticallTestsBlocksAndTransactions
     [Test]
     public async Task Test_eth_multicall_eth_moved()
     {
-        TestRpcBlockchain chain = await EthRpcMulticallTests.CreateChain();
+        TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
 
         UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
         Transaction txMainnetAtoB =
@@ -195,7 +195,7 @@ public class EthMulticallTestsBlocksAndTransactions
     [Test]
     public async Task Test_eth_multicall_transactions_forced_fail()
     {
-        TestRpcBlockchain chain = await EthRpcMulticallTests.CreateChain();
+        TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
 
         UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
 

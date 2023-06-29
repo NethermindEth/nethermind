@@ -2,20 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.MultiCall;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Modules.Eth.Multicall;
 using NUnit.Framework;
-using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -27,7 +23,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
     [Test]
     public async Task Test_eth_multicall_ecr_moved()
     {
-        TestRpcBlockchain chain = await EthRpcMulticallTests.CreateChain();
+        TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         //The following opcodes code is based on the following contract compiled:
         /*
          function ecrecover(bytes32 hash, uint8 v, bytes32 r, bytes32 s) public  returns(address)
@@ -78,12 +74,26 @@ public class EthMulticallTestsPrecompilesWithRedirection
             .PushData(new byte[] { 0 })
             .Op(Instruction.RETURN)
             .Done;
-        //derive from receipt tracer
-        //emmit additional log with ffff eth movement logs
-        //gascap
-        MultiCallBlockStateCallsModel requestMultiCall = new();
-        requestMultiCall.StateOverrides =
-            new[]
+
+        Address realSenderAccount = TestItem.AddressA;
+        byte[] transactionData = EthRpcMulticallTestsBase.GetTxData(chain, TestItem.PrivateKeyA);
+
+        Address? contractAddress = await EthRpcMulticallTestsBase.DeployEcRecoverContract(chain, TestItem.PrivateKeyB,
+            EthMulticallTestsSimplePrecompiles.EcRecoverCallerContractBytecode);
+
+        Address? mainChainRpcAddress =
+            EthRpcMulticallTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
+
+        Transaction systemTransactionForModifiedVM = new()
+        {
+            Data = transactionData,
+            To = contractAddress,
+            SenderAddress = TestItem.PublicKeyB.Address
+        };
+
+        MultiCallBlockStateCallsModel requestMultiCall = new()
+        {
+            StateOverrides = new[]
             {
                 new AccountOverride
                 {
@@ -91,49 +101,30 @@ public class EthMulticallTestsPrecompilesWithRedirection
                     Code = code,
                     MoveToAddress = new Address("0x0000000000000000000000000000000000000666")
                 }
-            };
+            },
+            Calls = new[]
+            {
+                CallTransactionModel.FromTransaction(systemTransactionForModifiedVM)
+            }
+        };
 
-        Address realSenderAccount = TestItem.AddressA;
-        byte[] transactionData = EthRpcMulticallTests.GetTxData(chain, TestItem.PrivateKeyA);
-
-        Address? contractAddress = await EthRpcMulticallTests.DeployEcRecoverContract(chain, TestItem.PrivateKeyB,
-            EthMulticallTestsSimplePrecompiles.EcRecoverCallerContractBytecode);
-
-        Address? mainChainRpcAddress =
-            EthRpcMulticallTests.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
 
         //Force persistancy of head block in main chain
         chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        using (MultiCallBlockchainFork tmpChain = new(chain.DbProvider, chain.SpecProvider,
-                   MultiCallTxExecutor.GetMaxGas(new JsonRpcConfig())))
-        {
-            Block _ = tmpChain.ForgeChainBlock(requestMultiCall);
+        MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder, chain.SpecProvider, new JsonRpcConfig());
 
-            //Generate and send transaction (shall be mocked)
-            SystemTransaction systemTransactionForModifiedVM = new()
-            {
-                Data = transactionData,
-                To = contractAddress,
-                SenderAddress = TestItem.PublicKeyB.Address
-            };
-            systemTransactionForModifiedVM.Hash = systemTransactionForModifiedVM.CalculateHash();
-            TransactionForRpc transactionForRpcOfModifiedVM = new(systemTransactionForModifiedVM);
-            ResultWrapper<string> responseFromModifiedVM =
-                tmpChain.EthRpcModule.eth_call(transactionForRpcOfModifiedVM, BlockParameter.Pending);
-            responseFromModifiedVM.ErrorCode.Should().Be(ErrorCodes.None);
+        ResultWrapper<MultiCallBlockResult[]> result =
+            executor.Execute(1, new[] { requestMultiCall }, BlockParameter.Latest, true);
 
 
-            //Check results
-            byte[] addressBytes = Bytes.FromHexString(responseFromModifiedVM.Data)
-                .SliceWithZeroPaddingEmptyOnError(12, 20);
-            Address resultingAddress = new(addressBytes);
+        //Check results
+        byte[] addressBytes = result.Data[0].Calls[0].Return
+               .SliceWithZeroPaddingEmptyOnError(12, 20);
+        Address resultingAddress = new(addressBytes);
+        Assert.AreEqual(realSenderAccount, resultingAddress);
 
-            //Address expectedMockResultAddress = new Address("0x0000000000000000000000000000000000011111");
-            //We redirect to 666 so it will return correct data
-            Assert.AreEqual(realSenderAccount, resultingAddress);
-        }
     }
 }

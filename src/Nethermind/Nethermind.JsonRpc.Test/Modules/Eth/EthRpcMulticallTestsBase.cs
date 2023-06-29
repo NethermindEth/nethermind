@@ -12,30 +12,22 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
-using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Modules.Eth.Multicall;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using NUnit.Framework;
-using static Nethermind.JsonRpc.Modules.Eth.EthRpcModule;
-using ResultType = Nethermind.Core.ResultType;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
-public class EthRpcMulticallTests
+public class EthRpcMulticallTestsBase
 {
     public static Task<TestRpcBlockchain> CreateChain(IReleaseSpec? releaseSpec = null,
         UInt256? initialBaseFeePerGas = null)
@@ -213,72 +205,4 @@ public class EthRpcMulticallTests
         return mainChainRpcAddress;
     }
 
-    /// <summary>
-    ///     This test verifies that a temporary forked blockchain updates the user balance and block number
-    ///     independently of the main chain, ensuring the main chain remains intact.
-    /// </summary>
-    [Test]
-    public async Task Test_eth_multicall_account_data()
-    {
-        TestRpcBlockchain chain = await CreateChain();
-
-        MultiCallBlockStateCallsModel requestBlockOne = new()
-        {
-            StateOverrides = new[] { new AccountOverride { Address = TestItem.AddressA, Balance = UInt256.One } }
-        };
-
-
-        long blockNumberBefore = chain.BlockFinder.Head.Number;
-        ResultWrapper<UInt256?> userBalanceBefore =
-            await chain.EthRpcModule.eth_getBalance(TestItem.AddressA, BlockParameter.Latest);
-        userBalanceBefore.Result.ResultType.Should().Be(ResultType.Success);
-
-        //Force persistancy of head block in main chain
-        chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
-
-        TrieStore tt = chain.TrieStore;
-        using (MultiCallBlockchainFork tmpChain = new(chain.DbProvider, chain.SpecProvider,
-                   MultiCallTxExecutor.GetMaxGas(new JsonRpcConfig())))
-        {
-            //Check if tmpChain initialised
-            Assert.AreEqual(chain.BlockTree.BestKnownNumber, tmpChain.BlockTree.BestKnownNumber);
-            Assert.AreEqual(chain.BlockFinder.BestPersistedState, tmpChain.BlockFinder.BestPersistedState);
-            Assert.AreEqual(chain.BlockFinder.Head.Number, tmpChain.BlockFinder.Head.Number);
-
-            //Check if tmpChain RPC initialised
-            ResultWrapper<UInt256?> userBalanceBefore_fromTmp =
-                await tmpChain.EthRpcModule.eth_getBalance(TestItem.AddressA, BlockParameter.Latest);
-            userBalanceBefore_fromTmp.Result.ResultType.Should().Be(ResultType.Success);
-
-            //Check if tmpChain shows same values as main one
-            UInt256 num_real = userBalanceBefore.Data.Value;
-            UInt256 num_tmp = userBalanceBefore_fromTmp.Data.Value;
-            Assert.AreEqual(userBalanceBefore_fromTmp.Data, userBalanceBefore.Data);
-
-            Block? _ = tmpChain.ForgeChainBlock(requestBlockOne);
-
-            //Check block has updated values in tmp chain
-            ResultWrapper<UInt256?> userBalanceResult_fromTm =
-                await tmpChain.EthRpcModule.eth_getBalance(TestItem.AddressA, BlockParameter.Latest);
-            userBalanceResult_fromTm.Result.ResultType.Should().Be(ResultType.Success);
-            UInt256 tval = tmpChain.StateProvider.GetBalance(TestItem.AddressA);
-
-            Assert.AreNotEqual(userBalanceResult_fromTm.Data, userBalanceBefore.Data);
-
-            //Check block has not updated values in the main chain
-            ResultWrapper<UInt256?> userBalanceResult =
-                await chain.EthRpcModule.eth_getBalance(TestItem.AddressA, BlockParameter.Latest);
-            userBalanceResult.Result.ResultType.Should().Be(ResultType.Success);
-            Assert.AreEqual(userBalanceResult.Data, userBalanceBefore.Data); //Main chain is intact
-            Assert.AreNotEqual(userBalanceResult.Data, userBalanceResult_fromTm.Data); // Balance was changed
-            Assert.AreNotEqual(chain.BlockFinder.Head.Number, tmpChain.LatestBlock.Number); // Block number changed
-        }
-
-        GC.Collect();
-        GC.WaitForFullGCComplete();
-
-        Assert.AreEqual(chain.BlockFinder.Head.Number,
-            blockNumberBefore); // tmp chain is disposed, main chain block number is still the same
-    }
 }

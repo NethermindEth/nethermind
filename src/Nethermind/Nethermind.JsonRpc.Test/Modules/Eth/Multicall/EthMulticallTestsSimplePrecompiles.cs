@@ -4,8 +4,6 @@
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -15,9 +13,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.MultiCall;
-using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Modules.Eth.Multicall;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
@@ -48,7 +43,7 @@ contract EcrecoverProxy {
     [Test]
     public async Task Test_eth_multicall_erc()
     {
-        TestRpcBlockchain chain = await EthRpcMulticallTests.CreateChain();
+        TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
 
         //Empose Opcode instead of EcRecoverPrecompile, it returns const TestItem.AddressE address
         byte[] code = Prepare.EvmCode
@@ -72,14 +67,14 @@ contract EcrecoverProxy {
         byte[] s = signature.S;
 
         Address? contractAddress =
-            await EthRpcMulticallTests.DeployEcRecoverContract(chain, TestItem.PrivateKeyB,
+            await EthRpcMulticallTestsBase.DeployEcRecoverContract(chain, TestItem.PrivateKeyB,
                 EcRecoverCallerContractBytecode);
 
         //Check real address
         Address recoveredAddress = chain.EthereumEcdsa.RecoverAddress(signature, messageHash);
         Assert.AreEqual(TestItem.AddressA, recoveredAddress);
 
-        byte[] transactionData = EthRpcMulticallTests.GenerateTransactionDataForEcRecover(messageHash, v, r, s);
+        byte[] transactionData = EthRpcMulticallTestsBase.GenerateTransactionDataForEcRecover(messageHash, v, r, s);
 
         SystemTransaction systemTransactionForModifiedVM = new()
         {
@@ -101,7 +96,7 @@ contract EcrecoverProxy {
 
 
         Address? mainChainRpcAddress =
-            EthRpcMulticallTests.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
+            EthRpcMulticallTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
         Assert.NotNull(mainChainRpcAddress);
         Assert.AreEqual(TestItem.AddressA, mainChainRpcAddress);
 
@@ -127,7 +122,7 @@ contract EcrecoverProxy {
 
         //Check that initial VM is intact
         mainChainRpcAddress =
-            EthRpcMulticallTests.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
+            EthRpcMulticallTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
         Assert.NotNull(mainChainRpcAddress);
         Assert.AreEqual(TestItem.AddressA, mainChainRpcAddress);
     }
