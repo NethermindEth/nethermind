@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Contracts;
 
@@ -18,7 +17,6 @@ namespace Nethermind.Merge.AuRa.Withdrawals;
 public class AuraWithdrawalProcessor : IWithdrawalProcessor
 {
     private readonly IWithdrawalContract _contract;
-    private readonly UInt256 _failedWithdrawalsMaxCount = 4;
     private readonly ILogger _logger;
 
     public AuraWithdrawalProcessor(IWithdrawalContract contract, ILogManager logManager)
@@ -52,7 +50,7 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
 
         try
         {
-            _contract.ExecuteWithdrawals(block.Header, _failedWithdrawalsMaxCount, amounts, addresses);
+            _contract.ExecuteWithdrawals(block.Header, amounts, addresses);
         }
         catch (Exception ex) when (ex is ArgumentNullException || ex is EvmException)
         {

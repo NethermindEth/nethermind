@@ -7,7 +7,6 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Contracts;
 using Nethermind.Merge.AuRa.Withdrawals;
@@ -46,7 +45,6 @@ public class AuraWithdrawalProcessorTests
         Address[] addresses = Array.Empty<Address>();
         contract.ExecuteWithdrawals(
             block.Header,
-            4,
             Arg.Do<IList<ulong>>(a => values = a.ToArray()),
             Arg.Do<IList<Address>>(a => addresses = a.ToArray()));
 
@@ -56,7 +54,6 @@ public class AuraWithdrawalProcessorTests
             .Received(1)
             .ExecuteWithdrawals(
                 Arg.Is(block.Header),
-                Arg.Is<UInt256>(4),
                 Arg.Is<IList<ulong>>(a => values.SequenceEqual(new[] { 1_000_000UL, 2_000_000UL })),
                 Arg.Is<IList<Address>>(a => addresses.SequenceEqual(new[] { Address.SystemUser, Address.Zero })));
     }
@@ -78,7 +75,6 @@ public class AuraWithdrawalProcessorTests
             .Received(0)
             .ExecuteWithdrawals(
                 Arg.Any<BlockHeader>(),
-                Arg.Any<UInt256>(),
                 Arg.Any<ulong[]>(),
                 Arg.Any<Address[]>());
     }
