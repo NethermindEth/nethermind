@@ -939,7 +939,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool CanAccessByPath()
         {
-            return _dbPrunner?.IsPruningComplete == true;
+            return _dbPrunner is null || _dbPrunner?.IsPruningComplete == true;
         }
 
         public Task GetTask()

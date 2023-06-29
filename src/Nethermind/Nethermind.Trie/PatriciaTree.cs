@@ -397,22 +397,22 @@ namespace Nethermind.Trie
 
         public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
         {
-            if (Capability == TrieNodeResolverCapability.Path)
-            {
-                byte[] internalValue = GetInternal(rawKey, rootHash);
-                byte[] pathValue = _trieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash);
-                if (!Bytes.EqualityComparer.Equals(internalValue, pathValue))
-                    Console.WriteLine($"Difference for key: {rawKey.ToHexString()} | ST prefix: {StoreNibblePathPrefix?.ToHexString()} | internal: {internalValue?.ToHexString()} | path value: {pathValue?.ToHexString()}");
-                return pathValue;
-            }
-            return GetInternal(rawKey, rootHash);
-            //return Capability switch
+            //for diagnostics
+            //if (Capability == TrieNodeResolverCapability.Path)
             //{
-            //    TrieNodeResolverCapability.Hash => GetInternal(rawKey, rootHash),
-            //    TrieNodeResolverCapability.Path => GetInternal(rawKey, rootHash),
-            //    //TrieNodeResolverCapability.Path => GetByPath(rawKey, rootHash),
-            //    _ => throw new ArgumentOutOfRangeException()
-            //};
+            //    byte[] internalValue = GetInternal(rawKey, rootHash);
+            //    byte[] pathValue = _trieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash);
+            //    if (!Bytes.EqualityComparer.Equals(internalValue, pathValue))
+            //        Console.WriteLine($"Difference for key: {rawKey.ToHexString()} | ST prefix: {StoreNibblePathPrefix?.ToHexString()} | internal: {internalValue?.ToHexString()} | path value: {pathValue?.ToHexString()}");
+            //    return pathValue;
+            //}
+            //return GetInternal(rawKey, rootHash);
+            return Capability switch
+            {
+                TrieNodeResolverCapability.Hash => GetInternal(rawKey, rootHash),
+                TrieNodeResolverCapability.Path => _trieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash),
+                _ => throw new ArgumentOutOfRangeException()
+            };
         }
 
         private byte[]? GetByPath(Span<byte> rawKey, Keccak? rootHash = null)

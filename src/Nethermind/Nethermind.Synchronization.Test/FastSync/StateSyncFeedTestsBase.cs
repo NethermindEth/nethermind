@@ -116,7 +116,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = true;
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, dbContext.ResolverCapability, _logManager, dbContext.DbPrunner);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, dbContext.ResolverCapability, _logManager, dbContext.DbPrunner, null);
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
             ctx.StateSyncDispatcher =
                 new StateSyncDispatcher(ctx.Feed, ctx.Pool, new StateSyncAllocationStrategyFactory(), _logManager);
@@ -173,9 +173,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 ResolverCapability = capability;
 
-                DbPrunner = new ByPathStateDbPrunner(LocalDb, logManager);
+                DbPrunner = new ByPathStateDbPrunner(LocalDb.GetColumnDb(StateColumns.State), logManager);
 
-                ITrieStore localTrieStore = capability.CreateTrieStore(LocalStateDb, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, DbPrunner);
+                ITrieStore localTrieStore = capability.CreateTrieStore(LocalStateDb.GetColumnDb(StateColumns.State), Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, DbPrunner);
                 ITrieStore localStorageTrieStore = capability.CreateTrieStore(LocalStateDb.GetColumnDb(StateColumns.Storage), logManager);
                 LocalStateTree = ResolverCapability switch
                 {
@@ -188,7 +188,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             public IDb RemoteCodeDb { get; }
             public IDb LocalCodeDb { get; }
             public MemDb RemoteDb { get; }
-            public MemColumnsDb<StateColumns> LocalDb { get; }
+            public IColumnsDb<StateColumns> LocalDb { get; }
             public ITrieStore RemoteTrieStore { get; }
             public IDb RemoteStateDb { get; }
             public IColumnsDb<StateColumns> LocalStateDb { get; }

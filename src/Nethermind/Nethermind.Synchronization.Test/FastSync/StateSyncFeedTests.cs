@@ -240,7 +240,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 mock.SetFilter(null);
             }
 
-            await ActivateAndWait(ctx, dbContext, 1024, false, 2000);
+            await ActivateAndWait(ctx, dbContext, 1024, true, 2000);
 
 
             dbContext.CompareTrees("END");
@@ -371,7 +371,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = true;
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, TrieNodeResolverCapability.Path, _logManager, null);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, TrieNodeResolverCapability.Path, _logManager, null, null);
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
             ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
 
@@ -397,7 +397,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = true;
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, TrieNodeResolverCapability.Path, _logManager, null);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, TrieNodeResolverCapability.Path, _logManager, null, null);
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
             ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
 
@@ -458,9 +458,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             //L L L - - - - - - - - - - - - -
             //Deleting one leaf at does not make any changes to tree - only remove leaf data
             Keccak[] paths = new Keccak[3];
-            paths[0] = new Keccak("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeee112233445566");
-            paths[1] = new Keccak("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeee122233445566");
-            paths[2] = new Keccak("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeee132233445566");
+            paths[0] = new Keccak("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb12233445566");
+            paths[1] = new Keccak("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb22233445566");
+            paths[2] = new Keccak("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb32233445566");
 
             dbContext.RemoteStateTree.Set(paths[0], Build.An.Account.WithBalance(0).TestObject);
             dbContext.RemoteStateTree.Set(paths[1], Build.An.Account.WithBalance(1).TestObject);
@@ -480,7 +480,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             await ActivateAndWait(ctx, dbContext, 1025, true);
 
-            //dbContext.DbPrunner.Wait();
+            dbContext.DbPrunner.Wait();
             dbContext.CompareTrees("END");
 
             Account?[] localAccounts = GetLocalAccounts(paths, dbContext);
@@ -524,6 +524,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             await ActivateAndWait(ctx, dbContext, 1025, true);
 
             dbContext.CompareTrees("END");
+            dbContext.DbPrunner.Wait();
 
             Account?[] localAccounts = GetLocalAccounts(paths, dbContext);
 
