@@ -9,11 +9,11 @@ class ExpiringCachedAuth : IAuth
 {
     private readonly IAuth _auth;
     private readonly ISystemClock _clock;
-    private readonly uint _ttl;
+    private readonly int _ttl;
 
     private LastAuth? _lastAuth;
 
-    public ExpiringCachedAuth(IAuth auth, ISystemClock clock, uint ttl)
+    public ExpiringCachedAuth(IAuth auth, ISystemClock clock, int ttl)
     {
         _auth = auth;
         _clock = clock;
