@@ -21,6 +21,7 @@ namespace Nethermind.Facade.Proxy
 
         //TODO:add tests
         Task<RpcResult<MultiCallBlockResult[]>> eth_multicall(ulong version, MultiCallBlockStateCallsModel[] blockCalls, BlockParameterModel blockParameter = null, bool traceTransfers = true);
+        Task<RpcResult<MultiCallBlockResult[]>> eth_multicallV1(MultiCallBlockStateCallsModel[] blockCalls, BlockParameterModel blockParameter = null, bool traceTransfers = true);
         Task<RpcResult<byte[]>> eth_getCode(Address address, BlockParameterModel blockParameter = null);
         Task<RpcResult<TransactionModel>> eth_getTransactionByHash(Keccak transactionHash);
         Task<RpcResult<TransactionModel[]>> eth_pendingTransactions();

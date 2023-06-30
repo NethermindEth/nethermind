@@ -105,7 +105,7 @@ contract EcrecoverProxy {
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
 
         var result = chain.Bridge.MultiCall(chain.BlockFinder.Head.Header, new[] { requestMultiCall }, CancellationToken.None);
-        var logs = result.First().Calls.First().Logs;
+        var logs = result.items.First().Calls.First().Logs;
 
         //Check results
         /*

@@ -138,6 +138,14 @@ namespace Nethermind.Facade
             return blockHash is not null ? _receiptFinder.Get(blockHash).ForTransaction(txHash) : null;
         }
 
+
+        public class MultiCallOutput
+        {
+            public string? Error { get; set; }
+
+            public List<MultiCallBlockResult> items;
+        }
+
         public class CallOutput
         {
             public CallOutput()
@@ -178,13 +186,28 @@ namespace Nethermind.Facade
         }
 
 
-        public List<MultiCallBlockResult> MultiCall(BlockHeader header, MultiCallBlockStateCallsModel[] blocks, CancellationToken cancellationToken)
+
+        public MultiCallOutput MultiCall(BlockHeader header, MultiCallBlockStateCallsModel[] blocks, CancellationToken cancellationToken)
         {
             MultiCallBlockTracer multiCallOutputTracer = new();
+            MultiCallOutput result = new();
+            try
+            {
+                (bool Success, string Error) tryMultiCallResult = TryMultiCallTrace(header, blocks,
+                    multiCallOutputTracer.WithCancellation(cancellationToken));
 
-            MultiCallTrace(header, blocks, multiCallOutputTracer.WithCancellation(cancellationToken));
+                if (!tryMultiCallResult.Success)
+                {
+                    result.Error = tryMultiCallResult.Error;
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Error = ex.ToString();
+            }
 
-            return multiCallOutputTracer._results;
+            result.items = multiCallOutputTracer._results;
+            return result;
         }
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
@@ -304,12 +327,12 @@ namespace Nethermind.Facade
             transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
         }
 
-        public void MultiCallTrace(BlockHeader parent, MultiCallBlockStateCallsModel[] blocks,
+        private (bool Success, string Error) TryMultiCallTrace(BlockHeader parent, MultiCallBlockStateCallsModel[] blocks,
            IBlockTracer tracer)
         {
             using (IMultiCallBlocksProcessingEnv? env = _multiCallProcessingEnv.Clone())
             {
-                var processor = env.GetProcessor(env.StateProvider.StateRoot);
+                var processor = env.GetProcessor();
                 var firstBlock = blocks.FirstOrDefault();
                 var startStateRoot = parent.StateRoot;
                 if (firstBlock?.BlockOverride?.Number != null
@@ -393,7 +416,7 @@ namespace Nethermind.Facade
                     Block[]? currentBlocks = processor.Process(env.StateProvider.StateRoot,
                         new List<Block> { currentBlock },
                         ProcessingOptions.ForceProcessing |
-                        // ProcessingOptions.NoValidation |
+                        // ProcessingOptions.NoValidation | 
                         ProcessingOptions.DoNotVerifyNonce |
                         ProcessingOptions.IgnoreParentNotOnMainChain |
                         ProcessingOptions.MarkAsProcessed |
@@ -404,14 +427,15 @@ namespace Nethermind.Facade
                     if (processedBlock != null)
                     {
                         parent = processedBlock.Header;
-                        //env.StateProvider.CommitTree(parent.Number);
                     }
                     else
                     {
-                        throw new RuntimeBinderException("Processing failed"); //Todo fix
+                        return (false, $"Processing failed at block {currentBlock.Number}");
                     }
                 }
             }
+
+            return (true, "");
         }
 
         public ulong GetChainId()
@@ -452,14 +476,8 @@ namespace Nethermind.Facade
                     StateProvider.DecrementNonce(address);
                 else if (accNonce < accountOverride.Nonce) StateProvider.IncrementNonce(address);
 
-                if (acc != null)
-                {
-                    if (accountOverride.Code is not null)
-                    {
-                        _multiCallProcessingEnv.Machine.SetOverwrite(StateProvider, CurrentSpec, address,
-                            new CodeInfo(accountOverride.Code), accountOverride.MoveToAddress);
-                    }
-                }
+                _multiCallProcessingEnv.Machine.SetOverwrite(StateProvider, CurrentSpec, address,
+                    new CodeInfo(accountOverride.Code), accountOverride.MoveToAddress);
 
 
                 if (accountOverride.State is not null)

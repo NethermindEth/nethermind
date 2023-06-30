@@ -11,7 +11,7 @@ namespace Nethermind.Facade.Proxy.Models;
 
 public class CallTransactionModel
 {
-    public Address From { get; set; }
+    public Address? From { get; set; }
     public Address To { get; set; }
     public UInt256 Gas { get; set; }
     public UInt256 GasPrice { get; set; }
@@ -34,6 +34,8 @@ public class CallTransactionModel
     public Transaction GetTransaction()
     {
         if (Gas > long.MaxValue) throw new OverflowException("Gas value is too large to be converted to long we use.");
+
+        From ??= Address.SystemUser;
 
         Transaction? result = new Transaction
         {

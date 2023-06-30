@@ -56,10 +56,17 @@ public class MultiCallTxExecutor
 
         using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
 
-        List<MultiCallBlockResult> results = _blockchainBridge.MultiCall(header.Clone(),
+        BlockchainBridge.MultiCallOutput results = _blockchainBridge.MultiCall(header.Clone(),
             blockCallsToProcess,
             cancellationTokenSource.Token);
 
-        return ResultWrapper<MultiCallBlockResult[]>.Success(results.ToArray());
+        if (results.Error == null)
+        {
+            return ResultWrapper<MultiCallBlockResult[]>.Success(results.items.ToArray());
+        }
+
+        return ResultWrapper<MultiCallBlockResult[]>.Fail(results.Error, results.items.ToArray());
+
+
     }
 }

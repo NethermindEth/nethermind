@@ -31,7 +31,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
     public ISpecProvider SpecProvider { get; }
     public MultiCallVirtualMachine Machine { get; }
 
-    //We need abilety to get many instances that do not conflict in terms of editable tmp storage - thus we implement env cloning
+    //We need ability to get many instances that do not conflict in terms of editable tmp storage - thus we implement env cloning
     public static IMultiCallBlocksProcessingEnv Create(IReadOnlyDbProvider? readOnlyDbProvider,
         ISpecProvider? specProvider,
         ILogManager? logManager
@@ -91,7 +91,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
 
     }
 
-    public IBlockProcessor GetProcessor(Keccak stateRoot)
+    public IBlockProcessor GetProcessor()
     {
         var yransactionProcessor = new TransactionProcessor(SpecProvider, StateProvider, Machine, _logManager);
 

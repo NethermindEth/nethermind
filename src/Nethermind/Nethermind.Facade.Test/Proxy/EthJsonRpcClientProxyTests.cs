@@ -102,6 +102,19 @@ namespace Nethermind.Facade.Test.Proxy
         }
 
         [Test]
+        public async Task eth_multicallV1_should_invoke_client_method()
+        {
+            var multyCallTransaction = new MultiCallBlockStateCallsModel[] { };
+            var blockParameter = BlockParameterModel.Latest;
+            var traceTransactions = true;
+            await _proxy.eth_multicallV1(multyCallTransaction, blockParameter, traceTransactions);
+
+            var calls = _client.ReceivedCalls().ToList();
+            await _client.Received().SendAsync<MultiCallBlockResult[]>(nameof(_proxy.eth_multicall),
+                1, multyCallTransaction, blockParameter.Type, traceTransactions);
+        }
+
+        [Test]
         public async Task eth_getCode_should_invoke_client_method()
         {
             var address = TestItem.AddressA;

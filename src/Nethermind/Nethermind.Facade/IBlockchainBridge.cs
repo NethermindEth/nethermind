@@ -25,7 +25,7 @@ namespace Nethermind.Facade
         (TxReceipt Receipt, UInt256? EffectiveGasPrice, int LogIndexStart) GetReceiptAndEffectiveGasPrice(Keccak txHash);
         (TxReceipt Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash);
 
-        List<MultiCallBlockResult> MultiCall(BlockHeader header, MultiCallBlockStateCallsModel[] blocks,
+        BlockchainBridge.MultiCallOutput MultiCall(BlockHeader header, MultiCallBlockStateCallsModel[] blocks,
             CancellationToken cancellationToken);
 
         BlockchainBridge.CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);

@@ -20,5 +20,5 @@ public interface IMultiCallBlocksProcessingEnv : IReadOnlyTxProcessingEnvBase, I
     IMultiCallBlocksProcessingEnv Clone();
 
     //We keep original ProcessingEnv spirit with Build() that can start from any stateRoot
-    IBlockProcessor GetProcessor(Keccak stateRoot);
+    IBlockProcessor GetProcessor();
 }
