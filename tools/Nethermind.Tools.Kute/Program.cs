@@ -51,7 +51,7 @@ static class Program
         );
         if (config.DryRun)
         {
-            collection.AddSingleton<IJsonRpcSubmitter, AuthNullJsonRpcSubmitter>();
+            collection.AddSingleton<IJsonRpcSubmitter, NullJsonRpcSubmitter>();
         }
         else
         {
