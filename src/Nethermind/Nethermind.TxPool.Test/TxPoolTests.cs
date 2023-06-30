@@ -94,8 +94,8 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_ignore_transactions_with_different_chain_id()
         {
-            _txPool = CreatePool();
-            EthereumEcdsa ecdsa = new(TestBlockchainIds.ChainId, _logManager);
+            _txPool = CreatePool(null, new TestSpecProvider(Shanghai.Instance));
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia, _logManager); // default is mainnet, we're passing sepolia
             Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
@@ -1112,7 +1112,7 @@ namespace Nethermind.TxPool.Test
                 _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(MainnetSpecProvider.BerlinBlockNumber - 1).TestObject);
             }
 
-            _txPool = CreatePool();
+            _txPool = CreatePool(null, new TestSpecProvider(eip2930Enabled ? Berlin.Instance : Istanbul.Instance));
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.AccessList)
                 .WithChainId(TestBlockchainIds.ChainId)
