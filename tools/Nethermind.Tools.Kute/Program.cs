@@ -31,7 +31,14 @@ static class Program
         collection.AddSingleton<ISystemClock, RealSystemClock>();
         collection.AddSingleton<HttpClient>();
         collection.AddSingleton<ISecretProvider>(new FileSecretProvider(config.JwtSecretFilePath));
-        collection.AddSingleton<IAuth, JwtAuth>();
+        collection.AddSingleton<IAuth>(provider =>
+            new CachedAuth(
+                new JwtAuth(
+                    provider.GetRequiredService<ISystemClock>(),
+                    provider.GetRequiredService<ISecretProvider>()
+                )
+            )
+        );
         collection.AddSingleton<IMessageProvider<JsonRpc?>>(
             new JsonRpcMessageProvider(
                 new FileMessageProvider(config.MessagesFilePath))
