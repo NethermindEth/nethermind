@@ -35,7 +35,6 @@ namespace Nethermind.Synchronization.StateSync
             ISyncPeer peer = peerInfo.SyncPeer;
             Task<byte[][]> task = null;
             HashList? hashList = null;
-            // Use GETNODEDATA if possible
             if (peerInfo.CanGetNodeData())
             {
                 hashList = HashList.Rent(batch.RequestedNodes);

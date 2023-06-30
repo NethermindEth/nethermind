@@ -9,7 +9,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.State
 {
@@ -90,8 +92,6 @@ namespace Nethermind.State
         /// <param name="tracer">Storage tracer</param>
         protected override void CommitCore(IStorageTracer tracer)
         {
-            if (_logger.IsTrace) _logger.Trace("Committing storage changes");
-
             if (_changes[_currentPosition] is null)
             {
                 throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(PartialStorageProviderBase)}");
@@ -138,6 +138,15 @@ namespace Nethermind.State
 
                 if (change.ChangeType == ChangeType.Destroy)
                 {
+                    //Span<byte> storagePrefix = new byte[34];
+                    //Keccak.Compute(change.StorageCell.Address.Bytes).Bytes.AsSpan().CopyTo(storagePrefix[1..]);
+                    //storagePrefix[33] = 128;
+                    //Span<byte> storagePrefix = new byte[33];
+                    //Keccak.Compute(change.StorageCell.Address.Bytes).Bytes.CopyTo(storagePrefix);
+                    //storagePrefix[^1] = 128;
+                    //Span<byte> storagePrefixNibbles = new byte[66];
+                    //Nibbles.BytesToNibbleBytes(storagePrefix, storagePrefixNibbles);
+                    //_trieStore.MarkPrefixDeleted(storagePrefixNibbles);
                     continue;
                 }
 
@@ -158,7 +167,6 @@ namespace Nethermind.State
                         {
                             _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         }
-
                         StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
                         Db.Metrics.StorageTreeWrites++;
                         toUpdateRoots.Add(change.StorageCell.Address);
@@ -217,13 +225,10 @@ namespace Nethermind.State
 
         private StorageTree GetOrCreateStorage(Address address)
         {
-            if (!_storages.ContainsKey(address))
-            {
-                StorageTree storageTree = new(_trieStore, _stateProvider.GetStorageRoot(address), _logManager);
-                return _storages[address] = storageTree;
-            }
+            if (_storages.TryGetValue(address, out StorageTree value)) return value;
 
-            return _storages[address];
+            StorageTree storageTree = new StorageTree(_trieStore, _stateProvider.GetStorageRoot(address), _logManager, address);
+            return _storages[address] = storageTree;
         }
 
         private byte[] LoadFromTree(in StorageCell storageCell)
@@ -278,7 +283,27 @@ namespace Nethermind.State
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
-            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
+            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager, address);
+
+            //StorageCell cell = new(address, 0);
+            //SetupRegistry(cell);
+            //IncrementChangePosition();
+            //_intraBlockCache[cell].Push(_currentPosition);
+            //_changes[_currentPosition] = new Change(ChangeType.Destroy, new StorageCell(address, 0), null);
+
+            //Span<byte> storagePrefix = stackalloc byte[34];
+            //Keccak.Compute(address.Bytes).Bytes.AsSpan().CopyTo(storagePrefix[1..]);
+            //storagePrefix[33] = 128;
+
+            //_trieStore.DeleteByPrefix(storagePrefix);
+
+            Span<byte> storagePrefix = new byte[33];
+            Keccak.Compute(address.Bytes).Bytes.CopyTo(storagePrefix);
+            storagePrefix[^1] = 128;
+            Span<byte> storagePrefixNibbles = new byte[66];
+            Nibbles.BytesToNibbleBytes(storagePrefix, storagePrefixNibbles);
+
+            _trieStore.MarkPrefixDeleted(storagePrefixNibbles);
         }
     }
 }

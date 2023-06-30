@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using FluentAssertions;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test
@@ -119,6 +124,65 @@ namespace Nethermind.Trie.Test
             //encoded / odd
             Assert.AreEqual(0xff, result2[0]);
             CollectionAssert.AreEqual(bytes2, result2.AsSpan(1).ToArray());
+        }
+
+        [Test]
+        public void Nibbles_encoding_decoding_for_path_based_tree()
+        {
+            byte[] nibbles = Enumerable.Repeat((byte)2, 64).ToArray();
+            byte[] result = Nibbles.NibblesToByteStorage(nibbles);
+            Nibbles.BytesToNibblesStorage(result).Should().BeEquivalentTo(nibbles);
+
+            byte[] nibbles2 = Enumerable.Repeat((byte)2, 5).ToArray();
+            byte[] result2 = Nibbles.NibblesToByteStorage(nibbles2);
+            Nibbles.BytesToNibblesStorage(result2).Should().BeEquivalentTo(nibbles2);
+        }
+
+        [Test]
+        public void Nibbles_to_byte_and_reverse()
+        {
+            List<byte[]> keys = new List<byte[]>
+            {
+                Bytes.FromHexString("1234"),
+                KeccakHash.ComputeHash(TestItem.AddressA.Bytes).ToArray()
+            };
+
+            foreach (byte[]? key in keys)
+            {
+                Span<byte> nibbles =  new byte[2 * key.Length];
+
+                Nibbles.BytesToNibbleBytes(key, nibbles);
+                Nibbles.ToBytes(nibbles).Should().BeEquivalentTo(key);
+            }
+        }
+
+        [Test]
+        public void StoragePrefixTests()
+        {
+            byte[] storagePrefixBytes = KeccakHash.ComputeHash(TestItem.AddressA.Bytes).ToArray();
+            Span<byte> storagePrefixNibbles= stackalloc byte[2 * storagePrefixBytes.Length];
+            Nibbles.BytesToNibbleBytes(storagePrefixBytes, storagePrefixNibbles);
+            Nibbles.ToBytes(storagePrefixNibbles).Should().BeEquivalentTo(storagePrefixBytes);
+
+            List<byte[]> nodePaths = new List<byte[]>
+            {
+                Bytes.FromHexString("1234"),
+                KeccakHash.ComputeHash(TestItem.AddressA.Bytes).ToArray(),
+                KeccakHash.ComputeHash(TestItem.AddressB.Bytes).ToArray(),
+                KeccakHash.ComputeHash(TestItem.AddressC.Bytes).ToArray(),
+            };
+
+            foreach (byte[]? nodePath in nodePaths)
+            {
+                byte[] nodeNibblePath = Nibbles.BytesToNibbleBytes(nodePath);
+
+                byte[] storagePath = storagePrefixBytes.Concat(nodePath).ToArray();
+                byte[] storageConcatNibblesPath = storagePrefixNibbles.ToArray().Concat(nodeNibblePath).ToArray();
+                byte[] storageCalculatedNibblesPath = Nibbles.BytesToNibbleBytes(storagePath);
+
+                storageCalculatedNibblesPath.Should().BeEquivalentTo(storageConcatNibblesPath);
+                Nibbles.ToBytes(storageConcatNibblesPath).Should().BeEquivalentTo(storagePath);
+            }
         }
     }
 }

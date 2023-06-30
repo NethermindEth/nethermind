@@ -107,7 +107,7 @@
     },
     "Sepolia": {
       "commandName": "Project",
-      "commandLineArgs": "-c sepolia -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
+      "commandLineArgs": "-c sepolia --JsonRpc.Enabled true --Pruning.Mode=None",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

@@ -90,14 +90,15 @@ namespace Nethermind.Clique.Test
                 MemDb headersDb = new();
                 MemDb blockInfoDb = new();
 
-                MemDb stateDb = new();
+                MemColumnsDb<StateColumns> stateDb = new();
                 MemDb codeDb = new();
 
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
                 var trieStore = new TrieStore(stateDb, nodeLogManager);
-                StateReader stateReader = new(trieStore, trieStore, codeDb, nodeLogManager);
-                StateProvider stateProvider = new(trieStore, codeDb, nodeLogManager);
+                var storageTrieStore = new TrieStore(stateDb.GetColumnDb(StateColumns.Storage), nodeLogManager);
+                StateReader stateReader = new(trieStore, storageTrieStore, codeDb, nodeLogManager);
+                StateProvider stateProvider = new(trieStore, storageTrieStore, codeDb, nodeLogManager);
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 GoerliSpecProvider goerliSpecProvider = GoerliSpecProvider.Instance;
                 stateProvider.Commit(goerliSpecProvider.GenesisSpec);
@@ -141,7 +142,7 @@ namespace Nethermind.Clique.Test
 
                 IReadOnlyTrieStore minerTrieStore = trieStore.AsReadOnly();
 
-                StateProvider minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
+                StateProvider minerStateProvider = new(minerTrieStore, storageTrieStore, codeDb, nodeLogManager);
                 StorageProvider minerStorageProvider = new(minerTrieStore, minerStateProvider, nodeLogManager);
                 VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);

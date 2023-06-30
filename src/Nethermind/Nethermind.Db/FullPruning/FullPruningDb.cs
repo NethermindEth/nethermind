@@ -278,5 +278,10 @@ namespace Nethermind.Db.FullPruning
                 tunableDb.Tune(type);
             }
         }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+            _currentDb.DeleteByRange(startKey, endKey);
+        }
     }
 }

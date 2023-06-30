@@ -20,6 +20,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie.ByPath;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
@@ -44,6 +45,8 @@ public class MergeSynchronizer : Synchronizer
         IPoSSwitcher poSSwitcher,
         IMergeConfig mergeConfig,
         IInvalidChainTracker invalidChainTracker,
+        ByPathStateDbPrunner dbPrunnerState,
+        ByPathStateDbPrunner dbPrunnerStorage,
         ILogManager logManager,
         ISyncReport syncReport)
         : base(
@@ -59,6 +62,8 @@ public class MergeSynchronizer : Synchronizer
             blockDownloaderFactory,
             pivot,
             syncReport,
+            dbPrunnerState,
+            dbPrunnerStorage,
             logManager)
     {
         _invalidChainTracker = invalidChainTracker;

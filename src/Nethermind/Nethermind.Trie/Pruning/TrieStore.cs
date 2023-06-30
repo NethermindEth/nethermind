@@ -358,9 +358,14 @@ namespace Nethermind.Trie.Pruning
             return FindCachedOrUnknown(hash, false);
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak? hash, Span<byte> nodePath)
+        public TrieNode FindCachedOrUnknown(Keccak? hash, Span<byte> nodePath, Span<byte> storagePrefix)
         {
             return FindCachedOrUnknown(hash, false);
+        }
+
+        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, Span<byte> storagePrefix, Keccak rootHash)
+        {
+            throw new NotImplementedException();
         }
 
         internal TrieNode FindCachedOrUnknown(Keccak? hash, bool isReadOnly)
@@ -590,6 +595,10 @@ namespace Nethermind.Trie.Pruning
 
         private long LatestCommittedBlockNumber { get; set; }
 
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
+        {
+            throw new NotImplementedException();
+        }
         public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Hash;
 
         private void CreateCommitSet(long blockNumber)
@@ -828,17 +837,12 @@ namespace Nethermind.Trie.Pruning
             });
         }
 
-        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, Keccak rootHash)
-        {
-            throw new NotImplementedException();
-        }
-
         public byte[]? LoadRlp(Span<byte> nodePath, Keccak rootHash)
         {
             throw new NotImplementedException();
         }
 
-        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null)
+        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false)
         {
             keyValueStore ??= _keyValueStore;
             keyValueStore[trieNode.Keccak.Bytes] = trieNode.Value;
@@ -858,6 +862,21 @@ namespace Nethermind.Trie.Pruning
                    && trieNode.FullRlp is not null
                 ? trieNode.FullRlp
                 : _currentBatch?[key] ?? _keyValueStore[key];
+        }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+            _keyValueStore.DeleteByRange(startKey, endKey);
+        }
+
+        public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefix)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool CanAccessByPath()
+        {
+            return false;
         }
     }
 }

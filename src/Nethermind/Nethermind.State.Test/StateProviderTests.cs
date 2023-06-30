@@ -37,29 +37,31 @@ namespace Nethermind.Store.Test
             _codeDb = new MemDb();
         }
 
-        private static (string, ITrieStore)[] _variants;
-        public static (string name, ITrieStore trieStore)[] Variants
+        private static (string, ITrieStore, ITrieStore)[] _variants;
+        public static (string name, ITrieStore trieStore, ITrieStore storageTrieStore)[] Variants
             => LazyInitializer.EnsureInitialized(ref _variants, InitVariants);
 
-        public static (string Name, ITrieStore TrieStore)[] InitVariants()
+        public static (string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore)[] InitVariants()
         {
-            return new (string, ITrieStore)[]
+            TrieStore ts = new TrieStore(new MemDb(), Logger);
+            MemColumnsDb<StateColumns> memDb = new MemColumnsDb<StateColumns>();
+            return new (string, ITrieStore, ITrieStore)[]
             {
-                ("Keccak Store", new TrieStore(new MemDb(), Logger)),
-                ("Path Store", new TrieStoreByPath(new MemDb(), Logger))
+                ("Keccak Store", ts, ts),
+                ("Path Store", new TrieStoreByPath(memDb, Logger), new TrieStoreByPath(memDb.GetColumnDb(StateColumns.Storage), Logger))
             };
         }
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public void Eip_158_zero_value_transfer_deletes((string Name, ITrieStore TrieStore) testCase)
+        public void Eip_158_zero_value_transfer_deletes((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider frontierProvider = new(testCase.TrieStore, _codeDb, Logger);
+            StateProvider frontierProvider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
             frontierProvider.CreateAccount(_address1, 0);
             frontierProvider.Commit(Frontier.Instance);
             frontierProvider.CommitTree(0);
 
-            StateProvider provider = new(testCase.TrieStore, _codeDb, Logger);
+            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
             provider.StateRoot = frontierProvider.StateRoot;
 
             provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
@@ -72,8 +74,8 @@ namespace Nethermind.Store.Test
         [Test]
         public void Eip_158_touch_zero_value_system_account_is_not_deleted()
         {
-            TrieStore trieStore = new(new MemDb(), Logger);
-            StateProvider provider = new(trieStore, _codeDb, Logger);
+            TrieStoreByPath trieStore = new(new MemDb(), Logger);
+            StateProvider provider = new(trieStore, trieStore, _codeDb, Logger);
             var systemUser = Address.SystemUser;
 
             provider.CreateAccount(systemUser, 0);
@@ -88,9 +90,9 @@ namespace Nethermind.Store.Test
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public void Can_dump_state((string Name, ITrieStore TrieStore) testCase)
+        public void Can_dump_state((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, _codeDb, Logger);
+            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
@@ -101,9 +103,9 @@ namespace Nethermind.Store.Test
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public void Can_collect_stats((string Name, ITrieStore TrieStore) testCase)
+        public void Can_collect_stats((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, _codeDb, Logger);
+            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
@@ -114,9 +116,9 @@ namespace Nethermind.Store.Test
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public void Can_accepts_visitors((string Name, ITrieStore TrieStore) testCase)
+        public void Can_accepts_visitors((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, _codeDb, Logger);
+            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
@@ -127,26 +129,26 @@ namespace Nethermind.Store.Test
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public void Empty_commit_restore((string Name, ITrieStore TrieStore) testCase)
+        public void Empty_commit_restore((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, _codeDb, Logger);
+            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
             provider.Commit(Frontier.Instance);
             provider.Restore(-1);
         }
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public void Update_balance_on_non_existing_account_throws((string Name, ITrieStore TrieStore) testCase)
+        public void Update_balance_on_non_existing_account_throws((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, _codeDb, Logger);
+            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
             Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
         }
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public void Is_empty_account((string Name, ITrieStore TrieStore) testCase)
+        public void Is_empty_account((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, _codeDb, Logger);
+            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             Assert.True(provider.IsEmptyAccount(_address1));
@@ -154,18 +156,18 @@ namespace Nethermind.Store.Test
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public void Returns_empty_byte_code_for_non_existing_accounts((string Name, ITrieStore TrieStore) testCase)
+        public void Returns_empty_byte_code_for_non_existing_accounts((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, _codeDb, Logger);
+            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
             byte[] code = provider.GetCode(TestItem.AddressA);
             code.Should().BeEmpty();
         }
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public void Restore_update_restore((string Name, ITrieStore TrieStore) testCase)
+        public void Restore_update_restore((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, _codeDb, Logger);
+            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -190,9 +192,9 @@ namespace Nethermind.Store.Test
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public void Keep_in_cache((string Name, ITrieStore TrieStore) testCase)
+        public void Keep_in_cache((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, _codeDb, Logger);
+            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             provider.GetBalance(_address1);
@@ -207,11 +209,11 @@ namespace Nethermind.Store.Test
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public void Restore_in_the_middle((string Name, ITrieStore TrieStore) testCase)
+        public void Restore_in_the_middle((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
             byte[] code = new byte[] { 1 };
 
-            StateProvider provider = new(testCase.TrieStore, _codeDb, Logger);
+            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
             provider.CreateAccount(_address1, 1);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.IncrementNonce(_address1);
@@ -248,11 +250,11 @@ namespace Nethermind.Store.Test
 
         [Test(Description = "It was failing before as touch was marking the accounts as committed but not adding to trace list")]
         [TestCaseSource(nameof(Variants))]
-        public void Touch_empty_trace_does_not_throw((string Name, ITrieStore TrieStore) testCase)
+        public void Touch_empty_trace_does_not_throw((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
             ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
 
-            StateProvider provider = new(testCase.TrieStore, _codeDb, Logger);
+            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
             Account account = provider.GetAccount(_address1);
             Assert.True(account.IsEmpty);
@@ -268,9 +270,9 @@ namespace Nethermind.Store.Test
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public void Does_not_require_recalculation_after_reset((string Name, ITrieStore TrieStore) testCase)
+        public void Does_not_require_recalculation_after_reset((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, _codeDb, Logger);
+            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
             provider.CreateAccount(TestItem.AddressA, 5);
 
             Action action = () => { _ = provider.StateRoot; };

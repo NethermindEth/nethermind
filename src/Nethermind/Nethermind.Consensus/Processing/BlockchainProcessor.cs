@@ -253,7 +253,7 @@ namespace Nethermind.Consensus.Processing
 
         private void RunProcessingLoop()
         {
-            if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
+            _logger.Info($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
 
             FireProcessingQueueEmpty();
 
@@ -269,19 +269,19 @@ namespace Nethermind.Consensus.Processing
 
                     Block block = blockRef.Block;
 
-                    if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
+                    _logger.Info($"Processing block {block.ToString(Block.Format.Short)}).");
                     _stats.Start();
 
                     Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer());
 
                     if (processedBlock is null)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
+                        _logger.Info($"Failed / skipped processing {block.ToString(Block.Format.FullHashAndNumber)}");
                         BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError));
                     }
                     else
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
+                        _logger.Info($"Processed block {block.ToString(Block.Format.FullHashAndNumber)}");
 
                         bool readOnlyChain = blockRef.ProcessingOptions.ContainsFlag(ProcessingOptions.ReadOnlyChain);
                         if (!readOnlyChain)
@@ -302,7 +302,7 @@ namespace Nethermind.Consensus.Processing
                     Interlocked.Decrement(ref _queueCount);
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
+                _logger.Info($"Now {_blockQueue.Count} blocks waiting in the queue.");
                 FireProcessingQueueEmpty();
             }
 
@@ -370,7 +370,7 @@ namespace Nethermind.Consensus.Processing
             bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
             if (updateHead)
             {
-                if (_logger.IsTrace) _logger.Trace($"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
+                _logger.Info($"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
                 _blockTree.UpdateMainChain(processingBranch.Blocks, true);
             }
 
@@ -382,7 +382,7 @@ namespace Nethermind.Consensus.Processing
 
             if ((options & ProcessingOptions.MarkAsProcessed) == ProcessingOptions.MarkAsProcessed)
             {
-                if (_logger.IsTrace) _logger.Trace($"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
+                _logger.Info($"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
                 _blockTree.MarkChainAsProcessed(processingBranch.Blocks);
 
                 Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
@@ -440,7 +440,7 @@ namespace Nethermind.Consensus.Processing
                     if (processingBranch.BlocksToProcess[i].Hash == invalidBlockHash)
                     {
                         _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
-                        if (_logger.IsDebug) _logger.Debug($"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
+                        _logger.Info($"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
                     }
                 }
             }
@@ -454,6 +454,13 @@ namespace Nethermind.Consensus.Processing
                     processingBranch.BlocksToProcess,
                     options,
                     tracer);
+
+                //IBlockTracer blockTracer = new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace);
+                //processedBlocks = _blockProcessor.Process(
+                //    processingBranch.Root,
+                //    processingBranch.BlocksToProcess,
+                //    options,
+                //    blockTracer);
             }
             catch (InvalidBlockException ex)
             {
@@ -535,8 +542,7 @@ namespace Nethermind.Consensus.Processing
                 }
             }
 
-            if (_logger.IsTrace)
-                _logger.Trace($"Processing {blocksToProcess.Count} blocks from state root {processingBranch.Root}");
+            _logger.Info($"Processing {blocksToProcess.Count} blocks from state root {processingBranch.Root}");
             for (int i = 0; i < blocksToProcess.Count; i++)
             {
                 /* this can happen if the block was loaded as an ancestor and did not go through the recovery queue */
@@ -562,8 +568,7 @@ namespace Nethermind.Consensus.Processing
                     blocksToBeAddedToMain.Add(toBeProcessed);
                 }
 
-                if (_logger.IsTrace)
-                    _logger.Trace(
+                _logger.Info(
                         $"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
                 if (toBeProcessed.IsGenesis)
                 {
@@ -590,15 +595,13 @@ namespace Nethermind.Consensus.Processing
 
                 bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
                 bool toBeProcessedIsNotBlockOne = toBeProcessed.Number > 1;
-                if (_logger.IsTrace)
-                    _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
+                _logger.Info($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
                 toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
-                if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
+                _logger.Info($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
                 bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
                 if (toBeProcessed is null)
                 {
-                    if (_logger.IsDebug)
-                        _logger.Debug(
+                    _logger.Info(
                             $"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
                     break;
                 }
@@ -634,23 +637,19 @@ namespace Nethermind.Consensus.Processing
                 bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
                 bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
                 preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary);
-                if (_logger.IsTrace)
-                    _logger.Trace(
+                _logger.Info(
                         $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
 
             } while (preMergeFinishBranchingCondition);
 
             if (branchingPoint is not null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Head block was: {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
-                if (_logger.IsTrace)
-                    _logger.Trace($"Branching from: {branchingPoint.ToString(BlockHeader.Format.Short)}");
+                _logger.Info($"Head block was: {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
+                _logger.Info($"Branching from: {branchingPoint.ToString(BlockHeader.Format.Short)}");
             }
             else
             {
-                if (_logger.IsTrace)
-                    _logger.Trace(branchingPoint is null
+                _logger.Info(branchingPoint is null
                         ? "Setting as genesis block"
                         : $"Adding on top of {branchingPoint.ToString(BlockHeader.Format.Short)}");
             }

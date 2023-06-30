@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -17,7 +20,26 @@ namespace Nethermind.State
     {
         private readonly AccountDecoder _decoder = new();
 
+        private static readonly UInt256 CacheSize = 1024;
+
+        private static readonly int CacheSizeInt = (int)CacheSize;
+
+        private static readonly Dictionary<UInt256, byte[]> Cache = new(CacheSizeInt);
+
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
+
+        protected ITrieStore _storageTrieStore;
+
+        static StateTreeByPath()
+        {
+            Span<byte> buffer = stackalloc byte[32];
+            for (int i = 0; i < CacheSizeInt; i++)
+            {
+                UInt256 index = (UInt256)i;
+                index.ToBigEndian(buffer);
+                Cache[index] = Keccak.Compute(buffer).Bytes;
+            }
+        }
 
         [DebuggerStepThrough]
         public StateTreeByPath()
@@ -27,55 +49,25 @@ namespace Nethermind.State
         }
 
         [DebuggerStepThrough]
-        public StateTreeByPath(ITrieStore? store, ILogManager? logManager)
+        public StateTreeByPath(ITrieStore? store, ITrieStore? storageStore, ILogManager? logManager)
             : base(store, Keccak.EmptyTreeHash, true, true, logManager)
         {
             if (store.Capability == TrieNodeResolverCapability.Hash) throw new ArgumentException("Only accepts by path store");
             TrieType = TrieType.State;
+            _storageTrieStore = storageStore;
         }
 
-        //[DebuggerStepThrough]
         public Account? Get(Address address, Keccak? rootHash = null)
         {
             byte[] addressKeyBytes = Keccak.Compute(address.Bytes).Bytes;
-            Keccak expectedRoot = rootHash ?? RootHash;
-
-            byte[]? bytes;
-            ///Scenarios to consider:
-            ///StateReader:
-            /// - RootRef is null and RootHash is hash of empty
-            /// - all calls will have rootHash param
-            ///StateProvider:
-            /// - Uncommitted tree - need to traverse to get the value
-            /// - Tree commited, so should have RootRef.IsDirty false
-            /// - RootRef can be set to a different hash then the latest one persissted, so need to check cache 1st
-            if (RootRef?.IsDirty == true)
-            {
-                bytes = Get(addressKeyBytes);
-            }
-            else
-            {
-                bytes = GetCachedAccount(addressKeyBytes, expectedRoot);
-                bytes ??= GetPersistedAccount(addressKeyBytes);
-            }
+            byte[]? bytes = Get(addressKeyBytes, rootHash);
             return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 
         //[DebuggerStepThrough]
         internal Account? Get(Keccak keccak) // for testing
         {
-            byte[] addressKeyBytes = keccak.Bytes;
-            if (RootRef?.IsPersisted == true)
-            {
-                byte[]? nodeData = TrieStore[addressKeyBytes];
-                if (nodeData is not null)
-                {
-                    TrieNode node = new(NodeType.Unknown, nodeData);
-                    node.ResolveNode(TrieStore);
-                    return _decoder.Decode(node.Value.AsRlpStream());
-                }
-            }
-            byte[]? bytes = Get(addressKeyBytes);
+            byte[]? bytes = Get(keccak.Bytes);
             return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 
@@ -94,37 +86,71 @@ namespace Nethermind.State
             return rlp;
         }
 
-        private byte[] GetCachedAccount(byte[] addressBytes, Keccak stateRoot)
+        public byte[]? GetStorage(in UInt256 index, in Address accountAddress, Keccak? root = null)
         {
-            Span<byte> nibbleBytes = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(addressBytes, nibbleBytes);
-            TrieNode node = TrieStore.FindCachedOrUnknown(nibbleBytes, stateRoot);
-            return node?.NodeType == NodeType.Leaf ? node.Value : null;
-        }
+            Account? account = Get(accountAddress, root);
+            if (account is null || (account.StorageRoot == Keccak.EmptyTreeHash)) return new byte[] { 0 };
 
-        private byte[] GetPersistedAccount(byte[] addressBytes)
-        {
-            byte[]? nodeData = TrieStore[addressBytes];
-            if (nodeData is not null)
+            StorageTree tree = new StorageTree(_storageTrieStore, NullLogManager.Instance, accountAddress)
             {
-                TrieNode node = new(NodeType.Unknown, nodeData);
-                node.ResolveNode(TrieStore);
-                return node.Value;
-            }
-            return null;
+                RootHash = account.StorageRoot
+            };
+            return tree.Get(index, account.StorageRoot);
         }
 
-        private TrieNode? GetPersistedRoot()
+        public void SetStorage(in UInt256 index, byte[] value, in Address accountAddress)
         {
-            byte[]? nodeData = TrieStore[Nibbles.ToEncodedStorageBytes(Array.Empty<byte>())];
-            if (nodeData is not null)
+            int storageKeyLength = StorageKeyLength;
+            if (Capability == TrieNodeResolverCapability.Path) storageKeyLength += StoragePrefixLength;
+
+            Span<byte> key = stackalloc byte[storageKeyLength];
+            switch (Capability)
             {
-                TrieNode root = new(NodeType.Unknown, nodeData);
-                root.ResolveKey(TrieStore, true);
-                return root;
+                case TrieNodeResolverCapability.Hash:
+                    GetStorageKey(index, key);
+                    break;
+                case TrieNodeResolverCapability.Path:
+                    Keccak.Compute(accountAddress.Bytes).Bytes.CopyTo(key);
+                    key[32] = StorageTree.StorageDifferentiatingByte;
+                    GetStorageKey(index, key.Slice(33));
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
             }
-            return null;
+
+            SetInternal(key, value);
         }
 
+        public void SetStorage(Keccak key, byte[] value, in Address accountAddress, bool rlpEncode = true)
+        {
+            throw new ArgumentException("not possible");
+        }
+
+        private static void GetStorageKey(in UInt256 index, in Span<byte> key)
+        {
+            if (index < CacheSize)
+            {
+                Cache[index].CopyTo(key);
+                return;
+            }
+
+            index.ToBigEndian(key);
+
+            // in situ calculation
+            KeccakHash.ComputeHashBytesToSpan(key, key);
+        }
+
+        private void SetInternal(Span<byte> rawKey, byte[] value, bool rlpEncode = true)
+        {
+            if (value.IsZero())
+            {
+                Set(rawKey, Array.Empty<byte>());
+            }
+            else
+            {
+                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
+                Set(rawKey, rlpEncoded);
+            }
+        }
     }
 }

@@ -262,10 +262,10 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(EIP3860TestCases))]
         public void Proper_transactions_selected(TransactionSelectorTests.ProperTransactionsSelectedTestCase testCase)
         {
-            MemDb stateDb = new();
+            MemColumnsDb<StateColumns> stateDb = new();
             MemDb codeDb = new();
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
+            TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
+            StateProvider stateProvider = new(trieStore, new TrieStoreByPath(stateDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance), codeDb, LimboLogs.Instance);
             IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 

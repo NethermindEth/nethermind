@@ -978,7 +978,8 @@ namespace Nethermind.Trie.Test
             MemDb memDb = new();
 
             using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.IfBlockOlderThan(lookupLimit), _logManager);
-            StateProvider stateProvider = new(trieStore, new MemDb(), _logManager);
+            using TrieStore storageTrieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.IfBlockOlderThan(lookupLimit), _logManager);
+            StateProvider stateProvider = new(trieStore, storageTrieStore, new MemDb(), _logManager);
             StorageProvider storageProvider = new(trieStore, stateProvider, _logManager);
 
             Account[] accounts = new Account[accountsCount];

@@ -54,8 +54,9 @@ namespace Nethermind.TxPool.Test
             _specProvider = RopstenSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);
             var trieStore = new TrieStoreByPath(new MemDb(), _logManager);
+            var storageTrieStore = new TrieStoreByPath(new MemDb(), _logManager);
             var codeDb = new MemDb();
-            _stateProvider = new StateProvider(trieStore, codeDb, _logManager);
+            _stateProvider = new StateProvider(trieStore, storageTrieStore, codeDb, _logManager);
             _blockTree = Substitute.For<IBlockTree>();
             Block block = Build.A.Block.WithNumber(0).TestObject;
             _blockTree.Head.Returns(block);

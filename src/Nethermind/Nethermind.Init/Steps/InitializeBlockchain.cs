@@ -102,8 +102,10 @@ namespace Nethermind.Init.Steps
                 setApi.WitnessRepository = NullWitnessCollector.Instance;
             }
 
-            CachingStore cachedStateDb = getApi.DbProvider.StateDb
-                .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
+            //setApi.MainStateDbWithCache = getApi.DbProvider.StateDb.GetColumnDb(StateColumns.State);
+            //CachingStore cachedStateDb = getApi.DbProvider.StateDb
+            //    .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
+
             //TODO - temporarily not using cached DB for path based until issues are solved
             setApi.MainStateDbWithCache = initConfig.UsePathBasedState ? getApi.DbProvider.StateDb : cachedStateDb;
 
@@ -128,6 +130,18 @@ namespace Nethermind.Init.Steps
                     No.Pruning,
                     persistenceStrategy,
                     getApi.LogManager);
+
+                _api.ByPathDbPrunnerState = new ByPathStateDbPrunner(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.State), _api.LogManager);
+                _api.ByPathDbPrunnerStorage = new ByPathStateDbPrunner(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), _api.LogManager);
+
+                setApi.TrieStore = trieStore = new TrieStoreByPath(
+                        stateWitnessedBy,
+                        No.Pruning,
+                        Persist.EveryBlock,
+                        getApi.LogManager, 128, _api.ByPathDbPrunnerState!);
+
+                ITrieStore storageTrieStore;
+                storageTrieStore = new TrieStoreByPath(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.EveryBlock, _api.LogManager, 128);
             }
             else
             {
@@ -166,8 +180,6 @@ namespace Nethermind.Init.Steps
                         getApi.LogManager);
                 }
 
-                //TODO - remove seprate store for storage
-                storageStore = setApi.TrieStore;
             }
 
             TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);
@@ -175,43 +187,56 @@ namespace Nethermind.Init.Steps
             getApi.DisposeStack.Push(trieStore);
 
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(setApi.MainStateDbWithCache);
-            setApi.ReadOnlyStorageTrieStore = storageStore.AsReadOnly();
+            ITrieStore readOnlyStorageTrieStore = setApi.ReadOnlyStorageTrieStore = storageTrieStore.AsReadOnly();
+
 
             IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
                 trieStore,
+                storageTrieStore,
                 codeDb,
                 getApi.LogManager);
 
-            ReadOnlyDbProvider readOnly = new(getApi.DbProvider, false);
+            ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(getApi.DbProvider, false);
 
-            IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, setApi.ReadOnlyStorageTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
+            IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, storageTrieStore.AsReadOnly(), readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
 
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
             stateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+            _logger.Info($"Current Block: Number:{getApi.BlockTree!.Head} StateRoot:{getApi.BlockTree!.Head?.StateRoot} Hash:{getApi.BlockTree!.Head?.Hash}");
+
+            void VerifyTrie()
+            {
+                try
+                {
+                    _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
+                    TrieStoreByPath noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
+                    TrieStoreByPath noPruningStorageStore = new(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.EveryBlock, getApi.LogManager);
+                    IStateProvider diagStateProvider = new StateProvider(noPruningStore, noPruningStorageStore, codeDb, getApi.LogManager)
+                    {
+                        StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
+                    };
+                    TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
+                    _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
+                }
+                catch (Exception ex)
+                {
+                    _logger!.Error(ex.ToString());
+                }
+            }
+
+            _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}");
 
             if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
             {
-                Task.Run(() =>
-                {
-                    try
-                    {
-                        _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                        TrieStore noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
-                        IStateProvider diagStateProvider = new StateProvider(noPruningStore, codeDb, getApi.LogManager)
-                        {
-                            StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
-                        };
-                        TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
-                        _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger!.Error(ex.ToString());
-                    }
-                });
+                Task.Run(VerifyTrie);
+            }
+
+            if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrieBlocking)
+            {
+                VerifyTrie();
             }
 
             // Init state if we need system calls before actual processing starts
@@ -232,7 +257,8 @@ namespace Nethermind.Init.Steps
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
             IStorageProvider storageProvider = setApi.StorageProvider = new StorageProvider(
-                storageStore,
+                //trieStore,
+                storageTrieStore,
                 stateProvider,
                 getApi.LogManager);
 
@@ -305,8 +331,6 @@ namespace Nethermind.Init.Steps
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = new BlockProductionPolicy(miningConfig);
-
-            InitializeFullPruning(pruningConfig, initConfig, _api, stateReader);
 
             return Task.CompletedTask;
         }

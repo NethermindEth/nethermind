@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks;
@@ -99,6 +100,22 @@ public class ColumnDb : IDbWithSpan
                 }
             }
         }
+
+        public void DeleteRange(byte[] startKey, byte[] endKey)
+        {
+            using Iterator iterator = _columnDb._mainDb._db.NewIterator(_columnDb._columnFamily);
+            iterator.Seek(startKey);
+            while (iterator.Valid())
+            {
+                if (Bytes.Comparer.Compare(iterator.Key(), endKey) >= 0)
+                    break;
+                Console.WriteLine($"Removed: {iterator.Key().ToHexString()} | From: {startKey.ToHexString()} To: {endKey.ToHexString()}");
+                _underlyingBatch._rocksBatch.Delete(iterator.Key(), _columnDb._columnFamily);
+                iterator.Next();
+            }
+            //seems to be much less performant
+            //_underlyingBatch._rocksBatch.DeleteRange(startKey, Convert.ToUInt64(startKey.Length), endKey, Convert.ToUInt64(endKey.Length), _columnDb._columnFamily);
+        }
     }
 
     public void Remove(ReadOnlySpan<byte> key)
@@ -132,4 +149,11 @@ public class ColumnDb : IDbWithSpan
     }
 
     public void DangerousReleaseMemory(in Span<byte> span) => _rocksDb.DangerousReleaseMemory(span);
+
+
+    public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+    {
+        using ColumnsDbBatch batch = new(this, (DbOnTheRocks.RocksDbBatch)_mainDb.StartBatch());
+        batch.DeleteRange(startKey.ToArray(), endKey.ToArray());
+    }
 }

@@ -19,8 +19,13 @@ namespace Nethermind.Trie.Pruning
 
         event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-        void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore batch = null);
+        void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? batch = null, bool withDelete = false);
 
         public void ClearCache();
+
+        void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefix);
+        void DeleteByRange(Span<byte> startKey, Span<byte> endKey);
+
+        bool CanAccessByPath();
     }
 }

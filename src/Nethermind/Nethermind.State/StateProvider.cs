@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -38,11 +39,15 @@ namespace Nethermind.State
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = Resettable.EmptyPosition;
 
-        public StateProvider(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+        private ITrieStore _storageTrieStore;
+
+        public StateProvider(ITrieStore? trieStore, ITrieStore? storageTrieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _tree = trieStore.Capability == TrieNodeResolverCapability.Path ? new StateTreeByPath(trieStore, logManager) : new StateTree(trieStore, logManager);
+            Debug.Assert(trieStore is not null);
+            _tree = trieStore.Capability == TrieNodeResolverCapability.Path ? new StateTreeByPath(trieStore, storageTrieStore, logManager) : new StateTree(trieStore, logManager);
+            _storageTrieStore = storageTrieStore;
         }
 
         public void Accept(ITreeVisitor? visitor, Keccak? stateRoot, VisitingOptions? visitingOptions = null)
@@ -50,7 +55,7 @@ namespace Nethermind.State
             if (visitor is null) throw new ArgumentNullException(nameof(visitor));
             if (stateRoot is null) throw new ArgumentNullException(nameof(stateRoot));
 
-            _tree.Accept(visitor, stateRoot, visitingOptions);
+            _tree.Accept(visitor, stateRoot, visitingOptions, _storageTrieStore);
         }
 
         private bool _needsStateRootUpdate;

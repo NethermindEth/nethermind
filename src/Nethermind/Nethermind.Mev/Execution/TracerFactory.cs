@@ -30,7 +30,7 @@ namespace Nethermind.Mev.Execution
             IDbProvider dbProvider,
             IBlockTree blockTree,
             IReadOnlyTrieStore trieStore,
-            IReadOnlyTrieStore storageTtrieStore,
+            IReadOnlyTrieStore storageTrieStore,
             IBlockPreprocessorStep recoveryStep,
             ISpecProvider specProvider,
             ILogManager logManager,
@@ -43,7 +43,7 @@ namespace Nethermind.Mev.Execution
             _dbProvider = dbProvider.AsReadOnly(false);
             _blockTree = blockTree.AsReadOnly();
             _trieStore = trieStore;
-            _storageTrieStore = storageTtrieStore;
+            _storageTrieStore = storageTrieStore;
         }
 
         public ITracer Create()

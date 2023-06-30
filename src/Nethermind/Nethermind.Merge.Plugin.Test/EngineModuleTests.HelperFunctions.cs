@@ -11,12 +11,14 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -40,9 +42,15 @@ namespace Nethermind.Merge.Plugin.Test
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,
             PrivateKey from, Address to, uint count, int value, out BlockHeader parentHeader)
         {
+            var logger = new NUnitLogger(LogLevel.Trace);
+            logger.Info("AddTransactions");
             Transaction[] transactions = BuildTransactions(chain, executePayloadRequest.ParentHash, from, to, count, value, out Account accountFrom, out parentHeader);
+            logger.Info($"txns: {transactions}");
             executePayloadRequest.SetTransactions(transactions);
             UInt256 totalValue = ((int)(count * value)).GWei();
+            logger.Info($"totalValue: {totalValue}");
+            logger.Info($"accountFrom.Balance: {accountFrom.Balance}");
+            logger.Info($"chain.StateReader.GetBalance({parentHeader.StateRoot!}, {to}): {chain.StateReader.GetBalance(parentHeader.StateRoot!, to)}");
             return (accountFrom.Balance - totalValue, chain.StateReader.GetBalance(parentHeader.StateRoot!, to) + totalValue);
         }
 

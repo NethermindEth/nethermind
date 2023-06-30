@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
-            tree.Commit(blockNumber, skipRoot: false);
+            tree.Commit(blockNumber, skipRoot: true);
 
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
@@ -163,9 +163,10 @@ namespace Nethermind.Synchronization.SnapSync
 
             Stack<(TrieNode parent, TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
 
+            root.StoreNibblePathPrefix = tree.StoreNibblePathPrefix;
             tree.RootRef = root;
             proofNodesToProcess.Push((null, root, -1, new List<byte>()));
-            sortedBoundaryList.Add(root); ;
+            sortedBoundaryList.Add(root);
 
             bool moreChildrenToRight = false;
 
@@ -174,6 +175,7 @@ namespace Nethermind.Synchronization.SnapSync
                 (TrieNode parent, TrieNode node, int pathIndex, List<byte> path) = proofNodesToProcess.Pop();
 
                 node.PathToNode = path.ToArray();
+                node.StoreNibblePathPrefix = tree.StoreNibblePathPrefix;
                 //Console.WriteLine($"Node {node.PathToNode.ToHexString()} hash: {node.Keccak}");
                 if (node.IsExtension)
                 {
@@ -262,12 +264,28 @@ namespace Nethermind.Synchronization.SnapSync
             for (int i = 0; i < proofs.Length; i++)
             {
                 byte[] proof = proofs[i];
-                var node = new TrieNode(NodeType.Unknown, proof, true);
-                node.IsBoundaryProofNode = true;
-                node.ResolveNode(store);
-                node.ResolveKey(store, i == 0);
+                if (store.Capability == TrieNodeResolverCapability.Path)
+                {
+                    //a workaround to correctly resolve a node for path based store - avoids recalc of keccak for child node
+                    TrieNode node = new(NodeType.Unknown, proof, false)
+                    {
+                        IsBoundaryProofNode = true
+                    };
+                    node.ResolveNode(store);
+                    node.ResolveKey(store, i == 0);
 
-                dict[node.Keccak] = node;
+                    dict[node.Keccak] = node.Clone();
+                    dict[node.Keccak].IsBoundaryProofNode = true;
+                }
+                else
+                {
+                    TrieNode node = new(NodeType.Unknown, proof, true)
+                    {
+                        IsBoundaryProofNode = true
+                    };
+                    node.ResolveNode(store);
+                    node.ResolveKey(store, i == 0);
+                }
             }
 
             return dict;
@@ -317,17 +335,36 @@ namespace Nethermind.Synchronization.SnapSync
             TrieNode data = node.GetData(childIndex) as TrieNode;
             if (data is not null)
             {
-
                 return data.IsBoundaryProofNode == false;
             }
 
-            Keccak childKeccak = node.GetChildHash(childIndex);
-            if (childKeccak is null)
+            if (store.Capability == TrieNodeResolverCapability.Hash)
             {
-                return true;
+                Keccak childKeccak = node.GetChildHash(childIndex);
+                return childKeccak is null || store.IsPersisted(childKeccak);
             }
+            else
+            {
+                Keccak childKeccak = node.GetChildHash(childIndex);
+                if (childKeccak is null)
+                    return true;
 
-            return store.IsPersisted(childKeccak);
+                if (node.IsBranch)
+                {
+                    Span<byte> childPath = stackalloc byte[node.FullPath.Length + 1];
+                    node.FullPath.CopyTo(childPath);
+                    childPath[^1] = (byte)childIndex;
+                    return store.ExistsInDB(childKeccak, childPath.ToArray());
+                }
+                else if (node.IsExtension)
+                {
+                    Span<byte> childPath = stackalloc byte[node.FullPath.Length + node.Key.Length];
+                    node.FullPath.CopyTo(childPath);
+                    node.Key.CopyTo(childPath.Slice(node.FullPath.Length));
+                    return store.ExistsInDB(childKeccak, childPath.ToArray());
+                }
+                return false;
+            }
         }
     }
 }

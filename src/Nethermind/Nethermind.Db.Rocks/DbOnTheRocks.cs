@@ -637,6 +637,22 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 }
             }
         }
+
+        public void DeleteRange(byte[] startKey, byte[] endKey)
+        {
+            //_rocksBatch.DeleteRange(startKey, Convert.ToUInt64(startKey.Length), endKey, Convert.ToUInt64(endKey.Length));
+
+            using Iterator iterator = _dbOnTheRocks._db.NewIterator();
+            iterator.Seek(startKey);
+            while (iterator.Valid())
+            {
+                if (Bytes.Comparer.Compare(iterator.Key(), endKey) >= 0)
+                    break;
+                Console.WriteLine($"{Convert.ToHexString(iterator.Key())} - {Convert.ToHexString(iterator.Value())}");
+                _rocksBatch.Delete(iterator.Key());
+                iterator.Next();
+            }
+        }
     }
 
     public void Flush()
@@ -895,5 +911,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             { "soft_pending_compaction_bytes_limit", 100000.GiB().ToString() },
             { "hard_pending_compaction_bytes_limit", 100000.GiB().ToString() },
         };
+    }
+
+    public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+    {
+        using RocksDbBatch batch = new(this);
+        batch.DeleteRange(startKey.ToArray(), endKey.ToArray());
     }
 }

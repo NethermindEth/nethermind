@@ -388,6 +388,20 @@ namespace Nethermind.Trie.Test.Pruning
                 set => _db[key.ToArray()] = value;
             }
 
+            public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+            {
+                List<byte[]> keys = new();
+                foreach (byte[] key in _db.Keys)
+                {
+                    if (Bytes.Comparer.Compare(key, startKey) >= 0 && Bytes.Comparer.Compare(key, endKey) <= 0)
+                        keys.Add(key);
+                }
+                foreach (byte[] key in keys)
+                {
+                    _db.Remove(key, out _);
+                }
+            }
+
             public IBatch StartBatch()
             {
                 return new BadBatch();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -64,7 +65,8 @@ namespace Nethermind.Synchronization.ParallelSync
                 return true;
             }
 
-            TrieNode trieNode = _trieNodeResolver.FindCachedOrUnknown(stateRoot);
+            TrieNode trieNode = _trieNodeResolver.FindCachedOrUnknown(stateRoot, Array.Empty<byte>(), Array.Empty<byte>());
+            if (trieNode is null) return false;
             bool stateRootIsInMemory = trieNode.NodeType != NodeType.Unknown;
             // We check whether one of below happened:
             //   1) the block has been processed but not yet persisted (pruning) OR

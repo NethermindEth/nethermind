@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 _dbProvider,
                 _blockTree,
                 new TrieStoreByPath(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                new TrieStoreByPath(_dbProvider.StateDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance).AsReadOnly(),
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 receiptStorage,
                 _specProvider,
@@ -208,7 +208,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 _dbProvider,
                 _blockTree,
                 new TrieStoreByPath(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                new TrieStoreByPath(_dbProvider.StateDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance).AsReadOnly(),
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 _receiptFinder,
                 _specProvider,
@@ -875,7 +875,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
         private StateProvider CreateInitialState(byte[] code)
         {
-            StateProvider stateProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
+            StateProvider stateProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
             AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
             AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 

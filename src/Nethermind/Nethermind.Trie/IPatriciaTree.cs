@@ -10,9 +10,10 @@ public interface IPatriciaTree
 {
     Keccak RootHash { get; set; }
     TrieNode? RootRef { get; set; }
+    byte[] StoreNibblePathPrefix { get; }
     void UpdateRootHash();
     void Commit(long blockNumber, bool skipRoot = false);
 
     ITrieStore TrieStore { get; }
-    void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions? visitingOptions = null);
+    void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions? visitingOptions = null, ITrieNodeResolver storageTrieNodeResolver = null);
 }

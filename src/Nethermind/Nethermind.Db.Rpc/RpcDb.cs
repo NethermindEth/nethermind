@@ -86,5 +86,10 @@ namespace Nethermind.Db.Rpc
 
             return value;
         }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

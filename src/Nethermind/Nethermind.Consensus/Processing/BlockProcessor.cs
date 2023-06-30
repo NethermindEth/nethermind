@@ -101,12 +101,14 @@ namespace Nethermind.Consensus.Processing
                 {
                     if (blocksCount > 64 && i % 8 == 0)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlocks[i]}");
+                        _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlocks[i]}");
                     }
 
                     _witnessCollector.Reset();
                     (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
                     processedBlocks[i] = processedBlock;
+
+                    BlockTraceDumper.LogDiagnosticTrace(blockTracer, suggestedBlocks[i].Hash, _logger);
 
                     // be cautious here as AuRa depends on processing
                     PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
@@ -123,7 +125,7 @@ namespace Nethermind.Consensus.Processing
                     bool isCommitPoint = i % MaxUncommittedBlocks == 0 && isNotAtTheEdge;
                     if (isCommitPoint && notReadOnly)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
+                        _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                         previousBranchStateRoot = CreateCheckpoint();
                         Keccak? newStateRoot = suggestedBlocks[i].StateRoot;
                         InitBranch(newStateRoot, false);
@@ -139,7 +141,7 @@ namespace Nethermind.Consensus.Processing
             }
             catch (Exception ex) // try to restore for all cost
             {
-                _logger.Trace($"Encountered exception {ex} while processing blocks.");
+                _logger.Info($"Encountered exception {ex} while processing blocks.");
                 RestoreBranch(previousBranchStateRoot);
                 throw;
             }
@@ -175,7 +177,7 @@ namespace Nethermind.Consensus.Processing
         // TODO: move to block processing pipeline
         private void PreCommitBlock(Keccak newBranchStateRoot, long blockNumber)
         {
-            if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot}");
+            _logger.Info($"Committing the branch - {newBranchStateRoot}");
             _storageProvider.CommitTrees(blockNumber);
             _stateProvider.CommitTree(blockNumber);
         }
@@ -183,17 +185,17 @@ namespace Nethermind.Consensus.Processing
         // TODO: move to branch processor
         private void RestoreBranch(Keccak branchingPointStateRoot)
         {
-            if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
+            _logger.Info($"Restoring the branch checkpoint - {branchingPointStateRoot}");
             _storageProvider.Reset();
             _stateProvider.Reset();
             _stateProvider.StateRoot = branchingPointStateRoot;
-            if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
+            _logger.Info($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
         }
 
         // TODO: block processor pipeline
         private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
-            if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
+            _logger.Info($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
             ApplyDaoTransition(suggestedBlock);
             Block block = PrepareBlockForProcessing(suggestedBlock);

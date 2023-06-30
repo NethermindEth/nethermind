@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Nethermind.Db
 {
@@ -16,8 +17,13 @@ namespace Nethermind.Db
     {
         private readonly int _writeDelay; // for testing scenarios
         private readonly int _readDelay; // for testing scenarios
-        public long ReadsCount { get; private set; }
-        public long WritesCount { get; private set; }
+        private long _writeCount;
+        private long _readCount;
+
+        public long ReadsCount { get => _readCount; }
+        public long WritesCount { get => _writeCount; }
+
+        private ILogger logger = new TestLogManager.NUnitLogger(LogLevel.Info);
 
         private readonly SpanConcurrentDictionary<byte, byte[]?> _db;
 
@@ -36,6 +42,8 @@ namespace Nethermind.Db
             _writeDelay = writeDelay;
             _readDelay = readDelay;
             _db = new SpanConcurrentDictionary<byte, byte[]>(Bytes.SpanEqualityComparer);
+            _writeCount = 0;
+            _readCount = 0;
         }
 
         public string Name { get; }
@@ -49,7 +57,7 @@ namespace Nethermind.Db
                     Thread.Sleep(_readDelay);
                 }
 
-                ReadsCount++;
+                Interlocked.Increment(ref _readCount);
                 return _db.TryGetValue(key, out byte[] value) ? value : null;
             }
             set
@@ -59,7 +67,7 @@ namespace Nethermind.Db
                     Thread.Sleep(_writeDelay);
                 }
 
-                WritesCount++;
+                Interlocked.Increment(ref _writeCount);
                 _db[key] = value;
             }
         }
@@ -73,7 +81,7 @@ namespace Nethermind.Db
                     Thread.Sleep(_readDelay);
                 }
 
-                ReadsCount += keys.Length;
+                Interlocked.Add(ref _readCount, keys.Length);
                 return keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _db.TryGetValue(k, out var value) ? value : null)).ToArray();
             }
         }
@@ -129,6 +137,23 @@ namespace Nethermind.Db
 
         public void DangerousReleaseMemory(in Span<byte> span)
         {
+        }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+            if (Bytes.Comparer.Compare(startKey, endKey) == 0)
+                _db.Remove(startKey.ToArray(), out _);
+
+            List<byte[]> keys = new();
+            foreach (byte[] key in _db.Keys)
+            {
+                if (Bytes.Comparer.Compare(key, startKey) >= 0 && Bytes.Comparer.Compare(key, endKey) < 0)
+                    keys.Add(key);
+            }
+            foreach (byte[] key in keys)
+            {
+                _db.Remove(key, out _);
+            }
         }
     }
 }

@@ -45,6 +45,11 @@ namespace Nethermind.State.Witnesses
             set => _wrapped[key] = value;
         }
 
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+            _wrapped.DeleteByRange(startKey, endKey);
+        }
+
         public IBatch StartBatch()
         {
             return _wrapped.StartBatch();

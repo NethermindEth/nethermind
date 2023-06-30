@@ -27,13 +27,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private readonly IReadOnlyBlockTree _blockTree;
         private readonly ReadOnlyDbProvider _dbProvider;
         private readonly IReadOnlyTrieStore _trieStore;
-        private readonly IReadOnlyTrieStore _storageTrieStore;
+        private readonly IReadOnlyTrieStore _trieStorageStore;
 
         public ProofModuleFactory(
             IDbProvider dbProvider,
             IBlockTree blockTree,
             IReadOnlyTrieStore trieStore,
-            IReadOnlyTrieStore storageTrieStore,
+            IReadOnlyTrieStore trieStorageStore,
             IBlockPreprocessorStep recoveryStep,
             IReceiptFinder receiptFinder,
             ISpecProvider specProvider,
@@ -46,13 +46,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
             _dbProvider = dbProvider.AsReadOnly(false);
             _blockTree = blockTree.AsReadOnly();
             _trieStore = trieStore;
-            _storageTrieStore = storageTrieStore;
+            _trieStorageStore = trieStorageStore;
         }
 
         public override IProofRpcModule Create()
         {
             ReadOnlyTxProcessingEnv txProcessingEnv = new(
-                _dbProvider, _trieStore, _storageTrieStore, _blockTree, _specProvider, _logManager);
+                _dbProvider, _trieStore, _trieStorageStore, _blockTree, _specProvider, _logManager);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _dbProvider, _specProvider, _logManager);

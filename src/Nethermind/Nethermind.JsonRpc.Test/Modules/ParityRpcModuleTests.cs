@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             peerManager.ConnectedPeers.Returns(new List<Peer> { peerA, peerB, peerA, peerC, peerB });
             peerManager.MaxActivePeers.Returns(15);
 
-            StateProvider stateProvider = new(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
+            StateProvider stateProvider = new(new TrieStore(new MemDb(), LimboLogs.Instance), new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
             StateReader stateReader = new(new TrieStore(new MemDb(), LimboLogs.Instance), new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
 
             IDb blockDb = new MemDb();
@@ -346,7 +346,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
-            TxPool.TxPool txPool = new(ethereumEcdsa, new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), blockTree, new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)), new TxPoolConfig(),
+            TxPool.TxPool txPool = new(ethereumEcdsa, new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), blockTree, new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)), new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();

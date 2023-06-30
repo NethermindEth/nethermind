@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly ReadOnlyDbProvider _dbProvider;
         private readonly IReadOnlyBlockTree _blockTree;
         private readonly IReadOnlyTrieStore _trieNodeResolver;
-        private readonly IReadOnlyTrieStore _trieNodeStorageResolver;
+        private readonly IReadOnlyTrieStore _storageTrieNodeResolver;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IDbProvider dbProvider,
             IBlockTree blockTree,
             IReadOnlyTrieStore trieNodeResolver,
-            IReadOnlyTrieStore trieNodeStorageResolver,
+            IReadOnlyTrieStore storageTrieNodeResolver,
             IJsonRpcConfig jsonRpcConfig,
             IBlockPreprocessorStep recoveryStep,
             IRewardCalculatorSource rewardCalculatorSource,
@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _dbProvider = dbProvider.AsReadOnly(false);
             _blockTree = blockTree.AsReadOnly();
             _trieNodeResolver = trieNodeResolver;
-            _trieNodeStorageResolver = trieNodeStorageResolver;
+            _storageTrieNodeResolver = storageTrieNodeResolver;
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public override ITraceRpcModule Create()
         {
             ReadOnlyTxProcessingEnv txProcessingEnv =
-                new(_dbProvider, _trieNodeResolver, _trieNodeStorageResolver, _blockTree, _specProvider, _logManager);
+                new(_dbProvider, _trieNodeResolver, _storageTrieNodeResolver, _blockTree, _specProvider, _logManager);
 
             IRewardCalculator rewardCalculator =
                 new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor),

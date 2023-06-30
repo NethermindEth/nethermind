@@ -4,12 +4,14 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.ByPath;
 
 namespace Nethermind.Trie.Pruning
@@ -20,17 +22,19 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public class TrieStoreByPath : ITrieStore
     {
-        private static readonly byte[] _rootKeyPath = Nibbles.ToEncodedStorageBytes(Array.Empty<byte>());
+        private const byte PathMarker = 128;
 
         private int _isFirst;
-
         private IBatch? _currentBatch = null;
 
         private readonly IPathTrieNodeCache _committedNodes;
+        private readonly ConcurrentQueue<byte[]> _destroyPrefixes;
 
         private bool _lastPersistedReachedReorgBoundary;
-        private Task _pruningTask = Task.CompletedTask;
-        private CancellationTokenSource _pruningTaskCancellationTokenSource = new();
+        private readonly Task _pruningTask = Task.CompletedTask;
+        private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
+
+        private ByPathStateDbPrunner _dbPrunner;
 
         public TrieStoreByPath(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
@@ -47,12 +51,15 @@ namespace Nethermind.Trie.Pruning
             IPruningStrategy? pruningStrategy,
             IPersistenceStrategy? persistenceStrategy,
             ILogManager? logManager,
-            int historyBlockDepth = 128)
+            int historyBlockDepth = 128,
+            ByPathStateDbPrunner dbPrunner = null)
         {
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _committedNodes = new TrieNodeBlockCache(this, historyBlockDepth, logManager);
+            _destroyPrefixes = new ConcurrentQueue<byte[]>();
+            _dbPrunner = dbPrunner;
         }
 
         public long LastPersistedBlockNumber
@@ -68,8 +75,6 @@ namespace Nethermind.Trie.Pruning
                 }
             }
         }
-
-        public Keccak LastPersistedRoot { get; private set; }
 
         public long MemoryUsedByDirtyCache
         {
@@ -116,14 +121,10 @@ namespace Nethermind.Trie.Pruning
             EnsureCommitSetExistsForBlock(blockNumber);
 
             if (_logger.IsTrace) _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
-            if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
+            if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node!.IsBoundaryProofNode)
+            //if (!nodeCommitInfo.IsEmptyBlockMarker)
             {
                 TrieNode node = nodeCommitInfo.Node!;
-
-                if (node!.Keccak is null)
-                {
-                    throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
-                }
 
                 if (CurrentPackage is null)
                 {
@@ -139,7 +140,7 @@ namespace Nethermind.Trie.Pruning
                 node.LastSeen = Math.Max(blockNumber, node.LastSeen ?? 0);
 
                 if (_committedNodes.MaxNumberOfBlocks == 0)
-                    Persist(node, blockNumber, null);
+                    Persist(node, blockNumber);
 
                 CommittedNodesCount++;
             }
@@ -162,31 +163,33 @@ namespace Nethermind.Trie.Pruning
                         if (_logger.IsTrace) _logger.Trace($"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
                         set.Seal();
                     }
-
-                    bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(set.BlockNumber);
-                    if (shouldPersistSnapshot)
+                    if (blockNumber == 0) // special case for genesis
                     {
-                        long persistTarget = Math.Min(Math.Max(LastPersistedBlockNumber, set.BlockNumber - _committedNodes.MaxNumberOfBlocks) + 1, set.BlockNumber);
-
-                        do
-                        {
-                            if (_commitSetQueue.TryPeek(out BlockCommitSet frontSet) && frontSet.BlockNumber <= persistTarget)
-                            {
-                                Persist(frontSet);
-                                AnnounceReorgBoundaries();
-                                _commitSetQueue.TryDequeue(out _);
-                                if (_logger.IsTrace) _logger.Trace($"Current committed block {blockNumber} | persist target {persistTarget} | persisting {frontSet.BlockNumber} / {frontSet.Root?.Keccak}");
-                            }
-                        } while (LastPersistedBlockNumber < persistTarget);
+                        Persist(0);
+                        AnnounceReorgBoundaries();
                     }
                     else
                     {
-                        _committedNodes.Prune();
+                        long persistTarget = Math.Max(LastPersistedBlockNumber, set.BlockNumber - _committedNodes.MaxNumberOfBlocks);
+                        if (persistTarget > LastPersistedBlockNumber)
+                        {
+                            Persist(persistTarget);
+                            AnnounceReorgBoundaries();
+                        }
                     }
-                    _committedNodes?.SetRootHashForBlock(set.BlockNumber, set.Root?.Keccak);
-
-                    CurrentPackage = null;
                 }
+                if (trieType == TrieType.Storage)
+                {
+                    while (_destroyPrefixes.TryDequeue(out var prefix))
+                    {
+                        _committedNodes.AddRemovedPrefix(blockNumber, prefix);
+                    }
+                }
+                // set rootHash here to account for root hashes for the storage trees also in every block
+                // there needs to be a better way to handle this
+                _committedNodes.SetRootHashForBlock(blockNumber, root?.Keccak);
+
+                if (trieType == TrieType.State) CurrentPackage = null;
             }
             finally
             {
@@ -196,6 +199,20 @@ namespace Nethermind.Trie.Pruning
         }
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
+
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
+        {
+            //if (IsPathCleaned(path))
+            //    return null;
+
+            keyValueStore ??= _keyValueStore;
+            byte[] keyPath = Nibbles.NibblesToByteStorage(path);
+            byte[]? rlp = _currentBatch?[keyPath] ?? keyValueStore[keyPath];
+            if (rlp is null || rlp[0] != PathMarker) return rlp;
+
+            rlp = _currentBatch?[rlp.AsSpan()[1..]] ?? keyValueStore[rlp.AsSpan()[1..]];
+            return rlp;
+        }
 
         internal byte[] LoadRlp(Keccak keccak, IKeyValueStore? keyValueStore)
         {
@@ -212,24 +229,14 @@ namespace Nethermind.Trie.Pruning
             return rlp;
         }
 
-        internal byte[] LoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, Keccak rootHash = null)
+        private byte[] LoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, Keccak rootHash = null)
         {
-            byte[] keyPath = path.Length < 64 ?
-                        Nibbles.ToEncodedStorageBytes(path) :
-                        Nibbles.ToBytes(path);
-
-            keyValueStore ??= _keyValueStore;
-            byte[]? rlp = _currentBatch?[keyPath] ?? keyValueStore[keyPath];
-            if (path.Length < 64 && rlp?.Length == 32)
-            {
-                byte[]? pointsToPath = _currentBatch?[rlp] ?? keyValueStore[rlp];
-                if (pointsToPath is not null)
-                    rlp = pointsToPath;
-            }
+            byte[] keyPath = Nibbles.NibblesToByteStorage(path);
+            byte[]? rlp = TryLoadRlp(path, keyValueStore);
 
             if (rlp is null)
             {
-                throw new TrieException($"Node {keyPath} is missing from the DB");
+                throw new TrieException($"Node {keyPath.ToHexString()} is missing from the DB | path.Length {path.Length} - {Nibbles.ToCompactHexEncoding(path.ToArray()).ToHexString()}");
             }
 
             Metrics.LoadedFromDbNodesCount++;
@@ -254,6 +261,20 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
+        public bool IsPersisted(Keccak keccak, byte[] childPath)
+        {
+            byte[]? rlp = TryLoadRlp(childPath, _keyValueStore);
+            if (rlp is null) return false;
+
+            TrieNode node = new TrieNode(NodeType.Unknown, rlp: rlp);
+            node.ResolveNode(this);
+            node.ResolveKey(this, false);
+            if (node.Keccak == keccak) return true;
+            Metrics.LoadedFromDbNodesCount++;
+
+            return false;
+        }
+
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore)
         {
             return new ReadOnlyTrieStoreByPath(this, keyValueStore);
@@ -264,31 +285,32 @@ namespace Nethermind.Trie.Pruning
             return new TrieNode(NodeType.Unknown, keccak);
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak keccak, Span<byte> nodePath)
+        public TrieNode? FindCachedOrUnknown(Keccak keccak, Span<byte> nodePath, Span<byte> storagePrefix)
         {
-            TrieNode node = _committedNodes.GetNode(nodePath.ToArray(), keccak);
-            node ??= new TrieNode(NodeType.Unknown, nodePath);
-            return node;
+            TrieNode node = _committedNodes.GetNode(storagePrefix.ToArray().Concat(nodePath.ToArray()).ToArray(), keccak);
+            if (node is null)
+            {
+                return new TrieNode(NodeType.Unknown, path: nodePath)
+                {
+                    StoreNibblePathPrefix = storagePrefix.ToArray()
+                };
+            }
+
+            return node.FullRlp is null ? null : node;
         }
 
-        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, Keccak rootHash)
+        public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, Span<byte> storagePrefix, Keccak rootHash)
         {
-            TrieNode node = _committedNodes.GetNode(rootHash, nodePath.ToArray());
-            node ??= new TrieNode(NodeType.Unknown, nodePath);
-            return node;
+            TrieNode node = _committedNodes.GetNode(rootHash, storagePrefix.ToArray().Concat(nodePath.ToArray()).ToArray());
+            if (node is null)
+            {
+                return new TrieNode(NodeType.Unknown, path: nodePath)
+                {
+                    StoreNibblePathPrefix = storagePrefix.ToArray()
+                };
+            }
+            return node.FullRlp is null ? null : node;
         }
-
-        internal TrieNode FindCachedOrUnknown(Keccak keccak, Span<byte> nodePath, bool isReadOnly)
-        {
-            return _committedNodes.GetNode(keccak, nodePath.ToArray());
-        }
-
-        //public void Dump() => _dirtyNodes.Dump();
-
-        /// <summary>
-        /// This method is here to support testing.
-        /// </summary>
-        //public void ClearCache() => _dirtyNodes.Clear();
 
         public void Dispose()
         {
@@ -343,29 +365,28 @@ namespace Nethermind.Trie.Pruning
         }
 
         /// <summary>
-        /// Persists all transient (not yet persisted) starting from <paramref name="commitSet"/> root.
-        /// Already persisted nodes are skipped. After this action we are sure that the full state is available
-        /// for the block represented by this commit set.
+        /// Persists all transient (not yet persisted) blocks un till <paramref name="persistUntilBlock"/> block number.
+        /// After this action we are sure that the full state is available for the block <paramref name="persistUntilBlock"/>.
         /// </summary>
-        /// <param name="commitSet">A commit set of a block which root is to be persisted.</param>
-        private void Persist(BlockCommitSet commitSet)
+        /// <param name="persistUntilBlock">Persist all the block changes until this block number</param>
+        private void Persist(long persistUntilBlock)
         {
-            void PersistNode(TrieNode tn) => Persist(tn, commitSet.BlockNumber, commitSet.Root?.Keccak);
-
             try
             {
                 _currentBatch ??= _keyValueStore.StartBatch();
-                if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
-                commitSet.Root?.CallRecursively(PersistNode, this, true, _logger);
+                _committedNodes.PersistUntilBlock(persistUntilBlock, _currentBatch);
                 stopwatch.Stop();
                 Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
-                if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
 
-                LastPersistedBlockNumber = commitSet.BlockNumber;
-                LastPersistedRoot = commitSet.Root?.Keccak;
+                while (_commitSetQueue.TryPeek(out BlockCommitSet frontSet) && frontSet.BlockNumber <= persistUntilBlock)
+                {
+                    LastPersistedBlockNumber = frontSet.BlockNumber;
+                    _commitSetQueue.TryDequeue(out _);
+                    if (_logger.IsTrace) _logger.Trace($"Persist target {persistUntilBlock} | persisting {frontSet.BlockNumber} / {frontSet.Root?.Keccak}");
+                }
             }
             finally
             {
@@ -376,7 +397,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        private void Persist(TrieNode currentNode, long blockNumber, Keccak? rootHash)
+        private void Persist(TrieNode currentNode, long blockNumber)
         {
             _currentBatch ??= _keyValueStore.StartBatch();
             if (currentNode is null)
@@ -384,7 +405,7 @@ namespace Nethermind.Trie.Pruning
                 throw new ArgumentNullException(nameof(currentNode));
             }
 
-            if (currentNode.Keccak is not null)
+            if (currentNode.Keccak is not null || currentNode.FullRlp is null)
             {
                 Debug.Assert(blockNumber == TrieNode.LastSeenNotSet || currentNode.LastSeen != TrieNode.LastSeenNotSet, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
                 // Note that the LastSeen value here can be 'in the future' (greater than block number
@@ -480,73 +501,72 @@ namespace Nethermind.Trie.Pruning
 
         private void PersistOnShutdown()
         {
-            //_dirtyNodes.PersistUntilBlock(LastPersistedBlockNumber);
+            // TODO: this can be used to persist the cache if we want
         }
 
         #endregion
 
-        public void PersistCache(IKeyValueStore store, CancellationToken cancellationToken)
-        {
-            //Task.Run(() =>
-            //{
-            //    const int million = 1_000_000;
-            //    int persistedNodes = 0;
-            //    Stopwatch stopwatch = Stopwatch.StartNew();
-
-            //    void PersistNode(TrieNode n)
-            //    {
-            //        Keccak? hash = n.Keccak;
-            //        if (hash?.Bytes is not null)
-            //        {
-            //            store[hash.Bytes] = n.FullRlp;
-            //            int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
-            //            if (_logger.IsInfo && persistedNodesCount % million == 0)
-            //            {
-            //                _logger.Info($"Full Pruning Persist Cache in progress: {stopwatch.Elapsed} {persistedNodesCount / million:N} mln nodes persisted.");
-            //            }
-            //        }
-            //    }
-
-            //    if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
-            //    KeyValuePair<byte[], TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
-            //    Parallel.For(0, nodesCopy.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
-            //    {
-            //        if (!cancellationToken.IsCancellationRequested)
-            //        {
-            //            nodesCopy[i].Value.CallRecursively(PersistNode, this, false, _logger, false);
-            //        }
-            //    });
-
-            //    if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache finished: {stopwatch.Elapsed} {persistedNodes / (double)million:N} mln nodes persisted.");
-            //});
-        }
-
-       public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore keyValueStore = null)
+        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false)
         {
             keyValueStore ??= _keyValueStore;
 
-            byte[] fullPath = trieNode.FullPath;
+            byte[] fullPath = trieNode.FullPath ?? throw new ArgumentNullException();
+            byte[] pathBytes = Nibbles.NibblesToByteStorage(fullPath);
 
-            byte[] pathBytes = fullPath.Length < 64 ? Nibbles.ToEncodedStorageBytes(fullPath) : Nibbles.ToBytes(fullPath);
-            if (trieNode.IsLeaf && (trieNode.Key.Length < 64 || trieNode.PathToNode.Length == 0))
+            if (trieNode.IsLeaf)
             {
-                //_logger.Info($"Saving node pointer - path to: {trieNode.PathToNode.ToHexString()} full path: {fullPath.ToHexString()}");
-                byte[] pathToNodeBytes = Nibbles.ToEncodedStorageBytes(trieNode.PathToNode);
-                keyValueStore[pathToNodeBytes] = pathBytes;
+                Span<byte> pathToNodeNibbles = stackalloc byte[trieNode.StoreNibblePathPrefix.Length + trieNode.PathToNode!.Length];
+                trieNode.StoreNibblePathPrefix.CopyTo(pathToNodeNibbles);
+                Span<byte> pathToNodeSlice = pathToNodeNibbles.Slice(trieNode.StoreNibblePathPrefix.Length);
+                trieNode.PathToNode.CopyTo(pathToNodeSlice);
+                byte[] pathToNodeBytes = Nibbles.NibblesToByteStorage(pathToNodeNibbles);
+
+                if (_logger.IsDebug) _logger.Debug($"Saving node {trieNode.NodeType} path to nibbles {pathToNodeNibbles.ToHexString()}, bytes: {pathToNodeBytes.ToHexString()}, full: {pathBytes.ToHexString()}");
+
+                if (trieNode.FullRlp == null)
+                {
+                    keyValueStore[pathToNodeBytes] = null;
+                }
+                else
+                {
+                    if (trieNode.PathToNode.Length < 64)
+                    {
+                        byte[] newPath = new byte[pathBytes.Length + 1];
+                        Array.Copy(pathBytes, 0, newPath, 1, pathBytes.Length);
+                        newPath[0] = PathMarker;
+                        keyValueStore[pathToNodeBytes] = newPath;
+
+                        if (withDelete && _dbPrunner is not null)
+                            RequestDeletionForLeaf(pathToNodeNibbles, trieNode.FullPath);
+                    }
+                }
             }
-            //_logger.Info($"Saving node - full path: {fullPath.ToHexString()} key: {trieNode.Key?.ToHexString()}");
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug($"Saving node {trieNode.NodeType} full nibbles {fullPath.ToHexString()} full: {pathBytes.ToHexString()}");
+            }
+            if (withDelete && _dbPrunner is not null)
+            {
+                if (trieNode.IsBranch)
+                {
+                    RequestDeletionForBranch(trieNode);
+                }
+                else if (trieNode.IsExtension)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Missed extension handling {pathBytes.ToHexString()}");
+                }
+            }
+
             keyValueStore[pathBytes] = trieNode.FullRlp;
         }
 
         public bool ExistsInDB(Keccak hash, byte[] pathNibbles)
         {
-            byte[] pathBytes = pathNibbles.Length < 64 ?
-                Nibbles.ToEncodedStorageBytes(pathNibbles) : Nibbles.ToBytes(pathNibbles);
-
-            byte[] rlp = _currentBatch?[pathBytes] ?? _keyValueStore[pathBytes];
+            byte[]? rlp = TryLoadRlp(pathNibbles.AsSpan(), _keyValueStore);
             if (rlp is not null)
             {
                 TrieNode node = new(NodeType.Unknown, rlp);
+                node.ResolveNode(this);
                 node.ResolveKey(this, false);
                 return node.Keccak == hash;
             }
@@ -555,19 +575,258 @@ namespace Nethermind.Trie.Pruning
 
         public byte[]? this[ReadOnlySpan<byte> key]
         {
-            //get => _pruningStrategy.PruningEnabled
-            //       && _dirtyNodes.AllNodes.TryGetValue(key.ToArray(), out TrieNode? trieNode)
-            //       && trieNode is not null
-            //       && trieNode.NodeType != NodeType.Unknown
-            //       && trieNode.FullRlp is not null
-            //    ? trieNode.FullRlp
-            //    : _currentBatch?[key] ?? _keyValueStore[key];
             get => _currentBatch?[key] ?? _keyValueStore[key];
         }
         /// <summary>
         /// This method is here to support testing.
         /// </summary>
         public void ClearCache()
-        {}
+        { }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+            _keyValueStore.DeleteByRange(startKey, endKey);
+        }
+
+        public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefixNibbles)
+        {
+            bool addPrefixAsDeleted = _committedNodes.IsPathCached(keyPrefixNibbles);
+            if (!addPrefixAsDeleted)
+            {
+                byte[] keyPath = Nibbles.NibblesToByteStorage(keyPrefixNibbles.ToArray());
+                byte[]? rlp = _currentBatch?[keyPath] ?? _keyValueStore[keyPath];
+                addPrefixAsDeleted &= rlp != null;
+            }
+
+            if (addPrefixAsDeleted)
+                _destroyPrefixes.Enqueue(keyPrefixNibbles.ToArray());
+        }
+
+        public static (byte[], byte[]) GetDeleteKeyFromNibblePrefix(Span<byte> prefix, int maxLength, int oddityOverride)
+        {
+            byte[] fromKey = new byte[maxLength];
+            byte[] toKey = new byte[maxLength];
+            Array.Fill(toKey, (byte)0xff, 1, maxLength - 1);
+
+            int oddity = prefix.Length % 2;
+
+            if (oddity == oddityOverride)
+            {
+                for (int i = 0; i < prefix.Length / 2; i++)
+                {
+                    toKey[i + 1] = fromKey[i + 1] = Nibbles.ToByte(prefix[2 * i + oddity], prefix[2 * i + 1 + oddity]);
+                }
+                if (oddity == 1)
+                {
+                    toKey[0] = fromKey[0] = Nibbles.ToByte(1, prefix[0]);
+                }
+            }
+            else if (oddity == 1 && oddityOverride == 0)
+            {
+                for (int i = 0; i < prefix.Length / 2; i++)
+                {
+                    toKey[i + 1] = fromKey[i + 1] = Nibbles.ToByte(prefix[2 * i], prefix[2 * i + 1]);
+                }
+                fromKey[prefix.Length / 2 + 1] = Nibbles.ToByte(prefix[^1], 0);
+                toKey[prefix.Length / 2 + 1] = Nibbles.ToByte(prefix[^1], 0xf);
+                //toKey[0] = fromKey[0] = 0x00;
+            }
+            else if (oddity == 0 && oddityOverride == 1)
+            {
+                for (int i = 0; i < prefix.Length / 2 - 1; i++)
+                {
+                    toKey[i + 1] = fromKey[i + 1] = Nibbles.ToByte(prefix[2 * i + oddityOverride], prefix[2 * i + 1 + oddityOverride]);
+                }
+                toKey[0] = fromKey[0] = Nibbles.ToByte(1, prefix[0]);
+
+                fromKey[prefix.Length / 2] = Nibbles.ToByte(prefix[^1], 0);
+                toKey[prefix.Length / 2] = Nibbles.ToByte(prefix[^1], 0xf);
+            }
+            return (fromKey, toKey);
+        }
+
+        public static (byte[], byte[]) GetDeleteKeyFromNibbles(Span<byte> nibbleFrom, Span<byte> nibbleTo, int maxLength, int oddityOverride)
+        {
+            byte[] fromKey = EncodePathWithEnforcedOddity2(nibbleFrom, oddityOverride);
+            byte[] toKey = EncodePathWithEnforcedOddity2(nibbleTo, oddityOverride);
+
+            return (fromKey, toKey);
+        }
+
+        public static byte[] EncodePathWithEnforcedOddity(Span<byte> pathNibbles, int maxLength, int oddityOverride, byte mask)
+        {
+            byte[] targetBytes = new byte[maxLength];
+            Array.Fill(targetBytes, mask, 1, maxLength - 1);
+
+            if (pathNibbles.Length == 0)
+                return targetBytes;
+
+            int oddity = pathNibbles.Length % 2;
+
+            if (oddity == oddityOverride)
+            {
+                for (int i = 0; i < pathNibbles.Length / 2; i++)
+                    targetBytes[i + 1] = Nibbles.ToByte(pathNibbles[2 * i + oddity], pathNibbles[2 * i + 1 + oddity]);
+
+                if (oddity == 1)
+                    targetBytes[0] = Nibbles.ToByte(1, pathNibbles[0]);
+            }
+            else if (oddity == 1 && oddityOverride == 0)
+            {
+                for (int i = 0; i < pathNibbles.Length / 2; i++)
+                    targetBytes[i + 1] = Nibbles.ToByte(pathNibbles[2 * i], pathNibbles[2 * i + 1]);
+
+                targetBytes[pathNibbles.Length / 2 + 1] = Nibbles.ToByte(pathNibbles[^1], (byte)(mask & 0x0f));
+            }
+            else if (oddity == 0 && oddityOverride == 1)
+            {
+                for (int i = 0; i < pathNibbles.Length / 2 - 1; i++)
+                    targetBytes[i + 1] = Nibbles.ToByte(pathNibbles[2 * i + oddityOverride], pathNibbles[2 * i + 1 + oddityOverride]);
+
+                targetBytes[0] = Nibbles.ToByte(1, pathNibbles[0]);
+                targetBytes[pathNibbles.Length / 2] = Nibbles.ToByte(pathNibbles[^1], (byte)(mask & 0x0f));
+            }
+            return targetBytes;
+        }
+
+        public static byte[] EncodePathWithEnforcedOddity2(Span<byte> pathNibbles, int oddityOverride)
+        {
+            byte[] targetBytes = null;
+
+            int oddity = pathNibbles.Length % 2;
+
+            if (oddity == oddityOverride)
+            {
+                return Nibbles.NibblesToByteStorage(pathNibbles);
+            }
+            else if (oddity == 1 && oddityOverride == 0)
+            {
+                targetBytes = new byte[pathNibbles.Length / 2 + 2];
+                for (int i = 0; i < pathNibbles.Length / 2; i++)
+                    targetBytes[i + 1] = Nibbles.ToByte(pathNibbles[2 * i], pathNibbles[2 * i + 1]);
+
+                targetBytes[pathNibbles.Length / 2 + 1] = Nibbles.ToByte(pathNibbles[^1], 0);
+            }
+            else if (oddity == 0 && oddityOverride == 1)
+            {
+                targetBytes = new byte[pathNibbles.Length / 2 + 1];
+
+                for (int i = 0; i < pathNibbles.Length / 2 - 1; i++)
+                    targetBytes[i + 1] = Nibbles.ToByte(pathNibbles[2 * i + oddityOverride], pathNibbles[2 * i + 1 + oddityOverride]);
+
+                targetBytes[0] = Nibbles.ToByte(1, pathNibbles.Length > 0 ? pathNibbles[0] : (byte)0);
+                targetBytes[pathNibbles.Length / 2] = Nibbles.ToByte(pathNibbles[^1], 0);
+            }
+            return targetBytes;
+        }
+
+        public void RequestDeletionForLeaf(Span<byte> pathToNodeNibbles, Span<byte> fullPathNibbles)
+        {
+            int fullKeyLength = fullPathNibbles.Length >= 66 ? 66 : 33;
+            byte[] from, to;
+
+            if (pathToNodeNibbles.Length == 0)
+                return;
+
+            //edge cases
+            Span<byte> keySlice = fullPathNibbles.Slice(pathToNodeNibbles.Length);
+
+            Span<byte> fromNibblesKey = stackalloc byte[pathToNodeNibbles.Length + 1];
+            pathToNodeNibbles.CopyTo(fromNibblesKey);
+
+            if (!keySlice.IsZero())
+            {
+                (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathNibbles, fullKeyLength, 0);
+                _dbPrunner.EnqueueRange(from, to);
+
+                (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathNibbles, fullKeyLength, 1);
+                _dbPrunner.EnqueueRange(from, to);
+            }
+
+            if (keySlice.IndexOfAnyExcept((byte)0xf) >= 0)
+            {
+                Span<byte> fullPathIncremented = stackalloc byte[fullPathNibbles.Length];
+                fullPathNibbles.CopyTo(fullPathIncremented);
+                Span<byte> endNibbles = fromNibblesKey.Slice(0, pathToNodeNibbles.Length).IncrementNibble(true);
+                (from, to) = GetDeleteKeyFromNibbles(fullPathIncremented.IncrementNibble(), endNibbles, fullKeyLength, 0);
+                _dbPrunner.EnqueueRange(from, to);
+
+                (from, to) = GetDeleteKeyFromNibbles(fullPathIncremented, endNibbles, fullKeyLength, 1);
+                _dbPrunner.EnqueueRange(from, to);
+            }
+        }
+
+        public void RequestDeletionForBranch(TrieNode branchNode)
+        {
+            void GenerateRangesAndRequest(Span<byte> childPathFrom, Span<byte> childPathTo, byte? from, byte? to, byte toMask)
+            {
+                int fullKeyLength = childPathFrom.Length >= 66 ? 66 : 33;
+                byte[][] keyRanges = new byte[4][];
+
+                if (childPathFrom.Length > 0)
+                {
+                    childPathFrom[^1] = from.Value;
+                    keyRanges[0] = EncodePathWithEnforcedOddity2(childPathFrom, 0);
+                    keyRanges[2] = EncodePathWithEnforcedOddity2(childPathFrom, 1);
+                }
+                else
+                {
+                    keyRanges[0] = EncodePathWithEnforcedOddity(childPathFrom, fullKeyLength, 0, 0x00);
+                    keyRanges[2] = EncodePathWithEnforcedOddity(childPathFrom, fullKeyLength, 1, 0x00);
+                }
+
+                if (childPathTo.Length > 0)
+                {
+                    if (to is not null)
+                        childPathTo[^1] = to.Value;
+                    keyRanges[1] = EncodePathWithEnforcedOddity2(childPathTo, 0);
+                    keyRanges[3] = EncodePathWithEnforcedOddity2(childPathTo, 1);
+                }
+                else
+                {
+                    keyRanges[1] = EncodePathWithEnforcedOddity(childPathTo, fullKeyLength, 0, 0xff);
+                    keyRanges[3] = EncodePathWithEnforcedOddity(childPathTo, fullKeyLength, 1, 0xff);
+                }
+
+                for (int i = 0; i < 4; i+=2)
+                {
+                    _dbPrunner.EnqueueRange(keyRanges[i], keyRanges[i + 1]);
+                }
+            }
+
+            Span<byte> childPathFrom = stackalloc byte[branchNode.FullPath.Length + 1];
+            Span<byte> childPathTo = stackalloc byte[branchNode.FullPath.Length + 1];
+            branchNode.FullPath.CopyTo(childPathFrom);
+            branchNode.FullPath.CopyTo(childPathTo);
+            byte? ind1 = null;
+            for (byte i = 0; i < 16; i++)
+            {
+                if (branchNode.IsChildNull(i))
+                {
+                    ind1 ??= i;
+                    continue;
+                }
+                else
+                {
+                    if (ind1 is not null)
+                    {
+                        GenerateRangesAndRequest(childPathFrom, childPathTo, ind1, i, 0x00);
+                        ind1 = null;
+                    }
+                }
+            }
+
+            if (ind1 is not null)
+            {
+                Span<byte> nextSiblingPath = childPathTo.Slice(0, branchNode.FullPath.Length).IncrementNibble(true);
+                GenerateRangesAndRequest(childPathFrom, nextSiblingPath, ind1, null, 0x00);
+                ind1 = null;
+            }
+        }
+
+        public bool CanAccessByPath()
+        {
+            return _dbPrunner is null || _dbPrunner?.IsPruningComplete == true;
+        }
     }
 }

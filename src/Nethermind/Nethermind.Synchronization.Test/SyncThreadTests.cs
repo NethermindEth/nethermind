@@ -257,19 +257,19 @@ namespace Nethermind.Synchronization.Test
             IDb headerDb = dbProvider.HeadersDb;
             IDb blockInfoDb = dbProvider.BlockInfosDb;
             IDb codeDb = dbProvider.CodeDb;
-            IDb stateDb = dbProvider.StateDb;
+            MemColumnsDb<StateColumns> stateDb = new();
 
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             TrieStoreByPath trieStoreByPath = new(stateDb, LimboLogs.Instance);
+            TrieStoreByPath storageTrieStore = new(stateDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance);
 
-            StateReader stateReader = new(trieStoreByPath, trieStore, codeDb, logManager);
-            StateProvider stateProvider = new(trieStore, codeDb, logManager);
+            StateReader stateReader = new(trieStoreByPath, storageTrieStore, codeDb, logManager);
+            StateProvider stateProvider = new(trieStoreByPath, storageTrieStore, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
             stateProvider.RecalculateStateRoot();
 
-            StorageProvider storageProvider = new(trieStore, stateProvider, logManager);
+            StorageProvider storageProvider = new(trieStoreByPath, stateProvider, logManager);
             InMemoryReceiptStorage receiptStorage = new();
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId, logManager);
@@ -317,8 +317,8 @@ namespace Nethermind.Synchronization.Test
             NodeStatsManager nodeStatsManager = new(timerFactory, logManager);
             SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), logManager, 25);
 
-            StateProvider devState = new(trieStore, codeDb, logManager);
-            StorageProvider devStorage = new(trieStore, devState, logManager);
+            StateProvider devState = new(trieStoreByPath, storageTrieStore, codeDb, logManager);
+            StorageProvider devStorage = new(storageTrieStore, devState, logManager);
             VirtualMachine devEvm = new(blockhashProvider, specProvider, logManager);
             TransactionProcessor devTxProcessor = new(specProvider, devState, devStorage, devEvm, logManager);
 
@@ -383,9 +383,11 @@ namespace Nethermind.Synchronization.Test
                 blockDownloaderFactory,
                 pivot,
                 syncReport,
+                null,
+                null,
                 logManager);
             SyncServer syncServer = new(
-                trieStore,
+                trieStoreByPath,
                 codeDb,
                 tree,
                 receiptStorage,

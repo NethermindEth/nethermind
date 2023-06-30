@@ -25,13 +25,21 @@ namespace Nethermind.Trie.Pruning
         public TrieNode FindCachedOrUnknown(Keccak hash) =>
             _trieStore.FindCachedOrUnknown(hash, true);
 
-        public TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath) =>
+        public TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath, Span<byte> storagePrefix) =>
             _trieStore.FindCachedOrUnknown(hash, true);
+        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, Span<byte> storagePrefix, Keccak rootHash)
+        {
+            throw new NotImplementedException();
+        }
 
         public byte[] LoadRlp(Keccak hash) => _trieStore.LoadRlp(hash, _readOnlyStore);
 
         public bool IsPersisted(Keccak keccak) => _trieStore.IsPersisted(keccak);
 
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
+        {
+            throw new NotImplementedException();
+        }
         public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Hash;
 
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
@@ -57,7 +65,7 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
-        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore)
+        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore, bool withDelete = false)
         {
             throw new NotImplementedException();
         }
@@ -68,11 +76,14 @@ namespace Nethermind.Trie.Pruning
 
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles) => _trieStore.ExistsInDB(hash, nodePathNibbles);
 
-        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, Keccak rootHash)
+        public byte[]? this[ReadOnlySpan<byte> key] => _trieStore[key];
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
+
+        public bool CanAccessByPath() => _trieStore.CanAccessByPath();
+        public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefix)
         {
             throw new NotImplementedException();
         }
-
-        public byte[]? this[ReadOnlySpan<byte> key] => _trieStore[key];
     }
 }

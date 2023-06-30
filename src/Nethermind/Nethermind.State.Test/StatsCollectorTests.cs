@@ -23,10 +23,12 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_collect_stats([Values(false, true)] bool parallel)
         {
-            MemDb memDb = new();
+            MemColumnsDb<StateColumns> memDb = new();
             IDb stateDb = memDb;
             TrieStore trieStore = new(stateDb, new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
-            StateProvider stateProvider = new(trieStore, stateDb, LimboLogs.Instance);
+            TrieStoreByPath storageTrieStore = new(memDb.GetColumnDb(StateColumns.Storage), new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
+
+            StateProvider stateProvider = new(trieStore, storageTrieStore, stateDb, LimboLogs.Instance);
             StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
 
             stateProvider.CreateAccount(TestItem.AddressA, 1);

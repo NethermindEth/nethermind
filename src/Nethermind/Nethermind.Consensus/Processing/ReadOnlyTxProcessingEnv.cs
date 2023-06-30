@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.Processing
             _codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
 
             StateReader = new StateReader(readOnlyTrieStore, readOnlyStorageTrieStore, _codeDb, logManager);
-            StateProvider = new StateProvider(readOnlyTrieStore, _codeDb, logManager);
+            StateProvider = new StateProvider(readOnlyTrieStore, readOnlyStorageTrieStore, _codeDb, logManager);
             StorageProvider = new StorageProvider(readOnlyStorageTrieStore, StateProvider, logManager);
             IWorldState worldState = new WorldState(StateProvider, StorageProvider);
 

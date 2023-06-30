@@ -277,7 +277,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     new LruCache<KeccakKey, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
 
                 IReadOnlyTrieStore trieStore = new TrieStoreByPath(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
-                IReadOnlyTrieStore storageTrieStore = new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
+                IReadOnlyTrieStore storageTrieStore = new TrieStore(DbProvider.StateDb.GetColumnDb(Db.StateColumns.Storage), LimboLogs.Instance).AsReadOnly();
                 IReadOnlyTxProcessorSource txProcessorSource = new ReadOnlyTxProcessingEnv(
                     DbProvider,
                     trieStore,

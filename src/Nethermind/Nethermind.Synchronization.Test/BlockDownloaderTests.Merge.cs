@@ -27,6 +27,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NSubstitute.ClearExtensions;
 using NUnit.Framework;
@@ -50,7 +51,7 @@ public partial class BlockDownloaderTests
             .InsertBeaconHeaders(4, pivot - 1)
             .InsertBeaconBlocks(pivot + 1, insertedBeaconBlocks, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
         BlockTree syncedTree = blockTrees.SyncedTree;
-        PostMergeContext ctx = new();
+        PostMergeContext ctx = new PostMergeContext(capability: _resolverCapability);
         ctx.BlockTreeScenario = blockTrees;
 
         DownloaderOptions downloaderOptions = (DownloaderOptions)options;
@@ -99,7 +100,7 @@ public partial class BlockDownloaderTests
             .InsertBeaconBlocks(17, headNumber, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
         BlockTree notSyncedTree = blockTrees.NotSyncedTree;
         BlockTree syncedTree = blockTrees.SyncedTree;
-        PostMergeContext ctx = new();
+        PostMergeContext ctx = new PostMergeContext(capability: _resolverCapability);
         ctx.BlockTreeScenario = blockTrees;
 
         DownloaderOptions downloaderOptions = (DownloaderOptions)options;
@@ -134,7 +135,7 @@ public partial class BlockDownloaderTests
         BlockTree notSyncedTree = blockTrees.NotSyncedTree;
         BlockTree syncedTree = blockTrees.SyncedTree;
 
-        PostMergeContext ctx = new();
+        PostMergeContext ctx = new PostMergeContext(capability: _resolverCapability);
         ctx.BlockTreeScenario = blockTrees;
 
         DownloaderOptions downloaderOptions = (DownloaderOptions)options;
@@ -161,7 +162,7 @@ public partial class BlockDownloaderTests
             .InsertBeaconHeaders(4, pivot - 1);
 
         BlockTree syncedTree = blockTrees.SyncedTree;
-        PostMergeContext ctx = new();
+        PostMergeContext ctx = new PostMergeContext(capability: _resolverCapability);
         ctx.BlockTreeScenario = blockTrees;
 
         ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
@@ -194,7 +195,7 @@ public partial class BlockDownloaderTests
             .InsertOtherChainToMain(notSyncedTree, 1, 3) // Need to have the header inserted to LRU which mean we need to move the head forward
             .InsertBeaconHeaders(1, 3, tdMode: BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
 
-        PostMergeContext ctx = new();
+        PostMergeContext ctx = new PostMergeContext(capability: _resolverCapability);
         ctx.BlockTreeScenario = blockTrees;
         ctx.MergeConfig = new MergeConfig() { TerminalTotalDifficulty = $"{ttd}" };
 
@@ -239,7 +240,7 @@ public partial class BlockDownloaderTests
             .GoesLikeThis()
             .WithBlockTrees(0, 4)
             .InsertBeaconPivot(3);
-        PostMergeContext ctx = new();
+        PostMergeContext ctx = new PostMergeContext(capability: _resolverCapability);
         ctx.MergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0" };
         ctx.BlockTreeScenario = blockTrees;
         ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(3, BlockTreeLookupOptions.None));
@@ -315,7 +316,7 @@ public partial class BlockDownloaderTests
             .InsertBeaconPivot(64)
             .InsertBeaconHeaders(4, 128);
         BlockTree syncedTree = blockTrees.SyncedTree;
-        PostMergeContext ctx = new();
+        PostMergeContext ctx = new PostMergeContext(capability: _resolverCapability);
         ctx.BlockTreeScenario = blockTrees;
 
         ctx.Feed = new FastSyncFeed(ctx.SyncModeSelector,
@@ -361,7 +362,7 @@ public partial class BlockDownloaderTests
     [TestCase(DownloaderOptions.Process)]
     public async Task BlockDownloader_works_correctly_with_withdrawals(int options)
     {
-        PostMergeContext ctx = new();
+        PostMergeContext ctx = new PostMergeContext(capability: _resolverCapability);
         DownloaderOptions downloaderOptions = (DownloaderOptions)options;
         bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
         BlockDownloader downloader = ctx.BlockDownloader;
@@ -407,6 +408,7 @@ public partial class BlockDownloaderTests
 
     class PostMergeContext : Context
     {
+        public PostMergeContext(TrieNodeResolverCapability capability) : base(capability) { }
         protected override ISpecProvider SpecProvider => _specProvider ??= new MainnetSpecProvider(); // PoSSwitcher changes TTD, so can't use MainnetSpecProvider.Instance
 
         private BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder? _blockTreeScenario = null;
