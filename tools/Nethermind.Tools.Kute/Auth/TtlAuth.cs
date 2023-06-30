@@ -5,7 +5,7 @@ using Nethermind.Tools.Kute.SystemClock;
 
 namespace Nethermind.Tools.Kute.Auth;
 
-class ExpiringCachedAuth : IAuth
+class TtlAuth : IAuth
 {
     private readonly IAuth _auth;
     private readonly ISystemClock _clock;
@@ -13,7 +13,7 @@ class ExpiringCachedAuth : IAuth
 
     private LastAuth? _lastAuth;
 
-    public ExpiringCachedAuth(IAuth auth, ISystemClock clock, int ttl)
+    public TtlAuth(IAuth auth, ISystemClock clock, int ttl)
     {
         _auth = auth;
         _clock = clock;

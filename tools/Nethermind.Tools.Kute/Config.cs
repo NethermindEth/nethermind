@@ -38,9 +38,9 @@ public class Config
         longName: "ttl",
         Required = false,
         Default = 50,
-        HelpText = "JWT time to live (ttl) in seconds"
+        HelpText = "Authentication time to live (ttl) in seconds"
     )]
-    public int JwtTtl { get; }
+    public int AuthTtl { get; }
 
     [Option(
         shortName: 'd',
@@ -74,7 +74,7 @@ public class Config
         string messagesFilePath,
         string hostAddress,
         string jwtSecretFilePath,
-        int jwtTtl,
+        int authTtl,
         bool dryRun,
         MetricConsumerStrategy metricConsumerStrategy,
         IEnumerable<string> methodFilters
@@ -83,7 +83,7 @@ public class Config
         MessagesFilePath = messagesFilePath;
         HostAddress = hostAddress;
         JwtSecretFilePath = jwtSecretFilePath;
-        JwtTtl = jwtTtl;
+        AuthTtl = authTtl;
         DryRun = dryRun;
         MetricConsumerStrategy = metricConsumerStrategy;
         MethodFilters = methodFilters;
