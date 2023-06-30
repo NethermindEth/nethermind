@@ -95,7 +95,6 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("aura ^archive", false)]
-        [TestCase("ethhash", true)]
         [TestCase("clique", true)]
         public void Geth_limits_configs_are_correct(string configWildcard, bool useGethLimitsInFastSync)
         {

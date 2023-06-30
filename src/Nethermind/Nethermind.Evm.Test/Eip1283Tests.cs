@@ -6,6 +6,8 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -14,9 +16,10 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1283Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
+        protected override long BlockNumber => 1;
 
-        protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+        protected override ISpecProvider SpecProvider => new CustomSpecProvider(
+            ((ForkActivation)0, Byzantium.Instance),((ForkActivation)1, Constantinople.Instance));
 
         [TestCase("0x60006000556000600055", 412, 0, 0)]
         [TestCase("0x60006000556001600055", 20212, 0, 0)]
