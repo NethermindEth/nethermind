@@ -8,7 +8,6 @@ namespace Nethermind.Core
     /// 0: Olympic, Ethereum public pre-release PoW testnet
     /// 1: Expanse, an alternative Ethereum implementation, chain ID 2
     /// 2: Morden Classic, the public Ethereum Classic PoW testnet
-    /// 3: Ropsten, the public cross-client Ethereum PoS testnet
     /// 4: Rinkeby, the public Geth-only PoA testnet
     /// 5: Goerli, the public cross-client PoA testnet
     /// 42: Kovan, the public Parity-only PoA testnet

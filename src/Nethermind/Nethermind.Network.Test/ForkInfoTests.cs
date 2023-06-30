@@ -237,12 +237,6 @@ public class ForkInfoTests
     // Local is mainnet Petersburg, remote is Rinkeby Petersburg.
     [TestCase(7987396, 0ul, "0xafec6b27", 0ul, ValidationResult.IncompatibleOrStale)]
 
-    // Local is mainnet Gray Glacier, far in the future. Remote announces Gopherium (non existing fork)
-    // at some future block 88888888, for itself, but past block for local. Local is incompatible.
-    //
-    // This case detects non-upgraded nodes with majority hash power (typical Ropsten mess).
-    [TestCase(88888888, 0ul, "0xf0afd0e3", 88888888ul, ValidationResult.IncompatibleOrStale)]
-
     // Local is mainnet Byzantium. Remote is also in Byzantium, but announces Gopherium (non existing
     // fork) at block 7279999, before Petersburg. Local is incompatible.
     [TestCase(7279999, 0ul, "0xa00bc324", 7279999ul, ValidationResult.IncompatibleOrStale)]
@@ -297,12 +291,6 @@ public class ForkInfoTests
     // 0xffffffff. Local needs software update, reject.
     [TestCase(15_050_000, 0ul, "0x98765432", ulong.MaxValue, ValidationResult.IncompatibleOrStale, true)]
 
-    // Local is mainnet Gray Glacier, far in the future. Remote announces Gopherium (non existing fork)
-    // at some future timestamp 8888888888, for itself, but past block for local. Local is incompatible.
-    //
-    // This case detects non-upgraded nodes with majority hash power (typical Ropsten mess).
-    [TestCase(888888888, 1660000000ul, "0xf0afd0e3", 1660000000ul, ValidationResult.IncompatibleOrStale)]
-
     // Local is mainnet Gray Glacier. Remote is also in Gray Glacier, but announces Gopherium (non existing
     // fork) at block 7279999, before Shanghai. Local is incompatible.
     [TestCase(19999999, 1667999999ul, "0xf0afd0e3", 1667999999ul, ValidationResult.IncompatibleOrStale, true)]
@@ -324,12 +312,6 @@ public class ForkInfoTests
 
     // Local is mainnet Shanghai, remote is random Shanghai.
     [TestCase(20000000, 1_668_000_000ul, "0x12345678", 0ul, ValidationResult.IncompatibleOrStale, true)]
-
-    // Local is mainnet Shanghai, far in the future. Remote announces Gopherium (non existing fork)
-    // at some future timestamp 8888888888, for itself, but past block for local. Local is incompatible.
-    //
-    // This case detects non-upgraded nodes with majority hash power (typical Ropsten mess).
-    [TestCase(88888888, 8888888888ul, "0x71147644", 8888888888ul, ValidationResult.IncompatibleOrStale, true)]
 
     public void Test_fork_id_validation_mainnet(long headNumber, ulong headTimestamp, string hash, ulong next, ValidationResult result, bool UseTimestampSpec = false)
     {
