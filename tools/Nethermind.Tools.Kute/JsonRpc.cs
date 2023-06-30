@@ -14,13 +14,13 @@ public abstract record JsonRpc
         _document = document;
     }
 
-    public override string ToString() => _document.RootElement.ToString();
+    public string ToJsonString() => _document.RootElement.ToString();
 
     public record BatchJsonRpc : JsonRpc
     {
         public BatchJsonRpc(JsonDocument document) : base(document) { }
 
-        public override string ToString() => $"{nameof(BatchJsonRpc)} {base.ToString()}";
+        public override string ToString() => $"{nameof(BatchJsonRpc)} {ToJsonString()}";
     }
 
     public record SingleJsonRpc : JsonRpc
@@ -46,6 +46,6 @@ public abstract record JsonRpc
 
         public bool IsResponse { get => _isResponse.Value; }
         public string? MethodName { get => _methodName.Value; }
-        public override string ToString() => $"{nameof(SingleJsonRpc)} {base.ToString()}";
+        public override string ToString() => $"{nameof(SingleJsonRpc)} {ToJsonString()}";
     }
 }
