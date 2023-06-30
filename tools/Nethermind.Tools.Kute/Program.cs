@@ -1,4 +1,3 @@
-using System.Text.Json;
 using CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Tools.Kute.Auth;
