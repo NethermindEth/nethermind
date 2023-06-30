@@ -55,16 +55,18 @@ public class BlockValidator : IBlockValidator
     /// </returns>
     public bool ValidateSuggestedBlock(Block block)
     {
-        Transaction[] txs = block.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        for (int i = 0; i < txs.Length; i++)
+        if (!ValidateTransactions(block, spec, out int blobsInBlock, out string error))
         {
-            if (!_txValidator.IsWellFormed(txs[i], spec))
-            {
-                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction {txs[i].Hash}");
-                return false;
-            }
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}");
+            return false;
+        }
+
+        if (!ValidateDataGasUsed(block, spec, blobsInBlock, out string dataGasError))
+        {
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {dataGasError}");
+            return false;
         }
 
         if (spec.MaximumUncleCount < block.Uncles.Length)
@@ -99,9 +101,6 @@ public class BlockValidator : IBlockValidator
         }
 
         if (!ValidateWithdrawals(block, spec, out _))
-            return false;
-
-        if (!ValidateTransactionsDataGas(block, spec, out _))
             return false;
 
         return true;
@@ -204,7 +203,52 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
-    private bool ValidateTransactionsDataGas(Block block, IReleaseSpec spec, out string? error)
+    private bool ValidateTransactions(Block block, IReleaseSpec spec, out int blobsInBlock, out string? error)
+    {
+        blobsInBlock = 0;
+
+        UInt256 dataGasPrice = UInt256.Zero;
+
+        Transaction[] transactions = block.Transactions;
+
+        for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
+        {
+            Transaction transaction = transactions[txIndex];
+
+            if (!_txValidator.IsWellFormed(transaction, spec))
+            {
+                error = $"{Invalid(block)} Invalid transaction {transaction.Hash}";
+                return false;
+            }
+
+            if (!transaction.SupportsBlobs)
+            {
+                continue;
+            }
+
+            if (dataGasPrice == UInt256.Zero)
+            {
+                if (!DataGasCalculator.TryCalculateDataGasPricePerUnit(block.Header, out dataGasPrice))
+                {
+                    error = $"{nameof(dataGasPrice)} overflow.";
+                    return false;
+                }
+            }
+
+            if (transaction.MaxFeePerDataGas < dataGasPrice)
+            {
+                error = $"A transaction has unsufficient {nameof(transaction.MaxFeePerDataGas)} to cover current data gas fee: {transaction.MaxFeePerDataGas} < {dataGasPrice}.";
+                return false;
+            }
+
+            blobsInBlock += transaction.BlobVersionedHashes!.Length;
+        }
+
+        error = null;
+        return true;
+    }
+
+    private bool ValidateDataGasUsed(Block block, IReleaseSpec spec, in int blobsInBlock, out string? error)
     {
         if (!spec.IsEip4844Enabled)
         {
@@ -212,46 +256,17 @@ public class BlockValidator : IBlockValidator
             return true;
         }
 
-        int blobsInBlock = 0;
-        UInt256 dataGasPrice = UInt256.Zero;
-        for (int txIndex = 0; txIndex < block.Transactions.Length; txIndex++)
-        {
-            Transaction transaction = block.Transactions[txIndex];
-            if (!transaction.SupportsBlobs)
-            {
-                continue;
-            }
-            if (dataGasPrice == UInt256.Zero)
-            {
-                if (!DataGasCalculator.TryCalculateDataGasPricePerUnit(block.Header, out dataGasPrice))
-                {
-                    error = $"{nameof(dataGasPrice)} overflow.";
-                    if (_logger.IsWarn) _logger.Warn(error);
-                    return false;
-                }
-            }
-            if (transaction.MaxFeePerDataGas < dataGasPrice)
-            {
-                error = $"A transaction has unsufficient {nameof(transaction.MaxFeePerDataGas)} to cover current data gas fee: {transaction.MaxFeePerDataGas} < {dataGasPrice}.";
-                if (_logger.IsWarn) _logger.Warn(error);
-                return false;
-            }
-
-            blobsInBlock += transaction.BlobVersionedHashes!.Length;
-        }
-
         ulong dataGasUsed = DataGasCalculator.CalculateDataGas(blobsInBlock);
+
         if (dataGasUsed > Eip4844Constants.MaxDataGasPerBlock)
         {
             error = $"A block cannot have more than {Eip4844Constants.MaxDataGasPerBlock} data gas.";
-            if (_logger.IsWarn) _logger.Warn(error);
             return false;
         }
 
         if (dataGasUsed != block.Header.DataGasUsed)
         {
             error = $"{nameof(BlockHeader.DataGasUsed)} declared in the block header does not match actual data gas used: {block.Header.DataGasUsed} != {dataGasUsed}.";
-            if (_logger.IsWarn) _logger.Warn(error);
             return false;
         }
 
