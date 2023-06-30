@@ -254,7 +254,7 @@ namespace Nethermind.PerfTest
 
             /* load spec */
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "ropsten.json"));
+            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "goerli.json"));
             _logger.Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
             _logger.Info($"ChainSpec loaded");
