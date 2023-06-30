@@ -133,27 +133,6 @@ public class ForkInfoTests
         Test(head, headTimestamp, KnownHashes.RinkebyGenesis, forkHashHex, next, description, RinkebySpecProvider.Instance, "rinkeby.json");
     }
 
-    [TestCase(0, 0ul, "0x30c7ddbc", 10ul, " Unsynced, last Frontier, Homestead and first Tangerine block")]
-    [TestCase(9, 0ul, "0x30c7ddbc", 10ul, "Last Tangerine block")]
-    [TestCase(10, 0ul, "0x63760190", 1_700_000ul, "First Spurious block")]
-    [TestCase(1_699_999L, 0ul, "0x63760190", 1_700_000ul, "Last Spurious block")]
-    [TestCase(1_700_000L, 0ul, "0x3ea159c7", 4_230_000ul, "First Byzantium block")]
-    [TestCase(4_229_999L, 0ul, "0x3ea159c7", 4_230_000ul, "Last Byzantium block")]
-    [TestCase(4_230_000L, 0ul, "0x97b544f3", 4_939_394ul, "First Constantinople block")]
-    [TestCase(4_939_393L, 0ul, "0x97b544f3", 4_939_394ul, "Last Constantinople block")]
-    [TestCase(4_939_394L, 0ul, "0xd6e2149b", 6_485_846ul, "First Petersburg block")]
-    [TestCase(6_485_845L, 0ul, "0xd6e2149b", 6_485_846ul, "Last Petersburg block")]
-    [TestCase(6_485_846L, 0ul, "0x4bc66396", 7_117_117ul, "First Istanbul block")]
-    [TestCase(7_117_117L, 0ul, "0x6727ef90", 9_812_189ul, "First Muir Glacier block")]
-    [TestCase(9_812_189L, 0ul, "0xa157d377", 10_499_401ul, "First Berlin block")]
-    [TestCase(9_900_000L, 0ul, "0xa157d377", 10_499_401ul, "Future Berlin block")]
-    [TestCase(10_499_401L, 0ul, "0x7119B6B3", 0ul, "First London block")]
-    [TestCase(12_000_000, 0ul, "0x7119B6B3", 0ul, "Future London block")]
-    public void Fork_id_and_hash_as_expected_on_ropsten(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
-    {
-        Test(head, headTimestamp, KnownHashes.RopstenGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "ropsten.json");
-    }
-
     [TestCase(0, 0ul, "0xFE3366E7", 1735371ul, "Sepolia genesis")]
     [TestCase(1735370, 0ul, "0xFE3366E7", 1735371ul, "Sepolia Last block before MergeForkIdTranstion")]
     [TestCase(1735371, 0ul, "0xb96cbd13", 1677557088UL, "First block - Sepolia MergeForkIdTransition")]
