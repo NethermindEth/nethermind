@@ -25,7 +25,8 @@ public class BlockHeader
         long gasLimit,
         ulong timestamp,
         byte[] extraData,
-        UInt256? excessDataGas = null)
+        ulong? dataGasUsed = null,
+        ulong? excessDataGas = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -35,6 +36,7 @@ public class BlockHeader
         GasLimit = gasLimit;
         Timestamp = timestamp;
         ExtraData = extraData;
+        DataGasUsed = dataGasUsed;
         ExcessDataGas = excessDataGas;
     }
 
@@ -65,11 +67,11 @@ public class BlockHeader
     public long? AuRaStep { get; set; }
     public UInt256 BaseFeePerGas { get; set; }
     public Keccak? WithdrawalsRoot { get; set; }
-    public UInt256? ExcessDataGas { get; set; }
-
+    public ulong? DataGasUsed { get; set; }
+    public ulong? ExcessDataGas { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
-        || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
-        || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
+                           || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
+                           || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
 
     public bool HasTransactions => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash);
 
@@ -99,8 +101,9 @@ public class BlockHeader
         {
             builder.AppendLine($"{indent}WithdrawalsRoot: {WithdrawalsRoot}");
         }
-        if (ExcessDataGas is not null)
+        if (DataGasUsed is not null || ExcessDataGas is not null)
         {
+            builder.AppendLine($"{indent}DataGasUsed: {DataGasUsed}");
             builder.AppendLine($"{indent}ExcessDataGas: {ExcessDataGas}");
         }
         builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
