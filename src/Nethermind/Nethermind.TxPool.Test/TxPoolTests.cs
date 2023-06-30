@@ -51,7 +51,7 @@ namespace Nethermind.TxPool.Test
         public void Setup()
         {
             _logManager = LimboLogs.Instance;
-            _specProvider = RopstenSpecProvider.Instance;
+            _specProvider = MainnetSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);
             var trieStore = new TrieStore(new MemDb(), _logManager);
             var codeDb = new MemDb();
@@ -1109,7 +1109,7 @@ namespace Nethermind.TxPool.Test
         {
             if (!eip2930Enabled)
             {
-                _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(RopstenSpecProvider.BerlinBlockNumber - 1).TestObject);
+                _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(MainnetSpecProvider.BerlinBlockNumber - 1).TestObject);
             }
 
             _txPool = CreatePool();
@@ -1614,7 +1614,7 @@ namespace Nethermind.TxPool.Test
             IIncomingTxFilter incomingTxFilter = null,
             bool thereIsPriorityContract = false)
         {
-            specProvider ??= RopstenSpecProvider.Instance;
+            specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
 

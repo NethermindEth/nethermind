@@ -34,7 +34,7 @@ public class MergeHeaderValidatorTests
             PoSSwitcher,
             PreMergeHeaderValidator,
             BlockTree,
-            RopstenSpecProvider.Instance,
+            MainnetSpecProvider.Instance,
             SealValidator,
             LimboLogs.Instance
         );

@@ -12,9 +12,9 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip145Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
+        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
-        protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
+        protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         private void AssertEip145(TestAllTracerWithOutput receipt, string result)
         {

@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         [SetUp]
         public void SetUp()
         {
-            RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
+            MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
             EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
             _receiptConfig = new ReceiptConfig();
             _receiptsRecovery = new(ethereumEcdsa, specProvider);

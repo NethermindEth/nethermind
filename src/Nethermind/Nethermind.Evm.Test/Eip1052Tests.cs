@@ -17,9 +17,9 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1052Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
+        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
-        protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
+        protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         [Test]
         public void Account_without_code_returns_empty_data_hash()

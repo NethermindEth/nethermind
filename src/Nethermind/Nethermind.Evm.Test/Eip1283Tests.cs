@@ -14,9 +14,9 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1283Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
+        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
-        protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
+        protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         [TestCase("0x60006000556000600055", 412, 0, 0)]
         [TestCase("0x60006000556001600055", 20212, 0, 0)]
@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(Recipient, 0);
             TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
-            TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
+            TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(Bytes.FromHexString(codeHex));
             AssertGas(receipt, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / 2, refund));

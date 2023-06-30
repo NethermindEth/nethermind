@@ -448,32 +448,32 @@ public class ChainSpecBasedSpecProviderTests
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        RopstenSpecProvider ropsten = RopstenSpecProvider.Instance;
+        MainnetSpecProvider ropsten = MainnetSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
         {
             (ForkActivation)0,
             (ForkActivation)1,
-            (ForkActivation)(RopstenSpecProvider.SpuriousDragonBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.SpuriousDragonBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.ByzantiumBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.ByzantiumBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.ConstantinopleFixBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.ConstantinopleFixBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.IstanbulBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.IstanbulBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.MuirGlacierBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.MuirGlacierBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.BerlinBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.BerlinBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.LondonBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.LondonBlockNumber,
+            (ForkActivation)(MainnetSpecProvider.SpuriousDragonBlockNumber - 1),
+            (ForkActivation)MainnetSpecProvider.SpuriousDragonBlockNumber,
+            (ForkActivation)(MainnetSpecProvider.ByzantiumBlockNumber - 1),
+            (ForkActivation)MainnetSpecProvider.ByzantiumBlockNumber,
+            (ForkActivation)(MainnetSpecProvider.ConstantinopleFixBlockNumber - 1),
+            (ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber,
+            (ForkActivation)(MainnetSpecProvider.IstanbulBlockNumber - 1),
+            (ForkActivation)MainnetSpecProvider.IstanbulBlockNumber,
+            (ForkActivation)(MainnetSpecProvider.MuirGlacierBlockNumber - 1),
+            (ForkActivation)MainnetSpecProvider.MuirGlacierBlockNumber,
+            (ForkActivation)(MainnetSpecProvider.BerlinBlockNumber - 1),
+            (ForkActivation)MainnetSpecProvider.BerlinBlockNumber,
+            (ForkActivation)(MainnetSpecProvider.LondonBlockNumber - 1),
+            (ForkActivation)MainnetSpecProvider.LondonBlockNumber,
             (ForkActivation)999_999_999, // far in the future
         };
 
         CompareSpecProviders(ropsten, provider, forkActivationsToTest, CompareSpecsOptions.CheckDifficultyBomb);
-        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(RopstenSpecProvider.Instance.TerminalTotalDifficulty));
-        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(RopstenSpecProvider.LondonBlockNumber));
+        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(MainnetSpecProvider.Instance.TerminalTotalDifficulty));
+        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(MainnetSpecProvider.LondonBlockNumber));
     }
 
     private ChainSpec LoadChainSpecFromChainFolder(string chain)

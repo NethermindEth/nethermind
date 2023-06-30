@@ -33,7 +33,7 @@ public class NonceManagerTests
     public void Setup()
     {
         ILogManager logManager = LimboLogs.Instance;
-        _specProvider = RopstenSpecProvider.Instance;
+        _specProvider = MainnetSpecProvider.Instance;
         var trieStore = new TrieStore(new MemDb(), logManager);
         var codeDb = new MemDb();
         _stateProvider = new WorldState(trieStore, codeDb, logManager);
