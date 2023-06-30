@@ -32,11 +32,13 @@ static class Program
         collection.AddSingleton<HttpClient>();
         collection.AddSingleton<ISecretProvider>(new FileSecretProvider(config.JwtSecretFilePath));
         collection.AddSingleton<IAuth>(provider =>
-            new CachedAuth(
+            new ExpiringCachedAuth(
                 new JwtAuth(
                     provider.GetRequiredService<ISystemClock>(),
                     provider.GetRequiredService<ISecretProvider>()
-                )
+                ),
+                provider.GetRequiredService<ISystemClock>(),
+                config.JwtTtl
             )
         );
         collection.AddSingleton<IMessageProvider<JsonRpc?>>(

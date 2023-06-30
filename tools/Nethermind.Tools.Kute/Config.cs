@@ -29,9 +29,18 @@ public class Config
         shortName: 's',
         longName: "secret",
         Required = true,
-        HelpText = "Path to file with hex encoded secret for jwt authentication"
+        HelpText = "Path to file with hex encoded secret for JWT authentication"
     )]
     public string JwtSecretFilePath { get; }
+
+    [Option(
+        shortName: 't',
+        longName: "ttl",
+        Required = false,
+        Default = 50,
+        HelpText = "JWT time to live (ttl) in seconds"
+    )]
+    public int JwtTtl { get; }
 
     [Option(
         shortName: 'd',
@@ -65,6 +74,7 @@ public class Config
         string messagesFilePath,
         string hostAddress,
         string jwtSecretFilePath,
+        int jwtTtl,
         bool dryRun,
         MetricConsumerStrategy metricConsumerStrategy,
         IEnumerable<string> methodFilters
@@ -73,6 +83,7 @@ public class Config
         MessagesFilePath = messagesFilePath;
         HostAddress = hostAddress;
         JwtSecretFilePath = jwtSecretFilePath;
+        JwtTtl = jwtTtl;
         DryRun = dryRun;
         MetricConsumerStrategy = metricConsumerStrategy;
         MethodFilters = methodFilters;
