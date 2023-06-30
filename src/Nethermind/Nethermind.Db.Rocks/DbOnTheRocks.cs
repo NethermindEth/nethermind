@@ -425,7 +425,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             _readAheadReadOptions.SetTailing(true);
         }
 
-        if (dbConfig.CompactionReadAhead != null)
+        if (dbConfig.CompactionReadAhead != null && dbConfig.CompactionReadAhead != 0)
         {
             options.SetCompactionReadaheadSize(dbConfig.CompactionReadAhead.Value);
         }
