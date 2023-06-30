@@ -22,7 +22,7 @@ namespace Nethermind.GitBook
             string docsDir = DocsDirFinder.FindDocsDir();
             string runnerDir = DocsDirFinder.FindRunnerDir();
             string moduleName = "sample-configuration";
-            string[] configs = { "mainnet.cfg", "goerli.cfg", "seoplia.cfg" };
+            string[] configs = { "mainnet.cfg", "goerli.cfg", "sepolia.cfg" };
 
             StringBuilder docBuilder = new StringBuilder();
 
