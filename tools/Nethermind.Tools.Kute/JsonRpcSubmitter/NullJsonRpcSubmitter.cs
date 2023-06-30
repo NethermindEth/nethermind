@@ -14,7 +14,7 @@ class NullJsonRpcSubmitter : IJsonRpcSubmitter
         _auth = auth;
     }
 
-    public Task Submit(string content)
+    public Task Submit(JsonRpc rpc)
     {
         _ = _auth.AuthToken;
         return Task.CompletedTask;
