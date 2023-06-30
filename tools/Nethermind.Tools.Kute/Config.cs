@@ -37,7 +37,7 @@ public class Config
         shortName: 't',
         longName: "ttl",
         Required = false,
-        Default = 50,
+        Default = 60,
         HelpText = "Authentication time to live (ttl) in seconds"
     )]
     public int AuthTtl { get; }
