@@ -46,6 +46,7 @@ public abstract record JsonRpc
 
         public bool IsResponse { get => _isResponse.Value; }
         public string? MethodName { get => _methodName.Value; }
+
         public override string ToString() => $"{nameof(SingleJsonRpc)} {ToJsonString()}";
     }
 }
