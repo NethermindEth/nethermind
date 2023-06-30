@@ -175,6 +175,12 @@ public class EthRpcModuleProxy : IEthRpcModule
         throw new NotSupportedException();
     }
 
+    public ResultWrapper<MultiCallBlockResult[]> eth_multicallV1(MultiCallBlockStateCallsModel[] blockCalls, BlockParameter? blockParameter = null,
+        bool traceTransfers = true)
+    {
+        throw new NotImplementedException();
+    }
+
     public ResultWrapper<UInt256?> eth_estimateGas(
         TransactionForRpc transactionCall,
         BlockParameter? blockParameter = null)

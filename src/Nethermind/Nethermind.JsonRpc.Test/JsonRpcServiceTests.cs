@@ -109,6 +109,26 @@ public class JsonRpcServiceTests
 
 
     [Test]
+    public void CanRunEthMulticallV1Empty()
+    {
+        ulong version = 0;
+        MultiCallBlockStateCallsModel[] blockCalls = Array.Empty<MultiCallBlockStateCallsModel>();
+
+        EthereumJsonSerializer serializer = new();
+
+        string serializedCall = serializer.Serialize(blockCalls);
+
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_multicallV1(blockCalls).ReturnsForAnyArgs(x =>
+            ResultWrapper<MultiCallBlockResult[]>.Success(Array.Empty<MultiCallBlockResult>()));
+        JsonRpcSuccessResponse? response =
+            TestRequest(ethRpcModule, "eth_multicallV1", serializedCall) as JsonRpcSuccessResponse;
+        Assert.IsTrue(response != null);
+        Assert.That(response?.Result, Is.EqualTo(Array.Empty<MultiCallBlockResult>()));
+    }
+
+
+    [Test]
     public void CanHandleOptionalArguments()
     {
         EthereumJsonSerializer serializer = new();

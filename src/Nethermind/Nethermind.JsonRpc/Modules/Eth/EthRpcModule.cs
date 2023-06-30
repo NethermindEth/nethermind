@@ -360,6 +360,11 @@ public partial class EthRpcModule : IEthRpcModule
             .Execute(version, blockCalls, blockParameter, traceTransfers);
     }
 
+    public ResultWrapper<MultiCallBlockResult[]> eth_multicallV1(MultiCallBlockStateCallsModel[] blockCalls, BlockParameter? blockParameter = null,
+        bool traceTransfers = true)
+    {
+        return eth_multicall(1, blockCalls, blockParameter, traceTransfers);
+    }
 
 
     public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter) =>
