@@ -195,7 +195,7 @@ namespace Nethermind.Runner.JsonRpc
 
                                                 first = false;
                                                 responseSize += jsonSerializer.Serialize(resultStream, entry.Response);
-                                                jsonRpcLocalStats.ReportCall(entry.Report);
+                                                _ = jsonRpcLocalStats.ReportCall(entry.Report);
 
                                                 // We reached the limit and don't want to responded to more request in the batch
                                                 if (!jsonRpcContext.IsAuthenticated && responseSize > jsonRpcConfig.MaxBatchResponseBodySize)
@@ -248,7 +248,7 @@ namespace Nethermind.Runner.JsonRpc
                             }
 
                             long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                            jsonRpcLocalStats.ReportCall(result.IsCollection
+                            _ = jsonRpcLocalStats.ReportCall(result.IsCollection
                                 ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, true)
                                 : result.Report.Value, handlingTimeMicroseconds, responseSize);
 

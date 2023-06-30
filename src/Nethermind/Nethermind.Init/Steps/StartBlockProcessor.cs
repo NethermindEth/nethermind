@@ -7,7 +7,7 @@ using Nethermind.Api;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(ResetDatabaseMigrations))]
+    [RunnerStepDependencies(typeof(InitializeBlockchain))]
     public class StartBlockProcessor : IStep
     {
         private readonly IApiWithBlockchain _api;

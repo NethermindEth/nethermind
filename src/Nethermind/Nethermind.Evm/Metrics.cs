@@ -13,22 +13,6 @@ namespace Nethermind.Evm;
 public class Metrics
 {
     [CounterMetric]
-    [Description("Number of EXTCODESIZE opcodes executed.")]
-    public static long ExtCodeSizeOpcode;
-
-    [CounterMetric]
-    [Description("Number of EXTCODESIZE ISZERO optimizations.")]
-    public static long ExtCodeSizeOptimizedIsZero;
-
-    [CounterMetric]
-    [Description("Number of EXTCODESIZE GT optimizations.")]
-    public static long ExtCodeSizeOptimizedGT;
-
-    [CounterMetric]
-    [Description("Number of EXTCODESIZE EQ optimizations.")]
-    public static long ExtCodeSizeOptimizedEQ;
-
-    [CounterMetric]
     [Description("Number of EVM exceptions thrown by contracts.")]
     public static long EvmExceptions { get; set; }
 
@@ -55,6 +39,10 @@ public class Metrics
     [CounterMetric]
     [Description("Number of TSTORE opcodes executed.")]
     public static long TstoreOpcode { get; set; }
+
+    [CounterMetric]
+    [Description("Number of MCOPY opcodes executed.")]
+    public static long MCopyOpcode { get; set; }
 
     [CounterMetric]
     [Description("Number of MODEXP precompiles executed.")]

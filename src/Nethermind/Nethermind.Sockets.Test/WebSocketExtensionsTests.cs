@@ -153,8 +153,8 @@ namespace Nethermind.Sockets.Test
 
             Assert.That(Metrics.JsonRpcBytesReceivedWebSockets, Is.EqualTo(1024));
             Assert.That(Metrics.JsonRpcBytesSentWebSockets, Is.EqualTo(400));
-            localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 100);
-            localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 300);
+            await localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 100);
+            await localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 300);
         }
 
         [Test]

@@ -246,6 +246,11 @@ namespace Nethermind.Core.Specs
         bool IsEip3855Enabled { get; }
 
         /// <summary>
+        /// MCOPY instruction
+        /// </summary>
+        bool IsEip5656Enabled { get; }
+
+        /// <summary>
         /// EIP-3860: Limit and meter initcode
         /// </summary>
         bool IsEip3860Enabled { get; }
@@ -346,5 +351,7 @@ namespace Nethermind.Core.Specs
 
         public bool WithdrawalsEnabled => IsEip4895Enabled;
         public bool SelfdestructOnlyOnSameTransaction => IsEip6780Enabled;
+
+        bool MCopyIncluded => IsEip5656Enabled;
     }
 }

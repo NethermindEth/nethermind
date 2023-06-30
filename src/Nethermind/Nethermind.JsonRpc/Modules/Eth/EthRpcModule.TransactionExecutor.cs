@@ -125,7 +125,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 return result.InputError
                     ? GetInputError(result)
-                    : ResultWrapper<AccessListForRpc>.Fail(result.Error, ErrorCodes.ExecutionError, new(GetResultAccessList(tx, result), GetResultGas(tx, result)));
+                    : ResultWrapper<AccessListForRpc>.Fail(result.Error, ErrorCodes.ExecutionError, new AccessListForRpc(GetResultAccessList(tx, result), GetResultGas(tx, result)));
             }
 
             private static AccessListItemForRpc[] GetResultAccessList(Transaction tx, BlockchainBridge.CallOutput result)
@@ -139,7 +139,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 long gas = result.GasSpent;
                 if (result.AccessList is not null)
                 {
-                    // if we generated access list, we need to fix actual gas cost, as all storage was considered warm 
+                    // if we generated access list, we need to fix actual gas cost, as all storage was considered warm
                     gas -= IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
                     transaction.AccessList = result.AccessList;
                     gas += IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);

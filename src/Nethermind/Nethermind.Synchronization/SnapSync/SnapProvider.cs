@@ -218,7 +218,7 @@ namespace Nethermind.Synchronization.SnapSync
                         if (nodeData.Length == 0)
                         {
                             RetryAccountRefresh(requestedPath);
-                            _logger.Trace($"SNAP - Empty Account Refresh:{requestedPath.PathAndAccount.Path}");
+                            _logger.Trace($"SNAP - Empty Account Refresh: {requestedPath.PathAndAccount.Path}");
                             continue;
                         }
 
