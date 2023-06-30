@@ -22,7 +22,7 @@ namespace Nethermind.Evm.Test
         protected override long BlockNumber => 1;
 
         protected override ISpecProvider SpecProvider => new CustomSpecProvider(
-            ((ForkActivation)0, Byzantium.Instance),((ForkActivation)1, Constantinople.Instance));
+            ((ForkActivation)0, Byzantium.Instance), ((ForkActivation)1, Constantinople.Instance));
 
         [Test]
         public void Account_without_code_returns_empty_data_hash()
