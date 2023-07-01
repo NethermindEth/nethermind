@@ -439,43 +439,6 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
-    [Test]
-    public void Ropsten_loads_properly()
-    {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/ropsten.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-        RopstenSpecProvider ropsten = RopstenSpecProvider.Instance;
-
-        List<ForkActivation> forkActivationsToTest = new()
-        {
-            (ForkActivation)0,
-            (ForkActivation)1,
-            (ForkActivation)(RopstenSpecProvider.SpuriousDragonBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.SpuriousDragonBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.ByzantiumBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.ByzantiumBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.ConstantinopleFixBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.ConstantinopleFixBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.IstanbulBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.IstanbulBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.MuirGlacierBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.MuirGlacierBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.BerlinBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.BerlinBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.LondonBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.LondonBlockNumber,
-            (ForkActivation)999_999_999, // far in the future
-        };
-
-        CompareSpecProviders(ropsten, provider, forkActivationsToTest, CompareSpecsOptions.CheckDifficultyBomb);
-        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(RopstenSpecProvider.Instance.TerminalTotalDifficulty));
-        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(RopstenSpecProvider.LondonBlockNumber));
-    }
-
     private ChainSpec LoadChainSpecFromChainFolder(string chain)
     {
         ChainSpecLoader loader = new(new EthereumJsonSerializer());

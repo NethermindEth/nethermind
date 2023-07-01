@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Newtonsoft.Json;
 
@@ -16,7 +16,7 @@ namespace Nethermind.JsonRpc.Data
         {
         }
 
-        public ReceiptForRpc(Keccak txHash, TxReceipt receipt, UInt256? effectiveGasPrice, int logIndexStart = 0)
+        public ReceiptForRpc(Keccak txHash, TxReceipt receipt, TxGasInfo gasInfo, int logIndexStart = 0)
         {
             TransactionHash = txHash;
             TransactionIndex = receipt.Index;
@@ -24,7 +24,9 @@ namespace Nethermind.JsonRpc.Data
             BlockNumber = receipt.BlockNumber;
             CumulativeGasUsed = receipt.GasUsedTotal;
             GasUsed = receipt.GasUsed;
-            EffectiveGasPrice = effectiveGasPrice;
+            EffectiveGasPrice = gasInfo.EffectiveGasPrice;
+            DataGasUsed = gasInfo.DataGasUsed;
+            DataGasPrice = gasInfo.DataGasPrice;
             From = receipt.Sender;
             To = receipt.Recipient;
             ContractAddress = receipt.ContractAddress;
@@ -42,6 +44,12 @@ namespace Nethermind.JsonRpc.Data
         public long BlockNumber { get; set; }
         public long CumulativeGasUsed { get; set; }
         public long GasUsed { get; set; }
+
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public ulong? DataGasUsed { get; set; }
+
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public UInt256? DataGasPrice { get; set; }
 
         public UInt256? EffectiveGasPrice { get; set; }
         public Address From { get; set; }

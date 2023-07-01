@@ -53,10 +53,6 @@ namespace Nethermind.Config.Test
         protected IEnumerable<string> ArchiveConfigs
             => Configs.Where(config => config.Contains("_archive"));
 
-        [ConfigFileGroup("ropsten")]
-        protected IEnumerable<string> RopstenConfigs
-            => Configs.Where(config => config.Contains("ropsten"));
-
         [ConfigFileGroup("poacore")]
         protected IEnumerable<string> PoaCoreConfigs
             => Configs.Where(config => config.Contains("poacore"));
@@ -130,10 +126,6 @@ namespace Nethermind.Config.Test
         [ConfigFileGroup("clique")]
         protected IEnumerable<string> CliqueConfigs
             => RinkebyConfigs.Union(GoerliConfigs);
-
-        [ConfigFileGroup("ethhash")]
-        protected IEnumerable<string> EthashConfigs
-            => MainnetConfigs.Union(RopstenConfigs);
 
         protected IEnumerable<string> Resolve(string configWildcard)
         {

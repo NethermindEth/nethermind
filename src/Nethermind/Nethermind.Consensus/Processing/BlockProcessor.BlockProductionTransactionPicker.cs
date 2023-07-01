@@ -7,8 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing
@@ -92,9 +90,19 @@ namespace Nethermind.Consensus.Processing
                     return false;
                 }
 
-                if (eip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + transaction.Value)
+                UInt256 maxFee = 0;
+
+                if (eip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (maxFee = (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + transaction.Value))
                 {
-                    e.Set(TxAction.Skip, $"MaxFeePerGas ({transaction.MaxFeePerGas}) times GasLimit {transaction.GasLimit} is higher than sender balance ({senderBalance})");
+                    e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}");
+                    return false;
+                }
+
+                if (releaseSpec.IsEip4844Enabled && !transaction.IsServiceTransaction && (
+                    !DataGasCalculator.TryCalculateDataGasPrice(block.Header, transaction, out UInt256 dataGasPrice) ||
+                    senderBalance < (maxFee = (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + dataGasPrice + transaction.Value)))
+                {
+                    e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}, DataGasPrice: {dataGasPrice}");
                     return false;
                 }
 

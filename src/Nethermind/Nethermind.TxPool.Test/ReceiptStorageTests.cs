@@ -39,7 +39,7 @@ namespace Nethermind.TxPool.Test
         [SetUp]
         public void Setup()
         {
-            _specProvider = RopstenSpecProvider.Instance;
+            _specProvider = MainnetSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
             _blockTree = Build.A.BlockTree()
                 .WithBlocks(Build.A.Block.TestObject)

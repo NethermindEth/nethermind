@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
@@ -494,14 +495,14 @@ public partial class EthRpcModule : IEthRpcModule
 
     public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)
     {
-        (TxReceipt receipt, UInt256? effectiveGasPrice, int logIndexStart) = _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash);
-        if (receipt is null)
+        (TxReceipt? receipt, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetReceiptAndGasInfo(txHash);
+        if (receipt is null || gasInfo is null)
         {
             return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
-        return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, effectiveGasPrice, logIndexStart)));
+        return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, gasInfo.Value, logIndexStart)));
     }
 
     public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHash, UInt256 positionIndex)
