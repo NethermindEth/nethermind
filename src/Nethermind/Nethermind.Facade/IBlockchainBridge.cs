@@ -23,8 +23,8 @@ namespace Nethermind.Facade
         void RecoverTxSenders(Block block);
         Address? RecoverTxSender(Transaction tx);
         TxReceipt GetReceipt(Keccak txHash);
-        (TxReceipt Receipt, UInt256? EffectiveGasPrice, int LogIndexStart) GetReceiptAndEffectiveGasPrice(Keccak txHash);
-        (TxReceipt Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash);
+        (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Keccak txHash);
+        (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash);
         BlockchainBridge.MultiCallOutput MultiCall(BlockHeader header, MultiCallBlockStateCallsModel[] blocks,
             CancellationToken cancellationToken);
         BlockchainBridge.CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
