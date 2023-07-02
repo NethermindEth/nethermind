@@ -163,7 +163,8 @@ namespace Nethermind.Evm
                 _tracer.ReportStackPush(ZeroStackItem());
             }
 
-            _bytes.Slice(Head * WordSize, WordSize).Clear();
+            // Clear the word
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Word.Zero);
 
             if (++Head >= MaxStackSize)
             {
@@ -173,14 +174,13 @@ namespace Nethermind.Evm
 
         public void PushUInt32(in int value)
         {
-            Span<byte> word = _bytes.Slice(Head * WordSize, WordSize - sizeof(uint));
             // Clear the word first
-            Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(word), Word.Zero);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Word.Zero);
 
             Span<byte> intPlace = _bytes.Slice(Head * WordSize + WordSize - sizeof(uint), sizeof(uint));
             BinaryPrimitives.WriteInt32BigEndian(intPlace, value);
 
-            if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(word);
+            if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(intPlace);
 
             if (++Head >= MaxStackSize)
             {
@@ -378,7 +378,7 @@ namespace Nethermind.Evm
 
             if (value.Length != WordSize)
             {
-                _bytes.Slice(Head * WordSize, WordSize).Clear();
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Word.Zero);
             }
 
             value.CopyTo(_bytes.Slice(Head * WordSize + WordSize - paddingLength, value.Length));

@@ -68,8 +68,13 @@ namespace Nethermind.Evm
 
         private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length)
         {
-            UInt256 totalSize = location + length;
-            if (totalSize < location || totalSize > long.MaxValue)
+            if ((location.u1 | location.u2 | location.u2 | length.u1 | length.u2 | length.u2) != 0)
+            {
+                ThrowOutOfGasException();
+            }
+
+            ulong totalSize = location.u0 + length.u0;
+            if (totalSize < location.u0 || totalSize > long.MaxValue)
             {
                 ThrowOutOfGasException();
             }
@@ -77,13 +82,18 @@ namespace Nethermind.Evm
 
         private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength)
         {
-            UInt256 totalSize = location + length;
-            if (totalSize < location || totalSize > long.MaxValue)
+            if ((location.u1 | location.u2 | location.u2 | length.u1 | length.u2 | length.u2) != 0)
             {
                 ThrowOutOfGasException();
             }
 
-            newLength = (ulong)totalSize;
+            ulong totalSize = location.u0 + length.u0;
+            if (totalSize < location.u0 || totalSize > long.MaxValue)
+            {
+                ThrowOutOfGasException();
+            }
+
+            newLength = totalSize;
         }
 
         public void Save(in UInt256 location, byte[] value)
@@ -197,8 +207,7 @@ namespace Nethermind.Evm
                 return 0L;
             }
 
-            CheckMemoryAccessViolation(in location, in length);
-            UInt256 newSize = location + length;
+            CheckMemoryAccessViolation(in location, in length, out ulong newSize);
 
             if (newSize > Size)
             {
@@ -216,7 +225,7 @@ namespace Nethermind.Evm
                     return long.MaxValue;
                 }
 
-                UpdateSize(in newSize, in UInt256.Zero, false);
+                UpdateSize(newSize, rentIfNeeded: false);
 
                 return (long)cost;
             }
@@ -257,18 +266,22 @@ namespace Nethermind.Evm
             }
         }
 
-        private static UInt256 MaxInt32 = (UInt256)int.MaxValue;
-
         public static long Div32Ceiling(in UInt256 length)
         {
-            UInt256 rem = length & 31;
-            UInt256 result = length >> 5;
-            if (!rem.IsZero)
+            if ((length.u1 | length.u2 | length.u2) != 0)
             {
-                result += UInt256.One;
+                ThrowOutOfGasException();
             }
 
-            if (result > MaxInt32)
+            ulong result = length.u0;
+            ulong rem = result & 31;
+            result >>= 5;
+            if (rem > 0)
+            {
+                result++;
+            }
+
+            if (result > int.MaxValue)
             {
                 ThrowOutOfGasException();
             }

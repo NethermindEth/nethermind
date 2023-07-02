@@ -1777,10 +1777,8 @@ OutOfGas:
                         gasAvailable -= GasCostOf.VeryLow;
 
                         int length = instruction - Instruction.PUSH1 + 1;
-                        int programCounterInt = programCounter;
-                        int usedFromCode = Math.Min(code.Length - programCounterInt, length);
-
-                        stack.PushLeftPaddedBytes(code.Slice(programCounterInt, usedFromCode), length);
+                        int usedFromCode = Math.Min(code.Length - programCounter, length);
+                        stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
 
                         programCounter += length;
                         break;
