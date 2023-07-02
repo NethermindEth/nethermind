@@ -2079,7 +2079,7 @@ OutOfGas:
 EmptyReturn:
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
 EmptyReturnNoTrace:
-        // Ensure gas is positive before updating state
+// Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 #if DEBUG
@@ -2089,7 +2089,7 @@ EmptyReturnNoTrace:
 DataReturn:
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
 DataReturnNoTrace:
-        // Ensure gas is positive before updating state
+// Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 
