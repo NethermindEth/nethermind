@@ -24,7 +24,7 @@ namespace Nethermind.Trie
 
         public static TrieException CreateOnLoadFailure(Span<byte> rawKey, ValueKeccak rootHash, Exception baseException)
         {
-            if (Bytes.AreEqual(rawKey, rootHash.Bytes))
+            if (baseException is MissingNodeException nodeException && nodeException.NodeHash == rootHash)
             {
                 return new MissingRootHashException(rootHash, baseException);
             }
