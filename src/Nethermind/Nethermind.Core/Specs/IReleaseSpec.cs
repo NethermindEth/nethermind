@@ -268,6 +268,11 @@ namespace Nethermind.Core.Specs
         bool IsEip4844Enabled { get; }
 
         /// <summary>
+        /// SELFDESTRUCT only in same transaction
+        /// </summary>
+        bool IsEip6780Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -345,6 +350,7 @@ namespace Nethermind.Core.Specs
         public bool TransientStorageEnabled => IsEip1153Enabled;
 
         public bool WithdrawalsEnabled => IsEip4895Enabled;
+        public bool SelfdestructOnlyOnSameTransaction => IsEip6780Enabled;
 
         bool MCopyIncluded => IsEip5656Enabled;
     }

@@ -47,7 +47,7 @@ public class BlockBodiesMessageSerializerTests
         BlockHeader header = Build.A.BlockHeader.TestObject;
         Transaction tx = Build.A.Transaction
             .WithTo(TestItem.AddressA)
-            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA)
+            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
             .TestObject;
 
         tx.SenderAddress = null;
