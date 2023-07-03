@@ -26,7 +26,7 @@ namespace Nethermind.Trie
         {
             if (baseException is MissingNodeException nodeException && nodeException.NodeHash == rootHash)
             {
-                return new MissingRootHashException(rootHash, baseException);
+                return new TrieException($"Failed to load root hash {rootHash} while loading key {rawKey.ToHexString()}.", baseException);
             }
             return new TrieException($"Failed to load key {rawKey.ToHexString()} from root hash {rootHash}.", baseException);
         }
