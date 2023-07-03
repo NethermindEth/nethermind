@@ -47,7 +47,7 @@ namespace Nethermind.Network.Test.Rlpx
             _macProcessorB = new FrameMacProcessor(TestItem.IgnoredPublicKey, secrets.B);
 
             _frame = new byte[16 + 16 + 16 + 16];
-            _frame[2] = 16; // size   
+            _frame[2] = 16; // size
 
             InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider(new ConsoleLoggerOptionsMonitor(
                 new ConsoleLoggerOptions
@@ -244,7 +244,7 @@ namespace Nethermind.Network.Test.Rlpx
 
             public ConsoleLoggerOptions CurrentValue { get; }
 
-            public ConsoleLoggerOptions Get(string name) => CurrentValue;
+            public ConsoleLoggerOptions Get(string? name) => CurrentValue;
 
             public IDisposable OnChange(Action<ConsoleLoggerOptions, string> listener)
             {

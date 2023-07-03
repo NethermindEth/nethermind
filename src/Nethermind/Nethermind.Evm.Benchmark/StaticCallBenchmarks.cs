@@ -104,10 +104,17 @@ namespace Nethermind.Evm.Benchmark
             _evmState = new EvmState(100_000_000L, _environment, ExecutionType.Transaction, true, _stateProvider.TakeSnapshot(), false);
         }
 
-        [Benchmark]
+        [Benchmark(Baseline = true)]
         public void ExecuteCode()
         {
-            _virtualMachine.Run(_evmState, _stateProvider, _txTracer);
+            _virtualMachine.Run<VirtualMachine.IsTracing>(_evmState, _stateProvider, _txTracer);
+            _stateProvider.Reset();
+        }
+
+        [Benchmark]
+        public void ExecuteCodeNoTracing()
+        {
+            _virtualMachine.Run<VirtualMachine.NotTracing>(_evmState, _stateProvider, _txTracer);
             _stateProvider.Reset();
         }
 

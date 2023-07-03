@@ -4,6 +4,7 @@
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -84,7 +85,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             _blockTree.SuggestBlock(genesis);
             _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);
 
-            _tracer = new Tracer(stateProvider, _processor);
+            _tracer = new Tracer(stateProvider, _processor, _processor);
         }
 
         [Test]

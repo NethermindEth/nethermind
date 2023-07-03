@@ -31,7 +31,7 @@ public class JsonRpcService : IJsonRpcService
 
     public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<JsonRpcService>();
         _rpcModuleProvider = rpcModuleProvider;
         _serializer = rpcModuleProvider.Serializer;
         _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? Array.Empty<string>()).ToHashSet();
@@ -172,7 +172,7 @@ public class JsonRpcService : IJsonRpcService
             contextAwareModule.Context = context;
         }
         bool returnImmediately = methodName != "eth_getLogs";
-        Action? returnAction = returnImmediately ? (Action)null : () => _rpcModuleProvider.Return(methodName, rpcModule);
+        Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(methodName, rpcModule);
         try
         {
             object invocationResult = method.Info.Invoke(rpcModule, parameters);
@@ -219,24 +219,16 @@ public class JsonRpcService : IJsonRpcService
             return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, request.Id, returnAction);
         }
 
-        Result? result = resultWrapper.GetResult();
-        if (result is null)
-        {
-            if (_logger.IsError) _logger.Error($"Error during method: {methodName} execution: no result");
-            return GetErrorResponse(methodName, resultWrapper.GetErrorCode(), "Internal error", resultWrapper.GetData(), request.Id, returnAction);
-        }
+        Result? result = resultWrapper.Result;
 
-        if (result.ResultType == ResultType.Failure)
-        {
-            return GetErrorResponse(methodName, resultWrapper.GetErrorCode(), result.Error, resultWrapper.GetData(), request.Id, returnAction);
-        }
-
-        return GetSuccessResponse(methodName, resultWrapper.GetData(), request.Id, returnAction);
+        return result.ResultType != ResultType.Success
+            ? GetErrorResponse(methodName, resultWrapper.ErrorCode, result.Error, resultWrapper.Data, request.Id, returnAction, resultWrapper.IsTemporary)
+            : GetSuccessResponse(methodName, resultWrapper.Data, request.Id, returnAction);
     }
 
     private void LogRequest(string methodName, string?[] providedParameters, ParameterInfo[] expectedParameters)
     {
-        if (_logger.IsInfo && !_methodsLoggingFiltering.Contains(methodName))
+        if (_logger.IsDebug && !_methodsLoggingFiltering.Contains(methodName))
         {
             StringBuilder builder = new StringBuilder();
             builder.Append("Executing JSON RPC call ");
@@ -273,7 +265,7 @@ public class JsonRpcService : IJsonRpcService
             }
             builder.Append(']');
             string log = builder.ToString();
-            _logger.Info(log);
+            _logger.Debug(log);
         }
     }
 
@@ -383,16 +375,23 @@ public class JsonRpcService : IJsonRpcService
     }
 
     public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage) =>
-        GetErrorResponse(null, errorCode, errorMessage, null, null);
+        GetErrorResponse("", errorCode, errorMessage, null, null);
 
     public JsonRpcErrorResponse GetErrorResponse(string methodName, int errorCode, string errorMessage, object id) =>
         GetErrorResponse(methodName, errorCode, errorMessage, null, id);
 
     public JsonConverter[] Converters { get; }
 
-    private JsonRpcErrorResponse GetErrorResponse(string? methodName, int errorCode, string? errorMessage, object? errorData, object? id, Action? disposableAction = null)
+    private JsonRpcErrorResponse GetErrorResponse(
+        string methodName,
+        int errorCode,
+        string? errorMessage,
+        object? errorData,
+        object? id,
+        Action? disposableAction = null,
+        bool suppressWarning = false)
     {
-        if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorCode}, message: {errorMessage}, errorData: {errorData}");
+        if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {(string.IsNullOrEmpty(methodName) ? "none" : methodName)}, id: {id}, errorType: {errorCode}, message: {errorMessage}, errorData: {errorData}");
         JsonRpcErrorResponse response = new(disposableAction)
         {
             Error = new Error
@@ -400,6 +399,7 @@ public class JsonRpcService : IJsonRpcService
                 Code = errorCode,
                 Message = errorMessage,
                 Data = errorData,
+                SuppressWarning = suppressWarning
             },
             Id = id,
             MethodName = methodName

@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.ParallelSync
     ///     - Beacon modes are allied directly.
     ///     - If no Beacon mode is applied and we have good peers on the network we apply <see cref="SyncMode.Full"/>,.
     /// </remarks>
-    public class MultiSyncModeSelector : ISyncModeSelector, IDisposable
+    public class MultiSyncModeSelector : ISyncModeSelector
     {
         /// <summary>
         /// Number of blocks before the best peer's head when we switch from fast sync to full sync
@@ -216,11 +216,11 @@ namespace Nethermind.Synchronization.ParallelSync
                             CheckAddFlag(best.IsInSnapRanges, SyncMode.SnapSync, ref newModes);
                             CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
                             CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
-                            if (IsTheModeSwitchWorthMentioning(newModes))
+                            SyncMode current = Current;
+                            if (IsTheModeSwitchWorthMentioning(current, newModes))
                             {
-                                string stateString = BuildStateString(best);
                                 if (_logger.IsInfo)
-                                    _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
+                                    _logger.Info($"Changing state {current} to {newModes} at {BuildStateString(best)}");
                             }
                         }
                         catch (InvalidAsynchronousStateException)
@@ -250,12 +250,12 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        private bool IsTheModeSwitchWorthMentioning(SyncMode newModes)
+        private bool IsTheModeSwitchWorthMentioning(SyncMode current, SyncMode newModes)
         {
-            return _logger.IsDebug ||
-                   newModes != Current &&
-                   (newModes != SyncMode.WaitingForBlock || Current != SyncMode.Full) &&
-                   (newModes != SyncMode.Full || Current != SyncMode.WaitingForBlock);
+            return newModes != current &&
+                   (_logger.IsDebug ||
+                   (newModes != SyncMode.WaitingForBlock || current != SyncMode.Full) &&
+                   (newModes != SyncMode.Full || current != SyncMode.WaitingForBlock));
         }
 
         private void UpdateSyncModes(SyncMode newModes, string? reason = null)
@@ -286,19 +286,15 @@ namespace Nethermind.Synchronization.ParallelSync
         /// <param name="best">Snapshot of the best known states</param>
         /// <returns>A string describing the state of sync</returns>
         private static string BuildStateString(Snapshot best) =>
-            $"processed:{best.Processed}|" +
-            $"state:{best.State}|" +
-            $"block:{best.Block}|" +
-            $"header:{best.Header}|" +
-            $"chain difficulty:{best.ChainDifficulty}|" +
-            $"target block:{best.TargetBlock}|" +
-            $"peer block:{best.Peer.Block}|" +
-            $"peer total difficulty:{best.Peer.TotalDifficulty}";
+            $"processed: {best.Processed} | state: {best.State} | block: {best.Block} | header: {best.Header} | target block: {best.TargetBlock} | peer block: {best.Peer.Block}";
+
+        private static string BuildStateStringDebug(Snapshot best) =>
+            $"processed: {best.Processed} | state: {best.State} | block: {best.Block} | header: {best.Header} | chain difficulty: {best.ChainDifficulty} | target block: {best.TargetBlock} | peer block: {best.Peer.Block} | peer total difficulty: {best.Peer.TotalDifficulty}";
 
         private bool IsInAStickyFullSyncMode(Snapshot best)
         {
             long bestBlock = Math.Max(best.Processed, LastBlockThatEnabledFullSync ?? 0);
-            bool hasEverBeenInFullSync = bestBlock > _pivotNumber && best.State > _pivotNumber;
+            bool hasEverBeenInFullSync = bestBlock > 0 && best.State > 0;
             long heightDelta = best.TargetBlock - bestBlock;
             return hasEverBeenInFullSync && heightDelta < FastSyncCatchUpHeightDelta;
         }
@@ -713,13 +709,13 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (IsSnapshotInvalid(best))
             {
-                string stateString = BuildStateString(best);
+                string stateString = BuildStateStringDebug(best);
                 if (_logger.IsWarn) _logger.Warn($"Invalid snapshot calculation: {stateString}. Recalculating progress pointers...");
                 _syncProgressResolver.RecalculateProgressPointers();
                 best = TakeSnapshot(peerDifficulty, peerBlock, inBeaconControl);
                 if (IsSnapshotInvalid(best))
                 {
-                    string recalculatedSnapshot = BuildStateString(best);
+                    string recalculatedSnapshot = BuildStateStringDebug(best);
                     string errorMessage = $"Cannot recalculate snapshot progress. Invalid snapshot calculation: {recalculatedSnapshot}";
                     if (_logger.IsError) _logger.Error(errorMessage);
                     throw new InvalidAsynchronousStateException(errorMessage);

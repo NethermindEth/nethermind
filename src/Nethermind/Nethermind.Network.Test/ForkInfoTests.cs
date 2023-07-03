@@ -176,8 +176,10 @@ public class ForkInfoTests
     [TestCase(16101499, 0ul, "0xb6e6cd81", 16101500ul, "Last POSDAO Activation block")]
     [TestCase(16101500, 0ul, "0x069a83d9", 19040000ul, "First Berlin block")]
     [TestCase(19039999, 0ul, "0x069a83d9", 19040000ul, "Last Berlin block")]
-    [TestCase(19040000, 0ul, "0x018479d3", 0ul, "First London block")]
-    [TestCase(21735000, 0ul, "0x018479d3", 0ul, "First GIP-31 block")]
+    [TestCase(19040000, 0ul, "0x018479d3", GnosisSpecProvider.ShanghaiTimestamp, "First London block")]
+    [TestCase(21735000, 0ul, "0x018479d3", GnosisSpecProvider.ShanghaiTimestamp, "First GIP-31 block")]
+    [TestCase(31735000, GnosisSpecProvider.ShanghaiTimestamp, "0x2efe91ba", 0ul, "First Shanghai timestamp")]
+    [TestCase(91735000, GnosisSpecProvider.ShanghaiTimestamp, "0x2efe91ba", 0ul, "Future Shanghai timestamp")]
     public void Fork_id_and_hash_as_expected_on_gnosis(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
@@ -187,8 +189,8 @@ public class ForkInfoTests
     }
 
     [TestCase(0L, 0UL, "0x50d39d7b", ChiadoSpecProvider.ShanghaiTimestamp, "Chiado genesis")]
-    [TestCase(3945317, ChiadoSpecProvider.ShanghaiTimestamp, "0xCC663128", 0ul, "First Shanghai timestamp")]
-    [TestCase(9945337, 9984930320ul, "0xCC663128", 0ul, "Future Shanghai timestamp")]
+    [TestCase(3945317, ChiadoSpecProvider.ShanghaiTimestamp, "0xa15a4252", 0ul, "First Shanghai timestamp")]
+    [TestCase(9945337, 9984930320ul, "0xa15a4252", 0ul, "Future Shanghai timestamp")]
     public void Fork_id_and_hash_as_expected_on_chiado(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());

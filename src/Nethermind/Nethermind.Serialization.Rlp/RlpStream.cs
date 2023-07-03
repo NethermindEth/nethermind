@@ -54,9 +54,9 @@ namespace Nethermind.Serialization.Rlp
             _headerDecoder.Encode(this, value);
         }
 
-        public void Encode(Transaction value)
+        public void Encode(Transaction value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            _txDecoder.Encode(this, value);
+            _txDecoder.Encode(this, value, rlpBehaviors);
         }
 
         public void Encode(TxReceipt value)
@@ -537,6 +537,17 @@ namespace Nethermind.Serialization.Rlp
             Encode(input.AsSpan());
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Encode(Memory<byte>? input)
+        {
+            if (input is null)
+            {
+                WriteByte(EmptyArrayByte);
+                return;
+            }
+            Encode(input.Value.Span);
+        }
+
         public void Encode(Span<byte> input)
         {
             if (input.IsEmpty)
@@ -586,6 +597,21 @@ namespace Nethermind.Serialization.Rlp
                 WriteByte(prefix);
                 WriteEncodedLength(input.Count);
                 Write(input);
+            }
+        }
+
+        public void Encode(byte[][] arrays)
+        {
+            int itemsLength = 0;
+            foreach (byte[] array in arrays)
+            {
+                itemsLength += Rlp.LengthOf(array);
+            }
+
+            StartSequence(itemsLength);
+            foreach (byte[] array in arrays)
+            {
+                Encode(array);
             }
         }
 
@@ -860,15 +886,16 @@ namespace Nethermind.Serialization.Rlp
                 return Keccak.EmptyTreeHash;
             }
 
-            return new Keccak(keccakSpan.ToArray());
+            return new Keccak(keccakSpan);
         }
 
-        public ValueKeccak? DecodeValueKeccak()
+        public bool DecodeValueKeccak(out ValueKeccak keccak)
         {
+            Unsafe.SkipInit(out keccak);
             int prefix = ReadByte();
             if (prefix == 128)
             {
-                return null;
+                return false;
             }
 
             if (prefix != 128 + 32)
@@ -878,7 +905,8 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Span<byte> keccakSpan = Read(32);
-            return new ValueKeccak(keccakSpan);
+            keccak = new ValueKeccak(keccakSpan);
+            return true;
         }
 
         public Keccak? DecodeZeroPrefixKeccak()
@@ -1346,6 +1374,25 @@ namespace Nethermind.Serialization.Rlp
         public override string ToString()
         {
             return $"[{nameof(RlpStream)}|{Position}/{Length}]";
+        }
+
+        internal byte[][] DecodeByteArrays()
+        {
+            int length = ReadSequenceLength();
+            if (length is 0)
+            {
+                return Array.Empty<byte[]>();
+            }
+
+            int itemsCount = PeekNumberOfItemsRemaining(Position + length);
+            byte[][] result = new byte[itemsCount][];
+
+            for (int i = 0; i < itemsCount; i++)
+            {
+                result[i] = DecodeByteArray();
+            }
+
+            return result;
         }
     }
 }

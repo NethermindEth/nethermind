@@ -37,7 +37,7 @@ namespace Nethermind.Core
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
-        public byte[]? Data { get; set; }
+        public Memory<byte>? Data { get; set; }
         public Address? SenderAddress { get; set; }
         public Signature? Signature { get; set; }
         public bool IsSigned => Signature is not null;
@@ -66,11 +66,8 @@ namespace Nethermind.Core
             }
             set
             {
-                lock (this)
-                {
-                    ClearPreHashInternal();
-                    _hash = value;
-                }
+                ClearPreHash();
+                _hash = value;
             }
         }
 
@@ -114,13 +111,12 @@ namespace Nethermind.Core
         public int DataLength => Data?.Length ?? 0;
 
         public AccessList? AccessList { get; set; } // eip2930
+
         public UInt256? MaxFeePerDataGas { get; set; } // eip4844
+
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
 
-        // Network form of blob transaction fields
-        public byte[]? BlobKzgs { get; set; }
-        public byte[]? Blobs { get; set; }
-        public byte[]? BlobProofs { get; set; }
+        public object? NetworkWrapper { get; set; }
 
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
@@ -147,7 +143,7 @@ namespace Nethermind.Core
         {
             string gasPriceString =
                 Supports1559 ? $"maxPriorityFeePerGas: {MaxPriorityFeePerGas}, MaxFeePerGas: {MaxFeePerGas}" : $"gas price {GasPrice}";
-            return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data?.ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
+            return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data.AsArray()?.ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
         }
 
         public string ToString(string indent)
@@ -169,7 +165,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
-            builder.AppendLine($"{indent}Data:      {(Data ?? Array.Empty<byte>()).ToHexString()}");
+            builder.AppendLine($"{indent}Data:      {(Data.AsArray() ?? Array.Empty<byte>()).ToHexString()}");
             builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? Array.Empty<byte>()).ToHexString()}");
             builder.AppendLine($"{indent}V:         {Signature?.V}");
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
@@ -184,6 +180,8 @@ namespace Nethermind.Core
         }
 
         public override string ToString() => ToString(string.Empty);
+
+        public bool MayHaveNetworkForm => Type is TxType.Blob;
     }
 
     /// <summary>
@@ -203,5 +201,22 @@ namespace Nethermind.Core
     public interface ITransactionSizeCalculator
     {
         int GetLength(Transaction tx);
+    }
+
+    /// <summary>
+    /// Holds network form fields for <see cref="TxType.Blob" /> transactions
+    /// </summary>
+    public class ShardBlobNetworkWrapper
+    {
+        public ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs)
+        {
+            Blobs = blobs;
+            Commitments = commitments;
+            Proofs = proofs;
+        }
+
+        public byte[][] Commitments { get; set; }
+        public byte[][] Blobs { get; set; }
+        public byte[][] Proofs { get; set; }
     }
 }

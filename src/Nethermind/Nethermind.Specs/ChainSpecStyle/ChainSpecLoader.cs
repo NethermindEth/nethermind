@@ -96,6 +96,7 @@ public class ChainSpecLoader : IChainSpecLoader
             MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000,
             MaxCodeSize = chainSpecJson.Params.MaxCodeSize,
             MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition,
+            MaxCodeSizeTransitionTimestamp = chainSpecJson.Params.MaxCodeSizeTransitionTimestamp,
             Registrar = chainSpecJson.Params.EnsRegistrar,
             ForkBlock = chainSpecJson.Params.ForkBlock,
             ForkCanonHash = chainSpecJson.Params.ForkCanonHash,
@@ -138,6 +139,8 @@ public class ChainSpecLoader : IChainSpecLoader
             Eip3860TransitionTimestamp = chainSpecJson.Params.Eip3860TransitionTimestamp,
             Eip4895TransitionTimestamp = chainSpecJson.Params.Eip4895TransitionTimestamp,
             Eip4844TransitionTimestamp = chainSpecJson.Params.Eip4844TransitionTimestamp,
+            Eip2537TransitionTimestamp = chainSpecJson.Params.Eip2537TransitionTimestamp,
+            Eip5656TransitionTimestamp = chainSpecJson.Params.Eip5656TransitionTimestamp,
             TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
             TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
             ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
@@ -152,7 +155,7 @@ public class ChainSpecLoader : IChainSpecLoader
             Eip1559BaseFeeMinValue = chainSpecJson.Params.Eip1559BaseFeeMinValue,
             MergeForkIdTransition = chainSpecJson.Params.MergeForkIdTransition,
             TerminalTotalDifficulty = chainSpecJson.Params.TerminalTotalDifficulty,
-            TerminalPowBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber
+            TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
@@ -217,7 +220,7 @@ public class ChainSpecLoader : IChainSpecLoader
 
         // TheMerge parameters
         chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
-        chainSpec.TerminalPoWBlockNumber = chainSpec.Parameters.TerminalPowBlockNumber;
+        chainSpec.TerminalPoWBlockNumber = chainSpec.Parameters.TerminalPoWBlockNumber;
         chainSpec.TerminalTotalDifficulty = chainSpec.Parameters.TerminalTotalDifficulty;
     }
 

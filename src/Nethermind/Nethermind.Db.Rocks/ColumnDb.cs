@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks;
@@ -39,21 +40,13 @@ public class ColumnDb : IDbWithSpan
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
-        UpdateWriteMetrics();
-        if (value is null)
-        {
-            _rocksDb.Remove(key, _columnFamily, _mainDb.WriteFlagsToWriteOptions(flags));
-        }
-        else
-        {
-            _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteFlagsToWriteOptions(flags));
-        }
+        _mainDb.SetWithColumnFamily(key, _columnFamily, value, flags);
     }
 
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] =>
         _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());
 
-    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
     {
         Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
         return _mainDb.GetAllCore(iterator);
@@ -95,11 +88,11 @@ public class ColumnDb : IDbWithSpan
         {
             if (value is null)
             {
-                _underlyingBatch._rocksBatch.Delete(key, _columnDb._columnFamily);
+                _underlyingBatch.Delete(key, _columnDb._columnFamily);
             }
             else
             {
-                _underlyingBatch._rocksBatch.Put(key, value, _columnDb._columnFamily);
+                _underlyingBatch.Set(key, value, _columnDb._columnFamily);
             }
         }
     }
@@ -117,16 +110,16 @@ public class ColumnDb : IDbWithSpan
         _mainDb.Flush();
     }
 
+    public void Compact()
+    {
+        _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
+    }
+
     /// <summary>
     /// Not sure how to handle delete of the columns DB
     /// </summary>
     /// <exception cref="NotSupportedException"></exception>
     public void Clear() { throw new NotSupportedException(); }
-
-    private void UpdateWriteMetrics() => _mainDb.UpdateWriteMetrics();
-
-    private void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
-
     public long GetSize() => _mainDb.GetSize();
     public long GetCacheSize() => _mainDb.GetCacheSize();
     public long GetIndexSize() => _mainDb.GetIndexSize();

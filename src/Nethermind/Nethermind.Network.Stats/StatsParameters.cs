@@ -41,19 +41,19 @@ namespace Nethermind.Stats
 
         public int[] FailedConnectionDelays { get; }
 
-        public int[] DisconnectDelays { get; }
+        public int[] DisconnectDelays { get; set; }
 
         public Dictionary<DisconnectReason, TimeSpan> DelayDueToLocalDisconnect { get; } = new()
         {
-            { DisconnectReason.UselessPeer, TimeSpan.FromMinutes(5) }
+            { DisconnectReason.UselessPeer, TimeSpan.FromMinutes(15) },
+
+            // Its actually protocol init timeout, when status message is not received in time.
+            { DisconnectReason.ReceiveMessageTimeout, TimeSpan.FromMinutes(5) },
         };
 
         public Dictionary<DisconnectReason, TimeSpan> DelayDueToRemoteDisconnect { get; } = new()
         {
-            // Actual explicit ClientQuitting is very rare, but internally we also use this status for connection
-            // closed, which can happen if remote client close connection without giving any reason.
-            // It is unclear why we have such large number of these, but it seems that it is usually transient.
-            { DisconnectReason.ClientQuitting, TimeSpan.FromMinutes(1) }
+            { DisconnectReason.ClientQuitting, TimeSpan.FromMinutes(1) },
         };
 
         public Dictionary<NodeStatsEventType, TimeSpan> DelayDueToEvent { get; } = new()

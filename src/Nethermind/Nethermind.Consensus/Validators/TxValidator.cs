@@ -108,17 +108,16 @@ namespace Nethermind.Consensus.Validators
 
         private static bool Validate4844Fields(Transaction transaction)
         {
-            // Execution-payload version part
-            if (transaction.Type != TxType.Blob)
+            // Execution-payload version verification
+            if (!transaction.SupportsBlobs)
             {
                 return transaction.MaxFeePerDataGas is null &&
                        transaction.BlobVersionedHashes is null &&
-                       transaction.BlobKzgs is null &&
-                       transaction.Blobs is null &&
-                       transaction.BlobProofs is null;
+                       transaction is not { NetworkWrapper: ShardBlobNetworkWrapper };
             }
 
-            if (transaction.MaxFeePerDataGas is null ||
+            if (transaction.To is null ||
+                transaction.MaxFeePerDataGas is null ||
                 transaction.BlobVersionedHashes is null ||
                 transaction.BlobVersionedHashes!.Length > Eip4844Constants.MaxBlobsPerTransaction ||
                 transaction.BlobVersionedHashes!.Length < Eip4844Constants.MinBlobsPerTransaction)
@@ -126,7 +125,9 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            for (int i = 0; i < transaction.BlobVersionedHashes!.Length; i++)
+            int blobCount = transaction.BlobVersionedHashes.Length;
+
+            for (int i = 0; i < blobCount; i++)
             {
                 if (transaction.BlobVersionedHashes[i] is null ||
                     transaction.BlobVersionedHashes![i].Length !=
@@ -137,32 +138,39 @@ namespace Nethermind.Consensus.Validators
                 }
             }
 
-            // And mempool version part if presents
-            if (transaction.BlobVersionedHashes!.Length > 0 && (transaction.Blobs is not null ||
-                                                                transaction.BlobKzgs is not null ||
-                                                                transaction.BlobProofs is not null))
+            // Mempool version verification if presents
+            if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
             {
-                if (transaction.BlobKzgs is null)
+                if (wrapper.Blobs.Length != blobCount ||
+                    wrapper.Commitments.Length != blobCount ||
+                    wrapper.Proofs.Length != blobCount)
                 {
                     return false;
                 }
 
-                Span<byte> hash = stackalloc byte[32];
-                Span<byte> commitements = transaction.BlobKzgs;
-                for (int i = 0, n = 0;
-                     i < transaction.BlobVersionedHashes!.Length;
-                     i++, n += Ckzg.Ckzg.BytesPerCommitment)
+                for (int i = 0; i < blobCount; i++)
                 {
-                    if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(
-                            commitements[n..(n + Ckzg.Ckzg.BytesPerCommitment)], hash) ||
-                        !hash.SequenceEqual(transaction.BlobVersionedHashes![i]))
+                    if (wrapper.Blobs[i].Length != Ckzg.Ckzg.BytesPerBlob ||
+                        wrapper.Commitments[i].Length != Ckzg.Ckzg.BytesPerCommitment ||
+                        wrapper.Proofs[i].Length != Ckzg.Ckzg.BytesPerProof)
                     {
                         return false;
                     }
                 }
 
-                return KzgPolynomialCommitments.AreProofsValid(transaction.Blobs!,
-                    transaction.BlobKzgs!, transaction.BlobProofs!);
+                Span<byte> hash = stackalloc byte[32];
+                for (int i = 0; i < blobCount; i++)
+                {
+                    if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(
+                            wrapper.Commitments[i].AsSpan(), hash) ||
+                        !hash.SequenceEqual(transaction.BlobVersionedHashes[i]))
+                    {
+                        return false;
+                    }
+                }
+
+                return KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs,
+                    wrapper.Commitments, wrapper.Proofs);
             }
 
             return true;

@@ -65,9 +65,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         _lastRefresh = DateTime.Now;
         foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
-#pragma warning disable CS4014
-            StartPeerRefreshTask(peer.SyncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash);
-#pragma warning restore CS4014
+            _ = StartPeerRefreshTask(peer.SyncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash);
         }
     }
 
@@ -109,7 +107,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
             BlockHeader[] headAndParentHeaders = await getHeadParentHeaderTask;
             if (!TryGetHeadAndParent(headBlockhash, headParentBlockhash, headAndParentHeaders, out headBlockHeader, out headParentBlockHeader))
             {
-                _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU unexpected response length");
+                _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: unexpected response length");
                 return;
             }
 
@@ -117,17 +115,17 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         }
         catch (AggregateException exception) when (exception.InnerException is OperationCanceledException)
         {
-            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU timeout", exception.InnerException);
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: timeout", exception.InnerException);
             return;
         }
         catch (OperationCanceledException exception)
         {
-            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU timeout", exception);
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: timeout", exception);
             return;
         }
         catch (Exception exception)
         {
-            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU faulted", exception);
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: faulted", exception);
             return;
         }
 
@@ -135,7 +133,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
         if (finalizedBlockhash != Keccak.Zero && finalizedBlockHeader is null)
         {
-            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU no finalized block header");
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: no finalized block header");
             return;
         }
 
@@ -163,7 +161,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         {
             if (!HeaderValidator.ValidateHash(header))
             {
-                _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU invalid header hash");
+                _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: invalid header hash");
                 return false;
             }
 

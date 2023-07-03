@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Test
         protected static PrivateKey RecipientKey { get; } = TestItem.PrivateKeyB;
         protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
-        protected virtual long BlockNumber => MainnetSpecProvider.ByzantiumBlockNumber;
+        protected virtual long BlockNumber { get; } = MainnetSpecProvider.ByzantiumBlockNumber;
         protected virtual ulong Timestamp => 0UL;
         protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber, Timestamp);
@@ -100,9 +100,9 @@ namespace Nethermind.Evm.Test
 
         protected virtual TestAllTracerWithOutput CreateTracer() => new();
 
-        protected T Execute<T>(T tracer, params byte[] code) where T : ITxTracer
+        protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
         {
-            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, timestamp: Timestamp);
+            (Block block, Transaction transaction) = PrepareTx(forkActivation?.BlockNumber ?? BlockNumber, 100000, code, timestamp: forkActivation?.Timestamp ?? Timestamp);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
@@ -118,12 +118,12 @@ namespace Nethermind.Evm.Test
         protected (Block block, Transaction transaction) PrepareTx(
             long blockNumber,
             long gasLimit,
-            byte[] code,
-            SenderRecipientAndMiner senderRecipientAndMiner = null,
+            byte[]? code = null,
+            SenderRecipientAndMiner? senderRecipientAndMiner = null,
             int value = 1,
             long blockGasLimit = DefaultBlockGasLimit,
             ulong timestamp = 0,
-            byte[][] blobVersionedHashes = null)
+            byte[][]? blobVersionedHashes = null)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
 
@@ -140,7 +140,11 @@ namespace Nethermind.Evm.Test
                 TestState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether());
             else
                 TestState.AddToBalance(senderRecipientAndMiner.Recipient, 100.Ether(), SpecProvider.GenesisSpec);
-            TestState.InsertCode(senderRecipientAndMiner.Recipient, code, SpecProvider.GenesisSpec);
+
+            if (code is not null)
+            {
+                TestState.InsertCode(senderRecipientAndMiner.Recipient, code, SpecProvider.GenesisSpec);
+            }
 
             GetLogManager().GetClassLogger().Debug("Committing initial state");
             TestState.Commit(SpecProvider.GenesisSpec);
@@ -246,7 +250,7 @@ namespace Nethermind.Evm.Test
 
         protected void AssertStorage(UInt256 address, Keccak value)
         {
-            Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.Bytes), "storage");
+            Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.BytesToArray()), "storage");
         }
 
         protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value)

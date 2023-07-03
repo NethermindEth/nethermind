@@ -14,6 +14,7 @@ namespace Nethermind.Specs.Forks
         {
             Name = "Cancun";
             IsEip1153Enabled = true;
+            IsEip5656Enabled = true;
             IsEip4844Enabled = true;
         }
 

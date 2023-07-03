@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -15,11 +16,11 @@ public class PointEvaluationPrecompile : IPrecompile
     public static readonly IPrecompile Instance = new PointEvaluationPrecompile();
 
     private static readonly ReadOnlyMemory<byte> PointEvaluationSuccessfulResponse =
-                                                    BitConverter.GetBytes((long)Ckzg.Ckzg.FieldElementsPerBlob)
-                                            .Concat(KzgPolynomialCommitments.BlsModulus.ToLittleEndian())
-                                            .ToArray();
+        ((UInt256)Ckzg.Ckzg.FieldElementsPerBlob).ToBigEndian()
+        .Concat(KzgPolynomialCommitments.BlsModulus.ToBigEndian())
+        .ToArray();
 
-    public Address Address { get; } = Address.FromNumber(0x14);
+    public Address Address { get; } = Address.FromNumber(0x0a);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 50000L;
 
@@ -27,6 +28,7 @@ public class PointEvaluationPrecompile : IPrecompile
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static bool IsValid(in ReadOnlyMemory<byte> inputData)
         {

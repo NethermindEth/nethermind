@@ -4,6 +4,11 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -13,8 +18,9 @@ namespace Nethermind.Evm
     public class EvmPooledMemory : IEvmMemory
     {
         public const int WordSize = 32;
+        private static readonly UInt256 WordSize256 = WordSize;
 
-        private static readonly ArrayPool<byte> Pool = LargerArrayPool.Shared;
+        private static readonly LargerArrayPool Pool = LargerArrayPool.Shared;
 
         private int _lastZeroedSize;
 
@@ -24,21 +30,24 @@ namespace Nethermind.Evm
 
         public void SaveWord(in UInt256 location, Span<byte> word)
         {
-            CheckMemoryAccessViolation(in location, WordSize);
-            UpdateSize(in location, WordSize);
+            if (word.Length != WordSize) ThrowArgumentOutOfRangeException();
 
-            if (word.Length < WordSize)
-            {
-                Array.Clear(_memory!, (int)location, WordSize - word.Length);
-            }
+            CheckMemoryAccessViolation(in location, in WordSize256, out ulong newLength);
+            UpdateSize(newLength);
 
-            word.CopyTo(_memory.AsSpan((int)location + WordSize - word.Length, word.Length));
+            int offset = (int)location;
+
+            // Direct 256bit register copy rather than invoke Memmove
+            Unsafe.WriteUnaligned(
+                ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory), offset),
+                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(word))
+            );
         }
 
         public void SaveByte(in UInt256 location, byte value)
         {
-            CheckMemoryAccessViolation(in location, WordSize);
-            UpdateSize(in location, 1);
+            CheckMemoryAccessViolation(in location, in WordSize256);
+            UpdateSize(in location, in UInt256.One);
 
             _memory![(long)location] = value;
         }
@@ -50,8 +59,9 @@ namespace Nethermind.Evm
                 return;
             }
 
-            CheckMemoryAccessViolation(in location, (UInt256)value.Length);
-            UpdateSize(in location, (UInt256)value.Length);
+            UInt256 length = (UInt256)value.Length;
+            CheckMemoryAccessViolation(in location, in length, out ulong newLength);
+            UpdateSize(newLength);
 
             value.CopyTo(_memory.AsSpan((int)location, value.Length));
         }
@@ -61,9 +71,19 @@ namespace Nethermind.Evm
             UInt256 totalSize = location + length;
             if (totalSize < location || totalSize > long.MaxValue)
             {
-                Metrics.EvmExceptions++;
-                throw new OutOfGasException();
+                ThrowOutOfGasException();
             }
+        }
+
+        private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength)
+        {
+            UInt256 totalSize = location + length;
+            if (totalSize < location || totalSize > long.MaxValue)
+            {
+                ThrowOutOfGasException();
+            }
+
+            newLength = (ulong)totalSize;
         }
 
         public void Save(in UInt256 location, byte[] value)
@@ -73,36 +93,39 @@ namespace Nethermind.Evm
                 return;
             }
 
-            CheckMemoryAccessViolation(in location, (UInt256)value.Length);
-            UpdateSize(in location, (UInt256)value.Length);
+            UInt256 length = (UInt256)value.Length;
+            CheckMemoryAccessViolation(in location, in length, out ulong newLength);
+            UpdateSize(newLength);
 
             Array.Copy(value, 0, _memory!, (long)location, value.Length);
         }
 
-        public void Save(in UInt256 location, ZeroPaddedSpan value)
+        public void Save(in UInt256 location, in ZeroPaddedSpan value)
         {
             if (value.Length == 0)
             {
                 return;
             }
 
-            CheckMemoryAccessViolation(in location, (UInt256)value.Length);
-            UpdateSize(in location, (UInt256)value.Length);
+            UInt256 length = (UInt256)value.Length;
+            CheckMemoryAccessViolation(in location, in length, out ulong newLength);
+            UpdateSize(newLength);
 
             int intLocation = (int)location;
             value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
             _memory.AsSpan(intLocation + value.Span.Length, value.PaddingLength).Clear();
         }
 
-        public void Save(in UInt256 location, ZeroPaddedMemory value)
+        public void Save(in UInt256 location, in ZeroPaddedMemory value)
         {
             if (value.Length == 0)
             {
                 return;
             }
 
-            CheckMemoryAccessViolation(in location, (UInt256)value.Length);
-            UpdateSize(in location, (UInt256)value.Length);
+            UInt256 length = (UInt256)value.Length;
+            CheckMemoryAccessViolation(in location, in length, out ulong newLength);
+            UpdateSize(newLength);
 
             int intLocation = (int)location;
             value.Memory.CopyTo(_memory.AsMemory().Slice(intLocation, value.Memory.Length));
@@ -111,21 +134,21 @@ namespace Nethermind.Evm
 
         public Span<byte> LoadSpan(scoped in UInt256 location)
         {
-            CheckMemoryAccessViolation(in location, WordSize);
-            UpdateSize(in location, WordSize);
+            CheckMemoryAccessViolation(in location, in WordSize256, out ulong newLength);
+            UpdateSize(newLength);
 
             return _memory.AsSpan((int)location, WordSize);
         }
 
-        public Span<byte> LoadSpan(in UInt256 location, in UInt256 length)
+        public Span<byte> LoadSpan(scoped in UInt256 location, scoped in UInt256 length)
         {
             if (length.IsZero)
             {
                 return Array.Empty<byte>();
             }
 
-            CheckMemoryAccessViolation(in location, length);
-            UpdateSize(in location, length);
+            CheckMemoryAccessViolation(in location, in length, out ulong newLength);
+            UpdateSize(newLength);
 
             return _memory.AsSpan((int)location, (int)length);
         }
@@ -142,7 +165,7 @@ namespace Nethermind.Evm
                 return new byte[(long)length];
             }
 
-            UpdateSize(in location, length);
+            UpdateSize(in location, in length);
 
             return _memory.AsMemory((int)location, (int)length);
         }
@@ -174,7 +197,7 @@ namespace Nethermind.Evm
                 return 0L;
             }
 
-            CheckMemoryAccessViolation(in location, length);
+            CheckMemoryAccessViolation(in location, in length);
             UInt256 newSize = location + length;
 
             if (newSize > Size)
@@ -193,7 +216,7 @@ namespace Nethermind.Evm
                     return long.MaxValue;
                 }
 
-                UpdateSize(in newSize, 0, false);
+                UpdateSize(in newSize, in UInt256.Zero, false);
 
                 return (long)cost;
             }
@@ -230,6 +253,7 @@ namespace Nethermind.Evm
             if (_memory is not null)
             {
                 Pool.Return(_memory);
+                _memory = null;
             }
         }
 
@@ -239,19 +263,27 @@ namespace Nethermind.Evm
         {
             UInt256 rem = length & 31;
             UInt256 result = length >> 5;
-            UInt256 withCeiling = result + (rem.IsZero ? 0UL : 1UL);
-            if (withCeiling > MaxInt32)
+            if (!rem.IsZero)
             {
-                Metrics.EvmExceptions++;
-                throw new OutOfGasException();
+                result += UInt256.One;
             }
 
-            return (long)withCeiling;
+            if (result > MaxInt32)
+            {
+                ThrowOutOfGasException();
+            }
+
+            return (long)result;
         }
 
-        private void UpdateSize(in UInt256 position, in UInt256 length, bool rentIfNeeded = true)
+        private void UpdateSize(in UInt256 location, in UInt256 length, bool rentIfNeeded = true)
         {
-            Length = (ulong)(position + length);
+            UpdateSize((ulong)(location + length), rentIfNeeded);
+        }
+
+        private void UpdateSize(ulong length, bool rentIfNeeded = true)
+        {
+            Length = length;
             if (Length > Size)
             {
                 ulong remainder = Length % WordSize;
@@ -287,6 +319,22 @@ namespace Nethermind.Evm
 
                 _lastZeroedSize = (int)Size;
             }
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static void ThrowArgumentOutOfRangeException()
+        {
+            Metrics.EvmExceptions++;
+            throw new ArgumentOutOfRangeException("Word size must be 32 bytes");
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static void ThrowOutOfGasException()
+        {
+            Metrics.EvmExceptions++;
+            throw new OutOfGasException();
         }
     }
 }

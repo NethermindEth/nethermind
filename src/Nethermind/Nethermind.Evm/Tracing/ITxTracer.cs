@@ -127,6 +127,8 @@ namespace Nethermind.Evm.Tracing
         /// </remarks>
         bool IsTracingFees { get; }
 
+        bool IsTracing { get; }
+
         /// <summary>
         /// Transaction completed successfully
         /// </summary>
@@ -303,7 +305,7 @@ namespace Nethermind.Evm.Tracing
         /// <param name="newValue"></param>
         /// <param name="currentValue"></param>
         /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
-        void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, Span<byte> newValue, byte[] currentValue) { }
+        void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> newValue, byte[] currentValue) { }
 
         /// <summary>
         ///
