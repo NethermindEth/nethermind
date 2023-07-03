@@ -14,14 +14,29 @@ public class TrieExceptionTests
     public void When_MissingBaseExceptionIsRootHash_Then_MentionItClearly()
     {
         MissingNodeException? baseException = new(TestItem.KeccakA);
-        TrieException? exception = TrieException.CreateOnLoadFailure(TestItem.KeccakB.Bytes, TestItem.KeccakA, baseException);
-        exception.Message.Should().Be($"Failed to load root hash {TestItem.KeccakA} while loading key {TestItem.KeccakB.Bytes.ToHexString()}.");
+        try
+        {
+            TrieException.ThrowOnLoadFailure(TestItem.KeccakB.Bytes, TestItem.KeccakA, baseException);
+            Assert.Fail("Should throw");
+        }
+        catch (TrieException exception)
+        {
+            exception.Message.Should().Be($"Failed to load root hash {TestItem.KeccakA} while loading key {TestItem.KeccakB.Bytes.ToHexString()}.");
+        }
     }
+
     [Test]
     public void When_CreateOnLoadFailure_WrapMessage()
     {
         MissingNodeException? baseException = new(TestItem.KeccakA);
-        TrieException? exception = TrieException.CreateOnLoadFailure(TestItem.KeccakB.Bytes, TestItem.KeccakC, baseException);
-        exception.Message.Should().Be($"Failed to load key {TestItem.KeccakB.Bytes.ToHexString()} from root hash {TestItem.KeccakC}.");
+        try
+        {
+            TrieException.ThrowOnLoadFailure(TestItem.KeccakB.Bytes, TestItem.KeccakC, baseException);
+            Assert.Fail("Should throw");
+        }
+        catch (TrieException exception)
+        {
+            exception.Message.Should().Be($"Failed to load key {TestItem.KeccakB.Bytes.ToHexString()} from root hash {TestItem.KeccakC}.");
+        }
     }
 }

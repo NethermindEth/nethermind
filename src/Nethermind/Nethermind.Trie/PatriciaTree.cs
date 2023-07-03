@@ -319,7 +319,8 @@ namespace Nethermind.Trie
             }
             catch (TrieException e)
             {
-                throw TrieException.CreateOnLoadFailure(rawKey, rootHash ?? RootHash, e);
+                TrieException.ThrowOnLoadFailure(rawKey, rootHash ?? RootHash, e);
+                return null;
             }
         }
 
