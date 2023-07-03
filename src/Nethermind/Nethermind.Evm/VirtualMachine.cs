@@ -360,6 +360,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         {
                             _state.InsertCode(callCodeOwner, callResult.Output, spec);
                             currentState.GasAvailable -= codeDepositGasCost;
+                            currentState.CreateList.Add(callCodeOwner);
 
                             if (typeof(TTracingActions) == typeof(IsTracing))
                             {
@@ -2331,8 +2332,9 @@ ReturnFailure:
         Address inheritor = stack.PopAddress();
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false)) return false;
 
-        Address executingAccount = vmState.Env.ExecutingAccount;
-        vmState.DestroyList.Add(executingAccount);
+        var executingAccount = vmState.Env.ExecutingAccount;
+        if (!spec.SelfdestructOnlyOnSameTransaction || vmState.CreateList.Contains(executingAccount))
+            vmState.DestroyList.Add(executingAccount);
 
         UInt256 result = _state.GetBalance(executingAccount);
         if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(executingAccount, result, inheritor);
