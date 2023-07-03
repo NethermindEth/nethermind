@@ -34,15 +34,5 @@ class TtlAuth : IAuth
         }
     }
 
-    private class LastAuth
-    {
-        public long GeneratedAt { get; }
-        public string Token { get; }
-
-        public LastAuth(long generatedAt, string token)
-        {
-            GeneratedAt = generatedAt;
-            Token = token;
-        }
-    }
+    private record LastAuth(long GeneratedAt, string Token);
 }
