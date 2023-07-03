@@ -16,6 +16,7 @@ namespace Nethermind.Specs.Forks
             IsEip1153Enabled = true;
             IsEip5656Enabled = true;
             IsEip4844Enabled = true;
+            IsEip6780Enabled = true;
         }
 
         public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Cancun());
