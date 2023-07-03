@@ -47,16 +47,14 @@ namespace Nethermind.Evm
         {
             if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
 
-            Span<byte> word = _bytes.Slice(Head * WordSize, WordSize);
             if (value.Length != WordSize)
             {
-                // Clear the word first
-                Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(word), Word.Zero);
-                value.CopyTo(word.Slice(WordSize - value.Length, value.Length));
+                ClearWordAtHead();
+                value.CopyTo(_bytes.Slice(Head * WordSize + WordSize - value.Length, value.Length));
             }
             else
             {
-                Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(word), Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value)));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value)));
             }
 
             if (++Head >= MaxStackSize)
@@ -69,16 +67,16 @@ namespace Nethermind.Evm
         {
             if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
 
-            Span<byte> word = _bytes.Slice(Head * WordSize, WordSize);
-            if (value.Span.Length != WordSize)
+            ReadOnlySpan<byte> valueSpan = value.Span;
+            if (valueSpan.Length != WordSize)
             {
-                // Clear the word first
-                Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(word), Word.Zero);
-                value.Span.CopyTo(word[..value.Span.Length]);
+                ClearWordAtHead();
+                Span<byte> stack = _bytes.Slice(Head * WordSize, valueSpan.Length);
+                valueSpan.CopyTo(stack);
             }
             else
             {
-                Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(word), Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value.Span)));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(valueSpan)));
             }
 
             if (++Head >= MaxStackSize)
@@ -99,36 +97,12 @@ namespace Nethermind.Evm
             return ref bytes;
         }
 
-        public void PushBytes(scoped in ZeroPaddedMemory value)
-        {
-            if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
-
-            Span<byte> word = _bytes.Slice(Head * WordSize, WordSize);
-            if (value.Memory.Length != WordSize)
-            {
-                // Clear the word first
-                Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(word), Word.Zero);
-                value.Memory.Span.CopyTo(word[..value.Memory.Length]);
-            }
-            else
-            {
-                Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(word), Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value.Memory.Span)));
-            }
-
-            if (++Head >= MaxStackSize)
-            {
-                EvmStack.ThrowEvmStackOverflowException();
-            }
-        }
-
         public void PushByte(byte value)
         {
             if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
 
-            Span<byte> word = _bytes.Slice(Head * WordSize, WordSize);
-            // Clear the word first
-            Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(word), Word.Zero);
-            word[WordSize - sizeof(byte)] = value;
+            ClearWordAtHead();
+            _bytes[Head * WordSize + WordSize - sizeof(byte)] = value;
 
             if (++Head >= MaxStackSize)
             {
@@ -142,11 +116,8 @@ namespace Nethermind.Evm
         {
             if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(OneStackItem());
 
-            int start = Head * WordSize;
-            Span<byte> word = _bytes.Slice(start, WordSize);
-            // Clear the word first
-            Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(word), Word.Zero);
-            word[WordSize - sizeof(byte)] = 1;
+            ClearWordAtHead();
+            _bytes[Head * WordSize + WordSize - sizeof(byte)] = 1;
 
             if (++Head >= MaxStackSize)
             {
@@ -163,8 +134,7 @@ namespace Nethermind.Evm
                 _tracer.ReportStackPush(ZeroStackItem());
             }
 
-            // Clear the word
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Word.Zero);
+            ClearWordAtHead();
 
             if (++Head >= MaxStackSize)
             {
@@ -174,8 +144,7 @@ namespace Nethermind.Evm
 
         public void PushUInt32(in int value)
         {
-            // Clear the word first
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Word.Zero);
+            ClearWordAtHead();
 
             Span<byte> intPlace = _bytes.Slice(Head * WordSize + WordSize - sizeof(uint), sizeof(uint));
             BinaryPrimitives.WriteInt32BigEndian(intPlace, value);
@@ -378,10 +347,13 @@ namespace Nethermind.Evm
 
             if (value.Length != WordSize)
             {
-                Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Word.Zero);
+                ClearWordAtHead();
+                value.CopyTo(_bytes.Slice(Head * WordSize + WordSize - paddingLength, value.Length));
             }
-
-            value.CopyTo(_bytes.Slice(Head * WordSize + WordSize - paddingLength, value.Length));
+            else
+            {
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value)));
+            }
 
             if (++Head >= MaxStackSize)
             {
@@ -456,6 +428,12 @@ namespace Nethermind.Evm
             }
 
             return stackTrace;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ClearWordAtHead()
+        {
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Word.Zero);
         }
     }
 
