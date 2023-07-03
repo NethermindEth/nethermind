@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie
 {
@@ -18,6 +20,15 @@ namespace Nethermind.Trie
 
         public TrieException(string message, Exception inner) : base(message, inner)
         {
+        }
+
+        public static TrieException CreateOnLoadFailure(Span<byte> rawKey, ValueKeccak rootHash, Exception baseException)
+        {
+            if (Bytes.AreEqual(rawKey, rootHash.Bytes))
+            {
+                return new MissingRootHashException(rootHash, baseException);
+            }
+            return new TrieException($"Failed to load key {rawKey.ToHexString()} from root hash {rootHash}.", baseException);
         }
     }
 }
