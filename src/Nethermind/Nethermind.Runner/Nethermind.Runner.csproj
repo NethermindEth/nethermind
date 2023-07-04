@@ -11,6 +11,7 @@
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <TieredPGO>true</TieredPGO>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
 
   <PropertyGroup>
