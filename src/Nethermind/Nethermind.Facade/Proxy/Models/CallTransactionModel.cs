@@ -18,19 +18,6 @@ public class CallTransactionModel
     public UInt256 Value { get; set; }
     public byte[] Data { get; set; }
 
-    public static CallTransactionModel FromTransaction(Transaction transaction)
-    {
-        return new()
-        {
-            From = transaction.SenderAddress,
-            To = transaction.To,
-            Data = transaction.Data.AsArray(),
-            Value = transaction.Value,
-            Gas = 50_000,
-            GasPrice = transaction.GasPrice
-        };
-    }
-
     public Transaction GetTransaction()
     {
         if (Gas > long.MaxValue) throw new OverflowException("Gas value is too large to be converted to long we use.");
@@ -45,6 +32,7 @@ public class CallTransactionModel
             Value = Value,
             GasLimit = (long)Gas,
             GasPrice = GasPrice
+
         };
 
         result.Hash = result.CalculateHash();

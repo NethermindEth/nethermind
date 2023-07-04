@@ -684,7 +684,7 @@ namespace Nethermind.Blockchain
         private AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         {
             bool shouldProcess = options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess);
-            bool noPatentCheck = options.ContainsFlag(BlockTreeSuggestOptions.ForceDontValidateParent);
+            bool noParentCheck = options.ContainsFlag(BlockTreeSuggestOptions.ForceDontValidateParent);
             bool fillBeaconBlock = options.ContainsFlag(BlockTreeSuggestOptions.FillBeaconBlock);
             bool setAsMain = options.ContainsFlag(BlockTreeSuggestOptions.ForceSetAsMain) ||
                              !options.ContainsFlag(BlockTreeSuggestOptions.ForceDontSetAsMain) && !shouldProcess;
@@ -723,7 +723,7 @@ namespace Nethermind.Blockchain
 
             bool parentExists = IsKnownBlock(header.Number - 1, header.ParentHash!) ||
                                 IsKnownBeaconBlock(header.Number - 1, header.ParentHash!);
-            if (!header.IsGenesis && !noPatentCheck && !parentExists)
+            if (!header.IsGenesis && !noParentCheck && !parentExists)
             {
                 if (_logger.IsTrace) _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
                 return AddBlockResult.UnknownParent;

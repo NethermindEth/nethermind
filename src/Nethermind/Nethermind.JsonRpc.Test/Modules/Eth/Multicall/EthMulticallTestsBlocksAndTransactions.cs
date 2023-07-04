@@ -67,8 +67,8 @@ public class EthMulticallTestsBlocksAndTransactions
                 },
                 Calls = new[]
                 {
-                    CallTransactionModel.FromTransaction(txMainnetAtoBtoFail),
-                    CallTransactionModel.FromTransaction(txMainnetAtoBToComplete),
+                    txMainnetAtoBtoFail.FromTransaction(),
+                    txMainnetAtoBToComplete.FromTransaction(),
                 },
                 StateOverrides = new[]
                 {
@@ -142,7 +142,7 @@ public class EthMulticallTestsBlocksAndTransactions
                     },
                 Calls = new[]
                 {
-                    CallTransactionModel.FromTransaction(txAtoB1), CallTransactionModel.FromTransaction(txAtoB2)
+                    txAtoB1.FromTransaction(), txAtoB2.FromTransaction()
                 }
             },
             new()
@@ -157,7 +157,7 @@ public class EthMulticallTestsBlocksAndTransactions
                     },
                 Calls = new[]
                 {
-                    CallTransactionModel.FromTransaction(txAtoB3), CallTransactionModel.FromTransaction(txAtoB4)
+                    txAtoB3.FromTransaction(), txAtoB4.FromTransaction()
                 }
             }
         };
@@ -223,7 +223,7 @@ public class EthMulticallTestsBlocksAndTransactions
                     },
                 Calls = new[]
                 {
-                    CallTransactionModel.FromTransaction(txAtoB1)
+                    txAtoB1.FromTransaction()
                 }
             },
             new()
@@ -238,7 +238,7 @@ public class EthMulticallTestsBlocksAndTransactions
                     },
                 Calls = new[]
                 {
-                    CallTransactionModel.FromTransaction(txAtoB2)
+                    txAtoB2.FromTransaction()
                 }
             }
         };

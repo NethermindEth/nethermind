@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,9 +20,9 @@ public class BlockOverride
     public Address FeeRecipient { get; set; } = Address.Zero;
     public UInt256 BaseFee { get; set; }
 
-    public BlockHeader GetBlockHeader(BlockHeader parent)
+    public BlockHeader GetBlockHeader(BlockHeader parent, IBlocksConfig cfg)
     {
-        ulong newTime = parent.Timestamp + 1;
+        ulong newTime = parent.Timestamp + cfg.SecondsPerSlot;
         if (0 == Time) { }
         else if (Time <= ulong.MaxValue)
             newTime = (ulong)Time;

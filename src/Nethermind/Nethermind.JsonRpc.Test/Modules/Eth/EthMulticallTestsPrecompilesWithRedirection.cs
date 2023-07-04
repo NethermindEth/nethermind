@@ -104,7 +104,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
             },
             Calls = new[]
             {
-                CallTransactionModel.FromTransaction(systemTransactionForModifiedVM)
+                systemTransactionForModifiedVM.FromTransaction()
             }
         };
 

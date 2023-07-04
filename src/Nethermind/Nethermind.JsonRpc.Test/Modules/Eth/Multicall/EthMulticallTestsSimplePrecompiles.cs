@@ -91,7 +91,7 @@ contract EcrecoverProxy {
                 new AccountOverride { Address = EcRecoverPrecompile.Instance.Address, Code = code }
 
             },
-            Calls = new[] { CallTransactionModel.FromTransaction(systemTransactionForModifiedVM) }
+            Calls = new[] { systemTransactionForModifiedVM.FromTransaction() }
         };
 
 

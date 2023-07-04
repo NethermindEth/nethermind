@@ -77,9 +77,9 @@ internal class MultiCallTxTracer : ITxTracer
     public bool IsTracingAccess { get; }
     public bool IsTracingFees { get; }
 
+    public bool IsTracingEventLogs { get; }
 
     public bool IsTracing => IsTracingActions || IsTracingEventLogs;
-    public bool IsTracingEventLogs { get; }
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
         Keccak? stateRoot = null)

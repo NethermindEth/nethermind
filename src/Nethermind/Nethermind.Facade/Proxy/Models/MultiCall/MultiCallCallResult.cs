@@ -13,7 +13,7 @@ public class MultiCallCallResult
 
             if (Return is not null) return ResultType.Failure;
 
-            return ResultType.invalid;
+            return ResultType.Invalid;
         }
     }
 

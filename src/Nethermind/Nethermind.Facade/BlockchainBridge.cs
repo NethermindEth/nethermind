@@ -362,7 +362,7 @@ namespace Nethermind.Facade
                     }
                     else
                     {
-                        callHeader = callInputBlock.BlockOverride.GetBlockHeader(parent);
+                        callHeader = callInputBlock.BlockOverride.GetBlockHeader(parent, _blocksConfig);
                     }
 
                     env.StateProvider.StateRoot = parent.StateRoot;
