@@ -112,8 +112,9 @@ public class Eth68ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
-        _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactionsEth66(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IReadOnlyList<Keccak>>());
+
+        _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
+            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>());
     }
 
     [TestCase(true)]
@@ -144,16 +145,14 @@ public class Eth68ProtocolHandlerTests
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithData(new byte[2 * 1024 * 1024])
             .WithHash(TestItem.KeccakA).TestObject;
 
-        TxDecoder txDecoder = new();
-
         var msg = new NewPooledTransactionHashesMessage68(new[] { (byte)tx.Type },
-            new[] { txDecoder.GetLength(tx, RlpBehaviors.None) }, new[] { tx.Hash });
+            new[] { tx.GetLength() }, new[] { tx.Hash });
 
         HandleIncomingStatusMessage();
-
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
-        _pooledTxsRequestor.Received().RequestTransactionsEth66(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IReadOnlyList<Keccak>>());
+
+        _pooledTxsRequestor.Received(1).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
+            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>());
     }
 
     [TestCase(1)]
