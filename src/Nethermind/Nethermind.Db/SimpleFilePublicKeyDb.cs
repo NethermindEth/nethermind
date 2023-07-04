@@ -268,7 +268,7 @@ namespace Nethermind.Db
             ArrayPool<byte>.Shared.Return(rentedBuffer);
             if (bytes.Length > 0)
             {
-                ThrowInvalidDataException();
+                if (_logger.IsWarn) _logger.Warn($"Malformed {Name}. Ignoring...");
             }
 
             void RecordError(Span<byte> data)
@@ -276,13 +276,8 @@ namespace Nethermind.Db
                 if (_logger.IsError)
                 {
                     string line = Encoding.UTF8.GetString(data);
-                    _logger.Error($"Error when loading data from {Name} - expected two items separated by a comma and got '{line}')");
+                    if (_logger.IsError) _logger.Error($"Error when loading data from {Name} - expected two items separated by a comma and got '{line}')");
                 }
-            }
-
-            static void ThrowInvalidDataException()
-            {
-                throw new InvalidDataException("Malformed data");
             }
         }
 
