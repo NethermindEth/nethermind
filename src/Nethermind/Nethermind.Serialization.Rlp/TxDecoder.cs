@@ -25,7 +25,7 @@ namespace Nethermind.Serialization.Rlp
 
         public int GetLength(Transaction tx)
         {
-            return GetLength(tx, RlpBehaviors.None);
+            return GetLength(tx, RlpBehaviors.InMempoolForm);
         }
     }
     public class SystemTxDecoder : TxDecoder<SystemTransaction> { }
