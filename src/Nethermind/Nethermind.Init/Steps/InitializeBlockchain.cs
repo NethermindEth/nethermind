@@ -102,49 +102,41 @@ namespace Nethermind.Init.Steps
                 setApi.WitnessRepository = NullWitnessCollector.Instance;
             }
 
-            //setApi.MainStateDbWithCache = getApi.DbProvider.StateDb.GetColumnDb(StateColumns.State);
-            //CachingStore cachedStateDb = getApi.DbProvider.StateDb
-            //    .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
-
-            //TODO - temporarily not using cached DB for path based until issues are solved
-            setApi.MainStateDbWithCache = initConfig.UsePathBasedState ? getApi.DbProvider.StateDb : cachedStateDb;
-
             IKeyValueStore codeDb = getApi.DbProvider.CodeDb
                 .WitnessedBy(witnessCollector);
 
             ITrieStore trieStore;
-            ITrieStore storageStore;
-            IKeyValueStoreWithBatching stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
+            ITrieStore storageTrieStore;
+            IKeyValueStoreWithBatching stateWitnessedBy;
 
             if (initConfig.UsePathBasedState)
             {
-                IPersistenceStrategy persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval);
-                setApi.TrieStore = trieStore = new TrieStoreByPath(
-                    stateWitnessedBy,
-                    No.Pruning,
-                    persistenceStrategy,
-                    getApi.LogManager, (int)pruningConfig.PersistenceInterval);
-
-                storageStore = new TrieStore(
-                    stateWitnessedBy,
-                    No.Pruning,
-                    persistenceStrategy,
-                    getApi.LogManager);
+                setApi.MainStateDbWithCache = getApi.DbProvider.StateDb.GetColumnDb(StateColumns.State);
+                stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
 
                 _api.ByPathDbPrunnerState = new ByPathStateDbPrunner(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.State), _api.LogManager);
                 _api.ByPathDbPrunnerStorage = new ByPathStateDbPrunner(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), _api.LogManager);
 
                 setApi.TrieStore = trieStore = new TrieStoreByPath(
-                        stateWitnessedBy,
-                        No.Pruning,
-                        Persist.EveryBlock,
-                        getApi.LogManager, 128, _api.ByPathDbPrunnerState!);
+                    stateWitnessedBy,
+                    No.Pruning,
+                    Persist.EveryBlock,
+                    getApi.LogManager, (int)pruningConfig.PersistenceInterval, _api.ByPathDbPrunnerState!);
 
-                ITrieStore storageTrieStore;
-                storageTrieStore = new TrieStoreByPath(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.EveryBlock, _api.LogManager, 128);
+                storageTrieStore = new TrieStoreByPath(
+                    getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage),
+                    No.Pruning,
+                    Persist.EveryBlock,
+                    _api.LogManager, (int)pruningConfig.PersistenceInterval, _api.ByPathDbPrunnerStorage);
             }
             else
             {
+                CachingStore cachedStateDb = getApi.DbProvider.StateDb
+                    .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
+                setApi.MainStateDbWithCache = cachedStateDb;
+
+                stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
+
                 if (pruningConfig.Mode.IsMemory())
                 {
                     IPersistenceStrategy persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
@@ -167,7 +159,8 @@ namespace Nethermind.Init.Steps
                         fullPruningDb.PruningStarted += (_, args) =>
                         {
                             cachedStateDb.PersistCache(args.Context);
-                            trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
+                            //TODO - move PersistCache to interface?
+                            ((TrieStore)trieStore).PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
                         };
                     }
                 }
@@ -179,7 +172,7 @@ namespace Nethermind.Init.Steps
                         Persist.EveryBlock,
                         getApi.LogManager);
                 }
-
+                storageTrieStore = setApi.TrieStore;
             }
 
             TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);
@@ -188,7 +181,6 @@ namespace Nethermind.Init.Steps
 
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(setApi.MainStateDbWithCache);
             ITrieStore readOnlyStorageTrieStore = setApi.ReadOnlyStorageTrieStore = storageTrieStore.AsReadOnly();
-
 
             IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
                 trieStore,
@@ -212,8 +204,18 @@ namespace Nethermind.Init.Steps
                 try
                 {
                     _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                    TrieStoreByPath noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
-                    TrieStoreByPath noPruningStorageStore = new(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.EveryBlock, getApi.LogManager);
+                    ITrieStore noPruningStore;
+                    ITrieStore noPruningStorageStore;
+                    if (initConfig.UsePathBasedState)
+                    {
+                        noPruningStore = new TrieStoreByPath(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.State), No.Pruning, Persist.EveryBlock, getApi.LogManager);
+                        noPruningStorageStore = new TrieStoreByPath(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.EveryBlock, getApi.LogManager);
+                    }
+                    else
+                    {
+                        noPruningStore = noPruningStorageStore = new TrieStore(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
+                    }
+                    
                     IStateProvider diagStateProvider = new StateProvider(noPruningStore, noPruningStorageStore, codeDb, getApi.LogManager)
                     {
                         StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
