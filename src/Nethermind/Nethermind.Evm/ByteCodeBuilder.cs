@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -308,7 +308,7 @@ namespace Nethermind.Evm
         }
 
         /// <summary>
-        /// Take the data already on stack and store it in memory 
+        /// Take the data already on stack and store it in memory
         /// at specified position
         /// </summary>
         /// <param name="position">Memory position</param>

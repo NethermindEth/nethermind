@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -59,7 +59,7 @@ namespace Nethermind.Facade
             this BlockHeader blockHeader,
             TxReceipt[] receipts,
             LogEntry matchEntry,
-            FindOrder receiptFindOrder = FindOrder.Ascending, // iterating forwards, by default we are interested in all items in order of appearance 
+            FindOrder receiptFindOrder = FindOrder.Ascending, // iterating forwards, by default we are interested in all items in order of appearance
             FindOrder logsFindOrder = FindOrder.Ascending, // iterating forwards, by default we are interested in all items in order of appearance
             IEqualityComparer<LogEntry>? comparer = null)
         {
@@ -89,7 +89,7 @@ namespace Nethermind.Facade
             this BlockHeader blockHeader,
             TxReceipt[] receipts,
             LogFilter logFilter,
-            FindOrder receiptFindOrder = FindOrder.Ascending, // iterating forwards, by default we are interested in all items in order of appearance 
+            FindOrder receiptFindOrder = FindOrder.Ascending, // iterating forwards, by default we are interested in all items in order of appearance
             FindOrder logsFindOrder = FindOrder.Ascending) // iterating forwards, by default we are interested in all items in order of appearance
         {
             if (logFilter.Matches(blockHeader.Bloom))

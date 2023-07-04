@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.Synchronization.SyncLimits
@@ -14,6 +14,6 @@ namespace Nethermind.Synchronization.SyncLimits
         public const int MaxProofsFetch = 64; // Amount of merkle proofs to be fetched per retrieval request
         public const int MaxHelperTrieProofsFetch = 64; // Amount of helper tries to be fetched per retrieval request
         public const int MaxTxSend = 64; // Amount of transactions to be send per request
-        public const int MaxTxStatus = 256; // Amount of transactions to queried per request   
+        public const int MaxTxStatus = 256; // Amount of transactions to queried per request
     }
 }

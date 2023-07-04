@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -25,6 +25,6 @@ public class CompositePruningTrigger : IPruningTrigger
         Prune?.Invoke(sender, e);
     }
 
-    /// <inheridoc /> 
+    /// <inheridoc />
     public event EventHandler<PruningTriggerEventArgs>? Prune;
 }

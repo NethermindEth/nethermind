@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -52,7 +52,7 @@ namespace Nethermind.Network.Rlpx
             if (isHeader)
             {
                 input.AsSpan(0, 32).CopyTo(_addMacBuffer);
-                UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, offset, input, offset + length, true); // TODO: confirm header is seed 
+                UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, offset, input, offset + length, true); // TODO: confirm header is seed
             }
             else
             {
@@ -92,7 +92,7 @@ namespace Nethermind.Network.Rlpx
             if (isHeader)
             {
                 input.AsSpan(0, 16).CopyTo(_addMacBuffer);
-                UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, offset, output, outputOffset, true); // TODO: confirm header is seed 
+                UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, offset, output, outputOffset, true); // TODO: confirm header is seed
             }
             else
             {

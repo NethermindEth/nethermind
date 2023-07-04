@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
@@ -12,7 +12,7 @@ namespace Nethermind.Consensus
     {
         public static readonly NullSigner Instance = new();
 
-        public Address Address { get; } = Address.Zero; // TODO: why zero address 
+        public Address Address { get; } = Address.Zero; // TODO: why zero address
 
         public ValueTask Sign(Transaction tx) => default;
 

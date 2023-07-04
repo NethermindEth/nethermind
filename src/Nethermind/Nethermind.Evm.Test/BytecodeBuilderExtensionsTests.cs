@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
@@ -56,7 +56,7 @@ namespace Nethermind.Evm.Test
                     return true;
                 }
 
-                // we check if opcode has a digit at its end 
+                // we check if opcode has a digit at its end
                 bool hasDigits = false;
                 int i = opcodeAsString.Length - 1;
                 while (i > 0)
@@ -133,7 +133,7 @@ namespace Nethermind.Evm.Test
                 //we get MethodInfo of the function representing the opcode
                 var method = GetFluentOpcodeFunction(opcode);
 
-                //we handle the cases requiring a byte differentiator 
+                //we handle the cases requiring a byte differentiator
                 initBytecode = opcode switch
                 {
                     >= Instruction.SWAP1 and <= Instruction.SWAP16 => (Prepare)method.Invoke(null, new object[] { initBytecode, (byte)(opcode - Instruction.SWAP1 + 1) }),

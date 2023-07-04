@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.JsonRpc
@@ -68,7 +68,7 @@ namespace Nethermind.JsonRpc
         public const int LimitExceeded = -32005;
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         public const int ExecutionError = -32015;
 

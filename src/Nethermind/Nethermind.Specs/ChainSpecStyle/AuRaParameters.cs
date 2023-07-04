@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -86,7 +86,7 @@ public class AuRaParameters
         /// </summary>
         /// <remarks>
         /// Only Valid for <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.Multi"/>.
-        /// 
+        ///
         /// This has to sorted in order of starting blocks.
         /// </remarks>
         public IDictionary<long, Validator> Validators { get; set; }

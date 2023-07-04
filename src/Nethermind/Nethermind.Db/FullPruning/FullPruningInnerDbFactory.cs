@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -81,7 +81,7 @@ namespace Nethermind.Db.FullPruning
             {
                 if (directory.EnumerateFiles().Any())
                 {
-                    return -2; // if there are files in the directory, then we have a main DB, marked -2.  
+                    return -2; // if there are files in the directory, then we have a main DB, marked -2.
                 }
 
                 // else we have sub-directories, which should be index based

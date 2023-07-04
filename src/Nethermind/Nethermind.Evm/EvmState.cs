@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -38,7 +38,7 @@ namespace Nethermind.Evm
 
             /// <summary>
             /// The word 'return' acts here once as a verb 'to return stack to the pool' and once as a part of the
-            /// compound noun 'return stack' which is a stack of subroutine return values.  
+            /// compound noun 'return stack' which is a stack of subroutine return values.
             /// </summary>
             /// <param name="dataStack"></param>
             /// <param name="returnStack"></param>

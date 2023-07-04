@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -12,7 +12,7 @@ using Nethermind.Core.Timers;
 namespace Nethermind.Blockchain.FullPruning
 {
     /// <summary>
-    /// Allows to trigger full pruning based on size of the path (by default state database). 
+    /// Allows to trigger full pruning based on size of the path (by default state database).
     /// </summary>
     /// <remarks>
     /// It checks the size of the path every 5 minutes.

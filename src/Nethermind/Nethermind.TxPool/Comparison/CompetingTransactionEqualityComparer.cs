@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -9,7 +9,7 @@ namespace Nethermind.TxPool.Comparison
 {
     /// <summary>
     /// Comparer to check if two pending <see cref="Transaction"/>s compete with each other.
-    /// <see cref="Transaction"/>s compete with each other if they have same <see cref="Transaction.SenderAddress"/> and <see cref="Transaction.Nonce"/>. In that case only one transaction can go into chain. 
+    /// <see cref="Transaction"/>s compete with each other if they have same <see cref="Transaction.SenderAddress"/> and <see cref="Transaction.Nonce"/>. In that case only one transaction can go into chain.
     /// </summary>
     public class CompetingTransactionEqualityComparer : IEqualityComparer<Transaction?>
     {
