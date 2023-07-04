@@ -9,11 +9,11 @@ public class MultiCallCallResult
     {
         get
         {
-            if (Error != null) return ResultType.Failure;
+            if (Error is null) return ResultType.Success;
 
-            if (Logs != null) return ResultType.Success;
+            if (Return is not null) return ResultType.Failure;
 
-            return ResultType.Invalid;
+            return ResultType.invalid;
         }
     }
 
