@@ -64,6 +64,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     {
                         RequestPooledTransactionsEth66(send, hashesToRequest);
                         hashesToRequest.Clear();
+                        packetSizeLeft = TransactionsMessage.MaxPacketSize;
                     }
 
                     hashesToRequest.Add(discoveredTxHashesAndSizes[i].Hash);
