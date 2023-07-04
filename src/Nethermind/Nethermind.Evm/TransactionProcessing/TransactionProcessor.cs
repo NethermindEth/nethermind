@@ -17,7 +17,6 @@ using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Tracing;
 using static Nethermind.Core.Extensions.MemoryExtensions;
-using Transaction = Nethermind.Core.Transaction;
 
 using static Nethermind.Evm.VirtualMachine;
 
@@ -330,6 +329,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return deleteCallerAccount;
         }
 
+
         protected virtual bool ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
             bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
@@ -349,7 +349,6 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             premiumPerGas = UInt256.Zero;
             senderReservedGasPayment = UInt256.Zero;
-
             bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
 
             if (!tx.IsSystem() && validate)
@@ -369,15 +368,39 @@ namespace Nethermind.Evm.TransactionProcessing
                     return false;
                 }
 
-                bool overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
-                if (spec.IsEip1559Enabled && !tx.IsFree() && (overflows || balanceLeft < maxGasFee))
+
+                bool overflows;
+                if (spec.IsEip1559Enabled && !tx.IsFree())
                 {
-                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
-                    QuickFail(tx, header, spec, tracer, "insufficient MaxFeePerGas for sender balance");
-                    return false;
+                    overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
+                    if (overflows || balanceLeft < maxGasFee)
+                    {
+                        TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
+                        QuickFail(tx, header, spec, tracer, "insufficient MaxFeePerGas for sender balance");
+                        return false;
+                    }
+                    if (tx.SupportsBlobs)
+                    {
+                        overflows = UInt256.MultiplyOverflow(DataGasCalculator.CalculateDataGas(tx), (UInt256)tx.MaxFeePerDataGas, out UInt256 maxDataGasFee);
+                        if (overflows || UInt256.AddOverflow(maxGasFee, maxDataGasFee, out UInt256 multidimGasFee) || multidimGasFee > balanceLeft)
+                        {
+                            TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_DATA_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
+                            QuickFail(tx, header, spec, tracer, "insufficient sender balance");
+                            return false;
+                        }
+                    }
                 }
 
                 overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
+                if (!overflows && tx.SupportsBlobs)
+                {
+                    overflows = !DataGasCalculator.TryCalculateDataGasPrice(header, tx, out UInt256 dataGasFee);
+                    if (!overflows)
+                    {
+                        overflows = UInt256.AddOverflow(senderReservedGasPayment, dataGasFee, out senderReservedGasPayment);
+                    }
+                }
+
                 if (overflows || senderReservedGasPayment > balanceLeft)
                 {
                     TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");

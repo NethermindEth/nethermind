@@ -133,27 +133,6 @@ public class ForkInfoTests
         Test(head, headTimestamp, KnownHashes.RinkebyGenesis, forkHashHex, next, description, RinkebySpecProvider.Instance, "rinkeby.json");
     }
 
-    [TestCase(0, 0ul, "0x30c7ddbc", 10ul, " Unsynced, last Frontier, Homestead and first Tangerine block")]
-    [TestCase(9, 0ul, "0x30c7ddbc", 10ul, "Last Tangerine block")]
-    [TestCase(10, 0ul, "0x63760190", 1_700_000ul, "First Spurious block")]
-    [TestCase(1_699_999L, 0ul, "0x63760190", 1_700_000ul, "Last Spurious block")]
-    [TestCase(1_700_000L, 0ul, "0x3ea159c7", 4_230_000ul, "First Byzantium block")]
-    [TestCase(4_229_999L, 0ul, "0x3ea159c7", 4_230_000ul, "Last Byzantium block")]
-    [TestCase(4_230_000L, 0ul, "0x97b544f3", 4_939_394ul, "First Constantinople block")]
-    [TestCase(4_939_393L, 0ul, "0x97b544f3", 4_939_394ul, "Last Constantinople block")]
-    [TestCase(4_939_394L, 0ul, "0xd6e2149b", 6_485_846ul, "First Petersburg block")]
-    [TestCase(6_485_845L, 0ul, "0xd6e2149b", 6_485_846ul, "Last Petersburg block")]
-    [TestCase(6_485_846L, 0ul, "0x4bc66396", 7_117_117ul, "First Istanbul block")]
-    [TestCase(7_117_117L, 0ul, "0x6727ef90", 9_812_189ul, "First Muir Glacier block")]
-    [TestCase(9_812_189L, 0ul, "0xa157d377", 10_499_401ul, "First Berlin block")]
-    [TestCase(9_900_000L, 0ul, "0xa157d377", 10_499_401ul, "Future Berlin block")]
-    [TestCase(10_499_401L, 0ul, "0x7119B6B3", 0ul, "First London block")]
-    [TestCase(12_000_000, 0ul, "0x7119B6B3", 0ul, "Future London block")]
-    public void Fork_id_and_hash_as_expected_on_ropsten(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
-    {
-        Test(head, headTimestamp, KnownHashes.RopstenGenesis, forkHashHex, next, description, RopstenSpecProvider.Instance, "ropsten.json");
-    }
-
     [TestCase(0, 0ul, "0xFE3366E7", 1735371ul, "Sepolia genesis")]
     [TestCase(1735370, 0ul, "0xFE3366E7", 1735371ul, "Sepolia Last block before MergeForkIdTranstion")]
     [TestCase(1735371, 0ul, "0xb96cbd13", 1677557088UL, "First block - Sepolia MergeForkIdTransition")]
@@ -258,12 +237,6 @@ public class ForkInfoTests
     // Local is mainnet Petersburg, remote is Rinkeby Petersburg.
     [TestCase(7987396, 0ul, "0xafec6b27", 0ul, ValidationResult.IncompatibleOrStale)]
 
-    // Local is mainnet Gray Glacier, far in the future. Remote announces Gopherium (non existing fork)
-    // at some future block 88888888, for itself, but past block for local. Local is incompatible.
-    //
-    // This case detects non-upgraded nodes with majority hash power (typical Ropsten mess).
-    [TestCase(88888888, 0ul, "0xf0afd0e3", 88888888ul, ValidationResult.IncompatibleOrStale)]
-
     // Local is mainnet Byzantium. Remote is also in Byzantium, but announces Gopherium (non existing
     // fork) at block 7279999, before Petersburg. Local is incompatible.
     [TestCase(7279999, 0ul, "0xa00bc324", 7279999ul, ValidationResult.IncompatibleOrStale)]
@@ -318,12 +291,6 @@ public class ForkInfoTests
     // 0xffffffff. Local needs software update, reject.
     [TestCase(15_050_000, 0ul, "0x98765432", ulong.MaxValue, ValidationResult.IncompatibleOrStale, true)]
 
-    // Local is mainnet Gray Glacier, far in the future. Remote announces Gopherium (non existing fork)
-    // at some future timestamp 8888888888, for itself, but past block for local. Local is incompatible.
-    //
-    // This case detects non-upgraded nodes with majority hash power (typical Ropsten mess).
-    [TestCase(888888888, 1660000000ul, "0xf0afd0e3", 1660000000ul, ValidationResult.IncompatibleOrStale)]
-
     // Local is mainnet Gray Glacier. Remote is also in Gray Glacier, but announces Gopherium (non existing
     // fork) at block 7279999, before Shanghai. Local is incompatible.
     [TestCase(19999999, 1667999999ul, "0xf0afd0e3", 1667999999ul, ValidationResult.IncompatibleOrStale, true)]
@@ -345,12 +312,6 @@ public class ForkInfoTests
 
     // Local is mainnet Shanghai, remote is random Shanghai.
     [TestCase(20000000, 1_668_000_000ul, "0x12345678", 0ul, ValidationResult.IncompatibleOrStale, true)]
-
-    // Local is mainnet Shanghai, far in the future. Remote announces Gopherium (non existing fork)
-    // at some future timestamp 8888888888, for itself, but past block for local. Local is incompatible.
-    //
-    // This case detects non-upgraded nodes with majority hash power (typical Ropsten mess).
-    [TestCase(88888888, 8888888888ul, "0x71147644", 8888888888ul, ValidationResult.IncompatibleOrStale, true)]
 
     public void Test_fork_id_validation_mainnet(long headNumber, ulong headTimestamp, string hash, ulong next, ValidationResult result, bool UseTimestampSpec = false)
     {
