@@ -674,7 +674,7 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(item.BlobVersionedHashes);
         }
 
-        private int GetShardBlobNetwrokWrapperContentLength(T item, int txContentLength)
+        private int GetShardBlobNetworkWrapperContentLength(T item, int txContentLength)
         {
             ShardBlobNetworkWrapper networkWrapper = item.NetworkWrapper as ShardBlobNetworkWrapper;
             return Rlp.LengthOfSequence(txContentLength)
@@ -726,7 +726,7 @@ namespace Nethermind.Serialization.Rlp
                 switch (item.Type)
                 {
                     case TxType.Blob:
-                        contentLength = GetShardBlobNetwrokWrapperContentLength(item, contentLength);
+                        contentLength = GetShardBlobNetworkWrapperContentLength(item, contentLength);
                         break;
                 }
             }
