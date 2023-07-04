@@ -23,7 +23,7 @@ namespace Nethermind.Serialization.Rlp
         {
         }
 
-        public int GetLength(Transaction tx)
+        public int GetNetworkTxLength(Transaction tx)
         {
             return GetLength(tx, RlpBehaviors.InMempoolForm);
         }
