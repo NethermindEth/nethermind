@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -11,7 +10,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.TxPool;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
+namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class PooledTxsRequestor : IPooledTxsRequestor
     {
