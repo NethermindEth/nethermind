@@ -122,15 +122,21 @@ namespace Nethermind.Db
             if (_logger.IsDebug) _logger.Debug($"Saving data in {DbPath} | backup stored in {backup.BackupPath}");
             try
             {
-                using StreamWriter streamWriter = new(DbPath);
+                using StreamWriter fileWriter = new(DbPath);
                 foreach ((byte[] key, byte[] value) in snapshot)
                 {
                     if (value is not null)
                     {
-                        key.StreamHex(streamWriter);
-                        streamWriter.Write(',');
-                        value.StreamHex(streamWriter);
-                        streamWriter.WriteLine();
+                        StringBuilder lineBuilder = new();
+                        using (StringWriter lineWriter = new(lineBuilder))
+                        {
+                            key.StreamHex(lineWriter);
+                            lineWriter.Write(',');
+                            value.StreamHex(lineWriter);
+                            lineWriter.WriteLine();
+                        }
+
+                        fileWriter.Write(lineBuilder.ToString());
                     }
                 }
             }
