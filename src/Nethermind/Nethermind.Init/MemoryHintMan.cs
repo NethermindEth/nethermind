@@ -43,28 +43,28 @@ namespace Nethermind.Init
             checked
             {
                 if (_logger.IsInfo) _logger.Info("Setting up memory allowances");
-                if (_logger.IsInfo) _logger.Info($"  memory hint:        {TotalMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  Memory hint:        {TotalMemory / 1000 / 1000,5} MB");
                 _remainingMemory = initConfig.MemoryHint ?? 2.GB();
                 _remainingMemory -= GeneralMemory;
-                if (_logger.IsInfo) _logger.Info($"  general memory:     {GeneralMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  General memory:     {GeneralMemory / 1000 / 1000,5} MB");
                 AssignPeersMemory(networkConfig);
                 _remainingMemory -= PeersMemory;
-                if (_logger.IsInfo) _logger.Info($"  peers memory:       {PeersMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  Peers memory:       {PeersMemory / 1000 / 1000,5} MB");
                 AssignNettyMemory(networkConfig, cpuCount);
                 _remainingMemory -= NettyMemory;
-                if (_logger.IsInfo) _logger.Info($"  Netty memory:       {NettyMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  Netty memory:       {NettyMemory / 1000 / 1000,5} MB");
                 AssignTxPoolMemory(txPoolConfig);
                 _remainingMemory -= TxPoolMemory;
-                if (_logger.IsInfo) _logger.Info($"  mempool memory:     {TxPoolMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  Mempool memory:     {TxPoolMemory / 1000 / 1000,5} MB");
                 AssignFastBlocksMemory(syncConfig);
                 _remainingMemory -= FastBlocksMemory;
-                if (_logger.IsInfo) _logger.Info($"  fast blocks memory: {FastBlocksMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  Fast blocks memory: {FastBlocksMemory / 1000 / 1000,5} MB");
                 AssignTrieCacheMemory();
                 _remainingMemory -= TrieCacheMemory;
-                if (_logger.IsInfo) _logger.Info($"  trie memory:        {TrieCacheMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  Trie memory:        {TrieCacheMemory / 1000 / 1000,5} MB");
                 UpdateDbConfig(cpuCount, syncConfig, dbConfig, initConfig);
                 _remainingMemory -= DbMemory;
-                if (_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / 1000 / 1000}MB");
+                if (_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / 1000 / 1000,5} MB");
 
             }
         }
@@ -143,6 +143,8 @@ namespace Nethermind.Init
                 return;
             }
 
+            if (dbConfig.SkipMemoryHintSetting) return;
+
             DbMemory = _remainingMemory;
             long remaining = DbMemory;
             DbNeeds dbNeeds = GetHeaderNeeds(cpuCount, syncConfig);
@@ -190,9 +192,11 @@ namespace Nethermind.Init
             dbNeeds = GetStateNeeds(cpuCount, syncConfig);
             dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
-            dbConfig.WriteBufferNumber = dbGets.Buffers;
-            dbConfig.WriteBufferSize = (ulong)dbGets.SingleBufferMem;
-            dbConfig.BlockCacheSize = (ulong)dbGets.CacheMem;
+            dbConfig.StateDbWriteBufferNumber = dbGets.Buffers;
+            dbConfig.StateDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
+            dbConfig.StateDbBlockCacheSize = (ulong)dbGets.CacheMem;
+
+            dbConfig.SharedBlockCacheSize = (ulong)remaining;
         }
 
         private DbGets GiveItWhatYouCan(DbNeeds dbNeeds, long memoryHint, long remaining)
@@ -273,8 +277,8 @@ namespace Nethermind.Init
                 preferredBuffers,
                 1.MB(), // min buffer size
                 64.MB(), // max buffer size
-                4.MB(), // min block cache
-                128.GB(), // max block cache
+                0, // min block cache
+                0, // max block cache
                 1m); // db memory %
         }
 
@@ -345,8 +349,8 @@ namespace Nethermind.Init
                 preferredBuffers,
                 1.MB(), // min buffer size
                 4.MB(), // max buffer size
-                2.MB(), // min block cache
-                32.MB(), // max block cache
+                0, // min block cache
+                0, // max block cache
                 0); // db memory %
         }
 

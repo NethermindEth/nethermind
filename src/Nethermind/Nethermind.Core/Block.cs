@@ -14,25 +14,25 @@ namespace Nethermind.Core;
 [DebuggerDisplay("{Hash} ({Number})")]
 public class Block
 {
-    public Block(BlockHeader blockHeader, BlockBody body)
+    public Block(BlockHeader header, BlockBody body)
     {
-        Header = blockHeader;
-        Body = body;
+        Header = header ?? throw new ArgumentNullException(nameof(header));
+        Body = body ?? throw new ArgumentNullException(nameof(body));
     }
 
     public Block(
-        BlockHeader blockHeader,
+        BlockHeader header,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
         IEnumerable<Withdrawal>? withdrawals = null)
     {
-        Header = blockHeader;
+        Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
     }
 
-    public Block(BlockHeader blockHeader) : this(
-        blockHeader,
-        new(null, null, blockHeader.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>())
+    public Block(BlockHeader header) : this(
+        header,
+        new(null, null, header.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>())
     )
     { }
 
@@ -98,7 +98,9 @@ public class Block
 
     public UInt256 BaseFeePerGas => Header.BaseFeePerGas; // do not add setter here
 
-    public UInt256? ExcessDataGas => Header.ExcessDataGas; // do not add setter here
+    public ulong? DataGasUsed => Header.DataGasUsed; // do not add setter here
+
+    public ulong? ExcessDataGas => Header.ExcessDataGas; // do not add setter here
 
     public bool IsPostMerge => Header.IsPostMerge; // do not add setter here
 

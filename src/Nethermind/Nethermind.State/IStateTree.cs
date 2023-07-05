@@ -14,7 +14,7 @@ public interface IStateTree : IPatriciaTree
     Account? Get(Address address, Keccak? rootHash = null);
 
     void Set(Address address, Account? account);
-    Rlp? Set(Keccak keccak, Account? account);
+    Rlp? Set(in ValueKeccak keccak, Account? account);
 
     public byte[] GetStorage(in UInt256 index, in Address accountAddress,  Keccak? root = null);
 

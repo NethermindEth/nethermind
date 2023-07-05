@@ -61,15 +61,6 @@ public class DiscoveryManager : IDiscoveryManager
                 return;
             }
 
-            if (msg is PingMsg pingMsg)
-            {
-                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMsg.FarAddress, "MANAGER disc v4", $"Ping {pingMsg.SourceAddress?.Address} -> {pingMsg.DestinationAddress?.Address}");
-            }
-            else
-            {
-                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "MANAGER disc v4", msg.MsgType.ToString());
-            }
-
             switch (msgType)
             {
                 case MsgType.Neighbors:
@@ -135,7 +126,7 @@ public class DiscoveryManager : IDiscoveryManager
             manager.OnStateChanged += ManagerOnOnStateChanged;
             if (!isPersisted)
             {
-                _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation) });
+                _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation(DateTime.UtcNow)) });
             }
 
             return manager;
@@ -159,15 +150,6 @@ public class DiscoveryManager : IDiscoveryManager
         if (_logger.IsTrace) _logger.Trace($"Sending msg: {discoveryMsg}");
         try
         {
-            if (discoveryMsg is PingMsg pingMessage)
-            {
-                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(pingMessage.FarAddress, "HANDLER disc v4", $"Ping {pingMessage.SourceAddress?.Address} -> {pingMessage.DestinationAddress?.Address}");
-            }
-            else
-            {
-                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(discoveryMsg.FarAddress, "HANDLER disc v4", discoveryMsg.MsgType.ToString());
-            }
-
             _msgSender?.SendMsg(discoveryMsg);
         }
         catch (Exception e)
@@ -215,14 +197,14 @@ public class DiscoveryManager : IDiscoveryManager
             return false;
         }
 
-        #region 
+        #region
         // port will be different as we dynamically open ports for each socket connection
         // if (_nodeTable.MasterNode.Port != message.DestinationAddress?.Port)
         // {
         //     throw new NetworkingException($"Received message with incorrect destination port, message: {message}", NetworkExceptionType.Discovery);
         // }
 
-        // either an old Nethermind or other nodes that make the same mistake 
+        // either an old Nethermind or other nodes that make the same mistake
         // if (!Bytes.AreEqual(message.FarAddress?.Address.MapToIPv6().GetAddressBytes(), message.SourceAddress?.Address.MapToIPv6().GetAddressBytes()))
         // {
         //     // there is no sense to complain here as nodes sent a lot of garbage as their source addresses
@@ -298,9 +280,9 @@ public class DiscoveryManager : IDiscoveryManager
                 }
             }
         }
-
+        DateTime utcNow = DateTime.UtcNow;
         foreach ((Keccak key, INodeLifecycleManager value) in _nodeLifecycleManagers.ToArray()
-                     .OrderBy(x => x.Value.NodeStats.CurrentNodeReputation))
+                     .OrderBy(x => x.Value.NodeStats.CurrentNodeReputation(utcNow)))
         {
             if (RemoveManager((key, value.ManagedNode.Id)))
             {

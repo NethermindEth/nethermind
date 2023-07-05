@@ -49,22 +49,24 @@ namespace Nethermind.Blockchain.Test.Producers
                 NullBloomStorage.Instance,
                 LimboLogs.Instance);
             TrieStoreByPath trieStore = new(
-                dbProvider.RegisteredDbs[DbNames.State],
+                ((IColumnsDb<StateColumns>)dbProvider.RegisteredDbs[DbNames.State]).GetColumnDb(StateColumns.State),
                 NoPruning.Instance,
                 Archive.Instance,
                 LimboLogs.Instance);
+
             TrieStoreByPath storageTrieStore = new(
                 ((IColumnsDb<StateColumns>)dbProvider.RegisteredDbs[DbNames.State]).GetColumnDb(StateColumns.Storage),
                 NoPruning.Instance,
                 Archive.Instance,
                 LimboLogs.Instance);
-            StateProvider stateProvider = new(
+
+            WorldState stateProvider = new(
                 trieStore,
-                storageTrieStore,
                 dbProvider.RegisteredDbs[DbNames.Code],
                 LimboLogs.Instance);
+
             StateReader stateReader = new(trieStore, storageTrieStore, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
+
             BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
@@ -73,7 +75,6 @@ namespace Nethermind.Blockchain.Test.Producers
             TransactionProcessor txProcessor = new(
                 specProvider,
                 stateProvider,
-                storageProvider,
                 virtualMachine,
                 LimboLogs.Instance);
             BlockProcessor blockProcessor = new(
@@ -82,7 +83,6 @@ namespace Nethermind.Blockchain.Test.Producers
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
-                storageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);

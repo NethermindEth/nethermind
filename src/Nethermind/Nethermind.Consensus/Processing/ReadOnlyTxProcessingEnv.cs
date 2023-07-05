@@ -19,10 +19,8 @@ namespace Nethermind.Consensus.Processing
 {
     public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
     {
-        private readonly ReadOnlyDb _codeDb;
         public IStateReader StateReader { get; }
-        public IStateProvider StateProvider { get; }
-        public IStorageProvider StorageProvider { get; }
+        public IWorldState StateProvider { get; }
         public ITransactionProcessor TransactionProcessor { get; set; }
         public IBlockTree BlockTree { get; }
         public IReadOnlyDbProvider DbProvider { get; }
@@ -51,20 +49,18 @@ namespace Nethermind.Consensus.Processing
             if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
 
             DbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
-            _codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
+            ReadOnlyDb codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
 
-            StateReader = new StateReader(readOnlyTrieStore, readOnlyStorageTrieStore, _codeDb, logManager);
-            StateProvider = new StateProvider(readOnlyTrieStore, readOnlyStorageTrieStore, _codeDb, logManager);
-            StorageProvider = new StorageProvider(readOnlyStorageTrieStore, StateProvider, logManager);
-            IWorldState worldState = new WorldState(StateProvider, StorageProvider);
+            StateReader = new StateReader(readOnlyTrieStore, readOnlyStorageTrieStore, codeDb, logManager);
+            StateProvider = new WorldState(readOnlyTrieStore, codeDb, logManager);
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
             Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
-            TransactionProcessor = new TransactionProcessor(specProvider, worldState, Machine, logManager);
+            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, logManager);
         }
 
-        public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, StorageProvider, _codeDb, stateRoot);
+        public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);
     }
 }

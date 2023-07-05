@@ -22,10 +22,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.True(Bytes.AreEqual(bytes, expectedBytes), "bytes");
 
             GetBlockBodiesMessage deserialized = serializer.Deserialize(bytes);
-            Assert.AreEqual(message.BlockHashes.Count, deserialized.BlockHashes.Count, $"count");
+            Assert.That(deserialized.BlockHashes.Count, Is.EqualTo(message.BlockHashes.Count), $"count");
             for (int i = 0; i < message.BlockHashes.Count; i++)
             {
-                Assert.AreEqual(message.BlockHashes[i], deserialized.BlockHashes[i], $"hash {i}");
+                Assert.That(deserialized.BlockHashes[i], Is.EqualTo(message.BlockHashes[i]), $"hash {i}");
             }
 
             SerializerTester.TestZero(serializer, message);

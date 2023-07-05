@@ -264,9 +264,8 @@ namespace Nethermind.Blockchain.Test
         {
             MemColumnsDb<StateColumns> stateDb = new();
             MemDb codeDb = new();
-            TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
-            StateProvider stateProvider = new(trieStore, new TrieStoreByPath(stateDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance), codeDb, LimboLogs.Instance);
-            IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
+            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+            WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             IReleaseSpec spec = testCase.ReleaseSpec;
@@ -322,7 +321,6 @@ namespace Nethermind.Blockchain.Test
                 new(
                     transactionProcessor,
                     stateProvider,
-                    storageProvider,
                     specProvider,
                     LimboLogs.Instance);
 

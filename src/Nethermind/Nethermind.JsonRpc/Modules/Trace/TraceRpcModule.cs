@@ -22,6 +22,14 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
+    /// <summary>
+    /// All methods that receive transaction from users uses ITransactionProcessor.Trace
+    /// As user might send transaction without gas and/or sender we can't charge gas fees here
+    /// So at the end stateDiff will be a bit incorrect
+    ///
+    /// All methods that traces transactions from chain uses ITransactionProcessor.Execute
+    /// From-chain transactions should have stateDiff as we got during normal execution. Also we are sure that sender have enough funds to pay gas
+    /// </summary>
     public class TraceRpcModule : ITraceRpcModule
     {
         private readonly IReceiptFinder _receiptFinder;
@@ -49,6 +57,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public static ParityTraceTypes GetParityTypes(string[] types) =>
             types.Select(s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate((t1, t2) => t1 | t2);
 
+        /// <summary>
+        /// Traces one transaction. Doesn't charge fees.
+        /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null)
         {
             blockParameter ??= BlockParameter.Latest;
@@ -59,6 +70,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return TraceTx(tx, traceTypes, blockParameter);
         }
 
+        /// <summary>
+        /// Traces list of transactions. Doesn't charge fees.
+        /// </summary>
         public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null)
         {
             blockParameter ??= BlockParameter.Latest;
@@ -86,6 +100,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(t => new ParityTxTraceFromReplay(t)));
         }
 
+        /// <summary>
+        /// Traces one raw transaction. Doesn't charge fees.
+        /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
             Transaction tx = _txDecoder.Decode(new RlpStream(data), RlpBehaviors.SkipTypedWrapping);
@@ -112,7 +129,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     header.Number + 1,
                     header.GasLimit,
                     header.Timestamp + 1,
-                    header.ExtraData);
+                    header.ExtraData,
+                    header.DataGasUsed,
+                    header.ExcessDataGas);
 
                 header.TotalDifficulty = 2 * header.Difficulty;
                 header.BaseFeePerGas = baseFee;
@@ -136,6 +155,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(result.SingleOrDefault()));
         }
 
+        /// <summary>
+        /// Traces one transaction. As it replays existing transaction will charge gas
+        /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Keccak txHash, string[] traceTypes)
         {
             SearchResult<Keccak> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(txHash);
@@ -152,10 +174,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             Block block = blockSearch.Object!;
 
-            IReadOnlyCollection<ParityLikeTxTrace>? txTrace = TraceBlock(block, new ParityLikeBlockTracer(txHash, GetParityTypes(traceTypes)));
+            IReadOnlyCollection<ParityLikeTxTrace>? txTrace = ExecuteBlock(block, new ParityLikeBlockTracer(txHash, GetParityTypes(traceTypes)));
             return ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(txTrace));
         }
 
+        /// <summary>
+        /// Traces one block. As it replays existing block will charge gas
+        /// </summary>
         public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_replayBlockTransactions(BlockParameter blockParameter, string[] traceTypes)
         {
             SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(blockParameter);
@@ -167,12 +192,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Block block = blockSearch.Object!;
 
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
-            IReadOnlyCollection<ParityLikeTxTrace> txTraces = TraceBlock(block, new(traceTypes1));
+            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new(traceTypes1));
 
             // ReSharper disable once CoVariantArrayConversion
             return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(txTraces.Select(t => new ParityTxTraceFromReplay(t, true)));
         }
 
+        /// <summary>
+        /// Traces blocks specified in filter. As it replays existing transaction will charge gas
+        /// </summary>
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_filter(TraceFilterForRpc traceFilterForRpc)
         {
             List<ParityLikeTxTrace> txTraces = new();
@@ -188,7 +216,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 }
 
                 Block block = blockSearch.Object;
-                IReadOnlyCollection<ParityLikeTxTrace> txTracesFromOneBlock = TraceBlock(block!, new((ParityTraceTypes)(ParityTraceTypes.Trace | ParityTraceTypes.Rewards)));
+                IReadOnlyCollection<ParityLikeTxTrace> txTracesFromOneBlock = ExecuteBlock(block!, new((ParityTraceTypes)(ParityTraceTypes.Trace | ParityTraceTypes.Rewards)));
                 txTraces.AddRange(txTracesFromOneBlock);
             }
 
@@ -207,10 +235,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = blockSearch.Object!;
-            IReadOnlyCollection<ParityLikeTxTrace> txTraces = TraceBlock(block, new((ParityTraceTypes)(ParityTraceTypes.Trace | ParityTraceTypes.Rewards)));
+            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new((ParityTraceTypes)(ParityTraceTypes.Trace | ParityTraceTypes.Rewards)));
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
         }
 
+        /// <summary>
+        /// Traces one transaction. As it replays existing transaction will charge gas
+        /// </summary>
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Keccak txHash, long[] positions)
         {
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction = trace_transaction(txHash);
@@ -235,6 +266,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return traces;
         }
 
+        /// <summary>
+        /// Traces one transaction. As it replays existing transaction will charge gas
+        /// </summary>
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Keccak txHash)
         {
             SearchResult<Keccak> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(txHash);
@@ -251,7 +285,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             Block block = blockSearch.Object!;
 
-            IReadOnlyCollection<ParityLikeTxTrace> txTrace = TraceBlock(block, new(txHash, ParityTraceTypes.Trace));
+            IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(block, new(txHash, ParityTraceTypes.Trace));
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
 
@@ -260,6 +294,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
             using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
             _tracer.Trace(block, tracer.WithCancellation(cancellationToken));
+            return tracer.BuildResult();
+        }
+
+        private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(Block block, ParityLikeBlockTracer tracer)
+        {
+            using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            _tracer.Execute(block, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
         }
     }

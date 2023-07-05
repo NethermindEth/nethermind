@@ -26,7 +26,7 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
-        public byte[]? LoadRlp(Keccak hash) => null;
+        public byte[]? LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None) => null;
 
         public byte[]? LoadRlp(Span<byte> nodePath, Keccak rootHash)
         {

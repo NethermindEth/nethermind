@@ -30,6 +30,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
 using Nethermind.Config;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -141,11 +142,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxPool,
                 TxSender,
                 TestWallet,
-                ReceiptFinder,
                 LimboLogs.Instance,
                 SpecProvider,
                 GasPriceOracle,
-                new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, LogManager),
+                new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, new StaticSelector(SyncMode.All), LogManager),
                 FeeHistoryOracle);
 
             return this;

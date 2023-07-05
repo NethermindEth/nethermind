@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Abi
 {
@@ -40,6 +40,6 @@ namespace Nethermind.Abi
             return _toString ??= ComputeString();
         }
 
-        public static byte[] GetAddress(byte[] bytes) => bytes.Slice(0, 4);
+        public static byte[] GetAddress(ReadOnlySpan<byte> bytes) => bytes.Slice(0, 4).ToArray();
     }
 }

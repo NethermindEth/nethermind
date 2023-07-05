@@ -56,9 +56,17 @@ namespace Nethermind.State.Proofs
         /// <summary>
         /// Only for testing
         /// </summary>
-        public AccountProofCollector(byte[] hashedAddress, Keccak[] keccakStorageKeys)
+        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, Keccak[] keccakStorageKeys)
+            : this(hashedAddress, keccakStorageKeys.Select((keccak) => (ValueKeccak)keccak).ToArray())
         {
-            keccakStorageKeys ??= Array.Empty<Keccak>();
+        }
+
+        /// <summary>
+        /// Only for testing too
+        /// </summary>
+        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, ValueKeccak[] keccakStorageKeys)
+        {
+            keccakStorageKeys ??= Array.Empty<ValueKeccak>();
 
             _fullAccountPath = Nibbles.FromBytes(hashedAddress);
 
@@ -84,7 +92,7 @@ namespace Nethermind.State.Proofs
             }
         }
 
-        public AccountProofCollector(byte[] hashedAddress, params byte[][] storageKeys)
+        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, params byte[][] storageKeys)
         {
             storageKeys ??= Array.Empty<byte[]>();
             _fullAccountPath = Nibbles.FromBytes(hashedAddress);
@@ -133,6 +141,8 @@ namespace Nethermind.State.Proofs
 
             return _accountProof;
         }
+
+        public bool IsFullDbScan => false;
 
         public bool ShouldVisit(Keccak nextNode)
         {

@@ -32,9 +32,10 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
-        public byte[] LoadRlp(Keccak hash) => _trieStore.LoadRlp(hash, _readOnlyStore);
+        public byte[] LoadRlp(Keccak hash, ReadFlags readFlags = ReadFlags.None) => _trieStore.LoadRlp(hash, _readOnlyStore, readFlags);
 
         public bool IsPersisted(Keccak keccak) => _trieStore.IsPersisted(keccak);
+        public bool IsPersisted(in ValueKeccak keccak) => _trieStore.IsPersisted(keccak);
 
         public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
         {
@@ -47,11 +48,9 @@ namespace Nethermind.Trie.Pruning
             return new ReadOnlyTrieStore(_trieStore, keyValueStore);
         }
 
-        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
+        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags flags = WriteFlags.None) { }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root) { }
-
-        public void HackPersistOnShutdown() { }
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {
@@ -85,5 +84,7 @@ namespace Nethermind.Trie.Pruning
         {
             throw new NotImplementedException();
         }
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags) => _trieStore.Get(key, flags);
     }
 }

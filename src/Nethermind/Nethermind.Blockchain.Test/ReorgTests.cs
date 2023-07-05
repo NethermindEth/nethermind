@@ -43,12 +43,9 @@ namespace Nethermind.Blockchain.Test
         public void Setup()
         {
             IDbProvider memDbProvider = TestMemDbProvider.Init();
-            MemColumnsDb<StateColumns> memStateDb = new();
-            TrieStoreByPath trieStore = new(memStateDb, LimboLogs.Instance);
-            TrieStoreByPath trieStorageStore = new(memStateDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance);
-            StateProvider stateProvider = new(trieStore, trieStorageStore, memDbProvider.CodeDb, LimboLogs.Instance);
-            StateReader stateReader = new(trieStore, trieStorageStore, memDbProvider.CodeDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
+            TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
+            WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
+            StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
             ChainLevelInfoRepository chainLevelInfoRepository = new(memDbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IBloomStorage bloomStorage = NullBloomStorage.Instance;
@@ -77,7 +74,6 @@ namespace Nethermind.Blockchain.Test
             TransactionProcessor transactionProcessor = new(
                 specProvider,
                 stateProvider,
-                storageProvider,
                 virtualMachine,
                 LimboLogs.Instance);
 
@@ -87,7 +83,6 @@ namespace Nethermind.Blockchain.Test
                 new RewardCalculator(specProvider),
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
-                storageProvider,
                 NullReceiptStorage.Instance,
                 new WitnessCollector(memDbProvider.StateDb, LimboLogs.Instance),
                 LimboLogs.Instance);

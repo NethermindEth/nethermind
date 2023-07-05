@@ -147,16 +147,58 @@ namespace Nethermind.Blockchain.Test
         }
 
 
+        public static IEnumerable EnoughShardBlobTransactionsSelectedTestCases
+        {
+            get
+            {
+                ProperTransactionsSelectedTestCase maxTransactionsSelected = ProperTransactionsSelectedTestCase.Eip1559Default;
+                maxTransactionsSelected.ReleaseSpec = Cancun.Instance;
+                maxTransactionsSelected.BaseFee = 1;
+                maxTransactionsSelected.Transactions.ForEach(tx =>
+                {
+                    tx.Type = TxType.Blob;
+                    tx.BlobVersionedHashes = new byte[1][];
+                    tx.MaxFeePerDataGas = 1;
+                });
+                maxTransactionsSelected.Transactions[1].BlobVersionedHashes =
+                    new byte[Eip4844Constants.MaxDataGasPerTransaction / Eip4844Constants.DataGasPerBlob - 1][];
+                maxTransactionsSelected.ExpectedSelectedTransactions.AddRange(
+                    maxTransactionsSelected.Transactions.OrderBy(t => t.Nonce).Take(2));
+                yield return new TestCaseData(maxTransactionsSelected).SetName("Enough transactions selected");
+
+                ProperTransactionsSelectedTestCase enoughTransactionsSelected =
+                    ProperTransactionsSelectedTestCase.Eip1559Default;
+                enoughTransactionsSelected.ReleaseSpec = Cancun.Instance;
+                enoughTransactionsSelected.BaseFee = 1;
+
+                Transaction[] expectedSelectedTransactions =
+                    enoughTransactionsSelected.Transactions.OrderBy(t => t.Nonce).ToArray();
+                expectedSelectedTransactions[0].Type = TxType.Blob;
+                expectedSelectedTransactions[0].BlobVersionedHashes =
+                    new byte[Eip4844Constants.MaxDataGasPerTransaction / Eip4844Constants.DataGasPerBlob][];
+                expectedSelectedTransactions[0].MaxFeePerDataGas = 1;
+                expectedSelectedTransactions[1].Type = TxType.Blob;
+                expectedSelectedTransactions[1].BlobVersionedHashes = new byte[1][];
+                expectedSelectedTransactions[1].MaxFeePerDataGas = 1;
+                enoughTransactionsSelected.ExpectedSelectedTransactions.AddRange(
+                    expectedSelectedTransactions.Where((tx, index) => index != 1));
+                yield return new TestCaseData(enoughTransactionsSelected).SetName(
+                    "Enough shard blob transactions and others selected");
+            }
+        }
+
         [TestCaseSource(nameof(ProperTransactionsSelectedTestCases))]
         [TestCaseSource(nameof(Eip1559LegacyTransactionTestCases))]
         [TestCaseSource(nameof(Eip1559TestCases))]
+        [TestCaseSource(nameof(EnoughShardBlobTransactionsSelectedTestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
             MemColumnsDb<StateColumns> stateDb = new();
             MemDb codeDb = new();
-            TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
-            TrieStoreByPath storageTrieStore = new(stateDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance);
-            StateProvider stateProvider = new(trieStore, storageTrieStore, codeDb, LimboLogs.Instance);
+            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+            WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
+            StateReader stateReader =
+                new(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)
@@ -193,7 +235,7 @@ namespace Nethermind.Blockchain.Test
                 .Where(t => t?.SenderAddress is not null)
                 .GroupBy(t => t.SenderAddress)
                 .ToDictionary(
-                    g => g.Key,
+                    g => g.Key!,
                     g => g.OrderBy(t => t, comparer).ToArray());
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
             BlocksConfig blocksConfig = new() { MinGasPrice = testCase.MinGasPriceForMining };
@@ -207,9 +249,13 @@ namespace Nethermind.Blockchain.Test
             TxPoolTxSource poolTxSource = new(transactionPool, specProvider,
                 transactionComparerProvider, LimboLogs.Instance, txFilterPipeline);
 
-
+            BlockHeaderBuilder parentHeader = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithBaseFee(testCase.BaseFee);
+            if (spec.IsEip4844Enabled)
+            {
+                parentHeader = parentHeader.WithExcessDataGas(0);
+            }
             IEnumerable<Transaction> selectedTransactions =
-                poolTxSource.GetTransactions(Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithBaseFee(testCase.BaseFee).TestObject,
+                poolTxSource.GetTransactions(parentHeader.TestObject,
                     testCase.GasLimit);
             selectedTransactions.Should()
                 .BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());

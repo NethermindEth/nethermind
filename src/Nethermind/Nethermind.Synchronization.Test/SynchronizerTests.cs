@@ -65,6 +65,8 @@ namespace Nethermind.Synchronization.Test
 
         private class SyncPeerMock : ISyncPeer
         {
+            public string Name => "Mock";
+
             private readonly bool _causeTimeoutOnInit;
             private readonly bool _causeTimeoutOnBlocks;
             private readonly bool _causeTimeoutOnHeaders;
@@ -204,7 +206,7 @@ namespace Nethermind.Synchronization.Test
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-            public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -352,7 +354,6 @@ namespace Nethermind.Synchronization.Test
                         beaconPivot,
                         MainnetSpecProvider.Instance,
                         BlockTree,
-                        blockCacheService,
                         NullReceiptStorage.Instance,
                         Always.Valid,
                         Always.Valid,
@@ -439,7 +440,7 @@ namespace Nethermind.Synchronization.Test
 
             public SyncingContext BestKnownNumberIs(long number)
             {
-                Assert.AreEqual(number, BlockTree.BestKnownNumber, "best known number");
+                Assert.That(BlockTree.BestKnownNumber, Is.EqualTo(number), "best known number");
                 return this;
             }
 
@@ -463,7 +464,7 @@ namespace Nethermind.Synchronization.Test
                     _blockHeader = BlockTree.BestSuggestedHeader;
                 }
 
-                Assert.AreSame(header, _blockHeader, "header");
+                Assert.That(_blockHeader, Is.SameAs(header), "header");
                 return this;
             }
 
@@ -480,13 +481,13 @@ namespace Nethermind.Synchronization.Test
                     _blockHeader = BlockTree.BestSuggestedHeader;
                 }
 
-                Assert.AreEqual(number, _blockHeader?.Number, "block number");
+                Assert.That(_blockHeader?.Number, Is.EqualTo(number), "block number");
                 return this;
             }
 
             public SyncingContext BlockIsSameAsGenesis()
             {
-                Assert.AreSame(BlockTree.Genesis, _blockHeader, "genesis");
+                Assert.That(_blockHeader, Is.SameAs(BlockTree.Genesis), "genesis");
                 return this;
             }
 
@@ -576,7 +577,13 @@ namespace Nethermind.Synchronization.Test
 
             public SyncingContext PeerCountIs(long i)
             {
-                Assert.AreEqual(i, SyncPeerPool.AllPeers.Count(), "peer count");
+                Assert.That(SyncPeerPool.AllPeers.Count(), Is.EqualTo(i), "peer count");
+                return this;
+            }
+
+            public SyncingContext PeerCountEventuallyIs(long i)
+            {
+                Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(5000, 100), "peer count");
                 return this;
             }
 
@@ -789,7 +796,7 @@ namespace Nethermind.Synchronization.Test
                 .WaitUntilInitialized()
                 .Stop();
 
-            Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
+            Assert.That(peerA.HeadBlock.Hash, Is.Not.EqualTo(peerB.HeadBlock.Hash));
 
             Block peerBNewBlock = null;
             SpinWait.SpinUntil(() =>
@@ -798,7 +805,7 @@ namespace Nethermind.Synchronization.Test
                 return receivedBlock && peerBNewBlock.Hash == peerA.HeadBlock.Hash;
             }, WaitTime);
 
-            Assert.AreEqual(peerBNewBlock?.Header.Hash!, peerA.HeadBlock.Hash);
+            Assert.That(peerA.HeadBlock.Hash, Is.EqualTo(peerBNewBlock?.Header.Hash!));
 
         }
 
@@ -817,7 +824,7 @@ namespace Nethermind.Synchronization.Test
                 .BestSuggestedBlockHasNumber(1).Stop();
         }
 
-        [Test, Retry(3)]
+        [Test, Retry(5)]
         public void Will_remove_peer_when_init_fails()
         {
             SyncPeerMock peerA = new("A", true, true);
@@ -827,7 +834,7 @@ namespace Nethermind.Synchronization.Test
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
                 .WaitAMoment()
-                .PeerCountIs(0).Stop();
+                .PeerCountEventuallyIs(0).Stop();
         }
 
 

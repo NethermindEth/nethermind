@@ -17,11 +17,8 @@ namespace Nethermind.Db
     {
         private readonly int _writeDelay; // for testing scenarios
         private readonly int _readDelay; // for testing scenarios
-        private long _writeCount;
-        private long _readCount;
-
-        public long ReadsCount { get => _readCount; }
-        public long WritesCount { get => _writeCount; }
+        public long ReadsCount { get; private set; }
+        public long WritesCount { get; private set; }
 
         private ILogger logger = new TestLogManager.NUnitLogger(LogLevel.Info);
 
@@ -42,8 +39,6 @@ namespace Nethermind.Db
             _writeDelay = writeDelay;
             _readDelay = readDelay;
             _db = new SpanConcurrentDictionary<byte, byte[]>(Bytes.SpanEqualityComparer);
-            _writeCount = 0;
-            _readCount = 0;
         }
 
         public string Name { get; }
@@ -52,27 +47,15 @@ namespace Nethermind.Db
         {
             get
             {
-                if (_readDelay > 0)
-                {
-                    Thread.Sleep(_readDelay);
-                }
-
-                Interlocked.Increment(ref _readCount);
-                return _db.TryGetValue(key, out byte[] value) ? value : null;
+                return Get(key);
             }
             set
             {
-                if (_writeDelay > 0)
-                {
-                    Thread.Sleep(_writeDelay);
-                }
-
-                Interlocked.Increment(ref _writeCount);
-                _db[key] = value;
+                Set(key, value);
             }
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys]
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
         {
             get
             {
@@ -81,7 +64,7 @@ namespace Nethermind.Db
                     Thread.Sleep(_readDelay);
                 }
 
-                Interlocked.Add(ref _readCount, keys.Length);
+                ReadsCount += keys.Length;
                 return keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _db.TryGetValue(k, out var value) ? value : null)).ToArray();
             }
         }
@@ -111,7 +94,7 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
 
-        public IBatch StartBatch()
+        public virtual IBatch StartBatch()
         {
             return this.LikeABatch();
         }
@@ -121,22 +104,49 @@ namespace Nethermind.Db
 
         public int Count => _db.Count;
 
+        public long GetSize() => 0;
+        public long GetCacheSize() => 0;
+        public long GetIndexSize() => 0;
+        public long GetMemtableSize() => 0;
+
         public void Dispose()
         {
         }
 
         public virtual Span<byte> GetSpan(ReadOnlySpan<byte> key)
         {
-            return this[key].AsSpan();
+            return Get(key).AsSpan();
         }
 
         public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
         {
-            this[key] = value.ToArray();
+            Set(key, value.ToArray());
         }
 
         public void DangerousReleaseMemory(in Span<byte> span)
         {
+        }
+
+        public virtual byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            if (_readDelay > 0)
+            {
+                Thread.Sleep(_readDelay);
+            }
+
+            ReadsCount++;
+            return _db.TryGetValue(key, out byte[] value) ? value : null;
+        }
+
+        public virtual void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (_writeDelay > 0)
+            {
+                Thread.Sleep(_writeDelay);
+            }
+
+            WritesCount++;
+            _db[key] = value;
         }
 
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)

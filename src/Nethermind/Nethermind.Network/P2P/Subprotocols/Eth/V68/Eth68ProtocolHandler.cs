@@ -16,6 +16,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V68;
@@ -38,9 +39,9 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         IPooledTxsRequestor pooledTxsRequestor,
         IGossipPolicy gossipPolicy,
         ForkInfo forkInfo,
-        ILogManager logManager)
-        : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy,
-            forkInfo, logManager)
+        ILogManager logManager,
+        ITxGossipPolicy? transactionsGossipPolicy = null)
+        : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
     {
         _pooledTxsRequestor = pooledTxsRequestor;
 
@@ -50,13 +51,23 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
     public override void HandleMessage(ZeroPacket message)
     {
+        int size = message.Content.ReadableBytes;
         switch (message.PacketType)
         {
             case Eth68MessageCode.NewPooledTransactionHashes:
-                NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
-                    Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
-                ReportIn(newPooledTxHashesMsg);
-                Handle(newPooledTxHashesMsg);
+                if (CanReceiveTransactions)
+                {
+                    NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
+                        Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
+                    ReportIn(newPooledTxHashesMsg, size);
+                    Handle(newPooledTxHashesMsg);
+                }
+                else
+                {
+                    const string ignored = $"{nameof(NewPooledTransactionHashesMessage68)} ignored, syncing";
+                    ReportIn(ignored, size);
+                }
+
                 break;
             default:
                 base.HandleMessage(message);
@@ -73,13 +84,14 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
                                   $"Hashes count: {message.Hashes.Count} " +
                                   $"Types count: {message.Types.Count} " +
                                   $"Sizes count: {message.Sizes.Count}";
-            if (isTrace)
-                Logger.Trace(errorMessage);
+            if (isTrace) Logger.Trace(errorMessage);
 
             throw new SubprotocolException(errorMessage);
         }
 
         Metrics.Eth68NewPooledTransactionHashesReceived++;
+
+        AddNotifiedTransactions(message.Hashes);
 
         Stopwatch? stopwatch = isTrace ? Stopwatch.StartNew() : null;
 
@@ -87,16 +99,26 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
         stopwatch?.Stop();
 
-        if (isTrace)
-            Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} " +
-                         $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        if (isTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
     }
 
-    public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
+    protected override void SendNewTransactionCore(Transaction tx)
+    {
+        if (tx.CanBeBroadcast())
+        {
+            base.SendNewTransactionCore(tx);
+        }
+        else
+        {
+            SendMessage(new byte[] { (byte)tx.Type }, new int[] { tx.GetLength() }, new Keccak[] { tx.Hash });
+        }
+    }
+
+    protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
     {
         if (sendFullTx)
         {
-            base.SendNewTransactions(txs, sendFullTx);
+            base.SendNewTransactionsCore(txs, sendFullTx);
             return;
         }
 
@@ -117,8 +139,9 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
             if (tx.Hash is not null)
             {
                 types.Add((byte)tx.Type);
-                sizes.Add(tx.GetLength(_txDecoder));
+                sizes.Add(tx.GetLength());
                 hashes.Add(tx.Hash);
+                TxPool.Metrics.PendingTransactionsHashesSent++;
             }
         }
 

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using RocksDbSharp;
 
@@ -16,6 +17,8 @@ public class ColumnDb : IDbWithSpan
     private readonly DbOnTheRocks _mainDb;
     internal readonly ColumnFamilyHandle _columnFamily;
 
+    private DbOnTheRocks.ManagedIterators _readaheadIterators = new();
+
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
     {
         _rocksDb = rocksDb;
@@ -24,37 +27,29 @@ public class ColumnDb : IDbWithSpan
         Name = name;
     }
 
-    public void Dispose() { GC.SuppressFinalize(this); }
+    public void Dispose()
+    {
+        _readaheadIterators.DisposeAll();
+    }
 
     public string Name { get; }
 
-    public byte[]? this[ReadOnlySpan<byte> key]
+    public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        get
-        {
-            UpdateReadMetrics();
-            return _rocksDb.Get(key, _columnFamily);
-        }
-        set
-        {
-            UpdateWriteMetrics();
-            if (value is null)
-            {
-                _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
-            }
-            else
-            {
-                _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteOptions);
-            }
-        }
+        return _mainDb.GetWithColumnFamily(key, _columnFamily, _readaheadIterators, flags);
+    }
+
+    public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+    {
+        _mainDb.SetWithColumnFamily(key, _columnFamily, value, flags);
     }
 
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] =>
         _rocksDb.MultiGet(keys, keys.Select(k => _columnFamily).ToArray());
 
-    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
     {
-        using Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
+        Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
         return _mainDb.GetAllCore(iterator);
     }
 
@@ -85,19 +80,20 @@ public class ColumnDb : IDbWithSpan
             _underlyingBatch.Dispose();
         }
 
-        public byte[]? this[ReadOnlySpan<byte> key]
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            get => _underlyingBatch[key];
-            set
+            return _underlyingBatch.Get(key, flags);
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (value is null)
             {
-                if (value is null)
-                {
-                    _underlyingBatch._rocksBatch.Delete(key, _columnDb._columnFamily);
-                }
-                else
-                {
-                    _underlyingBatch._rocksBatch.Put(key, value, _columnDb._columnFamily);
-                }
+                _underlyingBatch.Delete(key, _columnDb._columnFamily);
+            }
+            else
+            {
+                _underlyingBatch.Set(key, value, _columnDb._columnFamily);
             }
         }
 
@@ -131,15 +127,20 @@ public class ColumnDb : IDbWithSpan
         _mainDb.Flush();
     }
 
+    public void Compact()
+    {
+        _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
+    }
+
     /// <summary>
     /// Not sure how to handle delete of the columns DB
     /// </summary>
     /// <exception cref="NotSupportedException"></exception>
     public void Clear() { throw new NotSupportedException(); }
-
-    private void UpdateWriteMetrics() => _mainDb.UpdateWriteMetrics();
-
-    private void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
+    public long GetSize() => _mainDb.GetSize();
+    public long GetCacheSize() => _mainDb.GetCacheSize();
+    public long GetIndexSize() => _mainDb.GetIndexSize();
+    public long GetMemtableSize() => _mainDb.GetMemtableSize();
 
     public Span<byte> GetSpan(ReadOnlySpan<byte> key) => _rocksDb.GetSpan(key, _columnFamily);
 

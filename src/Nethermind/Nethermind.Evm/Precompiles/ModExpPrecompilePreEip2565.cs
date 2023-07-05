@@ -34,10 +34,10 @@ namespace Nethermind.Evm.Precompiles
             try
             {
                 Span<byte> extendedInput = stackalloc byte[96];
-                inputData.Slice(0, Math.Min(96, inputData.Length)).Span
-                    .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
+                inputData[..Math.Min(96, inputData.Length)].Span
+                    .CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
 
-                UInt256 baseLength = new(extendedInput.Slice(0, 32), true);
+                UInt256 baseLength = new(extendedInput[..32], true);
                 UInt256 expLength = new(extendedInput.Slice(32, 32), true);
                 UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
 

@@ -140,7 +140,7 @@ namespace Nethermind.KeyStore
                     break;
                 case "pbkdf2":
                     int c = kdfParams.C.Value;
-                    var deriveBytes = new Rfc2898DeriveBytes(passBytes, salt, kdfParams.C.Value, HashAlgorithmName.SHA256);
+                    var deriveBytes = new Rfc2898DeriveBytes(passBytes, salt, c, HashAlgorithmName.SHA256);
                     derivedKey = deriveBytes.GetBytes(256);
                     break;
                 default:
@@ -157,7 +157,7 @@ namespace Nethermind.KeyStore
             byte[] decryptKey;
             if (kdf == "scrypt" && cipherType == "aes-128-cbc")
             {
-                decryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16);
+                decryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16).ToArray();
             }
             else
             {
@@ -238,7 +238,7 @@ namespace Nethermind.KeyStore
             var cipherType = _config.Cipher;
             if (kdf == "scrypt" && cipherType == "aes-128-cbc")
             {
-                encryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16);
+                encryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16).ToArray();
             }
             else
             {
@@ -297,7 +297,7 @@ namespace Nethermind.KeyStore
             {
                 var files = Directory.GetFiles(_keyStoreIOSettingsProvider.StoreDirectory, "UTC--*--*");
                 var addresses = files.Select(Path.GetFileName).Select(fn => fn.Split("--").LastOrDefault()).Where(x => Address.IsValidAddress(x, false)).Select(x => new Address(x)).ToArray();
-                return (addresses, new Result { ResultType = ResultType.Success });
+                return (addresses, Result.Success);
             }
             catch (Exception e)
             {
@@ -332,7 +332,7 @@ namespace Nethermind.KeyStore
                 var storeDirectory = _keyStoreIOSettingsProvider.StoreDirectory;
                 var path = Path.Combine(storeDirectory, keyFileName);
                 File.WriteAllText(path, serializedKey, _keyStoreEncoding);
-                return new Result { ResultType = ResultType.Success };
+                return Result.Success;
             }
             catch (Exception e)
             {
@@ -358,7 +358,7 @@ namespace Nethermind.KeyStore
                     File.Delete(file);
                 }
 
-                return new Result { ResultType = ResultType.Success };
+                return Result.Success;
             }
             catch (Exception e)
             {

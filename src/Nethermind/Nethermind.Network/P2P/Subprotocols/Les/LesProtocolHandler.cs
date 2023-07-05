@@ -76,7 +76,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             };
             Send(statusMessage);
 
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node.Address, Name, statusMessage.ToString());
             Metrics.LesStatusesSent++;
 
             CheckProtocolInitTimeout().ContinueWith(x =>
@@ -120,32 +119,32 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             {
                 case LesMessageCode.Status:
                     StatusMessage statusMessage = Deserialize<StatusMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, statusMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, statusMessage.ToString(), size);
                     Handle(statusMessage);
                     break;
                 case LesMessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockHeadersMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockHeadersMessage.ToString(), size);
                     Handle(getBlockHeadersMessage);
                     break;
                 case LesMessageCode.GetBlockBodies:
                     GetBlockBodiesMessage getBlockBodiesMessage = Deserialize<GetBlockBodiesMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockBodiesMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockBodiesMessage.ToString(), size);
                     Handle(getBlockBodiesMessage);
                     break;
                 case LesMessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getReceiptsMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getReceiptsMessage.ToString(), size);
                     Handle(getReceiptsMessage);
                     break;
                 case LesMessageCode.GetContractCodes:
                     GetContractCodesMessage getContractCodesMessage = Deserialize<GetContractCodesMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getContractCodesMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getContractCodesMessage.ToString(), size);
                     Handle(getContractCodesMessage);
                     break;
                 case LesMessageCode.GetHelperTrieProofs:
                     GetHelperTrieProofsMessage getHelperTrieProofsMessage = Deserialize<GetHelperTrieProofsMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getHelperTrieProofsMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getHelperTrieProofsMessage.ToString(), size);
                     Handle(getHelperTrieProofsMessage);
                     break;
             }
@@ -257,7 +256,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             // todo - enum?
             if (request.AuxiliaryData == 1)
             {
-                auxData.Add(cht.RootHash.Bytes);
+                auxData.Add(cht.RootHash.BytesToArray());
                 return;
             }
             else if (request.AuxiliaryData == 2)

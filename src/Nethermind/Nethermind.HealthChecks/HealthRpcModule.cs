@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.HealthChecks
@@ -10,8 +10,9 @@ namespace Nethermind.HealthChecks
     public class NodeStatusResult
     {
         public bool Healthy { get; set; }
-
-        public string[] Messages { get; set; }
+        public IEnumerable<string> Messages { get; set; }
+        public IEnumerable<string> Errors { get; set; }
+        public bool IsSyncing { get; set; }
     }
 
     public class HealthRpcModule : IHealthRpcModule
@@ -26,8 +27,14 @@ namespace Nethermind.HealthChecks
         public ResultWrapper<NodeStatusResult> health_nodeStatus()
         {
             CheckHealthResult checkHealthResult = _nodeHealthService.CheckHealth();
-            string[] messages = checkHealthResult.Messages.Select(x => x.Message).ToArray();
-            NodeStatusResult result = new() { Healthy = checkHealthResult.Healthy, Messages = messages };
+            IEnumerable<string> messages = checkHealthResult.Messages.Select(x => x.Message);
+            NodeStatusResult result = new()
+            {
+                Healthy = checkHealthResult.Healthy,
+                Errors = checkHealthResult.Errors,
+                Messages = messages,
+                IsSyncing = checkHealthResult.IsSyncing
+            };
             return ResultWrapper<NodeStatusResult>.Success(result);
         }
     }

@@ -127,7 +127,7 @@ public static class Program
 
             if (directory.Value > TargetSize)
             {
-                yield return new List<string>(){ dirName };
+                yield return new List<string>() { dirName };
                 continue;
             }
 
@@ -209,7 +209,7 @@ public static class Program
         fileContent.WriteLine("          ref: master");
         fileContent.WriteLine("          path: hive");
         fileContent.WriteLine("      - name: Patch Hive Dockerfile");
-        fileContent.WriteLine("        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile");
+        fileContent.WriteLine("        run: sed -i 's#FROM $baseimage:$tag#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile");
         fileContent.WriteLine("      - name: Build Hive");
         fileContent.WriteLine("        working-directory: hive");
         fileContent.WriteLine("        run: go build .");

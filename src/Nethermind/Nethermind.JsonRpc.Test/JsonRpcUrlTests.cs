@@ -17,10 +17,10 @@ namespace Nethermind.JsonRpc.Test
         public void Parse_success(string packedUrlValue, string expectedScheme, string expectedHost, int expectedPort, RpcEndpoint expectedRpcEndpoint, string[] expectedEnabledModules)
         {
             JsonRpcUrl url = JsonRpcUrl.Parse(packedUrlValue);
-            Assert.AreEqual(expectedScheme, url.Scheme);
-            Assert.AreEqual(expectedHost, url.Host);
-            Assert.AreEqual(expectedPort, url.Port);
-            Assert.AreEqual(expectedRpcEndpoint, url.RpcEndpoint);
+            Assert.That(url.Scheme, Is.EqualTo(expectedScheme));
+            Assert.That(url.Host, Is.EqualTo(expectedHost));
+            Assert.That(url.Port, Is.EqualTo(expectedPort));
+            Assert.That(url.RpcEndpoint, Is.EqualTo(expectedRpcEndpoint));
             CollectionAssert.AreEqual(expectedEnabledModules, url.EnabledModules, StringComparer.InvariantCultureIgnoreCase);
         }
 

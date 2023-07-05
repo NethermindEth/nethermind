@@ -26,8 +26,11 @@ namespace Nethermind.Db
         public long PersistenceInterval { get; set; } = 8192;
         public long FullPruningThresholdMb { get; set; } = 256000;
         public FullPruningTrigger FullPruningTrigger { get; set; } = FullPruningTrigger.Manual;
-        public int FullPruningMaxDegreeOfParallelism { get; set; } = 0;
+        public int FullPruningMaxDegreeOfParallelism { get; set; }
+        public int FullPruningMemoryBudgetMb { get; set; } = 4000;
+        public bool FullPruningDisableLowPriorityWrites { get; set; } = false;
         public int FullPruningMinimumDelayHours { get; set; } = 240;
         public FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; } = FullPruningCompletionBehavior.None;
+        public bool AvailableSpaceCheckEnabled { get; set; } = true;
     }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -169,7 +170,10 @@ namespace Nethermind.AuRa.Test.Contract
 
             await Task.Delay(10); // delay for refresh from contract as its async
 
-            testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(TestItem.AddressA, TestItem.AddressB);
+            Assert.That(
+                () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).ToList(),
+                Is.EquivalentTo(new ArrayList() { TestItem.AddressA, TestItem.AddressB }).After(1000, 100)
+                );
         }
 
         [Test]
@@ -225,6 +229,11 @@ namespace Nethermind.AuRa.Test.Contract
             testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
 
             await Task.Delay(10); // delay for refresh from contract as its async
+
+            Assert.That(
+                () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Count(),
+                Is.EqualTo(3).After(1000, 100)
+            );
 
             testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(new[]
             {

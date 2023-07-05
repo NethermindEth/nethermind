@@ -26,8 +26,8 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 /// <summary>
 /// Provides an execution payload handler as defined in Engine API
-/// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_newpayloadv2">
-/// Shanghai</see> specification.
+/// <a href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_newpayloadv2">
+/// Shanghai</a> specification.
 /// </summary>
 public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>
 {
@@ -42,7 +42,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly ILogger _logger;
-    private readonly LruCache<KeccakKey, bool>? _latestBlocks;
+    private readonly LruCache<ValueKeccak, bool>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
 
@@ -87,7 +87,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        string requestStr = $"a new payload: {request}";
+        string requestStr = $"new block:  {request}";
         if (_logger.IsInfo) { _logger.Info($"Received {requestStr}"); }
 
         if (!request.TryGetBlock(out Block? block, _poSSwitcher.FinalTotalDifficulty))
@@ -105,11 +105,17 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Keccak? lastValidHash))
         {
-            if (_logger.IsInfo) _logger.Info($"Invalid - block {request} is known to be a part of an invalid chain.");
+            if (_logger.IsInfo) _logger.Info($"Invalid - block {request} is known to be a part of an invalid chain. The last valid is {lastValidHash}");
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
         }
 
-        if (block.Header.Number <= _syncConfig.PivotNumberParsed)
+        // Imagine that node was on block X and later node was offline.
+        // Now user download new Nethermind release with sync pivot X+100 and start the node.
+        // Without hasNeverBeenInSync check user won't be able to catch up with the chain,
+        // because blocks would be ignored with this check:
+        // block.Header.Number <= _syncConfig.PivotNumberParsed
+        bool hasNeverBeenInSync = (_blockTree.Head?.Number ?? 0) == 0;
+        if (hasNeverBeenInSync && block.Header.Number <= _syncConfig.PivotNumberParsed)
         {
             if (_logger.IsInfo) _logger.Info($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
             return NewPayloadV1Result.Syncing;
@@ -136,7 +142,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
         if (_blockTree.IsOnMainChainBehindOrEqualHead(block))
         {
-            if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.FullHashAndNumber)} found in main chain.");
+            if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
             return NewPayloadV1Result.Valid(block.Hash);
         }
 
@@ -203,7 +209,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return NewPayloadV1Result.Syncing;
         }
 
-        if (_logger.IsInfo) _logger.Info($"Valid. Result of {requestStr}.");
+        if (_logger.IsDebug) _logger.Debug($"Valid. Result of {requestStr}.");
         return NewPayloadV1Result.Valid(block.Hash);
     }
 

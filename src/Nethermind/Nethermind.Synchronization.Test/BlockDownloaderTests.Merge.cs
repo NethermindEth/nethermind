@@ -276,7 +276,7 @@ public partial class BlockDownloaderTests
 
         CancellationTokenSource cts = new CancellationTokenSource();
 
-        Task ignored = ctx.BlockDownloader.Start(cts.Token);
+        Task ignored = ctx.Dispatcher.Start(cts.Token);
         await Task.Delay(TimeSpan.FromMilliseconds(100));
 
         // Feed should activate and allocate the first peer
@@ -329,8 +329,6 @@ public partial class BlockDownloaderTests
 
         ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(64, BlockTreeLookupOptions.None));
 
-        BlockDownloader downloader = ctx.BlockDownloader;
-
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 34000000);
         PeerInfo peerInfo = new(syncPeer);
 
@@ -349,12 +347,14 @@ public partial class BlockDownloaderTests
         ctx.Feed.Activate();
 
         CancellationTokenSource cts = new();
-        downloader.Start(cts.Token);
-        await Task.Delay(TimeSpan.FromMilliseconds(1000));
+        ctx.Dispatcher.Start(cts.Token);
+
+        Assert.That(
+            () => ctx.BlockTree.BestKnownNumber,
+            Is.EqualTo(96).After(3000, 100)
+        );
 
         cts.Cancel();
-
-        ctx.BlockTree.BestKnownNumber.Should().Be(96);
     }
 
     [TestCase(DownloaderOptions.WithReceipts)]
@@ -486,5 +486,10 @@ public partial class BlockDownloaderTests
                     LimboLogs.Instance);
             }
         }
+
+        private IPeerAllocationStrategyFactory<BlocksRequest>? _peerAllocationStrategy;
+        protected override IPeerAllocationStrategyFactory<BlocksRequest> PeerAllocationStrategy =>
+            _peerAllocationStrategy ??= new MergeBlocksSyncPeerAllocationStrategyFactory(PosSwitcher, BeaconPivot, LimboLogs.Instance);
+
     }
 }

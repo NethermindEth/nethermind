@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie
@@ -13,6 +14,11 @@ namespace Nethermind.Trie
         private static readonly byte PathPointerOdd = 0xfe;
 
         public static Nibble[] FromBytes(params byte[] bytes)
+        {
+            return FromBytes(bytes.AsSpan());
+        }
+
+        public static Nibble[] FromBytes(ReadOnlySpan<byte> bytes)
         {
             Nibble[] nibbles = new Nibble[2 * bytes.Length];
             for (int i = 0; i < bytes.Length; i++)
@@ -24,13 +30,24 @@ namespace Nethermind.Trie
             return nibbles;
         }
 
-        public static void BytesToNibbleBytes(Span<byte> bytes, Span<byte> nibbles)
+        public static void BytesToNibbleBytes(ReadOnlySpan<byte> bytes, Span<byte> nibbles)
         {
-            Debug.Assert(nibbles.Length == 2 * bytes.Length);
+            if (nibbles.Length != 2 * bytes.Length)
+            {
+                ThrowArgumentException();
+            }
+
             for (int i = 0; i < bytes.Length; i++)
             {
                 nibbles[i * 2] = (byte)((bytes[i] & 240) >> 4);
                 nibbles[i * 2 + 1] = (byte)(bytes[i] & 15);
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowArgumentException()
+            {
+                throw new ArgumentException("Nibbles length must be twice the bytes length");
             }
         }
 

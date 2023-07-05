@@ -20,7 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             Bodies = new BlockBody[blocks.Length];
             for (int i = 0; i < blocks.Length; i++)
             {
-                Bodies[i] = blocks[i] is null ? null : blocks[i].Body;
+                Bodies[i] = blocks[i]?.Body;
             }
         }
 
@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             Bodies = bodies;
         }
 
-        public BlockBody[] Bodies { get; set; }
+        public BlockBody?[] Bodies { get; set; }
 
         public override string ToString() => $"{nameof(BlockBodiesMessage)}({Bodies?.Length ?? 0})";
     }

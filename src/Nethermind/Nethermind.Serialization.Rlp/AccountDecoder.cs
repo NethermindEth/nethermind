@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -53,8 +52,12 @@ namespace Nethermind.Serialization.Rlp
             UInt256 balance = rlpStream.DecodeUInt256();
             Keccak storageRoot = DecodeStorageRoot(rlpStream);
             Keccak codeHash = DecodeCodeHash(rlpStream);
-            Account account = new(nonce, balance, storageRoot, codeHash);
-            return account;
+            if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
+            {
+                return new(nonce, balance);
+            }
+
+            return new(nonce, balance, storageRoot, codeHash);
         }
 
         public void Encode(RlpStream stream, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -85,10 +88,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(Account account, RlpStream rlpStream, int? contentLength = null)
         {
-            if (contentLength is null)
-            {
-                contentLength = GetContentLength(account);
-            }
+            contentLength ??= GetContentLength(account);
 
             rlpStream.StartSequence(contentLength.Value);
             rlpStream.Encode(account.Nonce);
@@ -173,7 +173,7 @@ namespace Nethermind.Serialization.Rlp
 
         private Keccak DecodeStorageRoot(RlpStream rlpStream)
         {
-            Keccak storageRoot = null;
+            Keccak storageRoot;
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();
@@ -189,7 +189,7 @@ namespace Nethermind.Serialization.Rlp
 
         private Keccak DecodeCodeHash(RlpStream rlpStream)
         {
-            Keccak codeHash = null;
+            Keccak codeHash;
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();

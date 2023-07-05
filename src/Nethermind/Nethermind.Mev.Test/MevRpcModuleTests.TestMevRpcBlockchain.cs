@@ -205,7 +205,6 @@ namespace Nethermind.Mev.Test
                     NoBlockRewards.Instance,
                     new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
-                    Storage,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
                     LogManager);
@@ -268,8 +267,9 @@ namespace Nethermind.Mev.Test
                     RevertingTxHashes = revertingTxHashes
                 };
                 ResultWrapper<bool> resultOfBundle = MevRpcModule.eth_sendBundle(mevBundleRpc);
-                resultOfBundle.GetResult().ResultType.Should().NotBe(ResultType.Failure);
-                resultOfBundle.GetData().Should().Be(true);
+
+                resultOfBundle.Result.Should().NotBe(Result.Success);
+                resultOfBundle.Data.Should().Be(true);
                 return new MevBundle(blockNumber, txs);
             }
         }

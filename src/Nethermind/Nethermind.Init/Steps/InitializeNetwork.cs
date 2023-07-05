@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -23,7 +24,6 @@ using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Dns;
 using Nethermind.Network.Enr;
-using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
@@ -39,6 +39,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.TxPool;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Steps;
@@ -132,6 +133,9 @@ public class InitializeNetwork : IStep
         }
 
         _api.SyncModeSelector ??= CreateMultiSyncModeSelector(syncProgressResolver);
+        _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
+
+        _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree!, _api.ReceiptStorage!, _syncConfig, _api.SyncModeSelector, _api.LogManager);
         _api.DisposeStack.Push(_api.SyncModeSelector);
 
         _api.Pivot ??= new Pivot(_syncConfig);
@@ -140,7 +144,8 @@ public class InitializeNetwork : IStep
         {
             SyncReport syncReport = new(_api.SyncPeerPool!, _api.NodeStatsManager!, _api.SyncModeSelector, _syncConfig, _api.Pivot, _api.LogManager);
 
-            _api.BlockDownloaderFactory ??= new BlockDownloaderFactory(_api.SpecProvider!,
+            _api.BlockDownloaderFactory ??= new BlockDownloaderFactory(
+                _api.SpecProvider!,
                 _api.BlockTree!,
                 _api.ReceiptStorage!,
                 _api.BlockValidator!,
@@ -204,10 +209,10 @@ public class InitializeNetwork : IStep
 
         bool stateSyncFinished = _api.SyncProgressResolver.FindBestFullState() != 0;
 
-        if (_syncConfig.SnapSync || stateSyncFinished)
+        if (_syncConfig.SnapSync || stateSyncFinished || !_syncConfig.FastSync)
         {
             // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
-            // no longer available). Eth67 should be added if snap is enabled OR sync is finished
+            // no longer available). Eth67 should be added if snap is enabled OR sync is finished OR in archive nodes (no state sync)
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
         }
@@ -485,7 +490,10 @@ public class InitializeNetwork : IStep
         _api.RlpxPeer = new RlpxHost(
             _api.MessageSerializationService,
             _api.NodeKey.PublicKey,
+            _networkConfig.ProcessingThreadCount,
             _networkConfig.P2PPort,
+            _networkConfig.LocalIp,
+            _networkConfig.ConnectTimeoutMs,
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
             _api.DisconnectsAnalyzer,
@@ -524,7 +532,8 @@ public class InitializeNetwork : IStep
             peerStorage,
             forkInfo,
             _api.GossipPolicy,
-            _api.LogManager);
+            _api.LogManager,
+            _api.TxGossipPolicy);
 
         if (_syncConfig.WitnessProtocolEnabled)
         {
@@ -550,9 +559,7 @@ public class InitializeNetwork : IStep
 
         string chainName = BlockchainIds.GetBlockchainName(_api.ChainSpec!.NetworkId).ToLowerInvariant();
         string domain = _networkConfig.DiscoveryDns ?? $"all.{chainName}.ethdisco.net";
-#pragma warning disable CS4014
-        enrDiscovery.SearchTree(domain).ContinueWith(t =>
-#pragma warning restore CS4014
+        _ = enrDiscovery.SearchTree(domain).ContinueWith(t =>
         {
             if (t.IsFaulted)
             {

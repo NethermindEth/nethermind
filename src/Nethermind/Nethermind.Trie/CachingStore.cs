@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie
@@ -36,25 +34,41 @@ namespace Nethermind.Trie
         {
             get
             {
-                if (!_cache.TryGet(key, out byte[] value))
-                {
-                    value = _wrappedStore[key];
-                    _cache.Set(key, value);
-                }
-                else
-                {
-                    // TODO: a hack assuming that we cache only one thing, accepted unanimously by Lukasz, Marek, and Tomasz
-                    Pruning.Metrics.LoadedFromRlpCacheNodesCount++;
-                }
-
-                return value;
+                return Get(key);
             }
             set
             {
-                _cache.Set(key, value);
-                _wrappedStore[key] = value;
+                Set(key, value);
             }
         }
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            if ((flags & ReadFlags.HintCacheMiss) == ReadFlags.HintCacheMiss)
+            {
+                return _wrappedStore.Get(key, flags);
+            }
+
+            if (!_cache.TryGet(key, out byte[] value))
+            {
+                value = _wrappedStore.Get(key, flags);
+                _cache.Set(key, value);
+            }
+            else
+            {
+                // TODO: a hack assuming that we cache only one thing, accepted unanimously by Lukasz, Marek, and Tomasz
+                Pruning.Metrics.LoadedFromRlpCacheNodesCount++;
+            }
+
+            return value;
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            _cache.Set(key, value);
+            _wrappedStore.Set(key, value, flags);
+        }
+
 
         public IBatch StartBatch() => _wrappedStore.StartBatch();
 

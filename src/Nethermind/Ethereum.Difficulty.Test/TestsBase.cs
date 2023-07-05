@@ -87,7 +87,7 @@ namespace Ethereum.Difficulty.Test
                 test.CurrentBlockNumber,
                 test.ParentHasUncles);
 
-            Assert.AreEqual(test.CurrentDifficulty, difficulty, test.Name);
+            Assert.That(difficulty, Is.EqualTo(test.CurrentDifficulty), test.Name);
         }
     }
 }

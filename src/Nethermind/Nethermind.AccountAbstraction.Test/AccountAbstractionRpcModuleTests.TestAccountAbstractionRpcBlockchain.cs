@@ -191,7 +191,6 @@ namespace Nethermind.AccountAbstraction.Test
                     NoBlockRewards.Instance,
                     new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
-                    Storage,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
                     LogManager);
@@ -291,29 +290,25 @@ namespace Nethermind.AccountAbstraction.Test
             public void SendUserOperation(Address entryPoint, UserOperation userOperation)
             {
                 ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
-                resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
-                resultOfUserOperation.GetData().Should().Be(userOperation.RequestId!);
+                resultOfUserOperation.Result.Should().Be(Result.Success, resultOfUserOperation.Result.Error);
+                resultOfUserOperation.Data.Should().Be(userOperation.RequestId!);
             }
 
             public void SupportedEntryPoints()
             {
                 ResultWrapper<Address[]> resultOfEntryPoints = AccountAbstractionRpcModule.eth_supportedEntryPoints();
-                resultOfEntryPoints.GetResult().ResultType.Should()
-                    .NotBe(ResultType.Failure, resultOfEntryPoints.Result.Error);
+                resultOfEntryPoints.Result.Should().Be(Result.Success, resultOfEntryPoints.Result.Error);
                 IList<Address> entryPointContractAddresses = new List<Address>();
-                IList<string> _entryPointContractAddressesString =
-                    _accountAbstractionConfig.GetEntryPointAddresses().ToList();
-                foreach (string _addressString in _entryPointContractAddressesString)
+                IList<string> entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
+                foreach (string addressString in entryPointContractAddressesString)
                 {
-                    bool parsed = Address.TryParse(
-                        _addressString,
-                        out Address? entryPointContractAddress);
+                    Address.TryParse(addressString, out Address? entryPointContractAddress);
                     entryPointContractAddresses.Add(entryPointContractAddress!);
                 }
 
                 Address[] eps = entryPointContractAddresses.ToArray();
-                Address[] recieved_eps = (Address[])(resultOfEntryPoints.GetData()!);
-                Assert.AreEqual(eps, recieved_eps);
+                Address[] receivedEps = resultOfEntryPoints.Data;
+                Assert.That(receivedEps, Is.EqualTo(eps));
             }
         }
     }

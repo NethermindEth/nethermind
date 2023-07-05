@@ -6,6 +6,7 @@ using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -26,7 +27,7 @@ public class TransactionProcessorFeeTests
     private TestSpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
     private TransactionProcessor _transactionProcessor;
-    private IStateProvider _stateProvider;
+    private IWorldState _stateProvider;
     private OverridableReleaseSpec _spec;
 
     [SetUp]
@@ -38,15 +39,13 @@ public class TransactionProcessorFeeTests
         TrieStoreByPath trieStore = new(new MemDb(), LimboLogs.Instance);
         TrieStoreByPath storageTrieStore = new(new MemDb(), LimboLogs.Instance);
 
-        _stateProvider = new StateProvider(trieStore, storageTrieStore, new MemDb(), LimboLogs.Instance);
+        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        StorageProvider storageProvider = new(trieStore, _stateProvider, LimboLogs.Instance);
         VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine,
-            LimboLogs.Instance);
+        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
     }
 

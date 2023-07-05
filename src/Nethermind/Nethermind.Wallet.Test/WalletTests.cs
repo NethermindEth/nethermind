@@ -113,7 +113,7 @@ namespace Nethermind.Wallet.Test
         public void Has_10_dev_accounts([ValueSource(nameof(WalletTypes))] WalletType walletType)
         {
             Context ctx = _cachedWallets[walletType];
-            Assert.AreEqual((walletType == WalletType.Memory ? 10 : 3), ctx.Wallet.GetAccounts().Length);
+            Assert.That(ctx.Wallet.GetAccounts().Length, Is.EqualTo((walletType == WalletType.Memory ? 10 : 3)));
         }
 
         [Test]
@@ -130,7 +130,7 @@ namespace Nethermind.Wallet.Test
                 Assert.True(ctx.Wallet.GetAccounts().Any(a => a == key.Address), $"{i}");
             }
 
-            Assert.AreEqual(count, ctx.Wallet.GetAccounts().Length);
+            Assert.That(ctx.Wallet.GetAccounts().Length, Is.EqualTo(count));
         }
 
         [Test]
@@ -146,9 +146,9 @@ namespace Nethermind.Wallet.Test
 
                 WalletExtensions.Sign(ctx.Wallet, tx, chainId);
                 Address recovered = ecdsa.RecoverAddress(tx);
-                Assert.AreEqual(signerAddress, recovered, $"{i}");
+                Assert.That(recovered, Is.EqualTo(signerAddress), $"{i}");
                 Console.WriteLine(tx.Signature);
-                Assert.AreEqual(chainId, tx.Signature.ChainId, "chainId");
+                Assert.That(tx.Signature.ChainId, Is.EqualTo(chainId), "chainId");
             }
         }
     }

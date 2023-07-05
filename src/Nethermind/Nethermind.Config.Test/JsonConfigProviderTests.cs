@@ -43,7 +43,7 @@ namespace Nethermind.Config.Test
         {
             IConfig config = Activator.CreateInstance(type) as IConfig ?? throw new Exception("type is not IConfig");
             T actual = config.GetDefaultValue<T>(propName);
-            Assert.AreEqual(expected, actual);
+            Assert.That(actual, Is.EqualTo(expected));
         }
 
         [Test]
@@ -59,10 +59,10 @@ namespace Nethermind.Config.Test
             IDiscoveryConfig? networkConfig = _configProvider.GetConfig<IDiscoveryConfig>();
             IJsonRpcConfig? jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();
 
-            Assert.AreEqual(100, keystoreConfig.KdfparamsDklen);
-            Assert.AreEqual("test", keystoreConfig.Cipher);
+            Assert.That(keystoreConfig.KdfparamsDklen, Is.EqualTo(100));
+            Assert.That(keystoreConfig.Cipher, Is.EqualTo("test"));
 
-            Assert.AreEqual(2, jsonRpcConfig.EnabledModules.Count());
+            Assert.That(jsonRpcConfig.EnabledModules.Count(), Is.EqualTo(2));
 
             void CheckIfEnabled(string x)
             {
@@ -71,13 +71,13 @@ namespace Nethermind.Config.Test
 
             new[] { ModuleType.Eth, ModuleType.Debug }.ForEach(CheckIfEnabled);
 
-            Assert.AreEqual(4, networkConfig.Concurrency);
+            Assert.That(networkConfig.Concurrency, Is.EqualTo(4));
         }
 
         [Test]
         public void Can_load_raw_value()
         {
-            Assert.AreEqual("100", _configProvider.GetRawValue("KeyStoreConfig", "KdfparamsDklen"));
+            Assert.That(_configProvider.GetRawValue("KeyStoreConfig", "KdfparamsDklen"), Is.EqualTo("100"));
         }
     }
 }

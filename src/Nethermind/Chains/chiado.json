@@ -10,7 +10,7 @@
         "validators": {
           "multi": {
             "0": {
-              "list": ["0x14747a698Ec1227e6753026C08B29b4d5D3bC484"]
+              "list": [ "0x14747a698Ec1227e6753026C08B29b4d5D3bC484" ]
             },
             "67334": {
               "list": [
@@ -30,6 +30,7 @@
         "randomnessContractAddress": {
           "0": "0x3000000000000000000000000000000000000001"
         },
+        "withdrawalContractAddress": "0xb97036A26259B7147018913bD58a774cf91acf25",
         "twoThirdsMajorityTransition": 0,
         "posdaoTransition": 0,
         "blockGasLimitContractTransitions": {
@@ -42,6 +43,8 @@
     "networkID": 10200,
     "gasLimitBoundDivisor": "0x400",
     "maximumExtraDataSize": "0x20",
+    "maxCodeSize": "0x6000",
+    "maxCodeSizeTransitionTimestamp": "0x646e0e4c",
     "minGasLimit": "0x1388",
     "eip140Transition": "0x0",
     "eip211Transition": "0x0",
@@ -61,6 +64,10 @@
     "eip3529Transition": "0x0",
     "eip3541Transition": "0x0",
     "eip1559Transition": "0x0",
+    "eip3651TransitionTimestamp": "0x646e0e4c",
+    "eip3855TransitionTimestamp": "0x646e0e4c",
+    "eip3860TransitionTimestamp": "0x646e0e4c",
+    "eip4895TransitionTimestamp": "0x646e0e4c",
     "eip1559BaseFeeMaxChangeDenominator": "0x8",
     "eip1559ElasticityMultiplier": "0x2",
     "eip1559FeeCollector": "0x1559000000000000000000000000000000000000",

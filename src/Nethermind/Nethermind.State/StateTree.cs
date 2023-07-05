@@ -35,7 +35,7 @@ namespace Nethermind.State
             {
                 UInt256 index = (UInt256)i;
                 index.ToBigEndian(buffer);
-                Cache[index] = Keccak.Compute(buffer).Bytes;
+                Cache[index] = Keccak.Compute(buffer).BytesToArray();
             }
         }
 
@@ -77,7 +77,7 @@ namespace Nethermind.State
         }
 
         [DebuggerStepThrough]
-        public Rlp? Set(Keccak keccak, Account? account)
+        public Rlp? Set(in ValueKeccak keccak, Account? account)
         {
             Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
 

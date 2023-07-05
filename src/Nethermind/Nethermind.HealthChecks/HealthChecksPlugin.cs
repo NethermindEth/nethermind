@@ -14,7 +14,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
-using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.HealthChecks
 {
@@ -53,7 +53,12 @@ namespace Nethermind.HealthChecks
         public bool MustInitialize => true;
 
         public FreeDiskSpaceChecker FreeDiskSpaceChecker => LazyInitializer.EnsureInitialized(ref _freeDiskSpaceChecker,
-            () => new FreeDiskSpaceChecker(_healthChecksConfig, _logger, _api.FileSystem.GetDriveInfos(_initConfig.BaseDbPath), _api.TimerFactory));
+            () => new FreeDiskSpaceChecker(
+                _healthChecksConfig,
+                _api.FileSystem.GetDriveInfos(_initConfig.BaseDbPath),
+                _api.TimerFactory,
+                _api.ProcessExit,
+                _logger));
 
         public Task Init(INethermindApi api)
         {
@@ -206,7 +211,9 @@ namespace Nethermind.HealthChecks
             {
                 if (!_nodeHealthService.CheckClAlive())
                 {
-                    if (_logger.IsWarn) _logger.Warn("No incoming messages from Consensus Client. Please make sure that it's working properly");
+                    if (_logger.IsWarn)
+                        _logger.Warn(
+                            "No incoming messages from Consensus Client. Consensus Client is required to sync the node. Please make sure that it's working properly.");
                 }
             }
         }

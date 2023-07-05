@@ -17,7 +17,6 @@ using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -76,7 +75,7 @@ namespace Ethereum.Test.Base
             }
         }
 
-        protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null)
+        protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true)
         {
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
@@ -85,12 +84,12 @@ namespace Ethereum.Test.Base
             IDb codeDb = new MemDb();
 
             ISpecProvider specProvider;
-            if (test.NetworkAfterTransition != null)
+            if (test.NetworkAfterTransition is not null)
             {
                 specProvider = new CustomSpecProvider(
                     ((ForkActivation)0, Frontier.Instance),
                     ((ForkActivation)1, test.Network),
-                    ((ForkActivation)test.TransitionBlockNumber, test.NetworkAfterTransition));
+                    (test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
             }
             else
             {
@@ -104,17 +103,31 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
-            bool isNetworkAfterTransitionLondon = test.NetworkAfterTransition == London.Instance;
-            HeaderDecoder.Eip1559TransitionBlock = isNetworkAfterTransitionLondon ? test.TransitionBlockNumber : long.MaxValue;
-
             DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
+            bool isPostMerge = test.Network != London.Instance &&
+                               test.Network != Berlin.Instance &&
+                               test.Network != MuirGlacier.Instance &&
+                               test.Network != Istanbul.Instance &&
+                               test.Network != ConstantinopleFix.Instance &&
+                               test.Network != Constantinople.Instance &&
+                               test.Network != Byzantium.Instance &&
+                               test.Network != SpuriousDragon.Instance &&
+                               test.Network != TangerineWhistle.Instance &&
+                               test.Network != Dao.Instance &&
+                               test.Network != Homestead.Instance &&
+                               test.Network != Frontier.Instance &&
+                               test.Network != Olympic.Instance;
+            if (isPostMerge)
+            {
+                rewardCalculator = NoBlockRewards.Instance;
+                specProvider.UpdateMergeTransitionInfo(0, 0);
+            }
 
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
 
             TrieStore trieStore = new(stateDb, _logManager);
-            TrieStore storageTrieStore = new(stateDb, _logManager);
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, _logManager);
+            IWorldState stateProvider = new WorldState(trieStore, codeDb, _logManager);
             MemDb blockInfoDb = new MemDb();
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, _logManager);
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
@@ -128,7 +141,6 @@ namespace Ethereum.Test.Base
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
-            IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
                 specProvider,
@@ -142,12 +154,10 @@ namespace Ethereum.Test.Base
                     new TransactionProcessor(
                         specProvider,
                         stateProvider,
-                        storageProvider,
                         virtualMachine,
                         _logManager),
                     stateProvider),
                 stateProvider,
-                storageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 _logManager);
@@ -160,50 +170,10 @@ namespace Ethereum.Test.Base
                 _logManager,
                 BlockchainProcessor.Options.NoReceipts);
 
-            InitializeTestState(test, stateProvider, storageProvider, specProvider);
+            InitializeTestState(test, stateProvider, specProvider);
 
-            List<(Block Block, string ExpectedException)> correctRlp = new();
-            for (int i = 0; i < test.Blocks.Length; i++)
-            {
-                try
-                {
-                    TestBlockJson testBlockJson = test.Blocks[i];
-                    var rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpStream();
-                    Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
-                    suggestedBlock.Header.SealEngineType = test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
-
-                    Assert.AreEqual(new Keccak(testBlockJson.BlockHeader.Hash), suggestedBlock.Header.Hash, "hash of the block");
-                    for (int uncleIndex = 0; uncleIndex < suggestedBlock.Uncles.Length; uncleIndex++)
-                    {
-                        Assert.AreEqual(new Keccak(testBlockJson.UncleHeaders[uncleIndex].Hash), suggestedBlock.Uncles[uncleIndex].Hash, "hash of the uncle");
-                    }
-
-                    correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
-                }
-                catch (Exception)
-                {
-                    _logger?.Info($"Invalid RLP ({i})");
-                }
-            }
-
-            if (correctRlp.Count == 0)
-            {
-                EthereumTestResult result;
-                if (test.GenesisBlockHeader is null)
-                {
-                    result = new EthereumTestResult(test.Name, "Genesis block header missing in the test spec.");
-                }
-                else if (!new Keccak(test.GenesisBlockHeader.Hash).Equals(test.LastBlockHash))
-                {
-                    result = new EthereumTestResult(test.Name, "Genesis hash mismatch");
-                }
-                else
-                {
-                    result = new EthereumTestResult(test.Name, null, true);
-                }
-
-                return result;
-            }
+            stopwatch?.Start();
+            List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
 
             if (test.GenesisRlp == null)
             {
@@ -211,14 +181,14 @@ namespace Ethereum.Test.Base
             }
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
-            Assert.AreEqual(new Keccak(test.GenesisBlockHeader.Hash), genesisBlock.Header.Hash, "genesis header hash");
+            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Keccak(test.GenesisBlockHeader.Hash)));
 
             ManualResetEvent genesisProcessed = new(false);
             blockTree.NewHeadBlock += (_, args) =>
             {
                 if (args.Block.Number == 0)
                 {
-                    Assert.AreEqual(genesisBlock.Header.StateRoot, stateProvider.StateRoot, "genesis state root");
+                    Assert.That(stateProvider.StateRoot, Is.EqualTo(genesisBlock.Header.StateRoot));
                     genesisProcessed.Set();
                 }
             };
@@ -227,50 +197,46 @@ namespace Ethereum.Test.Base
             blockTree.SuggestBlock(genesisBlock);
 
             genesisProcessed.WaitOne();
-
             for (int i = 0; i < correctRlp.Count; i++)
             {
-                stopwatch?.Start();
+                if (correctRlp[i].Block.Hash is null)
+                {
+                    Assert.Fail($"null hash in {test.Name} block {i}");
+                }
+
                 try
                 {
-                    if (correctRlp[i].ExpectedException != null)
-                    {
-                        _logger.Info($"Expecting block exception: {correctRlp[i].ExpectedException}");
-                    }
-
-                    if (correctRlp[i].Block.Hash == null)
-                    {
-                        throw new Exception($"null hash in {test.Name} block {i}");
-                    }
-
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
+                    correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
                     if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block))
                     {
                         blockTree.SuggestBlock(correctRlp[i].Block);
                     }
                     else
                     {
-                        Console.WriteLine("Invalid block");
+                        if (correctRlp[i].ExpectedException is not null)
+                        {
+                            Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}");
+                        }
                     }
                 }
-                catch (InvalidBlockException)
+                catch (InvalidBlockException e)
                 {
+                    if (correctRlp[i].ExpectedException is not null)
+                    {
+                        Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {e}");
+                    }
                 }
-                catch (Exception ex)
+                catch (Exception e)
                 {
-                    _logger?.Info(ex.ToString());
+                    Assert.Fail($"Unexpected exception during processing: {e}");
                 }
             }
 
             await blockchainProcessor.StopAsync(true);
             stopwatch?.Stop();
 
-            List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), storageProvider, stateProvider);
-            //            if (differences.Any())
-            //            {
-            //                BlockTrace blockTrace = blockchainProcessor.TraceBlock(blockTree.BestSuggested.Hash);
-            //                _logger.Info(new UnforgivingJsonSerializer().Serialize(blockTrace, true));
-            //            }
+            List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
 
             Assert.Zero(differences.Count, "differences");
 
@@ -282,36 +248,90 @@ namespace Ethereum.Test.Base
             );
         }
 
-        private void InitializeTestState(BlockchainTest test, IStateProvider stateProvider, IStorageProvider storageProvider, ISpecProvider specProvider)
+        private List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
+        {
+            List<(Block Block, string ExpectedException)> correctRlp = new();
+            for (int i = 0; i < test.Blocks.Length; i++)
+            {
+                TestBlockJson testBlockJson = test.Blocks[i];
+                try
+                {
+                    var rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpStream();
+                    Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
+                    suggestedBlock.Header.SealEngineType =
+                        test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
+
+                    if (testBlockJson.BlockHeader is not null)
+                    {
+                        Assert.That(suggestedBlock.Header.Hash, Is.EqualTo(new Keccak(testBlockJson.BlockHeader.Hash)));
+
+
+                        for (int uncleIndex = 0; uncleIndex < suggestedBlock.Uncles.Length; uncleIndex++)
+                        {
+                            Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Keccak(testBlockJson.UncleHeaders[uncleIndex].Hash)));
+                        }
+
+                        correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
+                    }
+                }
+                catch (Exception e)
+                {
+                    if (testBlockJson.ExpectedException is null)
+                    {
+                        string invalidRlpMessage = $"Invalid RLP ({i}) {e}";
+                        if (failOnInvalidRlp)
+                        {
+                            Assert.Fail(invalidRlpMessage);
+                        }
+                        else
+                        {
+                            // ForgedTests don't have ExpectedException and at the same time have invalid rlps
+                            // Don't fail here. If test executed incorrectly will fail at last check
+                            _logger.Warn(invalidRlpMessage);
+                        }
+                    }
+                    else
+                    {
+                        _logger.Info($"Expected invalid RLP ({i})");
+                    }
+                }
+            }
+
+            if (correctRlp.Count == 0)
+            {
+                Assert.NotNull(test.GenesisBlockHeader);
+                Assert.That(test.LastBlockHash, Is.EqualTo(new Keccak(test.GenesisBlockHeader.Hash)));
+            }
+
+            return correctRlp;
+        }
+
+        private void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in
                 ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
             {
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    storageProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
+                    stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                Keccak codeHash = stateProvider.UpdateCode(accountState.Value.Code);
-                stateProvider.UpdateCodeHash(accountState.Key, codeHash, specProvider.GenesisSpec);
+                stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
                 for (int i = 0; i < accountState.Value.Nonce; i++)
                 {
                     stateProvider.IncrementNonce(accountState.Key);
                 }
             }
 
-            storageProvider.Commit();
             stateProvider.Commit(specProvider.GenesisSpec);
 
-            storageProvider.CommitTrees(0);
             stateProvider.CommitTree(0);
 
-            storageProvider.Reset();
             stateProvider.Reset();
         }
 
-        private List<string> RunAssertions(BlockchainTest test, Block headBlock, IStorageProvider storageProvider, IStateProvider stateProvider)
+        private List<string> RunAssertions(BlockchainTest test, Block headBlock, IWorldState stateProvider)
         {
             if (test.PostStateRoot != null)
             {
@@ -380,7 +400,7 @@ namespace Ethereum.Test.Base
 
                 foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
                 {
-                    byte[] value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : storageProvider.Get(new StorageCell(acountAddress, clearedStorage.Key));
+                    byte[] value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(acountAddress, clearedStorage.Key));
                     if (!value.IsZero())
                     {
                         differences.Add($"{acountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
@@ -389,7 +409,7 @@ namespace Ethereum.Test.Base
 
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
                 {
-                    byte[] value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : storageProvider.Get(new StorageCell(acountAddress, storageItem.Key)) ?? new byte[0];
+                    byte[] value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(acountAddress, storageItem.Key)) ?? new byte[0];
                     if (!Bytes.AreEqual(storageItem.Value, value))
                     {
                         differences.Add($"{acountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");

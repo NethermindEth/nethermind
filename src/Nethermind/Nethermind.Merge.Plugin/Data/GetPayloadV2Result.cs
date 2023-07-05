@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
+using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 

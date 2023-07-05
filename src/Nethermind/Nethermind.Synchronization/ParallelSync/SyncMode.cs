@@ -23,7 +23,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         FastBlocks = 4,
         /// <summary>
-        /// A standard fast sync mode before the peers head - 32 (threshold). It happens after the fast blocks finishes to download from pivot downwards. By default the pivot for fast blocks is 0 so the fast blocks finish immediately. 
+        /// A standard fast sync mode before the peers head - 32 (threshold). It happens after the fast blocks finishes to download from pivot downwards. By default the pivot for fast blocks is 0 so the fast blocks finish immediately.
         /// </summary>
         FastSync = 8,
         /// <summary>
@@ -56,15 +56,47 @@ namespace Nethermind.Synchronization.ParallelSync
         SnapSync = 2048,
         /// <summary>
         /// Reverse download of headers from beacon pivot to genesis
-        /// </summary> 
+        /// </summary>
         BeaconHeaders = 4096,
+        /// <summary>
+        /// Waiting for Forkchoice message from Consensus Layer to update pivot block
+        /// </summary>
+        UpdatingPivot = 8192,
 
         All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad |
-              FastHeaders | FastBodies | FastReceipts | SnapSync | BeaconHeaders
+              FastHeaders | FastBodies | FastReceipts | SnapSync | BeaconHeaders | UpdatingPivot
     }
 
     public static class SyncModeExtensions
     {
-        public static bool NotSyncing(this SyncMode syncMode) => syncMode == SyncMode.WaitingForBlock || syncMode == SyncMode.Disconnected;
+        public static bool NotSyncing(this SyncMode syncMode) => syncMode is SyncMode.WaitingForBlock or SyncMode.Disconnected;
+
+        public static bool HaveNotSyncedBodiesYet(this SyncMode syncMode) =>
+            syncMode.HasFlag(SyncMode.FastHeaders) ||
+            syncMode.HasFlag(SyncMode.FastBodies) ||
+            syncMode.HasFlag(SyncMode.FastSync) ||
+            syncMode.HasFlag(SyncMode.StateNodes) ||
+            syncMode.HasFlag(SyncMode.SnapSync) ||
+            syncMode.HasFlag(SyncMode.BeaconHeaders) ||
+            syncMode.HasFlag(SyncMode.UpdatingPivot);
+
+        public static bool HaveNotSyncedReceiptsYet(this SyncMode syncMode) =>
+            syncMode.HasFlag(SyncMode.FastBlocks) ||
+            syncMode.HasFlag(SyncMode.FastSync) ||
+            syncMode.HasFlag(SyncMode.StateNodes) ||
+            syncMode.HasFlag(SyncMode.SnapSync) ||
+            syncMode.HasFlag(SyncMode.BeaconHeaders) ||
+            syncMode.HasFlag(SyncMode.UpdatingPivot);
+
+        public static bool HaveNotSyncedHeadersYet(this SyncMode syncMode) =>
+            syncMode.HasFlag(SyncMode.FastHeaders) ||
+            syncMode.HasFlag(SyncMode.BeaconHeaders) ||
+            syncMode.HasFlag(SyncMode.UpdatingPivot);
+
+        public static bool HaveNotSyncedStateYet(this SyncMode syncMode) =>
+            syncMode.HasFlag(SyncMode.FastSync) ||
+            syncMode.HasFlag(SyncMode.StateNodes) ||
+            syncMode.HasFlag(SyncMode.SnapSync) ||
+            syncMode.HasFlag(SyncMode.UpdatingPivot);
     }
 }

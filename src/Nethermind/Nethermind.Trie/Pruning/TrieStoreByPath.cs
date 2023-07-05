@@ -115,7 +115,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
+        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
         {
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
             EnsureCommitSetExistsForBlock(blockNumber);
@@ -146,7 +146,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
         {
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
             EnsureCommitSetExistsForBlock(blockNumber);
@@ -214,7 +214,7 @@ namespace Nethermind.Trie.Pruning
             return rlp;
         }
 
-        internal byte[] LoadRlp(Keccak keccak, IKeyValueStore? keyValueStore)
+        internal byte[] LoadRlp(Keccak keccak, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
         {
             keyValueStore ??= _keyValueStore;
             byte[]? rlp = _currentBatch?[keccak.Bytes] ?? keyValueStore[keccak.Bytes];
@@ -244,10 +244,24 @@ namespace Nethermind.Trie.Pruning
             return rlp;
         }
 
-        public byte[] LoadRlp(Keccak keccak) => LoadRlp(keccak, null);
+        public byte[] LoadRlp(Keccak keccak, ReadFlags flags = ReadFlags.None) => LoadRlp(keccak, null, flags);
         public byte[] LoadRlp(Span<byte> path, Keccak rootHash) => LoadRlp(path, null, rootHash);
 
         public bool IsPersisted(Keccak keccak)
+        {
+            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
+
+            if (rlp is null)
+            {
+                return false;
+            }
+
+            Metrics.LoadedFromDbNodesCount++;
+
+            return true;
+        }
+
+        public bool IsPersisted(in ValueKeccak keccak)
         {
             byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
 
@@ -575,8 +589,14 @@ namespace Nethermind.Trie.Pruning
 
         public byte[]? this[ReadOnlySpan<byte> key]
         {
-            get => _currentBatch?[key] ?? _keyValueStore[key];
+            get => Get(key);
         }
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return _currentBatch?.Get(key, flags) ?? _keyValueStore.Get(key, flags);
+        }
+
         /// <summary>
         /// This method is here to support testing.
         /// </summary>

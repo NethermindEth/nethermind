@@ -26,34 +26,26 @@ namespace Nethermind.Store.Test
             MemColumnsDb<StateColumns> memDb = new();
             IDb stateDb = memDb;
             TrieStore trieStore = new(stateDb, new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
-            TrieStoreByPath storageTrieStore = new(memDb.GetColumnDb(StateColumns.Storage), new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
-
-            StateProvider stateProvider = new(trieStore, storageTrieStore, stateDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
+            WorldState stateProvider = new(trieStore, stateDb, LimboLogs.Instance);
 
             stateProvider.CreateAccount(TestItem.AddressA, 1);
-            Keccak codeHash = stateProvider.UpdateCode(new byte[] { 1, 2, 3 });
-            stateProvider.UpdateCodeHash(TestItem.AddressA, codeHash, Istanbul.Instance);
+            stateProvider.InsertCode(TestItem.AddressA, new byte[] { 1, 2, 3 }, Istanbul.Instance);
 
             stateProvider.CreateAccount(TestItem.AddressB, 1);
-            Keccak codeHash2 = stateProvider.UpdateCode(new byte[] { 1, 2, 3, 4 });
-            stateProvider.UpdateCodeHash(TestItem.AddressB, codeHash2, Istanbul.Instance);
+            stateProvider.InsertCode(TestItem.AddressB, new byte[] { 1, 2, 3, 4 }, Istanbul.Instance);
 
             for (int i = 0; i < 1000; i++)
             {
                 StorageCell storageCell = new(TestItem.AddressA, (UInt256)i);
-                storageProvider.Set(storageCell, new byte[] { (byte)i });
+                stateProvider.Set(storageCell, new byte[] { (byte)i });
             }
 
-            storageProvider.Commit();
             stateProvider.Commit(Istanbul.Instance);
 
-            storageProvider.CommitTrees(0);
             stateProvider.CommitTree(0);
-            storageProvider.CommitTrees(1);
             stateProvider.CommitTree(1);
 
-            memDb.Delete(codeHash2); // missing code
+            memDb.Delete(Keccak.Compute(new byte[] { 1, 2, 3, 4 })); // missing code
             Keccak storageKey = new("0x345e54154080bfa9e8f20c99d7a0139773926479bc59e5b4f830ad94b6425332");
             memDb.Delete(storageKey); // deletes some storage
             trieStore.ClearCache();

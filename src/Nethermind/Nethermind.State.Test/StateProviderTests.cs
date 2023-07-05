@@ -56,12 +56,13 @@ namespace Nethermind.Store.Test
         [TestCaseSource(nameof(Variants))]
         public void Eip_158_zero_value_transfer_deletes((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider frontierProvider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
+            var trieStore = new TrieStore(new MemDb(), Logger);
+            WorldState frontierProvider = new(trieStore, _codeDb, Logger);
             frontierProvider.CreateAccount(_address1, 0);
             frontierProvider.Commit(Frontier.Instance);
             frontierProvider.CommitTree(0);
 
-            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
+            WorldState provider = new(trieStore, _codeDb, Logger);
             provider.StateRoot = frontierProvider.StateRoot;
 
             provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
@@ -74,15 +75,15 @@ namespace Nethermind.Store.Test
         [Test]
         public void Eip_158_touch_zero_value_system_account_is_not_deleted()
         {
-            TrieStoreByPath trieStore = new(new MemDb(), Logger);
-            StateProvider provider = new(trieStore, trieStore, _codeDb, Logger);
+            TrieStore trieStore = new(new MemDb(), Logger);
+            WorldState provider = new(trieStore, _codeDb, Logger);
             var systemUser = Address.SystemUser;
 
             provider.CreateAccount(systemUser, 0);
             provider.Commit(Homestead.Instance);
 
             var releaseSpec = new ReleaseSpec() { IsEip158Enabled = true };
-            provider.UpdateCodeHash(systemUser, Keccak.OfAnEmptyString, releaseSpec);
+            provider.InsertCode(systemUser, System.Text.Encoding.UTF8.GetBytes(""), releaseSpec);
             provider.Commit(releaseSpec);
 
             provider.GetAccount(systemUser).Should().NotBeNull();
@@ -92,7 +93,7 @@ namespace Nethermind.Store.Test
         [TestCaseSource(nameof(Variants))]
         public void Can_dump_state((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
+            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
@@ -105,7 +106,7 @@ namespace Nethermind.Store.Test
         [TestCaseSource(nameof(Variants))]
         public void Can_collect_stats((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
+            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
@@ -118,7 +119,7 @@ namespace Nethermind.Store.Test
         [TestCaseSource(nameof(Variants))]
         public void Can_accepts_visitors((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
+            WorldState provider = new(new TrieStore(new MemDb(), Logger), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
@@ -131,16 +132,16 @@ namespace Nethermind.Store.Test
         [TestCaseSource(nameof(Variants))]
         public void Empty_commit_restore((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
+            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.Commit(Frontier.Instance);
-            provider.Restore(-1);
+            provider.Restore(Snapshot.Empty);
         }
 
         [Test]
         [TestCaseSource(nameof(Variants))]
         public void Update_balance_on_non_existing_account_throws((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
+            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
         }
 
@@ -148,7 +149,7 @@ namespace Nethermind.Store.Test
         [TestCaseSource(nameof(Variants))]
         public void Is_empty_account((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
+            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             Assert.True(provider.IsEmptyAccount(_address1));
@@ -158,7 +159,7 @@ namespace Nethermind.Store.Test
         [TestCaseSource(nameof(Variants))]
         public void Returns_empty_byte_code_for_non_existing_accounts((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
+            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             byte[] code = provider.GetCode(TestItem.AddressA);
             code.Should().BeEmpty();
         }
@@ -167,7 +168,7 @@ namespace Nethermind.Store.Test
         [TestCaseSource(nameof(Variants))]
         public void Restore_update_restore((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
+            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -177,7 +178,7 @@ namespace Nethermind.Store.Test
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
-            provider.Restore(4);
+            provider.Restore(new Snapshot(4, Snapshot.Storage.Empty));
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -186,25 +187,25 @@ namespace Nethermind.Store.Test
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
-            provider.Restore(4);
-            Assert.AreEqual((UInt256)4, provider.GetBalance(_address1));
+            provider.Restore(new Snapshot(4, Snapshot.Storage.Empty));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)4));
         }
 
         [Test]
         [TestCaseSource(nameof(Variants))]
         public void Keep_in_cache((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
+            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             provider.GetBalance(_address1);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
-            provider.Restore(-1);
+            provider.Restore(Snapshot.Empty);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
-            provider.Restore(-1);
+            provider.Restore(Snapshot.Empty);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
-            provider.Restore(-1);
-            Assert.AreEqual(UInt256.Zero, provider.GetBalance(_address1));
+            provider.Restore(Snapshot.Empty);
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.Zero));
         }
 
         [Test]
@@ -213,39 +214,38 @@ namespace Nethermind.Store.Test
         {
             byte[] code = new byte[] { 1 };
 
-            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
+            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(_address1, 1);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.IncrementNonce(_address1);
-            Keccak codeHash = provider.UpdateCode(new byte[] { 1 });
-            provider.UpdateCodeHash(_address1, codeHash, Frontier.Instance);
+            provider.InsertCode(_address1, new byte[] { 1 }, Frontier.Instance);
             provider.UpdateStorageRoot(_address1, Hash2);
 
-            Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
-            Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
-            Assert.AreEqual(code, provider.GetCode(_address1));
-            provider.Restore(4);
-            Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
-            Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
-            Assert.AreEqual(code, provider.GetCode(_address1));
-            provider.Restore(3);
-            Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
-            Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
-            Assert.AreEqual(code, provider.GetCode(_address1));
-            provider.Restore(2);
-            Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
-            Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
-            Assert.AreEqual(new byte[0], provider.GetCode(_address1));
-            provider.Restore(1);
-            Assert.AreEqual(UInt256.Zero, provider.GetNonce(_address1));
-            Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
-            Assert.AreEqual(new byte[0], provider.GetCode(_address1));
-            provider.Restore(0);
-            Assert.AreEqual(UInt256.Zero, provider.GetNonce(_address1));
-            Assert.AreEqual(UInt256.One, provider.GetBalance(_address1));
-            Assert.AreEqual(new byte[0], provider.GetCode(_address1));
-            provider.Restore(-1);
-            Assert.AreEqual(false, provider.AccountExists(_address1));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
+            Assert.That(provider.GetCode(_address1), Is.EqualTo(code));
+            provider.Restore(new Snapshot(4, Snapshot.Storage.Empty));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
+            Assert.That(provider.GetCode(_address1), Is.EqualTo(code));
+            provider.Restore(new Snapshot(3, Snapshot.Storage.Empty));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
+            Assert.That(provider.GetCode(_address1), Is.EqualTo(code));
+            provider.Restore(new Snapshot(2, Snapshot.Storage.Empty));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
+            Assert.That(provider.GetCode(_address1), Is.EqualTo(new byte[0]));
+            provider.Restore(new Snapshot(1, Snapshot.Storage.Empty));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.Zero));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
+            Assert.That(provider.GetCode(_address1), Is.EqualTo(new byte[0]));
+            provider.Restore(new Snapshot(0, Snapshot.Storage.Empty));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.Zero));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One));
+            Assert.That(provider.GetCode(_address1), Is.EqualTo(new byte[0]));
+            provider.Restore(new Snapshot(-1, Snapshot.Storage.Empty));
+            Assert.That(provider.AccountExists(_address1), Is.EqualTo(false));
         }
 
         [Test(Description = "It was failing before as touch was marking the accounts as committed but not adding to trace list")]
@@ -254,7 +254,7 @@ namespace Nethermind.Store.Test
         {
             ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
 
-            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
+            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
             Account account = provider.GetAccount(_address1);
             Assert.True(account.IsEmpty);
@@ -272,7 +272,7 @@ namespace Nethermind.Store.Test
         [TestCaseSource(nameof(Variants))]
         public void Does_not_require_recalculation_after_reset((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
-            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, _codeDb, Logger);
+            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.CreateAccount(TestItem.AddressA, 5);
 
             Action action = () => { _ = provider.StateRoot; };

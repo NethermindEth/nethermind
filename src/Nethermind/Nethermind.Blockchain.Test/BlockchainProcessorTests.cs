@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -230,7 +231,7 @@ namespace Nethermind.Blockchain.Test
             public ProcessingTestContext IsProcessingBlocks(bool expectedIsProcessingBlocks, ulong maxInterval)
             {
                 bool actual = _processor.IsProcessingBlocks(maxInterval);
-                Assert.AreEqual(expectedIsProcessingBlocks, actual);
+                Assert.That(actual, Is.EqualTo(expectedIsProcessingBlocks));
                 return this;
             }
 
@@ -288,7 +289,7 @@ namespace Nethermind.Blockchain.Test
                 _blockProcessor.AllowToFail(block.Hash);
                 processedEvent.WaitOne(ProcessingWait);
                 Assert.True(wasProcessed, $"Block was never processed {block.ToString(Block.Format.Short)}");
-                Assert.AreEqual(_headBefore, _blockTree.Head?.Hash, $"Processing did not fail - {block.ToString(Block.Format.Short)} became a new head block");
+                Assert.That(_blockTree.Head?.Hash, Is.EqualTo(_headBefore), $"Processing did not fail - {block.ToString(Block.Format.Short)} became a new head block");
                 _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to fail processing");
                 return new AfterBlock(_logManager, this, block);
             }
@@ -348,7 +349,7 @@ namespace Nethermind.Blockchain.Test
             public ProcessingTestContext CountIs(int expectedCount)
             {
                 var count = ((IBlockProcessingQueue)_processor).Count;
-                Assert.AreEqual(count, expectedCount);
+                Assert.That(expectedCount, Is.EqualTo(count));
                 return this;
             }
 
@@ -382,7 +383,7 @@ namespace Nethermind.Blockchain.Test
             public ProcessingTestContext QueueIsEmpty(int count)
             {
                 _queueEmptyResetEvent.WaitOne(ProcessingWait);
-                Assert.AreEqual(count, _processingQueueEmptyFired, $"Processing queue fired {_processingQueueEmptyFired} times.");
+                Assert.That(_processingQueueEmptyFired, Is.EqualTo(count), $"Processing queue fired {_processingQueueEmptyFired} times.");
                 return this;
             }
 
@@ -405,7 +406,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to become genesis block");
                     _processingTestContext._resetEvent.WaitOne(ProcessingWait);
-                    Assert.AreEqual(_block.Header.Hash, _processingTestContext._blockTree.Genesis.Hash, "genesis");
+                    Assert.That(_processingTestContext._blockTree.Genesis.Hash, Is.EqualTo(_block.Header.Hash), "genesis");
                     return _processingTestContext;
                 }
 
@@ -421,7 +422,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to be ignored");
                     _processingTestContext._resetEvent.WaitOne(IgnoreWait);
-                    Assert.AreEqual(_processingTestContext._headBefore, _processingTestContext._blockTree.Head.Hash, "head");
+                    Assert.That(_processingTestContext._blockTree.Head.Hash, Is.EqualTo(_processingTestContext._headBefore), "head");
                     _logger.Info($"Finished waiting for {_block.ToString(Block.Format.Short)} to be ignored");
                     return _processingTestContext;
                 }
@@ -430,7 +431,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to be deleted");
                     _processingTestContext._resetEvent.WaitOne(IgnoreWait);
-                    Assert.AreEqual(_processingTestContext._headBefore, _processingTestContext._blockTree.Head.Hash, "head");
+                    Assert.That(_processingTestContext._blockTree.Head.Hash, Is.EqualTo(_processingTestContext._headBefore), "head");
                     _logger.Info($"Finished waiting for {_block.ToString(Block.Format.Short)} to be deleted");
                     Assert.Null(_processingTestContext._blockTree.FindBlock(_block.Hash, BlockTreeLookupOptions.None));
                     return _processingTestContext;
@@ -501,6 +502,7 @@ namespace Nethermind.Blockchain.Test
         public void Will_update_metrics_on_processing()
         {
             long metricsBefore = Metrics.LastBlockProcessingTimeInMs;
+
             When.ProcessingBlocks
                 .FullyProcessed(_block0).BecomesGenesis();
 

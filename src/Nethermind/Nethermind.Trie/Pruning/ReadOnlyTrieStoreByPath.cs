@@ -32,9 +32,10 @@ namespace Nethermind.Trie.Pruning
             return _trieStore.FindCachedOrUnknown(nodePath, storagePrefix, rootHash);
         }
 
-        public byte[] LoadRlp(Keccak hash) => _trieStore.LoadRlp(hash, _readOnlyStore);
+        public byte[] LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None) => _trieStore.LoadRlp(hash, _readOnlyStore, flags);
 
         public bool IsPersisted(Keccak keccak) => _trieStore.IsPersisted(keccak);
+        public bool IsPersisted(in ValueKeccak keccak) => _trieStore.IsPersisted(keccak);
 
         public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
         {
@@ -47,9 +48,9 @@ namespace Nethermind.Trie.Pruning
             return new ReadOnlyTrieStoreByPath(_trieStore, keyValueStore);
         }
 
-        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
+        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None) { }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root) { }
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None) { }
 
         public void HackPersistOnShutdown() { }
 
@@ -76,5 +77,7 @@ namespace Nethermind.Trie.Pruning
         public bool CanAccessByPath() => _trieStore.CanAccessByPath();
 
         public byte[]? this[ReadOnlySpan<byte> key] => _trieStore[key];
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags) => _trieStore.Get(key, flags);
     }
 }

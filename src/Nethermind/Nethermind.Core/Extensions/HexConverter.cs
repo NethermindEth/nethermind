@@ -9,6 +9,8 @@ using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 
+using Nethermind.Core.Collections;
+
 namespace Nethermind.Core.Extensions
 {
     // copied and bit modified from: https://github.com/dotnet/runtime/blob/main/src/libraries/Common/src/System/HexConverter.cs
@@ -256,10 +258,125 @@ namespace Nethermind.Core.Extensions
                 i += 2;
             }
 
-            if (byteLo == 0xFF)
-                i++;
-
             return (byteLo | byteHi) != 0xFF;
+        }
+
+        public static bool TryDecodeFromUtf16_Vector128(ReadOnlySpan<char> chars, Span<byte> bytes)
+        {
+            Debug.Assert(Ssse3.IsSupported || AdvSimd.Arm64.IsSupported);
+            Debug.Assert(chars.Length <= bytes.Length * 2);
+            Debug.Assert(chars.Length % 2 == 0);
+            Debug.Assert(chars.Length >= Vector128<ushort>.Count * 2);
+
+            nuint offset = 0;
+            nuint lengthSubTwoVector128 = (nuint)chars.Length - ((nuint)Vector128<ushort>.Count * 2);
+
+            ref ushort srcRef = ref Unsafe.As<char, ushort>(ref MemoryMarshal.GetReference(chars));
+            ref byte destRef = ref MemoryMarshal.GetReference(bytes);
+
+            do
+            {
+                // The algorithm is UTF8 so we'll be loading two UTF-16 vectors to narrow them into a
+                // single UTF8 ASCII vector - the implementation can be shared with UTF8 paths.
+                Vector128<ushort> vec1 = Vector128.LoadUnsafe(ref srcRef, offset);
+                Vector128<ushort> vec2 = Vector128.LoadUnsafe(ref srcRef, offset + (nuint)Vector128<ushort>.Count);
+                Vector128<byte> vec = Vector128.Narrow(vec1, vec2);
+
+                // Based on "Algorithm #3" https://github.com/WojciechMula/toys/blob/master/simd-parse-hex/geoff_algorithm.cpp
+                // by Geoff Langdale and Wojciech Mula
+                // Move digits '0'..'9' into range 0xf6..0xff.
+                Vector128<byte> t1 = vec + Vector128.Create((byte)(0xFF - '9'));
+                // And then correct the range to 0xf0..0xf9.
+                // All other bytes become less than 0xf0.
+                Vector128<byte> t2 = SubtractSaturate(t1, Vector128.Create((byte)6));
+                // Convert into uppercase 'a'..'f' => 'A'..'F' and
+                // move hex letter 'A'..'F' into range 0..5.
+                Vector128<byte> t3 = (vec & Vector128.Create((byte)0xDF)) - Vector128.Create((byte)'A');
+                // And correct the range into 10..15.
+                // The non-hex letters bytes become greater than 0x0f.
+                Vector128<byte> t4 = AddSaturate(t3, Vector128.Create((byte)10));
+                // Convert '0'..'9' into nibbles 0..9. Non-digit bytes become
+                // greater than 0x0f. Finally choose the result: either valid nibble (0..9/10..15)
+                // or some byte greater than 0x0f.
+                Vector128<byte> nibbles = Vector128.Min(t2 - Vector128.Create((byte)0xF0), t4);
+                // Any high bit is a sign that input is not a valid hex data
+                if (!AllCharsInVector128AreAscii(vec1 | vec2) ||
+                    AddSaturate(nibbles, Vector128.Create((byte)(127 - 15))).ExtractMostSignificantBits() != 0)
+                {
+                    // Input is either non-ASCII or invalid hex data
+                    break;
+                }
+                Vector128<byte> output;
+                if (Ssse3.IsSupported)
+                {
+                    output = Ssse3.MultiplyAddAdjacent(nibbles,
+                        Vector128.Create((short)0x0110).AsSByte()).AsByte();
+                }
+                else
+                {
+                    // Workaround for missing MultiplyAddAdjacent on ARM
+                    Vector128<short> even = AdvSimd.Arm64.TransposeEven(nibbles, Vector128<byte>.Zero).AsInt16();
+                    Vector128<short> odd = AdvSimd.Arm64.TransposeOdd(nibbles, Vector128<byte>.Zero).AsInt16();
+                    even = AdvSimd.ShiftLeftLogical(even, 4).AsInt16();
+                    output = AdvSimd.AddSaturate(even, odd).AsByte();
+                }
+                // Accumulate output in lower INT64 half and take care about endianness
+                output = Vector128.Shuffle(output, Vector128.Create((byte)0, 2, 4, 6, 8, 10, 12, 14, 0, 0, 0, 0, 0, 0, 0, 0));
+                // Store 8 bytes in dest by given offset
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref destRef, offset / 2), output.AsUInt64().ToScalar());
+
+                offset += (nuint)Vector128<ushort>.Count * 2;
+                if (offset == (nuint)chars.Length)
+                {
+                    return true;
+                }
+                // Overlap with the current chunk for trailing elements
+                if (offset > lengthSubTwoVector128)
+                {
+                    offset = lengthSubTwoVector128;
+                }
+            }
+            while (true);
+
+            // Fall back to the scalar routine in case of invalid input.
+            return TryDecodeFromUtf16(chars[(int)offset..], bytes[(int)(offset / 2)..], isOdd: false);
+        }
+
+        /// <summary>
+        /// Returns true iff the Vector128 represents 8 ASCII UTF-16 characters in machine endianness.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool AllCharsInVector128AreAscii(Vector128<ushort> vec)
+        {
+            return (vec & Vector128.Create(unchecked((ushort)~0x007F))) == Vector128<ushort>.Zero;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Vector128<byte> AddSaturate(Vector128<byte> left, Vector128<byte> right)
+        {
+            if (Sse2.IsSupported)
+            {
+                return Sse2.AddSaturate(left, right);
+            }
+            else if (!AdvSimd.Arm64.IsSupported)
+            {
+                ThrowHelper.ThrowNotSupportedException();
+            }
+            return AdvSimd.AddSaturate(left, right);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Vector128<byte> SubtractSaturate(Vector128<byte> left, Vector128<byte> right)
+        {
+            if (Sse2.IsSupported)
+            {
+                return Sse2.SubtractSaturate(left, right);
+            }
+            else if (!AdvSimd.Arm64.IsSupported)
+            {
+                ThrowHelper.ThrowNotSupportedException();
+            }
+            return AdvSimd.SubtractSaturate(left, right);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -291,9 +408,6 @@ namespace Nethermind.Core.Extensions
                 bytes[j++] = (byte)((byteHi << 4) | byteLo);
                 i += 2;
             }
-
-            if (byteLo == 0xFF)
-                i++;
 
             return (byteLo | byteHi) != 0xFF;
         }

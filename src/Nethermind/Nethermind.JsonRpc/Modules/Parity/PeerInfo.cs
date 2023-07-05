@@ -71,8 +71,10 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
             Network = peerNetworkInfo;
 
-            Protocols = new Dictionary<string, EthProtocolInfo>();
-            Protocols.Add("eth", ethProtocolInfo);
+            Protocols = new Dictionary<string, EthProtocolInfo>
+            {
+                { "eth", ethProtocolInfo }
+            };
         }
     }
 }

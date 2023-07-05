@@ -17,7 +17,6 @@ using Nethermind.Specs;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
-using NUnit.Framework.Internal.Execution;
 
 namespace Nethermind.Blockchain.Test.Producers
 {
@@ -32,7 +31,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 ISealer sealer,
                 IBlockTree blockTree,
                 IBlockProductionTrigger blockProductionTrigger,
-                IStateProvider stateProvider,
+                IWorldState stateProvider,
                 IGasLimitCalculator gasLimitCalculator,
                 ITimestamper timestamper,
                 ILogManager logManager,
@@ -80,7 +79,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 NullSealEngine.Instance,
                 Build.A.BlockTree().TestObject,
                 Substitute.For<IBlockProductionTrigger>(),
-                Substitute.For<IStateProvider>(),
+                Substitute.For<IWorldState>(),
                 Substitute.For<IGasLimitCalculator>(),
                 timestamper,
                 LimboLogs.Instance,
@@ -103,7 +102,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 NullSealEngine.Instance,
                 Build.A.BlockTree().TestObject,
                 Substitute.For<IBlockProductionTrigger>(),
-                Substitute.For<IStateProvider>(),
+                Substitute.For<IWorldState>(),
                 Substitute.For<IGasLimitCalculator>(),
                 timestamper,
                 LimboLogs.Instance,

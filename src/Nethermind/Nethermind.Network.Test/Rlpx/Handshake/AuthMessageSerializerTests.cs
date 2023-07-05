@@ -37,11 +37,11 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             byte[] bytes = _serializer.Serialize(authMessage);
             AuthMessage after = _serializer.Deserialize(bytes);
 
-            Assert.AreEqual(authMessage.Signature, after.Signature);
-            Assert.AreEqual(authMessage.EphemeralPublicHash, after.EphemeralPublicHash);
-            Assert.AreEqual(authMessage.PublicKey, after.PublicKey);
+            Assert.That(after.Signature, Is.EqualTo(authMessage.Signature));
+            Assert.That(after.EphemeralPublicHash, Is.EqualTo(authMessage.EphemeralPublicHash));
+            Assert.That(after.PublicKey, Is.EqualTo(authMessage.PublicKey));
             Assert.True(Bytes.AreEqual(authMessage.Nonce, after.Nonce));
-            Assert.AreEqual(authMessage.IsTokenUsed, after.IsTokenUsed);
+            Assert.That(after.IsTokenUsed, Is.EqualTo(authMessage.IsTokenUsed));
         }
 
         [TestCase(BlockchainIds.Mainnet)]
@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         }
 
         [TestCase(BlockchainIds.Mainnet)]
-        [TestCase(BlockchainIds.Ropsten)]
+        [TestCase(BlockchainIds.Sepolia)]
         [TestCase(BlockchainIds.Kovan)]
         public void Encode_decode_with_eip155(int chainId)
         {

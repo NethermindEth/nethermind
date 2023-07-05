@@ -7,8 +7,6 @@ using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
-using System.Net.Http;
-using System.IO;
 using System.Net.Sockets;
 using Prometheus;
 
@@ -79,8 +77,6 @@ namespace Nethermind.Monitoring
                 MetricPusher metricPusher = new MetricPusher(pusherOptions);
 
                 metricPusher.Start();
-
-
             }
             if (_exposePort is not null)
             {
@@ -91,9 +87,9 @@ namespace Nethermind.Monitoring
             if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
         }
 
-        public void RegisterMetrics(Type type)
+        public void AddMetricsUpdateAction(Action callback)
         {
-            _metricsController.RegisterMetrics(type);
+            _metricsController.AddMetricsUpdateAction(callback);
         }
 
         public Task StopAsync()
@@ -113,7 +109,7 @@ namespace Nethermind.Monitoring
         {
             string group = GetValueFromVariableOrDefault("GROUP", "nethermind");
             string endpoint = _pushGatewayUrl.Split("/").LastOrDefault();
-            if (!string.IsNullOrWhiteSpace(endpoint) && endpoint.Contains("-"))
+            if (!string.IsNullOrWhiteSpace(endpoint) && endpoint.Contains('-'))
             {
                 group = endpoint.Split("-")[0] ?? group;
             }

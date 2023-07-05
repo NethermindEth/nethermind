@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -17,17 +19,14 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -36,6 +35,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 using Nethermind.Trie.ByPath;
@@ -83,11 +83,9 @@ namespace Nethermind.Init.Steps
 
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
-                _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
+                if (_logger.IsWarn) _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
-
-            Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
             IWitnessCollector witnessCollector;
             if (syncConfig.WitnessProtocolEnabled)
@@ -182,7 +180,7 @@ namespace Nethermind.Init.Steps
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(setApi.MainStateDbWithCache);
             ITrieStore readOnlyStorageTrieStore = setApi.ReadOnlyStorageTrieStore = storageTrieStore.AsReadOnly();
 
-            IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
+            IWorldState worldState = setApi.WorldState = new WorldState(
                 trieStore,
                 storageTrieStore,
                 codeDb,
@@ -194,10 +192,8 @@ namespace Nethermind.Init.Steps
 
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
-            Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
-            stateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-            _logger.Info($"Current Block: Number:{getApi.BlockTree!.Head} StateRoot:{getApi.BlockTree!.Head?.StateRoot} Hash:{getApi.BlockTree!.Head?.Hash}");
+            worldState.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
 
             void VerifyTrie()
             {
@@ -244,7 +240,7 @@ namespace Nethermind.Init.Steps
             // Init state if we need system calls before actual processing starts
             if (getApi.BlockTree!.Head?.StateRoot is not null)
             {
-                stateProvider.StateRoot = getApi.BlockTree.Head.StateRoot;
+                worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
             }
 
             TxValidator txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
@@ -273,7 +269,6 @@ namespace Nethermind.Init.Steps
                 getApi.SpecProvider,
                 getApi.LogManager);
 
-            WorldState worldState = new(stateProvider, storageProvider);
             _api.TransactionProcessor = new TransactionProcessor(
                 getApi.SpecProvider,
                 worldState,
@@ -327,7 +322,6 @@ namespace Nethermind.Init.Steps
 
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
-            setApi.EthSyncingInfo = new EthSyncingInfo(getApi.BlockTree, getApi.ReceiptStorage!, syncConfig, getApi.LogManager);
 
             IFilterStore filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
@@ -363,13 +357,17 @@ namespace Nethermind.Init.Steps
                 IDb stateDb = api.DbProvider!.StateDb;
                 if (stateDb is IFullPruningDb fullPruningDb)
                 {
-                    IPruningTrigger? pruningTrigger = CreateAutomaticTrigger(fullPruningDb.GetPath(initConfig.BaseDbPath));
+                    string pruningDbPath = fullPruningDb.GetPath(initConfig.BaseDbPath);
+                    IPruningTrigger? pruningTrigger = CreateAutomaticTrigger(pruningDbPath);
                     if (pruningTrigger is not null)
                     {
                         api.PruningTrigger.Add(pruningTrigger);
                     }
 
-                    FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!, stateReader, api.LogManager);
+                    IDriveInfo? drive = api.FileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
+                    FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!,
+                        stateReader, api.ProcessExit!, ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
+                        drive, api.LogManager);
                     api.DisposeStack.Push(pruner);
                 }
             }
@@ -392,7 +390,8 @@ namespace Nethermind.Init.Steps
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
                 _api.LogManager,
-                CreateTxPoolTxComparer());
+                CreateTxPoolTxComparer(),
+                _api.TxGossipPolicy);
 
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 
@@ -414,9 +413,8 @@ namespace Nethermind.Init.Steps
                 _api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.StateProvider!),
-                _api.StateProvider,
-                _api.StorageProvider,
+                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState!),
+                _api.WorldState,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
                 _api.LogManager);

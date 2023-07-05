@@ -60,6 +60,22 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
+        public void Forward_read_flags_on_resolve()
+        {
+            ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+            resolver.LoadRlp(TestItem.KeccakA, ReadFlags.HintReadAhead).Returns((byte[])null);
+            TrieNode trieNode = new(NodeType.Unknown, TestItem.KeccakA);
+            try
+            {
+                Assert.Throws<TrieException>(() => trieNode.ResolveNode(resolver, ReadFlags.HintReadAhead));
+            }
+            catch (TrieException)
+            {
+            }
+            resolver.Received().LoadRlp(TestItem.KeccakA, ReadFlags.HintReadAhead);
+        }
+
+        [Test]
         public void Throws_trie_exception_on_unexpected_format()
         {
             TrieNode trieNode = new(NodeType.Unknown, new byte[42]);
@@ -170,8 +186,8 @@ namespace Nethermind.Trie.Test
             TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, 11);
             decodedTiniest.ResolveNode(NullTrieNodeResolver.Instance);
 
-            Assert.AreEqual(ctx.TiniestLeaf.Value, decodedTiniest.Value, "value");
-            Assert.AreEqual(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true), HexPrefix.ToBytes(decodedTiniest.Key!, true), "key");
+            Assert.That(decodedTiniest.Value, Is.EqualTo(ctx.TiniestLeaf.Value), "value");
+            Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)), "key");
         }
 
         [Test]
@@ -187,7 +203,7 @@ namespace Nethermind.Trie.Test
             decoded.ResolveNode(NullTrieNodeResolver.Instance);
             TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, 11);
 
-            Assert.AreEqual(decoded.GetChildHash(11), decodedTiniest.Keccak, "value");
+            Assert.That(decodedTiniest.Keccak, Is.EqualTo(decoded.GetChildHash(11)), "value");
         }
 
         [Test]
@@ -205,8 +221,8 @@ namespace Nethermind.Trie.Test
             TrieNode? decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, 0);
             decodedTiniest?.ResolveNode(NullTrieNodeResolver.Instance);
 
-            Assert.AreEqual(ctx.TiniestLeaf.Value, decodedTiniest.Value, "value");
-            Assert.AreEqual(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true), HexPrefix.ToBytes(decodedTiniest.Key!, true),
+            Assert.That(decodedTiniest.Value, Is.EqualTo(ctx.TiniestLeaf.Value), "value");
+            Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)),
                 "key");
         }
 
@@ -224,7 +240,7 @@ namespace Nethermind.Trie.Test
             decoded.ResolveNode(NullTrieNodeResolver.Instance);
             TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, 0);
 
-            Assert.AreEqual(decoded.GetChildHash(0), decodedTiniest.Keccak, "keccak");
+            Assert.That(decodedTiniest.Keccak, Is.EqualTo(decoded.GetChildHash(0)), "keccak");
         }
 
         [Test]
@@ -237,7 +253,7 @@ namespace Nethermind.Trie.Test
             TrieNode trieNode = new(NodeType.Branch);
             trieNode[11] = tiniest;
             TrieNode getResult = trieNode.GetChild(NullTrieNodeResolver.Instance, 11);
-            Assert.AreSame(tiniest, getResult);
+            Assert.That(getResult, Is.SameAs(tiniest));
         }
 
         [Test]
@@ -511,14 +527,14 @@ namespace Nethermind.Trie.Test
         public void Size_of_a_heavy_leaf_is_correct()
         {
             Context ctx = new();
-            Assert.AreEqual(224, ctx.HeavyLeaf.GetMemorySize(false));
+            Assert.That(ctx.HeavyLeaf.GetMemorySize(false), Is.EqualTo(224));
         }
 
         [Test]
         public void Size_of_a_tiny_leaf_is_correct()
         {
             Context ctx = new();
-            Assert.AreEqual(144, ctx.TiniestLeaf.GetMemorySize(false));
+            Assert.That(ctx.TiniestLeaf.GetMemorySize(false), Is.EqualTo(144));
         }
 
         [Test]
@@ -532,8 +548,8 @@ namespace Nethermind.Trie.Test
                 node.SetChild(i, ctx.AccountLeaf);
             }
 
-            Assert.AreEqual(3664, node.GetMemorySize(true));
-            Assert.AreEqual(208, node.GetMemorySize(false));
+            Assert.That(node.GetMemorySize(true), Is.EqualTo(3664));
+            Assert.That(node.GetMemorySize(false), Is.EqualTo(208));
         }
 
         [Test]
@@ -544,7 +560,7 @@ namespace Nethermind.Trie.Test
             trieNode.Key = new byte[] { 1 };
             trieNode.SetChild(0, ctx.TiniestLeaf);
 
-            Assert.AreEqual(120, trieNode.GetMemorySize(false));
+            Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(120));
         }
 
         [Test]
@@ -555,8 +571,8 @@ namespace Nethermind.Trie.Test
             trieNode.Key = new byte[] { 1 };
             trieNode.SetChild(0, ctx.TiniestLeaf);
 
-            Assert.AreEqual(264, trieNode.GetMemorySize(true));
-            Assert.AreEqual(120, trieNode.GetMemorySize(false));
+            Assert.That(trieNode.GetMemorySize(true), Is.EqualTo(264));
+            Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(120));
         }
 
         [Test]
@@ -570,7 +586,7 @@ namespace Nethermind.Trie.Test
         public void Size_of_an_unknown_node_with_keccak_is_correct()
         {
             TrieNode trieNode = new(NodeType.Unknown, Keccak.Zero);
-            trieNode.GetMemorySize(false).Should().Be(136);
+            trieNode.GetMemorySize(false).Should().Be(104);
         }
 
         [Test]
@@ -607,7 +623,7 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Size_of_keccak_is_correct()
         {
-            Keccak.MemorySize.Should().Be(80);
+            Keccak.MemorySize.Should().Be(48);
         }
 
         [Test]
@@ -699,7 +715,7 @@ namespace Nethermind.Trie.Test
             trieNode.SetChild(0, child);
 
             trieNode.PrunePersistedRecursively(1);
-            trieNode.GetMemorySize(false).Should().Be(176);
+            trieNode.GetMemorySize(false).Should().Be(144);
         }
 
         [Test]
@@ -712,7 +728,7 @@ namespace Nethermind.Trie.Test
             trieNode.PrunePersistedRecursively(1);
             TrieNode cloned = trieNode.Clone();
 
-            cloned.GetMemorySize(false).Should().Be(176);
+            cloned.GetMemorySize(false).Should().Be(144);
         }
 
         [Test]
@@ -941,7 +957,7 @@ namespace Nethermind.Trie.Test
 
                 HeavyLeaf = new TrieNode(NodeType.Leaf);
                 HeavyLeaf.Key = new byte[20];
-                HeavyLeaf.Value = Keccak.EmptyTreeHash.Bytes.Concat(Keccak.EmptyTreeHash.Bytes).ToArray();
+                HeavyLeaf.Value = Bytes.Concat(Keccak.EmptyTreeHash.Bytes, Keccak.EmptyTreeHash.Bytes);
 
                 Account account = new(100);
                 AccountDecoder decoder = new();

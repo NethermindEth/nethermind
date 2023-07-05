@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -26,9 +27,9 @@ namespace Nethermind.TxPool.Collections
         private readonly IComparer<TValue> _groupComparer;
 
         // group buckets, keep the items grouped by group key and sorted in group
-        private readonly IDictionary<TGroupKey, EnhancedSortedSet<TValue>> _buckets;
+        protected readonly Dictionary<TGroupKey, EnhancedSortedSet<TValue>> _buckets;
 
-        private readonly IDictionary<TKey, TValue> _cacheMap;
+        private readonly Dictionary<TKey, TValue> _cacheMap;
         private bool _isFull = false;
 
         // comparer for worst elements in buckets
@@ -85,10 +86,7 @@ namespace Nethermind.TxPool.Collections
         public TValue[] GetSnapshot()
         {
             TValue[]? snapshot = _snapshot;
-            if (snapshot is null)
-            {
-                snapshot = _snapshot = _buckets.SelectMany(b => b.Value).ToArray();
-            }
+            snapshot ??= _snapshot = _buckets.SelectMany(b => b.Value).ToArray();
 
             return snapshot;
         }
@@ -407,11 +405,25 @@ namespace Nethermind.TxPool.Collections
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool TryGetBucketsWorstValue(TGroupKey groupKey, out TValue? item)
+        {
+            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
+            {
+                item = bucket.Max;
+                return true;
+            }
+
+            item = default;
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public void UpdatePool(Func<TGroupKey, IReadOnlySortedSet<TValue>, IEnumerable<(TValue Tx, Action<TValue>? Change)>> changingElements)
         {
             foreach ((TGroupKey groupKey, EnhancedSortedSet<TValue> bucket) in _buckets)
             {
-                changingElements(groupKey, bucket);
+                Debug.Assert(bucket.Count > 0);
+
                 UpdateGroup(groupKey, bucket, changingElements);
             }
         }
@@ -422,6 +434,8 @@ namespace Nethermind.TxPool.Collections
             if (groupKey is null) throw new ArgumentNullException(nameof(groupKey));
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
+                Debug.Assert(bucket.Count > 0);
+
                 UpdateGroup(groupKey, bucket, changingElements);
             }
         }

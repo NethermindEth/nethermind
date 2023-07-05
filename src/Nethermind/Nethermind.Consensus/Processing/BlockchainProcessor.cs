@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -139,45 +140,8 @@ namespace Nethermind.Consensus.Processing
         public void Start()
         {
             _loopCancellationSource = new CancellationTokenSource();
-            _recoveryTask = Task.Factory.StartNew(
-                RunRecoveryLoop,
-                _loopCancellationSource.Token,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error("Sender address recovery encountered an exception.", t.Exception);
-                }
-                else if (t.IsCanceled)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Sender address recovery stopped.");
-                }
-                else if (t.IsCompleted)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Sender address recovery complete.");
-                }
-            });
-
-            _processorTask = Task.Factory.StartNew(
-                RunProcessingLoop,
-                _loopCancellationSource.Token,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", t.Exception);
-                }
-                else if (t.IsCanceled)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} stopped.");
-                }
-                else if (t.IsCompleted)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} complete.");
-                }
-            });
+            _recoveryTask = RunRecovery();
+            _processorTask = RunProcessing();
         }
 
         public async Task StopAsync(bool processRemainingBlocks = false)
@@ -197,6 +161,41 @@ namespace Nethermind.Consensus.Processing
 
             await Task.WhenAll((_recoveryTask ?? Task.CompletedTask), (_processorTask ?? Task.CompletedTask));
             if (_logger.IsInfo) _logger.Info("Blockchain Processor shutdown complete.. please wait for all components to close");
+        }
+
+        private Task RunRecovery()
+        {
+            TaskCompletionSource tcs = new();
+
+            Thread thread = new(() =>
+            {
+                try
+                {
+                    RunRecoveryLoop();
+                    if (_logger.IsDebug) _logger.Debug("Sender address recovery complete.");
+                }
+                catch (OperationCanceledException)
+                {
+                    if (_logger.IsDebug) _logger.Debug("Sender address recovery stopped.");
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsError) _logger.Error("Sender address recovery encountered an exception.", ex);
+                }
+                finally
+                {
+                    tcs.SetResult();
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "Block Recovery",
+                // Boost priority to make sure we process blocks as fast as possible
+                Priority = ThreadPriority.AboveNormal,
+            };
+            thread.Start();
+
+            return tcs.Task;
         }
 
         private void RunRecoveryLoop()
@@ -251,6 +250,41 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
+        private Task RunProcessing()
+        {
+            TaskCompletionSource tcs = new();
+
+            Thread thread = new(() =>
+            {
+                try
+                {
+                    RunProcessingLoop();
+                    if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} complete.");
+                }
+                catch (OperationCanceledException)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} stopped.");
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", ex);
+                }
+                finally
+                {
+                    tcs.SetResult();
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "Block Processor",
+                // Boost priority to make sure we process blocks as fast as possible
+                Priority = ThreadPriority.Highest,
+            };
+            thread.Start();
+
+            return tcs.Task;
+        }
+
         private void RunProcessingLoop()
         {
             _logger.Info($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
@@ -281,14 +315,7 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
-                        _logger.Info($"Processed block {block.ToString(Block.Format.FullHashAndNumber)}");
-
-                        bool readOnlyChain = blockRef.ProcessingOptions.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-                        if (!readOnlyChain)
-                        {
-                            _stats.UpdateStats(block, _blockTree, _recoveryQueue.Count, _blockQueue.Count);
-                        }
-
+                        if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
                         BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Success));
                     }
                 }
@@ -375,9 +402,10 @@ namespace Nethermind.Consensus.Processing
             }
 
             bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+            long blockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
             if (!readonlyChain)
             {
-                Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
+                Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMs;
             }
 
             if ((options & ProcessingOptions.MarkAsProcessed) == ProcessingOptions.MarkAsProcessed)
@@ -385,12 +413,12 @@ namespace Nethermind.Consensus.Processing
                 _logger.Info($"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
                 _blockTree.MarkChainAsProcessed(processingBranch.Blocks);
 
-                Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
+                Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMs;
             }
 
             if (!readonlyChain)
             {
-                _stats.UpdateStats(lastProcessed, _blockTree, _recoveryQueue.Count, _blockQueue.Count);
+                _stats.UpdateStats(lastProcessed, _blockTree, _recoveryQueue.Count, _blockQueue.Count, _stopwatch.ElapsedMicroseconds());
             }
 
             return lastProcessed;
@@ -398,17 +426,14 @@ namespace Nethermind.Consensus.Processing
 
         public bool IsProcessingBlocks(ulong? maxProcessingInterval)
         {
-            if (_processorTask is null || _recoveryTask is null || _processorTask.IsCompleted ||
-                _recoveryTask.IsCompleted)
+            if (_processorTask is null || _recoveryTask is null || _processorTask.IsCompleted || _recoveryTask.IsCompleted)
                 return false;
 
-            if (maxProcessingInterval is not null)
-                return _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow;
-            else // user does not setup interval and we cannot set interval time based on chainspec
-                return true;
+            // user does not setup interval and we cannot set interval time based on chainspec
+            return maxProcessingInterval is null || _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow;
         }
 
-        private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
+        private void TraceFailingBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
         {
             if ((_options.DumpOptions & dumpType) != 0)
             {
@@ -431,9 +456,9 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        private Block[]? ProcessBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer)
+        private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer)
         {
-            void DeleteInvalidBlocks(Keccak invalidBlockHash)
+            void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Keccak invalidBlockHash)
             {
                 for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
                 {
@@ -495,7 +520,7 @@ namespace Nethermind.Consensus.Processing
             {
                 if (invalidBlockHash is not null && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
                 {
-                    DeleteInvalidBlocks(invalidBlockHash);
+                    DeleteInvalidBlocks(in processingBranch, invalidBlockHash);
                 }
             }
 
@@ -521,7 +546,7 @@ namespace Nethermind.Consensus.Processing
                     {
                         if (_logger.IsInfo)
                             _logger.Info(
-                                $"Rerunning block after reorg or pruning: {block.ToString(Block.Format.FullHashAndNumber)}");
+                                $"Rerunning block after reorg or pruning: {block.ToString(Block.Format.Short)}");
                     }
 
                     blocksToProcess.Add(block);

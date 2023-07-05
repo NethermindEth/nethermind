@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Test
                 .Done;
             TestAllTracerWithOutput result = Execute(code);
             long setCost = expectedChainId == 0 ? GasCostOf.SStoreNetMeteredEip2200 : GasCostOf.SSet;
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.Base + setCost);
             AssertStorage(0, ((UInt256)expectedChainId).ToBigEndian());
         }
@@ -83,18 +83,6 @@ namespace Nethermind.Evm.Test
 
             [Test]
             public void given_rinkeby_network_chain_id_opcode_puts_expected_value_onto_the_stack()
-            {
-                Test(SpecProvider.ChainId);
-            }
-        }
-
-        private class Ropsten : Eip1344Tests
-        {
-            protected override long BlockNumber => RopstenSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
-
-            [Test]
-            public void given_ropsten_network_chain_id_opcode_puts_expected_value_onto_the_stack()
             {
                 Test(SpecProvider.ChainId);
             }

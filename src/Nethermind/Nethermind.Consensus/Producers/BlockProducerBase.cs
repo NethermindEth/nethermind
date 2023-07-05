@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -12,8 +11,8 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -41,10 +40,10 @@ namespace Nethermind.Consensus.Producers
         public event EventHandler<BlockEventArgs>? BlockProduced;
 
         private ISealer Sealer { get; }
-        private IStateProvider StateProvider { get; }
+        private IWorldState StateProvider { get; }
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;
-        private readonly ISpecProvider _specProvider;
+        protected readonly ISpecProvider _specProvider;
         private readonly ITxSource _txSource;
         private readonly IBlockProductionTrigger _trigger;
         private bool _isRunning;
@@ -62,7 +61,7 @@ namespace Nethermind.Consensus.Producers
             ISealer? sealer,
             IBlockTree? blockTree,
             IBlockProductionTrigger? trigger,
-            IStateProvider? stateProvider,
+            IWorldState? stateProvider,
             IGasLimitCalculator? gasLimitCalculator,
             ITimestamper? timestamper,
             ISpecProvider? specProvider,
@@ -294,7 +293,7 @@ namespace Nethermind.Consensus.Producers
                 _blocksConfig.GetExtraDataBytes())
             {
                 Author = blockAuthor,
-                MixHash = payloadAttributes?.PrevRandao
+                MixHash = payloadAttributes?.PrevRandao,
             };
 
             UInt256 difficulty = _difficultyCalculator.Calculate(header, parent);
@@ -302,7 +301,9 @@ namespace Nethermind.Consensus.Producers
             header.TotalDifficulty = parent.TotalDifficulty + difficulty;
 
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
+
             header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header));
+
             return header;
         }
 
@@ -311,12 +312,6 @@ namespace Nethermind.Consensus.Producers
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
             IEnumerable<Transaction> transactions = GetTransactions(parent);
-
-            if (_specProvider.GetSpec(header).IsEip4844Enabled)
-            {
-                // TODO: Calculate ExcessDataGas depending on parent ExcessDataGas and number of blobs in txs
-                header.ExcessDataGas = 0;
-            }
 
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }

@@ -16,6 +16,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
@@ -32,7 +33,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ISyncServer syncServer,
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
-            ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager)
+            ILogManager logManager,
+            ITxGossipPolicy? transactionsGossipPolicy = null)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
             _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests = new MessageQueue<GetReceiptsMessage, TxReceipt[][]>(Send);
@@ -51,22 +54,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             {
                 case Eth63MessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
-                    ReportIn(getReceiptsMessage);
+                    ReportIn(getReceiptsMessage, size);
                     Handle(getReceiptsMessage);
                     break;
                 case Eth63MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
-                    ReportIn(receiptsMessage);
+                    ReportIn(receiptsMessage, size);
                     Handle(receiptsMessage, size);
                     break;
                 case Eth63MessageCode.GetNodeData:
                     GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
-                    ReportIn(getNodeDataMessage);
+                    ReportIn(getNodeDataMessage, size);
                     Handle(getNodeDataMessage);
                     break;
                 case Eth63MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
-                    ReportIn(nodeDataMessage);
+                    ReportIn(nodeDataMessage, size);
                     Handle(nodeDataMessage, size);
                     break;
             }

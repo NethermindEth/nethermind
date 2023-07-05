@@ -47,7 +47,9 @@ namespace Nethermind.Store.Test
         public async Task CanAskAboutBalanceInParallel((string Name, ITrieStore TrieStore, ITrieStore StorageTrieStore) testCase)
         {
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber);
-            StateProvider provider = new StateProvider(testCase.TrieStore, testCase.StorageTrieStore, Substitute.For<IDb>(), Logger);
+            MemDb stateDb = new();
+            WorldState provider =
+                new(new TrieStore(stateDb, Logger), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
@@ -89,12 +91,13 @@ namespace Nethermind.Store.Test
         {
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
-            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, new MemDb(), Logger);
-            StorageProvider storageProvider = new(testCase.StorageTrieStore, provider, Logger);
+            MemDb stateDb = new();
+            TrieStore trieStore = new(stateDb, Logger);
+            WorldState provider = new(trieStore, new MemDb(), Logger);
 
             void UpdateStorageValue(byte[] newValue)
             {
-                storageProvider.Set(storageCell, newValue);
+                provider.Set(storageCell, newValue);
             }
 
             void AddOneToBalance()
@@ -104,8 +107,6 @@ namespace Nethermind.Store.Test
 
             void CommitEverything(long blockNumber)
             {
-                storageProvider.Commit();
-                storageProvider.CommitTrees(blockNumber);
                 provider.Commit(spec);
                 provider.CommitTree(blockNumber);
             }
@@ -151,19 +152,18 @@ namespace Nethermind.Store.Test
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
 
-            StateProvider provider = new(testCase.TrieStore, testCase.StorageTrieStore, new MemDb(), Logger);
-            StorageProvider storageProvider = new(testCase.TrieStore, provider, Logger);
+            MemDb stateDb = new();
+            TrieStore trieStore = new(stateDb, Logger);
+            WorldState provider = new(trieStore, new MemDb(), Logger);
 
             void CommitEverything()
             {
-                storageProvider.Commit();
-                storageProvider.CommitTrees(0);
                 provider.Commit(spec);
                 provider.CommitTree(0);
             }
 
             provider.CreateAccount(_address1, 1);
-            storageProvider.Set(storageCell, new byte[] { 1 });
+            provider.Set(storageCell, new byte[] { 1 });
             CommitEverything();
             Keccak stateRoot0 = provider.StateRoot;
 
@@ -180,7 +180,7 @@ namespace Nethermind.Store.Test
                     for (int i = 0; i < 10000; i++)
                     {
                         UInt256 balance = reader.GetBalance(stateRoot, _address1);
-                        Assert.AreEqual(value, balance);
+                        Assert.That(balance, Is.EqualTo(value));
                     }
                 });
         }
@@ -207,8 +207,8 @@ namespace Nethermind.Store.Test
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new(_address1, UInt256.One);
 
-            StateProvider state = new(testCase.TrieStore, testCase.StorageTrieStore, dbProvider.CodeDb, Logger);
-            StorageProvider storage = new(testCase.StorageTrieStore, state, Logger);
+            TrieStore trieStore = new(dbProvider.StateDb, Logger);
+            WorldState state = new(trieStore, dbProvider.CodeDb, Logger);
 
             /* to start with we need to create an account that we will be setting storage at */
             state.CreateAccount(storageCell.Address, UInt256.One);
@@ -218,9 +218,7 @@ namespace Nethermind.Store.Test
             /* at this stage we have an account with empty storage at the address that we want to test */
 
             byte[] initialValue = new byte[] { 1, 2, 3 };
-            storage.Set(storageCell, initialValue);
-            storage.Commit();
-            storage.CommitTrees(2);
+            state.Set(storageCell, initialValue);
             state.Commit(MuirGlacier.Instance);
             state.CommitTree(2);
 
@@ -237,16 +235,11 @@ namespace Nethermind.Store.Test
 
             byte[] newValue = new byte[] { 1, 2, 3, 4, 5 };
 
-            StateProvider processorStateProvider =
-                new(testCase.TrieStore, testCase.StorageTrieStore, new MemDb(), LimboLogs.Instance);
+            WorldState processorStateProvider =
+                new(trieStore, new MemDb(), LimboLogs.Instance);
             processorStateProvider.StateRoot = state.StateRoot;
 
-            StorageProvider processorStorageProvider =
-                new(testCase.StorageTrieStore, processorStateProvider, LimboLogs.Instance);
-
-            processorStorageProvider.Set(storageCell, newValue);
-            processorStorageProvider.Commit();
-            processorStorageProvider.CommitTrees(3);
+            processorStateProvider.Set(storageCell, newValue);
             processorStateProvider.Commit(MuirGlacier.Instance);
             processorStateProvider.CommitTree(3);
 

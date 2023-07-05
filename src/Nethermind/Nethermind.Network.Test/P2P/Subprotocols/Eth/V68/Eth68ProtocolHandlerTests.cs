@@ -6,13 +6,13 @@ using System.Collections.Generic;
 using System.Net;
 using DotNetty.Buffers;
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols;
@@ -35,15 +35,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V68;
 
 public class Eth68ProtocolHandlerTests
 {
-    private ISession _session;
-    private IMessageSerializationService _svc;
-    private ISyncServer _syncManager;
-    private ITxPool _transactionPool;
-    private IPooledTxsRequestor _pooledTxsRequestor;
-    private IGossipPolicy _gossipPolicy;
-    private ISpecProvider _specProvider;
-    private Block _genesisBlock;
-    private Eth68ProtocolHandler _handler;
+    private ISession _session = null!;
+    private IMessageSerializationService _svc = null!;
+    private ISyncServer _syncManager = null!;
+    private ITxPool _transactionPool = null!;
+    private IPooledTxsRequestor _pooledTxsRequestor = null!;
+    private IGossipPolicy _gossipPolicy = null!;
+    private ISpecProvider _specProvider = null!;
+    private Block _genesisBlock = null!;
+    private Eth68ProtocolHandler _handler = null!;
+    private ITxGossipPolicy _txGossipPolicy = null!;
 
     [SetUp]
     public void Setup()
@@ -64,6 +65,9 @@ public class Eth68ProtocolHandlerTests
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
         ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+        _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
+        _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(true);
+        _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
         _handler = new Eth68ProtocolHandler(
             _session,
             _svc,
@@ -72,8 +76,9 @@ public class Eth68ProtocolHandlerTests
             _transactionPool,
             _pooledTxsRequestor,
             _gossipPolicy,
-            new ForkInfo(_specProvider, _genesisBlock.Header.Hash),
-            LimboLogs.Instance);
+            new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+            LimboLogs.Instance,
+            _txGossipPolicy);
         _handler.Init();
     }
 
@@ -96,19 +101,18 @@ public class Eth68ProtocolHandlerTests
         _handler.HeadNumber.Should().Be(0);
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(100)]
-    public void Can_handle_NewPooledTransactions_message(int txCount)
+    [Test]
+    public void Can_handle_NewPooledTransactions_message([Values(0, 1, 2, 100)] int txCount, [Values(true, false)] bool canGossipTransactions)
     {
+        _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(canGossipTransactions);
+
         GenerateLists(txCount, out List<byte> types, out List<int> sizes, out List<Keccak> hashes);
 
         var msg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
-        _pooledTxsRequestor.Received().RequestTransactionsEth66(Arg.Any<Action<GetPooledTransactionsMessage>>(),
+        _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactionsEth66(Arg.Any<Action<GetPooledTransactionsMessage>>(),
             Arg.Any<IReadOnlyList<Keccak>>());
     }
 
@@ -161,7 +165,7 @@ public class Eth68ProtocolHandlerTests
 
         for (int i = 0; i < txCount; i++)
         {
-            txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+            txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
         }
 
         _handler.SendNewTransactions(txs, false);
@@ -181,7 +185,7 @@ public class Eth68ProtocolHandlerTests
 
         for (int i = 0; i < txCount; i++)
         {
-            txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+            txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
         }
 
         _handler.SendNewTransactions(txs, false);

@@ -168,7 +168,7 @@ namespace Nethermind.Synchronization.Test
                 "   [      ][HBRNSW][Peer|eth99|    9999|      127.0.0.1: 3030|  In][     |     |     |     |     |     ][]";
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            string reportStr = report.MakeReportForPeer(peers, "== Header ==");
+            string reportStr = report.MakeReportForPeers(peers, "== Header ==");
             reportStr.Should().Be(expectedResult);
         }
 

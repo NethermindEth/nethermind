@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Config.Test;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.EthStats;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
@@ -48,7 +49,6 @@ namespace Nethermind.Runner.Test
         [TestCase("poacore_validator.cfg", true, true)]
         [TestCase("spaceneth", false, false)]
         [TestCase("archive", false, false)]
-        [TestCase("baseline", false, false)]
         [TestCase("fast", true, true)]
         public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled, bool fastBlocksEnabled)
         {
@@ -56,10 +56,15 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.FastBlocks, fastBlocksEnabled);
         }
 
+        [TestCase("archive")]
+        public void Archive_configs_have_pruning_turned_off(string configWildcard)
+        {
+            Test<IPruningConfig, PruningMode>(configWildcard, c => c.Mode, PruningMode.None);
+        }
+
         [TestCase("archive", true)]
         [TestCase("fast", true)]
         [TestCase("spaceneth", false)]
-        [TestCase("baseline", true)]
         public void Sync_is_disabled_when_needed(string configWildcard, bool isSyncEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.SynchronizationEnabled, isSyncEnabled);
@@ -68,13 +73,12 @@ namespace Nethermind.Runner.Test
         [TestCase("archive", true)]
         [TestCase("fast", true)]
         [TestCase("spaceneth", false)]
-        [TestCase("baseline", true)]
         public void Networking_is_disabled_when_needed(string configWildcard, bool isEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.NetworkingEnabled, isEnabled);
         }
 
-        [TestCase("ropsten", "ws://localhost:3000/api")]
+        [TestCase("sepolia", "ws://localhost:3000/api")]
         [TestCase("rinkeby", "ws://localhost:3000/api")]
         [TestCase("goerli", "wss://stats.goerli.net/api")]
         [TestCase("mainnet", "wss://ethstats.net/api")]
@@ -82,7 +86,6 @@ namespace Nethermind.Runner.Test
         [TestCase("xdai", "ws://localhost:3000/api")]
         [TestCase("spaceneth", "ws://localhost:3000/api")]
         [TestCase("volta", "ws://localhost:3000/api")]
-        [TestCase("baseline", "ws://localhost:3000/api")]
         public void Ethstats_values_are_correct(string configWildcard, string host)
         {
             Test<IEthStatsConfig, bool>(configWildcard, c => c.Enabled, false);
@@ -92,14 +95,12 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("aura ^archive", false)]
-        [TestCase("ethhash", true)]
         [TestCase("clique", true)]
         public void Geth_limits_configs_are_correct(string configWildcard, bool useGethLimitsInFastSync)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.UseGethLimitsInFastBlocks, useGethLimitsInFastSync);
         }
 
-        [TestCase("ropsten", "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d")]
         [TestCase("rinkeby", "0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177")]
         [TestCase("goerli", "0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")]
         [TestCase("mainnet", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
@@ -112,7 +113,6 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("spaceneth", true)]
-        [TestCase("baseline", true)]
         [TestCase("validators", true)]
         [TestCase("^validators ^spaceneth", false)]
         public void Mining_defaults_are_correct(string configWildcard, bool defaultValue = false)
@@ -166,8 +166,6 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli ^archive", 768000000)]
         [TestCase("rinkeby archive", 1536000000)]
         [TestCase("rinkeby ^archive", 1024000000)]
-        [TestCase("ropsten archive", 1536000000)]
-        [TestCase("ropsten ^archive", 1024000000)]
         [TestCase("xdai archive", 1024000000)]
         [TestCase("xdai ^archive", 768000000)]
         [TestCase("poacore archive", 1024000000)]
@@ -188,9 +186,8 @@ namespace Nethermind.Runner.Test
             Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, "");
         }
 
-        [TestCase("^mainnet ^spaceneth ^volta ^baseline", 50)]
+        [TestCase("^mainnet ^spaceneth ^volta", 50)]
         [TestCase("spaceneth", 4)]
-        [TestCase("baseline", 25)]
         [TestCase("volta", 25)]
         [TestCase("mainnet", 100)]
         public void Network_defaults_are_correct(string configWildcard, int activePeers = 50)
@@ -208,22 +205,27 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, bool>(configWildcard, c => c.DiagTracerEnabled, false);
         }
 
-        [TestCase("mainnet xdai poacore energy", 2048)]
-        [TestCase("^baseline ^mainnet ^spaceneth ^volta ^energy ^poacore ^xdai", 1024)]
-        [TestCase("baseline volta", 512)]
+        [TestCase("mainnet", 2048)]
+        [TestCase("xdai", 2048)]
+        [TestCase("gnosis", 2048)]
+        [TestCase("poacore", 2048)]
+        [TestCase("energy", 2048)]
+        [TestCase("chiado", 2048)]
+        [TestCase("^mainnet ^spaceneth ^volta ^energy ^poacore ^xdai ^gnosis ^chiado", 1024)]
         [TestCase("spaceneth", 128)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
             Test<ITxPoolConfig, int>(configWildcard, c => c.Size, poolSize);
         }
 
-        [TestCase("baseline", true)]
         [TestCase("spaceneth", true)]
-        [TestCase("ropsten", true)]
         [TestCase("goerli", true)]
         [TestCase("xdai", true)]
+        [TestCase("gnosis", true)]
         [TestCase("mainnet", true)]
-        [TestCase("^spaceneth ^baseline ^ropsten ^goerli ^mainnet ^xdai", false)]
+        [TestCase("sepolia", true)]
+        [TestCase("chiado", true)]
+        [TestCase("^spaceneth ^goerli ^mainnet ^xdai ^gnosis ^sepolia ^chiado", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);
@@ -251,7 +253,6 @@ namespace Nethermind.Runner.Test
         [TestCase("archive", false)]
         [TestCase("mainnet.cfg", true)]
         [TestCase("goerli.cfg", true)]
-        [TestCase("ropsten.cfg", true)]
         [TestCase("rinkeby.cfg", false)]
         [TestCase("sepolia.cfg", true)]
         [TestCase("xdai.cfg", false)]
@@ -260,8 +261,12 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
         }
 
-        [TestCase("^aura ^ropsten ^sepolia ^goerli ^mainnet", false)]
-        [TestCase("aura ^archive ropsten sepolia goerli mainnet", true)]
+        [TestCase("^aura ^sepolia ^goerli ^mainnet", false)]
+        [TestCase("aura ^archive", true)]
+        [TestCase("^archive ^rinkeby ^spaceneth", true)]
+        [TestCase("sepolia ^archive", true)]
+        [TestCase("goerli ^archive", true)]
+        [TestCase("mainnet ^archive", true)]
         public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
         {
             Test<ISyncConfig, long?>(configWildcard, c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);
@@ -296,8 +301,8 @@ namespace Nethermind.Runner.Test
             Test<IInitConfig, string>(configWildcard, c => c.BaseDbPath, (cf, p) => p.Should().StartWith(startWith));
         }
 
-        [TestCase("^baseline", "Data/static-nodes.json")]
-        [TestCase("baseline", "Data/static-nodes-baseline.json")]
+        [TestCase("^sepolia", "Data/static-nodes.json")]
+        [TestCase("sepolia", "Data/static-nodes-sepolia.json")]
         public void Static_nodes_path_is_default(string configWildcard, string staticNodesPath)
         {
             Test<IInitConfig, string>(configWildcard, c => c.StaticNodesPath, staticNodesPath);
@@ -316,7 +321,6 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, int>(configWildcard, c => (int)(c.PivotNumberParsed % 30000L), (s, p) => p.Should().Be(0));
         }
 
-        [TestCase("ropsten", false)]
         [TestCase("rinkeby", false)]
         [TestCase("goerli", false)]
         [TestCase("mainnet_archive.cfg", true)]
@@ -341,7 +345,6 @@ namespace Nethermind.Runner.Test
         }
 
 
-        [TestCase("ropsten")]
         [TestCase("rinkeby")]
         [TestCase("goerli", new[] { 16, 16, 16, 16 })]
         [TestCase("mainnet")]
@@ -371,13 +374,17 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, -1);
         }
 
-        [TestCase("^mainnet ^goerli", false)]
-        [TestCase("^pruned ^goerli.cfg ^mainnet.cfg", false)]
-        [TestCase("mainnet.cfg", false)]
-        [TestCase("goerli.cfg", false)]
-        public void Witness_defaults_are_correct(string configWildcard, bool witnessProtocolEnabled)
+        [TestCase("chiado", 30_000_000L, 5ul)]
+        [TestCase("gnosis", 30_000_000L, 5ul)]
+        [TestCase("xdai", 30_000_000L, 5ul)]
+        [TestCase("goerli", 30_000_000L)]
+        [TestCase("mainnet", 30_000_000L)]
+        [TestCase("sepolia", 30_000_000L)]
+        [TestCase("^chiado ^gnosis ^xdai ^goerli ^mainnet ^sepolia")]
+        public void Blocks_defaults_are_correct(string configWildcard, long? targetBlockGasLimit = null, ulong secondsPerSlot = 12)
         {
-            Test<ISyncConfig, bool>(configWildcard, c => c.WitnessProtocolEnabled, witnessProtocolEnabled);
+            Test<IBlocksConfig, long?>(configWildcard, c => c.TargetBlockGasLimit, targetBlockGasLimit);
+            Test<IBlocksConfig, ulong>(configWildcard, c => c.SecondsPerSlot, secondsPerSlot);
         }
 
         [Test]
@@ -399,7 +406,7 @@ namespace Nethermind.Runner.Test
                 foreach (int commaIndex in commaIndexes)
                 {
                     var nextChar = content.ElementAt(commaIndex + 1);
-                    Assert.AreNotEqual('}', nextChar, $"Additional comma found in {filePath}");
+                    Assert.That(nextChar, Is.Not.EqualTo('}'), $"Additional comma found in {filePath}");
                 }
             }
         }
@@ -422,8 +429,6 @@ namespace Nethermind.Runner.Test
 
         protected override IEnumerable<string> Configs { get; } = new HashSet<string>
         {
-            "ropsten_archive.cfg",
-            "ropsten.cfg",
             "rinkeby_archive.cfg",
             "rinkeby.cfg",
             "goerli_archive.cfg",
@@ -434,9 +439,10 @@ namespace Nethermind.Runner.Test
             "mainnet.cfg",
             "poacore.cfg",
             "poacore_archive.cfg",
-            "poacore_validator.cfg",
             "xdai.cfg",
             "xdai_archive.cfg",
+            "gnosis.cfg",
+            "gnosis_archive.cfg",
             "spaceneth.cfg",
             "spaceneth_persistent.cfg",
             "volta.cfg",
@@ -445,6 +451,10 @@ namespace Nethermind.Runner.Test
             "volta_archive.cfg",
             "energyweb.cfg",
             "energyweb_archive.cfg",
+            "sepolia.cfg",
+            "sepolia_archive.cfg",
+            "chiado.cfg",
+            "chiado_archive.cfg",
         };
 
         public IEnumerable<int> AllIndexesOf(string str, string searchString)

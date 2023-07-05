@@ -63,7 +63,7 @@ namespace Nethermind.Consensus.Ethash
 
         public uint Size { get; set; }
 
-        public EthashCache(uint cacheSize, byte[] seed)
+        public EthashCache(uint cacheSize, ReadOnlySpan<byte> seed)
         {
             uint cachePageCount = cacheSize / Ethash.HashBytes;
             Size = cachePageCount * Ethash.HashBytes;
@@ -116,11 +116,6 @@ namespace Nethermind.Consensus.Ethash
 
         public void Dispose()
         {
-            Dispose(true);
-        }
-
-        private void Dispose(bool isDisposing)
-        {
             if (isDisposed)
             {
                 return;
@@ -128,17 +123,9 @@ namespace Nethermind.Consensus.Ethash
 
             isDisposed = true;
 
-            if (isDisposing)
-            {
-                GC.SuppressFinalize(this);
-            }
-
-            _arrayPool.Return(Data);
-        }
-
-        ~EthashCache()
-        {
-            Dispose(false);
+            var data = Data;
+            Data = null;
+            _arrayPool.Return(data);
         }
     }
 }

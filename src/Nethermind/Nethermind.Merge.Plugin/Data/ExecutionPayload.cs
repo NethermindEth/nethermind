@@ -39,6 +39,7 @@ public class ExecutionPayload
         Timestamp = block.Timestamp;
         BaseFeePerGas = block.BaseFeePerGas;
         Withdrawals = block.Withdrawals;
+        DataGasUsed = block.DataGasUsed;
         ExcessDataGas = block.ExcessDataGas;
 
         SetTransactions(block.Transactions);
@@ -70,12 +71,22 @@ public class ExecutionPayload
 
     public ulong Timestamp { get; set; }
 
+    private byte[][] _encodedTransactions = Array.Empty<byte[]>();
+
     /// <summary>
     /// Gets or sets an array of RLP-encoded transaction where each item is a byte list (data)
     /// representing <c>TransactionType || TransactionPayload</c> or <c>LegacyTransaction</c> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-2718">EIP-2718</see>.
     /// </summary>
-    public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();
+    public byte[][] Transactions
+    {
+        get { return _encodedTransactions; }
+        set
+        {
+            _encodedTransactions = value;
+            _transactions = null;
+        }
+    }
 
     /// <summary>
     /// Gets or sets a collection of <see cref="Withdrawal"/> as defined in
@@ -83,15 +94,27 @@ public class ExecutionPayload
     /// </summary>
     public IEnumerable<Withdrawal>? Withdrawals { get; set; }
 
-    [JsonConverter(typeof(NullableUInt256Converter))]
-    public UInt256? ExcessDataGas { get; set; }
+    /// <summary>
+    /// Gets or sets <see cref="Block.DataGasUsed"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
+    /// </summary>
+    [JsonProperty(ItemConverterType = typeof(NullableUInt256Converter), NullValueHandling = NullValueHandling.Ignore)]
+    public ulong? DataGasUsed { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.ExcessDataGas"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
+    /// </summary>
+    [JsonProperty(ItemConverterType = typeof(NullableUInt256Converter), NullValueHandling = NullValueHandling.Ignore)]
+    public ulong? ExcessDataGas { get; set; }
+
 
     /// <summary>
     /// Creates the execution block from payload.
     /// </summary>
     /// <param name="block">When this method returns, contains the execution block.</param>
     /// <param name="totalDifficulty">A total difficulty of the block.</param>
-    /// <returns><c>true</c> if block created successfully; otherise, <c>false</c>.</returns>
+    /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
     public virtual bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
     {
         try
@@ -105,7 +128,9 @@ public class ExecutionPayload
                 BlockNumber,
                 GasLimit,
                 Timestamp,
-                ExtraData)
+                ExtraData,
+                DataGasUsed,
+                ExcessDataGas)
             {
                 Hash = BlockHash,
                 ReceiptsRoot = ReceiptsRoot,
@@ -120,7 +145,6 @@ public class ExecutionPayload
                 TotalDifficulty = totalDifficulty,
                 TxRoot = new TxTrie(transactions).RootHash,
                 WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
-                ExcessDataGas = ExcessDataGas,
             };
 
             block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals);
@@ -135,11 +159,13 @@ public class ExecutionPayload
         }
     }
 
+    private Transaction[]? _transactions = null;
+
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
-    public Transaction[] GetTransactions() => Transactions
+    public Transaction[] GetTransactions() => _transactions ??= Transactions
         .Select(t => Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping))
         .ToArray();
 
@@ -147,11 +173,15 @@ public class ExecutionPayload
     /// RLP-encodes and sets the transactions specified to <see cref="Transactions"/>.
     /// </summary>
     /// <param name="transactions">An array of transactions to encode.</param>
-    public void SetTransactions(params Transaction[] transactions) => Transactions = transactions
-        .Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
-        .ToArray();
+    public void SetTransactions(params Transaction[] transactions)
+    {
+        Transactions = transactions
+            .Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
+            .ToArray();
+        _transactions = transactions;
+    }
 
-    public override string ToString() => $"{BlockNumber} ({BlockHash})";
+    public override string ToString() => $"{BlockNumber} ({BlockHash.ToShortString()})";
 }
 
 public static class ExecutionPayloadExtensions

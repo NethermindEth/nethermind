@@ -35,8 +35,11 @@ namespace Nethermind.Api
         [ConfigItem(Description = "Path to the chain definition file created by Hive for test purpouse", DefaultValue = "chainspec/test.json")]
         string HiveChainSpecPath { get; set; }
 
-        [ConfigItem(Description = "Base directoy path for all the nethermind databases.", DefaultValue = "\"db\"")]
+        [ConfigItem(Description = "Base directory path for all the nethermind databases.", DefaultValue = "\"db\"")]
         string BaseDbPath { get; set; }
+
+        [ConfigItem(Description = "Kzg trusted setup file path", DefaultValue = "null")]
+        string? KzgSetupPath { get; set; }
 
         [ConfigItem(Description = "Hash of the genesis block - if the default null value is left then the genesis block validity will not be checked which is useful for ad hoc test/private networks.", DefaultValue = "null")]
         string? GenesisHash { get; set; }
@@ -53,10 +56,10 @@ namespace Nethermind.Api
         [ConfigItem(Description = "Overrides for default logs in format LogPath:LogLevel;*", DefaultValue = "null")]
         string? LogRules { get; set; }
 
-        [ConfigItem(Description = "If set to 'false' then transaction receipts will not be stored in the database after a new block is processed. This setting is independent from downloading receipts in fast sync mode.", DefaultValue = "true")]
+        [ConfigItem(Description = "Moved to ReceiptConfig.", DefaultValue = "true", HiddenFromDocs = true)]
         bool StoreReceipts { get; set; }
 
-        [ConfigItem(Description = "If set to 'true' then receipts db will be migrated to new schema.", DefaultValue = "false")]
+        [ConfigItem(Description = "Moved to ReceiptConfig.", DefaultValue = "false", HiddenFromDocs = true)]
         bool ReceiptsMigration { get; set; }
 
         [ConfigItem(Description = "Diagnostics modes", DefaultValue = "None")]

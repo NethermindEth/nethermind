@@ -3,18 +3,15 @@
   <PropertyGroup>
     <TargetFramework>net7.0</TargetFramework>
     <Nullable>annotations</Nullable>
-    <Deterministic>true</Deterministic>
-    <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
+    
+    
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Umbraco.CSharpTest.Net.Collections" />
-  </ItemGroup>
-
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+      <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
       <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     </ItemGroup>
 

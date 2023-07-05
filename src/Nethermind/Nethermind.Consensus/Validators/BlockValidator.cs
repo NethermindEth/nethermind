@@ -6,6 +6,8 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
@@ -53,16 +55,18 @@ public class BlockValidator : IBlockValidator
     /// </returns>
     public bool ValidateSuggestedBlock(Block block)
     {
-        Transaction[] txs = block.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        for (int i = 0; i < txs.Length; i++)
+        if (!ValidateTransactions(block, spec, out int blobsInBlock, out string error))
         {
-            if (!_txValidator.IsWellFormed(txs[i], spec))
-            {
-                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction {txs[i].Hash}");
-                return false;
-            }
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}");
+            return false;
+        }
+
+        if (!ValidateDataGasUsed(block, spec, blobsInBlock, out string dataGasError))
+        {
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {dataGasError}");
+            return false;
         }
 
         if (spec.MaximumUncleCount < block.Uncles.Length)
@@ -138,6 +142,16 @@ public class BlockValidator : IBlockValidator
                 if (_logger.IsError) _logger.Error($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
             }
 
+            if (processedBlock.Header.DataGasUsed != suggestedBlock.Header.DataGasUsed)
+            {
+                if (_logger.IsError) _logger.Error($"- data gas used: expected {suggestedBlock.Header.DataGasUsed}, got {processedBlock.Header.DataGasUsed}");
+            }
+
+            if (processedBlock.Header.ExcessDataGas != suggestedBlock.Header.ExcessDataGas)
+            {
+                if (_logger.IsError) _logger.Error($"- excess data gas: expected {suggestedBlock.Header.ExcessDataGas}, got {processedBlock.Header.ExcessDataGas}");
+            }
+
             for (int i = 0; i < processedBlock.Transactions.Length; i++)
             {
                 if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
@@ -186,6 +200,77 @@ public class BlockValidator : IBlockValidator
 
         error = null;
 
+        return true;
+    }
+
+    private bool ValidateTransactions(Block block, IReleaseSpec spec, out int blobsInBlock, out string? error)
+    {
+        blobsInBlock = 0;
+
+        UInt256 dataGasPrice = UInt256.Zero;
+
+        Transaction[] transactions = block.Transactions;
+
+        for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
+        {
+            Transaction transaction = transactions[txIndex];
+
+            if (!_txValidator.IsWellFormed(transaction, spec))
+            {
+                error = $"{Invalid(block)} Invalid transaction {transaction.Hash}";
+                return false;
+            }
+
+            if (!transaction.SupportsBlobs)
+            {
+                continue;
+            }
+
+            if (dataGasPrice == UInt256.Zero)
+            {
+                if (!DataGasCalculator.TryCalculateDataGasPricePerUnit(block.Header, out dataGasPrice))
+                {
+                    error = $"{nameof(dataGasPrice)} overflow.";
+                    return false;
+                }
+            }
+
+            if (transaction.MaxFeePerDataGas < dataGasPrice)
+            {
+                error = $"A transaction has unsufficient {nameof(transaction.MaxFeePerDataGas)} to cover current data gas fee: {transaction.MaxFeePerDataGas} < {dataGasPrice}.";
+                return false;
+            }
+
+            blobsInBlock += transaction.BlobVersionedHashes!.Length;
+        }
+
+        error = null;
+        return true;
+    }
+
+    private bool ValidateDataGasUsed(Block block, IReleaseSpec spec, in int blobsInBlock, out string? error)
+    {
+        if (!spec.IsEip4844Enabled)
+        {
+            error = null;
+            return true;
+        }
+
+        ulong dataGasUsed = DataGasCalculator.CalculateDataGas(blobsInBlock);
+
+        if (dataGasUsed > Eip4844Constants.MaxDataGasPerBlock)
+        {
+            error = $"A block cannot have more than {Eip4844Constants.MaxDataGasPerBlock} data gas.";
+            return false;
+        }
+
+        if (dataGasUsed != block.Header.DataGasUsed)
+        {
+            error = $"{nameof(BlockHeader.DataGasUsed)} declared in the block header does not match actual data gas used: {block.Header.DataGasUsed} != {dataGasUsed}.";
+            return false;
+        }
+
+        error = null;
         return true;
     }
 
