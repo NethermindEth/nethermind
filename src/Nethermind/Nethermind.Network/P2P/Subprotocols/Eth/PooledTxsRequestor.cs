@@ -14,6 +14,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class PooledTxsRequestor : IPooledTxsRequestor
     {
+        private const int MaxNumberOfTxsInOneMsg = 256;
         private readonly ITxPool _txPool;
         private readonly LruKeyCache<ValueKeccak> _pendingHashes = new(MemoryAllowance.TxHashCacheSize,
             Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "pending tx hashes");
@@ -41,7 +42,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             if (discoveredTxHashes.Count != 0)
             {
-                RequestPooledTransactionsEth66(send, discoveredTxHashes);
+                if (discoveredTxHashes.Count <= MaxNumberOfTxsInOneMsg)
+                {
+                    RequestPooledTransactionsEth66(send, discoveredTxHashes);
+                }
+                else
+                {
+                    using ArrayPoolList<Keccak> hashesToRequest = new(MaxNumberOfTxsInOneMsg);
+                    for (int i = 0; i < discoveredTxHashes.Count; i++)
+                    {
+                        if (hashesToRequest.Count % MaxNumberOfTxsInOneMsg == 0 && hashesToRequest.Count > 0)
+                        {
+                            RequestPooledTransactionsEth66(send, hashesToRequest);
+                            hashesToRequest.Clear();
+                        }
+
+                        hashesToRequest.Add(discoveredTxHashes[i]);
+                    }
+
+                    if (hashesToRequest.Count > 0)
+                    {
+                        RequestPooledTransactionsEth66(send, hashesToRequest);
+                    }
+                }
             }
         }
 
