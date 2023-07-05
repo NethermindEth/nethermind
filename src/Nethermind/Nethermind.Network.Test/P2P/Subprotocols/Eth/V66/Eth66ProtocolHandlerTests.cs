@@ -19,6 +19,8 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Rlpx;
@@ -51,6 +53,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         private ITxPool _transactionPool = null!;
         private IPooledTxsRequestor _pooledTxsRequestor = null!;
         private IGossipPolicy _gossipPolicy = null!;
+        private ITimerFactory _timerFactory = null!;
         private ISpecProvider _specProvider = null!;
         private Block _genesisBlock = null!;
         private Eth66ProtocolHandler _handler = null!;
@@ -73,11 +76,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _genesisBlock = Build.A.Block.Genesis.TestObject;
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            _timerFactory = Substitute.For<ITimerFactory>();
             _handler = new Eth66ProtocolHandler(
                 _session,
                 _svc,
-                new NodeStatsManager(timerFactory, LimboLogs.Instance),
+                new NodeStatsManager(_timerFactory, LimboLogs.Instance),
                 _syncManager,
                 _transactionPool,
                 _pooledTxsRequestor,
@@ -282,6 +285,42 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleIncomingStatusMessage();
             System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
             act.Should().Throw<SubprotocolException>();
+        }
+
+
+        [TestCase(0, 0)]
+        [TestCase(1, 1)]
+        [TestCase(256, 1)]
+        [TestCase(257, 2)]
+        [TestCase(1000, 4)]
+        [TestCase(10000, 40)]
+        public void should_request_in_GetPooledTransactionsMessage_up_to_256_txs(int numberOfTransactions, int expectedNumberOfMessages)
+        {
+            const int maxNumberOfTxsInOneMsg = 256;
+
+            _handler = new Eth66ProtocolHandler(
+                _session,
+                _svc,
+                new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+                _syncManager,
+                _transactionPool,
+                new PooledTxsRequestor(_transactionPool),
+                _gossipPolicy,
+                new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+                LimboLogs.Instance);
+
+            List<Keccak> hashes = new(numberOfTransactions);
+
+            for (int i = 0; i < numberOfTransactions; i++)
+            {
+                hashes.Add(new Keccak(i.ToString("X64")));
+            }
+
+            NewPooledTransactionHashesMessage hashesMsg = new(hashes);
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(hashesMsg, Eth65MessageCode.NewPooledTransactionHashes);
+
+            _session.Received(expectedNumberOfMessages).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg));
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
