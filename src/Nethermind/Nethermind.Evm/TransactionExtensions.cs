@@ -24,7 +24,7 @@ namespace Nethermind.Evm
             {
                 if (!DataGasCalculator.TryCalculateDataGasPricePerUnit(header, out UInt256 dataGasPrice))
                 {
-                    throw new ArgumentException(nameof(dataGasPrice));
+                    throw new Exception("Data gas price calculation failed due to an overflow or an incorrect block header.");
                 }
                 ulong dataGas = DataGasCalculator.CalculateDataGas(tx);
 

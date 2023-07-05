@@ -226,7 +226,7 @@ public class BlockValidator : IBlockValidator
                 continue;
             }
 
-            if (dataGasPrice == UInt256.Zero)
+            if (dataGasPrice.IsZero)
             {
                 if (!DataGasCalculator.TryCalculateDataGasPricePerUnit(block.Header, out dataGasPrice))
                 {
