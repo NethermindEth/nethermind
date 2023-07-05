@@ -3,7 +3,8 @@ name: Hive tests
 on: 
   push:
     tags: ['*']
-
+    branches: 
+        - master
   workflow_dispatch:
     inputs:
       test-suite:
