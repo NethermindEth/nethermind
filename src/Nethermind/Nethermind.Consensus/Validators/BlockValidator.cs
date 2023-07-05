@@ -57,10 +57,10 @@ public class BlockValidator : IBlockValidator
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        if (!ValidateTransactions(block, spec, out int blobsInBlock))
+        if (!ValidateTransactions(block, spec))
             return false;
 
-        if (!ValidateDataGasUsed(block, spec, blobsInBlock))
+        if (!ValidateEip4844Fields(block, spec))
             return false;
 
         if (spec.MaximumUncleCount < block.Uncles.Length)
@@ -197,12 +197,8 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
-    private bool ValidateTransactions(Block block, IReleaseSpec spec, out int blobsInBlock)
+    private bool ValidateTransactions(Block block, IReleaseSpec spec)
     {
-        blobsInBlock = 0;
-
-        UInt256 dataGasPrice = UInt256.Zero;
-
         Transaction[] transactions = block.Transactions;
 
         for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
@@ -214,6 +210,25 @@ public class BlockValidator : IBlockValidator
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction {transaction.Hash}");
                 return false;
             }
+        }
+
+        return true;
+    }
+
+    private bool ValidateEip4844Fields(Block block, IReleaseSpec spec)
+    {
+        if (!spec.IsEip4844Enabled)
+        {
+            return true;
+        }
+
+        int blobsInBlock = 0;
+        UInt256 dataGasPrice = UInt256.Zero;
+        Transaction[] transactions = block.Transactions;
+
+        for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
+        {
+            Transaction transaction = transactions[txIndex];
 
             if (!transaction.SupportsBlobs)
             {
@@ -236,16 +251,6 @@ public class BlockValidator : IBlockValidator
             }
 
             blobsInBlock += transaction.BlobVersionedHashes!.Length;
-        }
-
-        return true;
-    }
-
-    private bool ValidateDataGasUsed(Block block, IReleaseSpec spec, in int blobsInBlock)
-    {
-        if (!spec.IsEip4844Enabled)
-        {
-            return true;
         }
 
         ulong dataGasUsed = DataGasCalculator.CalculateDataGas(blobsInBlock);
