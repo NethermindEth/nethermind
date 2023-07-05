@@ -90,7 +90,6 @@ namespace Nethermind.Consensus.Processing
                     return false;
                 }
 
-
                 if (!transaction.IsServiceTransaction && eip1559Enabled)
                 {
                     UInt256 maxFee = (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + transaction.Value;
@@ -101,7 +100,7 @@ namespace Nethermind.Consensus.Processing
                         return false;
                     }
 
-                    if (releaseSpec.IsEip4844Enabled && (
+                    if (transaction.SupportsBlobs && (
                         !DataGasCalculator.TryCalculateDataGasPrice(block.Header, transaction, out UInt256 dataGasPrice) ||
                         senderBalance < (maxFee += dataGasPrice)))
                     {
