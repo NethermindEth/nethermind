@@ -22,9 +22,14 @@ namespace Nethermind.Evm
 
             if (tx.SupportsBlobs)
             {
+                if (header.ExcessDataGas is null)
+                {
+                    throw new ArgumentException($"Block that contains Shard Blob Transactions should have {nameof(header.ExcessDataGas)} set.", nameof(header.ExcessDataGas));
+                }
+
                 if (!DataGasCalculator.TryCalculateDataGasPricePerUnit(header, out UInt256 dataGasPrice))
                 {
-                    throw new ArgumentException(nameof(dataGasPrice));
+                    throw new OverflowException("Data gas price calculation led to overflow.");
                 }
                 ulong dataGas = DataGasCalculator.CalculateDataGas(tx);
 
