@@ -28,6 +28,21 @@ public class OptimismTransactionProcessor : TransactionProcessor
         _opConfigHelper = opConfigHelper;
     }
 
+    protected override void Execute(Transaction tx, BlockHeader header, ITxTracer tracer, ExecutionOptions opts)
+    {
+        if (tx.IsDeposit())
+        {
+            IReleaseSpec spec = SpecProvider.GetSpec(header);
+
+            WorldState.AddToBalanceAndCreateIfNotExists(tx.SenderAddress!, tx.Mint, spec);
+
+            if (opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled)
+                WorldState.Commit(spec);
+        }
+
+        base.Execute(tx, header, tracer, opts);
+    }
+
     protected override bool BuyGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment)
     {
@@ -36,7 +51,7 @@ public class OptimismTransactionProcessor : TransactionProcessor
 
         bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
 
-        if (validate)
+        if (validate && !tx.IsDeposit())
         {
             if (!tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
             {
@@ -86,6 +101,16 @@ public class OptimismTransactionProcessor : TransactionProcessor
         return true;
     }
 
+    protected override bool IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
+    {
+        return tx.IsDeposit() || base.IncrementNonce(tx, header, spec, tracer, opts);
+    }
+
+    protected override bool ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
+    {
+        return tx.IsDeposit() || base.ValidateSender(tx, header, spec, tracer, opts);
+    }
+
     protected override bool PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
         in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
     {
@@ -102,7 +127,7 @@ public class OptimismTransactionProcessor : TransactionProcessor
         if (_opConfigHelper.IsBedrock(header))
         {
             UInt256 l1Cost = _l1CostHelper.ComputeL1Cost(tx, WorldState, header.Number, header.Timestamp, tx.IsDeposit());
-            WorldState.AddToBalanceAndCreateIfNotExists(_l1CostHelper.L1FeeReceiver, l1Cost, spec);
+            WorldState.AddToBalanceAndCreateIfNotExists(_opConfigHelper.L1FeeReceiver, l1Cost, spec);
         }
 
         return true;

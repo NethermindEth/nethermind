@@ -200,20 +200,7 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-            // blockchain processing
-            BlockhashProvider blockhashProvider = new(
-                getApi.BlockTree, getApi.LogManager);
-
-            VirtualMachine virtualMachine = new(
-                blockhashProvider,
-                getApi.SpecProvider,
-                getApi.LogManager);
-
-            _api.TransactionProcessor = new TransactionProcessor(
-                getApi.SpecProvider,
-                worldState,
-                virtualMachine,
-                getApi.LogManager);
+            _api.TransactionProcessor = CreateTransactionProcessor();
 
             InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
@@ -271,6 +258,35 @@ namespace Nethermind.Init.Steps
             InitializeFullPruning(pruningConfig, initConfig, _api, stateReader);
 
             return Task.CompletedTask;
+        }
+
+        protected virtual ITransactionProcessor CreateTransactionProcessor()
+        {
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
+
+            VirtualMachine virtualMachine = CreateVirtualMachine();
+
+            return new TransactionProcessor(
+                _api.SpecProvider,
+                _api.WorldState,
+                virtualMachine,
+                _api.LogManager);
+        }
+
+        protected virtual VirtualMachine CreateVirtualMachine()
+        {
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+
+            // blockchain processing
+            BlockhashProvider blockhashProvider = new(
+                _api.BlockTree, _api.LogManager);
+
+            return new VirtualMachine(
+                blockhashProvider,
+                _api.SpecProvider,
+                _api.LogManager);
         }
 
         private static void InitializeFullPruning(
