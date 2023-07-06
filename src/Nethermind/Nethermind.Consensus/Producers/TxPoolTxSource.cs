@@ -79,7 +79,7 @@ namespace Nethermind.Consensus.Producers
 
                 if (tx.SupportsBlobs)
                 {
-                    if (dataGasPrice == UInt256.Zero)
+                    if (dataGasPrice.IsZero)
                     {
                         ulong? excessDataGas = DataGasCalculator.CalculateExcessDataGas(parent, _specProvider.GetSpec(parent));
                         if (excessDataGas is null)

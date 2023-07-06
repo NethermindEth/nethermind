@@ -1593,6 +1593,22 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLowToCompete);
         }
 
+        [TestCase(0, 97)]
+        [TestCase(1, 131324)]
+        [TestCase(2, 262534)]
+        [TestCase(3, 393741)]
+        [TestCase(4, 524948)]
+        [TestCase(5, 656156)]
+        [TestCase(6, 787365)]
+        public void should_calculate_size_of_blob_tx_correctly(int numberOfBlobs, int expectedLength)
+        {
+            Transaction blobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(numberOfBlobs)
+                .SignedAndResolved()
+                .TestObject;
+            blobTx.GetLength().Should().Be(expectedLength);
+        }
+
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
         {
             var peers = new Dictionary<ITxPoolPeer, PrivateKey>();
