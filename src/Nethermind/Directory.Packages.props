@@ -62,7 +62,7 @@
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.0.0" />
     <PackageVersion Include="ReadLine" Version="2.0.1" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="6.0.0" />
-    <PackageVersion Include="RocksDB" Version="8.3.2.39678" />
+    <PackageVersion Include="RocksDB" Version="8.0.0.37755" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="Seq.Api" Version="2023.2.0" />
     <PackageVersion Include="Shouldly" Version="4.2.1" />
