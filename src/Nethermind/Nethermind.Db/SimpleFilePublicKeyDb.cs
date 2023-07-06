@@ -123,7 +123,7 @@ namespace Nethermind.Db
             try
             {
                 using StreamWriter fileWriter = new(DbPath);
-                StringBuilder lineBuilder = new(256);
+                StringBuilder lineBuilder = new(400); // longest found in practice was 320, adding some headroom
                 using StringWriter lineWriter = new(lineBuilder);
                 foreach ((byte[] key, byte[]? value) in snapshot)
                 {
