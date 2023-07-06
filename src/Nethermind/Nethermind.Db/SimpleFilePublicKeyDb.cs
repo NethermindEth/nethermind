@@ -22,7 +22,7 @@ namespace Nethermind.Db
     {
         public const string DbFileName = "SimpleFileDb.db";
 
-        private ILogger _logger;
+        private readonly ILogger _logger;
         private bool _hasPendingChanges;
         private SpanConcurrentDictionary<byte, byte[]> _cache;
 
@@ -123,20 +123,24 @@ namespace Nethermind.Db
             try
             {
                 using StreamWriter fileWriter = new(DbPath);
-                foreach ((byte[] key, byte[] value) in snapshot)
+                StringBuilder lineBuilder = new(256);
+                using StringWriter lineWriter = new(lineBuilder);
+                foreach ((byte[] key, byte[]? value) in snapshot)
                 {
+                    lineBuilder.Clear();
+
                     if (value is not null)
                     {
-                        StringBuilder lineBuilder = new();
-                        using (StringWriter lineWriter = new(lineBuilder))
-                        {
-                            key.StreamHex(lineWriter);
-                            lineWriter.Write(',');
-                            value.StreamHex(lineWriter);
-                            lineWriter.WriteLine();
-                        }
+                        key.StreamHex(lineWriter);
+                        lineWriter.Write(',');
+                        value.StreamHex(lineWriter);
+                        lineWriter.WriteLine();
+                        lineWriter.Flush();
 
-                        fileWriter.Write(lineBuilder.ToString());
+                        foreach (ReadOnlyMemory<char> chunk in lineBuilder.GetChunks())
+                        {
+                            fileWriter.Write(chunk.Span);
+                        }
                     }
                 }
             }
