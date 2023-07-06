@@ -136,7 +136,7 @@ namespace Nethermind.Core
         /// </summary>
         public int GetLength(ITransactionSizeCalculator sizeCalculator)
         {
-            return _size ??= sizeCalculator.GetNetworkTxLength(this);
+            return _size ??= sizeCalculator.GetLength(this);
         }
 
         public string ToShortString()
@@ -201,7 +201,7 @@ namespace Nethermind.Core
     /// <remarks>Created because of cyclic dependencies between Core and Rlp modules</remarks>
     public interface ITransactionSizeCalculator
     {
-        int GetNetworkTxLength(Transaction tx);
+        int GetLength(Transaction tx);
     }
 
     /// <summary>

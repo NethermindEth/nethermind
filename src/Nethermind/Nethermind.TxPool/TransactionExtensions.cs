@@ -14,7 +14,7 @@ namespace Nethermind.TxPool
     public static class TransactionExtensions
     {
         private static readonly long MaxSizeOfTxForBroadcast = 128.KiB(); //128KB, as proposed in https://eips.ethereum.org/EIPS/eip-5793
-        private static readonly ITransactionSizeCalculator _transactionSizeCalculator = new TxDecoder();
+        private static readonly ITransactionSizeCalculator _transactionSizeCalculator = new NetworkTransactionSizeCalculator(new TxDecoder());
 
         public static int GetLength(this Transaction tx)
         {

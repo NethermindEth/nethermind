@@ -9,7 +9,7 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class TxDecoder : TxDecoder<Transaction>, ITransactionSizeCalculator
+    public class TxDecoder : TxDecoder<Transaction>
     {
         public const int MaxDelayedHashTxnSize = 32768;
         public static TxDecoder Instance = new TxDecoder();
@@ -21,11 +21,6 @@ namespace Nethermind.Serialization.Rlp
 
         public TxDecoder(bool lazyHash) : base(lazyHash)
         {
-        }
-
-        public int GetNetworkTxLength(Transaction tx)
-        {
-            return GetLength(tx, RlpBehaviors.InMempoolForm);
         }
     }
     public class SystemTxDecoder : TxDecoder<SystemTransaction> { }
