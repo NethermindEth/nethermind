@@ -29,9 +29,6 @@ namespace Nethermind.Network.P2P.Messages
         }
 
 
-        private byte[] breach1 = Bytes.FromHexString("0204c104");
-        private byte[] breach2 = Bytes.FromHexString("0204c180");
-
         public DisconnectMessage Deserialize(IByteBuffer msgBytes)
         {
             if (msgBytes.ReadableBytes == 1)
@@ -39,14 +36,19 @@ namespace Nethermind.Network.P2P.Messages
                 return new DisconnectMessage((DisconnectReason)msgBytes.GetByte(0));
             }
 
-            Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
-            if (msg.SequenceEqual(breach1)
-                || msg.SequenceEqual(breach2))
+            if (msgBytes.ReadableBytes == 0)
             {
-                return new DisconnectMessage(DisconnectReason.Other);
+                // Sometimes 0x00 was sent, uncompressed, which interpreted as empty buffer by snappy.
+                return new DisconnectMessage(DisconnectReason.DisconnectRequested);
             }
 
+            Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
             Rlp.ValueDecoderContext rlpStream = msg.AsRlpValueContext();
+            if (!rlpStream.IsSequenceNext())
+            {
+                rlpStream = new Rlp.ValueDecoderContext(rlpStream.DecodeByteArraySpan());
+            }
+
             rlpStream.ReadSequenceLength();
             int reason = rlpStream.DecodeInt();
             DisconnectMessage disconnectMessage = new DisconnectMessage(reason);

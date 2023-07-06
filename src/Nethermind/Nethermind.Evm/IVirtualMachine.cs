@@ -7,11 +7,14 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
 
+using static Nethermind.Evm.VirtualMachine;
+
 namespace Nethermind.Evm
 {
     public interface IVirtualMachine
     {
-        TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer tracer);
+        TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
+            where TTracingActions : struct, IIsTracing;
 
         CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec);
     }

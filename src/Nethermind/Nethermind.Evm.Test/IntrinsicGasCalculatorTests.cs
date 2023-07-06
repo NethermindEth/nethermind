@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.IO;
 using FluentAssertions;
 using Nethermind.Core;
@@ -41,7 +40,6 @@ namespace Nethermind.Evm.Test
             yield return (new byte[] { 1, 1, 0 }, 140, 36);
             yield return (new byte[] { 0, 0, 1, 1 }, 144, 40);
         }
-
         [TestCaseSource(nameof(TestCaseSource))]
         public void Intrinsic_cost_is_calculated_properly((Transaction Tx, long Cost, string Description) testCase)
         {
@@ -113,6 +111,9 @@ namespace Nethermind.Evm.Test
             Test(Istanbul.Instance, true);
             Test(MuirGlacier.Instance, true);
             Test(Berlin.Instance, true);
+            Test(GrayGlacier.Instance, true);
+            Test(Shanghai.Instance, true);
+            Test(Cancun.Instance, true);
         }
     }
 }

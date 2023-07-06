@@ -17,7 +17,6 @@ using Nethermind.Specs;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
-using NUnit.Framework.Internal.Execution;
 
 namespace Nethermind.Blockchain.Test.Producers
 {
