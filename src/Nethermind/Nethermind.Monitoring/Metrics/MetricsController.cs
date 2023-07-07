@@ -24,14 +24,22 @@ namespace Nethermind.Monitoring.Metrics
         private readonly int _intervalSeconds;
         private Timer _timer;
         private readonly Dictionary<Type, (MemberInfo, string, Func<double>)[]> _membersCache = new();
-        private readonly Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicPropCache = new();
-        private readonly Dictionary<Type, (MemberInfo, string GaugeName, string LabelName, IDictionary)[]> _labelledDictionaryCache = new();
+        private readonly Dictionary<Type, DictionaryMetricInfo[]> _labelledDictionaryCache = new();
         private readonly HashSet<Type> _metricTypes = new();
 
         public readonly Dictionary<string, Gauge> _gauges = new();
         private readonly bool _useCounters;
 
         private readonly List<Action> _callbacks = new();
+
+        class DictionaryMetricInfo
+        {
+            internal MemberInfo MemberInfo;
+            internal string DictionaryName;
+            internal string LabelName;
+            internal string GaugeName;
+            internal IDictionary Dictionary;
+        }
 
         public void RegisterMetrics(Type type)
         {
@@ -53,16 +61,17 @@ namespace Nethermind.Monitoring.Metrics
                 _gauges[gaugeName] = CreateMemberInfoMetricsGauge(member);
             }
 
-            foreach ((MemberInfo member, string gaugeName, string labelName, IEnumerable _) in _labelledDictionaryCache[type])
+            foreach (DictionaryMetricInfo info in _labelledDictionaryCache[type])
             {
-                _gauges[gaugeName] = CreateMemberInfoMetricsGauge(member, labelName);
+                if (info.LabelName is null) continue; // Old behaviour creates new metric as it is created
+                _gauges[info.GaugeName] = CreateMemberInfoMetricsGauge(info.MemberInfo, info.LabelName);
             }
         }
 
         private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member, params string[] labels)
         {
-            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
             string name = BuildGaugeName(member);
+            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
 
             bool haveTagAttributes = member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().Any();
             if (!haveTagAttributes)
@@ -145,27 +154,20 @@ namespace Nethermind.Monitoring.Metrics
                     .ToArray();
             }
 
-            if (!_dynamicPropCache.ContainsKey(type))
-            {
-                var p = type.GetProperties()
-                    .Where(p => p.GetCustomAttribute<KeyIsLabel>() == null)
-                    .FirstOrDefault(p => p.PropertyType.IsAssignableTo(typeof(IDictionary<string, long>)));
-                if (p != null)
-                {
-                    _dynamicPropCache[type] = (p.Name, (IDictionary<string, long>)p.GetValue(null));
-                }
-            }
-
             if (!_labelledDictionaryCache.ContainsKey(type))
             {
                 _labelledDictionaryCache[type] = type.GetProperties()
-                    .Where(p => p.GetCustomAttribute<KeyIsLabel>() != null)
                     .Where(p =>
+                        p.PropertyType.IsGenericType &&
+                        p.PropertyType.GetGenericTypeDefinition().IsAssignableTo(typeof(IDictionary)))
+                    .Select(p => new DictionaryMetricInfo()
                     {
-                        var propType = p.PropertyType;
-                        return propType.IsGenericType && propType.GetGenericTypeDefinition().IsAssignableTo(typeof(IDictionary));
+                        MemberInfo = p,
+                        DictionaryName = p.Name,
+                        LabelName = p.GetCustomAttribute<KeyIsLabelAttribute>()?.LabelName,
+                        GaugeName = GetGaugeNameKey(type.Name, p.Name),
+                        Dictionary = (IDictionary)p.GetValue(null)
                     })
-                    .Select(p => ((MemberInfo)p, GetGaugeNameKey(type.Name, p.Name), p.GetCustomAttribute<KeyIsLabel>().LabelName, (IDictionary)p.GetValue(null)))
                     .ToArray();
             }
         }
@@ -217,30 +219,37 @@ namespace Nethermind.Monitoring.Metrics
                 ReplaceValueIfChanged(accessor(), gaugeName);
             }
 
-            if (_dynamicPropCache.TryGetValue(type, out var dict))
+            foreach (DictionaryMetricInfo info in _labelledDictionaryCache[type])
             {
-                foreach (var kvp in dict.Dict)
+                if (info.LabelName is null)
                 {
-                    double value = Convert.ToDouble(kvp.Value);
-                    var gaugeName = GetGaugeNameKey(dict.DictName, kvp.Key);
-
-                    if (ReplaceValueIfChanged(value, gaugeName) is null)
+                    IDictionary dict = info.Dictionary;
+                    // Its fine that the key here need to call `ToString()`. Better here then in the metrics, where it might
+                    // impact the performance of whatever is updating the metrics.
+                    foreach (object keyObj in dict.Keys) // Different dictionary seems to iterate to different KV type. So need to use `Keys` here.
                     {
-                        Gauge gauge = CreateGauge(BuildGaugeName(kvp.Key));
-                        _gauges[gaugeName] = gauge;
-                        gauge.Set(value);
+                        string keyStr = keyObj.ToString();
+                        double value = Convert.ToDouble(dict[keyObj]);
+                        string gaugeName = GetGaugeNameKey(info.DictionaryName, keyStr);
+
+                        if (ReplaceValueIfChanged(value, gaugeName) is null)
+                        {
+                            // Don't know why it does not prefix with dictionary name or class name. Not gonna change behaviour now.
+                            Gauge gauge = CreateGauge(BuildGaugeName(keyStr));
+                            _gauges[gaugeName] = gauge;
+                            gauge.Set(value);
+                        }
                     }
                 }
-            }
-
-            foreach ((MemberInfo _, string gaugeName, string _, IDictionary labelledDict) in _labelledDictionaryCache[type])
-            {
-                // Its fine that the key here need to call `ToString()`. Better here then in the metrics, where it might
-                // impact the performance of whatever is updating the metrics.
-                foreach (object key in labelledDict.Keys)
+                else
                 {
-                    double value = Convert.ToDouble(labelledDict[key]);
-                    ReplaceValueIfChanged(value, gaugeName, key.ToString());
+                    IDictionary dict = info.Dictionary;
+                    string gaugeName = info.GaugeName;
+                    foreach (object key in dict.Keys)
+                    {
+                        double value = Convert.ToDouble(dict[key]);
+                        ReplaceValueIfChanged(value, gaugeName, key.ToString());
+                    }
                 }
             }
 

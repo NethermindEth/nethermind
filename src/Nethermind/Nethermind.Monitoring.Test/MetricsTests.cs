@@ -34,6 +34,8 @@ namespace Nethermind.Monitoring.Test
             [System.ComponentModel.Description("Another test description.")]
             [KeyIsLabel("somelabel")]
             public static ConcurrentDictionary<SomeEnum, long> WithLabelledDictionary { get; set; } = new();
+
+            public static Dictionary<string, long> OldDictionaryMetrics { get; set; } = new();
         }
 
         public enum SomeEnum
@@ -51,10 +53,21 @@ namespace Nethermind.Monitoring.Test
             };
             MetricsController metricsController = new(metricsConfig);
             metricsController.RegisterMetrics(typeof(TestMetrics));
+
+            TestMetrics.OneTwoThree = 123;
+            TestMetrics.OneTwoThreeSpecial = 1234;
+            TestMetrics.WithLabelledDictionary[SomeEnum.Option1] = 2;
+            TestMetrics.WithLabelledDictionary[SomeEnum.Option2] = 3;
+            TestMetrics.OldDictionaryMetrics["metrics0"] = 4;
+            TestMetrics.OldDictionaryMetrics["metrics1"] = 5;
+            metricsController.UpdateMetrics(null);
+
             var gauges = metricsController._gauges;
             var keyDefault = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}";
             var keySpecial = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThreeSpecial)}";
             var keyDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithLabelledDictionary)}";
+            var keyOldDictionary0 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics0";
+            var keyOldDictionary1 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics1";
 
             Assert.Contains(keyDefault, gauges.Keys);
             Assert.Contains(keySpecial, gauges.Keys);
@@ -62,17 +75,15 @@ namespace Nethermind.Monitoring.Test
             Assert.That(gauges[keyDefault].Name, Is.EqualTo("nethermind_one_two_three"));
             Assert.That(gauges[keySpecial].Name, Is.EqualTo("one_two_three"));
             Assert.That(gauges[keyDictionary].Name, Is.EqualTo("nethermind_with_labelled_dictionary"));
+            Assert.That(gauges[keyOldDictionary0].Name, Is.EqualTo("nethermind_metrics0"));
+            Assert.That(gauges[keyOldDictionary1].Name, Is.EqualTo("nethermind_metrics1"));
 
-            TestMetrics.OneTwoThree = 123;
-            TestMetrics.OneTwoThreeSpecial = 1234;
-            TestMetrics.WithLabelledDictionary[SomeEnum.Option1] = 2;
-            TestMetrics.WithLabelledDictionary[SomeEnum.Option2] = 3;
-            metricsController.UpdateMetrics(null);
-
-            gauges[keyDefault].Value.Should().Be(123);
-            gauges[keySpecial].Value.Should().Be(1234);
-            gauges[keyDictionary].WithLabels(SomeEnum.Option1.ToString()).Value.Should().Be(2);
-            gauges[keyDictionary].WithLabels(SomeEnum.Option2.ToString()).Value.Should().Be(3);
+            Assert.That(gauges[keyDefault].Value, Is.EqualTo(123));
+            Assert.That(gauges[keySpecial].Value, Is.EqualTo(1234));
+            Assert.That(gauges[keyDictionary].WithLabels(SomeEnum.Option1.ToString()).Value, Is.EqualTo(2));
+            Assert.That(gauges[keyDictionary].WithLabels(SomeEnum.Option2.ToString()).Value, Is.EqualTo(3));
+            Assert.That(gauges[keyOldDictionary0].Value, Is.EqualTo(4));
+            Assert.That(gauges[keyOldDictionary1].Value, Is.EqualTo(5));
         }
 
         [Test]
