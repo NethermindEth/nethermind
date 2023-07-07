@@ -4,7 +4,10 @@
 namespace Nethermind.Stats.Model;
 
 /// <summary>
-/// Nethermind level disconnect reason. Don't forget to add the corresponding Eth level disconnect reason in `InitiateDisconnectReasonExtension`.
+/// Nethermind level disconnect reason. This is different than `EthDisconnectReason` as its more detailed, specific
+/// to Nethermind and does not map 1-1 with ethereum disconnect message code. Useful for metrics, debugging and
+/// peer disconnect delays.
+/// Don't forget to add the corresponding Eth level disconnect reason in `DisconnectReasonExtension`.
 /// </summary>
 public enum DisconnectReason : byte
 {
@@ -61,7 +64,7 @@ public enum DisconnectReason : byte
     Other,
 }
 
-public static class InitiateDisconnectReasonExtension
+public static class DisconnectReasonExtension
 {
     public static EthDisconnectReason ToEthDisconnectReason(this DisconnectReason disconnectReason)
     {
