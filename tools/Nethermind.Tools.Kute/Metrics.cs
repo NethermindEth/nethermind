@@ -55,7 +55,7 @@ public class Metrics
     {
         if (!_processedRequests.ContainsKey(methodName))
         {
-            _processedRequests[methodName] = new TimerOptions()
+            _processedRequests[methodName] = new TimerOptions
             {
                 Name = methodName, MeasurementUnit = Unit.Requests, DurationUnit = TimeUnit.Milliseconds, RateUnit = TimeUnit.Milliseconds
             };
