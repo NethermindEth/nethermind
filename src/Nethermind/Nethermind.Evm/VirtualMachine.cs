@@ -1623,49 +1623,6 @@ OutOfGas:
 
                         break;
                     }
-                case Instruction.TLOAD:
-                    {
-                        Metrics.TloadOpcode++;
-                        if (!spec.TransientStorageEnabled) goto InvalidInstruction;
-
-                        gasAvailable -= GasCostOf.TLoad;
-
-                        stack.PopUInt256(out result);
-                        storageCell = new(env.ExecutingAccount, result);
-
-                        byte[] value = _state.GetTransientState(in storageCell);
-                        stack.PushBytes(value);
-
-                        if (typeof(TTracingStorage) == typeof(IsTracing))
-                        {
-                            _txTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
-                        }
-
-                        break;
-                    }
-                case Instruction.TSTORE:
-                    {
-                        Metrics.TstoreOpcode++;
-                        if (!spec.TransientStorageEnabled) goto InvalidInstruction;
-
-                        if (vmState.IsStatic) goto StaticCallViolation;
-
-                        gasAvailable -= GasCostOf.TStore;
-
-                        stack.PopUInt256(out result);
-                        storageCell = new(env.ExecutingAccount, result);
-                        bytes = stack.PopWord256();
-
-                        _state.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
-
-                        if (typeof(TTracingStorage) == typeof(IsTracing))
-                        {
-                            byte[] currentValue = _state.GetTransientState(in storageCell);
-                            _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
-                        }
-
-                        break;
-                    }
                 case Instruction.JUMP:
                     {
                         gasAvailable -= GasCostOf.Mid;
@@ -1994,28 +1951,77 @@ OutOfGas:
 
                         break;
                     }
-                case Instruction.BEGINSUB:
+                case Instruction.BEGINSUB | Instruction.TLOAD:
                     {
-                        if (!spec.SubroutinesEnabled) goto InvalidInstruction;
-
-                        // why do we even need the cost of it?
-                        gasAvailable -= GasCostOf.Base;
-
-                        goto InvalidSubroutineEntry;
-                    }
-                case Instruction.RETURNSUB:
-                    {
-                        if (!spec.SubroutinesEnabled) goto InvalidInstruction;
-
-                        gasAvailable -= GasCostOf.Low;
-
-                        if (vmState.ReturnStackHead == 0)
+                        if (spec.TransientStorageEnabled)
                         {
-                            goto InvalidSubroutineReturn;
+                            Metrics.TloadOpcode++;
+                            gasAvailable -= GasCostOf.TLoad;
+
+                            stack.PopUInt256(out result);
+                            storageCell = new(env.ExecutingAccount, result);
+
+                            byte[] value = _state.GetTransientState(in storageCell);
+                            stack.PushBytes(value);
+
+                            if (typeof(TTracingStorage) == typeof(IsTracing))
+                            {
+                                if (gasAvailable < 0) goto OutOfGas;
+                                _txTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
+                            }
+
+                            break;
+                        }
+                        else
+                        {
+                            if (!spec.SubroutinesEnabled) goto InvalidInstruction;
+
+                            // why do we even need the cost of it?
+                            gasAvailable -= GasCostOf.Base;
+
+                            goto InvalidSubroutineEntry;
                         }
 
-                        programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
-                        break;
+                    }
+                case Instruction.RETURNSUB | Instruction.TSTORE:
+                    {
+                        if (spec.TransientStorageEnabled)
+                        {
+                            Metrics.TstoreOpcode++;
+
+                            if (vmState.IsStatic) goto StaticCallViolation;
+
+                            gasAvailable -= GasCostOf.TStore;
+
+                            stack.PopUInt256(out result);
+                            storageCell = new(env.ExecutingAccount, result);
+                            bytes = stack.PopWord256();
+
+                            _state.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
+
+                            if (typeof(TTracingStorage) == typeof(IsTracing))
+                            {
+                                if (gasAvailable < 0) goto OutOfGas;
+                                byte[] currentValue = _state.GetTransientState(in storageCell);
+                                _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
+                            }
+
+                            break;
+                        }
+                        else
+                        {
+                            if (!spec.SubroutinesEnabled) goto InvalidInstruction;
+
+                            gasAvailable -= GasCostOf.Low;
+
+                            if (vmState.ReturnStackHead == 0)
+                            {
+                                goto InvalidSubroutineReturn;
+                            }
+
+                            programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
+                            break;
+                        }
                     }
                 case Instruction.JUMPSUB or Instruction.MCOPY:
                     {
