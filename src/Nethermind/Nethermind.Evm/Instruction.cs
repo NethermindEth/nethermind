@@ -183,9 +183,9 @@ namespace Nethermind.Evm
             instruction switch
             {
                 Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
-                Instruction.JUMPSUB or Instruction.MCOPY => spec?.IsEip5656Enabled == true ? "MCOPY" : "JUMPSUB",
                 Instruction.TLOAD or Instruction.BEGINSUB => spec?.TransientStorageEnabled == true ? "TLOAD" : "BEGINSUB",
                 Instruction.TSTORE or Instruction.RETURNSUB => spec?.TransientStorageEnabled == true ? "TSTORE" : "RETURNSUB",
+                Instruction.JUMPSUB or Instruction.MCOPY => spec?.IsEip5656Enabled == true ? "MCOPY" : "JUMPSUB",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null
             };
     }
