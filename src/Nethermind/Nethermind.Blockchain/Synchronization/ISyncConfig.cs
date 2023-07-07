@@ -112,5 +112,12 @@ namespace Nethermind.Blockchain.Synchronization
 
         [ConfigItem(Description = "[TECHNICAL] Specify max num of thread used for processing. Default is same as logical core count.", DefaultValue = "0")]
         public int MaxProcessingThreads { get; set; }
+
+
+        [ConfigItem(Description = "[TECHNICAL] Specify max receipt request size.", DefaultValue = "32", HiddenFromDocs = true)]
+        int MaxReceiptRequestSize { get; set; }
+
+        [ConfigItem(Description = "[TECHNICAL] Specify max bodies request size.", DefaultValue = "32", HiddenFromDocs = true)]
+        int MaxBodiesRequestSize { get; set; }
     }
 }

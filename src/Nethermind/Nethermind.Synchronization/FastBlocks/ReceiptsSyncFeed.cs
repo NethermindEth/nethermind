@@ -24,6 +24,7 @@ namespace Nethermind.Synchronization.FastBlocks
     public class ReceiptsSyncFeed : ActivatedSyncFeed<ReceiptsSyncBatch?>
     {
         private const int MinReceiptBlock = 1;
+        private readonly int _maxRequestSize;
         private int _requestSize = GethSyncLimits.MaxReceiptFetch;
 
         private readonly ILogger _logger;
@@ -65,6 +66,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
             }
 
+            _maxRequestSize = _syncConfig.MaxReceiptRequestSize;
+            _requestSize = Math.Min(_requestSize, _maxRequestSize);
             _pivotNumber = _syncConfig.PivotNumberParsed;
             _barrier = _syncConfig.AncientReceiptsBarrierCalc;
 
@@ -293,7 +296,7 @@ namespace Nethermind.Synchronization.FastBlocks
             int requestSize = currentRequestSize;
             if (validResponsesCount == batch.Infos.Length)
             {
-                requestSize = Math.Min(256, currentRequestSize * 2);
+                requestSize = Math.Min(_maxRequestSize, currentRequestSize * 2);
             }
 
             if (validResponsesCount == 0)

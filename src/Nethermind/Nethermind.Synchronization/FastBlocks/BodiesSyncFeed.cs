@@ -20,6 +20,7 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class BodiesSyncFeed : ActivatedSyncFeed<BodiesSyncBatch?>
     {
+        private readonly int _maxRequestSize;
         private int _requestSize = GethSyncLimits.MaxBodyFetch;
 
         private readonly ILogger _logger;
@@ -56,6 +57,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     "Entered fast blocks mode without fast blocks enabled in configuration.");
             }
 
+            _maxRequestSize = _syncConfig.MaxBodiesRequestSize;
             _pivotNumber = _syncConfig.PivotNumberParsed;
             _barrier = _barrier = _syncConfig.AncientBodiesBarrierCalc;
             if (_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in bodies sync");
@@ -251,7 +253,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (validResponsesCount == batch.Infos.Length)
                 {
-                    _requestSize = Math.Min(256, _requestSize * 2);
+                    _requestSize = Math.Min(_maxRequestSize, _requestSize * 2);
                 }
 
                 if (validResponsesCount == 0)
