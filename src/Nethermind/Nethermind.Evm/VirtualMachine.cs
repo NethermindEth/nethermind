@@ -1975,7 +1975,7 @@ OutOfGas:
                         {
                             if (!spec.SubroutinesEnabled) goto InvalidInstruction;
 
-                        // why do we even need the cost of it?
+                            // why do we even need the cost of it?
                             gasAvailable -= GasCostOf.Base;
 
                             goto InvalidSubroutineEntry;
