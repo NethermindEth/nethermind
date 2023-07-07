@@ -35,7 +35,7 @@ namespace Nethermind.Monitoring.Test
             [KeyIsLabel("somelabel")]
             public static ConcurrentDictionary<SomeEnum, long> WithLabelledDictionary { get; set; } = new();
 
-            public static Dictionary<string, long> OldDictionaryMetrics { get; set; } = new();
+            public static IDictionary<string, long> OldDictionaryMetrics { get; set; } = new ConcurrentDictionary<string, long>();
         }
 
         public enum SomeEnum
