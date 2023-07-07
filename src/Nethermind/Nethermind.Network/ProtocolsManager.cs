@@ -191,9 +191,9 @@ namespace Nethermind.Network
                 {
                     var ethHandler = version switch
                     {
-                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _networkConfig, _logManager, _txGossipPolicy),
+                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _networkConfig, _logManager, _txGossipPolicy),
+                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _networkConfig, _logManager, _txGossipPolicy),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 
@@ -224,7 +224,7 @@ namespace Nethermind.Network
                 },
                 [Protocol.Les] = (session, version) =>
                 {
-                    LesProtocolHandler handler = new(session, _serializer, _stats, _syncServer, _logManager);
+                    LesProtocolHandler handler = new(session, _serializer, _stats, _syncServer, _networkConfig, _logManager);
                     InitSyncPeerProtocol(session, handler);
 
                     return handler;

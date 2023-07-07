@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -47,6 +48,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 Substitute.For<ISyncServer>(),
                 Substitute.For<ITxPool>(),
                 Substitute.For<IGossipPolicy>(),
+            Substitute.For<INetworkConfig>(),
                 LimboLogs.Instance);
 
             var receipts = Enumerable.Repeat(
@@ -94,6 +96,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 syncServer,
                 Substitute.For<ITxPool>(),
                 Substitute.For<IGossipPolicy>(),
+            Substitute.For<INetworkConfig>(),
                 LimboLogs.Instance);
 
             StatusMessage statusMessage = new();
@@ -131,6 +134,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 syncServer,
                 Substitute.For<ITxPool>(),
                 Substitute.For<IGossipPolicy>(),
+            Substitute.For<INetworkConfig>(),
                 LimboLogs.Instance);
 
             syncServer.GetReceipts(Arg.Any<Keccak>()).Returns(

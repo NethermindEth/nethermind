@@ -95,17 +95,31 @@ namespace Nethermind.Network.Config
         [ConfigItem(DefaultValue = "1", HiddenFromDocs = true, Description = "[TECHNICAL] Num of thread in final processing of network packet. Set to more than 1 if you have very fast internet.")]
         int ProcessingThreadCount { get; set; }
 
-
+        [ConfigItem(DefaultValue = "20000", HiddenFromDocs = true, Description = "[TECHNICAL] Min snap request size.")]
+        int SnapRequestMinBytes { get; set; }
+        [ConfigItem(DefaultValue = "2000000", HiddenFromDocs = true, Description = "[TECHNICAL] Max snap request size.")]
+        int SnapRequestMaxBytes { get; set; }
+        [ConfigItem(DefaultValue = "1000", HiddenFromDocs = true, Description = "[TECHNICAL] Min snap response latency before increasing snap request size.")]
+        long SnapResponseLatencyLowWatermarkMs { get; set; }
         [ConfigItem(DefaultValue = "2000", HiddenFromDocs = true, Description = "[TECHNICAL] Max snap response latency before reducing snap request size.")]
         long SnapResponseLatencyHighWatermarkMs { get; set; }
 
-        [ConfigItem(DefaultValue = "1000", HiddenFromDocs = true, Description = "[TECHNICAL] Min snap response latency before increasing snap request size.")]
-        long SnapResponseLatencyLowWatermarkMs { get; set; }
+        [ConfigItem(DefaultValue = "4", HiddenFromDocs = true, Description = "[TECHNICAL] Min snap request size.")]
+        int BodiesRequestMinSize { get; set; }
+        [ConfigItem(DefaultValue = "128", HiddenFromDocs = true, Description = "[TECHNICAL] Max bodies request size.")]
+        int BodiesRequestMaxSize { get; set; }
+        [ConfigItem(DefaultValue = "2000", HiddenFromDocs = true, Description = "[TECHNICAL] Min bodies response latency before increasing bodies request size.")]
+        long BodiesResponseLatencyLowWatermarkMs { get; set; }
+        [ConfigItem(DefaultValue = "3000", HiddenFromDocs = true, Description = "[TECHNICAL] Max bodies response latency before reducing bodies request size.")]
+        long BodiesResponseLatencyHighWatermarkMs { get; set; }
 
-        [ConfigItem(DefaultValue = "2000000", HiddenFromDocs = true, Description = "[TECHNICAL] Max snap request size.")]
-        int SnapRequestMaxBytes { get; set; }
-
-        [ConfigItem(DefaultValue = "20000", HiddenFromDocs = true, Description = "[TECHNICAL] Min snap request size.")]
-        int SnapRequestMinBytes { get; set; }
+        [ConfigItem(DefaultValue = "4", HiddenFromDocs = true, Description = "[TECHNICAL] Min receipt request size.")]
+        int ReceiptsRequestMinSize { get; set; }
+        [ConfigItem(DefaultValue = "128", HiddenFromDocs = true, Description = "[TECHNICAL] Max receipt request size.")]
+        int ReceiptsRequestMaxSize { get; set; }
+        [ConfigItem(DefaultValue = "2000", HiddenFromDocs = true, Description = "[TECHNICAL] Min receipt response latency before increasing receipt request size.")]
+        long ReceiptsResponseLatencyLowWatermarkMs { get; set; }
+        [ConfigItem(DefaultValue = "3000", HiddenFromDocs = true, Description = "[TECHNICAL] Max receipt response latency before reducing receipt request size.")]
+        long ReceiptsResponseLatencyHighWatermarkMs { get; set; }
     }
 }

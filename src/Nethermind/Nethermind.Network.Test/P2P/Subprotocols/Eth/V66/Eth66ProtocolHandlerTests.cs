@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -84,6 +85,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _pooledTxsRequestor,
                 _gossipPolicy,
                 new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+            Substitute.For<INetworkConfig>(),
                 LimboLogs.Instance);
             _handler.Init();
         }

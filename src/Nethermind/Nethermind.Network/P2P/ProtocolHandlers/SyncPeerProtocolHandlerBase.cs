@@ -16,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
@@ -61,6 +62,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
+            INetworkConfig networkConfig,
             ILogManager logManager) : base(session, statsManager, serializer, logManager)
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
@@ -70,10 +72,10 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
 
             _bodiesRequestSizer = new AdaptiveRequestSizer(
-                2,
-                128,
-                TimeSpan.FromMilliseconds(2000),
-                TimeSpan.FromMilliseconds(3000),
+                networkConfig.BodiesRequestMinSize,
+                networkConfig.BodiesRequestMaxSize,
+                TimeSpan.FromMilliseconds(networkConfig.BodiesResponseLatencyLowWatermarkMs),
+                TimeSpan.FromMilliseconds(networkConfig.BodiesResponseLatencyHighWatermarkMs),
                 2.0
             );
         }

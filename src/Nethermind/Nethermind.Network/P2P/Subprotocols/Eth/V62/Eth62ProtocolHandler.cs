@@ -12,6 +12,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -41,9 +42,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             ISyncServer syncServer,
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
+            INetworkConfig networkConfig,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, statsManager, syncServer, logManager)
+            : base(session, serializer, statsManager, syncServer, networkConfig, logManager)
         {
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));

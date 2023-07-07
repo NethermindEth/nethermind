@@ -11,6 +11,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
@@ -35,18 +36,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ISyncServer syncServer,
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
+            INetworkConfig networkConfig,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, networkConfig, logManager, transactionsGossipPolicy)
         {
             _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests = new MessageQueue<GetReceiptsMessage, TxReceipt[][]>(Send);
 
             _receiptsRequestSizer = new AdaptiveRequestSizer(
-                2,
-                128,
-                TimeSpan.FromMilliseconds(2000),
-                TimeSpan.FromMilliseconds(3000),
+                networkConfig.ReceiptsRequestMinSize,
+                networkConfig.ReceiptsRequestMaxSize,
+                TimeSpan.FromMilliseconds(networkConfig.ReceiptsResponseLatencyLowWatermarkMs),
+                TimeSpan.FromMilliseconds(networkConfig.ReceiptsResponseLatencyHighWatermarkMs),
                 2.0
             );
         }

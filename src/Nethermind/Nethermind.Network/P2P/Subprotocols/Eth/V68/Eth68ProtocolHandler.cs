@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
@@ -39,9 +40,10 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         IPooledTxsRequestor pooledTxsRequestor,
         IGossipPolicy gossipPolicy,
         ForkInfo forkInfo,
+        INetworkConfig networkConfig,
         ILogManager logManager,
         ITxGossipPolicy? transactionsGossipPolicy = null)
-        : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+        : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, networkConfig, logManager, transactionsGossipPolicy)
     {
         _pooledTxsRequestor = pooledTxsRequestor;
 

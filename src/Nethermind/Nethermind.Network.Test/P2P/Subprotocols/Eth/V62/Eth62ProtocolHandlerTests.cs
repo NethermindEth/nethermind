@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
@@ -78,6 +79,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _syncManager,
                 _transactionPool,
                 _gossipPolicy,
+            Substitute.For<INetworkConfig>(),
                 LimboLogs.Instance,
                 _txGossipPolicy);
             _handler.Init();
@@ -121,6 +123,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _syncManager,
                 _transactionPool,
                 _gossipPolicy,
+            Substitute.For<INetworkConfig>(),
                 LimboLogs.Instance);
 
             _syncManager.Received().StopNotifyingPeersAboutNewBlocks();

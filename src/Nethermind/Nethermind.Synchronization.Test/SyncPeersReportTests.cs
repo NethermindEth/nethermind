@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -181,6 +182,7 @@ namespace Nethermind.Synchronization.Test
                     serializer,
                     statsManager,
                     syncServer,
+            Substitute.For<INetworkConfig>(),
                     NoErrorLimboLogs.Instance)
             {
                 IsInitialized = initialized;

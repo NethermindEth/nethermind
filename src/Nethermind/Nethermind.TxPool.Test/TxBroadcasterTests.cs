@@ -19,6 +19,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
@@ -390,6 +391,7 @@ public class TxBroadcasterTests
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
             new ForkInfo(_specProvider, Keccak.Zero),
+            Substitute.For<INetworkConfig>(),
             Substitute.For<ILogManager>());
         _broadcaster.AddPeer(eth68Handler);
 
@@ -417,6 +419,7 @@ public class TxBroadcasterTests
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
             new ForkInfo(_specProvider, Keccak.Zero),
+            Substitute.For<INetworkConfig>(),
             Substitute.For<ILogManager>());
 
         ISession session68 = Substitute.For<ISession>();
@@ -429,6 +432,7 @@ public class TxBroadcasterTests
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
             new ForkInfo(_specProvider, Keccak.Zero),
+            Substitute.For<INetworkConfig>(),
             Substitute.For<ILogManager>());
 
         Transaction localTx = Build.A.Transaction
@@ -469,6 +473,7 @@ public class TxBroadcasterTests
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
             new ForkInfo(_specProvider, Keccak.Zero),
+            Substitute.For<INetworkConfig>(),
             Substitute.For<ILogManager>());
 
         Transaction localTx = Build.A.Transaction
@@ -522,6 +527,7 @@ public class TxBroadcasterTests
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
             new ForkInfo(_specProvider, Keccak.Zero),
+            Substitute.For<INetworkConfig>(),
             Substitute.For<ILogManager>());
         _broadcaster.AddPeer(eth68Handler);
 

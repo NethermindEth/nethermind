@@ -4,6 +4,7 @@
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
@@ -28,9 +29,10 @@ public class Eth67ProtocolHandler : Eth66ProtocolHandler
         IPooledTxsRequestor pooledTxsRequestor,
         IGossipPolicy gossipPolicy,
         ForkInfo forkInfo,
+        INetworkConfig networkConfig,
         ILogManager logManager,
         ITxGossipPolicy? transactionsGossipPolicy = null)
-        : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+        : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, networkConfig, logManager, transactionsGossipPolicy)
     {
     }
 
