@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -9,6 +11,7 @@ using System.Reflection;
 using System.Runtime.Serialization;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
@@ -27,10 +30,22 @@ namespace Nethermind.Monitoring.Test
             [System.ComponentModel.Description("Another test description.")]
             [DataMember(Name = "one_two_three")]
             public static long OneTwoThreeSpecial { get; set; }
+
+            [System.ComponentModel.Description("Another test description.")]
+            [KeyIsLabel("somelabel")]
+            public static ConcurrentDictionary<SomeEnum, long> WithLabelledDictionary { get; set; } = new();
+
+            public static IDictionary<string, long> OldDictionaryMetrics { get; set; } = new ConcurrentDictionary<string, long>();
+        }
+
+        public enum SomeEnum
+        {
+            Option1,
+            Option2,
         }
 
         [Test]
-        public void Test_gauge_names()
+        public void Test_update_correct_gauge()
         {
             MetricsConfig metricsConfig = new()
             {
@@ -38,15 +53,37 @@ namespace Nethermind.Monitoring.Test
             };
             MetricsController metricsController = new(metricsConfig);
             metricsController.RegisterMetrics(typeof(TestMetrics));
+
+            TestMetrics.OneTwoThree = 123;
+            TestMetrics.OneTwoThreeSpecial = 1234;
+            TestMetrics.WithLabelledDictionary[SomeEnum.Option1] = 2;
+            TestMetrics.WithLabelledDictionary[SomeEnum.Option2] = 3;
+            TestMetrics.OldDictionaryMetrics["metrics0"] = 4;
+            TestMetrics.OldDictionaryMetrics["metrics1"] = 5;
+            metricsController.UpdateMetrics(null);
+
             var gauges = metricsController._gauges;
             var keyDefault = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}";
             var keySpecial = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThreeSpecial)}";
+            var keyDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithLabelledDictionary)}";
+            var keyOldDictionary0 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics0";
+            var keyOldDictionary1 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics1";
 
             Assert.Contains(keyDefault, gauges.Keys);
             Assert.Contains(keySpecial, gauges.Keys);
 
             Assert.That(gauges[keyDefault].Name, Is.EqualTo("nethermind_one_two_three"));
             Assert.That(gauges[keySpecial].Name, Is.EqualTo("one_two_three"));
+            Assert.That(gauges[keyDictionary].Name, Is.EqualTo("nethermind_with_labelled_dictionary"));
+            Assert.That(gauges[keyOldDictionary0].Name, Is.EqualTo("nethermind_metrics0"));
+            Assert.That(gauges[keyOldDictionary1].Name, Is.EqualTo("nethermind_metrics1"));
+
+            Assert.That(gauges[keyDefault].Value, Is.EqualTo(123));
+            Assert.That(gauges[keySpecial].Value, Is.EqualTo(1234));
+            Assert.That(gauges[keyDictionary].WithLabels(SomeEnum.Option1.ToString()).Value, Is.EqualTo(2));
+            Assert.That(gauges[keyDictionary].WithLabels(SomeEnum.Option2.ToString()).Value, Is.EqualTo(3));
+            Assert.That(gauges[keyOldDictionary0].Value, Is.EqualTo(4));
+            Assert.That(gauges[keyOldDictionary1].Value, Is.EqualTo(5));
         }
 
         [Test]
