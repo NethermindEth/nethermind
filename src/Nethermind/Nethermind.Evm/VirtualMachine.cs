@@ -1966,6 +1966,7 @@ OutOfGas:
 
                             if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
+                                if (gasAvailable < 0) goto OutOfGas;
                                 _txTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
                             }
 
