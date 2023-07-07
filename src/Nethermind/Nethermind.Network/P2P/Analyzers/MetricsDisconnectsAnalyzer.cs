@@ -10,11 +10,13 @@ namespace Nethermind.Network.P2P.Analyzers
     {
         public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details)
         {
+            EthDisconnectReason ethReason = reason.ToEthDisconnectReason();
+
             if (type == DisconnectType.Remote)
             {
                 Metrics.RemoteDisconnectsTotal.Increment(reason);
 
-                switch (reason.ToEthDisconnectReason())
+                switch (ethReason)
                 {
                     case EthDisconnectReason.BreachOfProtocol:
                         Metrics.BreachOfProtocolDisconnects++;
@@ -62,7 +64,7 @@ namespace Nethermind.Network.P2P.Analyzers
             {
                 Metrics.LocalDisconnectsTotal.Increment(reason);
 
-                switch (reason.ToEthDisconnectReason())
+                switch (ethReason)
                 {
                     case EthDisconnectReason.BreachOfProtocol:
                         Metrics.LocalBreachOfProtocolDisconnects++;
