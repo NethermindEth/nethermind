@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -52,6 +53,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests;
+
+        private AdaptiveRequestSizer _bodiesRequestSizer;
         protected LruKeyCache<Keccak> NotifiedTransactions { get; } = new(2 * MemoryAllowance.MemPoolSize, "notifiedTransactions");
 
         protected SyncPeerProtocolHandlerBase(ISession session,
@@ -65,6 +68,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _txDecoder = new TxDecoder();
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
+
+            _bodiesRequestSizer = new AdaptiveRequestSizer(
+                2,
+                128,
+                TimeSpan.FromMilliseconds(2000),
+                TimeSpan.FromMilliseconds(3000),
+                2.0
+            );
         }
 
         public void Disconnect(InitiateDisconnectReason reason, string details)
@@ -80,9 +91,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 return Array.Empty<BlockBody>();
             }
 
-            GetBlockBodiesMessage bodiesMsg = new(blockHashes);
+            BlockBody[] blocks = await _bodiesRequestSizer.MeasureLatency(async (requestSize) =>
+            {
+                GetBlockBodiesMessage bodiesMsg = new(blockHashes.Take(requestSize).ToArray());
 
-            BlockBody[] blocks = await SendRequest(bodiesMsg, token);
+                return await SendRequest(bodiesMsg, token);
+            });
             return blocks;
         }
 

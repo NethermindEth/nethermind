@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
@@ -16,7 +17,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
@@ -26,6 +26,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         private readonly MessageQueue<GetNodeDataMessage, byte[][]> _nodeDataRequests;
 
         private readonly MessageQueue<GetReceiptsMessage, TxReceipt[][]> _receiptsRequests;
+
+        private AdaptiveRequestSizer _receiptsRequestSizer;
 
         public Eth63ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -39,6 +41,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests = new MessageQueue<GetReceiptsMessage, TxReceipt[][]>(Send);
+
+            _receiptsRequestSizer = new AdaptiveRequestSizer(
+                2,
+                128,
+                TimeSpan.FromMilliseconds(2000),
+                TimeSpan.FromMilliseconds(3000),
+                2.0
+            );
         }
 
         public override byte ProtocolVersion => EthVersions.Eth63;
@@ -133,8 +143,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return Array.Empty<TxReceipt[]>();
             }
 
-            GetReceiptsMessage msg = new(blockHashes);
-            TxReceipt[][] txReceipts = await SendRequest(msg, token);
+            TxReceipt[][] txReceipts = await _receiptsRequestSizer.MeasureLatency(async (requestSize) =>
+            {
+                GetReceiptsMessage msg = new(blockHashes.Take(requestSize).ToArray());
+                return await SendRequest(msg, token);
+            });
             return txReceipts;
         }
 
