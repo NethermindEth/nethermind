@@ -1,35 +1,20 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using App.Metrics.Formatters.Ascii;
+
 namespace Nethermind.Tools.Kute.MetricsConsumer;
 
 class PrettyReportMetricsConsumer : IMetricsConsumer
 {
-    public void ConsumeMetrics(Metrics metrics)
+    public async Task ConsumeMetrics(Metrics metrics)
     {
-        Console.WriteLine($"""
-        Total Running Time: {metrics.TotalRunningTime.TotalMilliseconds} ms
-        Results:
-          Messages .. {metrics.Messages}
-            Failed .. {metrics.Failed}
-            Succeeded
-              Responses .. {metrics.Responses}
-              Requests
-                Batches .. {metrics.Batches.Count} in {metrics.Batches.RunningTime.TotalMilliseconds} ms
-                Singles
-                  Ignored .. {metrics.IgnoredRequests}
-                  Processed
-        """);
+        var snapshot = metrics.Snapshot;
+        var formatter = new MetricsTextOutputFormatter();
 
-        var longestMethod = metrics.ProcessedRequests.Keys
-            .MaxBy(method => method.Length)?
-            .Length ?? 0;
-        foreach (var (method, mm) in metrics.ProcessedRequests)
+        using (var stream = Console.OpenStandardOutput())
         {
-            var dots = new string('.', (2 + longestMethod - method.Length));
-            Console.WriteLine($"""
-                    {method} {dots} {mm.Count} in {mm.RunningTime.TotalMilliseconds} ms
-        """);
+            await formatter.WriteAsync(stream, snapshot);
         }
     }
 }

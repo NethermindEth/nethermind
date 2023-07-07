@@ -5,7 +5,7 @@ namespace Nethermind.Tools.Kute.MetricsConsumer;
 
 public interface IMetricsConsumer
 {
-    void ConsumeMetrics(Metrics metrics);
+    Task ConsumeMetrics(Metrics metrics);
 }
 
 public enum MetricConsumerStrategy

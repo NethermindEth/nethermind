@@ -1,49 +1,65 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using App.Metrics;
+using App.Metrics.Counter;
+using App.Metrics.Timer;
+
 namespace Nethermind.Tools.Kute;
 
 public class Metrics
 {
-    public TimeSpan TotalRunningTime { get; set; }
-    public int Messages { get; private set; }
-    public int Failed { get; private set; }
-    public int IgnoredRequests { get; private set; }
-    public int Responses { get; private set; }
-    public ItemMetrics Batches { get; } = new();
-    public IDictionary<string, ItemMetrics> ProcessedRequests { get; } = new Dictionary<string, ItemMetrics>();
+    private readonly IMetrics _metrics;
 
-    public void TickMessages() => Messages++;
-    public void TickFailed() => Failed++;
-    public void TickIgnoredRequests() => IgnoredRequests++;
-    public void TickResponses() => Responses++;
-    public void TickBatch(TimeSpan runningTime) => Batches.Tick(runningTime);
-
-    public void TickRequest(string methodName, TimeSpan runningTime)
+    private readonly TimerOptions _totalRunningTime = new()
     {
-        if (!ProcessedRequests.ContainsKey(methodName))
-        {
-            ProcessedRequests[methodName] = new ItemMetrics();
-        }
+        Name = "Total Running Time", DurationUnit = TimeUnit.Milliseconds,
+    };
+    private readonly CounterOptions _messages = new()
+    {
+        Name = "Messages", MeasurementUnit = Unit.Items,
+    };
+    private readonly CounterOptions _failed = new()
+    {
+        Name = "Failed", MeasurementUnit = Unit.Items,
+    };
+    private readonly CounterOptions _ignoredRequests = new()
+    {
+        Name = "Ignored Requests", MeasurementUnit = Unit.Items
+    };
+    private readonly CounterOptions _responses = new()
+    {
+        Name = "Responses", MeasurementUnit = Unit.Items
+    };
+    private readonly TimerOptions _batches = new()
+    {
+        Name = "Batches", DurationUnit = TimeUnit.Milliseconds
+    };
+    private readonly IDictionary<string, TimerOptions> _processedRequests = new Dictionary<string, TimerOptions>();
 
-        ProcessedRequests[methodName].Tick(runningTime);
+    public Metrics()
+    {
+        _metrics = new MetricsBuilder().Build();
     }
 
-    public class ItemMetrics
+    public MetricsDataValueSource Snapshot => _metrics.Snapshot.Get();
+
+    public void TickMessages() => _metrics.Measure.Counter.Increment(_messages);
+    public void TickFailed() => _metrics.Measure.Counter.Increment(_failed);
+    public void TickIgnoredRequests() => _metrics.Measure.Counter.Increment(_ignoredRequests);
+    public void TickResponses() => _metrics.Measure.Counter.Increment(_responses);
+
+    public TimerContext TimeTotal() => _metrics.Measure.Timer.Time(_totalRunningTime);
+    public TimerContext TimeBatch() => _metrics.Measure.Timer.Time(_batches);
+    public TimerContext TimeMethod(string methodName)
     {
-        public int Count { get; private set; }
-        public TimeSpan RunningTime { get; private set; }
-
-        public ItemMetrics()
+        if (!_processedRequests.ContainsKey(methodName))
         {
-            Count = 0;
-            RunningTime = TimeSpan.Zero;
+            _processedRequests[methodName] = new TimerOptions()
+            {
+                Name = methodName, MeasurementUnit = Unit.Requests, DurationUnit = TimeUnit.Milliseconds, RateUnit = TimeUnit.Milliseconds
+            };
         }
-
-        public void Tick(TimeSpan runningTime)
-        {
-            Count++;
-            RunningTime += runningTime;
-        }
+        return _metrics.Measure.Timer.Time(_processedRequests[methodName]);
     }
 }

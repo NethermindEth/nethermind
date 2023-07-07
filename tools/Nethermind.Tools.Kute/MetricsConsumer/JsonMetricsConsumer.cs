@@ -3,50 +3,21 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using App.Metrics.Formatters.Json;
+using App.Metrics.Formatters.Json.Extensions;
 
 namespace Nethermind.Tools.Kute.MetricsConsumer;
 
 public class JsonMetricsConsumer : IMetricsConsumer
 {
-    public void ConsumeMetrics(Metrics metrics)
+    public async Task ConsumeMetrics(Metrics metrics)
     {
-        var metricsObject = new
+        var snapshot = metrics.Snapshot;
+        var formatter = new MetricsJsonOutputFormatter();
+
+        using (var stream = Console.OpenStandardOutput())
         {
-            metrics.TotalRunningTime,
-            Messages = new
-            {
-                metrics.Failed,
-                Succeeded = new
-                {
-                    metrics.Responses,
-                    Requests = new
-                    {
-                        metrics.Batches,
-                        Singles = new
-                        {
-                            Ignored = metrics.IgnoredRequests, Processed = metrics.ProcessedRequests
-                        }
-                    }
-                }
-            }
-        };
-
-        string json = JsonSerializer.Serialize(
-            metricsObject,
-            new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase, Converters = { new TimeSpanInMsConverter() }
-            }
-        );
-        Console.WriteLine(json);
-    }
-
-    private class TimeSpanInMsConverter : JsonConverter<TimeSpan>
-    {
-        public override TimeSpan Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-            TimeSpan.FromMilliseconds(double.Parse(reader.GetString()!));
-
-        public override void Write(Utf8JsonWriter writer, TimeSpan value, JsonSerializerOptions options) =>
-            writer.WriteStringValue($"{value.TotalMilliseconds} ms");
+            await formatter.WriteAsync(stream, snapshot);
+        }
     }
 }

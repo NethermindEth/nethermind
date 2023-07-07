@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using Nethermind.Tools.Kute.MessageProvider;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
@@ -33,58 +32,59 @@ class Application
 
     public async Task Run()
     {
-        var start = Stopwatch.GetTimestamp();
-
-        await foreach (var jsonRpc in _msgProvider.Messages)
+        using (_metrics.TimeTotal())
         {
-            _metrics.TickMessages();
-
-            switch (jsonRpc)
+            await foreach (var jsonRpc in _msgProvider.Messages)
             {
-                case null:
-                    _metrics.TickFailed();
+                _metrics.TickMessages();
 
-                    break;
-
-                case JsonRpc.BatchJsonRpc batch:
-                    var startBatch = Stopwatch.GetTimestamp();
-                    await _submitter.Submit(batch);
-                    _metrics.TickBatch(Stopwatch.GetElapsedTime(startBatch));
-
-                    break;
-
-                case JsonRpc.SingleJsonRpc single:
-                    if (single.IsResponse)
-                    {
-                        _metrics.TickResponses();
-                        continue;
-                    }
-
-                    if (single.MethodName is null)
-                    {
+                switch (jsonRpc)
+                {
+                    case null:
                         _metrics.TickFailed();
-                        continue;
-                    }
 
-                    if (_methodFilter.ShouldIgnore(single.MethodName))
-                    {
-                        _metrics.TickIgnoredRequests();
-                        continue;
-                    }
+                        break;
 
-                    var startMethod = Stopwatch.GetTimestamp();
-                    await _submitter.Submit(single);
-                    _metrics.TickRequest(single.MethodName, Stopwatch.GetElapsedTime(startMethod));
+                    case JsonRpc.BatchJsonRpc batch:
+                        using (_metrics.TimeBatch())
+                        {
+                            await _submitter.Submit(batch);
+                        }
 
-                    break;
+                        break;
 
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(jsonRpc));
+                    case JsonRpc.SingleJsonRpc single:
+                        if (single.IsResponse)
+                        {
+                            _metrics.TickResponses();
+                            continue;
+                        }
+
+                        if (single.MethodName is null)
+                        {
+                            _metrics.TickFailed();
+                            continue;
+                        }
+
+                        if (_methodFilter.ShouldIgnore(single.MethodName))
+                        {
+                            _metrics.TickIgnoredRequests();
+                            continue;
+                        }
+
+                        using (_metrics.TimeMethod(single.MethodName))
+                        {
+                            await _submitter.Submit(single);
+                        }
+
+                        break;
+
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(jsonRpc));
+                }
             }
         }
 
-        _metrics.TotalRunningTime = Stopwatch.GetElapsedTime(start);
-
-        _metricsConsumer.ConsumeMetrics(_metrics);
+        await _metricsConsumer.ConsumeMetrics(_metrics);
     }
 }
