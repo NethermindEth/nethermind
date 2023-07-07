@@ -2001,6 +2001,7 @@ OutOfGas:
 
                             if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
+                                if (gasAvailable < 0) goto OutOfGas;
                                 byte[] currentValue = _state.GetTransientState(in storageCell);
                                 _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
                             }
