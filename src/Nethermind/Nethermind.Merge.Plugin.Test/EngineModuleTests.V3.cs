@@ -13,6 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -59,8 +60,10 @@ public partial class EngineModuleTests
     public async Task PayloadV3_should_return_all_the_blobs(int blobTxCount)
     {
         (IEngineRpcModule rpcModule, string payloadId) = await BuildAndGetPayloadV3Result(Cancun.Instance, blobTxCount);
-        BlobsBundleV1 getPayloadResultBlobsBundle =
-            (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.BlobsBundle!;
+        var result = await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId));
+        BlobsBundleV1 getPayloadResultBlobsBundle = result.Data!.BlobsBundle!;
+        Assert.That(result.Data.ExecutionPayload.DataGasUsed, Is.EqualTo(DataGasCalculator.CalculateDataGas(blobTxCount)));
+        Assert.That(result.Data.ExecutionPayload.ExcessDataGas, Is.Not.Null);
         Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
@@ -223,7 +226,7 @@ public partial class EngineModuleTests
     private async Task<ExecutionPayload> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, IList<Withdrawal>? withdrawals)
     {
         ExecutionPayload executionPayload = CreateBlockRequest(
-            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0);
+            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0, 0);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>());
 
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);

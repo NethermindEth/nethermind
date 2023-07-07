@@ -98,7 +98,9 @@ public class Block
 
     public UInt256 BaseFeePerGas => Header.BaseFeePerGas; // do not add setter here
 
-    public UInt256? ExcessDataGas => Header.ExcessDataGas; // do not add setter here
+    public ulong? DataGasUsed => Header.DataGasUsed; // do not add setter here
+
+    public ulong? ExcessDataGas => Header.ExcessDataGas; // do not add setter here
 
     public bool IsPostMerge => Header.IsPostMerge; // do not add setter here
 

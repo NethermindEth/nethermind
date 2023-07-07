@@ -489,7 +489,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [TestCase(10000)]
         public void should_send_txs_with_size_exceeding_MaxPacketSize_in_more_than_one_TransactionsMessage(int txCount)
         {
-            int sizeOfOneTestTransaction = _txDecoder.GetLength(Build.A.Transaction.SignedAndResolved().TestObject);
+            int sizeOfOneTestTransaction = Build.A.Transaction.SignedAndResolved().TestObject.GetLength();
             int maxNumberOfTxsInOneMsg = TransactionsMessage.MaxPacketSize / sizeOfOneTestTransaction; // it's 1055
             int nonFullMsgTxsCount = txCount % maxNumberOfTxsInOneMsg;
             int messagesCount = txCount / maxNumberOfTxsInOneMsg + (nonFullMsgTxsCount > 0 ? 1 : 0);

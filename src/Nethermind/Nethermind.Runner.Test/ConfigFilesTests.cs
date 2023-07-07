@@ -78,7 +78,7 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.NetworkingEnabled, isEnabled);
         }
 
-        [TestCase("ropsten", "ws://localhost:3000/api")]
+        [TestCase("sepolia", "ws://localhost:3000/api")]
         [TestCase("rinkeby", "ws://localhost:3000/api")]
         [TestCase("goerli", "wss://stats.goerli.net/api")]
         [TestCase("mainnet", "wss://ethstats.net/api")]
@@ -95,14 +95,12 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("aura ^archive", false)]
-        [TestCase("ethhash", true)]
         [TestCase("clique", true)]
         public void Geth_limits_configs_are_correct(string configWildcard, bool useGethLimitsInFastSync)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.UseGethLimitsInFastBlocks, useGethLimitsInFastSync);
         }
 
-        [TestCase("ropsten", "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d")]
         [TestCase("rinkeby", "0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177")]
         [TestCase("goerli", "0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")]
         [TestCase("mainnet", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
@@ -168,8 +166,6 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli ^archive", 768000000)]
         [TestCase("rinkeby archive", 1536000000)]
         [TestCase("rinkeby ^archive", 1024000000)]
-        [TestCase("ropsten archive", 1536000000)]
-        [TestCase("ropsten ^archive", 1024000000)]
         [TestCase("xdai archive", 1024000000)]
         [TestCase("xdai ^archive", 768000000)]
         [TestCase("poacore archive", 1024000000)]
@@ -223,14 +219,13 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("spaceneth", true)]
-        [TestCase("ropsten", true)]
         [TestCase("goerli", true)]
         [TestCase("xdai", true)]
         [TestCase("gnosis", true)]
         [TestCase("mainnet", true)]
         [TestCase("sepolia", true)]
         [TestCase("chiado", true)]
-        [TestCase("^spaceneth ^ropsten ^goerli ^mainnet ^xdai ^gnosis ^sepolia ^chiado", false)]
+        [TestCase("^spaceneth ^goerli ^mainnet ^xdai ^gnosis ^sepolia ^chiado", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);
@@ -258,7 +253,6 @@ namespace Nethermind.Runner.Test
         [TestCase("archive", false)]
         [TestCase("mainnet.cfg", true)]
         [TestCase("goerli.cfg", true)]
-        [TestCase("ropsten.cfg", true)]
         [TestCase("rinkeby.cfg", false)]
         [TestCase("sepolia.cfg", true)]
         [TestCase("xdai.cfg", false)]
@@ -267,10 +261,9 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
         }
 
-        [TestCase("^aura ^ropsten ^sepolia ^goerli ^mainnet", false)]
+        [TestCase("^aura ^sepolia ^goerli ^mainnet", false)]
         [TestCase("aura ^archive", true)]
         [TestCase("^archive ^rinkeby ^spaceneth", true)]
-        [TestCase("ropsten ^archive", true)]
         [TestCase("sepolia ^archive", true)]
         [TestCase("goerli ^archive", true)]
         [TestCase("mainnet ^archive", true)]
@@ -328,7 +321,6 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, int>(configWildcard, c => (int)(c.PivotNumberParsed % 30000L), (s, p) => p.Should().Be(0));
         }
 
-        [TestCase("ropsten", false)]
         [TestCase("rinkeby", false)]
         [TestCase("goerli", false)]
         [TestCase("mainnet_archive.cfg", true)]
@@ -353,7 +345,6 @@ namespace Nethermind.Runner.Test
         }
 
 
-        [TestCase("ropsten")]
         [TestCase("rinkeby")]
         [TestCase("goerli", new[] { 16, 16, 16, 16 })]
         [TestCase("mainnet")]
@@ -438,8 +429,6 @@ namespace Nethermind.Runner.Test
 
         protected override IEnumerable<string> Configs { get; } = new HashSet<string>
         {
-            "ropsten_archive.cfg",
-            "ropsten.cfg",
             "rinkeby_archive.cfg",
             "rinkeby.cfg",
             "goerli_archive.cfg",
