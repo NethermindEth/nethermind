@@ -246,6 +246,11 @@ namespace Nethermind.Core.Specs
         bool IsEip3855Enabled { get; }
 
         /// <summary>
+        /// MCOPY instruction
+        /// </summary>
+        bool IsEip5656Enabled { get; }
+
+        /// <summary>
         /// EIP-3860: Limit and meter initcode
         /// </summary>
         bool IsEip3860Enabled { get; }
@@ -261,6 +266,11 @@ namespace Nethermind.Core.Specs
         /// Blob transactions
         /// </summary>
         bool IsEip4844Enabled { get; }
+
+        /// <summary>
+        /// SELFDESTRUCT only in same transaction
+        /// </summary>
+        bool IsEip6780Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.
@@ -340,5 +350,8 @@ namespace Nethermind.Core.Specs
         public bool TransientStorageEnabled => IsEip1153Enabled;
 
         public bool WithdrawalsEnabled => IsEip4895Enabled;
+        public bool SelfdestructOnlyOnSameTransaction => IsEip6780Enabled;
+
+        bool MCopyIncluded => IsEip5656Enabled;
     }
 }

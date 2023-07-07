@@ -35,7 +35,7 @@ namespace Ethereum.Difficulty.Test
                 Console.WriteLine($"{missing} category is missing");
             }
 
-            Assert.That(missingCategories.Count, Is.EqualTo(0));
+            Assert.That(missingCategories.Where(x => x != "difficultyRopsten").Count, Is.EqualTo(0));
         }
 
         private static string ExpectedTypeName(string directory)

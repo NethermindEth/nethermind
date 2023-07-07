@@ -56,6 +56,36 @@ public class BlockDecoderTests
                 .WithUncles(uncles)
                 .WithWithdrawals(8)
                 .WithMixHash(Keccak.EmptyTreeHash)
+                .TestObject,
+            Build.A.Block
+                .WithNumber(1)
+                .WithBaseFeePerGas(1)
+                .WithTransactions(transactions)
+                .WithUncles(uncles)
+                .WithWithdrawals(8)
+                .WithDataGasUsed(0)
+                .WithExcessDataGas(0)
+                .WithMixHash(Keccak.EmptyTreeHash)
+                .TestObject,
+            Build.A.Block
+                .WithNumber(1)
+                .WithBaseFeePerGas(1)
+                .WithTransactions(transactions)
+                .WithUncles(uncles)
+                .WithWithdrawals(8)
+                .WithDataGasUsed(0xff)
+                .WithExcessDataGas(0xff)
+                .WithMixHash(Keccak.EmptyTreeHash)
+                .TestObject,
+            Build.A.Block
+                .WithNumber(1)
+                .WithBaseFeePerGas(1)
+                .WithTransactions(transactions)
+                .WithUncles(uncles)
+                .WithWithdrawals(8)
+                .WithDataGasUsed(ulong.MaxValue)
+                .WithExcessDataGas(ulong.MaxValue)
+                .WithMixHash(Keccak.EmptyTreeHash)
                 .TestObject
         };
     }

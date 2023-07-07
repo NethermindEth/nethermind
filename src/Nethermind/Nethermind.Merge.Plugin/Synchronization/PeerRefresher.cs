@@ -65,9 +65,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         _lastRefresh = DateTime.Now;
         foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
-#pragma warning disable CS4014
-            StartPeerRefreshTask(peer.SyncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash);
-#pragma warning restore CS4014
+            _ = StartPeerRefreshTask(peer.SyncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash);
         }
     }
 

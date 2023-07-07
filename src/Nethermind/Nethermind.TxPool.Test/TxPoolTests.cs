@@ -51,7 +51,7 @@ namespace Nethermind.TxPool.Test
         public void Setup()
         {
             _logManager = LimboLogs.Instance;
-            _specProvider = RopstenSpecProvider.Instance;
+            _specProvider = MainnetSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);
             var trieStore = new TrieStore(new MemDb(), _logManager);
             var codeDb = new MemDb();
@@ -94,8 +94,8 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_ignore_transactions_with_different_chain_id()
         {
-            _txPool = CreatePool();
-            EthereumEcdsa ecdsa = new(TestBlockchainIds.ChainId, _logManager);
+            _txPool = CreatePool(null, new TestSpecProvider(Shanghai.Instance));
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia, _logManager); // default is mainnet, we're passing sepolia
             Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
@@ -1109,10 +1109,10 @@ namespace Nethermind.TxPool.Test
         {
             if (!eip2930Enabled)
             {
-                _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(RopstenSpecProvider.BerlinBlockNumber - 1).TestObject);
+                _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(MainnetSpecProvider.BerlinBlockNumber - 1).TestObject);
             }
 
-            _txPool = CreatePool();
+            _txPool = CreatePool(null, new TestSpecProvider(eip2930Enabled ? Berlin.Instance : Istanbul.Instance));
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.AccessList)
                 .WithChainId(TestBlockchainIds.ChainId)
@@ -1593,6 +1593,22 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLowToCompete);
         }
 
+        [TestCase(0, 97)]
+        [TestCase(1, 131324)]
+        [TestCase(2, 262534)]
+        [TestCase(3, 393741)]
+        [TestCase(4, 524948)]
+        [TestCase(5, 656156)]
+        [TestCase(6, 787365)]
+        public void should_calculate_size_of_blob_tx_correctly(int numberOfBlobs, int expectedLength)
+        {
+            Transaction blobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(numberOfBlobs)
+                .SignedAndResolved()
+                .TestObject;
+            blobTx.GetLength().Should().Be(expectedLength);
+        }
+
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
         {
             var peers = new Dictionary<ITxPoolPeer, PrivateKey>();
@@ -1614,7 +1630,7 @@ namespace Nethermind.TxPool.Test
             IIncomingTxFilter incomingTxFilter = null,
             bool thereIsPriorityContract = false)
         {
-            specProvider ??= RopstenSpecProvider.Instance;
+            specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
 
@@ -1628,6 +1644,7 @@ namespace Nethermind.TxPool.Test
                 new TxValidator(_specProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),
+                ShouldGossip.Instance,
                 incomingTxFilter,
                 thereIsPriorityContract);
         }

@@ -11,11 +11,9 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Core.Extensions;
-using System.Threading;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Evm;
 
 namespace Nethermind.Merge.Plugin.BlockProduction
 {
@@ -79,22 +77,29 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             Block block = base.PrepareBlock(parent, payloadAttributes);
-            AmendHeader(block.Header);
+            AmendHeader(block.Header, parent);
             return block;
         }
 
         protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             BlockHeader blockHeader = base.PrepareBlockHeader(parent, payloadAttributes);
-            AmendHeader(blockHeader);
+            AmendHeader(blockHeader, parent);
             return blockHeader;
         }
 
         // TODO: this seems to me that it should be done in the Eth2 seal engine?
-        private void AmendHeader(BlockHeader blockHeader)
+        private void AmendHeader(BlockHeader blockHeader, BlockHeader parent)
         {
             blockHeader.ExtraData = _blocksConfig.GetExtraDataBytes();
             blockHeader.IsPostMerge = true;
+            IReleaseSpec spec = _specProvider.GetSpec(blockHeader);
+
+            if (spec.IsEip4844Enabled)
+            {
+                blockHeader.DataGasUsed = 0;
+                blockHeader.ExcessDataGas = DataGasCalculator.CalculateExcessDataGas(parent, spec);
+            }
         }
     }
 }

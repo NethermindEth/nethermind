@@ -71,12 +71,12 @@ namespace Nethermind.JsonRpc.WebSockets
                 if (result.IsCollection)
                 {
                     long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                    _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, singleResponseSize);
+                    _ = _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, singleResponseSize);
                 }
                 else
                 {
                     long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                    _jsonRpcLocalStats.ReportCall(result.Report!.Value, handlingTimeMicroseconds, singleResponseSize);
+                    _ = _jsonRpcLocalStats.ReportCall(result.Report!.Value, handlingTimeMicroseconds, singleResponseSize);
                 }
                 stopwatch.Restart();
             }
@@ -133,7 +133,7 @@ namespace Nethermind.JsonRpc.WebSockets
 
                             isFirst = false;
                             singleResponseSize += await SendJsonRpcResultEntry(entry, false);
-                            _jsonRpcLocalStats.ReportCall(entry.Report);
+                            _ = _jsonRpcLocalStats.ReportCall(entry.Report);
 
                             // We reached the limit and don't want to responded to more request in the batch
                             if (!_jsonRpcContext.IsAuthenticated && singleResponseSize > _maxBatchResponseBodySize)

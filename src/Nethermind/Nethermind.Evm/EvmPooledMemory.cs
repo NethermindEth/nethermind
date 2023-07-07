@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -18,9 +17,8 @@ namespace Nethermind.Evm
     public class EvmPooledMemory : IEvmMemory
     {
         public const int WordSize = 32;
-        private static readonly UInt256 WordSize256 = WordSize;
 
-        private static readonly ArrayPool<byte> Pool = LargerArrayPool.Shared;
+        private static readonly LargerArrayPool Pool = LargerArrayPool.Shared;
 
         private int _lastZeroedSize;
 
@@ -32,7 +30,7 @@ namespace Nethermind.Evm
         {
             if (word.Length != WordSize) ThrowArgumentOutOfRangeException();
 
-            CheckMemoryAccessViolation(in location, in WordSize256, out ulong newLength);
+            CheckMemoryAccessViolation(in location, WordSize, out ulong newLength);
             UpdateSize(newLength);
 
             int offset = (int)location;
@@ -46,7 +44,7 @@ namespace Nethermind.Evm
 
         public void SaveByte(in UInt256 location, byte value)
         {
-            CheckMemoryAccessViolation(in location, in WordSize256);
+            CheckMemoryAccessViolation(in location, WordSize, out _);
             UpdateSize(in location, in UInt256.One);
 
             _memory![(long)location] = value;
@@ -59,31 +57,41 @@ namespace Nethermind.Evm
                 return;
             }
 
-            UInt256 length = (UInt256)value.Length;
-            CheckMemoryAccessViolation(in location, in length, out ulong newLength);
+            CheckMemoryAccessViolation(in location, (ulong)value.Length, out ulong newLength);
             UpdateSize(newLength);
 
             value.CopyTo(_memory.AsSpan((int)location, value.Length));
         }
 
-        private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length)
-        {
-            UInt256 totalSize = location + length;
-            if (totalSize < location || totalSize > long.MaxValue)
-            {
-                ThrowOutOfGasException();
-            }
-        }
-
         private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength)
         {
-            UInt256 totalSize = location + length;
+            if (location.IsLargerThanULong() || length.IsLargerThanULong())
+            {
+                ThrowOutOfGasException();
+            }
+
+            CheckMemoryAccessViolation(location.u0, length.u0, out newLength);
+        }
+
+        private static void CheckMemoryAccessViolation(in UInt256 location, ulong length, out ulong newLength)
+        {
+            if (location.IsLargerThanULong())
+            {
+                ThrowOutOfGasException();
+            }
+
+            CheckMemoryAccessViolation(location.u0, length, out newLength);
+        }
+
+        private static void CheckMemoryAccessViolation(ulong location, ulong length, out ulong newLength)
+        {
+            ulong totalSize = location + length;
             if (totalSize < location || totalSize > long.MaxValue)
             {
                 ThrowOutOfGasException();
             }
 
-            newLength = (ulong)totalSize;
+            newLength = totalSize;
         }
 
         public void Save(in UInt256 location, byte[] value)
@@ -100,7 +108,7 @@ namespace Nethermind.Evm
             Array.Copy(value, 0, _memory!, (long)location, value.Length);
         }
 
-        public void Save(in UInt256 location, ZeroPaddedSpan value)
+        public void Save(in UInt256 location, in ZeroPaddedSpan value)
         {
             if (value.Length == 0)
             {
@@ -116,31 +124,15 @@ namespace Nethermind.Evm
             _memory.AsSpan(intLocation + value.Span.Length, value.PaddingLength).Clear();
         }
 
-        public void Save(in UInt256 location, ZeroPaddedMemory value)
-        {
-            if (value.Length == 0)
-            {
-                return;
-            }
-
-            UInt256 length = (UInt256)value.Length;
-            CheckMemoryAccessViolation(in location, in length, out ulong newLength);
-            UpdateSize(newLength);
-
-            int intLocation = (int)location;
-            value.Memory.CopyTo(_memory.AsMemory().Slice(intLocation, value.Memory.Length));
-            _memory.AsSpan(intLocation + value.Memory.Length, value.PaddingLength).Clear();
-        }
-
         public Span<byte> LoadSpan(scoped in UInt256 location)
         {
-            CheckMemoryAccessViolation(in location, in WordSize256, out ulong newLength);
+            CheckMemoryAccessViolation(in location, WordSize, out ulong newLength);
             UpdateSize(newLength);
 
             return _memory.AsSpan((int)location, WordSize);
         }
 
-        public Span<byte> LoadSpan(in UInt256 location, in UInt256 length)
+        public Span<byte> LoadSpan(scoped in UInt256 location, scoped in UInt256 length)
         {
             if (length.IsZero)
             {
@@ -197,8 +189,7 @@ namespace Nethermind.Evm
                 return 0L;
             }
 
-            CheckMemoryAccessViolation(in location, in length);
-            UInt256 newSize = location + length;
+            CheckMemoryAccessViolation(in location, in length, out ulong newSize);
 
             if (newSize > Size)
             {
@@ -216,7 +207,7 @@ namespace Nethermind.Evm
                     return long.MaxValue;
                 }
 
-                UpdateSize(in newSize, in UInt256.Zero, false);
+                UpdateSize(newSize, rentIfNeeded: false);
 
                 return (long)cost;
             }
@@ -253,21 +244,26 @@ namespace Nethermind.Evm
             if (_memory is not null)
             {
                 Pool.Return(_memory);
+                _memory = null;
             }
         }
 
-        private static UInt256 MaxInt32 = (UInt256)int.MaxValue;
-
         public static long Div32Ceiling(in UInt256 length)
         {
-            UInt256 rem = length & 31;
-            UInt256 result = length >> 5;
-            if (!rem.IsZero)
+            if (length.IsLargerThanULong())
             {
-                result += UInt256.One;
+                ThrowOutOfGasException();
             }
 
-            if (result > MaxInt32)
+            ulong result = length.u0;
+            ulong rem = result & 31;
+            result >>= 5;
+            if (rem > 0)
+            {
+                result++;
+            }
+
+            if (result > int.MaxValue)
             {
                 ThrowOutOfGasException();
             }
@@ -334,6 +330,14 @@ namespace Nethermind.Evm
         {
             Metrics.EvmExceptions++;
             throw new OutOfGasException();
+        }
+    }
+
+    internal static class UInt256Extensions
+    {
+        public static bool IsLargerThanULong(in this UInt256 value)
+        {
+            return (value.u1 | value.u2 | value.u3) != 0;
         }
     }
 }

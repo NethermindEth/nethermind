@@ -81,7 +81,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
 
         private static byte[] ToEthSignedMessage(byte[] message)
         {
-            string messageString = $"\\x19Ethereum Signed Message:\\n{message.Length}{UTF8Encoding.UTF8.GetString(message)}";
+            string messageString = $"\u0019Ethereum Signed Message:\n{message.Length}{UTF8Encoding.UTF8.GetString(message)}";
             message = UTF8Encoding.UTF8.GetBytes(messageString);
             return message;
         }

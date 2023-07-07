@@ -28,6 +28,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
+using ShouldGossip = Nethermind.TxPool.ShouldGossip;
 
 namespace Nethermind.Network
 {
@@ -52,11 +53,12 @@ namespace Nethermind.Network
         private readonly ForkInfo _forkInfo;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly INetworkConfig _networkConfig;
+        private readonly ITxGossipPolicy _txGossipPolicy;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly HashSet<Capability> _capabilities = new();
-        public event EventHandler<ProtocolInitializedEventArgs> P2PProtocolInitialized;
+        public event EventHandler<ProtocolInitializedEventArgs>? P2PProtocolInitialized;
 
         public ProtocolsManager(ISyncPeerPool syncPeerPool,
             ISyncServer syncServer,
@@ -71,7 +73,8 @@ namespace Nethermind.Network
             ForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
             INetworkConfig networkConfig,
-            ILogManager logManager)
+            ILogManager logManager,
+            ITxGossipPolicy? transactionsGossipPolicy = null)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
@@ -85,6 +88,7 @@ namespace Nethermind.Network
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
+            _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -187,9 +191,9 @@ namespace Nethermind.Network
                 {
                     var ethHandler = version switch
                     {
-                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager),
-                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager),
-                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager),
+                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 

@@ -22,7 +22,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle;
 [TestFixture]
 public class ChainSpecBasedSpecProviderTests
 {
-    private const ulong GnosisBlockTime = 5;
+    private const double GnosisBlockTime = 5;
 
     [TestCase(0, null, false)]
     [TestCase(0, 0ul, false)]
@@ -265,15 +265,14 @@ public class ChainSpecBasedSpecProviderTests
 
         VerifyGnosisPreShanghaiExceptions(provider);
 
-        /* ToDo uncomment with Gnosis fork specified
         IReleaseSpec? preShanghaiSpec = provider.GetSpec((GnosisSpecProvider.LondonBlockNumber + 1,
             GnosisSpecProvider.ShanghaiTimestamp - 1));
         IReleaseSpec? postShanghaiSpec = provider.GetSpec((GnosisSpecProvider.LondonBlockNumber + 1,
             GnosisSpecProvider.ShanghaiTimestamp));
 
-        VerifyGnosisPreShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
+        VerifyGnosisShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue()); */
+            t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
     }
 
     private void VerifyGnosisShanghaiExceptions(IReleaseSpec preShanghaiSpec, IReleaseSpec postShanghaiSpec)
@@ -438,43 +437,6 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(propertyInfo.GetValue(actualSpec), Is.EqualTo(propertyInfo.GetValue(expectedSpec)),
                 activation + "." + propertyInfo.Name);
         }
-    }
-
-    [Test]
-    public void Ropsten_loads_properly()
-    {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/ropsten.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-        RopstenSpecProvider ropsten = RopstenSpecProvider.Instance;
-
-        List<ForkActivation> forkActivationsToTest = new()
-        {
-            (ForkActivation)0,
-            (ForkActivation)1,
-            (ForkActivation)(RopstenSpecProvider.SpuriousDragonBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.SpuriousDragonBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.ByzantiumBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.ByzantiumBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.ConstantinopleFixBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.ConstantinopleFixBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.IstanbulBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.IstanbulBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.MuirGlacierBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.MuirGlacierBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.BerlinBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.BerlinBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.LondonBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.LondonBlockNumber,
-            (ForkActivation)999_999_999, // far in the future
-        };
-
-        CompareSpecProviders(ropsten, provider, forkActivationsToTest, CompareSpecsOptions.CheckDifficultyBomb);
-        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(RopstenSpecProvider.Instance.TerminalTotalDifficulty));
-        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(RopstenSpecProvider.LondonBlockNumber));
     }
 
     private ChainSpec LoadChainSpecFromChainFolder(string chain)
@@ -718,7 +680,6 @@ public class ChainSpecBasedSpecProviderTests
                 Eip2028Transition = 20280L,
                 Eip2200Transition = 22000L,
                 Eip2315Transition = 23150L,
-                Eip2537Transition = 25370L,
                 Eip2565Transition = 25650L,
                 Eip2929Transition = 29290L,
                 Eip2930Transition = 29300L,
@@ -738,6 +699,7 @@ public class ChainSpecBasedSpecProviderTests
                 Eip3855TransitionTimestamp = 1000000012,
                 Eip3860TransitionTimestamp = 1000000012,
                 Eip1153TransitionTimestamp = 1000000024,
+                Eip2537TransitionTimestamp = 1000000024
             }
         };
 
@@ -801,11 +763,13 @@ public class ChainSpecBasedSpecProviderTests
         TestTransitions((ForkActivation)22000L, r => { r.IsEip2200Enabled = true; });
         TestTransitions((ForkActivation)23000L, r => { r.IsEip1283Enabled = r.IsEip1344Enabled = true; });
         TestTransitions((ForkActivation)24000L, r => { r.IsEip2315Enabled = r.ValidateChainId = r.ValidateReceipts = true; });
-        TestTransitions((ForkActivation)29290L, r => { r.IsEip2929Enabled = r.IsEip2537Enabled = r.IsEip2565Enabled = true; });
+        TestTransitions((ForkActivation)29290L, r => { r.IsEip2929Enabled = r.IsEip2565Enabled = true; });
         TestTransitions((ForkActivation)29300L, r => { r.IsEip2930Enabled = true; });
         TestTransitions((ForkActivation)31980L, r => { r.IsEip3198Enabled = true; });
         TestTransitions((ForkActivation)35290L, r => { r.IsEip3529Enabled = true; });
         TestTransitions((ForkActivation)35410L, r => { r.IsEip3541Enabled = true; });
+        TestTransitions((ForkActivation)35410L, r => { r.IsEip3541Enabled = true; });
+
 
         TestTransitions((41000L, 1000000012), r =>
         {
@@ -813,7 +777,7 @@ public class ChainSpecBasedSpecProviderTests
             r.IsEip3855Enabled = true;
             r.IsEip3860Enabled = true;
         });
-        TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = true; });
+        TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = r.IsEip2537Enabled = true; });
     }
 
     private static IEnumerable<ulong> GetTransitionTimestamps(ChainParameters parameters) => parameters.GetType()
@@ -830,6 +794,8 @@ public class ChainSpecBasedSpecProviderTests
     /// <param name="genesisTimestamp">The network's genesis timestamp</param>
     /// <param name="blockTime">The network's block time in seconds</param>
     /// <returns><c>true</c> if the timestamp is valid; otherwise, <c>false</c>.</returns>
-    private static bool ValidateSlotByTimestamp(ulong timestamp, ulong genesisTimestamp, ulong blockTime = 12) =>
-        timestamp > genesisTimestamp && (timestamp - genesisTimestamp) / blockTime % 0x2000 == 0;
+    private static bool ValidateSlotByTimestamp(ulong timestamp, ulong genesisTimestamp, double blockTime = 12) =>
+        timestamp > genesisTimestamp &&
+        Math.Round((timestamp - genesisTimestamp) / blockTime) % 0x2000 == 0 &&
+        Math.Ceiling((timestamp - genesisTimestamp) / blockTime) % 0x2000 == 0;
 }

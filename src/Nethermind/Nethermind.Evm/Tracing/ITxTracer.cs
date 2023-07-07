@@ -211,15 +211,6 @@ namespace Nethermind.Evm.Tracing
         }
 
         /// <summary>
-        /// </summary>
-        /// <param name="stackItem"></param>
-        /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-        void ReportStackPush(in ZeroPaddedMemory stackItem)
-        {
-            ReportStackPush(stackItem.ToArray().AsSpan());
-        }
-
-        /// <summary>
         ///
         /// </summary>
         /// <param name="memoryTrace"></param>
@@ -278,16 +269,6 @@ namespace Nethermind.Evm.Tracing
         }
 
         /// <summary>
-        /// </summary>
-        /// <param name="offset"></param>
-        /// <param name="data"></param>
-        /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-        void ReportMemoryChange(long offset, in ZeroPaddedMemory data)
-        {
-            ReportMemoryChange(offset, data.ToArray());
-        }
-
-        /// <summary>
         ///
         /// </summary>
         /// <param name="address"></param>
@@ -305,7 +286,7 @@ namespace Nethermind.Evm.Tracing
         /// <param name="newValue"></param>
         /// <param name="currentValue"></param>
         /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
-        void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, Span<byte> newValue, byte[] currentValue) { }
+        void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> newValue, byte[] currentValue) { }
 
         /// <summary>
         ///

@@ -18,6 +18,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using GetPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage;
 using PooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage;
@@ -44,8 +45,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             IPooledTxsRequestor pooledTxsRequestor,
             IGossipPolicy gossipPolicy,
             ForkInfo forkInfo,
-            ILogManager logManager)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager)
+            ILogManager logManager,
+            ITxGossipPolicy? transactionsGossipPolicy = null)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
         {
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, BlockHeader[]>(Send);
             _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, BlockBody[]>(Send);
@@ -99,11 +101,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     Handle(getPooledTxMsg);
                     break;
                 case Eth66MessageCode.PooledTransactions:
-                    PooledTransactionsMessage pooledTxMsg
-                        = Deserialize<PooledTransactionsMessage>(message.Content);
-                    Metrics.Eth66PooledTransactionsReceived++;
-                    ReportIn(pooledTxMsg, size);
-                    Handle(pooledTxMsg.EthMessage);
+                    if (CanReceiveTransactions)
+                    {
+                        PooledTransactionsMessage pooledTxMsg
+                            = Deserialize<PooledTransactionsMessage>(message.Content);
+                        Metrics.Eth66PooledTransactionsReceived++;
+                        ReportIn(pooledTxMsg, size);
+                        Handle(pooledTxMsg.EthMessage);
+                    }
+                    else
+                    {
+                        const string ignored = $"{nameof(PooledTransactionsMessage)} ignored, syncing";
+                        ReportIn(ignored, size);
+                    }
+
                     break;
                 case Eth66MessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);

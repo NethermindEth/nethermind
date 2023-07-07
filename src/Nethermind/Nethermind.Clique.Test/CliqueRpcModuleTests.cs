@@ -31,7 +31,7 @@ namespace Nethermind.Clique.Test
         {
             CliqueConfig cliqueConfig = new();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            Signer signer = new(BlockchainIds.Ropsten, TestItem.PrivateKeyA, LimboLogs.Instance);
+            Signer signer = new(BlockchainIds.Sepolia, TestItem.PrivateKeyA, LimboLogs.Instance);
             CliqueBlockProducer producer = new(
                 Substitute.For<ITxSource>(),
                 Substitute.For<IBlockchainProcessor>(),

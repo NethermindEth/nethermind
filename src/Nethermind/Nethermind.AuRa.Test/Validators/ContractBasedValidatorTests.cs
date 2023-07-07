@@ -7,7 +7,6 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -552,7 +551,7 @@ namespace Nethermind.AuRa.Test.Validators
 
             Address validators = TestItem.Addresses[initialValidatorsIndex * 10];
             InMemoryReceiptStorage inMemoryReceiptStorage = new();
-            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(RopstenSpecProvider.Instance)
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(MainnetSpecProvider.Instance)
                 .WithTransactions(inMemoryReceiptStorage, delegate (Block block, Transaction transaction)
                     {
                         byte i = 0;

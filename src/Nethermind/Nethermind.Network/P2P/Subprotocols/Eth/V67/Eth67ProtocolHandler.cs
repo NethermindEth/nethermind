@@ -10,6 +10,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V67;
@@ -27,8 +28,9 @@ public class Eth67ProtocolHandler : Eth66ProtocolHandler
         IPooledTxsRequestor pooledTxsRequestor,
         IGossipPolicy gossipPolicy,
         ForkInfo forkInfo,
-        ILogManager logManager)
-        : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager)
+        ILogManager logManager,
+        ITxGossipPolicy? transactionsGossipPolicy = null)
+        : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
     {
     }
 
