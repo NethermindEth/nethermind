@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using App.Metrics.Formatters.Json;
-using App.Metrics.Formatters.Json.Extensions;
 
 namespace Nethermind.Tools.Kute.MetricsConsumer;
 
