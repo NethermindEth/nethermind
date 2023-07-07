@@ -171,7 +171,7 @@ namespace Nethermind.Network.Test
 
             public Context ReceiveDisconnect()
             {
-                DisconnectMessage message = new(DisconnectReason.Other);
+                DisconnectMessage message = new(EthDisconnectReason.Other);
                 IByteBuffer disconnectPacket = _serializer.ZeroSerialize(message);
 
                 // to account for AdaptivePacketType byte

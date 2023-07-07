@@ -9,7 +9,7 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class TxDecoder : TxDecoder<Transaction>, ITransactionSizeCalculator
+    public class TxDecoder : TxDecoder<Transaction>
     {
         public const int MaxDelayedHashTxnSize = 32768;
         public static TxDecoder Instance = new TxDecoder();
@@ -21,11 +21,6 @@ namespace Nethermind.Serialization.Rlp
 
         public TxDecoder(bool lazyHash) : base(lazyHash)
         {
-        }
-
-        public int GetLength(Transaction tx)
-        {
-            return GetLength(tx, RlpBehaviors.None);
         }
     }
     public class SystemTxDecoder : TxDecoder<SystemTransaction> { }
@@ -674,7 +669,7 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(item.BlobVersionedHashes);
         }
 
-        private int GetShardBlobNetwrokWrapperContentLength(T item, int txContentLength)
+        private int GetShardBlobNetworkWrapperContentLength(T item, int txContentLength)
         {
             ShardBlobNetworkWrapper networkWrapper = item.NetworkWrapper as ShardBlobNetworkWrapper;
             return Rlp.LengthOfSequence(txContentLength)
@@ -726,7 +721,7 @@ namespace Nethermind.Serialization.Rlp
                 switch (item.Type)
                 {
                     case TxType.Blob:
-                        contentLength = GetShardBlobNetwrokWrapperContentLength(item, contentLength);
+                        contentLength = GetShardBlobNetworkWrapperContentLength(item, contentLength);
                         break;
                 }
             }

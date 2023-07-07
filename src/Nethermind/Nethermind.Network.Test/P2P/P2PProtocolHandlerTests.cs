@@ -115,7 +115,7 @@ namespace Nethermind.Network.Test.P2P
             p2PProtocolHandler.HandleMessage(packet);
 
             _nodeStatsManager.GetOrAdd(node).FailedCompatibilityValidation.Should().NotBeNull();
-            _session.Received(1).InitiateDisconnect(InitiateDisconnectReason.NoCapabilityMatched, Arg.Any<string>());
+            _session.Received(1).InitiateDisconnect(DisconnectReason.NoCapabilityMatched, Arg.Any<string>());
         }
 
         [Test]
