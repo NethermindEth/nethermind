@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Test
                 .EQ(1)
                 .PushData(17)
                 .Op(Instruction.JUMPI)
-                .SSTORE(1, new byte[] {0x01})
+                .SSTORE(1, new byte[] { 0x01 })
                 .JUMP(40)
                 .JUMPDEST()
                 .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
@@ -106,7 +106,7 @@ namespace Nethermind.Evm.Test
                 .EQ(1)
                 .PushData(17)
                 .Op(Instruction.JUMPI)
-                .SSTORE(1, new byte[] {0x01})
+                .SSTORE(1, new byte[] { 0x01 })
                 .JUMP(40)
                 .JUMPDEST()
                 .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
@@ -132,7 +132,7 @@ namespace Nethermind.Evm.Test
                 .WithTransactions(createTx).WithGasLimit(2 * gasLimit).TestObject;
 
             _processor.Execute(createTx, block.Header, NullTxTracer.Instance);
-            
+
             AssertCodeHash(contractAddress, Keccak.OfAnEmptyString);
             AssertStorage(new StorageCell(contractAddress, 1), 0);
 
@@ -151,7 +151,7 @@ namespace Nethermind.Evm.Test
                 .EQ(1)
                 .PushData(17)
                 .Op(Instruction.JUMPI)
-                .SSTORE(1, new byte[] {0x01})
+                .SSTORE(1, new byte[] { 0x01 })
                 .JUMP(40)
                 .JUMPDEST()
                 .SELFDESTRUCT(TestItem.PrivateKeyB.Address)

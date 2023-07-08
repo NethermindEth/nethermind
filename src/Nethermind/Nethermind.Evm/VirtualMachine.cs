@@ -2443,7 +2443,7 @@ ReturnFailure:
         Address contractAddress = instruction == Instruction.CREATE
             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
             : ContractAddress.From(env.ExecutingAccount, salt, initCode);
-        
+
         vmState.CreateList.Add(contractAddress);
         if (spec.UseHotAndColdStorage)
         {
