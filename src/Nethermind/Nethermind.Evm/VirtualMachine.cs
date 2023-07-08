@@ -2444,7 +2444,6 @@ ReturnFailure:
             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
             : ContractAddress.From(env.ExecutingAccount, salt, initCode);
 
-        vmState.CreateList.Add(contractAddress);
         if (spec.UseHotAndColdStorage)
         {
             // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
@@ -2485,6 +2484,8 @@ ReturnFailure:
             // Prime the code cache as likely to be used by more txs
             _codeCache.Set(codeHash, codeInfo);
         }
+        
+        vmState.CreateList.Add(contractAddress);
 
         ExecutionEnvironment callEnv = new
         (
