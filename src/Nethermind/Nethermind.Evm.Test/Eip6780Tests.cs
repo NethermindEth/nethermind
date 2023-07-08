@@ -25,6 +25,8 @@ using Nethermind.Specs;
 using NUnit.Framework;
 using FluentAssertions;
 using Nethermind.Evm.Tracing;
+using Nethermind.Core.Crypto;
+using System;
 
 namespace Nethermind.Evm.Test
 {
@@ -40,25 +42,19 @@ namespace Nethermind.Evm.Test
             TestState.CommitTree(0);
 
             Address contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
+            byte[] contractCode = Prepare.EvmCode
+                .SLOAD(1)
+                .EQ(1)
+                .PushData(17)
+                .Op(Instruction.JUMPI)
+                .SSTORE(1, new byte[] {0x01})
+                .JUMP(40)
+                .JUMPDEST()
+                .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
+                .JUMPDEST()
+                .Done;
             byte[] initByteCode = Prepare.EvmCode
-                .ForInitOf(
-                    Prepare.EvmCode
-                        .PushData(1)
-                        .Op(Instruction.SLOAD)
-                        .PushData(1)
-                        .Op(Instruction.EQ)
-                        .PushData(17)
-                        .Op(Instruction.JUMPI)
-                        .PushData(1)
-                        .PushData(1)
-                        .Op(Instruction.SSTORE)
-                        .PushData(40)
-                        .Op(Instruction.JUMP)
-                        .Op(Instruction.JUMPDEST)
-                        .PushData(TestItem.PrivateKeyB.Address)
-                        .Op(Instruction.SELFDESTRUCT)
-                        .Op(Instruction.JUMPDEST)
-                        .Done)
+                .ForInitOf(contractCode)
                 .Done;
 
             byte[] byteCode1 = Prepare.EvmCode
@@ -92,6 +88,7 @@ namespace Nethermind.Evm.Test
             _processor.Execute(tx2, block.Header, tracer2);
 
             uint expected = onlyOnSameTransaction ? 1u : 0u;
+            AssertCodeHash(contractAddress, onlyOnSameTransaction ? Keccak.Compute(contractCode.AsSpan()) : Keccak.OfAnEmptyString);
             AssertStorage(new StorageCell(contractAddress, 1), expected);
 
             TestState.GetBalance(contractAddress).Should().Be(0);
@@ -105,22 +102,16 @@ namespace Nethermind.Evm.Test
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
             byte[] contractCode = Prepare.EvmCode
-                        .PushData(1)
-                        .Op(Instruction.SLOAD)
-                        .PushData(1)
-                        .Op(Instruction.EQ)
-                        .PushData(17)
-                        .Op(Instruction.JUMPI)
-                        .PushData(1)
-                        .PushData(1)
-                        .Op(Instruction.SSTORE)
-                        .PushData(40)
-                        .Op(Instruction.JUMP)
-                        .Op(Instruction.JUMPDEST)
-                        .PushData(TestItem.PrivateKeyB.Address)
-                        .Op(Instruction.SELFDESTRUCT)
-                        .Op(Instruction.JUMPDEST)
-                        .Done;
+                .SLOAD(1)
+                .EQ(1)
+                .PushData(17)
+                .Op(Instruction.JUMPI)
+                .SSTORE(1, new byte[] {0x01})
+                .JUMP(40)
+                .JUMPDEST()
+                .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
+                .JUMPDEST()
+                .Done;
             byte[] initCode = Prepare.EvmCode.ForInitOf(contractCode).Done;
             byte[] salt = new UInt256(123).ToBigEndian();
             Address createTxAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
@@ -141,7 +132,57 @@ namespace Nethermind.Evm.Test
                 .WithTransactions(createTx).WithGasLimit(2 * gasLimit).TestObject;
 
             _processor.Execute(createTx, block.Header, NullTxTracer.Instance);
+            
+            AssertCodeHash(contractAddress, Keccak.OfAnEmptyString);
+            AssertStorage(new StorageCell(contractAddress, 1), 0);
 
+            TestState.GetBalance(contractAddress).Should().Be(0);
+            TestState.GetBalance(TestItem.PrivateKeyB.Address).Should().Be(99.Ether());
+        }
+
+        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp)]
+        public void self_destruct_in_initcode(long blockNumber, ulong timestamp)
+        {
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 1000.Ether());
+            TestState.Commit(SpecProvider.GenesisSpec);
+            TestState.CommitTree(0);
+            byte[] contractCode = Prepare.EvmCode
+                .SLOAD(1)
+                .EQ(1)
+                .PushData(17)
+                .Op(Instruction.JUMPI)
+                .SSTORE(1, new byte[] {0x01})
+                .JUMP(40)
+                .JUMPDEST()
+                .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
+                .JUMPDEST()
+                .Done;
+            byte[] initCode = Prepare.EvmCode
+                .StoreDataInMemory(0, contractCode)
+                .PushData(contractCode.Length)
+                .PushData(0)
+                .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
+                .Op(Instruction.RETURN)
+                .Done;
+            byte[] salt = new UInt256(123).ToBigEndian();
+            Address createTxAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
+            Address contractAddress = ContractAddress.From(createTxAddress, salt, initCode);
+            byte[] tx1 = Prepare.EvmCode
+                .Create2(initCode, salt, 99.Ether())
+                .STOP()
+                .Done;
+
+            long gasLimit = 1000000;
+
+            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
+            Transaction createTx = Build.A.Transaction.WithCode(tx1).WithValue(100.Ether()).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+            Block block = Build.A.Block.WithNumber(blockNumber)
+                .WithTimestamp(timestamp)
+                .WithTransactions(createTx).WithGasLimit(2 * gasLimit).TestObject;
+
+            _processor.Execute(createTx, block.Header, NullTxTracer.Instance);
+
+            AssertCodeHash(contractAddress, Keccak.OfAnEmptyString);
             AssertStorage(new StorageCell(contractAddress, 1), 0);
 
             TestState.GetBalance(contractAddress).Should().Be(0);
