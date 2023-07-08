@@ -11,5 +11,5 @@ then
 else
   echo 'Executing Nethermind Launcher'
   cd /usr/share/nethermind
-  sudo /usr/share/nethermind/Nethermind.Launcher
+  sudo /usr/share/nethermind/nethermind-launcher
 fi
