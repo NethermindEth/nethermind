@@ -2484,7 +2484,7 @@ ReturnFailure:
             // Prime the code cache as likely to be used by more txs
             _codeCache.Set(codeHash, codeInfo);
         }
-        
+
         vmState.CreateList.Add(contractAddress);
 
         ExecutionEnvironment callEnv = new
