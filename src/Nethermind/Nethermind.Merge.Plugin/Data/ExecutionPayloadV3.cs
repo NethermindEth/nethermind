@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Newtonsoft.Json;
 
@@ -44,4 +45,7 @@ public class ExecutionPayloadV3 : ExecutionPayload
         block.Header.ExcessDataGas = ExcessDataGas;
         return true;
     }
+
+    public override bool IsProperFork(ISpecProvider specProvider) => specProvider
+        .GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 }

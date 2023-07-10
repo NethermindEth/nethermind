@@ -139,6 +139,8 @@ public class ExecutionPayload
         }
     }
 
+    public virtual bool IsProperFork(ISpecProvider specProvider) => true;
+
     private Transaction[]? _transactions = null;
 
     /// <summary>
@@ -177,7 +179,7 @@ public static class ExecutionPayloadExtensions
     {
         if (spec.IsEip4844Enabled && executionPayload is not ExecutionPayloadV3)
         {
-            error = $"ExecutionPayloadV3 expected";
+            error = "ExecutionPayloadV3 expected";
             return false;
         }
 
@@ -185,7 +187,7 @@ public static class ExecutionPayloadExtensions
 
         error = actualVersion switch
         {
-            1 when spec.WithdrawalsEnabled => $"ExecutionPayloadV2 expected",
+            1 when spec.WithdrawalsEnabled => "ExecutionPayloadV2 expected",
             > 1 when !spec.WithdrawalsEnabled => "ExecutionPayloadV1 expected",
             _ => actualVersion > version ? $"ExecutionPayloadV{version} expected" : null
         };
@@ -201,11 +203,4 @@ public static class ExecutionPayloadExtensions
             specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp),
             version,
             out error);
-
-    public static bool IsProperFork(this ExecutionPayload executionPayload, ISpecProvider specProvider)
-        => executionPayload switch
-        {
-            ExecutionPayloadV3 _ => specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp).IsEip4844Enabled,
-            _ => true,
-        };
 }
