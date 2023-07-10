@@ -570,7 +570,7 @@ namespace Nethermind.Evm.Test.Tracing
         public void Can_trace_precompile_calls()
         {
             byte[] code = Prepare.EvmCode
-                .Call(IdentityPrecompile.Instance.Address, 50000)
+                .Call(IdentityPrecompile.Address, 50000)
                 .Op(Instruction.STOP)
                 .Done;
 
@@ -584,15 +584,15 @@ namespace Nethermind.Evm.Test.Tracing
             };
 
             Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[0] type");
-            Assert.That(trace.Action.Subtraces[0].To, Is.EqualTo(IdentityPrecompile.Instance.Address), "[0] to");
+            Assert.That(trace.Action.Subtraces[0].To, Is.EqualTo(IdentityPrecompile.Address), "[0] to");
         }
 
         [Test]
         public void Can_ignore_precompile_calls_in_contract()
         {
             byte[] deployedCode = Prepare.EvmCode
-                .Call(IdentityPrecompile.Instance.Address, 50000)
-                .CallWithValue(IdentityPrecompile.Instance.Address, 50000, 1.Ether())
+                .Call(IdentityPrecompile.Address, 50000)
+                .CallWithValue(IdentityPrecompile.Address, 50000, 1.Ether())
                 .Op(Instruction.STOP)
                 .Done;
 
@@ -600,7 +600,7 @@ namespace Nethermind.Evm.Test.Tracing
             TestState.InsertCode(TestItem.AddressC, deployedCode, Spec);
 
             byte[] code = Prepare.EvmCode
-                .Call(IdentityPrecompile.Instance.Address, 50000)
+                .Call(IdentityPrecompile.Address, 50000)
                 .Call(TestItem.AddressC, 40000)
                 .Op(Instruction.STOP)
                 .Done;
@@ -614,7 +614,7 @@ namespace Nethermind.Evm.Test.Tracing
             // Precompile call
             Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0] subtraces");
             Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[0] type");
-            Assert.That(trace.Action.Subtraces[0].To, Is.EqualTo(IdentityPrecompile.Instance.Address), "[0] to");
+            Assert.That(trace.Action.Subtraces[0].To, Is.EqualTo(IdentityPrecompile.Address), "[0] to");
 
             // AddressC call - only one call
             Assert.That(trace.Action.Subtraces[1].Subtraces.Count, Is.EqualTo(2), "[1] subtraces");
