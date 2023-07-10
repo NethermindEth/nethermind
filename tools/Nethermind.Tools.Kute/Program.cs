@@ -1,4 +1,3 @@
-using System.Text.Json;
 using CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Tools.Kute.Auth;
@@ -32,7 +31,16 @@ static class Program
         collection.AddSingleton<ISystemClock, RealSystemClock>();
         collection.AddSingleton<HttpClient>();
         collection.AddSingleton<ISecretProvider>(new FileSecretProvider(config.JwtSecretFilePath));
-        collection.AddSingleton<IAuth, JwtAuth>();
+        collection.AddSingleton<IAuth>(provider =>
+            new TtlAuth(
+                new JwtAuth(
+                    provider.GetRequiredService<ISystemClock>(),
+                    provider.GetRequiredService<ISecretProvider>()
+                ),
+                provider.GetRequiredService<ISystemClock>(),
+                config.AuthTtl
+            )
+        );
         collection.AddSingleton<IMessageProvider<JsonRpc?>>(
             new JsonRpcMessageProvider(
                 new FileMessageProvider(config.MessagesFilePath))

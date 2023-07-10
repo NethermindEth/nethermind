@@ -40,10 +40,10 @@ Some typical usages are as follow:
 -i /rpc.0 -s keystore/jwt-secret -f engine_*, eth_*
 ```
 
-### Connect to a Nethermind Client running in a specific address
+### Connect to a Nethermind Client running in a specific address and TTL
 
 ```
--i /rpc.0 -s keystore/jwt-secret -a http://192.168.1.100:8551
+-i /rpc.0 -s keystore/jwt-secret -a http://192.168.1.100:8551 --ttl 30
 ```
 
 ### Run in "dry" mode (no communication with the Nethermind Client)

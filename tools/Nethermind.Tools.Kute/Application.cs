@@ -48,7 +48,7 @@ class Application
 
                 case JsonRpc.BatchJsonRpc batch:
                     var startBatch = Stopwatch.GetTimestamp();
-                    await _submitter.Submit(batch.ToString());
+                    await _submitter.Submit(batch);
                     _metrics.TickBatch(Stopwatch.GetElapsedTime(startBatch));
 
                     break;
@@ -73,7 +73,7 @@ class Application
                     }
 
                     var startMethod = Stopwatch.GetTimestamp();
-                    await _submitter.Submit(single.ToString());
+                    await _submitter.Submit(single);
                     _metrics.TickRequest(single.MethodName, Stopwatch.GetElapsedTime(startMethod));
 
                     break;
