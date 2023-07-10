@@ -26,7 +26,7 @@ namespace Nethermind.TxPool.Filters
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             bool isLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
-            if (isLocal || !_txs.IsFull())
+            if ((isLocal || !_txs.IsFull()) && !tx.SupportsBlobs)
             {
                 return AcceptTxResult.Accepted;
             }
