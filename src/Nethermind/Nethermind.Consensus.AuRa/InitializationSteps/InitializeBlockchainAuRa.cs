@@ -104,7 +104,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     }
 
     protected ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
-        new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+        new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.ReadOnlyStorageTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
     protected override IHealthHintService CreateHealthHintService() =>
         new AuraHealthHintService(_auRaStepCalculator, _api.ValidatorStore);

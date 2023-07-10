@@ -111,7 +111,7 @@ namespace Nethermind.Trie.Test
             byte[] result = Nibbles.ToEncodedStorageBytes(nibbles);
 
             //encoded / even
-            Assert.AreEqual(0xfe, result[0]);
+            Assert.That(result[0], Is.EqualTo(0xfe));
             CollectionAssert.AreEqual(bytes, result.AsSpan(1).ToArray());
 
             byte[] nibbles2 = Enumerable.Repeat((byte)1, 5).ToArray();
@@ -122,7 +122,7 @@ namespace Nethermind.Trie.Test
             byte[] result2 = Nibbles.ToEncodedStorageBytes(nibbles2);
 
             //encoded / odd
-            Assert.AreEqual(0xff, result2[0]);
+            Assert.That(result2[0], Is.EqualTo(0xff));
             CollectionAssert.AreEqual(bytes2, result2.AsSpan(1).ToArray());
         }
 

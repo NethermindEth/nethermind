@@ -182,7 +182,6 @@ namespace Nethermind.Init.Steps
 
             IWorldState worldState = setApi.WorldState = new WorldState(
                 trieStore,
-                storageTrieStore,
                 codeDb,
                 getApi.LogManager);
 
@@ -211,8 +210,7 @@ namespace Nethermind.Init.Steps
                     {
                         noPruningStore = noPruningStorageStore = new TrieStore(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
                     }
-                    
-                    IStateProvider diagStateProvider = new StateProvider(noPruningStore, noPruningStorageStore, codeDb, getApi.LogManager)
+                    IWorldState diagStateProvider = new WorldState(noPruningStore, codeDb, getApi.LogManager)
                     {
                         StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
                     };
@@ -254,11 +252,11 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-            IStorageProvider storageProvider = setApi.StorageProvider = new StorageProvider(
-                //trieStore,
-                storageTrieStore,
-                stateProvider,
-                getApi.LogManager);
+            //IStorageProvider storageProvider = setApi.StorageProvider = new StorageProvider(
+            //    //trieStore,
+            //    storageTrieStore,
+            //    stateProvider,
+            //    getApi.LogManager);
 
             // blockchain processing
             BlockhashProvider blockhashProvider = new(

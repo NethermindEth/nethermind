@@ -105,8 +105,8 @@ public class ColumnDb : IDbWithSpan
             {
                 if (Bytes.Comparer.Compare(iterator.Key(), endKey) >= 0)
                     break;
-                Console.WriteLine($"Removed: {iterator.Key().ToHexString()} | From: {startKey.ToHexString()} To: {endKey.ToHexString()}");
-                _underlyingBatch._rocksBatch.Delete(iterator.Key(), _columnDb._columnFamily);
+                //Console.WriteLine($"Removed: {iterator.Key().ToHexString()} | From: {startKey.ToHexString()} To: {endKey.ToHexString()}");
+                _underlyingBatch.Delete(iterator.Key(), _columnDb._columnFamily);
                 iterator.Next();
             }
             //seems to be much less performant

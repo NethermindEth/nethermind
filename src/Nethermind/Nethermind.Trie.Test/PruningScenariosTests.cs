@@ -56,7 +56,7 @@ namespace Nethermind.Trie.Test
                 _pruningStrategy = pruningStrategy;
                 _trieStore = new TrieStore(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);
                 _stateProvider = new WorldState(_trieStore, _dbProvider.CodeDb, _logManager);
-                _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
+                _stateReader = new StateReader(_trieStore, _trieStore, _dbProvider.CodeDb, _logManager);
             }
 
 
@@ -192,9 +192,8 @@ namespace Nethermind.Trie.Test
             {
                 _trieStore.Dispose();
                 _trieStore = new TrieStore(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);
-                _stateProvider = new StateProvider(_trieStore, _dbProvider.CodeDb, _logManager);
-                _storageProvider = new StorageProvider(_trieStore, _stateProvider, _logManager);
-                _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
+                _stateProvider = new WorldState(_trieStore, _dbProvider.CodeDb, _logManager);
+                _stateReader = new StateReader(_trieStore, _trieStore, _dbProvider.CodeDb, _logManager);
                 return this;
             }
 

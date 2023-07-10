@@ -256,7 +256,7 @@ namespace Nethermind.Synchronization.Test
             MemColumnsDb<StateColumns> stateDb = new();
 
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            StateReader stateReader = new(trieStore, codeDb, logManager);
+            StateReader stateReader = new(trieStore, trieStore, codeDb, logManager);
             WorldState stateProvider = new(trieStore, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
@@ -378,7 +378,7 @@ namespace Nethermind.Synchronization.Test
                 null,
                 logManager);
             SyncServer syncServer = new(
-                trieStoreByPath,
+                trieStore,
                 codeDb,
                 tree,
                 receiptStorage,

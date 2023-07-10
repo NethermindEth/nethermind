@@ -996,8 +996,8 @@ public class TrieByPathTests
 
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
         using TrieStoreByPath storageTrieStore = new(memDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager);
-        StateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, new MemDb(), _logManager);
-        StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
+
+        WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
 
         Account[] accounts = new Account[accountsCount];
         Address[] addresses = new Address[accountsCount];
@@ -1051,7 +1051,7 @@ public class TrieByPathTests
 
                         byte[] storage = new byte[1];
                         _random.NextBytes(storage);
-                        storageProvider.Set(new StorageCell(address, 1), storage);
+                        stateProvider.Set(new StorageCell(address, 1), storage);
                     }
                     else if (!account.IsTotallyEmpty)
                     {
@@ -1059,7 +1059,7 @@ public class TrieByPathTests
 
                         byte[] storage = new byte[1];
                         _random.NextBytes(storage);
-                        storageProvider.Set(new StorageCell(address, 1), storage);
+                        stateProvider.Set(new StorageCell(address, 1), storage);
                     }
                 }
             }
@@ -1067,10 +1067,8 @@ public class TrieByPathTests
             streamWriter.WriteLine(
                 $"Commit block {blockNumber} | empty: {isEmptyBlock}");
 
-            storageProvider.Commit();
             stateProvider.Commit(MuirGlacier.Instance);
 
-            storageProvider.CommitTrees(blockNumber);
             stateProvider.CommitTree(blockNumber);
             rootQueue.Enqueue(stateProvider.StateRoot);
         }
@@ -1094,7 +1092,7 @@ public class TrieByPathTests
                     {
                         for (int j = 0; j < 256; j++)
                         {
-                            storageProvider.Get(new StorageCell(addresses[i], (UInt256)j));
+                            stateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
                         }
                     }
                 }

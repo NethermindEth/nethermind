@@ -101,8 +101,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             tree.Commit(0);
 
             Assert.That(tree.RootHash, Is.EqualTo(_inputTree.RootHash));
-            Assert.That(db.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
-            Assert.IsFalse(db.KeyExists(rootHash)); // the root node is a part of the proof nodes
+            Assert.That(stateDb.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
+            Assert.IsFalse(stateDb.KeyExists(rootHash)); // the root node is a part of the proof nodes
         }
 
         [Test]

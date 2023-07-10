@@ -71,34 +71,32 @@ namespace Nethermind.Evm.Test
             ParityLikeTxTracer initTracer = new(blockInit, initTx, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(initTx, blockInit.Header, initTracer);
             CommitEverything(MainnetSpecProvider.MuirGlacierBlockNumber);
-            AssertStorageStateReader(new StorageCell(contractAddress, 1), 0);
+            AssertStorage(new StorageCell(contractAddress, 1), 0);
 
             Transaction tx1 = Build.A.Transaction.WithCode(byteCode1).WithGasLimit(gasLimit).WithNonce(1).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             Block block1 = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber + 1).WithTransactions(tx1).WithGasLimit(2 * gasLimit).TestObject;
             ParityLikeTxTracer tracer1 = new(block1, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(tx1, block1.Header, tracer1);
             CommitEverything(MainnetSpecProvider.MuirGlacierBlockNumber + 1);
-            AssertStorageStateReader(new StorageCell(contractAddress, 1), 1);
+            AssertStorage(new StorageCell(contractAddress, 1), 1);
 
             Transaction tx2 = Build.A.Transaction.WithCode(byteCode2).WithGasLimit(gasLimit).WithNonce(2).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             Block block2 = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber + 2).WithTransactions(tx2).WithGasLimit(2 * gasLimit).TestObject;
             ParityLikeTxTracer tracer2 = new(block2, tx2, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(tx2, block2.Header, tracer2);
             CommitEverything(MainnetSpecProvider.MuirGlacierBlockNumber + 2);
-            AssertStorageStateReader(new StorageCell(contractAddress, 1), 0);
+            AssertStorage(new StorageCell(contractAddress, 1), 0);
 
             TestState.CreateAccount(contractAddress, 100.Ether());
             CommitEverything(MainnetSpecProvider.MuirGlacierBlockNumber + 3);
-            Storage.Set(new StorageCell(contractAddress, 2), new byte[] { 1 });
+            TestState.Set(new StorageCell(contractAddress, 2), new byte[] { 1 });
             CommitEverything(MainnetSpecProvider.MuirGlacierBlockNumber + 4);
-            AssertStorageStateReader(new StorageCell(contractAddress, 1), 0);
+            AssertStorage(new StorageCell(contractAddress, 1), 0);
         }
 
         void CommitEverything(long blockNumber)
         {
-            Storage.Commit();
             TestState.Commit(SpecProvider.GetSpec(blockNumber, null));
-            Storage.CommitTrees(blockNumber);
             TestState.CommitTree(blockNumber);
         }
 

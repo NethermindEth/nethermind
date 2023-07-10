@@ -297,20 +297,6 @@ namespace Nethermind.Evm.Test
             }
         }
 
-        protected void AssertStorageStateReader(StorageCell storageCell, UInt256 expectedValue)
-        {
-            _callIndex++;
-            if (!TestState.AccountExists(storageCell.Address))
-            {
-                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), new byte[] { 0 }, $"storage {storageCell}, call {_callIndex}");
-            }
-            else
-            {
-                byte[] actualValue = TestStateReader.GetStorage(TestState.StateRoot, storageCell.Address, storageCell.Index);
-                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), actualValue, $"storage {storageCell}, call {_callIndex}");
-            }
-        }
-
         protected void AssertCodeHash(Address address, Keccak codeHash)
         {
             Assert.That(TestState.GetCodeHash(address), Is.EqualTo(codeHash), "code hash");

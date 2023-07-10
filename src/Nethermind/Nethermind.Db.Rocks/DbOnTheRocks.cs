@@ -917,8 +917,8 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             {
                 if (Bytes.Comparer.Compare(iterator.Key(), endKey) >= 0)
                     break;
-                Console.WriteLine($"{Convert.ToHexString(iterator.Key())} - {Convert.ToHexString(iterator.Value())}");
-                _rocksBatch.Delete(iterator.Key());
+                //Console.WriteLine($"{Convert.ToHexString(iterator.Key())} - {Convert.ToHexString(iterator.Value())}");
+                Delete(iterator.Key(), null);
                 iterator.Next();
             }
         }

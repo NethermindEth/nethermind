@@ -198,7 +198,7 @@ namespace Nethermind.Blockchain.Test
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             StateReader stateReader =
-                new(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
+                new(new TrieStore(stateDb, LimboLogs.Instance), new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)

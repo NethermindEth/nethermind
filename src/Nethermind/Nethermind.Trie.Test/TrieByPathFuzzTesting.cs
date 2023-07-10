@@ -202,8 +202,9 @@ public class TrieByPathFuzzTesting
 
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager, lookupLimit);
         using TrieStoreByPath storageTrieStore = new(memDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.EveryBlock, _logManager, lookupLimit);
-        StateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, new MemDb(), _logManager);
-        StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
+        WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
+        //StateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, new MemDb(), _logManager);
+        //StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
 
         Account[] accounts = new Account[accountsCount];
         Address[] addresses = new Address[accountsCount];
@@ -279,15 +280,12 @@ public class TrieByPathFuzzTesting
                             byte[] storage = new byte[_random.Next(1,32)];
                             _random.NextBytes(storage);
                             streamWriter.WriteLine($"{index} {storage.ToHexString()}");
-                            storageProvider.Set(new StorageCell(address, (UInt256)index), storage);
+                            stateProvider.Set(new StorageCell(address, (UInt256)index), storage);
                         }
                     }
                 }
             }
-            storageProvider.Commit();
             stateProvider.Commit(MuirGlacier.Instance);
-
-            storageProvider.CommitTrees(blockNumber);
             stateProvider.CommitTree(blockNumber);
             rootQueue.Enqueue(stateProvider.StateRoot);
             streamWriter.WriteLine("#");
@@ -312,7 +310,7 @@ public class TrieByPathFuzzTesting
                     {
                         for (int j = 0; j < 256; j++)
                         {
-                            storageProvider.Get(new StorageCell(addresses[i], (UInt256)j));
+                            stateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
                         }
                     }
                 }
@@ -373,8 +371,9 @@ public class TrieByPathFuzzTesting
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager, blocksCount + 1);
         using TrieStoreByPath storageTrieStore = new(memDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.EveryBlock, _logManager, lookupLimit);
         var codeDb = new MemDb();
-        StateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, codeDb, _logManager);
-        StorageProvider storageProvider = new StorageProvider(storageTrieStore, stateProvider, _logManager);
+        WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
+        //StateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, codeDb, _logManager);
+        //StorageProvider storageProvider = new StorageProvider(storageTrieStore, stateProvider, _logManager);
 
         Account[] accounts = new Account[accountsCount];
         Address[] addresses = new Address[accountsCount];
@@ -450,15 +449,12 @@ public class TrieByPathFuzzTesting
                             byte[] storage = new byte[_random.Next(1,32)];
                             _random.NextBytes(storage);
                             streamWriter.WriteLine($"{index} {storage.ToHexString()}");
-                            storageProvider.Set(new StorageCell(address, (UInt256)index), storage);
+                            stateProvider.Set(new StorageCell(address, (UInt256)index), storage);
                         }
                     }
                 }
             }
-            storageProvider.Commit();
             stateProvider.Commit(MuirGlacier.Instance);
-
-            storageProvider.CommitTrees(blockNumber);
             stateProvider.CommitTree(blockNumber);
             rootQueue.Enqueue(stateProvider.StateRoot);
             streamWriter.WriteLine("#");
@@ -488,7 +484,7 @@ public class TrieByPathFuzzTesting
                     {
                         for (int j = 0; j < 256; j++)
                         {
-                            storageProvider.Get(new StorageCell(t, (UInt256)j));
+                            stateProvider.Get(new StorageCell(t, (UInt256)j));
                         }
                     }
                 }
@@ -510,7 +506,5 @@ public class TrieByPathFuzzTesting
 
             verifiedBlocks++;
         }
-
-
     }
 }
