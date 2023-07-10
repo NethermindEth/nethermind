@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IsImplemented = true,
             IsSharable = false,
             ExampleResponse = "\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"callType\":\"call\",\"from\":\"0xc451c26cc24c25e46b148ac4716804c12c34e7d2\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0xb943b13292086848d8180d75c73361107920bb1a\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}],\"vmTrace\":null")]
-        ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction([JsonRpcParameter(ExampleValue = "[\"0xf86380843b9aca0082520894b943b13292086848d8180d75c73361107920bb1a80802ea0385656b91b8f1f5139e9ba3449b946a446c9cfe7adb91b180ddc22c33b17ac4da01fe821879d386b140fd8080dcaaa98b8c709c5025c8c4dea1334609ebac41b6c\",[\"trace\"]]")] byte[] data,[JsonRpcParameter(Description = "Possible values : [\"VmTrace\", \"StateDiff\", \"Trace\", \"Rewards\", \"All\"]")] string[] traceTypes);
+        ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction([JsonRpcParameter(ExampleValue = "[\"0xf86380843b9aca0082520894b943b13292086848d8180d75c73361107920bb1a80802ea0385656b91b8f1f5139e9ba3449b946a446c9cfe7adb91b180ddc22c33b17ac4da01fe821879d386b140fd8080dcaaa98b8c709c5025c8c4dea1334609ebac41b6c\",[\"trace\"]]")] byte[] data, [JsonRpcParameter(Description = "Possible values : [\"VmTrace\", \"StateDiff\", \"Trace\", \"Rewards\", \"All\"]")] string[] traceTypes);
 
         [JsonRpcMethod(Description = "",
             IsImplemented = true,
