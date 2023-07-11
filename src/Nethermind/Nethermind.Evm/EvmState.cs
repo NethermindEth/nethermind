@@ -112,7 +112,7 @@ namespace Nethermind.Evm
         private readonly JournalSet<StorageCell> _accessedStorageCells;
         private readonly JournalCollection<LogEntry> _logs;
         private readonly JournalSet<Address> _destroyList;
-        private readonly JournalSet<Address> _createList;
+        private readonly HashSet<Address> _createList;
         private readonly int _accessedAddressesSnapshot;
         private readonly int _accessedStorageKeysSnapshot;
         private readonly int _destroyListSnapshot;
@@ -190,7 +190,7 @@ namespace Nethermind.Evm
                 _accessedAddresses = new JournalSet<Address>();
                 _accessedStorageCells = new JournalSet<StorageCell>();
                 _destroyList = new JournalSet<Address>();
-                _createList = new JournalSet<Address>();
+                _createList = new HashSet<Address>();
                 _logs = new JournalCollection<LogEntry>();
             }
 
