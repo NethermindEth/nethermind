@@ -62,5 +62,24 @@ namespace Nethermind.TxPool
 
             return balance <= tx.Value ? default : tx.GasPrice;
         }
+
+        internal static bool IsOverflowWhenAddingTxCostToCumulative(this Transaction tx, UInt256 currentCost, out UInt256 cumulativeCost)
+        {
+            bool overflow = false;
+
+            overflow |= UInt256.MultiplyOverflow(tx.MaxFeePerGas, (UInt256)tx.GasLimit, out UInt256 maxTxCost);
+            overflow |= UInt256.AddOverflow(currentCost, maxTxCost, out cumulativeCost);
+            overflow |= UInt256.AddOverflow(cumulativeCost, tx.Value, out cumulativeCost);
+
+            if (tx.SupportsBlobs)
+            {
+                // if tx.SupportsBlobs and has BlobVersionedHashes = null, it will throw on earlier step of validation, in TxValidator
+                overflow |= UInt256.MultiplyOverflow(Eip4844Constants.DataGasPerBlob, (UInt256)tx.BlobVersionedHashes!.Length, out UInt256 dataGas);
+                overflow |= UInt256.MultiplyOverflow(dataGas, tx.MaxFeePerDataGas ?? UInt256.MaxValue, out UInt256 dataGasCost);
+                overflow |= UInt256.AddOverflow(cumulativeCost, dataGasCost, out cumulativeCost);
+            }
+
+            return overflow;
+        }
     }
 }

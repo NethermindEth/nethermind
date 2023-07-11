@@ -60,6 +60,8 @@ namespace Nethermind.TxPool.Test
             Block block = Build.A.Block.WithNumber(0).TestObject;
             _blockTree.Head.Returns(block);
             _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
+
+            KzgPolynomialCommitments.InitializeAsync().Wait();
         }
 
         [Test]
@@ -223,6 +225,14 @@ namespace Nethermind.TxPool.Test
             var specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
             specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(London.Instance);
+            return specProvider;
+        }
+
+        private static ISpecProvider GetCancunSpecProvider()
+        {
+            var specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Cancun.Instance);
+            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Cancun.Instance);
             return specProvider;
         }
 
@@ -639,6 +649,37 @@ namespace Nethermind.TxPool.Test
             transactions[2].GasPrice = 5;
             _txPool.GetPendingTransactions().Length.Should().Be(2);
             _txPool.SubmitTx(transactions[2], TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Int256Overflow);
+        }
+
+        [Test]
+        public void should_discard_tx_when_data_gas_cost_cause_overflow([Values(false, true)] bool supportsBlobs)
+        {
+            _txPool = CreatePool(null, GetCancunSpecProvider());
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            UInt256.MaxValue.Divide(GasCostOf.Transaction * 2, out UInt256 halfOfMaxGasPriceWithoutOverflow);
+
+            Transaction firstTransaction = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithNonce(UInt256.Zero)
+                .WithMaxFeePerGas(halfOfMaxGasPriceWithoutOverflow)
+                .WithMaxPriorityFeePerGas(halfOfMaxGasPriceWithoutOverflow)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            _txPool.SubmitTx(firstTransaction, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+
+            Transaction transactionWithPotentialOverflow = Build.A.Transaction
+                    .WithMaxFeePerDataGas(supportsBlobs
+                        ? UInt256.One
+                        : UInt256.Zero) // simplification - it's still blob tx, but if MaxDataFee is 0, cost for blob
+                                        // data is 0, so we are able to test overflow well as only this field differs
+                    .WithNonce(UInt256.One)
+                    .WithMaxFeePerGas(halfOfMaxGasPriceWithoutOverflow)
+                    .WithMaxPriorityFeePerGas(halfOfMaxGasPriceWithoutOverflow)
+                    .WithShardBlobTxTypeAndFields()
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            _txPool.SubmitTx(transactionWithPotentialOverflow, TxHandlingOptions.PersistentBroadcast).Should().Be(supportsBlobs ? AcceptTxResult.Int256Overflow : AcceptTxResult.Accepted);
         }
 
         [Test]
@@ -1593,11 +1634,43 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLowToCompete);
         }
 
+        [Test]
+        public void should_add_nonce_gap_tx_to_not_full_TxPool_only_if_is_not_blob_type()
+        {
+            _txPool = CreatePool(new TxPoolConfig(){ Size = 128 }, GetCancunSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction firstTx = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(UInt256.One)
+                .WithMaxPriorityFeePerGas(UInt256.One)
+                .WithNonce(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Transaction nonceGapBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithMaxFeePerGas(UInt256.One)
+                .WithMaxPriorityFeePerGas(UInt256.One)
+                .WithNonce((UInt256)2)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Transaction nonceGap1559Tx = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(UInt256.One)
+                .WithMaxPriorityFeePerGas(UInt256.One)
+                .WithNonce((UInt256)2)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(nonceGapBlobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.NonceGap);
+            _txPool.SubmitTx(nonceGap1559Tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+        }
+
         [TestCase(0, 97)]
         [TestCase(1, 131324)]
         [TestCase(2, 262534)]
         [TestCase(3, 393741)]
-        [TestCase(4, 524948)]
+        [TestCase(4, 524947)]
         [TestCase(5, 656156)]
         [TestCase(6, 787365)]
         public void should_calculate_size_of_blob_tx_correctly(int numberOfBlobs, int expectedLength)
