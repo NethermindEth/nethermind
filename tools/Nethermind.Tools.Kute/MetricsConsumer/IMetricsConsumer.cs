@@ -8,7 +8,7 @@ public interface IMetricsConsumer
     Task ConsumeMetrics(Metrics metrics);
 }
 
-public enum MetricConsumerStrategy
+public enum MetricsOutputFormatter
 {
-    Report, Json
+    Report, Json,
 }

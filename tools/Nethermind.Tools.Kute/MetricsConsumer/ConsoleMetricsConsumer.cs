@@ -2,13 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using App.Metrics.Formatters;
-using App.Metrics.Formatters.Json;
 
 namespace Nethermind.Tools.Kute.MetricsConsumer;
 
-public class JsonMetricsConsumer : IMetricsConsumer
+public class ConsoleMetricsConsumer : IMetricsConsumer
 {
-    private readonly IMetricsOutputFormatter _formatter = new MetricsJsonOutputFormatter();
+
+    private readonly IMetricsOutputFormatter _formatter;
+
+    public ConsoleMetricsConsumer(IMetricsOutputFormatter formatter)
+    {
+        _formatter = formatter;
+    }
 
     public async Task ConsumeMetrics(Metrics metrics)
     {
