@@ -325,7 +325,8 @@ namespace Nethermind.Trie
             }
             catch (TrieException e)
             {
-                throw new TrieException($"Failed to load key {rawKey.ToHexString()} from root hash {rootHash ?? RootHash}.", e);
+                TrieException.ThrowOnLoadFailure(rawKey, rootHash ?? RootHash, e);
+                return null;
             }
         }
 

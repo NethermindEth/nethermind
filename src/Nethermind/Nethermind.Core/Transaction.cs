@@ -173,7 +173,8 @@ namespace Nethermind.Core
 
             if (SupportsBlobs)
             {
-                builder.AppendLine($"{indent}BlobVersionedHashes: {BlobVersionedHashes?.Length}");
+                builder.AppendLine($"{indent}{nameof(MaxFeePerDataGas)}: {MaxFeePerDataGas}");
+                builder.AppendLine($"{indent}{nameof(BlobVersionedHashes)}: {BlobVersionedHashes?.Length}");
             }
 
             return builder.ToString();

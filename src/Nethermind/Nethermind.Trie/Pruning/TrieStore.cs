@@ -328,7 +328,7 @@ namespace Nethermind.Trie.Pruning
 
             if (rlp is null)
             {
-                throw new TrieException($"Node {keccak} is missing from the DB");
+                throw new MissingNodeException(keccak);
             }
 
             Metrics.LoadedFromDbNodesCount++;

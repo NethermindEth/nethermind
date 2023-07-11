@@ -48,7 +48,7 @@ namespace Nethermind.Core.Test
             subject.Should().BeEquivalentTo(
                 expectation,
                 o => o
-                    .ComparingByMembers<System.Transactions.Transaction>()
+                    .ComparingByMembers<Transaction>()
                     .Using<Memory<byte>>(ctx => ctx.Subject.AsArray().Should().BeEquivalentTo(ctx.Expectation.AsArray()))
                     .WhenTypeIs<Memory<byte>>()
                 );
