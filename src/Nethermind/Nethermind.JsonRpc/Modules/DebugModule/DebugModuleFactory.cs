@@ -76,7 +76,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             ReadOnlyTxProcessingEnv txEnv = new(
                 _dbProvider,
                 _trieStore,
-                _storageTrieStore,
                 _blockTree,
                 _specProvider,
                 _logManager);

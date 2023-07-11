@@ -15,7 +15,8 @@ namespace Nethermind.Db
     public interface IDbProvider : IDisposable
     {
         DbModeHint DbMode { get; }
-        public IColumnsDb<StateColumns> StateDb => GetDb<IColumnsDb<StateColumns>>(DbNames.State);
+        public IDb StateDb => GetDb<IDb>(DbNames.State);
+        public IColumnsDb<StateColumns> PathStateDb => GetDb<IColumnsDb<StateColumns>>(DbNames.PathState);
         public IDb CodeDb => GetDb<IDb>(DbNames.Code);
         public IColumnsDb<ReceiptsColumns> ReceiptsDb => GetDb<IColumnsDb<ReceiptsColumns>>(DbNames.Receipts);
         public IDb BlocksDb => GetDb<IDb>(DbNames.Blocks);

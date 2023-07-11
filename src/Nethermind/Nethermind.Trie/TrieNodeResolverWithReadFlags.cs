@@ -19,7 +19,7 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
         _defaultFlags = defaultFlags;
     }
 
-    public TrieNodeResolverCapability Capability => throw new NotImplementedException();
+    public TrieNodeResolverCapability Capability => _baseResolver.Capability;
 
     public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles)
     {

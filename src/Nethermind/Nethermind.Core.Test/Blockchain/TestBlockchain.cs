@@ -66,7 +66,8 @@ public class TestBlockchain : IDisposable
     public IJsonSerializer JsonSerializer { get; set; } = null!;
     public IWorldState State { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
-    public IColumnsDb<StateColumns> StateDb => DbProvider.StateDb;
+    public IDb StateDb => DbProvider.StateDb;
+    public IColumnsDb<StateColumns> PathStateDb => DbProvider.PathStateDb;
     public ITrieStore TrieStore { get; set; } = null!;
     public ITrieStore StorageTrieStore { get; set; } = null!;
     public IBlockProducer BlockProducer { get; private set; } = null!;
@@ -132,7 +133,7 @@ public class TestBlockchain : IDisposable
 
         ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
         ReadOnlyStorageTrieStore = StorageTrieStore.AsReadOnly();
-        StateReader = new StateReader(ReadOnlyTrieStore, ReadOnlyStorageTrieStore, CodeDb, LogManager);
+        StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
         IDb blockDb = new MemDb();
         IDb headerDb = new MemDb();

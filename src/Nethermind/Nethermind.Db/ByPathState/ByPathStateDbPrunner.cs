@@ -10,7 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
-namespace Nethermind.Trie.ByPath;
+namespace Nethermind.Db.ByPathState;
 public class ByPathStateDbPrunner
 {
     private Task? _pruneTask;

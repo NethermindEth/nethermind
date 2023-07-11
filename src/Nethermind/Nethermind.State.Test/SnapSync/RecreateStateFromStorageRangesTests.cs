@@ -17,19 +17,24 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test.SnapSync
 {
-    [TestFixture]
+    [TestFixture(TrieNodeResolverCapability.Path)]
     public class RecreateStateFromStorageRangesTests
     {
-
-        private TrieStoreByPath _store;
-        private StateTreeByPath _inputStateTree;
+        private TrieStore _store;
+        private StateTree _inputStateTree;
         private StorageTree _inputStorageTree;
+        protected readonly TrieNodeResolverCapability _resolverCapability;
+
+        public RecreateStateFromStorageRangesTests(TrieNodeResolverCapability capability)
+        {
+            _resolverCapability = capability;
+        }
 
         [OneTimeSetUp]
         public void Setup()
         {
-            _store = new TrieStoreByPath(new MemDb(), LimboLogs.Instance);
-            (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTreesByPath(_store);
+            _store = new TrieStore(new MemDb(), LimboLogs.Instance);
+            (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTrees(_store);
         }
 
         [Test]
@@ -41,9 +46,10 @@ namespace Nethermind.Store.Test.SnapSync
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            MemDb db = new MemColumnsDb<StateColumns>();
             DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterDb(DbNames.State, db);
+            dbProvider.RegisterDb(DbNames.PathState, new MemColumnsDb<StateColumns>());
+            dbProvider.RegisterDb(DbNames.State, new MemDb());
+            
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             PathWithAccount pWA = new PathWithAccount(TestItem.Tree.AccountAddress0, Build.A.Account.WithBalance(1).TestObject);
@@ -61,9 +67,9 @@ namespace Nethermind.Store.Test.SnapSync
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            MemDb db = new MemColumnsDb<StateColumns>();
             DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterDb(DbNames.State, db);
+            dbProvider.RegisterDb(DbNames.PathState, new MemColumnsDb<StateColumns>());
+            dbProvider.RegisterDb(DbNames.State, new MemDb());
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
@@ -78,9 +84,9 @@ namespace Nethermind.Store.Test.SnapSync
         {
             Keccak rootHash = _inputStorageTree!.RootHash;   // "..."
 
-            MemDb db = new MemColumnsDb<StateColumns>();
             DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterDb(DbNames.State, db);
+            dbProvider.RegisterDb(DbNames.PathState, new MemColumnsDb<StateColumns>());
+            dbProvider.RegisterDb(DbNames.State, new MemDb());
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             PathWithAccount pWA = new PathWithAccount(TestItem.Tree.AccountAddress0, Build.A.Account.WithBalance(1).TestObject);
@@ -95,9 +101,9 @@ namespace Nethermind.Store.Test.SnapSync
             Keccak rootHash = _inputStorageTree!.RootHash;   // "..."
 
             // output state
-            MemDb db = new MemColumnsDb<StateColumns>();
             DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterDb(DbNames.State, db);
+            dbProvider.RegisterDb(DbNames.PathState, new MemColumnsDb<StateColumns>());
+            dbProvider.RegisterDb(DbNames.State, new MemDb()); ;
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             PathWithAccount pWA = new PathWithAccount(TestItem.Tree.AccountAddress0, Build.A.Account.WithBalance(1).TestObject);
@@ -131,9 +137,9 @@ namespace Nethermind.Store.Test.SnapSync
             Keccak rootHash = _inputStorageTree!.RootHash;   // "..."
 
             // output state
-            MemDb db = new MemColumnsDb<StateColumns>();
             DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterDb(DbNames.State, db);
+            dbProvider.RegisterDb(DbNames.PathState, new MemColumnsDb<StateColumns>());
+            dbProvider.RegisterDb(DbNames.State, new MemDb());
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             PathWithAccount pWA = new PathWithAccount(TestItem.Tree.AccountAddress0, Build.A.Account.WithBalance(1).TestObject);

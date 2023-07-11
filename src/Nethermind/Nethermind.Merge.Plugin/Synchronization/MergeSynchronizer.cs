@@ -45,8 +45,6 @@ public class MergeSynchronizer : Synchronizer
         IPoSSwitcher poSSwitcher,
         IMergeConfig mergeConfig,
         IInvalidChainTracker invalidChainTracker,
-        ByPathStateDbPrunner dbPrunnerState,
-        ByPathStateDbPrunner dbPrunnerStorage,
         ILogManager logManager,
         ISyncReport syncReport)
         : base(
@@ -62,8 +60,6 @@ public class MergeSynchronizer : Synchronizer
             blockDownloaderFactory,
             pivot,
             syncReport,
-            dbPrunnerState,
-            dbPrunnerStorage,
             logManager)
     {
         _invalidChainTracker = invalidChainTracker;

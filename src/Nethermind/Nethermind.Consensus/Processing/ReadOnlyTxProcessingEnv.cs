@@ -30,18 +30,16 @@ namespace Nethermind.Consensus.Processing
         public ReadOnlyTxProcessingEnv(
             IDbProvider? dbProvider,
             IReadOnlyTrieStore? trieStore,
-            IReadOnlyTrieStore? storageTrieStore,
             IBlockTree? blockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
-            : this(dbProvider?.AsReadOnly(false), trieStore, storageTrieStore, blockTree?.AsReadOnly(), specProvider, logManager)
+            : this(dbProvider?.AsReadOnly(false), trieStore, blockTree?.AsReadOnly(), specProvider, logManager)
         {
         }
 
         public ReadOnlyTxProcessingEnv(
             IReadOnlyDbProvider? readOnlyDbProvider,
             IReadOnlyTrieStore? readOnlyTrieStore,
-            IReadOnlyTrieStore? readOnlyStorageTrieStore,
             IReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
@@ -51,7 +49,7 @@ namespace Nethermind.Consensus.Processing
             DbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
             ReadOnlyDb codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
 
-            StateReader = new StateReader(readOnlyTrieStore, readOnlyStorageTrieStore, codeDb, logManager);
+            StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);
             StateProvider = new WorldState(readOnlyTrieStore, codeDb, logManager);
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));

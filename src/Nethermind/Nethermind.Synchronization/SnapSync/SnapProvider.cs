@@ -24,22 +24,22 @@ namespace Nethermind.Synchronization.SnapSync
     public class SnapProvider : ISnapProvider
     {
         private readonly ObjectPool<ITrieStore> _trieStorePool;
-        private readonly ObjectPool<ITrieStore> _pathBasedTrieStorePool;
-        private readonly ObjectPool<ITrieStore> _pathBasedTrieStoreStoragePool;
         private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
 
         private readonly ProgressTracker _progressTracker;
 
-        public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, ILogManager logManager)
+        public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, ILogManager logManager, TrieNodeResolverCapability resolverCapability = TrieNodeResolverCapability.Hash)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
-            _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(_dbProvider.StateDb, logManager));
-            _pathBasedTrieStorePool = new DefaultObjectPool<ITrieStore>(new PathBasedTrieStorePoolPolicy(_dbProvider.StateDb.GetColumnDb(StateColumns.State), logManager));
-            _pathBasedTrieStoreStoragePool = new DefaultObjectPool<ITrieStore>(new PathBasedTrieStorePoolPolicy(_dbProvider.StateDb.GetColumnDb(StateColumns.Storage), logManager));
-
+            _trieStorePool = resolverCapability switch
+            {
+                TrieNodeResolverCapability.Hash => new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(_dbProvider.StateDb, logManager)),
+                TrieNodeResolverCapability.Path => new DefaultObjectPool<ITrieStore>(new PathBasedTrieStorePoolPolicy(_dbProvider.PathStateDb, logManager)),
+                _ => throw new ArgumentOutOfRangeException()
+            };
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<SnapProvider>();
         }
@@ -75,11 +75,15 @@ namespace Nethermind.Synchronization.SnapSync
 
         public AddRangeResult AddAccountRange(long blockNumber, in ValueKeccak expectedRootHash, in ValueKeccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null, in ValueKeccak? hashLimit = null!)
         {
-            ITrieStore store = _pathBasedTrieStorePool.Get();
-            ITrieStore storageStore = _pathBasedTrieStoreStoragePool.Get();
+            ITrieStore store = _trieStorePool.Get();
             try
             {
-                StateTreeByPath tree = new StateTreeByPath(store, storageStore, _logManager);
+                IStateTree tree = store.Capability switch
+                {
+                    TrieNodeResolverCapability.Hash => new StateTree(store, _logManager),
+                    TrieNodeResolverCapability.Path => new StateTreeByPath(store, _logManager),
+                    _ => throw new ArgumentOutOfRangeException()
+                };
 
                 ValueKeccak effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
 
@@ -109,8 +113,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             finally
             {
-                _pathBasedTrieStorePool.Return(store);
-                _pathBasedTrieStoreStoragePool.Return(storageStore);
+                _trieStorePool.Return(store);
             }
         }
 
@@ -171,7 +174,7 @@ namespace Nethermind.Synchronization.SnapSync
             if (pathWithAccount is null)
                 throw new TrieException("Not Allowed");
             Debug.Assert(pathWithAccount is not null, "path based storage need the account for the storage tree");
-            ITrieStore store = _pathBasedTrieStoreStoragePool.Get();
+            ITrieStore store = _trieStorePool.Get();
             StorageTree tree = new(store, _logManager, pathWithAccount.Path);
             try
             {
@@ -207,14 +210,14 @@ namespace Nethermind.Synchronization.SnapSync
             }
             finally
             {
-                _pathBasedTrieStoreStoragePool.Return(store);
+                _trieStorePool.Return(store);
             }
         }
 
         public void RefreshAccounts(AccountsToRefreshRequest request, byte[][] response)
         {
             int respLength = response.Length;
-            ITrieStore store = _pathBasedTrieStorePool.Get();
+            ITrieStore store = _trieStorePool.Get();
             try
             {
                 for (int reqi = 0; reqi < request.Paths.Length; reqi++)
@@ -271,7 +274,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             finally
             {
-                _pathBasedTrieStorePool.Return(store);
+                _trieStorePool.Return(store);
             }
         }
 
@@ -359,10 +362,10 @@ namespace Nethermind.Synchronization.SnapSync
 
         private class PathBasedTrieStorePoolPolicy : IPooledObjectPolicy<ITrieStore>
         {
-            private readonly IKeyValueStoreWithBatching _stateDb;
+            private readonly IColumnsDb<StateColumns> _stateDb;
             private readonly ILogManager _logManager;
 
-            public PathBasedTrieStorePoolPolicy(IKeyValueStoreWithBatching stateDb, ILogManager logManager)
+            public PathBasedTrieStorePoolPolicy(IColumnsDb<StateColumns> stateDb, ILogManager logManager)
             {
                 _stateDb = stateDb;
                 _logManager = logManager;
@@ -372,8 +375,6 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 return new TrieStoreByPath(
                     _stateDb,
-                    Trie.Pruning.No.Pruning,
-                    Persist.EveryBlock,
                     _logManager,
                     0); //no in memory caching
             }

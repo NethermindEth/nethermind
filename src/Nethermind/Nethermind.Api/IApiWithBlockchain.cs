@@ -97,8 +97,5 @@ namespace Nethermind.Api
         CompositePruningTrigger PruningTrigger { get; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
-
-        ByPathStateDbPrunner? ByPathDbPrunnerState { get; set; }
-        ByPathStateDbPrunner? ByPathDbPrunnerStorage { get; set; }
     }
 }

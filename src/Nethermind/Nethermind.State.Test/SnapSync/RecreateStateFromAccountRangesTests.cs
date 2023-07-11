@@ -95,8 +95,9 @@ namespace Nethermind.Store.Test.SnapSync
             Assert.IsFalse(db.KeyExists(rootHash)); // the root node is a part of the proof nodes
         }
 
-        [Test]
-        public void RecreateAccountStateFromOneRangeWithNonExistenceProof()
+        [TestCase(TrieNodeResolverCapability.Hash, 10)]
+        [TestCase(TrieNodeResolverCapability.Path, 14)]
+        public void RecreateAccountStateFromOneRangeWithNonExistenceProof(TrieNodeResolverCapability resolverCapability, int expected)
         {
             Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
@@ -107,20 +108,19 @@ namespace Nethermind.Store.Test.SnapSync
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            MemColumnsDb<StateColumns> db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            (IFullDb stateDb, DbProvider dbProvider, ProgressTracker progressTracker) = InitDbs(resolverCapability);
+
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance, resolverCapability);
             AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
-            Assert.IsFalse(db.KeyExists(rootHash));
+            Assert.That(stateDb.Keys.Count, Is.EqualTo(expected));  // we persist proof nodes (boundary nodes) via stitching
+            Assert.IsFalse(stateDb.KeyExists(rootHash));
         }
 
-        [Test]
-        public void RecreateAccountStateFromOneRangeWithExistenceProof()
+        [TestCase(TrieNodeResolverCapability.Hash, 10)]
+        [TestCase(TrieNodeResolverCapability.Path, 14)]
+        public void RecreateAccountStateFromOneRangeWithExistenceProof(TrieNodeResolverCapability resolverCapability, int expected)
         {
             Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
@@ -131,46 +131,41 @@ namespace Nethermind.Store.Test.SnapSync
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            MemDb db = new MemColumnsDb<StateColumns>();
-            DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            (IFullDb stateDb, DbProvider dbProvider, ProgressTracker progressTracker) = InitDbs(resolverCapability);
+
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance, resolverCapability);
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
-            Assert.IsFalse(db.KeyExists(rootHash));
+            Assert.That(stateDb.Keys.Count, Is.EqualTo(expected));  // we persist proof nodes (boundary nodes) via stitching
+            Assert.IsFalse(stateDb.KeyExists(rootHash));
         }
 
-        [Test]
-        public void RecreateAccountStateFromOneRangeWithoutProof()
+        [TestCase(TrieNodeResolverCapability.Hash, 10)]
+        [TestCase(TrieNodeResolverCapability.Path, 14)]
+        public void RecreateAccountStateFromOneRangeWithoutProof(TrieNodeResolverCapability resolverCapability, int expected)
         {
             Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
-            MemDb db = new MemColumnsDb<StateColumns>();
-            DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            (IFullDb stateDb, DbProvider dbProvider, ProgressTracker progressTracker) = InitDbs(resolverCapability);
+
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance, resolverCapability);
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths);
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we don't have the proofs so we persist all nodes
-            Assert.IsFalse(db.KeyExists(rootHash)); // the root node is NOT a part of the proof nodes
+            Assert.That(stateDb.Keys.Count, Is.EqualTo(expected));  // we don't have the proofs so we persist all nodes
+            Assert.IsFalse(stateDb.KeyExists(rootHash)); // the root node is NOT a part of the proof nodes
         }
 
-        [Test]
-        public void RecreateAccountStateFromMultipleRange()
+        [TestCase(TrieNodeResolverCapability.Hash, 2, 5, 10)]
+        [TestCase(TrieNodeResolverCapability.Path, 4, 9, 14)]
+        public void RecreateAccountStateFromMultipleRange(TrieNodeResolverCapability resolverCapability, int expected1, int expected2, int expected3)
         {
             Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             // output state
-            MemDb db = new MemColumnsDb<StateColumns>();
-            DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            (IFullDb stateDb, DbProvider dbProvider, ProgressTracker progressTracker) = InitDbs(resolverCapability);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance, resolverCapability);
 
             AccountProofCollector accountProofCollector = new(Keccak.Zero.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -181,7 +176,7 @@ namespace Nethermind.Store.Test.SnapSync
 
             var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.That(db.Keys.Count, Is.EqualTo(2));
+            Assert.That(stateDb.Keys.Count, Is.EqualTo(expected1));
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -192,7 +187,7 @@ namespace Nethermind.Store.Test.SnapSync
 
             var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.That(db.Keys.Count, Is.EqualTo(5));  // we don't persist proof nodes (boundary nodes)
+            Assert.That(stateDb.Keys.Count, Is.EqualTo(expected2));  // we don't persist proof nodes (boundary nodes)
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -206,21 +201,19 @@ namespace Nethermind.Store.Test.SnapSync
             Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
             Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
             Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
-            Assert.IsFalse(db.KeyExists(rootHash));
+            Assert.That(stateDb.Keys.Count, Is.EqualTo(expected3));  // we persist proof nodes (boundary nodes) via stitching
+            Assert.IsFalse(stateDb.KeyExists(rootHash));
         }
 
-        [Test]
-        public void MissingAccountFromRange()
+        [TestCase(TrieNodeResolverCapability.Hash, 2, 2, 6)]
+        [TestCase(TrieNodeResolverCapability.Path, 4, 4, 8)]
+        public void MissingAccountFromRange(TrieNodeResolverCapability resolverCapability, int expected1, int expected2, int expected3)
         {
             Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             // output state
-            MemDb db = new MemColumnsDb<StateColumns>();
-            DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            (IFullDb db, DbProvider dbProvider, ProgressTracker progressTracker) = InitDbs(resolverCapability);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance, resolverCapability);
 
             AccountProofCollector accountProofCollector = new(Keccak.Zero.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -231,7 +224,7 @@ namespace Nethermind.Store.Test.SnapSync
 
             var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.That(db.Keys.Count, Is.EqualTo(2));
+            Assert.That(db.Keys.Count, Is.EqualTo(expected1));
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -243,7 +236,7 @@ namespace Nethermind.Store.Test.SnapSync
             // missing TestItem.Tree.AccountsWithHashes[2]
             var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[3..4], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.That(db.Keys.Count, Is.EqualTo(2));
+            Assert.That(db.Keys.Count, Is.EqualTo(expected2));
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -257,8 +250,32 @@ namespace Nethermind.Store.Test.SnapSync
             Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
             Assert.That(result2, Is.EqualTo(AddRangeResult.DifferentRootHash));
             Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(db.Keys.Count, Is.EqualTo(6));
+            Assert.That(db.Keys.Count, Is.EqualTo(expected3));
             Assert.IsFalse(db.KeyExists(rootHash));
+        }
+
+        private (IFullDb, DbProvider, ProgressTracker) InitDbs(TrieNodeResolverCapability resolverCapability)
+        {
+            IColumnsDb<StateColumns> pathDb = new MemColumnsDb<StateColumns>();
+            IFullDb stateDb = resolverCapability switch
+            {
+                TrieNodeResolverCapability.Hash => new MemDb(),
+                TrieNodeResolverCapability.Path => pathDb.GetColumnDb(StateColumns.State) as MemDb,
+                _ => throw new ArgumentOutOfRangeException()
+            };
+
+            DbProvider dbProvider = new(DbModeHint.Mem);
+            dbProvider.RegisterDb(DbNames.PathState, pathDb);
+            dbProvider.RegisterDb(DbNames.State, stateDb);
+
+            ProgressTracker progressTracker = resolverCapability switch
+            {
+                TrieNodeResolverCapability.Hash => new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance),
+                TrieNodeResolverCapability.Path => new(null, dbProvider.GetDb<IDb>(DbNames.PathState), LimboLogs.Instance),
+                _ => throw new ArgumentOutOfRangeException()
+            };
+
+            return (stateDb, dbProvider, progressTracker);
         }
     }
 }

@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Test
             IDbProvider memDbProvider = TestMemDbProvider.Init();
             TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
             WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-            StateReader stateReader = new(trieStore, trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
+            StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
             ChainLevelInfoRepository chainLevelInfoRepository = new(memDbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IBloomStorage bloomStorage = NullBloomStorage.Instance;

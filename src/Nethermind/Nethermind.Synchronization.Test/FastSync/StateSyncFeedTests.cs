@@ -371,7 +371,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = true;
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, TrieNodeResolverCapability.Path, _logManager, null, null);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, TrieNodeResolverCapability.Path, _logManager);
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
             ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
 
@@ -397,7 +397,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = true;
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, TrieNodeResolverCapability.Path, _logManager, null, null);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, TrieNodeResolverCapability.Path, _logManager);
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
             ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
 
@@ -480,7 +480,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             await ActivateAndWait(ctx, dbContext, 1025, true);
 
-            dbContext.DbPrunner.Wait();
+            //dbContext.DbPrunner.Wait();
             dbContext.CompareTrees("END");
 
             Account?[] localAccounts = GetLocalAccounts(paths, dbContext);
@@ -524,7 +524,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             await ActivateAndWait(ctx, dbContext, 1025, true);
 
             dbContext.CompareTrees("END");
-            dbContext.DbPrunner.Wait();
+            //dbContext.DbPrunner.Wait();
 
             Account?[] localAccounts = GetLocalAccounts(paths, dbContext);
 

@@ -118,7 +118,7 @@ namespace Nethermind.Init.Steps
             if (_api.PeerPool is null) throw new StepDependencyException(nameof(_api.PeerPool));
             if (_api.WitnessRepository is null) throw new StepDependencyException(nameof(_api.WitnessRepository));
 
-            ProofModuleFactory proofModuleFactory = new(_api.DbProvider, _api.BlockTree, _api.ReadOnlyTrieStore, _api.ReadOnlyStorageTrieStore!, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+            ProofModuleFactory proofModuleFactory = new(_api.DbProvider, _api.BlockTree, _api.ReadOnlyTrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
             rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, rpcConfig.Timeout);
 
             DebugModuleFactory debugModuleFactory = new(
@@ -142,7 +142,6 @@ namespace Nethermind.Init.Steps
                 _api.DbProvider,
                 _api.BlockTree,
                 _api.ReadOnlyTrieStore,
-                _api.ReadOnlyStorageTrieStore!,
                 rpcConfig,
                 _api.BlockPreprocessor,
                 _api.RewardCalculatorSource,

@@ -261,7 +261,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
             dbContext.LocalStateTree.UpdateRootHash();
 
-            dbContext.DbPrunner.Wait();
+            dbContext.LocalStateDb.WaitForPrunning();
 
             dbContext.CompareTrees("END");
 

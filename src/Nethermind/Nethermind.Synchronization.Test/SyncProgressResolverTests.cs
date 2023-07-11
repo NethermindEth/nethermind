@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.Test
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-            IDb stateDb = new MemDb();
+            IColumnsDb<StateColumns> stateDb = new MemColumnsDb<StateColumns>();
             SyncConfig syncConfig = new();
             syncConfig.PivotNumber = "1";
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
@@ -76,7 +76,7 @@ namespace Nethermind.Synchronization.Test
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-            IDb stateDb = new MemDb();
+            IColumnsDb<StateColumns> stateDb = new MemColumnsDb<StateColumns>();
             SyncConfig syncConfig = new();
             syncConfig.PivotNumber = "1";
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
@@ -99,7 +99,7 @@ namespace Nethermind.Synchronization.Test
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-            IDb stateDb = new MemDb();
+            IColumnsDb<StateColumns> stateDb = new MemColumnsDb<StateColumns>();
             SyncConfig syncConfig = new();
             syncConfig.PivotNumber = "1";
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);

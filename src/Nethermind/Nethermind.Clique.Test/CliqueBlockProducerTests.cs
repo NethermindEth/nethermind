@@ -94,7 +94,7 @@ namespace Nethermind.Clique.Test
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
                 var trieStore = new TrieStore(stateDb, nodeLogManager);
-                StateReader stateReader = new(trieStore, trieStore, codeDb, nodeLogManager);
+                StateReader stateReader = new(trieStore, codeDb, nodeLogManager);
                 WorldState stateProvider = new(trieStore, codeDb, nodeLogManager);
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 GoerliSpecProvider goerliSpecProvider = GoerliSpecProvider.Instance;

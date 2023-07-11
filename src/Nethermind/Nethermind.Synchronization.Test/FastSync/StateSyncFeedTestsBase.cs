@@ -15,6 +15,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -116,7 +117,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = true;
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, dbContext.ResolverCapability, _logManager, dbContext.DbPrunner, null);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, dbContext.ResolverCapability, _logManager);
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
             ctx.Downloader = new StateSyncDownloader(_logManager);
             ctx.StateSyncDispatcher = new SyncDispatcher<StateSyncBatch>(0, ctx.Feed, ctx.Downloader, ctx.Pool, new StateSyncAllocationStrategyFactory(), _logManager);
@@ -163,9 +164,9 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _logger = logger;
                 _logManager = logManager;
                 RemoteDb = new MemDb();
-                LocalDb = new MemColumnsDb<StateColumns>();
+                LocalDb = new MemDb();
                 RemoteStateDb = RemoteDb;
-                LocalStateDb = LocalDb;
+                LocalStateDb = new ByPathStateMemDb();
                 LocalCodeDb = new MemDb();
                 RemoteCodeDb = new MemDb();
                 RemoteTrieStore = new TrieStore(RemoteStateDb, logManager);
@@ -174,14 +175,11 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 ResolverCapability = capability;
 
-                DbPrunner = new ByPathStateDbPrunner(LocalDb.GetColumnDb(StateColumns.State), logManager);
-
-                ITrieStore localTrieStore = capability.CreateTrieStore(LocalStateDb.GetColumnDb(StateColumns.State), Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, DbPrunner);
-                ITrieStore localStorageTrieStore = capability.CreateTrieStore(LocalStateDb.GetColumnDb(StateColumns.Storage), logManager);
+                ITrieStore localTrieStore = capability.CreateTrieStore(LocalStateDb, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager);
                 LocalStateTree = ResolverCapability switch
                 {
                     TrieNodeResolverCapability.Hash => new StateTree(localTrieStore, logManager),
-                    TrieNodeResolverCapability.Path => new StateTreeByPath(localTrieStore, localStorageTrieStore, logManager),
+                    TrieNodeResolverCapability.Path => new StateTreeByPath(localTrieStore, logManager),
                     _ => throw new ArgumentOutOfRangeException(nameof(capability), capability, null)
                 };
             }
@@ -189,15 +187,13 @@ namespace Nethermind.Synchronization.Test.FastSync
             public IDb RemoteCodeDb { get; }
             public IDb LocalCodeDb { get; }
             public MemDb RemoteDb { get; }
-            public IColumnsDb<StateColumns> LocalDb { get; }
+            public IDb LocalDb { get; }
             public ITrieStore RemoteTrieStore { get; }
             public IDb RemoteStateDb { get; }
-            public IColumnsDb<StateColumns> LocalStateDb { get; }
+            public IByPathStateDb LocalStateDb { get; }
             public StateTree RemoteStateTree { get; }
             public IStateTree LocalStateTree { get; }
             public TrieNodeResolverCapability ResolverCapability { get; }
-
-            public ByPathStateDbPrunner DbPrunner { get; }
 
             public void CompareTrees(string stage, bool skipLogs = true)
             {
@@ -212,7 +208,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 if (!skipLogs) _logger.Info("-------------------- LOCAL --------------------");
                 dumper.Reset();
                 if (ResolverCapability == TrieNodeResolverCapability.Path)
-                    LocalStateTree.Accept(dumper, LocalStateTree.RootHash, null, ResolverCapability.CreateTrieStore(LocalStateDb.GetColumnDb(StateColumns.Storage), _logManager));
+                    LocalStateTree.Accept(dumper, LocalStateTree.RootHash, null, ResolverCapability.CreateTrieStore(LocalStateDb, _logManager));
                 else if (ResolverCapability == TrieNodeResolverCapability.Hash)
                     LocalStateTree.Accept(dumper, LocalStateTree.RootHash);
 
@@ -224,7 +220,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                     Assert.That(local, Is.EqualTo(remote), $"{remote}{Environment.NewLine}{local}");
                     TrieStatsCollector collector = new(LocalCodeDb, LimboLogs.Instance);
                     if (ResolverCapability == TrieNodeResolverCapability.Path)
-                        LocalStateTree.Accept(collector, LocalStateTree.RootHash, null, ResolverCapability.CreateTrieStore(LocalStateDb.GetColumnDb(StateColumns.Storage), _logManager));
+                        LocalStateTree.Accept(collector, LocalStateTree.RootHash, null, ResolverCapability.CreateTrieStore(LocalStateDb, _logManager));
                     else if (ResolverCapability == TrieNodeResolverCapability.Hash)
                         LocalStateTree.Accept(collector, LocalStateTree.RootHash);
                     Assert.AreEqual(0, collector.Stats.MissingNodes);

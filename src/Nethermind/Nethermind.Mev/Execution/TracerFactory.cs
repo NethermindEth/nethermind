@@ -24,13 +24,11 @@ namespace Nethermind.Mev.Execution
         private readonly IReadOnlyBlockTree _blockTree;
         private readonly ReadOnlyDbProvider _dbProvider;
         private readonly IReadOnlyTrieStore _trieStore;
-        private readonly IReadOnlyTrieStore _storageTrieStore;
 
         public TracerFactory(
             IDbProvider dbProvider,
             IBlockTree blockTree,
             IReadOnlyTrieStore trieStore,
-            IReadOnlyTrieStore storageTrieStore,
             IBlockPreprocessorStep recoveryStep,
             ISpecProvider specProvider,
             ILogManager logManager,
@@ -43,13 +41,12 @@ namespace Nethermind.Mev.Execution
             _dbProvider = dbProvider.AsReadOnly(false);
             _blockTree = blockTree.AsReadOnly();
             _trieStore = trieStore;
-            _storageTrieStore = storageTrieStore;
         }
 
         public ITracer Create()
         {
             ReadOnlyTxProcessingEnv txProcessingEnv = new(
-                _dbProvider, _trieStore, _storageTrieStore, _blockTree, _specProvider, _logManager);
+                _dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _dbProvider, _specProvider, _logManager);

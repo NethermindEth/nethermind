@@ -64,9 +64,9 @@ namespace Nethermind.Core.Test.Builders
 
             public static StateTreeByPath GetStateTreeByPath(ITrieStore? store)
             {
-                store ??= new TrieStoreByPath(new MemDb(), LimboLogs.Instance);
+                store ??= new TrieStoreByPath(new MemColumnsDb<StateColumns>(), LimboLogs.Instance);
 
-                var stateTree = new StateTreeByPath(store, new TrieStoreByPath(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
+                var stateTree = new StateTreeByPath(store, LimboLogs.Instance);
 
                 FillStateTreeWithTestAccounts(stateTree);
 
@@ -109,7 +109,7 @@ namespace Nethermind.Core.Test.Builders
 
             public static (StateTreeByPath stateTree, StorageTree storageTree) GetTreesByPath(ITrieStore? store)
             {
-                store ??= new TrieStoreByPath(new MemDb(), LimboLogs.Instance);
+                store ??= new TrieStoreByPath(new MemColumnsDb<StateColumns>(), LimboLogs.Instance);
 
                 var storageTree = new StorageTree(store, LimboLogs.Instance, AccountAddress0);
 
@@ -124,7 +124,7 @@ namespace Nethermind.Core.Test.Builders
 
                 var account = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
 
-                var stateTree = new StateTreeByPath(store, store, LimboLogs.Instance);
+                var stateTree = new StateTreeByPath(store, LimboLogs.Instance);
                 stateTree.Set(AccountAddress0, account);
                 stateTree.Commit(0);
 

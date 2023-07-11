@@ -82,7 +82,6 @@ namespace Nethermind.Api
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
                 _readOnlyDbProvider,
                 ReadOnlyTrieStore,
-                ReadOnlyStorageTrieStore,
                 readOnlyTree,
                 SpecProvider,
                 LogManager);
@@ -236,7 +235,5 @@ namespace Nethermind.Api
         public ISnapProvider? SnapProvider { get; set; }
         public IProcessExitSource? ProcessExit { get; set; }
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
-        public ByPathStateDbPrunner? ByPathDbPrunnerState { get; set; }
-        public ByPathStateDbPrunner? ByPathDbPrunnerStorage { get; set; }
     }
 }

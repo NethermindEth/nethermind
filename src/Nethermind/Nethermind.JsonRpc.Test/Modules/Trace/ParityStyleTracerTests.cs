@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             MemDb codeDb = new();
             ITrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance).AsReadOnly();
             WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
-            StateReader stateReader = new StateReader(trieStore, trieStore, codeDb, LimboLogs.Instance);
+            StateReader stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
 
             BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance);

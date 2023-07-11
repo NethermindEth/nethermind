@@ -452,8 +452,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _poSSwitcher,
                 _mergeConfig,
                 _invalidChainTracker,
-                _api.ByPathDbPrunnerState!,
-                _api.ByPathDbPrunnerStorage!,
                 _api.LogManager,
                 syncReport);
         }

@@ -93,7 +93,6 @@ namespace Nethermind.Mev
                         getFromApi.DbProvider!,
                         getFromApi.BlockTree!,
                         getFromApi.ReadOnlyTrieStore!,
-                        getFromApi.ReadOnlyStorageTrieStore!,
                         getFromApi.BlockPreprocessor!,
                         getFromApi.SpecProvider!,
                         getFromApi.LogManager!,

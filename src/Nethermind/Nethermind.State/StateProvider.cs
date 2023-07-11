@@ -48,7 +48,7 @@ namespace Nethermind.State
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             Debug.Assert(trieStore is not null);
-            _tree = trieStore.Capability == TrieNodeResolverCapability.Path ? new StateTreeByPath(trieStore, storageTrieStore, logManager) : new StateTree(trieStore, logManager);
+            _tree = trieStore.Capability == TrieNodeResolverCapability.Path ? new StateTreeByPath(trieStore, logManager) : new StateTree(trieStore, logManager);
             _storageTrieStore = storageTrieStore;
         }
 

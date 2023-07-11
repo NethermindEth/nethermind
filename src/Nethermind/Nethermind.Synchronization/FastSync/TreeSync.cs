@@ -16,6 +16,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
@@ -59,8 +60,8 @@ namespace Nethermind.Synchronization.FastSync
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
         private readonly IDb _stateDb;
+        private readonly IByPathStateDb _pathStateDb;
         private readonly ITrieStore _stateStore;
-        private readonly ITrieStore _storageStore;
 
         private readonly IBlockTree _blockTree;
 
@@ -82,10 +83,7 @@ namespace Nethermind.Synchronization.FastSync
         private long _blockNumber;
         private SyncMode _syncMode;
 
-        private ByPathStateDbPrunner _dbPrunnerState;
-        private ByPathStateDbPrunner _dbPrunnerStorage;
-
-        public TreeSync(SyncMode syncMode, IDb codeDb, IColumnsDb<StateColumns> stateDb, IBlockTree blockTree, TrieNodeResolverCapability resolverCapability, ILogManager logManager, ByPathStateDbPrunner dbPrunnerState, ByPathStateDbPrunner dbPrunnerStorage)
+        public TreeSync(SyncMode syncMode, IDb codeDb, IColumnsDb<StateColumns> stateDb, IBlockTree blockTree, TrieNodeResolverCapability resolverCapability, ILogManager logManager)
         {
             _syncMode = syncMode;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -101,14 +99,12 @@ namespace Nethermind.Synchronization.FastSync
 
             if (resolverCapability == TrieNodeResolverCapability.Hash)
             {
-                _storageStore = _stateStore = new TrieStore(stateDb, logManager);
+                _stateStore = new TrieStore(stateDb, logManager);
             }
             else if (resolverCapability == TrieNodeResolverCapability.Path)
             {
-                _dbPrunnerState = dbPrunnerState;
-                _dbPrunnerStorage = dbPrunnerStorage;
-                _stateStore = new TrieStoreByPath(stateDb.GetColumnDb(StateColumns.State), Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0, _dbPrunnerState);
-                _storageStore = new TrieStoreByPath(stateDb.GetColumnDb(StateColumns.Storage), Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0, _dbPrunnerStorage);
+                _pathStateDb = stateDb as IByPathStateDb;
+                _stateStore = new TrieStoreByPath(stateDb, logManager, 0);
             }
 
             _additionalLeafNibbles = new ConcurrentDictionary<Keccak, List<byte>>();
@@ -479,8 +475,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     if (rootChanged)
                     {
-                        _dbPrunnerState?.Start();
-                        _dbPrunnerStorage?.Start();
+                        _pathStateDb?.StartPrunning();
                     }
 
                     _branchProgress = new BranchProgress(blockNumber, _logger);
@@ -590,7 +585,7 @@ namespace Nethermind.Synchronization.FastSync
                                 storagePath[64] = 8;
                                 storagePath[65] = 0;
                                 syncItem.PathNibbles.CopyTo(storagePath.Slice(66));
-                                keyExists = _storageStore.ExistsInDB(syncItem.Hash, storagePath.ToArray());
+                                keyExists = _stateStore.ExistsInDB(syncItem.Hash, storagePath.ToArray());
                                 break;
                             case NodeDataType.None:
                             case NodeDataType.Code:
@@ -767,20 +762,20 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             Interlocked.Add(ref _data.DataSize, data.Length);
                             Interlocked.Increment(ref Metrics.SyncedStorageTrieNodes);
-                            switch (_storageStore.Capability )
+                            switch (_stateStore.Capability )
                             {
                                 case TrieNodeResolverCapability.Hash:
                                     _stateDb.Set(syncItem.Hash, data);
                                     break;
                                 case TrieNodeResolverCapability.Path:
-                                    _storageStore.SaveNodeDirectly(0, node, withDelete: rootChanged);
+                                    _stateStore.SaveNodeDirectly(0, node, withDelete: rootChanged);
                                     if (node.IsLeaf && _additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
                                     {
                                         foreach (byte nibble in additionalNibbles)
                                         {
                                             TrieNode clone = node.Clone();
                                             clone.PathToNode[^1] = nibble;
-                                            _storageStore.SaveNodeDirectly(0, clone, withDelete: rootChanged);
+                                            _stateStore.SaveNodeDirectly(0, clone, withDelete: rootChanged);
                                         }
                                     }
                                     break;
@@ -818,8 +813,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
 
-                _dbPrunnerState?.EndOfCleanupRequests();
-                _dbPrunnerStorage?.EndOfCleanupRequests();
+                _pathStateDb?.EndOfCleanupRequests();
 
                 Interlocked.Exchange(ref _rootSaved, 1);
             }

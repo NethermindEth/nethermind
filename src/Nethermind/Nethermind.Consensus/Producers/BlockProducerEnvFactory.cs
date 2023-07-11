@@ -110,7 +110,7 @@ namespace Nethermind.Consensus.Producers
         }
 
         protected virtual ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider readOnlyDbProvider, ReadOnlyBlockTree readOnlyBlockTree) =>
-            new(readOnlyDbProvider, _readOnlyTrieStore, _readOnlyStorageTrieStore, readOnlyBlockTree, _specProvider, _logManager);
+            new(readOnlyDbProvider, _readOnlyTrieStore, readOnlyBlockTree, _specProvider, _logManager);
 
         protected virtual ITxSource CreateTxSourceForProducer(
             ITxSource? additionalTxSource,

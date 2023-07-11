@@ -85,7 +85,6 @@ public class AuRaContractGasLimitOverrideTests
                 new ReadOnlyTxProcessingEnv(
                     DbProvider,
                     new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                    new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                     BlockTree, SpecProvider, LimboLogs.Instance));
 
             GasLimitOverrideCache = new AuRaContractGasLimitOverride.Cache();

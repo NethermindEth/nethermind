@@ -213,7 +213,6 @@ namespace Nethermind.Mev.Test
                     DbProvider,
                     BlockTree,
                     ReadOnlyTrieStore,
-                    ReadOnlyStorageTrieStore,
                     BlockPreprocessorStep,
                     SpecProvider,
                     LogManager,

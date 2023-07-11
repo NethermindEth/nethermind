@@ -5,6 +5,7 @@ using System;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Db.ByPathState;
 using Nethermind.Db.FullPruning;
 
 namespace Nethermind.Db
@@ -51,7 +52,10 @@ namespace Nethermind.Db
                     ? new FullPruningInnerDbFactory(RocksDbFactory, _fileSystem, stateDbSettings.DbPath)
                     : new MemDbFactoryToRocksDbAdapter(MemDbFactory),
                 () => Interlocked.Increment(ref Metrics.StateDbInPruningWrites)));
-            RegisterColumnsDb<StateColumns>(stateDbSettings);
+
+            RegisterCustomDb(DbNames.PathState, () => new ByPathStateDb(
+                stateDbSettings,
+                PersistedDb ? RocksDbFactory : new MemDbFactoryToRocksDbAdapter(MemDbFactory)));
 
             RegisterDb(BuildRocksDbSettings(DbNames.Code, () => Metrics.CodeDbReads++, () => Metrics.CodeDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.Bloom, () => Metrics.BloomDbReads++, () => Metrics.BloomDbWrites++));

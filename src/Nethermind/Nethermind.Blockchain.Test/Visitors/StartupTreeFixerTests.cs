@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
-            TrieStoreByPath trieStore = new TrieStoreByPath(new MemDb(), LimboLogs.Instance);
+            TrieStoreByPath trieStore = new TrieStoreByPath(new MemColumnsDb<StateColumns>(), LimboLogs.Instance);
             StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, trieStore, LimboNoErrorLogger.Instance);
             await tree.Accept(fixer, CancellationToken.None);
 
@@ -112,7 +112,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
 
-            TrieStoreByPath trieStore = new TrieStoreByPath(testRpc.DbProvider.StateDb, 0, LimboLogs.Instance);
+            TrieStoreByPath trieStore = new TrieStoreByPath(testRpc.DbProvider.PathStateDb, LimboLogs.Instance);
             // fixing after restart
             StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, trieStore, LimboNoErrorLogger.Instance, 5);
             await tree.Accept(fixer, CancellationToken.None);
@@ -148,7 +148,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             testRpc.BlockchainProcessor = newBlockchainProcessor;
 
             // we create a new empty db for stateDb so we shouldn't suggest new blocks
-            MemDb stateDb = new();
+            IColumnsDb<StateColumns> stateDb = new MemColumnsDb<StateColumns>();
             TrieStoreByPath trieStore = new TrieStoreByPath(stateDb, LimboLogs.Instance);
             IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, trieStore, LimboNoErrorLogger.Instance, 5);
             BlockVisitOutcome result = await fixer.VisitBlock(tree.Head!, CancellationToken.None);
@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
 
-            TrieStoreByPath trieStore = new TrieStoreByPath(testRpc.DbProvider.StateDb, LimboLogs.Instance);
+            TrieStoreByPath trieStore = new TrieStoreByPath(testRpc.DbProvider.PathStateDb, LimboLogs.Instance);
             IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, trieStore, LimboNoErrorLogger.Instance, 5);
             BlockVisitOutcome result = await fixer.VisitBlock(null, CancellationToken.None);
 
@@ -217,7 +217,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             tree.UpdateMainChain(block2);
 
-            MemDb stateDb = new();
+            IColumnsDb<StateColumns> stateDb = new MemColumnsDb<StateColumns>();
             TrieStoreByPath trieStore = new TrieStoreByPath(stateDb, LimboLogs.Instance);
             StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, trieStore, LimboNoErrorLogger.Instance);
             await tree.Accept(fixer, CancellationToken.None);

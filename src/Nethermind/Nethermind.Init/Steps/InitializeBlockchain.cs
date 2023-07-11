@@ -109,23 +109,12 @@ namespace Nethermind.Init.Steps
 
             if (initConfig.UsePathBasedState)
             {
-                setApi.MainStateDbWithCache = getApi.DbProvider.StateDb.GetColumnDb(StateColumns.State);
+                setApi.MainStateDbWithCache = getApi.DbProvider.PathStateDb;
                 stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
 
-                _api.ByPathDbPrunnerState = new ByPathStateDbPrunner(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.State), _api.LogManager);
-                _api.ByPathDbPrunnerStorage = new ByPathStateDbPrunner(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), _api.LogManager);
-
                 setApi.TrieStore = trieStore = new TrieStoreByPath(
-                    stateWitnessedBy,
-                    No.Pruning,
-                    Persist.EveryBlock,
-                    getApi.LogManager, (int)pruningConfig.PersistenceInterval, _api.ByPathDbPrunnerState!);
-
-                storageTrieStore = new TrieStoreByPath(
-                    getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage),
-                    No.Pruning,
-                    Persist.EveryBlock,
-                    _api.LogManager, (int)pruningConfig.PersistenceInterval, _api.ByPathDbPrunnerStorage);
+                    getApi.DbProvider.PathStateDb,
+                    getApi.LogManager, (int)pruningConfig.PersistenceInterval);
             }
             else
             {
@@ -178,7 +167,6 @@ namespace Nethermind.Init.Steps
             getApi.DisposeStack.Push(trieStore);
 
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(setApi.MainStateDbWithCache);
-            ITrieStore readOnlyStorageTrieStore = setApi.ReadOnlyStorageTrieStore = storageTrieStore.AsReadOnly();
 
             IWorldState worldState = setApi.WorldState = new WorldState(
                 trieStore,
@@ -187,7 +175,7 @@ namespace Nethermind.Init.Steps
 
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(getApi.DbProvider, false);
 
-            IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, storageTrieStore.AsReadOnly(), readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
+            IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
 
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
@@ -200,15 +188,13 @@ namespace Nethermind.Init.Steps
                 {
                     _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
                     ITrieStore noPruningStore;
-                    ITrieStore noPruningStorageStore;
                     if (initConfig.UsePathBasedState)
                     {
-                        noPruningStore = new TrieStoreByPath(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.State), No.Pruning, Persist.EveryBlock, getApi.LogManager);
-                        noPruningStorageStore = new TrieStoreByPath(getApi.DbProvider.StateDb.GetColumnDb(StateColumns.Storage), No.Pruning, Persist.EveryBlock, getApi.LogManager);
+                        noPruningStore = new TrieStoreByPath(getApi.DbProvider.PathStateDb, getApi.LogManager);
                     }
                     else
                     {
-                        noPruningStore = noPruningStorageStore = new TrieStore(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
+                        noPruningStore = new TrieStore(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
                     }
                     IWorldState diagStateProvider = new WorldState(noPruningStore, codeDb, getApi.LogManager)
                     {
