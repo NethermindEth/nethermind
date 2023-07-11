@@ -583,8 +583,7 @@ namespace Nethermind.Evm.Test.Tracing
                 1, // STOP
             };
 
-            Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[0] type");
-            Assert.That(trace.Action.Subtraces[0].To, Is.EqualTo(IdentityPrecompile.Address), "[0] to");
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(0), "Should ignore precompile");
         }
 
         [Test]
@@ -607,28 +606,18 @@ namespace Nethermind.Evm.Test.Tracing
 
             (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
 
-            // One call to precompile and the other call to AddressC
-            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(2), "[] subtraces");
+            // call to AddressC and should ignore precompile
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "[] subtraces");
             Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
 
-            // Precompile call
-            Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0] subtraces");
-            Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[0] type");
-            Assert.That(trace.Action.Subtraces[0].To, Is.EqualTo(IdentityPrecompile.Address), "[0] to");
-
             // AddressC call - only one call
-            Assert.That(trace.Action.Subtraces[1].Subtraces.Count, Is.EqualTo(2), "[1] subtraces");
-            Assert.That(trace.Action.Subtraces[1].CallType, Is.EqualTo("call"), "[1] type");
-
-            // Check the 1st subtrace - a precompile call
-            Assert.That(trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 0] subtraces");
-            Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("call"), "[1, 0] type");
-            Assert.That(trace.Action.Subtraces[1].Subtraces[0].IncludeInTrace, Is.EqualTo(false), "[1, 0] type");
+            Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
+            Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[1] type");
 
             // Check the 2nd subtrace - a precompile call with value - must be included
-            Assert.That(trace.Action.Subtraces[1].Subtraces[1].Subtraces.Count, Is.EqualTo(0), "[1, 1] subtraces");
-            Assert.That(trace.Action.Subtraces[1].Subtraces[1].CallType, Is.EqualTo("call"), "[1, 1] type");
-            Assert.That(trace.Action.Subtraces[1].Subtraces[1].IncludeInTrace, Is.EqualTo(true), "[1, 1] type");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 1] subtraces");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].CallType, Is.EqualTo("call"), "[1, 1] type");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].IncludeInTrace, Is.EqualTo(true), "[1, 1] type");
         }
 
         [Test]
