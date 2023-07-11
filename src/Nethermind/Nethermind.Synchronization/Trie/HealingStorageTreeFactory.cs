@@ -13,6 +13,7 @@ namespace Nethermind.Synchronization.Trie;
 public class HealingStorageTreeFactory : IStorageTreeFactory
 {
     private ISyncPeerPool? _syncPeerPool;
+    public bool Throw { get; set; }
 
     public void InitializeNetwork(ISyncPeerPool syncPeerPool)
     {
@@ -20,5 +21,8 @@ public class HealingStorageTreeFactory : IStorageTreeFactory
     }
 
     public StorageTree Create(Address address, ITrieStore trieStore, Keccak storageRoot, Keccak stateRoot, ILogManager? logManager) =>
-        new HealingStorageTree(trieStore, storageRoot, logManager, address, stateRoot, _syncPeerPool);
+        new HealingStorageTree(trieStore, storageRoot, logManager, address, stateRoot, _syncPeerPool)
+        {
+            Throw = Throw
+        };
 }

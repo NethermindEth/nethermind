@@ -31,10 +31,19 @@ public class HealingStorageTree : StorageTree
         }
     }
 
+    public bool Throw { get; set; }
+
     public override byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
     {
         try
         {
+            if (Throw)
+            {
+                Throw = false;
+                byte[] nibbles = new byte[rawKey.Length * 2];
+                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+                throw new MissingTrieNodeException("Test", null!, nibbles, Random.Shared.Next(1, rawKey.Length * 2 - 2));
+            }
             return base.Get(rawKey, rootHash);
         }
         catch (MissingTrieNodeException e)

@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.Trie;
 public class HealingTrieStore : TrieStore
 {
     private readonly ILogManager? _logManager;
-    public static bool Throw = false;
+    public bool Throw { get; set; }
     private GetNodeDataTrieNodeRecovery? _recovery;
 
     public HealingTrieStore(
@@ -56,6 +56,7 @@ public class HealingTrieStore : TrieStore
                 Throw = false;
                 throw new TrieException("Artificial exception");
             }
+
             return base.LoadRlp(keccak, readFlags);
         }
         catch (TrieException)

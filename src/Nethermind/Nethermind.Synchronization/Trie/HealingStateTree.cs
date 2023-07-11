@@ -20,16 +20,13 @@ public class HealingStateTree : StateTree
     private SnapTrieNodeRecovery? _recovery;
 
     [DebuggerStepThrough]
-    public HealingStateTree()
-    {
-    }
-
-    [DebuggerStepThrough]
     public HealingStateTree(ITrieStore? store, ILogManager? logManager)
         : base(store, logManager)
     {
         _logManager = logManager;
     }
+
+    public bool Throw { get; set; }
 
     public void InitializeNetwork(ISyncPeerPool syncPeerPool)
     {
@@ -40,6 +37,13 @@ public class HealingStateTree : StateTree
     {
         try
         {
+            if (Throw)
+            {
+                Throw = false;
+                byte[] nibbles = new byte[rawKey.Length * 2];
+                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+                throw new MissingTrieNodeException("Test", null!, nibbles, Random.Shared.Next(1, rawKey.Length * 2 - 2));
+            }
             return base.Get(rawKey, rootHash);
         }
         catch (MissingTrieNodeException e)

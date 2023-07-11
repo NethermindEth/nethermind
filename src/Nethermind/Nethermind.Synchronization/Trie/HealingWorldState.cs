@@ -16,9 +16,25 @@ public class HealingWorldState : WorldState
     {
     }
 
+    public bool Throw
+    {
+        get
+        {
+            return StateProviderTree.Throw;
+        }
+        set
+        {
+            StateProviderTree.Throw = StorageTreeFactory.Throw = value;
+        }
+    }
+
     public void InitializeNetwork(ISyncPeerPool syncPeerPool)
     {
-        ((HealingStateTree)_stateProvider._tree).InitializeNetwork(syncPeerPool);
-        ((HealingStorageTreeFactory)_persistentStorageProvider._storageTreeFactory).InitializeNetwork(syncPeerPool);
+        StateProviderTree.InitializeNetwork(syncPeerPool);
+        StorageTreeFactory.InitializeNetwork(syncPeerPool);
     }
+
+    private HealingStorageTreeFactory StorageTreeFactory => ((HealingStorageTreeFactory)_persistentStorageProvider._storageTreeFactory);
+
+    private HealingStateTree StateProviderTree => ((HealingStateTree)_stateProvider._tree);
 }
