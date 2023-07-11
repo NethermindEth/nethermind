@@ -34,6 +34,7 @@ namespace Nethermind.Evm.Test
     public class Eip6780Tests : VirtualMachineTestsBase
     {
 
+        [SetUp]
         public override void Setup()
         {
             base.Setup();
@@ -46,10 +47,6 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp, true)]
         public void self_destruct_not_in_same_transaction(long blockNumber, ulong timestamp, bool onlyOnSameTransaction)
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
-            TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree(0);
-
             Address contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
             byte[] contractCode = Prepare.EvmCode
                 .SLOAD(1)
@@ -107,9 +104,6 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp)]
         public void self_destruct_in_same_transaction(long blockNumber, ulong timestamp)
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 1000.Ether());
-            TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree(0);
             byte[] contractCode = Prepare.EvmCode
                 .SLOAD(1)
                 .EQ(1)
@@ -152,9 +146,6 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp)]
         public void self_destruct_in_initcode_of_create_opcodes(long blockNumber, ulong timestamp)
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 1000.Ether());
-            TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree(0);
             byte[] contractCode = Prepare.EvmCode
                 .SLOAD(1)
                 .EQ(1)
@@ -201,9 +192,6 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp)]
         public void self_destruct_in_initcode_of_create_tx(long blockNumber, ulong timestamp)
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 1000.Ether());
-            TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree(0);
             byte[] contractCode = Prepare.EvmCode
                 .SLOAD(1)
                 .EQ(1)
