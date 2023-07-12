@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -54,19 +55,27 @@ namespace Nethermind.State
             _tree.Accept(visitor, stateRoot, visitingOptions);
         }
 
-        private bool _needsStateRootUpdate;
+        private bool NeedsStateRootUpdate
+        {
+            get => _needsStateRootUpdate;
+            set
+            {
+                _needsStateRootUpdate = value;
+                _logger.Info($"Need storage root update {new StackTrace()}");
+            }
+        }
 
         public void RecalculateStateRoot()
         {
             _tree.UpdateRootHash();
-            _needsStateRootUpdate = false;
+            NeedsStateRootUpdate = false;
         }
 
         public Keccak StateRoot
         {
             get
             {
-                if (_needsStateRootUpdate)
+                if (NeedsStateRootUpdate)
                 {
                     throw new InvalidOperationException();
                 }
@@ -146,7 +155,7 @@ namespace Nethermind.State
 
         public void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
-            _needsStateRootUpdate = true;
+            NeedsStateRootUpdate = true;
             Keccak codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
 
             // Don't reinsert if already inserted. This can be the case when the same
@@ -196,7 +205,7 @@ namespace Nethermind.State
 
         private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
         {
-            _needsStateRootUpdate = true;
+            NeedsStateRootUpdate = true;
 
             Account GetThroughCacheCheckExists()
             {
@@ -242,13 +251,13 @@ namespace Nethermind.State
 
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
-            _needsStateRootUpdate = true;
+            NeedsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, true);
         }
 
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
-            _needsStateRootUpdate = true;
+            NeedsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, false);
         }
 
@@ -260,7 +269,7 @@ namespace Nethermind.State
         /// <param name="storageRoot"></param>
         public void UpdateStorageRoot(Address address, Keccak storageRoot)
         {
-            _needsStateRootUpdate = true;
+            NeedsStateRootUpdate = true;
             Account? account = GetThroughCache(address);
             if (account is null)
             {
@@ -277,7 +286,7 @@ namespace Nethermind.State
 
         public void IncrementNonce(Address address)
         {
-            _needsStateRootUpdate = true;
+            NeedsStateRootUpdate = true;
             Account? account = GetThroughCache(address);
             if (account is null)
             {
@@ -291,7 +300,7 @@ namespace Nethermind.State
 
         public void DecrementNonce(Address address)
         {
-            _needsStateRootUpdate = true;
+            NeedsStateRootUpdate = true;
             Account? account = GetThroughCache(address);
             if (account is null)
             {
@@ -341,7 +350,7 @@ namespace Nethermind.State
 
         public void DeleteAccount(Address address)
         {
-            _needsStateRootUpdate = true;
+            NeedsStateRootUpdate = true;
             PushDelete(address);
         }
 
@@ -409,7 +418,7 @@ namespace Nethermind.State
 
         public void CreateAccount(Address address, in UInt256 balance)
         {
-            _needsStateRootUpdate = true;
+            NeedsStateRootUpdate = true;
             if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance}");
             Account account = balance.IsZero ? Account.TotallyEmpty : new Account(balance);
             PushNew(address, account);
@@ -418,7 +427,7 @@ namespace Nethermind.State
 
         public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce)
         {
-            _needsStateRootUpdate = true;
+            NeedsStateRootUpdate = true;
             if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance} and nonce {nonce}");
             Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance);
             PushNew(address, account);
@@ -679,12 +688,13 @@ namespace Nethermind.State
 
         private void SetState(Address address, Account? account)
         {
-            _needsStateRootUpdate = true;
+            NeedsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
             _tree.Set(address, account);
         }
 
         private readonly HashSet<Address> _readsForTracing = new();
+        private bool _needsStateRootUpdate;
 
         private Account? GetAndAddToCache(Address address)
         {
@@ -800,12 +810,12 @@ namespace Nethermind.State
             _readsForTracing.Clear();
             _currentPosition = Resettable.EmptyPosition;
             Array.Clear(_changes, 0, _changes.Length);
-            _needsStateRootUpdate = false;
+            NeedsStateRootUpdate = false;
         }
 
         public void CommitTree(long blockNumber)
         {
-            if (_needsStateRootUpdate)
+            if (NeedsStateRootUpdate)
             {
                 RecalculateStateRoot();
             }
@@ -821,7 +831,7 @@ namespace Nethermind.State
         // used in EtheereumTests
         internal void SetNonce(Address address, in UInt256 nonce)
         {
-            _needsStateRootUpdate = true;
+            NeedsStateRootUpdate = true;
             Account? account = GetThroughCache(address);
             if (account is null)
             {
