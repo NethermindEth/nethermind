@@ -26,7 +26,7 @@ public class SnapTrieNodeRecovery : TrieNodeRecovery<GetTrieNodesRequest>
         if (peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer? snapPeer))
         {
             byte[][] rlp = await snapPeer.GetTrieNodes(request, cts.Token);
-            if (rlp.Length == 1)
+            if (rlp.Length == 1 && rlp[0]?.Length > 0)
             {
                 byte[] recoveredRlp = rlp[0];
                 if (_logger.IsWarn) _logger.Warn($"Recovered RLP from peer {peer} with {recoveredRlp.Length} bytes");
