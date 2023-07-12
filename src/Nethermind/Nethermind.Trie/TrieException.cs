@@ -26,7 +26,7 @@ namespace Nethermind.Trie
 
         [DoesNotReturn]
         [StackTraceHidden]
-        public static void ThrowOnLoadFailure(Span<byte> rawKey, ValueKeccak rootHash, Exception baseException)
+        public static void ThrowOnLoadFailure(ReadOnlySpan<byte> rawKey, ValueKeccak rootHash, Exception baseException)
         {
             if (baseException is MissingNodeException nodeException && nodeException.NodeHash == rootHash)
             {
