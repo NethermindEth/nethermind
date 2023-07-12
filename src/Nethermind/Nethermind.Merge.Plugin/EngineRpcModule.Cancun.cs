@@ -43,7 +43,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             : null;
     }
 
-    private ResultWrapper<PayloadStatusV1>? ValidateFork(ExecutionPayloadV3 executionPayload)
+    private ResultWrapper<PayloadStatusV1>? ValidateFork(ExecutionPayload executionPayload)
     {
         if (executionPayload.ValidateFork(_specProvider))
         {

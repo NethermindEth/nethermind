@@ -56,7 +56,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<PayloadStatusV1> errorCode = (await rpcModule.engine_newPayloadV2(executionPayload));
 
-        Assert.That(errorCode.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(errorCode.ErrorCode, Is.EqualTo(ErrorCodes.UnsupportedFork));
     }
 
     [Test]
@@ -78,6 +78,16 @@ public partial class EngineModuleTests
         (IEngineRpcModule rpcModule, string payloadId) = await BuildAndGetPayloadV3Result(Shanghai.Instance);
         ResultWrapper<GetPayloadV3Result?> getPayloadResult =
             await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId));
+        Assert.That(getPayloadResult.ErrorCode,
+            Is.EqualTo(ErrorCodes.UnsupportedFork));
+    }
+
+    [Test]
+    public async Task GetPayloadV2_should_decline_post_cancun_payloads()
+    {
+        (IEngineRpcModule rpcModule, string payloadId) = await BuildAndGetPayloadV3Result(Cancun.Instance);
+        ResultWrapper<GetPayloadV2Result?> getPayloadResult =
+            await rpcModule.engine_getPayloadV2(Bytes.FromHexString(payloadId));
         Assert.That(getPayloadResult.ErrorCode,
             Is.EqualTo(ErrorCodes.UnsupportedFork));
     }
