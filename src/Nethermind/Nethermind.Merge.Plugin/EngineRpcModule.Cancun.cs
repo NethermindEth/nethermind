@@ -45,8 +45,15 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     private ResultWrapper<PayloadStatusV1>? ValidateFork(ExecutionPayloadV3 executionPayload)
     {
-        if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
-        return executionPayload.IsProperFork(_specProvider) ? null : ResultWrapper<PayloadStatusV1>.Fail("unsupported fork", ErrorCodes.UnsupportedFork);
+        if (executionPayload.ValidateFork(_specProvider))
+        {
+            return null;
+        }
+        else
+        {
+            if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
+            return ResultWrapper<PayloadStatusV1>.Fail("unsupported fork", ErrorCodes.UnsupportedFork);
+        }
     }
 
     public async Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId) =>

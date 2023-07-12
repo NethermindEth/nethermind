@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 
@@ -17,7 +18,7 @@ namespace Nethermind.Merge.Plugin.Data;
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayload</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayload
+public class ExecutionPayload : IValidateFork
 {
     public ExecutionPayload() { } // Needed for tests
 
@@ -139,7 +140,6 @@ public class ExecutionPayload
         }
     }
 
-    public virtual bool IsProperFork(ISpecProvider specProvider) => true;
 
     private Transaction[]? _transactions = null;
 
@@ -164,26 +164,18 @@ public class ExecutionPayload
     }
 
     public override string ToString() => $"{BlockNumber} ({BlockHash.ToShortString()})";
-}
 
-public static class ExecutionPayloadExtensions
-{
-    public static int GetVersion(this ExecutionPayload executionPayload) =>
-        executionPayload.Withdrawals is null ? 1 : 2;
-
-    public static bool Validate(
-        this ExecutionPayload executionPayload,
-        IReleaseSpec spec,
-        int version,
-        [NotNullWhen(false)] out string? error)
+    public virtual bool ValidateParams(IReleaseSpec spec, int version, [NotNullWhen(false)] out string? error)
     {
-        if (spec.IsEip4844Enabled && executionPayload is not ExecutionPayloadV3)
+        int GetVersion() => Withdrawals is null ? 1 : 2;
+
+        if (spec.IsEip4844Enabled)
         {
             error = "ExecutionPayloadV3 expected";
             return false;
         }
 
-        int actualVersion = executionPayload.GetVersion();
+        int actualVersion = GetVersion();
 
         error = actualVersion switch
         {
@@ -195,12 +187,9 @@ public static class ExecutionPayloadExtensions
         return error is null;
     }
 
-    public static bool Validate(this ExecutionPayload executionPayload,
-        ISpecProvider specProvider,
-        int version,
-        [NotNullWhen(false)] out string? error) =>
-        executionPayload.Validate(
-            specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp),
-            version,
-            out error);
+    public virtual bool ValidateFork(ISpecProvider specProvider) =>
+        !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
+
+    public bool ValidateParams(ISpecProvider specProvider, int version, [NotNullWhen(false)] out string? error) =>
+            ValidateParams(specProvider.GetSpec(BlockNumber, Timestamp), version, out error);
 }

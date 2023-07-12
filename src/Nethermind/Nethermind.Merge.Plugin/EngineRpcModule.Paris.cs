@@ -66,7 +66,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     private async Task<ResultWrapper<PayloadStatusV1>> NewPayload(ExecutionPayload executionPayload, int version)
     {
-        if (!executionPayload.Validate(_specProvider, version, out string? error))
+        if (!executionPayload.ValidateParams(_specProvider, version, out string? error))
         {
             if (_logger.IsWarn) _logger.Warn(error);
             return ResultWrapper<PayloadStatusV1>.Fail(error, ErrorCodes.InvalidParams);

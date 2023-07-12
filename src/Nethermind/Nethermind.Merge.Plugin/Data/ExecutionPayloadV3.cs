@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -46,6 +47,13 @@ public class ExecutionPayloadV3 : ExecutionPayload
         return true;
     }
 
-    public override bool IsProperFork(ISpecProvider specProvider) => specProvider
-        .GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
+    public override bool ValidateParams(IReleaseSpec spec, int version, [NotNullWhen(false)] out string? error)
+    {
+        // handled by `JsonObject` attribute of the class
+        error = null;
+        return true;
+    }
+
+    public override bool ValidateFork(ISpecProvider specProvider) =>
+        specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 }

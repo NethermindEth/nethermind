@@ -12,7 +12,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public abstract class GetPayloadHandlerBase<TGetPayloadResult> : IAsyncHandler<byte[], TGetPayloadResult?>
+public abstract class GetPayloadHandlerBase<TGetPayloadResult> : IAsyncHandler<byte[], TGetPayloadResult?> where TGetPayloadResult : IValidateFork
 {
     private readonly int _apiVersion;
     private readonly IPayloadPreparationService _payloadPreparationService;
@@ -43,7 +43,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult> : IAsyncHandler<b
 
         TGetPayloadResult getPayloadResult = GetPayloadResultFromBlock(blockContext);
 
-        if (getPayloadResult is GetPayloadV2Result getPayloadWrapperResult && !getPayloadWrapperResult.ExecutionPayload.IsProperFork(_specProvider))
+        if (!getPayloadResult.ValidateFork(_specProvider))
         {
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
             return ResultWrapper<TGetPayloadResult?>.Fail("unsupported fork", ErrorCodes.UnsupportedFork);

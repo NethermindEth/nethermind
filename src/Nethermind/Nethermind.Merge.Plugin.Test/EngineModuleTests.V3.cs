@@ -64,7 +64,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Shanghai.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
-        ExecutionPayloadV3 executionPayload = CreateBlockRequest<ExecutionPayloadV3>(
+        ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
             CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>());
 
         ResultWrapper<PayloadStatusV1> errorCode = (await rpcModule.engine_newPayloadV3(executionPayload, new byte[0][]));
@@ -138,7 +138,7 @@ public partial class EngineModuleTests
         RpcModuleProvider moduleProvider = new(new FileSystem(), jsonRpcConfig, LimboLogs.Instance);
         moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(new SingletonFactory<IEngineRpcModule>(rpcModule), true));
 
-        ExecutionPayloadV3 executionPayload = CreateBlockRequest<ExecutionPayloadV3>(
+        ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
           CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), dataGasUsed: 0, excessDataGas: 0);
 
         return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig), new(RpcEndpoint.Http), new(), executionPayload);
@@ -269,8 +269,8 @@ public partial class EngineModuleTests
         (MergeTestBlockchain blockchain, IEngineRpcModule engineRpcModule) = await MockRpc();
         (byte[][] blobVersionedHashes, Transaction[] transactions) = BuildTransactionsAndBlobVersionedHashesList(hashesFirstBytes, transactionsAndFirstBytesOfTheirHashes, blockchain.SpecProvider.ChainId);
 
-        ExecutionPayloadV3 executionPayload = CreateBlockRequest<ExecutionPayloadV3>(
-            CreateParentBlockRequestOnHead(blockchain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), transactions: transactions);
+        ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
+            CreateParentBlockRequestOnHead(blockchain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), 0, 0, transactions: transactions);
         ResultWrapper<PayloadStatusV1> result = await engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes);
 
         return result.Data.Status;
@@ -332,7 +332,7 @@ public partial class EngineModuleTests
 
     private async Task<ExecutionPayload> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, IList<Withdrawal>? withdrawals)
     {
-        ExecutionPayloadV3 executionPayload = CreateBlockRequest<ExecutionPayloadV3>(
+        ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
             CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0, 0);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>());
 
