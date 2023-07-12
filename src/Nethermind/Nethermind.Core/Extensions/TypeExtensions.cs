@@ -55,5 +55,17 @@ namespace Nethermind.Core.Extensions
 
         public static bool CannotBeAssignedNull(this Type type) =>
             type.IsValueType && Nullable.GetUnderlyingType(type) is null;
+
+        /// <summary>
+        /// Returns the type name. If this is a generic type, appends
+        /// the list of generic type arguments between angle brackets.
+        /// (Does not account for embedded / inner generic arguments.)
+        /// </summary>
+        /// <param name="type">The type.</param>
+        /// <returns>System.String.</returns>
+        public static string NameWithGenerics(this Type type) =>
+            type.IsGenericType
+                ? $"{type.Name.Substring(0, type.Name.IndexOf("`", StringComparison.InvariantCultureIgnoreCase))}<{string.Join(",", type.GetGenericArguments().Select(NameWithGenerics))}>"
+                : type.Name;
     }
 }
