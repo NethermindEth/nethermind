@@ -20,9 +20,10 @@ public class HealingStorageTreeFactory : IStorageTreeFactory
         _syncPeerPool = syncPeerPool;
     }
 
-    public StorageTree Create(Address address, ITrieStore trieStore, Keccak storageRoot, Keccak stateRoot, ILogManager? logManager) =>
-        new HealingStorageTree(trieStore, storageRoot, logManager, address, stateRoot, _syncPeerPool)
-        {
-            Throw = Throw
-        };
+    public StorageTree Create(Address address, ITrieStore trieStore, Keccak storageRoot, Keccak stateRoot, ILogManager? logManager)
+    {
+        HealingStorageTree healingStorageTree = new HealingStorageTree(trieStore, storageRoot, logManager, address, stateRoot, _syncPeerPool) { Throw = Throw };
+        Throw = false;
+        return healingStorageTree;
+    }
 }
