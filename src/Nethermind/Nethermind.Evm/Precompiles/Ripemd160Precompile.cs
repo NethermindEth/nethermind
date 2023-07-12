@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Precompiles
             //            _ripemd.Initialize();
         }
 
-        public Address Address { get; } = Address.FromNumber(3);
+        public static Address Address { get; } = Address.FromNumber(3);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {

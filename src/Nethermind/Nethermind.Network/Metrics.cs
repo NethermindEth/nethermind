@@ -1,15 +1,25 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
     //TODO: consult on use of metric disabeling flags!
     public static class Metrics
     {
+        [KeyIsLabel("reason")]
+        [Description("Number of local disconnects")]
+        public static ConcurrentDictionary<DisconnectReason, long> LocalDisconnectsTotal { get; } = new();
+
+        [KeyIsLabel("reason")]
+        [Description("Number of remote disconnects")]
+        public static ConcurrentDictionary<DisconnectReason, long> RemoteDisconnectsTotal { get; } = new();
+
         [CounterMetric]
         [Description("Number of incoming connection.")]
         public static long IncomingConnections { get; set; }

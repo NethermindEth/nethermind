@@ -551,7 +551,7 @@ namespace Nethermind.AuRa.Test.Validators
 
             Address validators = TestItem.Addresses[initialValidatorsIndex * 10];
             InMemoryReceiptStorage inMemoryReceiptStorage = new();
-            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(RopstenSpecProvider.Instance)
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(MainnetSpecProvider.Instance)
                 .WithTransactions(inMemoryReceiptStorage, delegate (Block block, Transaction transaction)
                     {
                         byte i = 0;

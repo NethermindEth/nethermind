@@ -582,7 +582,7 @@ namespace Nethermind.Synchronization.Test
             public byte ProtocolVersion { get; }
             public string ProtocolCode { get; }
 
-            public void Disconnect(InitiateDisconnectReason reason, string details)
+            public void Disconnect(DisconnectReason reason, string details)
             {
                 throw new NotImplementedException();
             }
@@ -1032,7 +1032,7 @@ namespace Nethermind.Synchronization.Test
             private readonly bool _withWithdrawals;
             private readonly BlockHeadersMessageSerializer _headersSerializer = new();
             private readonly BlockBodiesMessageSerializer _bodiesSerializer = new();
-            private readonly ReceiptsMessageSerializer _receiptsSerializer = new(RopstenSpecProvider.Instance);
+            private readonly ReceiptsMessageSerializer _receiptsSerializer = new(MainnetSpecProvider.Instance);
 
             private IDb _blockInfoDb = new MemDb();
             public BlockTree BlockTree { get; private set; }
@@ -1092,7 +1092,7 @@ namespace Nethermind.Synchronization.Test
             public byte ProtocolVersion { get; }
             public string ProtocolCode { get; }
 
-            public void Disconnect(InitiateDisconnectReason reason, string details)
+            public void Disconnect(DisconnectReason reason, string details)
             {
                 throw new NotImplementedException();
             }
@@ -1260,7 +1260,7 @@ namespace Nethermind.Synchronization.Test
 
             private readonly BlockHeadersMessageSerializer _headersSerializer = new();
             private readonly BlockBodiesMessageSerializer _bodiesSerializer = new();
-            private readonly ReceiptsMessageSerializer _receiptsSerializer = new(RopstenSpecProvider.Instance);
+            private readonly ReceiptsMessageSerializer _receiptsSerializer = new(MainnetSpecProvider.Instance);
 
             private Dictionary<Keccak, BlockHeader> _headers = new();
             private Dictionary<Keccak, BlockBody> _bodies = new();

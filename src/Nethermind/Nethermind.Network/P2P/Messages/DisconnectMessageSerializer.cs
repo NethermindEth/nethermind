@@ -33,13 +33,13 @@ namespace Nethermind.Network.P2P.Messages
         {
             if (msgBytes.ReadableBytes == 1)
             {
-                return new DisconnectMessage((DisconnectReason)msgBytes.GetByte(0));
+                return new DisconnectMessage((EthDisconnectReason)msgBytes.GetByte(0));
             }
 
             if (msgBytes.ReadableBytes == 0)
             {
                 // Sometimes 0x00 was sent, uncompressed, which interpreted as empty buffer by snappy.
-                return new DisconnectMessage(DisconnectReason.DisconnectRequested);
+                return new DisconnectMessage(EthDisconnectReason.DisconnectRequested);
             }
 
             Span<byte> msg = msgBytes.ReadAllBytesAsSpan();

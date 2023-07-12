@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -40,10 +39,12 @@ public static class DataGasCalculator
         return !UInt256.MultiplyOverflow(CalculateDataGas(transaction), dataGasPricePerUnit, out dataGasPrice);
     }
 
-    public static bool TryCalculateDataGasPricePerUnit(BlockHeader header, out UInt256 dataGasPricePerUnit) =>
-        header.ExcessDataGas is null
-            ? throw new ArgumentException(nameof(BlockHeader.ExcessDataGas))
-            : TryCalculateDataGasPricePerUnit(header.ExcessDataGas.Value, out dataGasPricePerUnit);
+    public static bool TryCalculateDataGasPricePerUnit(BlockHeader header, out UInt256 dataGasPricePerUnit)
+    {
+        dataGasPricePerUnit = UInt256.MaxValue;
+        return header.ExcessDataGas is not null
+            && TryCalculateDataGasPricePerUnit(header.ExcessDataGas.Value, out dataGasPricePerUnit);
+    }
 
     public static bool TryCalculateDataGasPricePerUnit(ulong excessDataGas, out UInt256 dataGasPricePerUnit)
     {
