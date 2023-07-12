@@ -60,6 +60,7 @@
     <PackageVersion Include="Portable.BouncyCastle" Version="1.9.0" />
     <PackageVersion Include="prometheus-net" Version="8.0.0" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.0.0" />
+    <PackageVersion Include="Pyroscope" Version="0.8.7" />
     <PackageVersion Include="ReadLine" Version="2.0.1" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="6.0.0" />
     <PackageVersion Include="RocksDB" Version="8.0.0.37755" />
