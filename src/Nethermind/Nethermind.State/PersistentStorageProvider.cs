@@ -42,6 +42,8 @@ namespace Nethermind.State
             _storageTreeFactory = storageTreeFactory ?? new StorageTreeFactory();
         }
 
+        public Keccak StateRoot { get; set; } = null!;
+
         /// <summary>
         /// Reset the storage state
         /// </summary>
@@ -224,7 +226,7 @@ namespace Nethermind.State
         {
             if (!_storages.ContainsKey(address))
             {
-                StorageTree storageTree = _storageTreeFactory.Create(address, _trieStore, _stateProvider.GetStorageRoot(address), _stateProvider.StateRoot, _logManager);
+                StorageTree storageTree = _storageTreeFactory.Create(address, _trieStore, _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
                 return _storages[address] = storageTree;
             }
 

@@ -31,7 +31,11 @@ namespace Nethermind.State
         public Keccak StateRoot
         {
             get => _stateProvider.StateRoot;
-            set => _stateProvider.StateRoot = value;
+            set
+            {
+                _stateProvider.StateRoot = value;
+                _persistentStorageProvider.StateRoot = value;
+            }
         }
 
         public WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
@@ -139,6 +143,7 @@ namespace Nethermind.State
         {
             _persistentStorageProvider.CommitTrees(blockNumber);
             _stateProvider.CommitTree(blockNumber);
+            _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
         }
 
         public void TouchCode(Keccak codeHash)
