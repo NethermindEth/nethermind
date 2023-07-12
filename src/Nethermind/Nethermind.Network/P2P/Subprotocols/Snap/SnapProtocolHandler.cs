@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -17,6 +18,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Trie;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
@@ -247,7 +249,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 Paths = groups,
                 Bytes = _currentBytesLimit
             };
-            Logger.Info($"Sending GetTrieNodesMessage with RootHash {rootHash} and Account Path {groups[0].Group[0]}");
+            Logger.Info($"Sending GetTrieNodesMessage with RootHash {rootHash} and Account Path {groups[0].Group[0].ToHexString()} Storage path: {(groups[0].Group.Length > 1 ? groups[0].Group[1].ToHexString() : "")}");
 
             TrieNodesMessage response = await AdjustBytesLimit(() =>
                 SendRequest(reqMsg, _getTrieNodesRequests, token));
