@@ -53,8 +53,9 @@ namespace Nethermind.Db
                     : new MemDbFactoryToRocksDbAdapter(MemDbFactory),
                 () => Interlocked.Increment(ref Metrics.StateDbInPruningWrites)));
 
+            RocksDbSettings pathStateDbSettings = BuildRocksDbSettings(DbNames.PathState, () => Metrics.StateDbReads++, () => Metrics.StateDbWrites++);
             RegisterCustomDb(DbNames.PathState, () => new ByPathStateDb(
-                stateDbSettings,
+                pathStateDbSettings,
                 PersistedDb ? RocksDbFactory : new MemDbFactoryToRocksDbAdapter(MemDbFactory)));
 
             RegisterDb(BuildRocksDbSettings(DbNames.Code, () => Metrics.CodeDbReads++, () => Metrics.CodeDbWrites++));

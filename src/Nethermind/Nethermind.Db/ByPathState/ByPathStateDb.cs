@@ -28,7 +28,7 @@ public class ByPathStateDb : IByPathStateDb
         _prunners = new Dictionary<StateColumns, ByPathStateDbPrunner>()
         {
             { StateColumns.State, new ByPathStateDbPrunner(_currentDb.GetColumnDb(StateColumns.State), LimboLogs.Instance)},
-            { StateColumns.Storage, new ByPathStateDbPrunner(_currentDb.GetColumnDb(StateColumns.State), LimboLogs.Instance)}
+            { StateColumns.Storage, new ByPathStateDbPrunner(_currentDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance)}
         };
     }
 

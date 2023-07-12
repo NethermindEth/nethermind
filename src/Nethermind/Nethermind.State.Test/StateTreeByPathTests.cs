@@ -48,8 +48,9 @@ namespace Nethermind.Store.Test
         [Test]
         public void Minimal_writes_when_setting_on_empty()
         {
-            MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
+            MemColumnsDb<StateColumns> stateDb = new();
+            MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
+            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance, 0), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Set(TestItem.AddressB, _account0);
             tree.Set(TestItem.AddressC, _account0);
@@ -60,8 +61,9 @@ namespace Nethermind.Store.Test
         [Test]
         public void Minimal_writes_when_setting_on_empty_scenario_2()
         {
-            MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance, 0), LimboLogs.Instance);
+            MemColumnsDb<StateColumns> stateDb = new();
+            MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
+            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance, 0), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
@@ -70,41 +72,43 @@ namespace Nethermind.Store.Test
             tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000")).Should().BeEquivalentTo(_account0);
             tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0")).Should().BeEquivalentTo(_account0);
             tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1")).Should().BeEquivalentTo(_account0);
-            Assert.That(db.WritesCount, Is.EqualTo(10), "writes"); // extension, branch, leaf, extension, branch, 2x same leaf
+            Assert.That(db.WritesCount, Is.EqualTo(8), "writes"); // extension, branch, leaf, extension, branch, 2x same leaf
             Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(7), "hashes");
             Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(7), "encodings");
         }
 
-        // [Test]
-        // public void Minimal_writes_when_setting_on_empty_scenario_3()
-        // {
-        //     MemDb db = new();
-        //     StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-        //     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
-        //     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
-        //     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
-        //     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
-        //     tree.Commit(0);
-        //     Assert.AreEqual(6, db.WritesCount, "writes"); // extension, branch, 2x leaf
-        //     Assert.AreEqual(4, Trie.Metrics.TreeNodeHashCalculations, "hashes");
-        //     Assert.AreEqual(4, Trie.Metrics.TreeNodeRlpEncodings, "encodings");
-        // }
+        [Test]
+        public void Minimal_writes_when_setting_on_empty_scenario_3()
+        {
+            MemColumnsDb<StateColumns> stateDb = new();
+            MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
+            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance, 0), LimboLogs.Instance);
+            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
+            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
+            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
+            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
+            tree.Commit(0);
+            Assert.That(db.WritesCount, Is.EqualTo(8), "writes"); // extension, branch, 2x leaf (each node is 2 writes) + deletion writes (2)
+            Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(4), "hashes");
+            Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(4), "encodings");
+        }
 
-        // [Test]
-        // public void Minimal_writes_when_setting_on_empty_scenario_4()
-        // {
-        //     MemDb db = new();
-        //     StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-        //     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
-        //     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
-        //     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
-        //     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
-        //     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
-        //     tree.Commit(0);
-        //     Assert.AreEqual(2, db.WritesCount, "writes"); // extension, branch, 2x leaf
-        //     Assert.AreEqual(1, Trie.Metrics.TreeNodeHashCalculations, "hashes");
-        //     Assert.AreEqual(1, Trie.Metrics.TreeNodeRlpEncodings, "encodings");
-        // }
+        [Test]
+        public void Minimal_writes_when_setting_on_empty_scenario_4()
+        {
+            MemColumnsDb<StateColumns> stateDb = new();
+            MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
+            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance, 0), LimboLogs.Instance);
+            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
+            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
+            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
+            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
+            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
+            tree.Commit(0);
+            Assert.That(db.WritesCount, Is.EqualTo(6), "writes"); // extension, branch, 2x leaf
+            Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(1), "hashes");
+            Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(1), "encodings");
+        }
 
         [Test]
         public void Minimal_writes_when_setting_on_empty_scenario_5()
@@ -572,7 +576,7 @@ namespace Nethermind.Store.Test
 
             a1_0 = tree.Get(TestItem.AddressB, root0);
 
-            Assert.IsNotNull(a1_0);
+            Assert.IsNull(a1_0);
         }
 
         [Test]

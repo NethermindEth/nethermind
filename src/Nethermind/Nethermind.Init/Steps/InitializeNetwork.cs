@@ -72,6 +72,7 @@ public class InitializeNetwork : IStep
     private readonly ILogger _logger;
     private readonly INetworkConfig _networkConfig;
     protected readonly ISyncConfig _syncConfig;
+    protected readonly IInitConfig _initConfig;
 
     public InitializeNetwork(INethermindApi api)
     {
@@ -79,6 +80,7 @@ public class InitializeNetwork : IStep
         _logger = _api.LogManager.GetClassLogger();
         _networkConfig = _api.Config<INetworkConfig>();
         _syncConfig = _api.Config<ISyncConfig>();
+        _initConfig = _api.Config<IInitConfig>();
     }
 
     public async Task Execute(CancellationToken cancellationToken)
@@ -102,14 +104,26 @@ public class InitializeNetwork : IStep
 
         CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
-        ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager, _syncConfig.SnapSyncAccountRangePartitionCount);
-        _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
+        ProgressTracker progressTracker;
+        ITrieStore trieStore;
+        if (_initConfig.UsePathBasedState)
+        {
+            progressTracker = new(_api.BlockTree!, _api.DbProvider.PathStateDb, _api.LogManager, _syncConfig.SnapSyncAccountRangePartitionCount);
+            _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager, TrieNodeResolverCapability.Path);
+            trieStore = new TrieStoreByPath(_api.DbProvider.PathStateDb, _api.LogManager, 0);
+        }
+        else
+        {
+            progressTracker = new(_api.BlockTree!, _api.DbProvider.PathStateDb, _api.LogManager, _syncConfig.SnapSyncAccountRangePartitionCount);
+            _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager, TrieNodeResolverCapability.Path);
+            trieStore = new TrieStore(_api.DbProvider.StateDb, _api.LogManager);
+        }
 
         SyncProgressResolver syncProgressResolver = new(
             _api.BlockTree!,
             _api.ReceiptStorage!,
             _api.DbProvider.PathStateDb,
-            new TrieStoreByPath(_api.DbProvider.PathStateDb, _api.LogManager, 0),
+            trieStore,
             progressTracker,
             _syncConfig,
             _api.LogManager);
