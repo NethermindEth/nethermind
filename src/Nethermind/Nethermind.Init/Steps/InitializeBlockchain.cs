@@ -281,7 +281,7 @@ namespace Nethermind.Init.Steps
                     _logger.Warn("Will throw");
                     if (trieStore is HealingTrieStore healingTrieStore)
                     {
-                        healingTrieStore.Throw = true;
+                        // healingTrieStore.Throw = true;
                     }
 
                     if (worldState is HealingWorldState healingWorldState)
