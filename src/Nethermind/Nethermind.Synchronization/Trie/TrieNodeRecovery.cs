@@ -95,11 +95,11 @@ public abstract class TrieNodeRecovery<TRequest>
 
     protected abstract bool CanAllocatePeer(ISyncPeer peer);
 
-    private Task<byte[]?> RecoverRlpFromPeer(ISyncPeer peer, TRequest request, CancellationTokenSource cts)
+    private async Task<byte[]?> RecoverRlpFromPeer(ISyncPeer peer, TRequest request, CancellationTokenSource cts)
     {
         try
         {
-            return RecoverRlpFromPeerBase(peer, request, cts);
+            return await RecoverRlpFromPeerBase(peer, request, cts);
         }
         catch (OperationCanceledException)
         {
@@ -110,7 +110,7 @@ public abstract class TrieNodeRecovery<TRequest>
             if (_logger.IsError) _logger.Error($"Could not recover from {peer}", e);
         }
 
-        return Task.FromResult<byte[]?>(null);
+        return null;
     }
 
     protected abstract Task<byte[]?> RecoverRlpFromPeerBase(ISyncPeer peer, TRequest request, CancellationTokenSource cts);
