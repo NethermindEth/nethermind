@@ -8,6 +8,7 @@ using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
 using Nethermind.Tools.Kute.MessageProvider;
 using Nethermind.Tools.Kute.MetricsConsumer;
+using Nethermind.Tools.Kute.ProgressReporter;
 using Nethermind.Tools.Kute.SecretProvider;
 using Nethermind.Tools.Kute.SystemClock;
 
@@ -67,6 +68,7 @@ static class Program
             );
         }
 
+        collection.AddSingleton<IProgressReporter, UnboundedConsoleProgressReporter>();
         collection.AddSingleton<IMetricsConsumer, ConsoleMetricsConsumer>();
         switch (config.MetricsOutputFormatter)
         {
