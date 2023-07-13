@@ -42,7 +42,7 @@ public class HealingStateTree : StateTree
                 Throw = false;
                 byte[] nibbles = new byte[rawKey.Length * 2];
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                throw new MissingTrieNodeException("Test", null!, nibbles, Random.Shared.Next(1, rawKey.Length * 2 - 2));
+                throw new MissingTrieNodeException("Test", null!, nibbles, rawKey.Length * 2 - 1);
             }
             return base.Get(rawKey, rootHash);
         }
