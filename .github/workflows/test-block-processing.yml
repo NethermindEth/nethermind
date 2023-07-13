@@ -52,7 +52,12 @@ jobs:
           cd /mnt/neth_backup/backup/mainnet
           
           echo "Splitting file list..."
-          rm filelist.*
+          fileCount=$(find . -type f | wc -l)
+          # Check if there are any files
+          if [ $fileCount -gt 0 ]; then
+              rm filelist.*
+          fi
+          
           find . -type f | split -d -l $(( $(find . -type f | wc -l) / 6 )) - filelist.part.
           
           echo "Starting parallel rsync..."
