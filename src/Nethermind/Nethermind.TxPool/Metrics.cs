@@ -98,11 +98,11 @@ namespace Nethermind.TxPool
 
         [GaugeMetric]
         [Description("Number of transactions in the block.")]
-        public static float BlobTransactionsInBlock { get; set; }
+        public static long BlobTransactionsInBlock { get; set; }
 
         [GaugeMetric]
         [Description("Number of blobs in the block.")]
-        public static float BlobsInBlock { get; set; }
+        public static long BlobsInBlock { get; set; }
 
         [GaugeMetric]
         [Description("Ratio of transactions in the block absent in hashCache.")]
@@ -114,10 +114,10 @@ namespace Nethermind.TxPool
 
         [GaugeMetric]
         [Description("Number of transactions in pool.")]
-        public static float TransactionCount { get; set; }
+        public static long TransactionCount { get; set; }
 
         [GaugeMetric]
         [Description("Number of blob transactions in pool.")]
-        public static float BlobTransactionCount { get; set; }
+        public static long BlobTransactionCount { get; set; }
     }
 }
