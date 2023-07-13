@@ -99,7 +99,7 @@ public class TrieByPathTests
     public void Single_leaf_update_next_blocks()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Commit(0);
@@ -654,7 +654,7 @@ public class TrieByPathTests
         byte[] key3 = Bytes.FromHexString("000000200000000cc").PadLeft(32);
 
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(key1, _longLeaf1);
         patriciaTree.Set(key2, _longLeaf1);

@@ -716,7 +716,7 @@ public class TrieByPathWithPrefixTest
         byte[] key3 = Bytes.FromHexString("000000200000000cc").PadLeft(32);
 
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
