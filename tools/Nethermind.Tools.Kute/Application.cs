@@ -39,10 +39,9 @@ class Application
     {
         using (_metrics.TimeTotal())
         {
-            await foreach (var (jsonRpc, n) in _msgProvider.Messages.Indexed())
+            await foreach (var (jsonRpc, n) in _msgProvider.Messages.Indexed(startingFrom: 1))
             {
                 _metrics.TickMessages();
-                _progressReporter.ReportProgress(n);
 
                 switch (jsonRpc)
                 {
@@ -88,6 +87,8 @@ class Application
                     default:
                         throw new ArgumentOutOfRangeException(nameof(jsonRpc));
                 }
+
+                _progressReporter.ReportProgress(n);
             }
         }
 

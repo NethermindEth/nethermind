@@ -5,8 +5,8 @@ namespace Nethermind.Tools.Kute.Extensions;
 
 public static class AsyncEnumerableExtensions
 {
-    public static IAsyncEnumerable<(TSource, int)> Indexed<TSource>(this IAsyncEnumerable<TSource> source)
+    public static IAsyncEnumerable<(TSource, int)> Indexed<TSource>(this IAsyncEnumerable<TSource> source, int startingFrom = 0)
     {
-        return source.Select((t, idx) => (t, idx));
+        return source.Select((t, idx) => (t, startingFrom + idx));
     }
 }
