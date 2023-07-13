@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - kch/block_processing_benchmark
   workflow_dispatch:
 
 jobs:
