@@ -45,10 +45,8 @@ static class Program
                 config.AuthTtl
             )
         );
-        collection.AddSingleton<IMessageProvider<JsonRpc?>>(
-            new JsonRpcMessageProvider(
-                new FileMessageProvider(config.MessagesFilePath))
-        );
+        collection.AddSingleton<IMessageProvider<string>>(new FileMessageProvider(config.MessagesFilePath));
+        collection.AddSingleton<IMessageProvider<JsonRpc?>, JsonRpcMessageProvider>();
         collection.AddSingleton<IJsonRpcMethodFilter>(
             new ComposedJsonRpcMethodFilter(config.MethodFilters.Select(pattern =>
                 new PatternJsonRpcMethodFilter(pattern)))
@@ -61,11 +59,22 @@ static class Program
                     provider.GetRequiredService<IAuth>(),
                     config.HostAddress
                 ));
-        collection.AddSingleton<IProgressReporter>(_ =>
-            Console.IsOutputRedirected
-                ? new NullProgressReporter()
-                : new ConsoleProgressReporter()
-        );
+        collection.AddSingleton<IProgressReporter>(provider =>
+        {
+            if (Console.IsOutputRedirected)
+            {
+                return new NullProgressReporter();
+            }
+            // TODO:
+            // Terrible, terrible hack since it forces a double enumeration:
+            // - A first one to count the number of messages.
+            // - A second one to actually process each message.
+            // We can reduce the cost by not parsing each message on the first enumeration
+            // At the same time, this optimization relies on implementation details.
+            var messagesProvider = provider.GetRequiredService<IMessageProvider<string>>();
+            var totalMessages = messagesProvider.Messages.ToEnumerable().Count();
+            return new ConsoleProgressReporter(totalMessages);
+        });
         collection.AddSingleton<IMetricsConsumer, ConsoleMetricsConsumer>();
         collection.AddSingleton<IMetricsOutputFormatter>(_ => config.MetricsOutputFormatter switch
         {
