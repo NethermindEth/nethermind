@@ -58,7 +58,7 @@ jobs:
           cd /mnt/neth_backup/backup/mainnet
           
           echo "Splitting file list..."
-          fileCount=$(find . -type f | wc -l)
+          fileCount=$(find . -type f -name "filelist.*" | wc -l)
           # Check if there are any files
           if [ $fileCount -gt 0 ]; then
               rm filelist.*
