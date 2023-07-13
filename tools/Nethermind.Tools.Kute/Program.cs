@@ -68,7 +68,11 @@ static class Program
             );
         }
 
-        collection.AddSingleton<IProgressReporter, UnboundedConsoleProgressReporter>();
+        collection.AddSingleton<IProgressReporter>(_ =>
+            Console.IsOutputRedirected
+                ? new NullProgressReporter()
+                : new UnboundedConsoleProgressReporter()
+        );
         collection.AddSingleton<IMetricsConsumer, ConsoleMetricsConsumer>();
         switch (config.MetricsOutputFormatter)
         {
