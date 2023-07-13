@@ -71,7 +71,7 @@ static class Program
         collection.AddSingleton<IProgressReporter>(_ =>
             Console.IsOutputRedirected
                 ? new NullProgressReporter()
-                : new UnboundedConsoleProgressReporter()
+                : new ConsoleProgressReporter()
         );
         collection.AddSingleton<IMetricsConsumer, ConsoleMetricsConsumer>();
         switch (config.MetricsOutputFormatter)

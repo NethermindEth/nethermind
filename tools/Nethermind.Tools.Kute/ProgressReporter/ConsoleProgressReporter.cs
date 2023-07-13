@@ -5,7 +5,7 @@ using System.Text;
 
 namespace Nethermind.Tools.Kute.ProgressReporter;
 
-public class UnboundedConsoleProgressReporter : IProgressReporter
+public class ConsoleProgressReporter : IProgressReporter
 {
     private int? _lastIndex;
 
