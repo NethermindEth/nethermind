@@ -40,7 +40,7 @@ namespace Nethermind.Evm
         SHR = 0x1c, // EIP-145
         SAR = 0x1d, // EIP-145
 
-        SHA3 = 0x20,
+        KECCAK256 = 0x20,
 
         ADDRESS = 0x30,
         BALANCE = 0x31,

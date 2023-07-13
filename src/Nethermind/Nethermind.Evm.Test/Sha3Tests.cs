@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.JUMPDEST)
                 .PushData(32)
                 .PushData(0)
-                .Op(Instruction.SHA3)
+                .Op(Instruction.KECCAK256)
                 .Op(Instruction.POP)
                 .PushData(0)
                 .Op(Instruction.JUMP)
