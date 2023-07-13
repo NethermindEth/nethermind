@@ -53,38 +53,26 @@ static class Program
             new ComposedJsonRpcMethodFilter(config.MethodFilters.Select(pattern =>
                 new PatternJsonRpcMethodFilter(pattern)))
         );
-        if (config.DryRun)
-        {
-            collection.AddSingleton<IJsonRpcSubmitter, NullJsonRpcSubmitter>();
-        }
-        else
-        {
-            collection.AddSingleton<IJsonRpcSubmitter>(provider =>
-                new HttpJsonRpcSubmitter(
+        collection.AddSingleton<IJsonRpcSubmitter>(provider =>
+            config.DryRun
+                ? new NullJsonRpcSubmitter(provider.GetRequiredService<IAuth>())
+                : new HttpJsonRpcSubmitter(
                     provider.GetRequiredService<HttpClient>(),
                     provider.GetRequiredService<IAuth>(),
                     config.HostAddress
-                )
-            );
-        }
-
+                ));
         collection.AddSingleton<IProgressReporter>(_ =>
             Console.IsOutputRedirected
                 ? new NullProgressReporter()
                 : new ConsoleProgressReporter()
         );
         collection.AddSingleton<IMetricsConsumer, ConsoleMetricsConsumer>();
-        switch (config.MetricsOutputFormatter)
+        collection.AddSingleton<IMetricsOutputFormatter>(_ => config.MetricsOutputFormatter switch
         {
-            case MetricsOutputFormatter.Report:
-                collection.AddSingleton<IMetricsOutputFormatter>(new MetricsTextOutputFormatter());
-                break;
-            case MetricsOutputFormatter.Json:
-                collection.AddSingleton<IMetricsOutputFormatter>(new MetricsJsonOutputFormatter());
-                break;
-            default:
-                throw new ArgumentOutOfRangeException();
-        }
+            MetricsOutputFormatter.Report => new MetricsTextOutputFormatter(),
+            MetricsOutputFormatter.Json => new MetricsJsonOutputFormatter(),
+            _ => throw new ArgumentOutOfRangeException(),
+        });
 
         return collection.BuildServiceProvider();
     }
