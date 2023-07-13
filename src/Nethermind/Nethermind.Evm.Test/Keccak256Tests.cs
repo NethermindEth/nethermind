@@ -10,7 +10,7 @@ namespace Nethermind.Evm.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class Sha3Tests : VirtualMachineTestsBase
+    public class Keccak256Tests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => RinkebySpecProvider.ConstantinopleFixBlockNumber;
 
