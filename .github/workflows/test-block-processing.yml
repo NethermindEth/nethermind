@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3.5.3
+        with:
+          clean: true
       
       - name: Setup .NET
         uses: actions/setup-dotnet@v3.2.0
@@ -46,7 +48,7 @@ jobs:
           docker compose -f /root/sedge-data/docker-compose.yml stop execution
           
           echo "Removing old mainnet data..."
-          dbCount=$(find . -type f | wc -l)
+          dbCount=$(find /root/sedge-data/execution-data/nethermind_db/mainnet -type f | wc -l)
           # Check if there are any files
           if [ $dbCount -gt 0 ]; then
             rm -r /root/sedge-data/execution-data/nethermind_db/mainnet/*
