@@ -46,7 +46,11 @@ jobs:
           docker compose -f /root/sedge-data/docker-compose.yml stop execution
           
           echo "Removing old mainnet data..."
-          rm -r /root/sedge-data/execution-data/nethermind_db/mainnet/*
+          dbCount=$(find . -type f | wc -l)
+          # Check if there are any files
+          if [ $dbCount -gt 0 ]; then
+            rm -r /root/sedge-data/execution-data/nethermind_db/mainnet/*
+          fi
           
           echo "Changing to backup directory..."
           cd /mnt/neth_backup/backup/mainnet
