@@ -1,0 +1,98 @@
+name: Run Block Processing Benchmark
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  run-script:
+    runs-on: [self-hosted, LinuxAMD]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3.5.3
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3.2.0
+        with:
+          dotnet-version: '7.0'
+
+      - name: Build Kute
+        run: dotnet build ./tools/Nethermind.Tools.Kute -c Release
+
+      - name: Run script
+        run: |
+          #!/bin/bash
+
+          # Define a function to stop the rsync process
+          stop_rsync() {
+              if [ -n "$rsyncPid" ]; then
+                  echo "Stopping rsync process..."
+                  kill $rsyncPid
+                  scriptKilled=true
+              fi
+          }
+          
+          # Set a trap to call stop_rsync function if the script is interrupted
+          trap stop_rsync INT TERM
+          
+          scriptKilled=false
+          
+          totalSize=$(du -sb /mnt/neth_backup/backup/mainnet | cut -f1)
+          
+          echo "Stopping execution docker compose..."
+          docker compose -f /root/sedge-data/docker-compose.yml stop execution
+          
+          echo "Removing old mainnet data..."
+          rm -r /root/sedge-data/execution-data/nethermind_db/mainnet/*
+          
+          echo "Changing to backup directory..."
+          cd /mnt/neth_backup/backup/mainnet
+          
+          echo "Splitting file list..."
+          rm filelist.*
+          find . -type f | split -d -l $(( $(find . -type f | wc -l) / 6 )) - filelist.part.
+          
+          echo "Starting parallel rsync..."
+          ls filelist.part.* | parallel -j6 rsync --progress -aWvm --files-from={} . /root/sedge-data/execution-data/nethermind_db/mainnet > /dev/null 2>&1 &
+          
+          rsyncPid=$!
+          
+          # Now we will enter a loop where we check the size of the destination directory
+          # We will exit the loop once the size of the destination directory matches the size of the source directory
+          while true; do
+              sleep 10 # Sleep for a while to avoid excessive disk usage
+              currentSize=$(du -sb /root/sedge-data/execution-data/nethermind_db/mainnet | cut -f1)
+          
+              # Calculate the percentage of the total size that's been copied
+              percentCopied=$(echo "scale=4; $currentSize * 100 / $totalSize" | bc)
+              echo "Percentage copied: $percentCopied%"
+          
+              # Break the loop if rsync process is not running anymore
+              if ! ps -p $rsyncPid > /dev/null; then
+                  break
+              fi
+          done
+          
+          # Break the loop if the script was interrupted
+          if $scriptKilled; then
+              echo "Script was interrupted. Not proceeding with further iterations."
+              exit 1
+          fi
+          
+          echo "Starting execution docker compose..."
+          docker compose -f /root/sedge-data/docker-compose.yml up -d execution
+          
+          echo "Sleeping for 120 seconds..."
+          sleep 120
+          
+          echo "Running Nethermind Tools Kute..."
+          output=$(${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/sedge-data/execution-data/logs/rpc/logs/filtered.txt -s /root/sedge-data/jwtsecret)
+          
+          echo $output
+          
+          echo "Script execution complete."
+          
+          # Clear the trap
+          trap - INT TERM
