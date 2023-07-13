@@ -52,6 +52,15 @@ public class Config
     public bool DryRun { get; }
 
     [Option(
+        shortName: 'p',
+        longName: "progress",
+        Required = false,
+        Default = false,
+        HelpText = "Show progress"
+    )]
+    public bool ShowProgress { get; }
+
+    [Option(
         shortName: 'o',
         longName: "output",
         Required = false,
@@ -76,6 +85,7 @@ public class Config
         string jwtSecretFilePath,
         int authTtl,
         bool dryRun,
+        bool showProgress,
         MetricsOutputFormatter metricsOutputFormatter,
         IEnumerable<string> methodFilters
     )
@@ -85,7 +95,9 @@ public class Config
         JwtSecretFilePath = jwtSecretFilePath;
         AuthTtl = authTtl;
         DryRun = dryRun;
+        ShowProgress = showProgress;
         MetricsOutputFormatter = metricsOutputFormatter;
         MethodFilters = methodFilters;
+        ShowProgress = showProgress;
     }
 }

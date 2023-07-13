@@ -61,19 +61,20 @@ static class Program
                 ));
         collection.AddSingleton<IProgressReporter>(provider =>
         {
-            if (Console.IsOutputRedirected)
+            if (config.ShowProgress)
             {
-                return new NullProgressReporter();
+                // TODO:
+                // Terrible, terrible hack since it forces a double enumeration:
+                // - A first one to count the number of messages.
+                // - A second one to actually process each message.
+                // We can reduce the cost by not parsing each message on the first enumeration
+                // At the same time, this optimization relies on implementation details.
+                var messagesProvider = provider.GetRequiredService<IMessageProvider<string>>();
+                var totalMessages = messagesProvider.Messages.ToEnumerable().Count();
+                return new ConsoleProgressReporter(totalMessages);
             }
-            // TODO:
-            // Terrible, terrible hack since it forces a double enumeration:
-            // - A first one to count the number of messages.
-            // - A second one to actually process each message.
-            // We can reduce the cost by not parsing each message on the first enumeration
-            // At the same time, this optimization relies on implementation details.
-            var messagesProvider = provider.GetRequiredService<IMessageProvider<string>>();
-            var totalMessages = messagesProvider.Messages.ToEnumerable().Count();
-            return new ConsoleProgressReporter(totalMessages);
+
+            return new NullProgressReporter();
         });
         collection.AddSingleton<IMetricsConsumer, ConsoleMetricsConsumer>();
         collection.AddSingleton<IMetricsOutputFormatter>(_ => config.MetricsOutputFormatter switch
