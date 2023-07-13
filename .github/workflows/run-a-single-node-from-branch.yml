@@ -148,21 +148,33 @@ jobs:
         echo "BASE_TAG=${{ needs.create_docker_image.outputs.base_tag }}" >> $GITHUB_ENV
 
     - name: Trigger Node creation Repo Action
-      uses: benc-uk/workflow-dispatch@v1
-      with:
-          workflow: run-single-node.yml
-          repo: NethermindEth/post-merge-smoke-tests
-          ref: "main"
-          token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
-          inputs: '{
-                     "github_username": "${{ github.actor }}",
-                     "base_tag": "${{ env.BASE_TAG }}",
-                     "config_file": "${{ inputs.config }}",
-                     "nethermind_branch": "${{ env.CLEAN_REF }}",
-                     "network": "${{ inputs.network }}",
-                     "cl_client": "${{ inputs.cl_client }}",
-                     "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ inputs.timeout }}\", \"non_validator_mode\":${{ inputs.non_validator_mode }}, \"volume_size\":\"${{ inputs.volume }}\", \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ inputs.ssh_keys }}\"}"
-                   }'
+      run: |
+        echo $INPUTS | gh -R $WORKFLOW_REPO workflow run $WORKFLOW_ID --ref $WORKFLOW_REF --json
+      env:
+        WORKFLOW_ID: 'run-single-node.yml'
+        WORKFLOW_REF: main
+        WORKFLOW_REPO: NethermindEth/post-merge-smoke-tests
+        GITHUB_USER: ${{ secrets.REPOSITORY_DISPATCH_USER }} 
+        GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+        INPUTS: >
+          {
+            "github_username": "${{ github.actor }}",
+            "base_tag": "${{ env.BASE_TAG }}",
+            "config_file": "${{ inputs.config }}",
+            "nethermind_branch": "${{ env.CLEAN_REF }}",
+            "network": "${{ inputs.network }}",
+            "cl_client": "${{ inputs.cl_client }}",
+            "additional_options": 
+              "{
+                \"cl_custom_image\":\"${{ inputs.cl_custom_image }}\",
+                \"timeout\":\"${{ inputs.timeout }}\",
+                \"non_validator_mode\":\"${{ inputs.non_validator_mode }}\",
+                \"volume\":\"${{ inputs.volume }}\",
+                \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\",
+                \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\",
+                \"ssh_keys\":\"${{ inputs.ssh_keys }}\"
+              }"
+          }
 
     - name: Wait for creation of node
       env:
