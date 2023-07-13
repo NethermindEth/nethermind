@@ -37,6 +37,8 @@ class Application
 
     public async Task Run()
     {
+        _progressReporter.ReportStart();
+
         using (_metrics.TimeTotal())
         {
             await foreach (var (jsonRpc, n) in _msgProvider.Messages.Indexed(startingFrom: 1))

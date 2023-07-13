@@ -9,30 +9,28 @@ public class ConsoleProgressReporter : IProgressReporter
 {
     private readonly string _suffix;
 
-    private int? _lastIndex;
+    private int _lastN;
 
     public ConsoleProgressReporter(int total)
     {
         _suffix = $"/{total}";
     }
 
+    public void ReportStart()
+    {
+        Console.Write($"Progress: 0{_suffix}");
+    }
+
     public void ReportProgress(int n)
     {
         var sb = new StringBuilder();
 
-        if (_lastIndex == null)
-        {
-            sb.Append("Processed: ");
-        }
-        else
-        {
-            sb.Append('\b', _lastIndex!.ToString()!.Length + _suffix.Length);
-        }
+        sb.Append('\b', _lastN.ToString().Length + _suffix.Length);
         sb.Append(n);
         sb.Append(_suffix);
 
         Console.Write(sb);
-        _lastIndex = n;
+        _lastN = n;
     }
 
     public void ReportComplete()

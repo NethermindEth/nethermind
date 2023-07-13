@@ -5,6 +5,7 @@ namespace Nethermind.Tools.Kute.ProgressReporter;
 
 public interface IProgressReporter
 {
+    public void ReportStart();
     public void ReportProgress(int n);
     public void ReportComplete();
 }
