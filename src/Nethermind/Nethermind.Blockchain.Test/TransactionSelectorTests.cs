@@ -233,11 +233,17 @@ namespace Nethermind.Blockchain.Test
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
             Dictionary<Address, Transaction[]> transactions = testCase.Transactions
                 .Where(t => t?.SenderAddress is not null)
+                .Where(t => !t.SupportsBlobs)
                 .GroupBy(t => t.SenderAddress)
                 .ToDictionary(
                     g => g.Key!,
                     g => g.OrderBy(t => t, comparer).ToArray());
+            Transaction[] blobTransactions = testCase.Transactions
+                .Where(t => t?.SenderAddress is not null)
+                .Where(t => t.SupportsBlobs)
+                .ToArray();
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
+            transactionPool.GetBlobTransactions().Returns(blobTransactions);
             BlocksConfig blocksConfig = new() { MinGasPrice = testCase.MinGasPriceForMining };
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
                 .WithMinGasPriceFilter(blocksConfig, specProvider)

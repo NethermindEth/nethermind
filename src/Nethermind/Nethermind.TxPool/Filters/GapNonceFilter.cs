@@ -15,11 +15,13 @@ namespace Nethermind.TxPool.Filters
     internal sealed class GapNonceFilter : IIncomingTxFilter
     {
         private readonly TxDistinctSortedPool _txs;
+        private readonly TxDistinctSortedPool _blobTxs;
         private readonly ILogger _logger;
 
-        public GapNonceFilter(TxDistinctSortedPool txs, ILogger logger)
+        public GapNonceFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger)
         {
             _txs = txs;
+            _blobTxs = blobTxs;
             _logger = logger;
         }
 
@@ -31,7 +33,9 @@ namespace Nethermind.TxPool.Filters
                 return AcceptTxResult.Accepted;
             }
 
-            int numberOfSenderTxsInPending = _txs.GetBucketCount(tx.SenderAddress!); // since unknownSenderFilter will run before this one
+            int numberOfSenderTxsInPending = tx.SupportsBlobs
+                ? _blobTxs.GetBucketCount(tx.SenderAddress!)
+                : _txs.GetBucketCount(tx.SenderAddress!); // since unknownSenderFilter will run before this one
             UInt256 currentNonce = state.SenderAccount.Nonce;
             long nextNonceInOrder = (long)currentNonce + numberOfSenderTxsInPending;
             bool isTxNonceNextInOrder = tx.Nonce <= nextNonceInOrder;

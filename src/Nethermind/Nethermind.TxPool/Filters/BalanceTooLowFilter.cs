@@ -14,11 +14,13 @@ namespace Nethermind.TxPool.Filters
     internal sealed class BalanceTooLowFilter : IIncomingTxFilter
     {
         private readonly TxDistinctSortedPool _txs;
+        private readonly TxDistinctSortedPool _blobTxs;
         private readonly ILogger _logger;
 
-        public BalanceTooLowFilter(TxDistinctSortedPool txs, ILogger logger)
+        public BalanceTooLowFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger)
         {
             _txs = txs;
+            _blobTxs = blobTxs;
             _logger = logger;
         }
 
@@ -34,11 +36,13 @@ namespace Nethermind.TxPool.Filters
 
             UInt256 cumulativeCost = UInt256.Zero;
             bool overflow = false;
-            Transaction[] transactions = _txs.GetBucketSnapshot(tx.SenderAddress!); // since unknownSenderFilter will run before this one
+            Transaction[] sameTypeTxs = tx.SupportsBlobs
+                ? _blobTxs.GetBucketSnapshot(tx.SenderAddress!)
+                : _txs.GetBucketSnapshot(tx.SenderAddress!); // since unknownSenderFilter will run before this one
 
-            for (int i = 0; i < transactions.Length; i++)
+            for (int i = 0; i < sameTypeTxs.Length; i++)
             {
-                Transaction otherTx = transactions[i];
+                Transaction otherTx = sameTypeTxs[i];
                 if (otherTx.Nonce < account.Nonce)
                 {
                     continue;

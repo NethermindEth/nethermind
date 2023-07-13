@@ -153,81 +153,83 @@ public class TxBroadcasterTests
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(25)]
-    [TestCase(50)]
-    [TestCase(99)]
-    [TestCase(100)]
-    [TestCase(101)]
-    [TestCase(1000)]
-    public void should_skip_blob_txs_when_picking_best_persistent_txs_to_broadcast(int threshold)
-    {
-        _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
-        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee.Returns(0.GWei());
-
-        int addedTxsCount = TestItem.PrivateKeys.Length;
-        Transaction[] transactions = new Transaction[addedTxsCount];
-
-        for (int i = 0; i < addedTxsCount; i++)
-        {
-            bool isBlob = i % 10 == 0;
-            transactions[i] = Build.A.Transaction
-                .WithGasPrice((addedTxsCount - i - 1).GWei())
-                .WithType(isBlob ? TxType.Blob : TxType.Legacy) //some part of txs (10%) is blob type
-                .WithShardBlobTxTypeAndFieldsIfBlobTx()
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
-                .TestObject;
-
-            _broadcaster.Broadcast(transactions[i], true);
-        }
-
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
-
-        (IList<Transaction> pickedTxs, IList<Transaction> pickedHashes) = _broadcaster.GetPersistentTxsToSend();
-
-        int expectedCountTotal = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
-        int expectedCountOfBlobHashes = expectedCountTotal / 10 + 1;
-        int expectedCountOfNonBlobTxs = expectedCountTotal - expectedCountOfBlobHashes;
-        if (expectedCountOfNonBlobTxs > 0)
-        {
-            pickedTxs.Count.Should().Be(expectedCountOfNonBlobTxs);
-        }
-        else
-        {
-            pickedTxs.Should().BeNull();
-        }
-
-        if (expectedCountOfBlobHashes > 0)
-        {
-            pickedHashes.Count.Should().Be(expectedCountOfBlobHashes);
-        }
-        else
-        {
-            pickedHashes.Should().BeNull();
-        }
-
-        List<Transaction> expectedTxs = new();
-        List<Transaction> expectedHashes = new();
-
-        for (int i = 0; i < expectedCountTotal; i++)
-        {
-            Transaction tx = transactions[i];
-
-            if (!tx.SupportsBlobs)
-            {
-                expectedTxs.Add(tx);
-            }
-            else
-            {
-                expectedHashes.Add(tx);
-            }
-        }
-
-        expectedTxs.Should().BeEquivalentTo(pickedTxs);
-        expectedHashes.Should().BeEquivalentTo(pickedHashes);
-    }
+    // commented out as for now we are not adding blob txs to persistent at all.
+    // work is still in progress so it might be back - keeping commented out for now
+    // [TestCase(1)]
+    // [TestCase(2)]
+    // [TestCase(25)]
+    // [TestCase(50)]
+    // [TestCase(99)]
+    // [TestCase(100)]
+    // [TestCase(101)]
+    // [TestCase(1000)]
+    // public void should_skip_blob_txs_when_picking_best_persistent_txs_to_broadcast(int threshold)
+    // {
+    //     _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
+    //     _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+    //     _headInfo.CurrentBaseFee.Returns(0.GWei());
+    //
+    //     int addedTxsCount = TestItem.PrivateKeys.Length;
+    //     Transaction[] transactions = new Transaction[addedTxsCount];
+    //
+    //     for (int i = 0; i < addedTxsCount; i++)
+    //     {
+    //         bool isBlob = i % 10 == 0;
+    //         transactions[i] = Build.A.Transaction
+    //             .WithGasPrice((addedTxsCount - i - 1).GWei())
+    //             .WithType(isBlob ? TxType.Blob : TxType.Legacy) //some part of txs (10%) is blob type
+    //             .WithShardBlobTxTypeAndFieldsIfBlobTx()
+    //             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
+    //             .TestObject;
+    //
+    //         _broadcaster.Broadcast(transactions[i], true);
+    //     }
+    //
+    //     _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+    //
+    //     (IList<Transaction> pickedTxs, IList<Transaction> pickedHashes) = _broadcaster.GetPersistentTxsToSend();
+    //
+    //     int expectedCountTotal = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
+    //     int expectedCountOfBlobHashes = expectedCountTotal / 10 + 1;
+    //     int expectedCountOfNonBlobTxs = expectedCountTotal - expectedCountOfBlobHashes;
+    //     if (expectedCountOfNonBlobTxs > 0)
+    //     {
+    //         pickedTxs.Count.Should().Be(expectedCountOfNonBlobTxs);
+    //     }
+    //     else
+    //     {
+    //         pickedTxs.Should().BeNull();
+    //     }
+    //
+    //     if (expectedCountOfBlobHashes > 0)
+    //     {
+    //         pickedHashes.Count.Should().Be(expectedCountOfBlobHashes);
+    //     }
+    //     else
+    //     {
+    //         pickedHashes.Should().BeNull();
+    //     }
+    //
+    //     List<Transaction> expectedTxs = new();
+    //     List<Transaction> expectedHashes = new();
+    //
+    //     for (int i = 0; i < expectedCountTotal; i++)
+    //     {
+    //         Transaction tx = transactions[i];
+    //
+    //         if (!tx.SupportsBlobs)
+    //         {
+    //             expectedTxs.Add(tx);
+    //         }
+    //         else
+    //         {
+    //             expectedHashes.Add(tx);
+    //         }
+    //     }
+    //
+    //     expectedTxs.Should().BeEquivalentTo(pickedTxs);
+    //     expectedHashes.Should().BeEquivalentTo(pickedHashes);
+    // }
 
     [TestCase(1)]
     [TestCase(2)]

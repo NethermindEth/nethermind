@@ -76,6 +76,10 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult SenderIsContract = new(12, nameof(SenderIsContract));
 
+        /// <summary>
+        /// Ignores blob transactions if sender already have pending transactions of other types; ignore other types if has already pending blobs
+        /// </summary>
+        public static readonly AcceptTxResult PendingTxsOfOtherType = new(13, nameof(PendingTxsOfOtherType));
 
         private int Id { get; }
         private string Code { get; }

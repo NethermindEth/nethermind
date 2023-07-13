@@ -98,8 +98,9 @@ namespace Nethermind.TxPool
         private void StartBroadcast(Transaction tx)
         {
             NotifyPeersAboutLocalTx(tx);
-            if (tx.Hash is not null)
+            if (tx.Hash is not null && !tx.SupportsBlobs)
             {
+                // somehow save only hashes of persistent blob txs? Or not add them here at all? Not add at all for now
                 _persistentTxs.TryInsert(tx.Hash, tx);
             }
         }

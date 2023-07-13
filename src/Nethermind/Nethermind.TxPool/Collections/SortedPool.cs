@@ -173,7 +173,7 @@ namespace Nethermind.TxPool.Collections
         /// <param name="bucket">Bucket for same sender transactions.</param>
         /// <returns>If element was removed. False if element was not present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryRemove(TKey key, out TValue? value, [NotNullWhen(true)] out ICollection<TValue>? bucket) =>
+        private bool TryRemove(TKey key, out TValue? value, [NotNullWhen(true)] out ICollection<TValue>? bucket) =>
             TryRemove(key, false, out value, out bucket);
 
         private bool TryRemove(TKey key, bool evicted, [NotNullWhen(true)] out TValue? value, out ICollection<TValue>? bucket)
@@ -275,7 +275,7 @@ namespace Nethermind.TxPool.Collections
         /// <param name="removed">Element removed because of exceeding capacity</param>
         /// <returns>If element was inserted. False if element was already present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryInsert(TKey key, TValue value, out TValue? removed)
+        public virtual bool TryInsert(TKey key, TValue value, out TValue? removed)
         {
             if (CanInsert(key, value))
             {

@@ -15,10 +15,16 @@ namespace Nethermind.TxPool
         Transaction[] GetPendingTransactions();
 
         /// <summary>
-        /// Grouped by sender address, sorted by nonce and later tx pool sorting
+        /// Non-blob txs grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
         /// <returns></returns>
         IDictionary<Address, Transaction[]> GetPendingTransactionsBySender();
+
+        /// <summary>
+        /// Lazy return blob txs starting from the best one
+        /// </summary>
+        /// <returns></returns>
+        IEnumerable<Transaction> GetBlobTransactions();
 
         /// <summary>
         /// from a specific sender, sorted by nonce and later tx pool sorting
