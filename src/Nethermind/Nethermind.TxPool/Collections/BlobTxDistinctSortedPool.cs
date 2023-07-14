@@ -24,7 +24,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
     {
         Transaction lightBlobTx = new()
         {
-            // Type = TxType.Blob,
+            Type = TxType.Blob,
             Nonce = fullBlobTx.Nonce,
             GasLimit = fullBlobTx.GasLimit,
             GasPrice = fullBlobTx.GasPrice, // means MaxPriorityFeePerGas

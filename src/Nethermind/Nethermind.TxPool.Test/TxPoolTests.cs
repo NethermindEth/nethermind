@@ -1791,6 +1791,39 @@ namespace Nethermind.TxPool.Test
             blobTxReturned.Should().BeEquivalentTo(blobTxAdded);
         }
 
+        [Test]
+        public void should_remove_replaced_blob_tx()
+        {
+            const int initialFee = 10;
+            TxPoolConfig txPoolConfig = new TxPoolConfig() { Size = 10 };
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction oldTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithNonce(UInt256.Zero)
+                .WithMaxFeePerGas(initialFee)
+                .WithMaxPriorityFeePerGas(initialFee)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Transaction newTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithNonce(UInt256.Zero)
+                .WithMaxFeePerGas(initialFee * 2)
+                .WithMaxPriorityFeePerGas(initialFee * 2)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            _txPool.SubmitTx(oldTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
+            _txPool.TryGetPendingTransaction(oldTx.Hash!, out Transaction blobTxReturned).Should().BeTrue();
+            blobTxReturned.Should().BeEquivalentTo(oldTx);
+
+            _txPool.SubmitTx(newTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
+            _txPool.TryGetPendingTransaction(newTx.Hash!, out blobTxReturned).Should().BeTrue();
+            blobTxReturned.Should().BeEquivalentTo(newTx);
+        }
+
         [TestCase(0, 97)]
         [TestCase(1, 131324)]
         [TestCase(2, 262534)]
