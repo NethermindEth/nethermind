@@ -18,7 +18,7 @@ namespace Nethermind.Merge.Plugin.Data;
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayload</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayload : IForkValidator
+public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 {
     public ExecutionPayload() { } // Needed for tests
 
@@ -165,6 +165,8 @@ public class ExecutionPayload : IForkValidator
 
     public override string ToString() => $"{BlockNumber} ({BlockHash.ToShortString()})";
 
+    ExecutionPayload IExecutionPayloadParams.ExecutionPayload => this;
+
     public virtual bool ValidateParams(IReleaseSpec spec, int version, [NotNullWhen(false)] out string? error)
     {
         int GetVersion() => Withdrawals is null ? 1 : 2;
@@ -189,7 +191,4 @@ public class ExecutionPayload : IForkValidator
 
     public virtual bool ValidateFork(ISpecProvider specProvider) =>
         !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
-
-    public bool ValidateParams(ISpecProvider specProvider, int version, [NotNullWhen(false)] out string? error) =>
-            ValidateParams(specProvider.GetSpec(BlockNumber, Timestamp), version, out error);
 }

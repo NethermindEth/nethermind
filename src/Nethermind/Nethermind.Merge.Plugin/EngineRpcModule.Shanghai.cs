@@ -30,5 +30,5 @@ public partial class EngineRpcModule : IEngineRpcModule
         => _executionGetPayloadBodiesByRangeV1Handler.Handle(start, count);
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayload executionPayload)
-        => ValidateFork(executionPayload) ?? NewPayload(executionPayload, 2);
+        => NewPayload(executionPayload, 2);
 }

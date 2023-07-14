@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
@@ -64,9 +65,18 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
     }
 
-    private async Task<ResultWrapper<PayloadStatusV1>> NewPayload(ExecutionPayload executionPayload, int version)
+    private async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
-        if (!executionPayload.ValidateParams(_specProvider, version, out string? error))
+        ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
+
+        if (!executionPayload.ValidateFork(_specProvider))
+        {
+            if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
+            return ResultWrapper<PayloadStatusV1>.Fail("unsupported fork", ErrorCodes.UnsupportedFork);
+        }
+
+        IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
+        if (!executionPayloadParams.ValidateParams(releaseSpec, version, out string? error))
         {
             if (_logger.IsWarn) _logger.Warn(error);
             return ResultWrapper<PayloadStatusV1>.Fail(error, ErrorCodes.InvalidParams);
