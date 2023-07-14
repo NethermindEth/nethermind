@@ -118,6 +118,14 @@ namespace Nethermind.Db
         [Description("Number of Metadata DB writes.")]
         public static long MetadataDbWrites { get; set; }
 
+        [CounterMetric]
+        [Description("Number of BlobTransactions DB reads.")]
+        public static long BlobTransactionsDbReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of BlobTransactions DB writes.")]
+        public static long BlobTransactionsDbWrites { get; set; }
+
         [GaugeMetric]
         [Description("Indicator if StadeDb is being pruned.")]
         public static int StateDbPruning { get; set; }

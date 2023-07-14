@@ -32,6 +32,8 @@ namespace Nethermind.Db
 
         public IDb MetadataDb => GetDb<IDb>(DbNames.Metadata);
 
+        public IDb BlobTransactionsDb => GetDb<IDb>(DbNames.BlobTransactions);
+
         T GetDb<T>(string dbName) where T : class, IDb;
 
         void RegisterDb<T>(string dbName, T db) where T : class, IDb;
