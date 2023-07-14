@@ -5,7 +5,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public interface IValidateFork
+public interface IForkValidator
 {
     bool ValidateFork(ISpecProvider specProvider);
 }

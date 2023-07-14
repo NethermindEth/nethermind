@@ -11,7 +11,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public abstract class GetPayloadHandlerBase<TGetPayloadResult> : IAsyncHandler<byte[], TGetPayloadResult?> where TGetPayloadResult : IValidateFork
+public abstract class GetPayloadHandlerBase<TGetPayloadResult> : IAsyncHandler<byte[], TGetPayloadResult?> where TGetPayloadResult : IForkValidator
 {
     private readonly int _apiVersion;
     private readonly IPayloadPreparationService _payloadPreparationService;

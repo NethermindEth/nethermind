@@ -8,7 +8,7 @@ using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class GetPayloadV2Result : IValidateFork
+public class GetPayloadV2Result : IForkValidator
 {
     public GetPayloadV2Result(Block block, UInt256 blockFees)
     {
