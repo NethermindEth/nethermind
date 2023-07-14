@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://user-images.githubusercontent.com/1142958/253613129-21f0116d-78f6-49b9-ad74-bb5737081d57.png">
     <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/1142958/253613175-7a31be18-c1df-47b6-83ae-22c2fa75909c.png">
-    <img alt="Nethermind" src="https://user-images.githubusercontent.com/1142958/253613175-7a31be18-c1df-47b6-83ae-22c2fa75909c.png" height="64">
+    <img alt="Nethermind" src="https://user-images.githubusercontent.com/1142958/253613175-7a31be18-c1df-47b6-83ae-22c2fa75909c.png" height="128">
   </picture>
 </p>
 
