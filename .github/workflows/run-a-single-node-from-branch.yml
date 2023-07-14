@@ -64,6 +64,10 @@ on:
         description: "SSH Keys to be installed in the smoke test nodes (separated by commas without space in-between commas) for example: key1,key2,key3"
         default: ""
         required: false
+      smoke_tests_ref:
+        description: "Ref of the smoke tests repository to be used for smoke tests"
+        default: "main"
+        required: false
       
 jobs:
   create_docker_image:
@@ -72,7 +76,7 @@ jobs:
       base_tag: ${{ steps.set-base-tag.outputs.base_tag }}
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     - name: Prepare docker tag
       id: prepare_ref
@@ -98,21 +102,25 @@ jobs:
         echo "REPO=$(echo $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
     
     - name: Trigger Docker Build Action with Cleaned Ref
-      uses: benc-uk/workflow-dispatch@v1
-      with:
-          workflow: build-nethermind-docker-images.yml
-          ref: "${{ github.ref }}"
-          token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
-          inputs: '{
-              "repo": "${{ env.REPO }}",
-              "tag": "${{ env.CLEAN_REF }}",
-              "dockerfile": "Dockerfile"
-           }'
+      run: |
+        echo $INPUTS | gh workflow run $WORKFLOW_ID --ref $WORKFLOW_REF --json
+      env:
+        WORKFLOW_ID: 'build-nethermind-docker-images.yml'
+        WORKFLOW_REF: ${{ github.ref }}
+        GITHUB_USER: ${{ secrets.REPOSITORY_DISPATCH_USER }} 
+        GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+        INPUTS: >
+          '{
+            "repo": "${{ env.REPO }}",
+            "tag": "${{ env.CLEAN_REF }}",
+            "dockerfile": "Dockerfile"
+          }'
 
     - name: Set Repo and Org Variables
       run: |
         echo "ORG_NAME=$(echo $GITHUB_REPOSITORY | cut -d / -f 1)" >> $GITHUB_ENV
         echo "REPO_NAME=$(echo $GITHUB_REPOSITORY | cut -d / -f 2)" >> $GITHUB_ENV
+
     - name: Wait for Docker Build Action to complete
       env:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
@@ -133,7 +141,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     - name: Prepare docker tag
       id: prepare_ref
@@ -152,7 +160,7 @@ jobs:
         echo $INPUTS | gh -R $WORKFLOW_REPO workflow run $WORKFLOW_ID --ref $WORKFLOW_REF --json
       env:
         WORKFLOW_ID: 'run-single-node.yml'
-        WORKFLOW_REF: main
+        WORKFLOW_REF: ${{ inputs.smoke_tests_ref }}
         WORKFLOW_REPO: NethermindEth/post-merge-smoke-tests
         GITHUB_USER: ${{ secrets.REPOSITORY_DISPATCH_USER }} 
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
