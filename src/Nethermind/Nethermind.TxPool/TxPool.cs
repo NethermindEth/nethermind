@@ -100,7 +100,7 @@ namespace Nethermind.TxPool
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
             // we need some limit of blob txs, but extremely high to be limitless in practice
-            _blobTransactions = new BlobTxDistinctSortedPool(32 * MemoryAllowance.MemPoolSize, comparer, logManager);
+            _blobTransactions = new BlobTxDistinctSortedPool(_blobTxStorage, 32 * MemoryAllowance.MemPoolSize, comparer, logManager);
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
 
             _headInfo.HeadChanged += OnHeadChange;
@@ -386,7 +386,7 @@ namespace Nethermind.TxPool
                     : worstTx.GasBottleneck;
 
                 bool inserted = (tx.SupportsBlobs
-                    ? _blobTransactions.TryInsert(tx.Hash!, tx, out Transaction? removed)
+                    ? _blobTransactions.TryInsert(tx, out Transaction? removed)
                     : _transactions.TryInsert(tx.Hash!, tx, out removed));
                 if (inserted && tx.Hash != removed?.Hash)
                 {

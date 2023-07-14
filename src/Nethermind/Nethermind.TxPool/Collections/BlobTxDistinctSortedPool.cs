@@ -11,16 +11,21 @@ namespace Nethermind.TxPool.Collections;
 
 public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 {
+    private readonly ITxStorage _blobTxStorage;
     private readonly LruCache<ValueKeccak, Transaction> _blobTxCache = new(256, 256, "blob txs cache");
 
-    public BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
+    public BlobTxDistinctSortedPool(ITxStorage blobTxStorage, int capacity, IComparer<Transaction> comparer, ILogManager logManager)
         : base(capacity, comparer, logManager)
     {
+        _blobTxStorage = blobTxStorage;
     }
 
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer) => comparer.GetBlobReplacementComparer();
 
-    public override bool TryInsert(ValueKeccak hash, Transaction fullBlobTx, out Transaction? removed)
+    public bool TryInsert(Transaction fullBlobTx, out Transaction? removed) =>
+        TryInsert(fullBlobTx.Hash!, fullBlobTx, out removed);
+
+    private bool TryInsert(Keccak hash, Transaction fullBlobTx, out Transaction? removed)
     {
         Transaction lightBlobTx = new()
         {
@@ -33,13 +38,14 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
             BlobVersionedHashes = new byte[fullBlobTx.BlobVersionedHashes!.Length][],
             Value = fullBlobTx.Value,
             SenderAddress = fullBlobTx.SenderAddress,
-            Hash = hash.ToKeccak(),
+            Hash = hash,
+            GasBottleneck = fullBlobTx.GasBottleneck,
         };
 
         if (base.TryInsert(hash, lightBlobTx, out removed))
         {
             _blobTxCache.Set(hash, fullBlobTx);
-            // save to db fullBlobTx
+            _blobTxStorage.Add(fullBlobTx);
             return true;
         }
 
@@ -60,17 +66,16 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
     {
         if (base.TryGetValue(hash, out Transaction? lightBlobTx))
         {
-            // if (!_blobTxCache.TryGet(hash, out fullBlobTx))
-            // {
-            //     if (_blobTxsDb.TryGet(hash, fullBlobTx))
-            //     {
-            //         _blobTxCache.Set(hash, fullBlobTx);
-            //         return true;
-            //     }
-            // }
-            // return false;
+            if (_blobTxCache.TryGet(hash, out fullBlobTx))
+            {
+                return true;
+            }
 
-            return _blobTxCache.TryGet(hash, out fullBlobTx);
+            if (_blobTxStorage.TryGet(hash, out fullBlobTx))
+            {
+                _blobTxCache.Set(hash, fullBlobTx!);
+                return true;
+            }
         }
 
         fullBlobTx = default;
@@ -80,7 +85,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
     protected override bool Remove(ValueKeccak hash, Transaction tx)
     {
         _blobTxCache.Delete(hash);
-        // delete from db here
+        _blobTxStorage.Delete(hash);
         return base.Remove(hash, tx);
     }
 }

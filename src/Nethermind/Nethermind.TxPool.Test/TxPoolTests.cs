@@ -1796,7 +1796,8 @@ namespace Nethermind.TxPool.Test
         {
             const int initialFee = 10;
             TxPoolConfig txPoolConfig = new() { Size = 10 };
-            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+            BlobTxStorage blobTxStorage = new(new MemDb());
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction oldTx = Build.A.Transaction
@@ -1814,15 +1815,27 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerDataGas(oldTx.MaxFeePerDataGas * 2)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
+
             _txPool.SubmitTx(oldTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
             _txPool.TryGetPendingTransaction(oldTx.Hash!, out Transaction blobTxReturned).Should().BeTrue();
             blobTxReturned.Should().BeEquivalentTo(oldTx);
+            blobTxStorage.TryGet(oldTx.Hash, out Transaction blobTxFromDb).Should().BeTrue();
+            blobTxFromDb.Should().BeEquivalentTo(oldTx, options => options
+                .Excluding(t => t.SenderAddress) // sender is not encoded/decoded...
+                .Excluding(t => t.GasBottleneck) // ...as well as GasBottleneck...
+                .Excluding(t => t.PoolIndex));   // ...and PoolIndex
 
             _txPool.SubmitTx(newTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
             _txPool.TryGetPendingTransaction(newTx.Hash!, out blobTxReturned).Should().BeTrue();
             blobTxReturned.Should().BeEquivalentTo(newTx);
+            blobTxStorage.TryGet(oldTx.Hash, out blobTxFromDb).Should().BeFalse();
+            blobTxStorage.TryGet(newTx.Hash, out  blobTxFromDb).Should().BeTrue();
+            blobTxFromDb.Should().BeEquivalentTo(newTx, options => options
+                .Excluding(t => t.SenderAddress) // sender is not encoded/decoded...
+                .Excluding(t => t.GasBottleneck) // ...as well as GasBottleneck...
+                .Excluding(t => t.PoolIndex));   // ...and PoolIndex
         }
 
         [TestCase(0, 97)]
@@ -1860,18 +1873,20 @@ namespace Nethermind.TxPool.Test
             ISpecProvider specProvider = null,
             ChainHeadInfoProvider chainHeadInfoProvider = null,
             IIncomingTxFilter incomingTxFilter = null,
+            ITxStorage txStorage = null,
             bool thereIsPriorityContract = false)
         {
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
+            txStorage ??= new BlobTxStorage(new MemDb());
 
             _headInfo = chainHeadInfoProvider;
             _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
 
             return new TxPool(
                 _ethereumEcdsa,
-                new BlobTxStorage(new MemDb()),
+                txStorage,
                 _headInfo,
                 config ?? new TxPoolConfig() { GasLimit = _txGasLimit },
                 new TxValidator(_specProvider.ChainId),

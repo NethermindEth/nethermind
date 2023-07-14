@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -19,26 +19,37 @@ public class BlobTxStorage : ITxStorage
         _database = database ?? throw new ArgumentNullException(nameof(database));
     }
 
-    public Transaction? Get(Keccak hash) => Decode(_database.Get(hash));
+    public bool TryGet(Keccak hash, out Transaction? transaction) => TryDecode(_database.Get(hash), out transaction);
 
-    public Transaction?[] GetAll()
+    public IEnumerable<Transaction> GetAll()
     {
-        byte[][] transactionsBytes = _database.GetAllValues().ToArray();
-        if (transactionsBytes.Length == 0)
+        foreach (byte[] txBytes in _database.GetAllValues())
         {
-            return Array.Empty<Transaction>();
+            if (TryDecode(txBytes, out Transaction? transaction))
+            {
+                yield return transaction!;
+            }
         }
-
-        Transaction?[] transactions = new Transaction[transactionsBytes.Length];
-        for (int i = 0; i < transactionsBytes.Length; i++)
-        {
-            transactions[i] = Decode(transactionsBytes[i]);
-        }
-
-        return transactions;
     }
 
-    private static Transaction? Decode(byte[]? bytes) => bytes == null ? null : Rlp.Decode<Transaction>(new Rlp(bytes));
+    private static bool TryDecode(byte[]? txBytes, out Transaction? transaction)
+    {
+        if (txBytes is not null)
+        {
+            try
+            {
+                transaction = Rlp.Decode<Transaction>(new Rlp(txBytes), RlpBehaviors.InMempoolForm);
+                return true;
+            }
+            catch (Exception)
+            {
+                // ignored
+            }
+        }
+
+        transaction = default;
+        return false;
+    }
 
     public void Add(Transaction transaction)
     {
@@ -47,8 +58,8 @@ public class BlobTxStorage : ITxStorage
             throw new ArgumentNullException(nameof(transaction));
         }
 
-        _database.Set(transaction.Hash, Rlp.Encode(transaction, RlpBehaviors.None).Bytes);
+        _database.Set(transaction.Hash, Rlp.Encode(transaction, RlpBehaviors.InMempoolForm).Bytes);
     }
 
-    public void Remove(Keccak hash) => _database.Remove(hash.Bytes);
+    public void Delete(ValueKeccak hash) => _database.Remove(hash.Bytes);
 }
