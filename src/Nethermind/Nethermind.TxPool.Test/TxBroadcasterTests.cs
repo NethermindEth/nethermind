@@ -111,13 +111,8 @@ public class TxBroadcasterTests
         peer.Received(2).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(99)]
-    [TestCase(100)]
-    [TestCase(101)]
-    [TestCase(1000)]
-    public void should_pick_best_persistent_txs_to_broadcast(int threshold)
+    [Test]
+    public void should_pick_best_persistent_txs_to_broadcast([Values(1, 2, 99, 100, 101, 1000)] int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
@@ -222,13 +217,8 @@ public class TxBroadcasterTests
         expectedHashes.Should().BeEquivalentTo(pickedHashes);
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(99)]
-    [TestCase(100)]
-    [TestCase(101)]
-    [TestCase(1000)]
-    public void should_not_pick_txs_with_GasPrice_lower_than_CurrentBaseFee(int threshold)
+    [Test]
+    public void should_not_pick_txs_with_GasPrice_lower_than_CurrentBaseFee([Values(1, 2, 99, 100, 101, 1000)] int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
@@ -271,13 +261,8 @@ public class TxBroadcasterTests
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(99)]
-    [TestCase(100)]
-    [TestCase(101)]
-    [TestCase(1000)]
-    public void should_not_pick_1559_txs_with_MaxFeePerGas_lower_than_CurrentBaseFee(int threshold)
+    [Test]
+    public void should_not_pick_1559_txs_with_MaxFeePerGas_lower_than_CurrentBaseFee([Values(1, 2, 99, 100, 101, 1000)] int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
