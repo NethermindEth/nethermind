@@ -72,8 +72,13 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
-            TxPool.TxPool txPool = new(ethereumEcdsa, new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), blockTree, stateProvider), new TxPoolConfig(),
-                new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
+            TxPool.TxPool txPool = new(ethereumEcdsa,
+                new BlobTxStorage(new MemDb()),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), blockTree, stateProvider),
+                new TxPoolConfig(),
+                new TxValidator(specProvider.ChainId),
+                LimboLogs.Instance,
+                transactionComparerProvider.GetDefaultComparer());
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
 
@@ -345,8 +350,13 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
-            TxPool.TxPool txPool = new(ethereumEcdsa, new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), blockTree, new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)), new TxPoolConfig(),
-                new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
+            TxPool.TxPool txPool = new(ethereumEcdsa,
+                new BlobTxStorage(new MemDb()),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), blockTree, new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)),
+                new TxPoolConfig(),
+                new TxValidator(specProvider.ChainId),
+                LimboLogs.Instance,
+                transactionComparerProvider.GetDefaultComparer());
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
 
@@ -377,8 +387,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
-            TxPool.TxPool txPool = new(ethereumEcdsa, new ChainHeadInfoProvider(specProvider, blockTree, new StateReader(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)), new TxPoolConfig(),
-                new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
+            TxPool.TxPool txPool = new(ethereumEcdsa,
+                new BlobTxStorage(new MemDb()),
+                new ChainHeadInfoProvider(specProvider, blockTree, new StateReader(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)),
+                new TxPoolConfig(),
+                new TxValidator(specProvider.ChainId),
+                LimboLogs.Instance,
+                transactionComparerProvider.GetDefaultComparer());
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
 

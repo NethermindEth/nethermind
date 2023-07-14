@@ -36,17 +36,15 @@ namespace Nethermind.TxPool
         private readonly IIncomingTxFilter[] _postHashFilters;
 
         private readonly HashCache _hashCache = new();
-
         private readonly TxBroadcaster _broadcaster;
 
         private readonly TxDistinctSortedPool _transactions;
-
         private readonly BlobTxDistinctSortedPool _blobTransactions;
 
+        private readonly ITxStorage _blobTxStorage;
+
         private readonly IChainHeadSpecProvider _specProvider;
-
         private readonly IAccountStateProvider _accounts;
-
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
 
@@ -69,6 +67,7 @@ namespace Nethermind.TxPool
         /// (by miners or validators) or simply informing other nodes about known pending transactions (broadcasting).
         /// </summary>
         /// <param name="ecdsa">Used to recover sender addresses from transaction signatures.</param>
+        /// <param name="blobTxStorage"></param>
         /// <param name="chainHeadInfoProvider"></param>
         /// <param name="txPoolConfig"></param>
         /// <param name="validator"></param>
@@ -79,6 +78,7 @@ namespace Nethermind.TxPool
         /// <param name="thereIsPriorityContract"></param>
         /// <param name="txStorage">Tx storage used to reject known transactions.</param>
         public TxPool(IEthereumEcdsa ecdsa,
+            ITxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
             ITxPoolConfig txPoolConfig,
             ITxValidator validator,
@@ -89,6 +89,7 @@ namespace Nethermind.TxPool
             bool thereIsPriorityContract = false)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
             _accounts = _headInfo.AccountStateProvider;

@@ -273,6 +273,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
         return new TxPool.TxPool(
             _api.EthereumEcdsa,
+            new BlobTxStorage(_api.DbProvider.BlobTransactionsDb),
             new ChainHeadInfoProvider(_api.SpecProvider, _api.BlockTree, _api.StateReader),
             NethermindApi.Config<ITxPoolConfig>(),
             _api.TxValidator,

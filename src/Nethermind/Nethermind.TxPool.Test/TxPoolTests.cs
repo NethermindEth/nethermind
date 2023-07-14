@@ -1871,6 +1871,7 @@ namespace Nethermind.TxPool.Test
 
             return new TxPool(
                 _ethereumEcdsa,
+                new BlobTxStorage(new MemDb()),
                 _headInfo,
                 config ?? new TxPoolConfig() { GasLimit = _txGasLimit },
                 new TxValidator(_specProvider.ChainId),
