@@ -30,6 +30,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
             GasPrice = fullBlobTx.GasPrice, // means MaxPriorityFeePerGas
             DecodedMaxFeePerGas = fullBlobTx.DecodedMaxFeePerGas,
             MaxFeePerDataGas = fullBlobTx.MaxFeePerDataGas,
+            BlobVersionedHashes = new byte[fullBlobTx.BlobVersionedHashes!.Length][],
             Value = fullBlobTx.Value,
             SenderAddress = fullBlobTx.SenderAddress,
             Hash = hash.ToKeccak(),

@@ -1795,7 +1795,7 @@ namespace Nethermind.TxPool.Test
         public void should_remove_replaced_blob_tx()
         {
             const int initialFee = 10;
-            TxPoolConfig txPoolConfig = new TxPoolConfig() { Size = 10 };
+            TxPoolConfig txPoolConfig = new() { Size = 10 };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
@@ -1809,8 +1809,9 @@ namespace Nethermind.TxPool.Test
             Transaction newTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
                 .WithNonce(UInt256.Zero)
-                .WithMaxFeePerGas(initialFee * 2)
-                .WithMaxPriorityFeePerGas(initialFee * 2)
+                .WithMaxFeePerGas(oldTx.MaxFeePerGas * 2)
+                .WithMaxPriorityFeePerGas(oldTx.MaxPriorityFeePerGas * 2)
+                .WithMaxFeePerDataGas(oldTx.MaxFeePerDataGas * 2)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             _txPool.SubmitTx(oldTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
