@@ -23,6 +23,7 @@ public class CompareReplacedBlobTx : IComparer<Transaction?>
         // always allow replacement of zero fee txs
         if (y.MaxFeePerGas.IsZero) return -1; //ToDo: do we need it?
 
+        // ToDo: handle overflows
         if (y.MaxFeePerGas * 2 > x.MaxFeePerGas) return 1;
         if (y.MaxPriorityFeePerGas * 2 > x.MaxPriorityFeePerGas) return 1;
         if (y.MaxFeePerDataGas * 2 > x.MaxFeePerDataGas) return 1;
