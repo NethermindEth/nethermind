@@ -42,9 +42,9 @@
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.17.0" />
     <PackageVersion Include="Nethermind.Crypto.Pairings" Version="1.0.1" />
     <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.0.1" />
-    <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="1.0.0" />
-    <PackageVersion Include="Nethermind.DotNetty.Handlers" Version="1.0.0" />
-    <PackageVersion Include="Nethermind.DotNetty.Transport" Version="1.0.0" />
+    <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="1.0.1-preview.2" />
+    <PackageVersion Include="Nethermind.DotNetty.Handlers" Version="1.0.1-preview.2" />
+    <PackageVersion Include="Nethermind.DotNetty.Transport" Version="1.0.1-preview.2" />
     <PackageVersion Include="Nethermind.Gmp" Version="1.0.1" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.1.0" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.2" />
@@ -62,7 +62,7 @@
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.0.0" />
     <PackageVersion Include="ReadLine" Version="2.0.1" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="6.0.0" />
-    <PackageVersion Include="RocksDB" Version="8.0.0.37452" />
+    <PackageVersion Include="RocksDB" Version="8.0.0.37755" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="Seq.Api" Version="2023.1.0" />
     <PackageVersion Include="Shouldly" Version="4.1.0" />
