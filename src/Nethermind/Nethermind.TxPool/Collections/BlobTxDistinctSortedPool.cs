@@ -72,7 +72,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 
     public IEnumerable<Transaction> GetBlobTransactions()
     {
-        // to refactor - it must enumerable starting from the best
+        // to refactor - it must lazy return starting from the best
         foreach (Transaction lightBlobTx in GetSnapshot())
         {
             TryGetValue(lightBlobTx.Hash!, out Transaction? fullBlobTx);

@@ -149,6 +149,20 @@ public class TxBroadcasterTests
     }
 
     [Test]
+    public void should_not_add_blob_txs_to_persistent_txs([Values(true, false)] bool isBlob)
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
+            .WithShardBlobTxTypeAndFieldsIfBlobTx()
+            .SignedAndResolved().TestObject;
+
+        _broadcaster.Broadcast(tx, true);
+        _broadcaster.GetSnapshot().Length.Should().Be(isBlob ? 0 : 1);
+    }
+
+    [Test]
     public void should_skip_large_txs_when_picking_best_persistent_txs_to_broadcast([Values(1, 2, 25, 50, 99, 100, 101, 1000)] int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
