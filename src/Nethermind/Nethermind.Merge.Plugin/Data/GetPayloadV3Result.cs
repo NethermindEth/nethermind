@@ -18,6 +18,8 @@ public class GetPayloadV3Result : GetPayloadV2Result
 
     public override ExecutionPayloadV3 ExecutionPayload { get; }
 
+    public bool ShouldOverrideBuilder { get; }
+
     public override string ToString() =>
-        $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}}}";
+        $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}}}";
 }
