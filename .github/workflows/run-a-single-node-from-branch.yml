@@ -64,11 +64,7 @@ on:
         description: "SSH Keys to be installed in the smoke test nodes (separated by commas without space in-between commas) for example: key1,key2,key3"
         default: ""
         required: false
-      smoke_tests_ref:
-        description: "Ref of the smoke tests repository to be used for smoke tests"
-        default: "main"
-        required: false
-      
+
 jobs:
   create_docker_image:
     runs-on: ubuntu-latest
@@ -160,7 +156,7 @@ jobs:
         echo $INPUTS | gh -R $WORKFLOW_REPO workflow run $WORKFLOW_ID --ref $WORKFLOW_REF --json
       env:
         WORKFLOW_ID: 'run-single-node.yml'
-        WORKFLOW_REF: ${{ inputs.smoke_tests_ref }}
+        WORKFLOW_REF: main
         WORKFLOW_REPO: NethermindEth/post-merge-smoke-tests
         GITHUB_USER: ${{ secrets.REPOSITORY_DISPATCH_USER }} 
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
