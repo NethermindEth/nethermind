@@ -194,7 +194,7 @@ namespace Nethermind.Network.Test.P2P
             task.Start();
 
             await Task.Delay(20);
-            session.InitiateDisconnect(InitiateDisconnectReason.Other, "test");
+            session.InitiateDisconnect(DisconnectReason.Other, "test");
             await Task.Delay(10);
             shouldStop = true;
         }
@@ -246,7 +246,7 @@ namespace Nethermind.Network.Test.P2P
             session.AddProtocolHandler(bbb);
             session.AddProtocolHandler(ccc);
 
-            session.InitiateDisconnect(InitiateDisconnectReason.Other, "test");
+            session.InitiateDisconnect(DisconnectReason.Other, "test");
             session.Dispose();
 
             aaa.Received().DisconnectProtocol(DisconnectReason.Other, "test");
@@ -267,7 +267,7 @@ namespace Nethermind.Network.Test.P2P
 
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
-            session.InitiateDisconnect(InitiateDisconnectReason.Other);
+            session.InitiateDisconnect(DisconnectReason.Other);
             Assert.True(wasCalled);
         }
 
@@ -293,7 +293,7 @@ namespace Nethermind.Network.Test.P2P
 
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
-            session.InitiateDisconnect(InitiateDisconnectReason.Other);
+            session.InitiateDisconnect(DisconnectReason.Other);
             Assert.True(wasCalled);
             Assert.True(session.IsClosing);
         }
@@ -309,7 +309,7 @@ namespace Nethermind.Network.Test.P2P
 
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
-            session.InitiateDisconnect(InitiateDisconnectReason.TooManyPeers);
+            session.InitiateDisconnect(DisconnectReason.TooManyPeers);
             Assert.False(wasCalled);
             Assert.False(session.IsClosing);
         }
@@ -347,8 +347,8 @@ namespace Nethermind.Network.Test.P2P
 
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);
-            session.InitiateDisconnect(InitiateDisconnectReason.Other);
-            session.InitiateDisconnect(InitiateDisconnectReason.Other);
+            session.InitiateDisconnect(DisconnectReason.Other);
+            session.InitiateDisconnect(DisconnectReason.Other);
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
             Assert.That(wasCalledTimes, Is.EqualTo(1));
@@ -397,7 +397,7 @@ namespace Nethermind.Network.Test.P2P
             session.AddProtocolHandler(aaa);
             session.AddProtocolHandler(bbb);
             session.AddProtocolHandler(ccc);
-            session.InitiateDisconnect(InitiateDisconnectReason.Other, "test");
+            session.InitiateDisconnect(DisconnectReason.Other, "test");
             aaa.Received().DisconnectProtocol(DisconnectReason.Other, "test");
             bbb.Received().DisconnectProtocol(DisconnectReason.Other, "test");
             ccc.Received().DisconnectProtocol(DisconnectReason.Other, "test");
@@ -491,7 +491,7 @@ namespace Nethermind.Network.Test.P2P
             IProtocolHandler p2p = BuildHandler("p2p", 10);
             session.AddProtocolHandler(p2p);
 
-            session.InitiateDisconnect(InitiateDisconnectReason.Other);
+            session.InitiateDisconnect(DisconnectReason.Other);
 
             session.DeliverMessage(PingMessage.Instance);
             _packetSender.DidNotReceive().Enqueue(Arg.Any<PingMessage>());
@@ -506,7 +506,7 @@ namespace Nethermind.Network.Test.P2P
             IProtocolHandler p2p = BuildHandler("p2p", 10);
             session.AddProtocolHandler(p2p);
 
-            session.InitiateDisconnect(InitiateDisconnectReason.Other);
+            session.InitiateDisconnect(DisconnectReason.Other);
 
             session.ReceiveMessage(new Packet("p2p", 3, Array.Empty<byte>()));
             p2p.DidNotReceive().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));

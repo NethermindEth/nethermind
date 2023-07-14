@@ -33,6 +33,7 @@
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
     <PackageReference Include="NLog.Targets.Seq" />
     <PackageReference Include="NLog" />
+    <PackageReference Include="Pyroscope" />
     <PackageReference Include="Seq.Api" />
     <PackageReference Include="System.Linq.Async" />
     <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" />

@@ -249,11 +249,10 @@ namespace Nethermind.Evm.Test
                         Instruction.AND,
                         Instruction.OR,
                         Instruction.XOR,
-                        Instruction.SHA3,
+                        Instruction.KECCAK256,
                         Instruction.SHL,
                         Instruction.SHR,
                         Instruction.SAR,
-                        Instruction.SHA3,
                         Instruction.RETURN,
                         Instruction.REVERT,
 

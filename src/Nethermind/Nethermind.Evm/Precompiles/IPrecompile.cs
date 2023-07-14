@@ -9,7 +9,7 @@ namespace Nethermind.Evm.Precompiles
 {
     public interface IPrecompile
     {
-        Address Address { get; }
+        static Address Address { get; }
 
         long BaseGasCost(IReleaseSpec releaseSpec);
 

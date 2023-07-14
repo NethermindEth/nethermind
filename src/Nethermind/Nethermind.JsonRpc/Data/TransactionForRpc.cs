@@ -49,7 +49,7 @@ public class TransactionForRpc
             YParity = transaction.SupportsAccessList ? signature.RecoveryId : null;
             R = new UInt256(signature.R, true);
             S = new UInt256(signature.S, true);
-            V = transaction.Type == TxType.Legacy ? (UInt256?)signature.V : (UInt256?)signature.RecoveryId;
+            V = transaction.Type == TxType.Legacy ? signature.V : null;
         }
     }
 
