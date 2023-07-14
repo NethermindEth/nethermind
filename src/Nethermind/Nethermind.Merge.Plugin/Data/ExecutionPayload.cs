@@ -18,7 +18,7 @@ namespace Nethermind.Merge.Plugin.Data;
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayload</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayload : IValidateFork
+public class ExecutionPayload : IForkValidator
 {
     public ExecutionPayload() { } // Needed for tests
 
