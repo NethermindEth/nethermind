@@ -88,7 +88,12 @@ namespace Nethermind.Merge.Plugin.Test
             => CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, transactions: transactions);
 
         private static ExecutionPayloadV3 CreateBlockRequestV3(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? dataGasUsed = null, ulong? excessDataGas = null, Transaction[]? transactions = null)
-            => CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, dataGasUsed, excessDataGas, transactions: transactions);
+        {
+            ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, dataGasUsed, excessDataGas, transactions: transactions)
+            blockRequestV3.DataGasUsed = dataGasUsed;
+            blockRequestV3.ExcessDataGas = excessDataGas;
+            return blockRequestV3;
+        }
 
         private static T CreateBlockRequestInternal<T>(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? dataGasUsed = null, ulong? excessDataGas = null, Transaction[]? transactions = null) where T : ExecutionPayload, new()
         {
@@ -105,12 +110,6 @@ namespace Nethermind.Merge.Plugin.Test
                 Timestamp = parent.Timestamp + 1,
                 Withdrawals = withdrawals,
             };
-
-            if (blockRequest is ExecutionPayloadV3 blockRequestV3)
-            {
-                blockRequestV3.DataGasUsed = dataGasUsed;
-                blockRequestV3.ExcessDataGas = excessDataGas;
-            }
 
             blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());
             TryCalculateHash(blockRequest, out Keccak? hash);
