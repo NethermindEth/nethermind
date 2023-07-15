@@ -132,12 +132,6 @@ namespace Nethermind.Evm.Test
         [Test]
         public void self_destruct_in_initcode_of_create_tx()
         {
-            _initCode = Prepare.EvmCode
-                .StoreDataInMemory(0, _selfDestructCode)
-                .PushData(_selfDestructCode.Length)
-                .PushData(0)
-                .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
-                .Done;
             Transaction createTx = Build.A.Transaction.WithCode(_selfDestructCode).WithValue(99.Ether()).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
             Block block = Build.A.Block.WithNumber(BlockNumber)
                 .WithTimestamp(Timestamp)
