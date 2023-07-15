@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Precompiles
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(5);
+        public static Address Address { get; } = Address.FromNumber(5);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {

@@ -518,29 +518,29 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     {
         _precompiles = new Dictionary<Address, CodeInfo>
         {
-            [EcRecoverPrecompile.Instance.Address] = new(EcRecoverPrecompile.Instance),
-            [Sha256Precompile.Instance.Address] = new(Sha256Precompile.Instance),
-            [Ripemd160Precompile.Instance.Address] = new(Ripemd160Precompile.Instance),
-            [IdentityPrecompile.Instance.Address] = new(IdentityPrecompile.Instance),
+            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
+            [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
+            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
+            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
 
-            [Bn254AddPrecompile.Instance.Address] = new(Bn254AddPrecompile.Instance),
-            [Bn254MulPrecompile.Instance.Address] = new(Bn254MulPrecompile.Instance),
-            [Bn254PairingPrecompile.Instance.Address] = new(Bn254PairingPrecompile.Instance),
-            [ModExpPrecompile.Instance.Address] = new(ModExpPrecompile.Instance),
+            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
+            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
+            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
+            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
 
-            [Blake2FPrecompile.Instance.Address] = new(Blake2FPrecompile.Instance),
+            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
 
-            [G1AddPrecompile.Instance.Address] = new(G1AddPrecompile.Instance),
-            [G1MulPrecompile.Instance.Address] = new(G1MulPrecompile.Instance),
-            [G1MultiExpPrecompile.Instance.Address] = new(G1MultiExpPrecompile.Instance),
-            [G2AddPrecompile.Instance.Address] = new(G2AddPrecompile.Instance),
-            [G2MulPrecompile.Instance.Address] = new(G2MulPrecompile.Instance),
-            [G2MultiExpPrecompile.Instance.Address] = new(G2MultiExpPrecompile.Instance),
-            [PairingPrecompile.Instance.Address] = new(PairingPrecompile.Instance),
-            [MapToG1Precompile.Instance.Address] = new(MapToG1Precompile.Instance),
-            [MapToG2Precompile.Instance.Address] = new(MapToG2Precompile.Instance),
+            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
+            [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
+            [G1MultiExpPrecompile.Address] = new(G1MultiExpPrecompile.Instance),
+            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
+            [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance),
+            [G2MultiExpPrecompile.Address] = new(G2MultiExpPrecompile.Instance),
+            [PairingPrecompile.Address] = new(PairingPrecompile.Instance),
+            [MapToG1Precompile.Address] = new(MapToG1Precompile.Instance),
+            [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
 
-            [PointEvaluationPrecompile.Instance.Address] = new(PointEvaluationPrecompile.Instance),
+            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
         };
     }
 
@@ -1183,7 +1183,7 @@ OutOfGas:
 
                         break;
                     }
-                case Instruction.SHA3:
+                case Instruction.KECCAK256:
                     {
                         stack.PopUInt256(out a);
                         stack.PopUInt256(out b);
