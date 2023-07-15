@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -14,6 +15,7 @@ namespace Nethermind.State
 {
     public class StateTree : PatriciaTree
     {
+        private readonly LruCache<ValueKeccak, Account> _cache = new(maxCapacity: 4096, "Account cache");
         private readonly AccountDecoder _decoder = new();
 
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
@@ -35,44 +37,56 @@ namespace Nethermind.State
         [DebuggerStepThrough]
         public Account? Get(Address address, Keccak? rootHash = null)
         {
-            byte[]? bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
-            if (bytes is null)
-            {
-                return null;
-            }
-
-            return _decoder.Decode(bytes.AsRlpStream());
+            ValueKeccak keccak = ValueKeccak.Compute(address.Bytes);
+            return Get(keccak, rootHash);
         }
 
         [DebuggerStepThrough]
         internal Account? Get(Keccak keccak) // for testing
+            => Get(keccak.ValueKeccak);
+
+        [DebuggerStepThrough]
+        private Account? Get(in ValueKeccak keccak, Keccak? rootHash = null)
         {
-            byte[]? bytes = Get(keccak.Bytes);
-            if (bytes is null)
+            if (rootHash is null && _cache.TryGet(keccak, out Account? account))
             {
-                return null;
+                return account;
             }
 
-            return _decoder.Decode(bytes.AsRlpStream());
+            byte[]? bytes = Get(keccak.BytesAsSpan, rootHash);
+            account = bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
+
+            if (rootHash is null && account is not null)
+            {
+                _cache.Set(keccak, account);
+            }
+
+            return account;
         }
 
+        [DebuggerStepThrough]
         public void Set(Address address, Account? account)
         {
             ValueKeccak keccak = ValueKeccak.Compute(address.Bytes);
-            Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
+            Set(in keccak, account);
         }
 
         [DebuggerStepThrough]
         public Rlp? Set(Keccak keccak, Account? account)
-        {
-            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
+            => Set(in keccak.ValueKeccak, account);
 
-            Set(keccak.Bytes, rlp);
-            return rlp;
-        }
-
+        [DebuggerStepThrough]
         public Rlp? Set(in ValueKeccak keccak, Account? account)
         {
+            if (account is not null)
+            {
+                _cache.Set(keccak, account);
+            }
+            else
+            {
+                _cache.Delete(keccak);
+            }
+
             Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
 
             Set(keccak.Bytes, rlp);
