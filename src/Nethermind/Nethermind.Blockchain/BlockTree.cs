@@ -37,8 +37,8 @@ namespace Nethermind.Blockchain
 
         internal static Keccak HeadAddressInDb = Keccak.Zero;
 
-        // SyncProgressResolver MaxLookupBack is 128, add 16 wiggle room
-        private const int CacheSize = 128 + 16;
+        // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
+        private const int CacheSize = 256 + 16;
 
         private readonly LruCache<ValueKeccak, BlockHeader> _headerCache =
             new(CacheSize, CacheSize, "headers");
@@ -1703,7 +1703,7 @@ namespace Nethermind.Blockchain
         /// <returns></returns>
         private bool ShouldCache(long number)
         {
-            return number == 0L || Head is null || number <= Head.Number + 1;
+            return number == 0L || Head is null || number >= Head.Number - BlockStore.CacheSize;
         }
 
         public ChainLevelInfo? FindLevel(long number)

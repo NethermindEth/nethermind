@@ -149,7 +149,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecutionEnvironment env = BuildExecutionEnvironmnet(tx, header, spec, tracer, opts, effectiveGasPrice);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
-            if (!ExecuteEVMCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode))
+            if (!ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode))
                 return;
 
             if (!PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode))
@@ -460,7 +460,7 @@ namespace Nethermind.Evm.TransactionProcessing
             );
         }
 
-        protected virtual bool ExecuteEVMCall(
+        protected virtual bool ExecuteEvmCall(
             Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
             in long gasAvailable, in ExecutionEnvironment env,
             out TransactionSubstate? substate, out long spentGas, out byte statusCode)

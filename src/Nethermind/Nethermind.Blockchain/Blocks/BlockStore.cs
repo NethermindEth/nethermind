@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -17,7 +16,7 @@ public class BlockStore : IBlockStore
     private readonly IDb _blockDb;
     private readonly IDbWithSpan? _blockDbAsSpan;
     private readonly BlockDecoder _blockDecoder = new();
-    private const int CacheSize = 128 + 32;
+    public const int CacheSize = 256 + 32;
 
     private readonly LruCache<ValueKeccak, Block>
         _blockCache = new(CacheSize, CacheSize, "blocks");
