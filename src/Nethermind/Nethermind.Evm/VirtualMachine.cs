@@ -2485,8 +2485,6 @@ ReturnFailure:
             _codeCache.Set(codeHash, codeInfo);
         }
 
-        vmState.CreateList.Add(contractAddress);
-
         ExecutionEnvironment callEnv = new
         (
             txExecutionContext: env.TxExecutionContext,

@@ -19,7 +19,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -34,6 +33,15 @@ namespace Nethermind.Evm.Test
     public class Eip6780Tests : VirtualMachineTestsBase
     {
 
+        protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
+        protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
+
+        private byte[] _selfDestructCode;
+        private Address _contractAddress;
+        private byte[] _initCode;
+        private long _gasLimit = 1000000;
+        private EthereumEcdsa _ecdsa = new(1, LimboLogs.Instance);
+
         [SetUp]
         public override void Setup()
         {
@@ -41,193 +49,121 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 1000.Ether());
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
+            _selfDestructCode = Prepare.EvmCode
+                .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
+                .Done;
+            _contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
+            _initCode = Prepare.EvmCode
+                .ForInitOf(_selfDestructCode)
+                .Done;
         }
 
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, 0ul, false)]
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp, true)]
-        public void self_destruct_not_in_same_transaction(long blockNumber, ulong timestamp, bool onlyOnSameTransaction)
+        [TestCase(0ul, false)]
+        [TestCase(MainnetSpecProvider.CancunBlockTimestamp, true)]
+        public void self_destruct_not_in_same_transaction(ulong timestamp, bool onlyOnSameTransaction)
         {
-            Address contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
-            byte[] contractCode = Prepare.EvmCode
-                .SLOAD(1)
-                .EQ(1)
-                .PushData(17)
-                .Op(Instruction.JUMPI)
-                .SSTORE(1, new byte[] { 0x01 })
-                .JUMP(40)
-                .JUMPDEST()
-                .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
-                .JUMPDEST()
-                .Done;
-            byte[] initByteCode = Prepare.EvmCode
-                .ForInitOf(contractCode)
-                .Done;
-
-            byte[] byteCode1 = Prepare.EvmCode
-                .Call(contractAddress, 100000)
+            byte[] contractCall = Prepare.EvmCode
+                .Call(_contractAddress, 100000)
                 .Op(Instruction.STOP).Done;
-
-            byte[] byteCode2 = Prepare.EvmCode
-                .Call(contractAddress, 100000)
-                .Op(Instruction.STOP).Done;
-
-            long gasLimit = 1000000;
-
-            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
-            Transaction initTx = Build.A.Transaction.WithCode(initByteCode).WithValue(99.Ether()).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            Transaction tx1 = Build.A.Transaction.WithCode(byteCode1).WithGasLimit(gasLimit).WithNonce(1).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            Transaction tx2 = Build.A.Transaction.WithCode(byteCode2).WithGasLimit(gasLimit).WithNonce(2).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            Block block = Build.A.Block.WithNumber(blockNumber)
+            AssertDestroyed();
+            Transaction initTx = Build.A.Transaction.WithCode(_initCode).WithValue(99.Ether()).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction tx1 = Build.A.Transaction.WithCode(contractCall).WithGasLimit(_gasLimit).WithNonce(1).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+            Block block = Build.A.Block.WithNumber(BlockNumber)
                 .WithTimestamp(timestamp)
-                .WithTransactions(initTx, tx1, tx2).WithGasLimit(2 * gasLimit).TestObject;
+                .WithTransactions(initTx, tx1).WithGasLimit(2 * _gasLimit).TestObject;
 
-            ParityLikeTxTracer initTracer = new(block, initTx, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(initTx, block.Header, initTracer);
-            AssertStorage(new StorageCell(contractAddress, 1), 0);
-            TestState.GetBalance(contractAddress).Should().Be(99.Ether());
+            _processor.Execute(initTx, block.Header, NullTxTracer.Instance);
+            UInt256 contractBalanceAfterInit = TestState.GetBalance(_contractAddress);
+            _processor.Execute(tx1, block.Header, NullTxTracer.Instance);
 
-            ParityLikeTxTracer tracer1 = new(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx1, block.Header, tracer1);
-            AssertStorage(new StorageCell(contractAddress, 1), 1);
-
-            ParityLikeTxTracer tracer2 = new(block, tx2, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(tx2, block.Header, tracer2);
-
-            uint expected = onlyOnSameTransaction ? 1u : 0u;
-            AssertCodeHash(contractAddress, onlyOnSameTransaction ? Keccak.Compute(contractCode.AsSpan()) : Keccak.OfAnEmptyString);
-            AssertStorage(new StorageCell(contractAddress, 1), expected);
-
-            TestState.GetBalance(contractAddress).Should().Be(0);
-            TestState.GetBalance(TestItem.PrivateKeyB.Address).Should().Be(99.Ether());
+            contractBalanceAfterInit.Should().Be(99.Ether());
+            AssertSendAll();
+            if (onlyOnSameTransaction)
+                AssertNotDestroyed();
+            else
+                AssertDestroyed();
         }
 
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp)]
-        public void self_destruct_in_same_transaction(long blockNumber, ulong timestamp)
+        [Test]
+        public void self_destruct_in_same_transaction()
         {
-            byte[] contractCode = Prepare.EvmCode
-                .SLOAD(1)
-                .EQ(1)
-                .PushData(17)
-                .Op(Instruction.JUMPI)
-                .SSTORE(1, new byte[] { 0x01 })
-                .JUMP(40)
-                .JUMPDEST()
-                .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
-                .JUMPDEST()
-                .Done;
-            byte[] initCode = Prepare.EvmCode.ForInitOf(contractCode).Done;
             byte[] salt = new UInt256(123).ToBigEndian();
             Address createTxAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
-            Address contractAddress = ContractAddress.From(createTxAddress, salt, initCode);
+            _contractAddress = ContractAddress.From(createTxAddress, salt, _initCode);
             byte[] tx1 = Prepare.EvmCode
-                .Create2(initCode, salt, 99.Ether())
-                .Call(contractAddress, 100000)
-                .Call(contractAddress, 100000)
+                .Create2(_initCode, salt, 99.Ether())
+                .Call(_contractAddress, 100000)
                 .STOP()
                 .Done;
 
-            long gasLimit = 1000000;
-
-            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
-            Transaction createTx = Build.A.Transaction.WithCode(tx1).WithValue(100.Ether()).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            Block block = Build.A.Block.WithNumber(blockNumber)
-                .WithTimestamp(timestamp)
-                .WithTransactions(createTx).WithGasLimit(2 * gasLimit).TestObject;
+            Transaction createTx = Build.A.Transaction.WithCode(tx1).WithValue(100.Ether()).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+            Block block = Build.A.Block.WithNumber(BlockNumber)
+                .WithTimestamp(Timestamp)
+                .WithTransactions(createTx).WithGasLimit(2 * _gasLimit).TestObject;
 
             _processor.Execute(createTx, block.Header, NullTxTracer.Instance);
 
-            AssertCodeHash(contractAddress, Keccak.OfAnEmptyString);
-            AssertStorage(new StorageCell(contractAddress, 1), 0);
-
-            TestState.GetBalance(contractAddress).Should().Be(0);
-            TestState.GetBalance(TestItem.PrivateKeyB.Address).Should().Be(99.Ether());
+            AssertDestroyed();
+            AssertSendAll();
         }
 
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp)]
-        public void self_destruct_in_initcode_of_create_opcodes(long blockNumber, ulong timestamp)
+        [Test]
+        public void self_destruct_in_initcode_of_create_opcodes()
         {
-            byte[] contractCode = Prepare.EvmCode
-                .SLOAD(1)
-                .EQ(1)
-                .PushData(17)
-                .Op(Instruction.JUMPI)
-                .SSTORE(1, new byte[] { 0x01 })
-                .JUMP(40)
-                .JUMPDEST()
-                .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
-                .JUMPDEST()
-                .Done;
-            byte[] initCode = Prepare.EvmCode
-                .StoreDataInMemory(0, contractCode)
-                .PushData(contractCode.Length)
-                .PushData(0)
-                .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
-                .Op(Instruction.RETURN)
-                .Done;
             byte[] salt = new UInt256(123).ToBigEndian();
             Address createTxAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
-            Address contractAddress = ContractAddress.From(createTxAddress, salt, initCode);
+            _contractAddress = ContractAddress.From(createTxAddress, salt, _selfDestructCode);
             byte[] tx1 = Prepare.EvmCode
-                .Create2(initCode, salt, 99.Ether())
+                .Create2(_selfDestructCode, salt, 99.Ether())
                 .STOP()
                 .Done;
 
-            long gasLimit = 1000000;
-
-            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
-            Transaction createTx = Build.A.Transaction.WithCode(tx1).WithValue(100.Ether()).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            Block block = Build.A.Block.WithNumber(blockNumber)
-                .WithTimestamp(timestamp)
-                .WithTransactions(createTx).WithGasLimit(2 * gasLimit).TestObject;
+            Transaction createTx = Build.A.Transaction.WithCode(tx1).WithValue(100.Ether()).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+            Block block = Build.A.Block.WithNumber(BlockNumber)
+                .WithTimestamp(Timestamp)
+                .WithTransactions(createTx).WithGasLimit(2 * _gasLimit).TestObject;
 
             _processor.Execute(createTx, block.Header, NullTxTracer.Instance);
 
-            AssertCodeHash(contractAddress, Keccak.OfAnEmptyString);
-            AssertStorage(new StorageCell(contractAddress, 1), 0);
+            AssertDestroyed();
+            AssertSendAll();
+        }
 
-            TestState.GetBalance(contractAddress).Should().Be(0);
+        [Test]
+        public void self_destruct_in_initcode_of_create_tx()
+        {
+            _initCode = Prepare.EvmCode
+                .StoreDataInMemory(0, _selfDestructCode)
+                .PushData(_selfDestructCode.Length)
+                .PushData(0)
+                .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
+                .Done;
+            Transaction createTx = Build.A.Transaction.WithCode(_selfDestructCode).WithValue(99.Ether()).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+            Block block = Build.A.Block.WithNumber(BlockNumber)
+                .WithTimestamp(Timestamp)
+                .WithTransactions(createTx).WithGasLimit(2 * _gasLimit).TestObject;
+
+            _processor.Execute(createTx, block.Header, NullTxTracer.Instance);
+
+            AssertDestroyed();
+            AssertSendAll();
+        }
+
+        private void AssertNotDestroyed()
+        {
+            AssertCodeHash(_contractAddress, Keccak.Compute(_selfDestructCode.AsSpan()));
+        }
+
+        private void AssertDestroyed(Address address = null)
+        {
+            TestState.AccountExists(address ?? _contractAddress).Should().BeFalse();
+        }
+
+        private void AssertSendAll()
+        {
+            TestState.GetBalance(_contractAddress).Should().Be(0);
             TestState.GetBalance(TestItem.PrivateKeyB.Address).Should().Be(99.Ether());
         }
 
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp)]
-        public void self_destruct_in_initcode_of_create_tx(long blockNumber, ulong timestamp)
-        {
-            byte[] contractCode = Prepare.EvmCode
-                .SLOAD(1)
-                .EQ(1)
-                .PushData(17)
-                .Op(Instruction.JUMPI)
-                .SSTORE(1, new byte[] { 0x01 })
-                .JUMP(40)
-                .JUMPDEST()
-                .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
-                .JUMPDEST()
-                .Done;
-            byte[] initCode = Prepare.EvmCode
-                .StoreDataInMemory(0, contractCode)
-                .PushData(contractCode.Length)
-                .PushData(0)
-                .SELFDESTRUCT(TestItem.PrivateKeyB.Address)
-                .Op(Instruction.RETURN)
-                .Done;
-            byte[] salt = new UInt256(123).ToBigEndian();
-            Address contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
-
-            long gasLimit = 1000000;
-
-            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
-            Transaction createTx = Build.A.Transaction.WithCode(initCode).WithValue(100.Ether()).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            Block block = Build.A.Block.WithNumber(blockNumber)
-                .WithTimestamp(timestamp)
-                .WithTransactions(createTx).WithGasLimit(2 * gasLimit).TestObject;
-
-            _processor.Execute(createTx, block.Header, NullTxTracer.Instance);
-
-            AssertCodeHash(contractAddress, Keccak.OfAnEmptyString);
-            AssertStorage(new StorageCell(contractAddress, 1), 0);
-
-            TestState.GetBalance(contractAddress).Should().Be(0);
-            TestState.GetBalance(TestItem.PrivateKeyB.Address).Should().Be(100.Ether());
-        }
     }
 }

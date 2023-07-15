@@ -193,6 +193,10 @@ namespace Nethermind.Evm
                 _createList = new HashSet<Address>();
                 _logs = new JournalCollection<LogEntry>();
             }
+            if (executionType.IsAnyCreate())
+            {
+                CreateList.Add(env.ExecutingAccount);
+            }
 
             _accessedAddressesSnapshot = _accessedAddresses.TakeSnapshot();
             _accessedStorageKeysSnapshot = _accessedStorageCells.TakeSnapshot();
