@@ -147,7 +147,7 @@ namespace Nethermind.Db
             db.Remove(key.ToBigEndianByteArrayWithoutLeadingZeros());
         }
 
-        public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, LruCache<ValueKeccak, TItem> cache = null, bool shouldCache = true) where TItem : class
+        public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, LruCache<ValueKeccak, TItem>? cache = null, bool shouldCache = true) where TItem : class
         {
             TItem item = cache?.Get(key);
             if (item is null)
@@ -185,6 +185,11 @@ namespace Nethermind.Db
 
                     item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraBytes);
                 }
+            }
+            else
+            {
+                // Came from cache don't need to cache again
+                shouldCache = false;
             }
 
             if (shouldCache && cache is not null && item is not null)
@@ -233,6 +238,11 @@ namespace Nethermind.Db
 
                     item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraBytes);
                 }
+            }
+            else
+            {
+                // Came from cache don't need to cache again
+                shouldCache = false;
             }
 
             if (shouldCache && cache is not null && item is not null)
