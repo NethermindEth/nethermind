@@ -65,7 +65,6 @@ namespace Nethermind.Evm.Test
             byte[] contractCall = Prepare.EvmCode
                 .Call(_contractAddress, 100000)
                 .Op(Instruction.STOP).Done;
-            AssertDestroyed();
             Transaction initTx = Build.A.Transaction.WithCode(_initCode).WithValue(99.Ether()).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
             Transaction tx1 = Build.A.Transaction.WithCode(contractCall).WithGasLimit(_gasLimit).WithNonce(1).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
             Block block = Build.A.Block.WithNumber(BlockNumber)
