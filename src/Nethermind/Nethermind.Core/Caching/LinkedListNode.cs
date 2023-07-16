@@ -25,6 +25,10 @@ internal sealed class LinkedListNode<T>
             Debug.Assert(leastRecentlyUsed == node, "this should only be true for a list with only one node");
             // Do nothing only one node
         }
+        else if (leastRecentlyUsed is not null && ReferenceEquals(node.Next, leastRecentlyUsed))
+        {
+            // Already most recent
+        }
         else
         {
             Remove(ref leastRecentlyUsed, node);
