@@ -770,7 +770,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_remove_GasBottleneck_of_old_nonces()
+        public async Task should_remove_txs_with_old_nonces_when_updating_GasBottleneck()
         {
             _txPool = CreatePool();
             Transaction[] transactions = new Transaction[5];
@@ -793,6 +793,7 @@ namespace Nethermind.TxPool.Test
             }
 
             await RaiseBlockAddedToMainAndWaitForTransactions(5);
+            _txPool.GetPendingTransactionsCount().Should().Be(2);
             _txPool.GetPendingTransactions().Count(t => t.GasBottleneck == 0).Should().Be(0);
             _txPool.GetPendingTransactions().Max(t => t.GasBottleneck).Should().Be((UInt256)5);
         }
