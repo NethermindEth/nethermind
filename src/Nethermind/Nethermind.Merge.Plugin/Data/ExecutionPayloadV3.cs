@@ -48,5 +48,5 @@ public class ExecutionPayloadV3 : ExecutionPayload
     }
 
     public override bool ValidateFork(ISpecProvider specProvider) =>
-        !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
+        specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 }
