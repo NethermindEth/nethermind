@@ -43,7 +43,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<PayloadStatusV1> errorCode = (await rpcModule.engine_newPayloadV1(executionPayload));
 
-        Assert.That(errorCode.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(errorCode.ErrorCode, Is.EqualTo(ErrorCodes.UnsupportedFork));
     }
 
     [Test]

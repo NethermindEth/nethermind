@@ -167,14 +167,14 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => this;
 
-    public virtual bool ValidateParams(IReleaseSpec spec, int version, [NotNullWhen(false)] out string? error)
+    public virtual ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
         int GetVersion() => Withdrawals is null ? 1 : 2;
 
         if (spec.IsEip4844Enabled)
         {
             error = "ExecutionPayloadV3 expected";
-            return false;
+            return ValidationResult.Fail;
         }
 
         int actualVersion = GetVersion();
@@ -186,7 +186,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
             _ => actualVersion > version ? $"ExecutionPayloadV{version} expected" : null
         };
 
-        return error is null;
+        return ValidationResult.Fail;
     }
 
     public virtual bool ValidateFork(ISpecProvider specProvider) =>

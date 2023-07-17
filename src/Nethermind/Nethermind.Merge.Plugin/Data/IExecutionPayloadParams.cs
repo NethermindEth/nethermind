@@ -12,8 +12,10 @@ namespace Nethermind.Merge.Plugin.Data;
 public interface IExecutionPayloadParams
 {
     ExecutionPayload ExecutionPayload { get; }
-    bool ValidateParams(IReleaseSpec spec, int version, [NotNullWhen(false)] out string? error);
+    ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
 }
+
+public enum ValidationResult : byte { Success, Fail, Invalid };
 
 public class ExecutionPayloadV3Params : IExecutionPayloadParams
 {
@@ -28,10 +30,8 @@ public class ExecutionPayloadV3Params : IExecutionPayloadParams
 
     public ExecutionPayload ExecutionPayload => _executionPayload;
 
-    public bool ValidateParams(IReleaseSpec spec, int version, [NotNullWhen(false)] out string? error)
+    public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
-        error = null;
-
         static IEnumerable<byte[]?> FlattenHashesFromTransactions(ExecutionPayloadV3 payload) =>
             payload.GetTransactions()
                 .Where(t => t.BlobVersionedHashes is not null)
@@ -39,10 +39,11 @@ public class ExecutionPayloadV3Params : IExecutionPayloadParams
 
         if (FlattenHashesFromTransactions(_executionPayload).SequenceEqual(_blobVersionedHashes, Bytes.NullableEqualityComparer))
         {
-            return true;
+            error = null;
+            return ValidationResult.Success;
         }
 
         error = "Blob versioned hashes do not match";
-        return false;
+        return ValidationResult.Invalid;
     }
 }
