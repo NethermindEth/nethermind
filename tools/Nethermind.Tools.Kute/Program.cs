@@ -1,3 +1,6 @@
+using App.Metrics.Formatters;
+using App.Metrics.Formatters.Ascii;
+using App.Metrics.Formatters.Json;
 using CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Tools.Kute.Auth;
@@ -64,13 +67,14 @@ static class Program
             );
         }
 
-        switch (config.MetricConsumerStrategy)
+        collection.AddSingleton<IMetricsConsumer, ConsoleMetricsConsumer>();
+        switch (config.MetricsOutputFormatter)
         {
-            case MetricConsumerStrategy.Report:
-                collection.AddSingleton<IMetricsConsumer, PrettyReportMetricsConsumer>();
+            case MetricsOutputFormatter.Report:
+                collection.AddSingleton<IMetricsOutputFormatter>(new MetricsTextOutputFormatter());
                 break;
-            case MetricConsumerStrategy.Json:
-                collection.AddSingleton<IMetricsConsumer, JsonMetricsConsumer>();
+            case MetricsOutputFormatter.Json:
+                collection.AddSingleton<IMetricsOutputFormatter>(new MetricsJsonOutputFormatter());
                 break;
             default:
                 throw new ArgumentOutOfRangeException();

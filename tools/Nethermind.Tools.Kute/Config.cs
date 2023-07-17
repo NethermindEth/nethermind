@@ -55,10 +55,10 @@ public class Config
         shortName: 'o',
         longName: "output",
         Required = false,
-        Default = MetricConsumerStrategy.Report,
+        Default = MetricsOutputFormatter.Report,
         HelpText = "Strategy to report metrics"
     )]
-    public MetricConsumerStrategy MetricConsumerStrategy { get; }
+    public MetricsOutputFormatter MetricsOutputFormatter { get; }
 
     [Option(
         shortName: 'f',
@@ -76,7 +76,7 @@ public class Config
         string jwtSecretFilePath,
         int authTtl,
         bool dryRun,
-        MetricConsumerStrategy metricConsumerStrategy,
+        MetricsOutputFormatter metricsOutputFormatter,
         IEnumerable<string> methodFilters
     )
     {
@@ -85,7 +85,7 @@ public class Config
         JwtSecretFilePath = jwtSecretFilePath;
         AuthTtl = authTtl;
         DryRun = dryRun;
-        MetricConsumerStrategy = metricConsumerStrategy;
+        MetricsOutputFormatter = metricsOutputFormatter;
         MethodFilters = methodFilters;
     }
 }
