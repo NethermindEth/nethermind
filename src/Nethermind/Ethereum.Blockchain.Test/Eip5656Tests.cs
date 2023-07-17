@@ -13,11 +13,11 @@ public class Eip5656Tests : GeneralStateTestBase
 {
     // wait untill Eip5656 tests are merged to de-comment this
 
-    // [TestCaseSource(nameof(LoadTests))]
-    // public void Test(GeneralStateTest test)
-    // {
-    //     Assert.True(RunTest(test).Pass);
-    // }
+    [TestCaseSource(nameof(LoadTests))]
+    public void Test(GeneralStateTest test)
+    {
+        Assert.True(RunTest(test).Pass);
+    }
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
