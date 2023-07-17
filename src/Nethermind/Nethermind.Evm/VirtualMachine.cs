@@ -1184,7 +1184,7 @@ OutOfGas:
 
                         break;
                     }
-                case Instruction.SHA3:
+                case Instruction.KECCAK256:
                     {
                         stack.PopUInt256(out a);
                         stack.PopUInt256(out b);
