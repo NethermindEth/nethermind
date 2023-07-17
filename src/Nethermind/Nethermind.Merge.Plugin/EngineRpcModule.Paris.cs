@@ -72,7 +72,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         if (!executionPayload.ValidateFork(_specProvider))
         {
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
-            return ResultWrapper<PayloadStatusV1>.Fail("unsupported fork", ErrorCodes.UnsupportedFork);
+            return ResultWrapper<PayloadStatusV1>.Fail("unsupported fork", version < 2 ? ErrorCodes.InvalidParams : ErrorCodes.UnsupportedFork);
         }
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
