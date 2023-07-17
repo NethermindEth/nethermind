@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -42,12 +43,18 @@ namespace Nethermind.Blockchain
 
         public UInt256 CurrentBaseFee { get; private set; }
 
+        public UInt256 CurrentPricePerDataGas { get; internal set; }
+
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
         {
             BlockGasLimit = e.Block!.GasLimit;
             CurrentBaseFee = e.Block.Header.BaseFeePerGas;
+            CurrentPricePerDataGas =
+                DataGasCalculator.TryCalculateDataGasPricePerUnit(e.Block.Header, out UInt256 currentPricePerDataGas)
+                    ? currentPricePerDataGas
+                    : UInt256.Zero;
             HeadChanged?.Invoke(sender, e);
         }
     }

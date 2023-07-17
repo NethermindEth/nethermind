@@ -6,11 +6,14 @@ using Nethermind.Core;
 
 namespace Nethermind.TxPool.Comparison;
 
+/// <summary>
+/// Compare fee of newcomer blob transaction with fee of transaction intended to be replaced
+/// </summary>
 public class CompareReplacedBlobTx : IComparer<Transaction?>
 {
     public static readonly CompareReplacedBlobTx Instance = new();
 
-    public CompareReplacedBlobTx() { }
+    private CompareReplacedBlobTx() { }
 
     // To replace old blob transaction, new transaction needs to have fee at least 2x higher than current fee.
     // 2x higher must be MaxPriorityFeePerGas, MaxFeePerGas and MaxFeePerDataGas
@@ -23,7 +26,6 @@ public class CompareReplacedBlobTx : IComparer<Transaction?>
         // always allow replacement of zero fee txs
         if (y.MaxFeePerGas.IsZero) return -1; //ToDo: do we need it?
 
-        // ToDo: handle overflows
         if (y.MaxFeePerGas * 2 > x.MaxFeePerGas) return 1;
         if (y.MaxPriorityFeePerGas * 2 > x.MaxPriorityFeePerGas) return 1;
         if (y.MaxFeePerDataGas * 2 > x.MaxFeePerDataGas) return 1;

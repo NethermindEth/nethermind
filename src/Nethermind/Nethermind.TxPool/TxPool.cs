@@ -457,11 +457,14 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    // ToDo: add if (MaxFeePerDataGas < current) yield return (tx, UInt256.Zero)
                     previousTxBottleneck ??= tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
 
-                    if (tx.Nonce == currentNonce + i)
+                    if (tx.MaxFeePerDataGas < _headInfo.CurrentPricePerDataGas)
+                    {
+                        yield return (tx, UInt256.Zero);
+                    }
+                    else if (tx.Nonce == currentNonce + i)
                     {
                         UInt256 effectiveGasPrice =
                             tx.CalculateEffectiveGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
