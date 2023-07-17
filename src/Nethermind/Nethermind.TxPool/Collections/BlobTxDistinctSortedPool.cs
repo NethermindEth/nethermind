@@ -100,6 +100,10 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
         return false;
     }
 
+    // only for tests - to test sorting
+    internal bool TryGetLightValue(Keccak hash, out Transaction? lightBlobTx)
+        => base.TryGetValue(hash, out lightBlobTx);
+
     protected override bool Remove(ValueKeccak hash, Transaction tx)
     {
         _blobTxCache.Delete(hash);

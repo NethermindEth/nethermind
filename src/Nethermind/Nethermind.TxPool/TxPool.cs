@@ -590,6 +590,10 @@ namespace Nethermind.TxPool
             }
         }
 
+        // only for tests - to test sorting
+        internal bool TryGetLightBlobTransaction(Keccak hash, out Transaction? transaction)
+            => _blobTransactions.TryGetLightValue(hash, out transaction);
+
         // should own transactions (in broadcaster) be also checked here?
         // maybe it should use NonceManager, as it already has info about local txs?
         public UInt256 GetLatestPendingNonce(Address address)

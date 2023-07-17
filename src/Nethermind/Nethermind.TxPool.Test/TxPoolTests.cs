@@ -1838,6 +1838,41 @@ namespace Nethermind.TxPool.Test
                 .Excluding(t => t.PoolIndex));   // ...and PoolIndex
         }
 
+        [Test]
+        public void should_dump_GasBottleneck_of_blob_tx_to_zero_if_MaxFeePerDataGas_is_lower_than_current([Values(true, false)] bool isBlob)
+        {
+            TxPoolConfig txPoolConfig = new() { Size = 10 };
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            _headInfo.CurrentPricePerDataGas = UInt256.MaxValue;
+
+            Transaction tx = Build.A.Transaction
+                .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
+                .WithShardBlobTxTypeAndFieldsIfBlobTx()
+                .WithNonce(UInt256.Zero)
+                .WithMaxFeePerGas(UInt256.One)
+                .WithMaxPriorityFeePerGas(UInt256.One)
+                .WithMaxFeePerDataGas(isBlob ? UInt256.One : null)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            _txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(isBlob ? 1 : 0);
+            _txPool.GetPendingTransactionsCount().Should().Be(isBlob ? 0 : 1);
+            if (isBlob)
+            {
+                _txPool.TryGetLightBlobTransaction(tx.Hash!, out Transaction blobTxReturned);
+                blobTxReturned.Should().NotBeEquivalentTo(tx);
+                blobTxReturned.GasBottleneck.Should().Be(UInt256.Zero);
+            }
+            else
+            {
+                _txPool.TryGetPendingTransaction(tx.Hash!, out Transaction eip1559tx);
+                eip1559tx.Should().BeEquivalentTo(tx);
+                eip1559tx.GasBottleneck.Should().Be(UInt256.One);
+            }
+        }
+
         [TestCase(0, 97)]
         [TestCase(1, 131324)]
         [TestCase(2, 262534)]
