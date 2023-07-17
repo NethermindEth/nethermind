@@ -186,7 +186,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
             _ => actualVersion > version ? $"ExecutionPayloadV{version} expected" : null
         };
 
-        return ValidationResult.Fail;
+        return error is null? ValidationResult.Success : ValidationResult.Fail;
     }
 
     public virtual bool ValidateFork(ISpecProvider specProvider) =>
