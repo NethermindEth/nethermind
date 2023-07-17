@@ -47,13 +47,6 @@ public class ExecutionPayloadV3 : ExecutionPayload
         return true;
     }
 
-    public override bool ValidateParams(IReleaseSpec spec, int version, [NotNullWhen(false)] out string? error)
-    {
-        // handled by `JsonObject` attribute of the class
-        error = null;
-        return true;
-    }
-
     public override bool ValidateFork(ISpecProvider specProvider) =>
         specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 }
