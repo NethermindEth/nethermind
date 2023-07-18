@@ -37,8 +37,9 @@ namespace Nethermind.TxPool.Filters
             UInt256 cumulativeCost = UInt256.Zero;
             bool overflow = false;
             Transaction[] sameTypeTxs = tx.SupportsBlobs
-                ? _blobTxs.GetBucketSnapshot(tx.SenderAddress!)
-                : _txs.GetBucketSnapshot(tx.SenderAddress!); // since unknownSenderFilter will run before this one
+                ? _blobTxs.GetBucketSnapshot(tx.SenderAddress!) // it will create a snapshot of light txs (without actual blobs)
+                : _txs.GetBucketSnapshot(tx.SenderAddress!);
+            // tx.SenderAddress! as unknownSenderFilter will run before this one
 
             for (int i = 0; i < sameTypeTxs.Length; i++)
             {

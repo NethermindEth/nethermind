@@ -43,10 +43,7 @@ namespace Nethermind.TxPool.Filters
                     AcceptTxResult.InsufficientFunds.WithMessage($"Balance is {balance} less than sending value {tx.Value}");
             }
 
-            // data gas cost is not added here, so in case of overflow at that step, blob transactions will be rejected
-            // later, in BalanceTooLowFilter. It's rare scenario, so probably it's not worth to complicate code here
-            if (UInt256.MultiplyOverflow(tx.MaxFeePerGas, (UInt256)tx.GasLimit, out UInt256 txCostAndValue) ||
-                UInt256.AddOverflow(txCostAndValue, tx.Value, out txCostAndValue))
+            if (tx.IsOverflowInTxCostAndValue(out UInt256 txCostAndValue))
             {
                 Metrics.PendingTransactionsBalanceBelowValue++;
                 if (_logger.IsTrace)

@@ -81,5 +81,8 @@ namespace Nethermind.TxPool
 
             return overflow;
         }
+
+        internal static bool IsOverflowInTxCostAndValue(this Transaction tx, out UInt256 txCost)
+            => IsOverflowWhenAddingTxCostToCumulative(tx, UInt256.Zero, out txCost);
     }
 }
