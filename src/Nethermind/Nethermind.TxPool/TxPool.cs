@@ -100,7 +100,7 @@ namespace Nethermind.TxPool
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
             // we need some limit of blob txs, but extremely high to be limitless in practice
-            _blobTransactions = new BlobTxDistinctSortedPool(_blobTxStorage, 32 * MemoryAllowance.MemPoolSize, comparer, logManager);
+            _blobTransactions = new BlobTxDistinctSortedPool(_blobTxStorage, _txPoolConfig, comparer, logManager);
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
 
             _headInfo.HeadChanged += OnHeadChange;
@@ -467,7 +467,7 @@ namespace Nethermind.TxPool
 
                     if (tx.MaxFeePerDataGas < _headInfo.CurrentPricePerDataGas)
                     {
-                        yield return (tx, UInt256.Zero);
+                        gasBottleneck = UInt256.Zero;
                     }
                     else if (tx.Nonce == currentNonce + i)
                     {
@@ -496,6 +496,13 @@ namespace Nethermind.TxPool
                 if (_transactions.Count > _txPoolConfig.Size)
                     if (_logger.IsWarn) _logger.Warn($"TxPool exceeds the config size {_transactions.Count}/{_txPoolConfig.Size}");
                 _transactions.UpdatePool(_accounts, _updateBucket);
+
+                // ensure the capacity of the blob pool
+                if (_blobTransactions.Count > _txPoolConfig.BlobPoolSize)
+                    if (_logger.IsWarn) _logger.Warn($"Blob TxPool exceeds the config size {_blobTransactions.Count}/{_txPoolConfig.BlobPoolSize}");
+
+                if (_blobTransactions.Count == _txPoolConfig.BlobPoolSize)
+                    if (_logger.IsDebug) _logger.Debug($"Blob TxPool has reached max size of {_txPoolConfig.BlobPoolSize}, blob txs can be evicted now");
 
                 _blobTransactions.UpdatePool(_accounts, _updateBucket);
             }

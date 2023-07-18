@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -12,13 +13,14 @@ namespace Nethermind.TxPool.Collections;
 public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 {
     private readonly ITxStorage _blobTxStorage;
-    private readonly LruCache<ValueKeccak, Transaction> _blobTxCache = new(256, 256, "blob txs cache");
+    private readonly LruCache<ValueKeccak, Transaction> _blobTxCache;
     private readonly ILogger _logger;
 
-    public BlobTxDistinctSortedPool(ITxStorage blobTxStorage, int capacity, IComparer<Transaction> comparer, ILogManager logManager)
-        : base(capacity, comparer, logManager)
+    public BlobTxDistinctSortedPool(ITxStorage blobTxStorage, ITxPoolConfig txPoolConfig, IComparer<Transaction> comparer, ILogManager logManager)
+        : base(txPoolConfig.BlobPoolSize, comparer, logManager)
     {
-        _blobTxStorage = blobTxStorage;
+        _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
+        _blobTxCache = new(txPoolConfig.BlobCacheSize, txPoolConfig.BlobCacheSize, "blob txs cache");
         _logger = logManager.GetClassLogger();
 
         RecreateLightTxCollectionAndCache(blobTxStorage);
