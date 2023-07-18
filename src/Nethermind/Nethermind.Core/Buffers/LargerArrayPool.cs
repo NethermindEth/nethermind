@@ -44,7 +44,7 @@ namespace Nethermind.Core.Buffers
                 }
             }
 
-            return new byte[_largeBufferSize];
+            return GC.AllocateUninitializedArray<byte>(_largeBufferSize);
         }
 
         void ReturnLarge(byte[] array, bool clearArray)
@@ -78,7 +78,7 @@ namespace Nethermind.Core.Buffers
             }
 
             // too big to pool, just allocate
-            return new byte[minimumLength];
+            return GC.AllocateUninitializedArray<byte>(minimumLength);
         }
 
         public override void Return(byte[] array, bool clearArray = false)

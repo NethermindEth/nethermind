@@ -519,29 +519,29 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     {
         _precompiles = new Dictionary<Address, CodeInfo>
         {
-            [EcRecoverPrecompile.Instance.Address] = new(EcRecoverPrecompile.Instance),
-            [Sha256Precompile.Instance.Address] = new(Sha256Precompile.Instance),
-            [Ripemd160Precompile.Instance.Address] = new(Ripemd160Precompile.Instance),
-            [IdentityPrecompile.Instance.Address] = new(IdentityPrecompile.Instance),
+            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
+            [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
+            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
+            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
 
-            [Bn254AddPrecompile.Instance.Address] = new(Bn254AddPrecompile.Instance),
-            [Bn254MulPrecompile.Instance.Address] = new(Bn254MulPrecompile.Instance),
-            [Bn254PairingPrecompile.Instance.Address] = new(Bn254PairingPrecompile.Instance),
-            [ModExpPrecompile.Instance.Address] = new(ModExpPrecompile.Instance),
+            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
+            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
+            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
+            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
 
-            [Blake2FPrecompile.Instance.Address] = new(Blake2FPrecompile.Instance),
+            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
 
-            [G1AddPrecompile.Instance.Address] = new(G1AddPrecompile.Instance),
-            [G1MulPrecompile.Instance.Address] = new(G1MulPrecompile.Instance),
-            [G1MultiExpPrecompile.Instance.Address] = new(G1MultiExpPrecompile.Instance),
-            [G2AddPrecompile.Instance.Address] = new(G2AddPrecompile.Instance),
-            [G2MulPrecompile.Instance.Address] = new(G2MulPrecompile.Instance),
-            [G2MultiExpPrecompile.Instance.Address] = new(G2MultiExpPrecompile.Instance),
-            [PairingPrecompile.Instance.Address] = new(PairingPrecompile.Instance),
-            [MapToG1Precompile.Instance.Address] = new(MapToG1Precompile.Instance),
-            [MapToG2Precompile.Instance.Address] = new(MapToG2Precompile.Instance),
+            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
+            [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
+            [G1MultiExpPrecompile.Address] = new(G1MultiExpPrecompile.Instance),
+            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
+            [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance),
+            [G2MultiExpPrecompile.Address] = new(G2MultiExpPrecompile.Instance),
+            [PairingPrecompile.Address] = new(PairingPrecompile.Instance),
+            [MapToG1Precompile.Address] = new(MapToG1Precompile.Instance),
+            [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
 
-            [PointEvaluationPrecompile.Instance.Address] = new(PointEvaluationPrecompile.Instance),
+            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
         };
     }
 
@@ -1184,7 +1184,7 @@ OutOfGas:
 
                         break;
                     }
-                case Instruction.SHA3:
+                case Instruction.KECCAK256:
                     {
                         stack.PopUInt256(out a);
                         stack.PopUInt256(out b);
@@ -1623,49 +1623,6 @@ OutOfGas:
 
                         break;
                     }
-                case Instruction.TLOAD:
-                    {
-                        Metrics.TloadOpcode++;
-                        if (!spec.TransientStorageEnabled) goto InvalidInstruction;
-
-                        gasAvailable -= GasCostOf.TLoad;
-
-                        stack.PopUInt256(out result);
-                        storageCell = new(env.ExecutingAccount, result);
-
-                        byte[] value = _state.GetTransientState(in storageCell);
-                        stack.PushBytes(value);
-
-                        if (typeof(TTracingStorage) == typeof(IsTracing))
-                        {
-                            _txTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
-                        }
-
-                        break;
-                    }
-                case Instruction.TSTORE:
-                    {
-                        Metrics.TstoreOpcode++;
-                        if (!spec.TransientStorageEnabled) goto InvalidInstruction;
-
-                        if (vmState.IsStatic) goto StaticCallViolation;
-
-                        gasAvailable -= GasCostOf.TStore;
-
-                        stack.PopUInt256(out result);
-                        storageCell = new(env.ExecutingAccount, result);
-                        bytes = stack.PopWord256();
-
-                        _state.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
-
-                        if (typeof(TTracingStorage) == typeof(IsTracing))
-                        {
-                            byte[] currentValue = _state.GetTransientState(in storageCell);
-                            _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
-                        }
-
-                        break;
-                    }
                 case Instruction.JUMP:
                     {
                         gasAvailable -= GasCostOf.Mid;
@@ -1994,28 +1951,77 @@ OutOfGas:
 
                         break;
                     }
-                case Instruction.BEGINSUB:
+                case Instruction.BEGINSUB | Instruction.TLOAD:
                     {
-                        if (!spec.SubroutinesEnabled) goto InvalidInstruction;
-
-                        // why do we even need the cost of it?
-                        gasAvailable -= GasCostOf.Base;
-
-                        goto InvalidSubroutineEntry;
-                    }
-                case Instruction.RETURNSUB:
-                    {
-                        if (!spec.SubroutinesEnabled) goto InvalidInstruction;
-
-                        gasAvailable -= GasCostOf.Low;
-
-                        if (vmState.ReturnStackHead == 0)
+                        if (spec.TransientStorageEnabled)
                         {
-                            goto InvalidSubroutineReturn;
+                            Metrics.TloadOpcode++;
+                            gasAvailable -= GasCostOf.TLoad;
+
+                            stack.PopUInt256(out result);
+                            storageCell = new(env.ExecutingAccount, result);
+
+                            byte[] value = _state.GetTransientState(in storageCell);
+                            stack.PushBytes(value);
+
+                            if (typeof(TTracingStorage) == typeof(IsTracing))
+                            {
+                                if (gasAvailable < 0) goto OutOfGas;
+                                _txTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
+                            }
+
+                            break;
+                        }
+                        else
+                        {
+                            if (!spec.SubroutinesEnabled) goto InvalidInstruction;
+
+                            // why do we even need the cost of it?
+                            gasAvailable -= GasCostOf.Base;
+
+                            goto InvalidSubroutineEntry;
                         }
 
-                        programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
-                        break;
+                    }
+                case Instruction.RETURNSUB | Instruction.TSTORE:
+                    {
+                        if (spec.TransientStorageEnabled)
+                        {
+                            Metrics.TstoreOpcode++;
+
+                            if (vmState.IsStatic) goto StaticCallViolation;
+
+                            gasAvailable -= GasCostOf.TStore;
+
+                            stack.PopUInt256(out result);
+                            storageCell = new(env.ExecutingAccount, result);
+                            bytes = stack.PopWord256();
+
+                            _state.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
+
+                            if (typeof(TTracingStorage) == typeof(IsTracing))
+                            {
+                                if (gasAvailable < 0) goto OutOfGas;
+                                byte[] currentValue = _state.GetTransientState(in storageCell);
+                                _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
+                            }
+
+                            break;
+                        }
+                        else
+                        {
+                            if (!spec.SubroutinesEnabled) goto InvalidInstruction;
+
+                            gasAvailable -= GasCostOf.Low;
+
+                            if (vmState.ReturnStackHead == 0)
+                            {
+                                goto InvalidSubroutineReturn;
+                            }
+
+                            programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
+                            break;
+                        }
                     }
                 case Instruction.JUMPSUB or Instruction.MCOPY:
                     {

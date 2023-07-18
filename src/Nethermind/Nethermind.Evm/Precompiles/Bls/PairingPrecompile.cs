@@ -17,7 +17,7 @@ public class PairingPrecompile : IPrecompile
 
     private PairingPrecompile() { }
 
-    public Address Address { get; } = Address.FromNumber(0x12);
+    public static Address Address { get; } = Address.FromNumber(0x12);
 
     public static IPrecompile Instance = new PairingPrecompile();
 
