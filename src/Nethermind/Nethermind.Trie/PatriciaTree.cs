@@ -327,8 +327,27 @@ namespace Nethermind.Trie
             }
             catch (TrieException e)
             {
-                TrieException.ThrowOnLoadFailure(rawKey, rootHash ?? RootHash, e);
-                return null;
+                EnhanceException(rawKey, rootHash ?? RootHash, e);
+                throw;
+            }
+        }
+
+        private static void EnhanceException(ReadOnlySpan<byte> rawKey, ValueKeccak rootHash, TrieException baseException)
+        {
+            TrieNodeException? GetTrieNodeException(TrieException? exception) =>
+                exception switch
+                {
+                    null => null,
+                    TrieNodeException ex => ex,
+                    _ => GetTrieNodeException(exception.InnerException as TrieException)
+                };
+
+            TrieNodeException? trieNodeException = GetTrieNodeException(baseException);
+            if (trieNodeException is not null)
+            {
+                trieNodeException.EnhancedMessage = trieNodeException.NodeHash == rootHash
+                    ? $"Failed to load root hash {rootHash} while loading key {rawKey.ToHexString()}."
+                    : $"Failed to load key {rawKey.ToHexString()} from root hash {rootHash}.";
             }
         }
 
@@ -442,7 +461,7 @@ namespace Nethermind.Trie
             {
                 node.ResolveNode(TrieStore);
             }
-            catch (TrieException e)
+            catch (TrieNodeException e)
             {
                 ThrowMissingTrieNodeException(in traverseContext, e);
             }

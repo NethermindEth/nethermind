@@ -16,36 +16,8 @@ namespace Nethermind.Trie
         {
         }
 
-        public TrieException(string message) : base(message)
+        public TrieException(string message, Exception? inner = null) : base(message, inner)
         {
         }
-
-        public TrieException(string message, Exception inner) : base(message, inner)
-        {
-        }
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        public static void ThrowOnLoadFailure(ReadOnlySpan<byte> rawKey, ValueKeccak rootHash, Exception baseException)
-        {
-            if (baseException is MissingNodeException nodeException && nodeException.NodeHash == rootHash)
-            {
-                throw new TrieException($"Failed to load root hash {rootHash} while loading key {rawKey.ToHexString()}.", baseException);
-            }
-            throw new TrieException($"Failed to load key {rawKey.ToHexString()} from root hash {rootHash}.", baseException);
-        }
-    }
-
-    public class MissingTrieNodeException : TrieException
-    {
-        public MissingTrieNodeException(string message, Exception inner, byte[] updatePath, int currentIndex) : base(message, inner)
-        {
-            UpdatePath = updatePath;
-            CurrentIndex = currentIndex;
-        }
-
-        public byte[] UpdatePath { get; }
-        public int CurrentIndex { get; }
-        public ReadOnlySpan<byte> GetPathPart() => UpdatePath.AsSpan(0, CurrentIndex + 1);
     }
 }
