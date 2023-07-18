@@ -51,8 +51,10 @@ public class HealingStateTree : StateTree
             {
                 return base.Get(rawKey, rootHash);
             }
-
-            throw;
+            else
+            {
+                throw;
+            }
         }
     }
 
@@ -68,8 +70,10 @@ public class HealingStateTree : StateTree
             {
                 base.Set(rawKey, value);
             }
-
-            throw;
+            else
+            {
+                throw;
+            }
         }
     }
 

@@ -50,8 +50,10 @@ public class HealingStorageTree : StorageTree
             {
                 return base.Get(rawKey, rootHash);
             }
-
-            throw;
+            else
+            {
+                throw;
+            }
         }
     }
 
@@ -67,8 +69,10 @@ public class HealingStorageTree : StorageTree
             {
                 base.Set(rawKey, value);
             }
-
-            throw;
+            else
+            {
+                throw;
+            }
         }
     }
 
