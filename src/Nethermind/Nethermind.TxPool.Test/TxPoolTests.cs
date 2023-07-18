@@ -1011,7 +1011,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_return_feeTooLowTooCompete_result_when_trying_to_send_transaction_with_same_nonce_for_same_address()
+        public void should_return_ReplacementNotAllowed_when_trying_to_send_transaction_with_same_nonce_and_same_fee_for_same_address()
         {
             _txPool = CreatePool();
             var result1 = _txPool.SubmitTx(GetTransaction(TestItem.PrivateKeyA, TestItem.AddressA), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
@@ -1019,7 +1019,7 @@ namespace Nethermind.TxPool.Test
             _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
             _txPool.GetPendingTransactionsCount().Should().Be(1);
             var result2 = _txPool.SubmitTx(GetTransaction(TestItem.PrivateKeyA, TestItem.AddressB), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
-            result2.Should().Be(AcceptTxResult.FeeTooLowToCompete);
+            result2.Should().Be(AcceptTxResult.ReplacementNotAllowed);
             _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
             _txPool.GetPendingTransactionsCount().Should().Be(1);
         }
@@ -1836,6 +1836,40 @@ namespace Nethermind.TxPool.Test
                 eip1559tx.Should().BeEquivalentTo(tx);
                 eip1559tx.GasBottleneck.Should().Be(UInt256.One);
             }
+        }
+
+        [Test]
+        public void should_not_allow_to_replace_blob_tx_by_tx_with_less_blobs([Values(1, 2, 3, 4, 5, 6)] int blobsInFirstTx, [Values(1, 2, 3, 4, 5, 6)] int blobsInSecondTx)
+        {
+            bool shouldReplace = blobsInFirstTx <= blobsInSecondTx;
+            const int initialFee = 10;
+
+            _txPool = CreatePool(new TxPoolConfig(){ Size = 128 }, GetCancunSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction firstTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(blobsInFirstTx)
+                .WithNonce(UInt256.Zero)
+                .WithMaxFeePerGas(initialFee)
+                .WithMaxPriorityFeePerGas(initialFee)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Transaction secondTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(blobsInSecondTx)
+                .WithNonce(UInt256.Zero)
+                .WithMaxFeePerGas(firstTx.MaxFeePerGas * 2)
+                .WithMaxPriorityFeePerGas(firstTx.MaxPriorityFeePerGas * 2)
+                .WithMaxFeePerDataGas(firstTx.MaxFeePerDataGas * 2)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
+
+            _txPool.SubmitTx(secondTx, TxHandlingOptions.None).Should().Be(shouldReplace ? AcceptTxResult.Accepted : AcceptTxResult.ReplacementNotAllowed);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
+            _txPool.TryGetPendingTransaction(shouldReplace ? secondTx.Hash! : firstTx.Hash!, out Transaction tx).Should().BeTrue();
+            tx.Should().BeEquivalentTo(shouldReplace ? secondTx : firstTx);
         }
 
         [TestCase(0, 97)]
