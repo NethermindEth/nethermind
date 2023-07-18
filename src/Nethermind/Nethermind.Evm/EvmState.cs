@@ -195,7 +195,7 @@ namespace Nethermind.Evm
             }
             if (executionType.IsAnyCreate())
             {
-                CreateList.Add(env.ExecutingAccount);
+                _createList.Add(env.ExecutingAccount);
             }
 
             _accessedAddressesSnapshot = _accessedAddresses.TakeSnapshot();
