@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Trie;
@@ -27,11 +26,13 @@ public abstract class TrieNodeRecovery<TRequest>
 
     public async Task<byte[]?> Recover(TRequest request)
     {
-        if (_logger.IsWarn) _logger.Warn("Missing trie node, trying to recover from network");
+        if (_logger.IsWarn) _logger.Warn($"Missing trie node {GetMissingNodes(request)}, trying to recover from network");
         using CancellationTokenSource cts = new(Timeouts.Eth);
         List<Recovery> keyRecoveries = GenerateKeyRecoveries(request, cts);
         return await CheckKeyRecoveriesResults(keyRecoveries, cts);
     }
+
+    protected abstract string GetMissingNodes(TRequest request);
 
     protected async Task<byte[]?> CheckKeyRecoveriesResults(List<Recovery> keyRecoveries, CancellationTokenSource cts)
     {

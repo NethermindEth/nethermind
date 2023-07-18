@@ -25,6 +25,8 @@ public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Keccak
         return base.Recover(request);
     }
 
+    protected override string GetMissingNodes(IReadOnlyList<Keccak> request) => string.Join(", ", request);
+
     protected override bool CanAllocatePeer(ISyncPeer peer) => peer.CanGetNodeData();
 
     protected override async Task<byte[]?> RecoverRlpFromPeerBase(ISyncPeer peer, IReadOnlyList<Keccak> request, CancellationTokenSource cts)

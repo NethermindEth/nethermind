@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -18,6 +19,17 @@ public class SnapTrieNodeRecovery : TrieNodeRecovery<GetTrieNodesRequest>
     public SnapTrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager) : base(syncPeerPool, logManager)
     {
     }
+
+    protected override string GetMissingNodes(GetTrieNodesRequest request) =>
+        string.Join("; ", request.AccountAndStoragePaths.Select(GetMissingNodes));
+
+    private string GetMissingNodes(PathGroup requestAccountAndStoragePaths) =>
+        requestAccountAndStoragePaths.Group.Length switch
+        {
+            1 => $"Account: {requestAccountAndStoragePaths.Group[0]}",
+            > 1 => $"Account: {requestAccountAndStoragePaths.Group[0]}, Storage: {string.Join(", ", requestAccountAndStoragePaths.Group.Skip(1))}",
+            _ => "",
+        };
 
     protected override bool CanAllocatePeer(ISyncPeer peer) => peer.CanGetSnapData();
 
