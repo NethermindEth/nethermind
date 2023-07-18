@@ -185,7 +185,6 @@ namespace Nethermind.TxPool
                 {
                     if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee)
                     {
-                        numberOfPersistentTxsToBroadcast--;
                         if (tx.CanBeBroadcast())
                         {
                             persistentTxsToSend ??= new List<Transaction>(numberOfPersistentTxsToBroadcast);
@@ -193,9 +192,14 @@ namespace Nethermind.TxPool
                         }
                         else
                         {
+                            if (tx.MaxFeePerDataGas < _headInfo.CurrentPricePerDataGas) // for not-blob tx MaxFeePerDataGas is null so check will be skipped
+                            {
+                                continue;
+                            }
                             persistentHashesToSend ??= new List<Transaction>(numberOfPersistentTxsToBroadcast);
                             persistentHashesToSend.Add(tx);
                         }
+                        numberOfPersistentTxsToBroadcast--;
                     }
                 }
                 else
