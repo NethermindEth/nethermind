@@ -31,8 +31,6 @@ public class HealingStorageTree : StorageTree
         }
     }
 
-    public bool Throw { get; set; }
-
     public override byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
     {
         try

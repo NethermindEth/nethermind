@@ -33,6 +33,8 @@ namespace Nethermind.Trie
         /// </summary>
         public static readonly Keccak EmptyTreeHash = Keccak.EmptyTreeHash;
 
+        public bool Throw { get; set; }
+
         public TrieType TrieType { get; init; }
 
         /// <summary>
@@ -426,13 +428,23 @@ namespace Nethermind.Trie
 
         private void ResolveNode(TrieNode node, in TraverseContext traverseContext)
         {
+            if (Throw)
+            {
+                if (Random.Shared.Next(100) == 0)
+                {
+                    Throw = false;
+                    ThrowMissingTrieNodeException(in traverseContext, new TrieException());
+                }
+            }
+
+
             try
             {
                 node.ResolveNode(TrieStore);
             }
             catch (TrieException e)
             {
-                throw new MissingTrieNodeException(e.Message, e, traverseContext.UpdatePath.ToArray(), traverseContext.CurrentIndex);
+                ThrowMissingTrieNodeException(in traverseContext, e);
             }
         }
 
@@ -1102,6 +1114,13 @@ namespace Nethermind.Trie
         private static void ThrowMissingPrefixException()
         {
             throw new InvalidDataException("An attempt to visit a node without a prefix path.");
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static void ThrowMissingTrieNodeException(in TraverseContext traverseContext, TrieException e)
+        {
+            throw new MissingTrieNodeException(e.Message, e, traverseContext.UpdatePath.ToArray(), traverseContext.CurrentIndex);
         }
     }
 }

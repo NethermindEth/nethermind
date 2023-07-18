@@ -26,8 +26,6 @@ public class HealingStateTree : StateTree
         _logManager = logManager;
     }
 
-    public bool Throw { get; set; }
-
     public void InitializeNetwork(ISyncPeerPool syncPeerPool)
     {
         _recovery = new SnapTrieNodeRecovery(syncPeerPool, _logManager);
@@ -37,13 +35,13 @@ public class HealingStateTree : StateTree
     {
         try
         {
-            if (Throw)
-            {
-                Throw = false;
-                byte[] nibbles = new byte[rawKey.Length * 2];
-                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                throw new MissingTrieNodeException("Test", null!, nibbles, 1);
-            }
+            // if (Throw)
+            // {
+            //     Throw = false;
+            //     byte[] nibbles = new byte[rawKey.Length * 2];
+            //     Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+            //     throw new MissingTrieNodeException("Test", null!, nibbles, 1);
+            // }
             return base.Get(rawKey, rootHash);
         }
         catch (MissingTrieNodeException e)
