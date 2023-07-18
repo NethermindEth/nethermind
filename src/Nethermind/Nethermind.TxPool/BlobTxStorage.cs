@@ -21,17 +21,6 @@ public class BlobTxStorage : ITxStorage
 
     public bool TryGet(Keccak hash, out Transaction? transaction) => TryDecode(_database.Get(hash), out transaction);
 
-    public IEnumerable<Transaction> GetAll()
-    {
-        foreach (byte[] txBytes in _database.GetAllValues())
-        {
-            if (TryDecode(txBytes, out Transaction? transaction))
-            {
-                yield return transaction!;
-            }
-        }
-    }
-
     private static bool TryDecode(byte[]? txBytes, out Transaction? transaction)
     {
         if (txBytes is not null)
@@ -49,6 +38,17 @@ public class BlobTxStorage : ITxStorage
 
         transaction = default;
         return false;
+    }
+
+    public IEnumerable<Transaction> GetAll()
+    {
+        foreach (byte[] txBytes in _database.GetAllValues())
+        {
+            if (TryDecode(txBytes, out Transaction? transaction))
+            {
+                yield return transaction!;
+            }
+        }
     }
 
     public void Add(Transaction transaction)
