@@ -388,31 +388,36 @@ namespace Nethermind.TxPool
                 bool inserted = (tx.SupportsBlobs
                     ? _blobTransactions.TryInsert(tx, out Transaction? removed)
                     : _transactions.TryInsert(tx.Hash!, tx, out removed));
-                if (inserted && tx.Hash != removed?.Hash)
-                {
-                    (tx.SupportsBlobs ? _blobTransactions : _transactions).UpdateGroup(tx.SenderAddress!, state.SenderAccount, UpdateBucketWithAddedTransaction);
-                    Metrics.PendingTransactionsAdded++;
-                    if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
 
-                    if (removed is not null)
-                    {
-                        EvictedPending?.Invoke(this, new TxEventArgs(removed));
-                        // transaction which was on last position in sorted TxPool and was deleted to give
-                        // a place for a newly added tx (with higher priority) is now removed from hashCache
-                        // to give it opportunity to come back to TxPool in the future, when fees drops
-                        _hashCache.DeleteFromLongTerm(removed.Hash!);
-                        Metrics.PendingTransactionsEvicted++;
-                    }
-                }
-                else
+                if (!inserted)
                 {
-                    if (isPersistentBroadcast && inserted)
+                    Metrics.PendingTransactionsPassedFiltersButCannotReplace++;
+                    return AcceptTxResult.ReplacementNotAllowed;
+                }
+
+                if (tx.Hash == removed?.Hash)
+                {
+                    if (isPersistentBroadcast)
                     {
                         // it means it was added and immediately evicted - we are adding only to persistent broadcast
                         _broadcaster.Broadcast(tx, isPersistentBroadcast);
                     }
                     Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
                     return AcceptTxResult.FeeTooLowToCompete;
+                }
+
+                (tx.SupportsBlobs ? _blobTransactions : _transactions).UpdateGroup(tx.SenderAddress!, state.SenderAccount, UpdateBucketWithAddedTransaction);
+                Metrics.PendingTransactionsAdded++;
+                if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
+
+                if (removed is not null)
+                {
+                    EvictedPending?.Invoke(this, new TxEventArgs(removed));
+                    // transaction which was on last position in sorted TxPool and was deleted to give
+                    // a place for a newly added tx (with higher priority) is now removed from hashCache
+                    // to give it opportunity to come back to TxPool in the future, when fees drops
+                    _hashCache.DeleteFromLongTerm(removed.Hash!);
+                    Metrics.PendingTransactionsEvicted++;
                 }
             }
 

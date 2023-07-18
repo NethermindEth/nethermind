@@ -40,9 +40,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 
     public bool TryInsert(Transaction fullBlobTx, out Transaction? removed)
     {
-        Transaction lightBlobTx = CreateLightTx(fullBlobTx);
-
-        if (base.TryInsert(fullBlobTx.Hash, lightBlobTx, out removed))
+        if (base.TryInsert(fullBlobTx.Hash, CreateLightTx(fullBlobTx), out removed))
         {
             _blobTxCache.Set(fullBlobTx.Hash, fullBlobTx);
             _blobTxStorage.Add(fullBlobTx);
@@ -72,7 +70,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 
     public IEnumerable<Transaction> GetBlobTransactions()
     {
-        // to refactor - it must lazy return starting from the best
+        // ToDo: to refactor - it must lazy enumerate starting from the best
         foreach (Transaction lightBlobTx in GetSnapshot())
         {
             TryGetValue(lightBlobTx.Hash!, out Transaction? fullBlobTx);

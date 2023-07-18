@@ -23,6 +23,10 @@ public class CompareReplacedBlobTx : IComparer<Transaction?>
         if (ReferenceEquals(null, y)) return 1;
         if (ReferenceEquals(null, x)) return -1;
 
+        // do not allow to replace blob tx by the one with lower number of blobs
+        if (y.BlobVersionedHashes is null || x.BlobVersionedHashes is null) return 1;
+        if (y.BlobVersionedHashes.Length > x.BlobVersionedHashes.Length) return 1;
+
         // always allow replacement of zero fee txs
         if (y.MaxFeePerGas.IsZero) return -1; //ToDo: do we need it?
 

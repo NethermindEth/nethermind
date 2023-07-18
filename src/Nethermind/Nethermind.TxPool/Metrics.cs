@@ -60,9 +60,12 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsGasLimitTooHigh { get; set; }
 
         [CounterMetric]
-        [Description(
-            "Number of pending transactions received that were ignored after passing early rejections as balance is too low to compete with lowest effective fee in transaction pool.")]
+        [Description("Number of pending transactions received that were ignored after passing early rejections as balance is too low to compete with lowest effective fee in transaction pool.")]
         public static long PendingTransactionsPassedFiltersButCannotCompeteOnFees { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending transactions received that were trying to replace tx with the same sender and nonce and failed.")]
+        public static long PendingTransactionsPassedFiltersButCannotReplace { get; set; }
 
         [CounterMetric]
         [Description("Number of pending transactions that reached filters which are resource expensive")]
