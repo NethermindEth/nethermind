@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -36,13 +37,13 @@ public class HealingStorageTree : StorageTree
     {
         try
         {
-            if (Throw)
-            {
-                Throw = false;
-                byte[] nibbles = new byte[rawKey.Length * 2];
-                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                throw new MissingTrieNodeException("Test", null!, nibbles, 1);
-            }
+            // if (Throw)
+            // {
+            //     Throw = false;
+            //     byte[] nibbles = new byte[rawKey.Length * 2];
+            //     Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+            //     throw new MissingTrieNodeException("Test", null!, nibbles, 1);
+            // }
             return base.Get(rawKey, rootHash);
         }
         catch (MissingTrieNodeException e)
@@ -94,9 +95,15 @@ public class HealingStorageTree : StorageTree
             }
         };
 
+
         byte[]? rlp = _recovery?.Recover(request).GetAwaiter().GetResult();
-        if (rlp is null) return false;
+        if (rlp is null)
+        {
+            _logger.Error($"Recovery of {pathPart.ToHexString()} failed");
+            return false;
+        }
         TrieStore.Set(ValueKeccak.Compute(rlp).Bytes, rlp);
+        _logger.Error($"Recovery of {pathPart.ToHexString()} succeeded");
         return true;
     }
 }
