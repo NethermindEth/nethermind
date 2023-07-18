@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -16,7 +15,7 @@ namespace Nethermind.Synchronization.Trie;
 
 public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Keccak>>
 {
-    public GetNodeDataTrieNodeRecovery(ISyncPeerPool syncPeerPool, IBlockTree blockTree, ILogManager? logManager) : base(syncPeerPool, blockTree, logManager)
+    public GetNodeDataTrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager) : base(syncPeerPool, logManager)
     {
     }
 
@@ -26,7 +25,7 @@ public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Keccak
         return base.Recover(request);
     }
 
-    protected override bool CanAllocatePeer(ISyncPeer peer) => base.CanAllocatePeer(peer) && peer.CanGetNodeData();
+    protected override bool CanAllocatePeer(ISyncPeer peer) => peer.CanGetNodeData();
 
     protected override async Task<byte[]?> RecoverRlpFromPeerBase(ISyncPeer peer, IReadOnlyList<Keccak> request, CancellationTokenSource cts)
     {
@@ -36,13 +35,10 @@ public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Keccak
             byte[] recoveredRlp = rlp[0];
             if (ValueKeccak.Compute(recoveredRlp) == request[0])
             {
-                if (_logger.IsWarn) _logger.Warn($"Recovered RLP from peer {peer} with {recoveredRlp.Length} bytes");
                 return recoveredRlp;
             }
-            else
-            {
-                if (_logger.IsWarn) _logger.Warn($"Recovered RLP from peer {peer} but the hash does not match");
-            }
+
+            if (_logger.IsDebug) _logger.Debug($"Recovered RLP from peer {peer} but the hash does not match");
         }
 
         return null;

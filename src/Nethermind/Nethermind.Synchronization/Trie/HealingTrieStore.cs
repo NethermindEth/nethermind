@@ -44,7 +44,7 @@ public class HealingTrieStore : TrieStore
 
     public void InitializeNetwork(ISyncPeerPool syncPeerPool, IBlockTree blockTree)
     {
-        _recovery = new GetNodeDataTrieNodeRecovery(syncPeerPool, blockTree, _logManager);
+        _recovery = new GetNodeDataTrieNodeRecovery(syncPeerPool, _logManager);
     }
 
     public override byte[] LoadRlp(Keccak keccak, ReadFlags readFlags = ReadFlags.None)

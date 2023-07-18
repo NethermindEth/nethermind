@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
@@ -17,14 +16,12 @@ namespace Nethermind.Synchronization.Trie;
 public abstract class TrieNodeRecovery<TRequest>
 {
     private readonly ISyncPeerPool _syncPeerPool;
-    private readonly IBlockTree _blockTree;
     protected readonly ILogger _logger;
     private const int MaxPeersForRecovery = 30;
 
-    protected TrieNodeRecovery(ISyncPeerPool syncPeerPool, IBlockTree blockTree, ILogManager? logManager)
+    protected TrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager)
     {
         _syncPeerPool = syncPeerPool;
-        _blockTree = blockTree;
         _logger = logManager?.GetClassLogger<TrieNodeRecovery<TRequest>>() ?? NullLogger.Instance;
     }
 
@@ -43,16 +40,10 @@ public abstract class TrieNodeRecovery<TRequest>
     {
         using CancellationTokenSource cts = new(Timeouts.Eth);
         List<Recovery> keyRecoveries = GenerateKeyRecoveries(request, cts);
-        byte[]? checkKeyRecoveriesResults = await CheckKeyRecoveriesResults(keyRecoveries);
-        cts.Cancel();
-        if (checkKeyRecoveriesResults is not null)
-        {
-            if (_logger.IsWarn) _logger.Warn("Recovered!");
-        }
-        return checkKeyRecoveriesResults;
+        return await CheckKeyRecoveriesResults(keyRecoveries, cts);
     }
 
-    protected async Task<byte[]?> CheckKeyRecoveriesResults(List<Recovery> keyRecoveries)
+    protected async Task<byte[]?> CheckKeyRecoveriesResults(List<Recovery> keyRecoveries, CancellationTokenSource cts)
     {
         while (keyRecoveries.Count > 0)
         {
@@ -60,12 +51,13 @@ public abstract class TrieNodeRecovery<TRequest>
             (Recovery Recovery, byte[]? Data) result = await task;
             if (result.Data is null)
             {
-                _logger.Warn($"Got empty response from peer {result.Recovery.Peer}");
+                if (_logger.IsDebug) _logger.Debug($"Got empty response from peer {result.Recovery.Peer}");
                 keyRecoveries.Remove(result.Recovery);
             }
             else
             {
-                _logger.Warn($"Successfully recovered from peer {result.Recovery.Peer} with {result.Data.Length} bytes!");
+                if (_logger.IsInfo) _logger.Info($"Successfully recovered from peer {result.Recovery.Peer} with {result.Data.Length} bytes!");
+                cts.Cancel();
                 return result.Data;
             }
         }
@@ -76,7 +68,7 @@ public abstract class TrieNodeRecovery<TRequest>
     protected List<Recovery> GenerateKeyRecoveries(TRequest requestedHashes, CancellationTokenSource cts)
     {
         List<Recovery> keyRecoveries = AllocatePeers();
-        if (_logger.IsWarn) _logger.Warn($"Allocated {keyRecoveries.Count} peers (out of {_syncPeerPool!.InitializedPeers.Count()} initialized peers)");
+        if (_logger.IsDebug) _logger.Debug($"Allocated {keyRecoveries.Count} peers (out of {_syncPeerPool!.InitializedPeers.Count()} initialized peers)");
         foreach (Recovery keyRecovery in keyRecoveries)
         {
             keyRecovery.Task = RecoverRlpFromPeer(keyRecovery, requestedHashes, cts);
@@ -89,17 +81,16 @@ public abstract class TrieNodeRecovery<TRequest>
     {
         List<Recovery> syncPeerAllocations = new(MaxPeersForRecovery);
 
-        foreach (ISyncPeer peer in _syncPeerPool!.InitializedPeers.Select(p => p.SyncPeer).OrderByDescending(p => p.HeadNumber))
+        foreach (ISyncPeer peer in _syncPeerPool!.InitializedPeers
+                     .Select(p => p.SyncPeer)
+                     .OrderByDescending(p => p.HeadNumber))
         {
             bool canAllocatePeer = CanAllocatePeer(peer);
             if (canAllocatePeer)
             {
                 syncPeerAllocations.Add(new Recovery { Peer = peer });
             }
-            else
-            {
-                _logger.Warn($"Peer {peer} can not be allocated with eth{peer.ProtocolVersion}");
-            }
+            else if (_logger.IsTrace) _logger.Trace($"Peer {peer} can not be allocated with eth{peer.ProtocolVersion}");
 
             if (syncPeerAllocations.Count >= MaxPeersForRecovery)
             {
@@ -110,7 +101,7 @@ public abstract class TrieNodeRecovery<TRequest>
         return syncPeerAllocations;
     }
 
-    protected virtual bool CanAllocatePeer(ISyncPeer peer) => true;// peer.HeadNumber >= (_blockTree.Head?.Number ?? 0);
+    protected abstract bool CanAllocatePeer(ISyncPeer peer);
 
     private async Task<(Recovery, byte[]?)> RecoverRlpFromPeer(Recovery recovery, TRequest request, CancellationTokenSource cts)
     {
@@ -122,7 +113,7 @@ public abstract class TrieNodeRecovery<TRequest>
         }
         catch (OperationCanceledException)
         {
-            if (_logger.IsWarn) _logger.Warn($"Cancelled recovering RLP from peer {peer}");
+            if (_logger.IsTrace) _logger.Trace($"Cancelled recovering RLP from peer {peer}");
         }
         catch (Exception e)
         {

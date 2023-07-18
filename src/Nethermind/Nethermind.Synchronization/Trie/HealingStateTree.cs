@@ -30,35 +30,23 @@ public class HealingStateTree : StateTree
 
     public void InitializeNetwork(ISyncPeerPool syncPeerPool, IBlockTree blockTree)
     {
-        _recovery = new SnapTrieNodeRecovery(syncPeerPool, blockTree, _logManager);
+        _recovery = new SnapTrieNodeRecovery(syncPeerPool, _logManager);
     }
 
     public override byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
     {
         try
         {
-            // if (Throw)
-            // {
-            //     Throw = false;
-            //     byte[] nibbles = new byte[rawKey.Length * 2];
-            //     Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-            //     throw new MissingTrieNodeException("Test", null!, nibbles, 1);
-            // }
             return base.Get(rawKey, rootHash);
         }
         catch (MissingTrieNodeException e)
         {
-            Throw = false;
             if (BlockchainProcessor.IsMainProcessingThread && Recover(e.GetPathPart(), rootHash ?? RootHash))
             {
                 return base.Get(rawKey, rootHash);
             }
-            else
-            {
-                _logger.Error("Get recovery failed!");
-                return base.Get(rawKey, rootHash);
-                // throw;
-            }
+
+            throw;
         }
     }
 
@@ -70,15 +58,13 @@ public class HealingStateTree : StateTree
         }
         catch (MissingTrieNodeException e)
         {
-            Throw = false;
             if (BlockchainProcessor.IsMainProcessingThread && Recover(e.GetPathPart(), RootHash))
             {
                 base.Set(rawKey, value);
             }
             else
             {
-                _logger.Error("Set recovery failed!");
-                base.Set(rawKey, value);
+                throw;
             }
         }
     }
@@ -98,14 +84,12 @@ public class HealingStateTree : StateTree
         };
 
         byte[]? rlp = _recovery?.Recover(request).GetAwaiter().GetResult();
-
-        if (rlp is null)
+        if (rlp is not null)
         {
-            _logger.Error($"Recovery of {pathPart.ToHexString()} from {rootHash} failed");
-            return false;
+            TrieStore.Set(ValueKeccak.Compute(rlp).Bytes, rlp);
+            return true;
         }
-        TrieStore.Set(ValueKeccak.Compute(rlp).Bytes, rlp);
-        _logger.Error($"Recovery of {pathPart.ToHexString()} from {rootHash} succeeded");
-        return true;
+
+        return false;
     }
 }
