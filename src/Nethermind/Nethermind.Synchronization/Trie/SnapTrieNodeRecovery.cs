@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.State.Snap;
@@ -26,8 +27,8 @@ public class SnapTrieNodeRecovery : TrieNodeRecovery<GetTrieNodesRequest>
     private string GetMissingNodes(PathGroup requestAccountAndStoragePaths) =>
         requestAccountAndStoragePaths.Group.Length switch
         {
-            1 => $"Account: {requestAccountAndStoragePaths.Group[0]}",
-            > 1 => $"Account: {requestAccountAndStoragePaths.Group[0]}, Storage: {string.Join(", ", requestAccountAndStoragePaths.Group.Skip(1))}",
+            1 => $"Account: {requestAccountAndStoragePaths.Group[0].ToHexString()}",
+            > 1 => $"Account: {requestAccountAndStoragePaths.Group[0].ToHexString()}, Storage: {string.Join(", ", requestAccountAndStoragePaths.Group.Skip(1).Select(g => g.ToHexString()))}",
             _ => "",
         };
 
