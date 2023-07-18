@@ -33,7 +33,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
         if (_logger.IsDebug) _logger.Debug("Recreating light collection of blob transactions and cache");
         foreach (Transaction fullBlobTx in blobTxStorage.GetAll())
         {
-            if (base.TryInsert(fullBlobTx.Hash, CreateLightTx(fullBlobTx)))
+            if (base.TryInsert(fullBlobTx.Hash, new LightTransaction(fullBlobTx)))
             {
                 _blobTxCache.Set(fullBlobTx.Hash, fullBlobTx);
             }
@@ -42,7 +42,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 
     public bool TryInsert(Transaction fullBlobTx, out Transaction? removed)
     {
-        if (base.TryInsert(fullBlobTx.Hash, CreateLightTx(fullBlobTx), out removed))
+        if (base.TryInsert(fullBlobTx.Hash, new LightTransaction(fullBlobTx), out removed))
         {
             _blobTxCache.Set(fullBlobTx.Hash, fullBlobTx);
             _blobTxStorage.Add(fullBlobTx);
@@ -50,24 +50,6 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
         }
 
         return false;
-    }
-
-    private Transaction CreateLightTx(Transaction fullBlobTx)
-    {
-        return new Transaction
-        {
-            Type = TxType.Blob,
-            Hash = fullBlobTx.Hash,
-            SenderAddress = fullBlobTx.SenderAddress,
-            Nonce = fullBlobTx.Nonce,
-            Value = fullBlobTx.Value,
-            GasLimit = fullBlobTx.GasLimit,
-            GasPrice = fullBlobTx.GasPrice, // means MaxPriorityFeePerGas
-            DecodedMaxFeePerGas = fullBlobTx.DecodedMaxFeePerGas,
-            MaxFeePerDataGas = fullBlobTx.MaxFeePerDataGas,
-            BlobVersionedHashes = new byte[fullBlobTx.BlobVersionedHashes!.Length][],
-            GasBottleneck = fullBlobTx.GasBottleneck,
-        };
     }
 
     public IEnumerable<Transaction> GetBlobTransactions()
