@@ -66,10 +66,9 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult OldNonce = new(10, nameof(OldNonce));
 
         /// <summary>
-        /// A transaction with same nonce has been signed locally already and is awaiting in the pool.
-        /// (I would like to change this behaviour to allow local replacement)
+        /// Transaction is not allowed to replace the one already in the pool. Fee bump is too low or some requirements are not fulfilled
         /// </summary>
-        public static readonly AcceptTxResult OwnNonceAlreadyUsed = new(11, nameof(OwnNonceAlreadyUsed));
+        public static readonly AcceptTxResult ReplacementNotAllowed = new(11, nameof(ReplacementNotAllowed));
 
         /// <summary>
         /// Transaction sender has code hash that is not null.
@@ -77,14 +76,9 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult SenderIsContract = new(12, nameof(SenderIsContract));
 
         /// <summary>
-        /// Transaction is not allowed to replace the one already in the pool. Fee bump is too low or some requirements are not fulfilled
-        /// </summary>
-        public static readonly AcceptTxResult ReplacementNotAllowed = new(13, nameof(ReplacementNotAllowed));
-
-        /// <summary>
         /// Ignores blob transactions if sender already have pending transactions of other types; ignore other types if has already pending blobs
         /// </summary>
-        public static readonly AcceptTxResult PendingTxsOfOtherType = new(14, nameof(PendingTxsOfOtherType));
+        public static readonly AcceptTxResult PendingTxsOfOtherType = new(13, nameof(PendingTxsOfOtherType));
 
         private int Id { get; }
         private string Code { get; }
