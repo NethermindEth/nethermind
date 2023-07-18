@@ -1611,70 +1611,39 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_not_add_nonce_gap_blob_tx_even_to_not_full_TxPool()
+        public void should_not_add_nonce_gap_blob_tx_even_to_not_full_TxPool([Values(true, false)] bool isBlob)
         {
             _txPool = CreatePool(new TxPoolConfig(){ Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction firstTx = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields()
+                .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
+                .WithShardBlobTxTypeAndFieldsIfBlobTx()
                 .WithMaxFeePerGas(UInt256.One)
                 .WithMaxPriorityFeePerGas(UInt256.One)
                 .WithNonce(UInt256.Zero)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction nonceGapBlobTx = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields()
+                .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
+                .WithShardBlobTxTypeAndFieldsIfBlobTx()
                 .WithMaxFeePerGas(UInt256.One)
                 .WithMaxPriorityFeePerGas(UInt256.One)
                 .WithNonce((UInt256)2)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-            _txPool.SubmitTx(nonceGapBlobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.NonceGap);
-        }
-
-        [Test]
-        public void should_add_nonce_gap_tx_to_not_full_TxPool_if_is_not_blob_type()
-        {
-            _txPool = CreatePool(new TxPoolConfig(){ Size = 128 }, GetCancunSpecProvider());
-            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-
-            Transaction firstTx = Build.A.Transaction
-                .WithType(TxType.EIP1559)
-                .WithMaxFeePerGas(UInt256.One)
-                .WithMaxPriorityFeePerGas(UInt256.One)
-                .WithNonce(UInt256.Zero)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-
-            Transaction nonceGap1559Tx = Build.A.Transaction
-                .WithType(TxType.EIP1559)
-                .WithMaxFeePerGas(UInt256.One)
-                .WithMaxPriorityFeePerGas(UInt256.One)
-                .WithNonce((UInt256)2)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-
-            _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-            _txPool.SubmitTx(nonceGap1559Tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(nonceGapBlobTx, TxHandlingOptions.None).Should().Be(isBlob ? AcceptTxResult.NonceGap : AcceptTxResult.Accepted);
         }
 
         [Test]
         public void should_not_allow_to_have_pending_transactions_of_both_blob_type_and_other([Values(true, false)] bool firstIsBlob, [Values(true, false)] bool secondIsBlob)
         {
-            Transaction GetBlobTx(UInt256 nonce)
+            Transaction GetTx(bool isBlob, UInt256 nonce)
             {
                 return Build.A.Transaction
-                    .WithShardBlobTxTypeAndFields()
-                    .WithMaxFeePerGas(UInt256.One)
-                    .WithMaxPriorityFeePerGas(UInt256.One)
-                    .WithNonce(nonce)
-                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            }
-
-            Transaction Get1559Tx(UInt256 nonce)
-            {
-                return Build.A.Transaction
-                    .WithType(TxType.EIP1559)
+                    .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
+                    .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(UInt256.One)
                     .WithMaxPriorityFeePerGas(UInt256.One)
                     .WithNonce(nonce)
@@ -1684,8 +1653,8 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(new TxPoolConfig(){ Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction firstTx = firstIsBlob ? GetBlobTx(UInt256.Zero) : Get1559Tx(UInt256.Zero);
-            Transaction secondTx = secondIsBlob ? GetBlobTx(UInt256.One) : Get1559Tx(UInt256.One);
+            Transaction firstTx = GetTx(firstIsBlob, UInt256.Zero);
+            Transaction secondTx = GetTx(secondIsBlob, UInt256.One);
 
             _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             _txPool.SubmitTx(secondTx, TxHandlingOptions.None).Should().Be(firstIsBlob ^ secondIsBlob ? AcceptTxResult.PendingTxsOfOtherType : AcceptTxResult.Accepted);
@@ -1694,20 +1663,11 @@ namespace Nethermind.TxPool.Test
         [Test]
         public async Task should_allow_to_have_pending_transaction_of_other_type_if_conflicting_one_was_included([Values(true, false)] bool firstIsBlob, [Values(true, false)] bool secondIsBlob)
         {
-            Transaction GetBlobTx(UInt256 nonce)
+            Transaction GetTx(bool isBlob, UInt256 nonce)
             {
                 return Build.A.Transaction
-                    .WithShardBlobTxTypeAndFields()
-                    .WithMaxFeePerGas(UInt256.One)
-                    .WithMaxPriorityFeePerGas(UInt256.One)
-                    .WithNonce(nonce)
-                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            }
-
-            Transaction Get1559Tx(UInt256 nonce)
-            {
-                return Build.A.Transaction
-                    .WithType(TxType.EIP1559)
+                    .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
+                    .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(UInt256.One)
                     .WithMaxPriorityFeePerGas(UInt256.One)
                     .WithNonce(nonce)
@@ -1717,8 +1677,8 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(new TxPoolConfig(){ Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction firstTx = firstIsBlob ? GetBlobTx(UInt256.Zero) : Get1559Tx(UInt256.Zero);
-            Transaction secondTx = secondIsBlob ? GetBlobTx(UInt256.One) : Get1559Tx(UInt256.One);
+            Transaction firstTx = GetTx(firstIsBlob, UInt256.Zero);
+            Transaction secondTx = GetTx(secondIsBlob, UInt256.One);
 
             _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
@@ -1730,12 +1690,16 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingTransactionsCount().Should().Be(0);
             _txPool.GetPendingBlobTransactionsCount().Should().Be(0);
             _txPool.SubmitTx(secondTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetPendingTransactionsCount().Should().Be(secondIsBlob ? 0 : 1);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(secondIsBlob ? 1 : 0);
         }
 
+        // blob collection is designed to be infinite, so there is no point in checking if is full and comparing
+        // incoming tx with the worst already pending one (candidate for evicting). There will be no eviction.
         [Test]
         public void should_reject_tx_with_FeeTooLow_only_if_is_not_blob_type()
         {
-            TxPoolConfig txPoolConfig = new TxPoolConfig() { Size = 10 };
+            TxPoolConfig txPoolConfig = new() { Size = 10 };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
