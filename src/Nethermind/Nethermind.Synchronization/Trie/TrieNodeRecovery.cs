@@ -89,7 +89,7 @@ public abstract class TrieNodeRecovery<TRequest>
     {
         List<Recovery> syncPeerAllocations = new(MaxPeersForRecovery);
 
-        foreach (ISyncPeer peer in _syncPeerPool!.InitializedPeers.Select(p => p.SyncPeer))
+        foreach (ISyncPeer peer in _syncPeerPool!.InitializedPeers.Select(p => p.SyncPeer).OrderByDescending(p => p.HeadNumber))
         {
             bool canAllocatePeer = CanAllocatePeer(peer);
             if (canAllocatePeer)
@@ -110,7 +110,7 @@ public abstract class TrieNodeRecovery<TRequest>
         return syncPeerAllocations;
     }
 
-    protected virtual bool CanAllocatePeer(ISyncPeer peer) => peer.HeadNumber >= (_blockTree.Head?.Number ?? 0);
+    protected virtual bool CanAllocatePeer(ISyncPeer peer) => true;// peer.HeadNumber >= (_blockTree.Head?.Number ?? 0);
 
     private async Task<(Recovery, byte[]?)> RecoverRlpFromPeer(Recovery recovery, TRequest request, CancellationTokenSource cts)
     {
