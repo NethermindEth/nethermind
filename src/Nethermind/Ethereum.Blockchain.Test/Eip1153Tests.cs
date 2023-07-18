@@ -11,8 +11,6 @@ namespace Ethereum.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class Eip1153Tests : GeneralStateTestBase
 {
-    // wait untill Eip5656 tests are merged to de-comment this
-
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test)
     {
