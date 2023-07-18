@@ -24,6 +24,11 @@ namespace Nethermind.JsonRpc
         int Timeout { get; set; }
 
         [ConfigItem(
+            Description = "ToDo",
+            DefaultValue = "500")]
+        int MaxPendingSharedRequests { get; set; }
+
+        [ConfigItem(
             Description = "Base file path for diagnostic JSON RPC recorder.",
             DefaultValue = "\"logs/rpc.{counter}.txt\"")]
         string RpcRecorderBaseFilePath { get; set; }

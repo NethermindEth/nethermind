@@ -20,11 +20,13 @@ namespace Nethermind.JsonRpc.Modules
         private readonly SemaphoreSlim _semaphore;
         private readonly ILogger _logger;
         private int _activeWorkers = 0;
-        private int _threadsWaiting = 0;
-        private int _exclusiveCapacity = 0;
+        private int _rpcCallsPending = 0;
+        private readonly int _exclusiveCapacity = 0;
+        private readonly int _maxPendingSharedRequests = 0;
 
-        public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout, ILogManager logManager)
+        public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout, ILogManager logManager, int maxPendingSharedRequests = 0)
         {
+            _maxPendingSharedRequests = maxPendingSharedRequests;
             _exclusiveCapacity = exclusiveCapacity;
             _logger = logManager.GetClassLogger();
             _timeout = timeout;
@@ -44,19 +46,26 @@ namespace Nethermind.JsonRpc.Modules
 
         private async Task<T> SlowPath()
         {
-            ++_threadsWaiting;
+            ++_rpcCallsPending;
             if (_logger.IsInfo)
             {
-                _logger.Info($"{typeof(T).Name} Threads waiting {_threadsWaiting} Active Workers {_activeWorkers}/{_exclusiveCapacity}");
+                _logger.Info($"{typeof(T).Name} Pending RPC requests {_rpcCallsPending} Active Workers {_activeWorkers}/{_exclusiveCapacity}");
+            }
+
+            bool noPendingLimits = _maxPendingSharedRequests <= 0;
+            if (noPendingLimits && _rpcCallsPending > _maxPendingSharedRequests)
+            {
+                // ToDo Change this exception
+                throw new ModuleRentalTimeoutException($"Unable to start new pending requests for {typeof(T).Name}. Too many pending requests. Pending calls {_rpcCallsPending}.");
             }
 
             if (!await _semaphore.WaitAsync(_timeout))
             {
-                --_threadsWaiting;
+                --_rpcCallsPending;
                 throw new ModuleRentalTimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
             }
 
-            --_threadsWaiting;
+            --_rpcCallsPending;
             ++_activeWorkers;
             _pool.TryDequeue(out T result);
             return result;
