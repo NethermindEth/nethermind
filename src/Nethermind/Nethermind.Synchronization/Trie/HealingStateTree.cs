@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -87,8 +88,14 @@ public class HealingStateTree : StateTree
         };
 
         byte[]? rlp = _recovery?.Recover(request).GetAwaiter().GetResult();
-        if (rlp is null) return false;
+
+        if (rlp is null)
+        {
+            _logger.Error($"Recovery of {pathPart.ToHexString()} from {rootHash} failed");
+            return false;
+        }
         TrieStore.Set(ValueKeccak.Compute(rlp).Bytes, rlp);
+        _logger.Error($"Recovery of {pathPart.ToHexString()} from {rootHash} succeeded");
         return true;
     }
 }

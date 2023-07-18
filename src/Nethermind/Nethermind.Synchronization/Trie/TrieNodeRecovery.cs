@@ -47,7 +47,7 @@ public abstract class TrieNodeRecovery<TRequest>
             }
             else
             {
-                _logger.Warn($"Successfully recovered from peer {keyRecoveries[index].Peer}");
+                _logger.Warn($"Successfully recovered from peer {keyRecoveries[index].Peer} with {result.Length} bytes!");
                 cts.Cancel();
                 return result;
             }

@@ -24,7 +24,7 @@ namespace Nethermind.Trie
     public class PatriciaTree
     {
         private const int MaxKeyStackAlloc = 64;
-        private readonly ILogger _logger;
+        protected readonly ILogger _logger;
 
         public const int OneNodeAvgMemoryEstimate = 384;
 
