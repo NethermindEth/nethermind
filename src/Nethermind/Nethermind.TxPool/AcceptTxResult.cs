@@ -77,9 +77,14 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult SenderIsContract = new(12, nameof(SenderIsContract));
 
         /// <summary>
+        /// Transaction is not allowed to replace the one already in the pool. Fee bump is too low or some requirements are not fulfilled
+        /// </summary>
+        public static readonly AcceptTxResult ReplacementNotAllowed = new(13, nameof(ReplacementNotAllowed));
+
+        /// <summary>
         /// Ignores blob transactions if sender already have pending transactions of other types; ignore other types if has already pending blobs
         /// </summary>
-        public static readonly AcceptTxResult PendingTxsOfOtherType = new(13, nameof(PendingTxsOfOtherType));
+        public static readonly AcceptTxResult PendingTxsOfOtherType = new(14, nameof(PendingTxsOfOtherType));
 
         private int Id { get; }
         private string Code { get; }
