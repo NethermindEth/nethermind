@@ -46,17 +46,17 @@ namespace Nethermind.JsonRpc.Modules
 
         private async Task<T> SlowPath()
         {
-            ++_rpcCallsPending;
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"{typeof(T).Name} Pending RPC requests {_rpcCallsPending} Active Workers {_activeWorkers}/{_exclusiveCapacity}");
-            }
-
             bool pendingRequestLimitsEnabled = _maxPendingSharedRequests > 0;
             if (pendingRequestLimitsEnabled && _rpcCallsPending > _maxPendingSharedRequests)
             {
                 // ToDo Change this exception
                 throw new ModuleRentalTimeoutException($"Unable to start new pending requests for {typeof(T).Name}. Too many pending requests. Pending calls {_rpcCallsPending}.");
+            }
+
+            ++_rpcCallsPending;
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"{typeof(T).Name} Pending RPC requests {_rpcCallsPending} Active Workers {_activeWorkers}/{_exclusiveCapacity}");
             }
 
             if (!await _semaphore.WaitAsync(_timeout))
