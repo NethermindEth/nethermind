@@ -249,7 +249,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 Paths = groups,
                 Bytes = _currentBytesLimit
             };
-            Logger.Info($"Sending GetTrieNodesMessage with RootHash {rootHash} and Account Path {groups[0].Group[0].ToHexString()} Storage path: {(groups[0].Group.Length > 1 ? groups[0].Group[1].ToHexString() : "")}");
 
             TrieNodesMessage response = await AdjustBytesLimit(() =>
                 SendRequest(reqMsg, _getTrieNodesRequests, token));

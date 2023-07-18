@@ -28,16 +28,6 @@ public abstract class TrieNodeRecovery<TRequest>
     public async Task<byte[]?> Recover(TRequest request)
     {
         if (_logger.IsWarn) _logger.Warn("Missing trie node, trying to recover from network");
-        byte[]? checkKeyRecoveriesResults = await RecoverCore(request);
-        if (checkKeyRecoveriesResults is not null) return checkKeyRecoveriesResults;
-
-        // One more try
-        await Task.Delay(Timeouts.Eth);
-        return await RecoverCore(request);
-    }
-
-    private async Task<byte[]?> RecoverCore(TRequest request)
-    {
         using CancellationTokenSource cts = new(Timeouts.Eth);
         List<Recovery> keyRecoveries = GenerateKeyRecoveries(request, cts);
         return await CheckKeyRecoveriesResults(keyRecoveries, cts);
@@ -45,6 +35,7 @@ public abstract class TrieNodeRecovery<TRequest>
 
     protected async Task<byte[]?> CheckKeyRecoveriesResults(List<Recovery> keyRecoveries, CancellationTokenSource cts)
     {
+
         while (keyRecoveries.Count > 0)
         {
             Task<(Recovery, byte[]?)> task = await Task.WhenAny(keyRecoveries.Select(kr => kr.Task!));
@@ -56,11 +47,13 @@ public abstract class TrieNodeRecovery<TRequest>
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Successfully recovered from peer {result.Recovery.Peer} with {result.Data.Length} bytes!");
+                if (_logger.IsWarn) _logger.Warn($"Successfully recovered from peer {result.Recovery.Peer} with {result.Data.Length} bytes!");
                 cts.Cancel();
                 return result.Data;
             }
         }
+
+        if (_logger.IsWarn) _logger.Warn("Failed to recover missing trie node");
 
         return null;
     }
