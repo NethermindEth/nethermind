@@ -37,9 +37,9 @@ namespace Nethermind.TxPool
         private readonly ConcurrentDictionary<PublicKey, ITxPoolPeer> _peers = new();
 
         /// <summary>
-        /// Transactions published locally (initiated by this node users) or reorganised.
+        /// Transactions published locally (initiated by this node users).
         /// </summary>
-        private readonly SortedPool<ValueKeccak, Transaction, Address> _persistentTxs;
+        private readonly TxDistinctSortedPool _persistentTxs;
 
         /// <summary>
         /// Transactions added by external peers between timer elapses.
@@ -81,6 +81,7 @@ namespace Nethermind.TxPool
             _timer.Start();
         }
 
+        // only for testing reasons
         internal Transaction[] GetSnapshot() => _persistentTxs.GetSnapshot();
 
         public void Broadcast(Transaction tx, bool isPersistent)
@@ -98,10 +99,9 @@ namespace Nethermind.TxPool
         private void StartBroadcast(Transaction tx)
         {
             NotifyPeersAboutLocalTx(tx);
-            if (tx.Hash is not null && !tx.SupportsBlobs)
+            if (tx.Hash is not null)
             {
-                // somehow save only hashes of persistent blob txs? Or not add them here at all? Not add at all for now
-                _persistentTxs.TryInsert(tx.Hash, tx);
+                _persistentTxs.TryInsert(tx.Hash, tx.SupportsBlobs ? new LightTransaction(tx) : tx);
             }
         }
 
@@ -292,7 +292,13 @@ namespace Nethermind.TxPool
 
         public bool TryGetPersistentTx(Keccak hash, out Transaction? transaction)
         {
-            return _persistentTxs.TryGetValue(hash, out transaction);
+            if (_persistentTxs.TryGetValue(hash, out transaction) && !transaction.SupportsBlobs)
+            {
+                return true;
+            }
+
+            transaction = default;
+            return false;
         }
 
         public bool AddPeer(ITxPoolPeer peer)

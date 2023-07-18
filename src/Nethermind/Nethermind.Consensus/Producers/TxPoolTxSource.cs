@@ -53,7 +53,7 @@ namespace Nethermind.Consensus.Producers
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
             IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer);
-            IEnumerable<Transaction> blobTransactions = _transactionPool.GetBlobTransactions();
+            IEnumerable<Transaction> blobTransactions = _transactionPool.GetPendingBlobTransactions();
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int selectedTransactions = 0;

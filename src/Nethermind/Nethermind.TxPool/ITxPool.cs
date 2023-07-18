@@ -21,10 +21,10 @@ namespace Nethermind.TxPool
         IDictionary<Address, Transaction[]> GetPendingTransactionsBySender();
 
         /// <summary>
-        /// Lazy return blob txs starting from the best one
+        /// Lazy enumerate blob txs starting from the best one
         /// </summary>
         /// <returns></returns>
-        IEnumerable<Transaction> GetBlobTransactions();
+        IEnumerable<Transaction> GetPendingBlobTransactions();
 
         /// <summary>
         /// from a specific sender, sorted by nonce and later tx pool sorting

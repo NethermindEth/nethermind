@@ -21,6 +21,8 @@ namespace Nethermind.TxPool
 
         public TxPoolInfo GetInfo()
         {
+            // only std txs are picked here. Should we add blobs?
+            // BTW this class should be rewritten or removed - a lot of unnecessary allocations
             var groupedTransactions = _txPool.GetPendingTransactionsBySender();
             var pendingTransactions = new Dictionary<Address, IDictionary<ulong, Transaction>>();
             var queuedTransactions = new Dictionary<Address, IDictionary<ulong, Transaction>>();

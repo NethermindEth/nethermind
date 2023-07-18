@@ -158,13 +158,13 @@ namespace Nethermind.TxPool
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
             _transactions.GetBucketSnapshot(address);
 
+        // only for testing reasons
         internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
 
-        // public Transaction[] GetPendingBlobTransactions() => _blobTransactions.GetSnapshot();
+        public IEnumerable<Transaction> GetPendingBlobTransactions() => _blobTransactions.GetBlobTransactions();
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
-        public IEnumerable<Transaction> GetBlobTransactions() => _blobTransactions.GetBlobTransactions();
 
         // public Transaction[] GetPendingBlobTransactionsBySender(Address address) =>
         //     _blobTransactions.GetBucketSnapshot(address);
@@ -574,6 +574,8 @@ namespace Nethermind.TxPool
                 hasBeenRemoved = _transactions.TryRemove(hash, out Transaction? transaction);
                 if (!hasBeenRemoved)
                 {
+                    // add flag keepInDb if coming from processed block? and remove after finalization?
+                    // actually for blobs it is removed here only after block processing
                     hasBeenRemoved = _blobTransactions.TryRemove(hash, out transaction);
                 }
 
@@ -597,8 +599,8 @@ namespace Nethermind.TxPool
             lock (_locker)
             {
                 return _transactions.TryGetValue(hash, out transaction)
-                       || _broadcaster.TryGetPersistentTx(hash, out transaction)
-                       || _blobTransactions.TryGetValue(hash, out transaction);
+                       || _blobTransactions.TryGetValue(hash, out transaction)
+                       || _broadcaster.TryGetPersistentTx(hash, out transaction);
             }
         }
 

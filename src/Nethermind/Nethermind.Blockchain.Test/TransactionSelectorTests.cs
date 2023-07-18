@@ -243,7 +243,7 @@ namespace Nethermind.Blockchain.Test
                 .Where(t => t.SupportsBlobs)
                 .ToArray();
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
-            transactionPool.GetBlobTransactions().Returns(blobTransactions);
+            transactionPool.GetPendingBlobTransactions().Returns(blobTransactions);
             BlocksConfig blocksConfig = new() { MinGasPrice = testCase.MinGasPriceForMining };
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
                 .WithMinGasPriceFilter(blocksConfig, specProvider)
