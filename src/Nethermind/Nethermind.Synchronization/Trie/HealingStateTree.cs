@@ -54,6 +54,7 @@ public class HealingStateTree : StateTree
             }
             else
             {
+                if (!BlockchainProcessor.IsMainProcessingThread) _logger.Warn("Exception on non-main processing thread!");
                 throw;
             }
         }
