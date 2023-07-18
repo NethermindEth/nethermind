@@ -48,6 +48,7 @@ public class HealingStateTree : StateTree
         }
         catch (MissingTrieNodeException e)
         {
+            Throw = false;
             if (BlockchainProcessor.IsMainProcessingThread && Recover(e.GetPathPart(), rootHash ?? RootHash))
             {
                 return base.Get(rawKey, rootHash);
@@ -69,6 +70,7 @@ public class HealingStateTree : StateTree
         }
         catch (MissingTrieNodeException e)
         {
+            Throw = false;
             if (BlockchainProcessor.IsMainProcessingThread && Recover(e.GetPathPart(), RootHash))
             {
                 base.Set(rawKey, value);

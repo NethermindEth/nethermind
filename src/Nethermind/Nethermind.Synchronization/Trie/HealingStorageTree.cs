@@ -48,6 +48,7 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
+            Throw = false;
             if (BlockchainProcessor.IsMainProcessingThread && Recover(e.GetPathPart()))
             {
                 return base.Get(rawKey, rootHash);
@@ -69,6 +70,7 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
+            Throw = false;
             if (BlockchainProcessor.IsMainProcessingThread && Recover(e.GetPathPart()))
             {
                 base.Set(rawKey, value);
