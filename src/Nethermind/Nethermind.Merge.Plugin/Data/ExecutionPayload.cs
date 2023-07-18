@@ -18,7 +18,7 @@ namespace Nethermind.Merge.Plugin.Data;
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayload</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayload : IForkValidator
+public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 {
     public ExecutionPayload() { } // Needed for tests
 
@@ -165,14 +165,16 @@ public class ExecutionPayload : IForkValidator
 
     public override string ToString() => $"{BlockNumber} ({BlockHash.ToShortString()})";
 
-    public virtual bool ValidateParams(IReleaseSpec spec, int version, [NotNullWhen(false)] out string? error)
+    ExecutionPayload IExecutionPayloadParams.ExecutionPayload => this;
+
+    public virtual ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
         int GetVersion() => Withdrawals is null ? 1 : 2;
 
         if (spec.IsEip4844Enabled)
         {
             error = "ExecutionPayloadV3 expected";
-            return false;
+            return ValidationResult.Fail;
         }
 
         int actualVersion = GetVersion();
@@ -184,12 +186,9 @@ public class ExecutionPayload : IForkValidator
             _ => actualVersion > version ? $"ExecutionPayloadV{version} expected" : null
         };
 
-        return error is null;
+        return error is null ? ValidationResult.Success : ValidationResult.Fail;
     }
 
     public virtual bool ValidateFork(ISpecProvider specProvider) =>
         !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
-
-    public bool ValidateParams(ISpecProvider specProvider, int version, [NotNullWhen(false)] out string? error) =>
-            ValidateParams(specProvider.GetSpec(BlockNumber, Timestamp), version, out error);
 }
