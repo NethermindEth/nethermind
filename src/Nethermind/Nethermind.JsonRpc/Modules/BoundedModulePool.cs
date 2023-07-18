@@ -5,6 +5,9 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Nethermind.Logging;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -15,9 +18,15 @@ namespace Nethermind.JsonRpc.Modules
         private readonly Task<T> _sharedAsTask;
         private readonly ConcurrentQueue<T> _pool = new();
         private readonly SemaphoreSlim _semaphore;
+        private readonly ILogger _logger;
+        private int _activeWorkers = 0;
+        private int _threadsWaiting = 0;
+        private int _exclusiveCapacity = 0;
 
-        public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout)
+        public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout, ILogManager logManager)
         {
+            _exclusiveCapacity = exclusiveCapacity;
+            _logger = logManager.GetClassLogger();
             _timeout = timeout;
             Factory = factory;
 
@@ -35,11 +44,20 @@ namespace Nethermind.JsonRpc.Modules
 
         private async Task<T> SlowPath()
         {
+            ++_threadsWaiting;
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"{typeof(T).Name} Threads waiting {_threadsWaiting} Active Workers {_activeWorkers}/{_exclusiveCapacity}");
+            }
+
             if (!await _semaphore.WaitAsync(_timeout))
             {
+                --_threadsWaiting;
                 throw new ModuleRentalTimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
             }
 
+            --_threadsWaiting;
+            ++_activeWorkers;
             _pool.TryDequeue(out T result);
             return result;
         }
@@ -51,6 +69,7 @@ namespace Nethermind.JsonRpc.Modules
                 return;
             }
 
+            --_activeWorkers;
             _pool.Enqueue(module);
             _semaphore.Release();
         }

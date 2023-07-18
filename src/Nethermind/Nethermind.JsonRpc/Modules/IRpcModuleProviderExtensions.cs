@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -13,19 +14,21 @@ namespace Nethermind.JsonRpc.Modules
             this IRpcModuleProvider rpcModuleProvider,
             ModuleFactoryBase<T> factory,
             int maxCount,
-            int timeout)
+            int timeout,
+            ILogManager logManager)
             where T : IRpcModule
         {
-            rpcModuleProvider.Register(new BoundedModulePool<T>(factory, maxCount, timeout));
+            rpcModuleProvider.Register(new BoundedModulePool<T>(factory, maxCount, timeout, logManager));
         }
 
         public static void RegisterBoundedByCpuCount<T>(
             this IRpcModuleProvider rpcModuleProvider,
             ModuleFactoryBase<T> factory,
-            int timeout)
+            int timeout,
+            ILogManager logManager)
             where T : IRpcModule
         {
-            RegisterBounded(rpcModuleProvider, factory, _cpuCount, timeout);
+            RegisterBounded(rpcModuleProvider, factory, _cpuCount, timeout, logManager);
         }
 
         public static void RegisterSingle<T>(
