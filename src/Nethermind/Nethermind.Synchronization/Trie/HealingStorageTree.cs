@@ -53,8 +53,9 @@ public class HealingStorageTree : StorageTree
             }
             else
             {
-                if (!BlockchainProcessor.IsMainProcessingThread) _logger.Warn("Exception on non-main processing thread!");
-                throw;
+                _logger.Error("Recovery failed!");
+                return base.Get(rawKey, rootHash);
+                // throw;
             }
         }
     }
