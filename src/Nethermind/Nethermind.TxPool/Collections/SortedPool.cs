@@ -390,6 +390,9 @@ namespace Nethermind.TxPool.Collections
         private void UpdateIsFull() =>
             _isFull = _cacheMap.Count >= _capacity;
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool ContainsBucket(TGroupKey groupKey) =>
+            _buckets.ContainsKey(groupKey);
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryGetBucket(TGroupKey groupKey, out TValue[] items)
