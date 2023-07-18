@@ -53,7 +53,7 @@ public class HealingStorageTree : StorageTree
             }
             else
             {
-                _logger.Error("Recovery failed!");
+                _logger.Error("Get recovery failed!");
                 return base.Get(rawKey, rootHash);
                 // throw;
             }
@@ -74,7 +74,8 @@ public class HealingStorageTree : StorageTree
             }
             else
             {
-                throw;
+                _logger.Error("Set recovery failed!");
+                base.Set(rawKey, value);
             }
         }
     }
