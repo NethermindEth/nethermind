@@ -12,7 +12,12 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Trie;
 
-public abstract class TrieNodeRecovery<TRequest>
+public interface ITrieNodeRecovery<in TRequest>
+{
+    Task<byte[]?> Recover(TRequest request);
+}
+
+public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
 {
     private readonly ISyncPeerPool _syncPeerPool;
     protected readonly ILogger _logger;

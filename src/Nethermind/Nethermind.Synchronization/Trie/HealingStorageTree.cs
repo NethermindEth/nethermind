@@ -2,15 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
-using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -20,17 +17,14 @@ public class HealingStorageTree : StorageTree
 {
     private readonly Address _address;
     private readonly Keccak _stateRoot;
-    private readonly SnapTrieNodeRecovery? _recovery;
+    private readonly ITrieNodeRecovery<GetTrieNodesRequest>? _recovery;
 
-    public HealingStorageTree(IBlockTree blockTree, ITrieStore? trieStore, Keccak rootHash, ILogManager? logManager, Address address, Keccak stateRoot, ISyncPeerPool? syncPeerPool)
+    public HealingStorageTree(ITrieStore? trieStore, Keccak rootHash, ILogManager? logManager, Address address, Keccak stateRoot, ITrieNodeRecovery<GetTrieNodesRequest>? recovery)
         : base(trieStore, rootHash, logManager)
     {
         _address = address;
         _stateRoot = stateRoot;
-        if (syncPeerPool is not null)
-        {
-            _recovery = new SnapTrieNodeRecovery(syncPeerPool, logManager);
-        }
+        _recovery = recovery;
     }
 
     public override byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)

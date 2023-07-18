@@ -3,14 +3,11 @@
 
 using System;
 using System.Diagnostics;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
-using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -19,7 +16,7 @@ namespace Nethermind.Synchronization.Trie;
 public class HealingStateTree : StateTree
 {
     private readonly ILogManager? _logManager;
-    private SnapTrieNodeRecovery? _recovery;
+    private ITrieNodeRecovery<GetTrieNodesRequest>? _recovery;
 
     [DebuggerStepThrough]
     public HealingStateTree(ITrieStore? store, ILogManager? logManager)
@@ -28,9 +25,9 @@ public class HealingStateTree : StateTree
         _logManager = logManager;
     }
 
-    public void InitializeNetwork(ISyncPeerPool syncPeerPool, IBlockTree blockTree)
+    public void InitializeNetwork(ITrieNodeRecovery<GetTrieNodesRequest> recovery)
     {
-        _recovery = new SnapTrieNodeRecovery(syncPeerPool, _logManager);
+        _recovery = recovery;
     }
 
     public override byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)

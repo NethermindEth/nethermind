@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Synchronization.Peers;
+using Nethermind.State.Snap;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.Trie;
@@ -29,10 +28,10 @@ public class HealingWorldState : WorldState
         }
     }
 
-    public void InitializeNetwork(ISyncPeerPool syncPeerPool, IBlockTree blockTree)
+    public void InitializeNetwork(ITrieNodeRecovery<GetTrieNodesRequest> recovery)
     {
-        StateProviderTree.InitializeNetwork(syncPeerPool, blockTree);
-        StorageTreeFactory.InitializeNetwork(syncPeerPool, blockTree);
+        StateProviderTree.InitializeNetwork(recovery);
+        StorageTreeFactory.InitializeNetwork(recovery);
     }
 
     private HealingStorageTreeFactory StorageTreeFactory => ((HealingStorageTreeFactory)_persistentStorageProvider._storageTreeFactory);

@@ -1,23 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -28,9 +18,8 @@ namespace Nethermind.Synchronization.Trie;
 /// </summary>
 public class HealingTrieStore : TrieStore
 {
-    private readonly ILogManager? _logManager;
     public bool Throw { get; set; }
-    private GetNodeDataTrieNodeRecovery? _recovery;
+    private ITrieNodeRecovery<IReadOnlyList<Keccak>>? _recovery;
 
     public HealingTrieStore(
         IKeyValueStoreWithBatching? keyValueStore,
@@ -39,12 +28,11 @@ public class HealingTrieStore : TrieStore
         ILogManager? logManager)
         : base(keyValueStore, pruningStrategy, persistenceStrategy, logManager)
     {
-        _logManager = logManager;
     }
 
-    public void InitializeNetwork(ISyncPeerPool syncPeerPool, IBlockTree blockTree)
+    public void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Keccak>> recovery)
     {
-        _recovery = new GetNodeDataTrieNodeRecovery(syncPeerPool, _logManager);
+        _recovery = recovery;
     }
 
     public override byte[] LoadRlp(Keccak keccak, ReadFlags readFlags = ReadFlags.None)
@@ -73,7 +61,8 @@ public class HealingTrieStore : TrieStore
 
     private bool TryRecover(Keccak keccak, [NotNullWhen(true)] out byte[]? rlp)
     {
-        rlp = _recovery?.Recover(keccak).GetAwaiter().GetResult();
+        using ArrayPoolList<Keccak> request = new(1) { keccak };
+        rlp = _recovery?.Recover(request).GetAwaiter().GetResult();
         if (rlp is null) return false;
         _keyValueStore.Set(keccak.Bytes, rlp);
         return true;

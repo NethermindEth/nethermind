@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.State.Snap;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 
@@ -13,19 +13,17 @@ namespace Nethermind.Synchronization.Trie;
 
 public class HealingStorageTreeFactory : IStorageTreeFactory
 {
-    private ISyncPeerPool? _syncPeerPool;
-    private IBlockTree? _blockTree;
+    private ITrieNodeRecovery<GetTrieNodesRequest>? _recovery;
     public bool Throw { get; set; }
 
-    public void InitializeNetwork(ISyncPeerPool syncPeerPool, IBlockTree blockTree)
+    public void InitializeNetwork(ITrieNodeRecovery<GetTrieNodesRequest> recovery)
     {
-        _syncPeerPool = syncPeerPool;
-        _blockTree = blockTree;
+        _recovery = recovery;
     }
 
     public StorageTree Create(Address address, ITrieStore trieStore, Keccak storageRoot, Keccak stateRoot, ILogManager? logManager)
     {
-        HealingStorageTree healingStorageTree = new HealingStorageTree(_blockTree!, trieStore, storageRoot, logManager, address, stateRoot, _syncPeerPool) { Throw = Throw };
+        HealingStorageTree healingStorageTree = new(trieStore, storageRoot, logManager, address, stateRoot, _recovery) { Throw = Throw };
         Throw = false;
         return healingStorageTree;
     }

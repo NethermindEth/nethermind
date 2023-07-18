@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
@@ -17,12 +16,6 @@ public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Keccak
 {
     public GetNodeDataTrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager) : base(syncPeerPool, logManager)
     {
-    }
-
-    public Task<byte[]?> Recover(Keccak keccak)
-    {
-        using ArrayPoolList<Keccak> request = new(1) { keccak };
-        return base.Recover(request);
     }
 
     protected override string GetMissingNodes(IReadOnlyList<Keccak> request) => string.Join(", ", request);
