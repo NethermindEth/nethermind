@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -15,7 +16,7 @@ namespace Nethermind.Synchronization.Trie;
 
 public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Keccak>>
 {
-    public GetNodeDataTrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager) : base(syncPeerPool, logManager)
+    public GetNodeDataTrieNodeRecovery(ISyncPeerPool syncPeerPool, IBlockTree blockTree, ILogManager? logManager) : base(syncPeerPool, blockTree, logManager)
     {
     }
 
@@ -25,7 +26,7 @@ public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Keccak
         return base.Recover(request);
     }
 
-    protected override bool CanAllocatePeer(ISyncPeer peer) => peer.CanGetNodeData();
+    protected override bool CanAllocatePeer(ISyncPeer peer) => base.CanAllocatePeer(peer) && peer.CanGetNodeData();
 
     protected override async Task<byte[]?> RecoverRlpFromPeerBase(ISyncPeer peer, IReadOnlyList<Keccak> request, CancellationTokenSource cts)
     {

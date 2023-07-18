@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
@@ -16,21 +17,34 @@ namespace Nethermind.Synchronization.Trie;
 public abstract class TrieNodeRecovery<TRequest>
 {
     private readonly ISyncPeerPool _syncPeerPool;
+    private readonly IBlockTree _blockTree;
     protected readonly ILogger _logger;
-    private const int MaxPeersForRecovery = 8;
+    private const int MaxPeersForRecovery = 30;
 
-    protected TrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager)
+    protected TrieNodeRecovery(ISyncPeerPool syncPeerPool, IBlockTree blockTree, ILogManager? logManager)
     {
         _syncPeerPool = syncPeerPool;
+        _blockTree = blockTree;
         _logger = logManager?.GetClassLogger<TrieNodeRecovery<TRequest>>() ?? NullLogger.Instance;
     }
 
     public async Task<byte[]?> Recover(TRequest request)
     {
         if (_logger.IsWarn) _logger.Warn($"Missing trie node, trying to recover from network");
+        byte[]? checkKeyRecoveriesResults = await RecoverCore(request);
+        if (checkKeyRecoveriesResults is not null) return checkKeyRecoveriesResults;
+
+        // One more try
+        await Task.Delay(Timeouts.Eth);
+        return await RecoverCore(request);
+    }
+
+    private async Task<byte[]?> RecoverCore(TRequest request)
+    {
         using CancellationTokenSource cts = new(Timeouts.Eth);
         List<Recovery> keyRecoveries = GenerateKeyRecoveries(request, cts);
-        return await CheckKeyRecoveriesResults(keyRecoveries, cts);
+        byte[]? checkKeyRecoveriesResults = await CheckKeyRecoveriesResults(keyRecoveries, cts);
+        return checkKeyRecoveriesResults;
     }
 
     protected async Task<byte[]?> CheckKeyRecoveriesResults(List<Recovery> keyRecoveries, CancellationTokenSource cts)
@@ -93,7 +107,7 @@ public abstract class TrieNodeRecovery<TRequest>
         return syncPeerAllocations;
     }
 
-    protected abstract bool CanAllocatePeer(ISyncPeer peer);
+    protected virtual bool CanAllocatePeer(ISyncPeer peer) => peer.HeadNumber >= (_blockTree.Head?.Number ?? 0);
 
     private async Task<byte[]?> RecoverRlpFromPeer(ISyncPeer peer, TRequest request, CancellationTokenSource cts)
     {

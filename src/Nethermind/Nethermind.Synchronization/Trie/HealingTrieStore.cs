@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -41,9 +42,9 @@ public class HealingTrieStore : TrieStore
         _logManager = logManager;
     }
 
-    public void InitializeNetwork(ISyncPeerPool syncPeerPool)
+    public void InitializeNetwork(ISyncPeerPool syncPeerPool, IBlockTree blockTree)
     {
-        _recovery = new GetNodeDataTrieNodeRecovery(syncPeerPool, _logManager);
+        _recovery = new GetNodeDataTrieNodeRecovery(syncPeerPool, blockTree, _logManager);
     }
 
     public override byte[] LoadRlp(Keccak keccak, ReadFlags readFlags = ReadFlags.None)

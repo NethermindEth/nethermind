@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -27,9 +28,9 @@ public class HealingStateTree : StateTree
         _logManager = logManager;
     }
 
-    public void InitializeNetwork(ISyncPeerPool syncPeerPool)
+    public void InitializeNetwork(ISyncPeerPool syncPeerPool, IBlockTree blockTree)
     {
-        _recovery = new SnapTrieNodeRecovery(syncPeerPool, _logManager);
+        _recovery = new SnapTrieNodeRecovery(syncPeerPool, blockTree, _logManager);
     }
 
     public override byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)

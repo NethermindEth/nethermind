@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -20,14 +21,14 @@ public class HealingStorageTree : StorageTree
     private readonly Keccak _stateRoot;
     private readonly SnapTrieNodeRecovery? _recovery;
 
-    public HealingStorageTree(ITrieStore? trieStore, Keccak rootHash, ILogManager? logManager, Address address, Keccak stateRoot, ISyncPeerPool? syncPeerPool)
+    public HealingStorageTree(IBlockTree blockTree, ITrieStore? trieStore, Keccak rootHash, ILogManager? logManager, Address address, Keccak stateRoot, ISyncPeerPool? syncPeerPool)
         : base(trieStore, rootHash, logManager)
     {
         _address = address;
         _stateRoot = stateRoot;
         if (syncPeerPool is not null)
         {
-            _recovery = new SnapTrieNodeRecovery(syncPeerPool, logManager);
+            _recovery = new SnapTrieNodeRecovery(syncPeerPool, blockTree, logManager);
         }
     }
 
