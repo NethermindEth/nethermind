@@ -106,11 +106,11 @@ jobs:
         GITHUB_USER: ${{ secrets.REPOSITORY_DISPATCH_USER }} 
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         INPUTS: >
-          '{
+          {
             "repo": "${{ env.REPO }}",
             "tag": "${{ env.CLEAN_REF }}",
             "dockerfile": "Dockerfile"
-          }'
+          }
 
     - name: Set Repo and Org Variables
       run: |
