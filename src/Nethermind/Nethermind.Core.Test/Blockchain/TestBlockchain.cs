@@ -118,10 +118,8 @@ public class TestBlockchain : IDisposable
         TrieStore = new TrieStore(StateDb, LogManager);
         State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
 
-        if(specProvider.GenesisSpec.IsEip4788Enabled)
-        {
-            State.CreateAccount(BeaconBlockRootPrecompile.Address, 1);
-        }
+        // Eip4788 precompile state account
+        State.CreateAccount(BeaconBlockRootPrecompile.Address, 1);
 
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));

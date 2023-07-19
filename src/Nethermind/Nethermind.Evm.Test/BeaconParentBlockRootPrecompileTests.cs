@@ -97,7 +97,7 @@ public class Eip4788Tests
             ProcessingOptions.None,
             tracer);
         List<GethLikeTxTrace>? traces = tracer.BuildResult().ToList();
-        Assert.Equals(traces[0].Failed, testCase.ShouldFail);
+        Assert.That(testCase.ShouldFail, Is.EqualTo(traces[0].Failed));
     }
 
     Block CreateBlock()
