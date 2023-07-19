@@ -20,6 +20,8 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.Precompiles.Stateful;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -84,13 +86,13 @@ namespace Nethermind.Merge.Plugin.Test
             };
         }
 
-        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, Transaction[]? transactions = null, Keccak? beaconParentBlockRoot = null)
-            => CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, transactions: transactions, beaconParentBlockRoot: beaconParentBlockRoot);
+        private static ExecutionPayload CreateBlockRequest(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, Transaction[]? transactions = null, Keccak? beaconParentBlockRoot = null)
+            => CreateBlockRequestInternal<ExecutionPayload>(spec, state, parent, miner, withdrawals, transactions: transactions, beaconParentBlockRoot: beaconParentBlockRoot);
 
-        private static ExecutionPayloadV3 CreateBlockRequestV3(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? dataGasUsed = null, ulong? excessDataGas = null, Transaction[]? transactions = null, Keccak? beaconParentBlockRoot = null)
-            => CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, dataGasUsed, excessDataGas, transactions: transactions, beaconParentBlockRoot: beaconParentBlockRoot);
+        private static ExecutionPayloadV3 CreateBlockRequestV3(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? dataGasUsed = null, ulong? excessDataGas = null, Transaction[]? transactions = null, Keccak? beaconParentBlockRoot = null)
+            => CreateBlockRequestInternal<ExecutionPayloadV3>(spec, state, parent, miner, withdrawals, dataGasUsed, excessDataGas, transactions: transactions, beaconParentBlockRoot: beaconParentBlockRoot);
 
-        private static T CreateBlockRequestInternal<T>(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? dataGasUsed = null, ulong? excessDataGas = null, Transaction[]? transactions = null, Keccak? beaconParentBlockRoot = null) where T : ExecutionPayload, new()
+        private static T CreateBlockRequestInternal<T>(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? dataGasUsed = null, ulong? excessDataGas = null, Transaction[]? transactions = null, Keccak? beaconParentBlockRoot = null) where T : ExecutionPayload, new()
         {
             T blockRequest = new()
             {
@@ -111,7 +113,16 @@ namespace Nethermind.Merge.Plugin.Test
                 blockRequestV3.DataGasUsed = dataGasUsed;
                 blockRequestV3.ExcessDataGas = excessDataGas;
                 blockRequestV3.ParentBeaconBlockRoot = beaconParentBlockRoot;
+
+                BeaconBlockRootPrecompile.SetupBeaconBlockRootPrecompileState(state, blockRequestV3.ParentBeaconBlockRoot, blockRequestV3.Timestamp);
+                state.Commit(spec);
+                state.CommitTree(blockRequestV3.BlockNumber);
+
+                state.RecalculateStateRoot();
+                blockRequestV3.StateRoot = state.StateRoot;
             }
+
+
 
             blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());
             TryCalculateHash(blockRequest, out Keccak? hash);
@@ -119,13 +130,13 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequest;
         }
 
-        private static ExecutionPayload[] CreateBlockRequestBranch(ExecutionPayload parent, Address miner, int count)
+        private static ExecutionPayload[] CreateBlockRequestBranch(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, int count)
         {
             ExecutionPayload currentBlock = parent;
             ExecutionPayload[] blockRequests = new ExecutionPayload[count];
             for (int i = 0; i < count; i++)
             {
-                currentBlock = CreateBlockRequest(currentBlock, miner);
+                currentBlock = CreateBlockRequest(spec, state, currentBlock, miner);
                 blockRequests[i] = currentBlock;
             }
 
