@@ -33,6 +33,7 @@ using Nethermind.Evm.Tracing.DebugTrace;
 
 namespace Nethermind.Evm;
 
+using Nethermind.Evm.Precompiles.Stateful;
 using Nethermind.Int256;
 
 public class VirtualMachine : IVirtualMachine
@@ -542,6 +543,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
 
             [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
+            [BeaconBlockRootPrecompile.Address] = new(BeaconBlockRootPrecompile.Instance),
         };
     }
 
@@ -672,7 +674,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         try
         {
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec, _state);
             CallResult callResult = new(output.ToArray(), success, !success);
             return callResult;
         }

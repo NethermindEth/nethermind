@@ -8,6 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -35,7 +36,7 @@ namespace Nethermind.Evm.Precompiles
 
         private readonly byte[] _zero31 = new byte[31];
 
-        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
         {
             Metrics.EcRecoverPrecompile++;
 

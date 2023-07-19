@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using MathGmp.Native;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -102,7 +103,7 @@ namespace Nethermind.Evm.Precompiles
             return (baseLength, expLength, modulusLength);
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
         {
             Metrics.ModExpPrecompile++;
 

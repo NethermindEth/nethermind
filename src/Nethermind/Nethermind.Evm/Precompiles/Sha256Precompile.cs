@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -42,7 +43,7 @@ namespace Nethermind.Evm.Precompiles
             return 12L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
         {
             Metrics.Sha256Precompile++;
             InitIfNeeded();

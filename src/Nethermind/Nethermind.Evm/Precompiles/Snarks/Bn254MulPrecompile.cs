@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles.Snarks;
 
@@ -27,7 +28,7 @@ public class Bn254MulPrecompile : IPrecompile
         return 0L;
     }
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
     {
         Metrics.Bn254MulPrecompile++;
         Span<byte> inputDataSpan = stackalloc byte[96];

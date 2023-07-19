@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles.Snarks;
 
@@ -27,7 +28,7 @@ public class Bn254AddPrecompile : IPrecompile
         return 0L;
     }
 
-    public unsafe (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public unsafe (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
     {
         Metrics.Bn254AddPrecompile++;
         Span<byte> inputDataSpan = stackalloc byte[128];

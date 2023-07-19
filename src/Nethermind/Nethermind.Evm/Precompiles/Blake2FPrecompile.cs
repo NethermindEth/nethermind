@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto.Blake2;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -39,7 +40,7 @@ namespace Nethermind.Evm.Precompiles
             return rounds;
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
         {
             if (inputData.Length != RequiredInputLength)
             {

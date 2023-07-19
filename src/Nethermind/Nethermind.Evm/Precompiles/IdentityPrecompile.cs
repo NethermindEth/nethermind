@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -27,7 +28,7 @@ namespace Nethermind.Evm.Precompiles
             return 3L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
         {
             return (inputData, true);
         }

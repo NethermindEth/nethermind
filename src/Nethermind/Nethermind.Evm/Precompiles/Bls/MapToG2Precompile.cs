@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -31,7 +32,7 @@ public class MapToG2Precompile : IPrecompile
         return 0L;
     }
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
     {
         const int expectedInputLength = 2 * BlsParams.LenFp;
         if (inputData.Length != expectedInputLength)

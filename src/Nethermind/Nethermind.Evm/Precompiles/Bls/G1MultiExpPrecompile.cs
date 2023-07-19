@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -34,7 +35,7 @@ public class G1MultiExpPrecompile : IPrecompile
 
     private const int ItemSize = 160;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
     {
         if (inputData.Length % ItemSize > 0 || inputData.Length == 0)
         {

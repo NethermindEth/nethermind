@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -35,7 +36,7 @@ namespace Nethermind.Evm.Precompiles
             return 120L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
         {
             Metrics.Ripemd160Precompile++;
 
