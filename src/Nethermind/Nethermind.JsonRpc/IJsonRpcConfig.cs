@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc
         int Timeout { get; set; }
 
         [ConfigItem(
-            Description = "ToDo",
+            Description = "The limit for maximum pending requests for shared requests such as eth_call, eth_estimateGas. If value is set to 0 limit won't be applied.",
             DefaultValue = "500")]
         int MaxPendingSharedRequests { get; set; }
 

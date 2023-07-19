@@ -55,8 +55,8 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             IncrementRpcPendingCalls();
-            if (_logger.IsTrace)
-                _logger.Trace($"{typeof(T).Name} Pending RPC requests {_rpcPendingCalls} Active Workers {_activeWorkers}/{_exclusiveCapacity}");
+            if (_logger.IsInfo) // ToDo change to trace before merging
+                _logger.Info($"{typeof(T).Name} Pending RPC requests {_rpcPendingCalls} Active Workers {_activeWorkers}/{_exclusiveCapacity}");
 
             if (!await _semaphore.WaitAsync(_timeout))
             {
