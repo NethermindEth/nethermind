@@ -25,6 +25,7 @@ public class PayloadAttributes
 
     public IList<Withdrawal>? Withdrawals { get; set; }
 
+    public Keccak? BeaconParentBlockRoot { get; set; }
     /// <summary>Gets or sets the gas limit.</summary>
     /// <remarks>Used for MEV-Boost only.</remarks>
     public long? GasLimit { get; set; }
@@ -43,6 +44,11 @@ public class PayloadAttributes
             sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Count}");
         }
 
+        if(BeaconParentBlockRoot is not null)
+        {
+            sb.Append($", {nameof(BeaconParentBlockRoot)} : {BeaconParentBlockRoot}");
+        }
+
         sb.Append('}');
 
         return sb.ToString();
@@ -54,7 +60,10 @@ public static class PayloadAttributesExtensions
     public static string ComputePayloadId(this PayloadAttributes payloadAttributes, BlockHeader parentHeader)
     {
         bool hasWithdrawals = payloadAttributes.Withdrawals is not null;
-        Span<byte> inputSpan = stackalloc byte[32 + 32 + 32 + 20 + (hasWithdrawals ? 32 : 0)];
+        bool hasBeaconParentBlockRoot = payloadAttributes.BeaconParentBlockRoot is not null;
+
+        const int preambleLength = 32 + 32 + 32 + 20;
+        Span<byte> inputSpan = stackalloc byte[preambleLength + (hasWithdrawals ? 32 : 0) + (hasBeaconParentBlockRoot ? 32 : 0)];
 
         parentHeader.Hash!.Bytes.CopyTo(inputSpan[..32]);
         BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(56, 8), payloadAttributes.Timestamp);
@@ -67,7 +76,12 @@ public static class PayloadAttributesExtensions
                 ? PatriciaTree.EmptyTreeHash
                 : new WithdrawalTrie(payloadAttributes.Withdrawals).RootHash;
 
-            withdrawalsRootHash.Bytes.CopyTo(inputSpan[116..]);
+            withdrawalsRootHash.Bytes.CopyTo(inputSpan[preambleLength..]);
+        }
+
+        if (hasBeaconParentBlockRoot)
+        {
+            payloadAttributes.BeaconParentBlockRoot.Bytes.CopyTo(inputSpan[(preambleLength + (hasWithdrawals ? 32 : 0))..]);
         }
 
         ValueKeccak inputHash = ValueKeccak.Compute(inputSpan);

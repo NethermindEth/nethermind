@@ -216,5 +216,15 @@ namespace Nethermind.State
         {
             _stateProvider.SetNonce(address, nonce);
         }
+
+        public void CreateAccountIfNotExists(Address address, in UInt256 balance)
+        {
+            _stateProvider.CreateAccountIfNotExists(address, balance);
+        }
+
+        public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce)
+        {
+            _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
+        }
     }
 }

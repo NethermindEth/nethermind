@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -77,12 +77,18 @@ namespace Nethermind.Serialization.Rlp
             {
                 blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
 
-                if (itemsRemaining == 3 && decoderContext.Position != headerCheck)
+                if (itemsRemaining >= 3 && decoderContext.Position != headerCheck)
                 {
                     blockHeader.DataGasUsed = decoderContext.DecodeULong(allowLeadingZeroBytes: false);
                     blockHeader.ExcessDataGas = decoderContext.DecodeULong(allowLeadingZeroBytes: false);
                 }
+
+                if (itemsRemaining >= 4 && decoderContext.Position != headerCheck)
+                {
+                    blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccak();
+                }
             }
+
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
@@ -158,10 +164,15 @@ namespace Nethermind.Serialization.Rlp
             {
                 blockHeader.WithdrawalsRoot = rlpStream.DecodeKeccak();
 
-                if (itemsRemaining == 3 && rlpStream.Position != headerCheck)
+                if (itemsRemaining >= 3 && rlpStream.Position != headerCheck)
                 {
                     blockHeader.DataGasUsed = rlpStream.DecodeUlong(allowLeadingZeroBytes: false);
                     blockHeader.ExcessDataGas = rlpStream.DecodeUlong(allowLeadingZeroBytes: false);
+                }
+
+                if (itemsRemaining >= 4 && rlpStream.Position != headerCheck)
+                {
+                    blockHeader.ParentBeaconBlockRoot = rlpStream.DecodeKeccak();
                 }
             }
 
@@ -227,6 +238,11 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(header.DataGasUsed.GetValueOrDefault());
                 rlpStream.Encode(header.ExcessDataGas.GetValueOrDefault());
             }
+
+            if (header.ParentBeaconBlockRoot is not null)
+            {
+                rlpStream.Encode(header.ParentBeaconBlockRoot ?? Keccak.Zero);
+            }
         }
 
         public Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -265,9 +281,10 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.Timestamp)
                                 + Rlp.LengthOf(item.ExtraData)
                                 + (item.BaseFeePerGas.IsZero ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
-                                + (item.WithdrawalsRoot is null && item.DataGasUsed is null && item.ExcessDataGas is null ? 0 : Rlp.LengthOfKeccakRlp)
+                                + (item.WithdrawalsRoot is null && item.ExcessDataGas is null ? 0 : Rlp.LengthOfKeccakRlp)
                                 + (item.DataGasUsed is null ? 0 : Rlp.LengthOf(item.DataGasUsed.Value))
-                                + (item.ExcessDataGas is null ? 0 : Rlp.LengthOf(item.ExcessDataGas.Value));
+                                + (item.ExcessDataGas is null ? 0 : Rlp.LengthOf(item.ExcessDataGas.Value))
+                                + (item.ParentBeaconBlockRoot is null ? 0 : Rlp.LengthOfKeccakRlp);
 
             if (notForSealing)
             {

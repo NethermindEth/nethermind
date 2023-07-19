@@ -81,8 +81,10 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void DeleteAccount(Address address);
 
     void CreateAccount(Address address, in UInt256 balance);
+    void CreateAccountIfNotExists(Address address, in UInt256 balance);
 
     void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce);
+    void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce);
 
     void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
 

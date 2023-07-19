@@ -415,6 +415,11 @@ namespace Nethermind.State
             PushNew(address, account);
         }
 
+        public void CreateAccountIfNotExists(Address address, in UInt256 balance)
+        {
+            if (AccountExists(address)) return;
+            CreateAccount(address, balance);
+        }
 
         public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce)
         {
@@ -422,6 +427,12 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance} and nonce {nonce}");
             Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance);
             PushNew(address, account);
+        }
+
+        public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce)
+        {
+            if (AccountExists(address)) return;
+            CreateAccount(address, balance, nonce);
         }
 
         public void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)

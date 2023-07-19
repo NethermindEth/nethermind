@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles.Stateful;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -222,8 +223,18 @@ public partial class BlockProcessor : IBlockProcessor
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
+        if (spec.IsBeaconParentBlockRootAvailable)
+        {
+            _stateProvider.CreateAccountIfNotExists(BeaconBlockRootPrecompile.Address, 1);
+        }
+
         _receiptsTracer.SetOtherTracer(blockTracer);
         _receiptsTracer.StartNewBlockTrace(block);
+
+        if (spec.IsBeaconParentBlockRootAvailable)
+        {
+            BeaconBlockRootPrecompile.SetupBeaconBlockRootPrecompileState(_stateProvider, block, block.ParentBeaconBlockRoot);
+        }
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
 

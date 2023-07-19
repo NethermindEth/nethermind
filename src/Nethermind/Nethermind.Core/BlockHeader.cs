@@ -26,7 +26,8 @@ public class BlockHeader
         ulong timestamp,
         byte[] extraData,
         ulong? dataGasUsed = null,
-        ulong? excessDataGas = null)
+        ulong? excessDataGas = null,
+        Keccak? parentBeaconBlockRoot = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -38,6 +39,7 @@ public class BlockHeader
         ExtraData = extraData;
         DataGasUsed = dataGasUsed;
         ExcessDataGas = excessDataGas;
+        ParentBeaconBlockRoot = parentBeaconBlockRoot;
     }
 
     public WeakReference<BlockHeader>? MaybeParent { get; set; }
@@ -69,6 +71,7 @@ public class BlockHeader
     public Keccak? WithdrawalsRoot { get; set; }
     public ulong? DataGasUsed { get; set; }
     public ulong? ExcessDataGas { get; set; }
+    public Keccak? ParentBeaconBlockRoot { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
@@ -100,6 +103,10 @@ public class BlockHeader
         if (WithdrawalsRoot is not null)
         {
             builder.AppendLine($"{indent}WithdrawalsRoot: {WithdrawalsRoot}");
+        }
+        if (ParentBeaconBlockRoot is not null)
+        {
+            builder.AppendLine($"{indent}ParentBeaconBlockRoot: {ParentBeaconBlockRoot}");
         }
         if (DataGasUsed is not null || ExcessDataGas is not null)
         {

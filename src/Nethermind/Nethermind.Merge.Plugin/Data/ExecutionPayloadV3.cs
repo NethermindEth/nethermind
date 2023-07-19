@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Newtonsoft.Json;
@@ -21,6 +22,7 @@ public class ExecutionPayloadV3 : ExecutionPayload
     {
         DataGasUsed = block.DataGasUsed;
         ExcessDataGas = block.ExcessDataGas;
+        ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
     }
 
     /// <summary>
@@ -35,6 +37,14 @@ public class ExecutionPayloadV3 : ExecutionPayload
     /// </summary>
     public ulong? ExcessDataGas { get; set; }
 
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.ParentBeaconBlockRoot"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
+    /// </summary>
+    [JsonIgnore]
+    public Keccak? ParentBeaconBlockRoot { get; set; } = null;
+
     public override bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
     {
         if (!base.TryGetBlock(out block, totalDifficulty))
@@ -44,6 +54,7 @@ public class ExecutionPayloadV3 : ExecutionPayload
 
         block!.Header.DataGasUsed = DataGasUsed;
         block.Header.ExcessDataGas = ExcessDataGas;
+        block.Header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
         return true;
     }
 
