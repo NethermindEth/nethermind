@@ -104,14 +104,14 @@ public class RecoveryTests
     }
 
     [Test]
-    public async Task can_recover_eth67_no_peers()
+    public async Task cannot_recover_eth67_no_peers()
     {
         byte[]? rlp = await Recover(_snapRecovery, _snapRequest, _peerEth66);
         rlp.Should().BeNull();
     }
 
     [Test]
-    public async Task can_recover_eth67_empty_response()
+    public async Task cannot_recover_eth67_empty_response()
     {
         _snapSyncPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(Array.Empty<byte[]>()));
