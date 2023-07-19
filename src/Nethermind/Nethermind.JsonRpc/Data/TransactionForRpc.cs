@@ -49,7 +49,9 @@ public class TransactionForRpc
             YParity = transaction.SupportsAccessList ? signature.RecoveryId : null;
             R = new UInt256(signature.R, true);
             S = new UInt256(signature.S, true);
-            V = transaction.Type == TxType.Legacy ? (UInt256?)signature.V : (UInt256?)signature.RecoveryId;
+            // V must be null for non-legacy transactions. Temporarily set to recovery id for Geth compatibility.
+            // See https://github.com/ethereum/go-ethereum/issues/27727
+            V = transaction.Type == TxType.Legacy ? signature.V : signature.RecoveryId;
         }
     }
 

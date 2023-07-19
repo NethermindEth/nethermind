@@ -570,7 +570,7 @@ namespace Nethermind.Evm.Test.Tracing
         public void Can_trace_precompile_calls()
         {
             byte[] code = Prepare.EvmCode
-                .Call(IdentityPrecompile.Instance.Address, 50000)
+                .Call(IdentityPrecompile.Address, 50000)
                 .Op(Instruction.STOP)
                 .Done;
 
@@ -590,8 +590,8 @@ namespace Nethermind.Evm.Test.Tracing
         public void Can_ignore_precompile_calls_in_contract()
         {
             byte[] deployedCode = Prepare.EvmCode
-                .Call(IdentityPrecompile.Instance.Address, 50000)
-                .CallWithValue(IdentityPrecompile.Instance.Address, 50000, 1.Ether())
+                .Call(IdentityPrecompile.Address, 50000)
+                .CallWithValue(IdentityPrecompile.Address, 50000, 1.Ether())
                 .Op(Instruction.STOP)
                 .Done;
 
@@ -599,7 +599,7 @@ namespace Nethermind.Evm.Test.Tracing
             TestState.InsertCode(TestItem.AddressC, deployedCode, Spec);
 
             byte[] code = Prepare.EvmCode
-                .Call(IdentityPrecompile.Instance.Address, 50000)
+                .Call(IdentityPrecompile.Address, 50000)
                 .Call(TestItem.AddressC, 40000)
                 .Op(Instruction.STOP)
                 .Done;
