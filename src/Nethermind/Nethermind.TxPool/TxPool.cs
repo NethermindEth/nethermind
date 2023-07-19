@@ -574,9 +574,7 @@ namespace Nethermind.TxPool
                 hasBeenRemoved = _transactions.TryRemove(hash, out Transaction? transaction);
                 if (!hasBeenRemoved)
                 {
-                    // add flag keepInDb if coming from processed block? and remove after finalization?
-                    // actually for blobs it is removed here only after block processing
-                    hasBeenRemoved = _blobTransactions.TryRemove(hash, out transaction);
+                    hasBeenRemoved = _blobTransactions.TryRemoveProcessedButNotFinalizedBlobTx(hash, out transaction);
                 }
 
                 if (transaction is null || !hasBeenRemoved)

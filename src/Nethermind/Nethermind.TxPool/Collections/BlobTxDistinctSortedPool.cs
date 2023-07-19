@@ -26,7 +26,8 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
         RecreateLightTxCollectionAndCache(blobTxStorage);
     }
 
-    protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer) => comparer.GetBlobReplacementComparer();
+    protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
+        => comparer.GetBlobReplacementComparer();
 
     private void RecreateLightTxCollectionAndCache(ITxStorage blobTxStorage)
     {
@@ -82,9 +83,26 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
         return false;
     }
 
-    // only for tests - to test sorting
+    /// <summary>
+    /// For tests only - to test sorting
+    /// </summary>
     internal bool TryGetLightValue(Keccak hash, out Transaction? lightBlobTx)
         => base.TryGetValue(hash, out lightBlobTx);
+
+    /// <summary>
+    /// Removing blob tx from in-memory collections and still keeps in persistent db in case of reorgs
+    /// </summary>
+    public bool TryRemoveProcessedButNotFinalizedBlobTx(ValueKeccak hash, out Transaction? removed)
+    {
+        if (base.TryRemove(hash, out removed))
+        {
+            // save somewhere to delete after finalization
+
+            return true;
+        }
+
+        return false;
+    }
 
     protected override bool Remove(ValueKeccak hash, Transaction tx)
     {

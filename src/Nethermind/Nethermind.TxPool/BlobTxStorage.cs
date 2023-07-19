@@ -19,7 +19,8 @@ public class BlobTxStorage : ITxStorage
         _database = database ?? throw new ArgumentNullException(nameof(database));
     }
 
-    public bool TryGet(Keccak hash, out Transaction? transaction) => TryDecode(_database.Get(hash), out transaction);
+    public bool TryGet(Keccak hash, out Transaction? transaction)
+        => TryDecode(_database.Get(hash), out transaction);
 
     private static bool TryDecode(byte[]? txBytes, out Transaction? transaction)
     {
@@ -61,5 +62,6 @@ public class BlobTxStorage : ITxStorage
         _database.Set(transaction.Hash, Rlp.Encode(transaction, RlpBehaviors.InMempoolForm).Bytes);
     }
 
-    public void Delete(ValueKeccak hash) => _database.Remove(hash.Bytes);
+    public void Delete(ValueKeccak hash)
+        => _database.Remove(hash.Bytes);
 }
