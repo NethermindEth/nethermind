@@ -84,13 +84,13 @@ namespace Nethermind.Merge.Plugin.Test
             };
         }
 
-        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, Transaction[]? transactions = null)
-            => CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, transactions: transactions);
+        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, Transaction[]? transactions = null, Keccak? beaconParentBlockRoot = null)
+            => CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, transactions: transactions, beaconParentBlockRoot: beaconParentBlockRoot);
 
-        private static ExecutionPayloadV3 CreateBlockRequestV3(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? dataGasUsed = null, ulong? excessDataGas = null, Transaction[]? transactions = null)
-            => CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, dataGasUsed, excessDataGas, transactions: transactions);
+        private static ExecutionPayloadV3 CreateBlockRequestV3(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? dataGasUsed = null, ulong? excessDataGas = null, Transaction[]? transactions = null, Keccak? beaconParentBlockRoot = null)
+            => CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, dataGasUsed, excessDataGas, transactions: transactions, beaconParentBlockRoot: beaconParentBlockRoot);
 
-        private static T CreateBlockRequestInternal<T>(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? dataGasUsed = null, ulong? excessDataGas = null, Transaction[]? transactions = null) where T : ExecutionPayload, new()
+        private static T CreateBlockRequestInternal<T>(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? dataGasUsed = null, ulong? excessDataGas = null, Transaction[]? transactions = null, Keccak? beaconParentBlockRoot = null) where T : ExecutionPayload, new()
         {
             T blockRequest = new()
             {
@@ -110,6 +110,7 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 blockRequestV3.DataGasUsed = dataGasUsed;
                 blockRequestV3.ExcessDataGas = excessDataGas;
+                blockRequestV3.ParentBeaconBlockRoot = beaconParentBlockRoot;
             }
 
             blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());

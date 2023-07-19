@@ -18,10 +18,9 @@ public class BeaconBlockRootPrecompile : IPrecompile
         StorageCell storageCell = new(Address, index);
         return state.Get(storageCell);
     }
-    public static void SetupBeaconBlockRootPrecompileState(IWorldState stateProvider, Block block, Keccak parentBeaconBlockRoot)
+    public static void SetupBeaconBlockRootPrecompileState(IWorldState stateProvider, Keccak parentBeaconBlockRoot, UInt256 timestamp)
     {
         if (parentBeaconBlockRoot is null) return;
-        UInt256 timestamp = block.Header.Timestamp;
 
         UInt256.Mod(timestamp, HISTORICAL_ROOTS_LENGTH, out UInt256 timestampReduced);
         UInt256 rootIndex = timestampReduced + HISTORICAL_ROOTS_LENGTH;

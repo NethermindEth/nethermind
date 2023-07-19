@@ -24,6 +24,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles.Stateful;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -116,6 +117,12 @@ public class TestBlockchain : IDisposable
         DbProvider = await CreateDbProvider();
         TrieStore = new TrieStore(StateDb, LogManager);
         State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
+
+        if(specProvider.GenesisSpec.IsEip4788Enabled)
+        {
+            State.CreateAccount(BeaconBlockRootPrecompile.Address, 1);
+        }
+
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
@@ -292,10 +299,14 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder = GenesisBlockBuilder;
         }
 
-        genesisBlockBuilder.WithStateRoot(State.StateRoot);
         if (SealEngineType == Core.SealEngineType.AuRa)
         {
             genesisBlockBuilder.WithAura(0, new byte[65]);
+        }
+
+        if(SpecProvider.GenesisSpec.IsEip4788Enabled)
+        {
+            genesisBlockBuilder.WithParentBeaconBlockRoot(TestItem.KeccakG);
         }
 
         if (SpecProvider.GenesisSpec.IsEip4844Enabled)
@@ -304,6 +315,16 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithExcessDataGas(0);
         }
 
+
+        if (SpecProvider.GenesisSpec.IsEip4788Enabled)
+        {
+            BeaconBlockRootPrecompile.SetupBeaconBlockRootPrecompileState(State, genesisBlockBuilder.TestObject.ParentBeaconBlockRoot, genesisBlockBuilder.TestObject.Timestamp);
+            State.Commit(SpecProvider.GenesisSpec);
+            State.CommitTree(0);
+
+            State.RecalculateStateRoot();
+        }
+        genesisBlockBuilder.WithStateRoot(State.StateRoot);
         return genesisBlockBuilder.TestObject;
     }
 

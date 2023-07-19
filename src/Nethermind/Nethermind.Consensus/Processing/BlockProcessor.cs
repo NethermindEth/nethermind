@@ -233,7 +233,7 @@ public partial class BlockProcessor : IBlockProcessor
 
         if (spec.IsBeaconParentBlockRootAvailable)
         {
-            BeaconBlockRootPrecompile.SetupBeaconBlockRootPrecompileState(_stateProvider, block, block.ParentBeaconBlockRoot);
+            BeaconBlockRootPrecompile.SetupBeaconBlockRootPrecompileState(_stateProvider, block.ParentBeaconBlockRoot, block.Timestamp);
         }
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);

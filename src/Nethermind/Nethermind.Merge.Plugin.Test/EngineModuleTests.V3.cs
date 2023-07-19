@@ -67,7 +67,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
             CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>());
 
-        ResultWrapper<PayloadStatusV1> errorCode = (await rpcModule.engine_newPayloadV3(executionPayload, new byte[0][], Keccak.Zero.BytesToArray()));
+        ResultWrapper<PayloadStatusV1> errorCode = (await rpcModule.engine_newPayloadV3(executionPayload, new byte[0][], executionPayload.ParentBeaconBlockRoot.BytesToArray()));
 
         Assert.That(errorCode.ErrorCode, Is.EqualTo(ErrorCodes.UnsupportedFork));
     }
@@ -343,8 +343,8 @@ public partial class EngineModuleTests
     private async Task<ExecutionPayload> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, IList<Withdrawal>? withdrawals)
     {
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
-            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0, 0);
-        ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>(), Keccak.Zero.BytesToArray());
+            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0, 0, beaconParentBlockRoot: TestItem.KeccakE);
+        ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>(), executionPayload.ParentBeaconBlockRoot.BytesToArray());
 
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
 
