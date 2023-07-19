@@ -112,7 +112,13 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
         if (_rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
         {
             if (_nodesByBlock.Count > 0)
-                blockNo = blocks.Max();
+            {
+                //temp fix to not start with a block that is no longer held in cache
+                //to be removed when reworking rootHash <-> block mapping
+                long maxBlockNo = blocks.Max();
+                if (maxBlockNo >= minBlockNumberStored)
+                    blockNo = maxBlockNo;
+            }
         }
 
         while (blockNo >= minBlockNumberStored)
