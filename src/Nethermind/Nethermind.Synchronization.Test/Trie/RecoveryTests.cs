@@ -48,7 +48,7 @@ public class RecoveryTests
 
         _snapSyncPeer = Substitute.For<ISnapSyncPeer>();
         _snapSyncPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
-            .Returns(c=> Task.FromResult(new[] { _returnedRlp }));
+            .Returns(c => Task.FromResult(new[] { _returnedRlp }));
         _syncPeerEth67 = Substitute.For<ISyncPeer>();
         _syncPeerEth67.ProtocolVersion.Returns(EthVersions.Eth67);
         _syncPeerEth67.TryGetSatelliteProtocol(Protocol.Snap, out Arg.Any<ISnapSyncPeer>())

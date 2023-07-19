@@ -48,7 +48,7 @@ public class HealingTrieStoreTests
         if (isMainThread && successfullyRecovered)
         {
             action.Should().NotThrow();
-            db.KeyWasWritten(kvp  => Bytes.AreEqual(kvp.Item1, key.Bytes) && Bytes.AreEqual(kvp.Item2, rlp));
+            db.KeyWasWritten(kvp => Bytes.AreEqual(kvp.Item1, key.Bytes) && Bytes.AreEqual(kvp.Item2, rlp));
         }
         else
         {
