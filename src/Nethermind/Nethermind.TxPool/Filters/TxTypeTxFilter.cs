@@ -22,9 +22,12 @@ public class TxTypeTxFilter : IIncomingTxFilter
 
     public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        return (tx.SupportsBlobs ? _txs : _blobTxs)
-            .ContainsBucket(tx.SenderAddress!) // as unknownSenderFilter will run before this one
-            ? AcceptTxResult.PendingTxsOfOtherType
-            : AcceptTxResult.Accepted;
+        if ((tx.SupportsBlobs ? _txs : _blobTxs)
+            .ContainsBucket(tx.SenderAddress!)) // as unknownSenderFilter will run before this one
+        {
+            Metrics.PendingTransactionsConflictingTxType++;
+            return AcceptTxResult.PendingTxsOfOtherType;
+        }
+        return AcceptTxResult.Accepted;
     }
 }
