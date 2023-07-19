@@ -14,17 +14,12 @@ namespace Nethermind.Synchronization.Trie;
 public class HealingStorageTreeFactory : IStorageTreeFactory
 {
     private ITrieNodeRecovery<GetTrieNodesRequest>? _recovery;
-    public bool Throw { get; set; }
 
     public void InitializeNetwork(ITrieNodeRecovery<GetTrieNodesRequest> recovery)
     {
         _recovery = recovery;
     }
 
-    public StorageTree Create(Address address, ITrieStore trieStore, Keccak storageRoot, Keccak stateRoot, ILogManager? logManager)
-    {
-        HealingStorageTree healingStorageTree = new(trieStore, storageRoot, logManager, address, stateRoot, _recovery) { Throw = Throw };
-        Throw = false;
-        return healingStorageTree;
-    }
+    public StorageTree Create(Address address, ITrieStore trieStore, Keccak storageRoot, Keccak stateRoot, ILogManager? logManager) =>
+        new HealingStorageTree(trieStore, storageRoot, logManager, address, stateRoot, _recovery);
 }

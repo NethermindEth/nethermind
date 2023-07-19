@@ -18,7 +18,6 @@ namespace Nethermind.Synchronization.Trie;
 /// </summary>
 public class HealingTrieStore : TrieStore
 {
-    public bool Throw { get; set; }
     private ITrieNodeRecovery<IReadOnlyList<Keccak>>? _recovery;
 
     public HealingTrieStore(

@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
