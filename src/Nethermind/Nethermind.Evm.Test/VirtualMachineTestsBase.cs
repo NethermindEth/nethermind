@@ -243,6 +243,7 @@ namespace Nethermind.Evm.Test
                 .WithDataGasUsed(0)
                 .WithExcessDataGas(0)
                 .WithTimestamp(timestamp)
+                .WithParentBeaconBlockRoot(TestItem.KeccakG)
                 .TestObject;
         }
 

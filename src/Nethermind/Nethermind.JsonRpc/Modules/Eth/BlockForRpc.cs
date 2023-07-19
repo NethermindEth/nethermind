@@ -76,6 +76,7 @@ public class BlockForRpc
         Uncles = block.Uncles.Select(o => o.Hash);
         Withdrawals = block.Withdrawals;
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
+        ParentBeackBlockRoot = block.ParentBeaconBlockRoot;
     }
 
     public Address Author { get; set; }
@@ -130,4 +131,7 @@ public class BlockForRpc
 
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
     public ulong? ExcessDataGas { get; set; }
+
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    public Keccak? ParentBeackBlockRoot { get; set; }
 }
