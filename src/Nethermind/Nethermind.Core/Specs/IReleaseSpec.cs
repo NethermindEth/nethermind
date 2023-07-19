@@ -268,6 +268,11 @@ namespace Nethermind.Core.Specs
         bool IsEip4844Enabled { get; }
 
         /// <summary>
+        /// Parent Beacon Block precompile
+        /// </summary>
+        bool IsEip4788Enabled { get; }
+
+        /// <summary>
         /// SELFDESTRUCT only in same transaction
         /// </summary>
         bool IsEip6780Enabled { get; }
@@ -352,6 +357,7 @@ namespace Nethermind.Core.Specs
         public bool WithdrawalsEnabled => IsEip4895Enabled;
         public bool SelfdestructOnlyOnSameTransaction => IsEip6780Enabled;
 
-        bool MCopyIncluded => IsEip5656Enabled;
+        public bool IsBeaconParentBlockRootAvailable => IsEip4788Enabled;
+        public bool MCopyIncluded => IsEip5656Enabled;
     }
 }
