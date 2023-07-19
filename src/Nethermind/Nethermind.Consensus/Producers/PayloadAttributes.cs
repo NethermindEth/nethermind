@@ -44,7 +44,7 @@ public class PayloadAttributes
             sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Count}");
         }
 
-        if(BeaconParentBlockRoot is not null)
+        if (BeaconParentBlockRoot is not null)
         {
             sb.Append($", {nameof(BeaconParentBlockRoot)} : {BeaconParentBlockRoot}");
         }

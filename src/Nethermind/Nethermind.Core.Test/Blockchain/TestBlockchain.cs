@@ -302,7 +302,7 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithAura(0, new byte[65]);
         }
 
-        if(SpecProvider.GenesisSpec.IsEip4788Enabled)
+        if (SpecProvider.GenesisSpec.IsEip4788Enabled)
         {
             genesisBlockBuilder.WithParentBeaconBlockRoot(TestItem.KeccakG);
         }
