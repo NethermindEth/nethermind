@@ -103,39 +103,41 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
 
     public TrieNode? GetNode(Keccak rootHash, byte[] path)
     {
+        if (_nodesByBlock.Count == 0)
+            return null;
+
+        long blockNo = _nodesByBlock.Keys.Max();
+        long minBlockNumberStored = _nodesByBlock.Keys.Min();
+
         if (_rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
         {
-            if (_nodesByBlock.Count == 0)
-            {
-                return null;
-            }
-            long blockNo = blocks.Max();
-            long minBlockNumberStored = _nodesByBlock.Keys.Min();
+            if (_nodesByBlock.Count > 0)
+                blockNo = blocks.Max();
+        }
 
-            while (blockNo >= minBlockNumberStored)
+        while (blockNo >= minBlockNumberStored)
+        {
+            if (_removedPrefixes.TryGetValue(blockNo, out List<byte[]> prefixes))
             {
-                if (_removedPrefixes.TryGetValue(blockNo, out List<byte[]> prefixes))
+                foreach (byte[] prefix in prefixes)
                 {
-                    foreach (byte[] prefix in prefixes)
+                    if (path.Length >= prefix.Length &&
+                        Bytes.AreEqual(path.AsSpan()[0..prefix.Length], prefix))
                     {
-                        if (path.Length >= prefix.Length &&
-                            Bytes.AreEqual(path.AsSpan()[0..prefix.Length], prefix))
-                        {
-                            return null;
-                        }
+                        return null;
                     }
                 }
-
-                if (_nodesByBlock.TryGetValue(blockNo, out ConcurrentDictionary<byte[], TrieNode> nodeDictionary))
-                {
-                    if (nodeDictionary.TryGetValue(path, out TrieNode node))
-                    {
-                        Pruning.Metrics.LoadedFromCacheNodesCount++;
-                        return node;
-                    }
-                }
-                blockNo--;
             }
+
+            if (_nodesByBlock.TryGetValue(blockNo, out ConcurrentDictionary<byte[], TrieNode> nodeDictionary))
+            {
+                if (nodeDictionary.TryGetValue(path, out TrieNode node))
+                {
+                    Pruning.Metrics.LoadedFromCacheNodesCount++;
+                    return node;
+                }
+            }
+            blockNo--;
         }
         return null;
     }
@@ -172,13 +174,14 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             {
                 foreach (byte[] keyPrefix in prefixes)
                 {
-                    (byte[] startKey, byte[] endKey) = TrieStoreByPath.GetDeleteKeyFromNibblePrefix(keyPrefix, 33, 0);
+                    (byte[] startKey, byte[] endKey) = TrieStoreByPath.GetDeleteKeyFromNibblePrefix(keyPrefix);
                     _trieStore.DeleteByRange(startKey, endKey);
                 }
             }
             if (_nodesByBlock.TryRemove(blockNumber, out ConcurrentDictionary<byte[], TrieNode> nodesByPath))
             {
-                foreach (TrieNode? node in nodesByPath.Values)
+                IOrderedEnumerable<TrieNode> orderedValues = nodesByPath.Values.OrderBy(tn => tn.FullRlp, Bytes.Comparer);
+                foreach (TrieNode? node in orderedValues)
                 {
                     _trieStore.SaveNodeDirectly(blockNumber, node, batch);
                     node.IsPersisted = true;
