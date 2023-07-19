@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 
@@ -20,13 +21,15 @@ namespace Nethermind.JsonRpc.Modules
         private readonly SemaphoreSlim _semaphore;
         private readonly ILogger _logger;
         private int _activeWorkers = 0;
-        private int _rpcCallsPending = 0;
+        private int _rpcPendingCalls = 0;
         private readonly int _exclusiveCapacity = 0;
         private readonly int _maxPendingSharedRequests = 0;
+        private readonly bool _pendingRequestLimitsEnabled = false;
 
         public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout, ILogManager logManager, int maxPendingSharedRequests = 0)
         {
             _maxPendingSharedRequests = maxPendingSharedRequests;
+            _pendingRequestLimitsEnabled = _maxPendingSharedRequests > 0;
             _exclusiveCapacity = exclusiveCapacity;
             _logger = logManager.GetClassLogger();
             _timeout = timeout;
@@ -46,29 +49,37 @@ namespace Nethermind.JsonRpc.Modules
 
         private async Task<T> SlowPath()
         {
-            bool pendingRequestLimitsEnabled = _maxPendingSharedRequests > 0;
-            if (pendingRequestLimitsEnabled && _rpcCallsPending > _maxPendingSharedRequests)
+            if (_pendingRequestLimitsEnabled && _rpcPendingCalls > _maxPendingSharedRequests)
             {
-                // ToDo Change this exception
-                throw new ModuleRentalTimeoutException($"Unable to start new pending requests for {typeof(T).Name}. Too many pending requests. Pending calls {_rpcCallsPending}.");
+                throw new LimitExceededException($"Unable to start new pending requests for {typeof(T).Name}. Too many pending requests. Pending calls {_rpcPendingCalls}.");
             }
 
-            ++_rpcCallsPending;
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"{typeof(T).Name} Pending RPC requests {_rpcCallsPending} Active Workers {_activeWorkers}/{_exclusiveCapacity}");
-            }
+            IncrementRpcPendingCalls();
+            if (_logger.IsTrace)
+                _logger.Trace($"{typeof(T).Name} Pending RPC requests {_rpcPendingCalls} Active Workers {_activeWorkers}/{_exclusiveCapacity}");
 
             if (!await _semaphore.WaitAsync(_timeout))
             {
-                --_rpcCallsPending;
+                DecrementRpcPendingCalls();
                 throw new ModuleRentalTimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
             }
 
-            --_rpcCallsPending;
+            DecrementRpcPendingCalls();
             ++_activeWorkers;
             _pool.TryDequeue(out T result);
             return result;
+        }
+
+        private void IncrementRpcPendingCalls()
+        {
+            if (_pendingRequestLimitsEnabled)
+                Interlocked.Increment(ref _rpcPendingCalls);
+        }
+
+        private void DecrementRpcPendingCalls()
+        {
+            if (_pendingRequestLimitsEnabled)
+                Interlocked.Decrement(ref _rpcPendingCalls);
         }
 
         public void ReturnModule(T module)
