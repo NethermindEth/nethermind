@@ -210,9 +210,9 @@ namespace Nethermind.Evm
             => @this.PushSingle(bytes)
                     .PushSingle(pos)
                     .Op(Instruction.BYTE);
-        public static Prepare SHA3(this Prepare @this, UInt256? pos = null, UInt256? len = null)
+        public static Prepare KECCAK256(this Prepare @this, UInt256? pos = null, UInt256? len = null)
             => @this.PushSequence(len, pos)
-                    .Op(Instruction.SHA3);
+                    .Op(Instruction.KECCAK256);
         public static Prepare SHL(this Prepare @this, UInt256? lhs = null, UInt256? rhs = null)
             => @this.PushSequence(rhs, lhs)
                     .Op(Instruction.SHL);
