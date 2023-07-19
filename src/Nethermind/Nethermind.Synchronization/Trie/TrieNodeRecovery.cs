@@ -66,13 +66,13 @@ public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
         return null;
     }
 
-    protected List<Recovery> GenerateKeyRecoveries(TRequest requestedHashes, CancellationTokenSource cts)
+    protected List<Recovery> GenerateKeyRecoveries(TRequest request, CancellationTokenSource cts)
     {
         List<Recovery> keyRecoveries = AllocatePeers();
         if (_logger.IsDebug) _logger.Debug($"Allocated {keyRecoveries.Count} peers (out of {_syncPeerPool!.InitializedPeers.Count()} initialized peers)");
         foreach (Recovery keyRecovery in keyRecoveries)
         {
-            keyRecovery.Task = RecoverRlpFromPeer(keyRecovery, requestedHashes, cts);
+            keyRecovery.Task = RecoverRlpFromPeer(keyRecovery, request, cts);
         }
 
         return keyRecoveries;
@@ -84,14 +84,10 @@ public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
 
         foreach (ISyncPeer peer in _syncPeerPool!.InitializedPeers
                      .Select(p => p.SyncPeer)
+                     .Where(CanAllocatePeer)
                      .OrderByDescending(p => p.HeadNumber))
         {
-            bool canAllocatePeer = CanAllocatePeer(peer);
-            if (canAllocatePeer)
-            {
-                syncPeerAllocations.Add(new Recovery { Peer = peer });
-            }
-            else if (_logger.IsTrace) _logger.Trace($"Peer {peer} can not be allocated with eth{peer.ProtocolVersion}");
+            syncPeerAllocations.Add(new Recovery { Peer = peer });
 
             if (syncPeerAllocations.Count >= MaxPeersForRecovery)
             {
