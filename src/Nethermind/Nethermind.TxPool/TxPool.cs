@@ -99,7 +99,6 @@ namespace Nethermind.TxPool
             AddNodeInfoEntryForTxPool();
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
-            // we need some limit of blob txs, but extremely high to be limitless in practice
             _blobTransactions = new BlobTxDistinctSortedPool(_blobTxStorage, _txPoolConfig, comparer, logManager);
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
 
@@ -409,6 +408,7 @@ namespace Nethermind.TxPool
                 (tx.SupportsBlobs ? _blobTransactions : _transactions).UpdateGroup(tx.SenderAddress!, state.SenderAccount, UpdateBucketWithAddedTransaction);
                 Metrics.PendingTransactionsAdded++;
                 if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
+                if (tx.SupportsBlobs) { Metrics.PendingBlobTransactionsAdded++; }
 
                 if (removed is not null)
                 {
@@ -706,6 +706,7 @@ namespace Nethermind.TxPool
 
             logger.Info(@$"
 Txn Pool State ({Metrics.TransactionCount:N0} txns queued)
+Blob txs Pool ({Metrics.BlobTransactionCount:N0} txns queued)
 ------------------------------------------------
 Sent
 * Transactions:         {Metrics.PendingTransactionsSent,24:N0}
@@ -719,12 +720,14 @@ Discarded at Filter Stage:
 3.  Malformed           {Metrics.PendingTransactionsMalformed,24:N0}
 4.  Duplicate:          {Metrics.PendingTransactionsKnown,24:N0}
 5.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,24:N0}
-6.  Zero Balance:       {Metrics.PendingTransactionsZeroBalance,24:N0}
-7.  Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,24:N0}
-8.  Nonce used:         {Metrics.PendingTransactionsLowNonce,24:N0}
-9.  Nonces skipped:     {Metrics.PendingTransactionsNonceGap,24:N0}
-10. Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,24:N0}
-11. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,24:N0}
+6.  Conflicting TxType  {Metrics.PendingTransactionsConflictingTxType,24:N0}
+7.  Zero Balance:       {Metrics.PendingTransactionsZeroBalance,24:N0}
+8.  Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,24:N0}
+9.  Nonce used:         {Metrics.PendingTransactionsLowNonce,24:N0}
+10. Nonces skipped:     {Metrics.PendingTransactionsNonceGap,24:N0}
+11. Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,24:N0}
+12. Failed replacement  {Metrics.PendingTransactionsPassedFiltersButCannotReplace,24:N0}
+13. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,24:N0}
 ------------------------------------------------
 Validated via State:    {Metrics.PendingTransactionsWithExpensiveFiltering,24:N0}
 ------------------------------------------------
@@ -736,13 +739,17 @@ Discard Ratios:
 ------------------------------------------------
 Total Added:            {Metrics.PendingTransactionsAdded,24:N0}
 * Eip1559 Added:        {Metrics.Pending1559TransactionsAdded,24:N0}
+* Blob Added:        {Metrics.PendingBlobTransactionsAdded,24:N0}
 ------------------------------------------------
 Total Evicted:          {Metrics.PendingTransactionsEvicted,24:N0}
 ------------------------------------------------
-Ratios:
+Ratios in last block:
 * Eip1559 Transactions: {Metrics.Eip1559TransactionsRatio,24:P5}
 * DarkPool Level1:      {Metrics.DarkPoolRatioLevel1,24:P5}
 * DarkPool Level2:      {Metrics.DarkPoolRatioLevel2,24:P5}
+Amounts:
+* Blob txs:             {Metrics.BlobTransactionsInBlock,24:P5}
+* Blobs:                {Metrics.BlobsInBlock,24:P5}
 ------------------------------------------------
 ");
         }
