@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -40,7 +39,7 @@ public class HealingTrieStore : TrieStore
         {
             return base.LoadRlp(keccak, readFlags);
         }
-        catch (TrieException)
+        catch (TrieNodeException)
         {
             if (TryRecover(keccak, out byte[] rlp))
             {
