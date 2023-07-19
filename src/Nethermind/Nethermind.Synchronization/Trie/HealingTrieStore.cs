@@ -39,13 +39,6 @@ public class HealingTrieStore : TrieStore
     {
         try
         {
-            // For test only!
-            if (Throw)
-            {
-                Throw = false;
-                throw new TrieException("Artificial exception");
-            }
-
             return base.LoadRlp(keccak, readFlags);
         }
         catch (TrieException)

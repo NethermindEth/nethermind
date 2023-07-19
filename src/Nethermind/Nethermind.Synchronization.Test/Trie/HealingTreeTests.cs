@@ -47,12 +47,14 @@ public class HealingTreeTests
         }
 
         byte[] path = { 1, 2 };
-        recovery_works(isMainThread, successfullyRecovered, path, CreateHealingStateTree, r =>
-            r.RootHash == TestItem.KeccakA
-            && r.AccountAndStoragePaths.Length == 1
-            && r.AccountAndStoragePaths[0].Group.Length == 1
-            && Bytes.AreEqual(r.AccountAndStoragePaths[0].Group[0], Nibbles.EncodePath(path)));
+        recovery_works(isMainThread, successfullyRecovered, path, CreateHealingStateTree, r => PathMatch(r, path, 0));
     }
+
+    private static bool PathMatch(GetTrieNodesRequest r, byte[] path, int lastPathIndex) =>
+        r.RootHash == TestItem.KeccakA
+        && r.AccountAndStoragePaths.Length == 1
+        && r.AccountAndStoragePaths[0].Group.Length == lastPathIndex + 1
+        && Bytes.AreEqual(r.AccountAndStoragePaths[0].Group[lastPathIndex], Nibbles.EncodePath(path));
 
     [Test]
     public void recovery_works_storage_trie([Values(true, false)] bool isMainThread, [Values(true, false)] bool successfullyRecovered)
@@ -62,11 +64,7 @@ public class HealingTreeTests
         byte[] path = { 1, 2 };
         byte[] addressPath = ValueKeccak.Compute(TestItem.AddressA.Bytes).Bytes.ToArray();
         recovery_works(isMainThread, successfullyRecovered, path, CreateHealingStorageTree, r =>
-            r.RootHash == TestItem.KeccakA
-            && r.AccountAndStoragePaths.Length == 1
-            && r.AccountAndStoragePaths[0].Group.Length == 2
-            && Bytes.AreEqual(r.AccountAndStoragePaths[0].Group[0], addressPath)
-            && Bytes.AreEqual(r.AccountAndStoragePaths[0].Group[1], Nibbles.EncodePath(path)));
+            PathMatch(r, path, 1) && Bytes.AreEqual(r.AccountAndStoragePaths[0].Group[0], addressPath));
     }
 
     private void recovery_works<T>(
