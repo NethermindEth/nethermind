@@ -84,12 +84,20 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsLowNonce { get; set; }
 
         [CounterMetric]
+        [Description("Number of transactions rejected because of already pending tx of other type (allowed blob txs or others, not both at once).")]
+        public static long PendingTransactionsConflictingTxType { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending transactions added to transaction pool.")]
         public static long PendingTransactionsAdded { get; set; }
 
         [CounterMetric]
         [Description("Number of pending 1559-type transactions added to transaction pool.")]
         public static long Pending1559TransactionsAdded { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending blob-type transactions added to transaction pool.")]
+        public static long PendingBlobTransactionsAdded { get; set; }
 
         [CounterMetric]
         [Description("Number of pending transactions evicted from transaction pool.")]
@@ -100,7 +108,7 @@ namespace Nethermind.TxPool
         public static float Eip1559TransactionsRatio { get; set; }
 
         [GaugeMetric]
-        [Description("Number of transactions in the block.")]
+        [Description("Number of blob transactions in the block.")]
         public static long BlobTransactionsInBlock { get; set; }
 
         [GaugeMetric]
