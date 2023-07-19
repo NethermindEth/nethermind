@@ -40,6 +40,7 @@ public class SnapTrieNodeRecovery : TrieNodeRecovery<GetTrieNodesRequest>
             byte[][] rlp = await snapPeer.GetTrieNodes(request, cts.Token);
             if (rlp.Length == 1 && rlp[0]?.Length > 0)
             {
+                // TODO: How to verify we got correct RLP?
                 return rlp[0];
             }
         }

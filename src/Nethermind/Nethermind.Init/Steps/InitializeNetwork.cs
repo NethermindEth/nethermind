@@ -228,12 +228,13 @@ public class InitializeNetwork : IStep
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
 
-        // if (_syncConfig.SnapSync && !stateSyncFinished)
+        if (_syncConfig.SnapSync)
         {
+            // TODO: Should we keep snap capability even after finishing sync?
             SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
-        // else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
+        else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
 
         if (cancellationToken.IsCancellationRequested)
         {
