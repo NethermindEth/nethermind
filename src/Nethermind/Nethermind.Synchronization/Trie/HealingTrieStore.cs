@@ -50,7 +50,7 @@ public class HealingTrieStore : TrieStore
         }
         catch (TrieException)
         {
-            if (BlockchainProcessor.IsMainProcessingThread && TryRecover(keccak, out byte[] rlp))
+            if (TryRecover(keccak, out byte[] rlp))
             {
                 return rlp;
             }
@@ -61,10 +61,18 @@ public class HealingTrieStore : TrieStore
 
     private bool TryRecover(Keccak keccak, [NotNullWhen(true)] out byte[]? rlp)
     {
-        using ArrayPoolList<Keccak> request = new(1) { keccak };
-        rlp = _recovery?.Recover(request).GetAwaiter().GetResult();
-        if (rlp is null) return false;
-        _keyValueStore.Set(keccak.Bytes, rlp);
-        return true;
+        if (_recovery?.CanRecover == true)
+        {
+            using ArrayPoolList<Keccak> request = new(1) { keccak };
+            rlp = _recovery.Recover(request).GetAwaiter().GetResult();
+            if (rlp is not null)
+            {
+                _keyValueStore.Set(keccak.Bytes, rlp);
+                return true;
+            }
+        }
+
+        rlp = null;
+        return false;
     }
 }

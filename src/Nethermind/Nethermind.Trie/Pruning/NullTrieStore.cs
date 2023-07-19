@@ -27,6 +27,8 @@ namespace Nethermind.Trie.Pruning
             remove { }
         }
 
+        public IKeyValueStore AsKeyValueStore() => null!;
+
         public TrieNode FindCachedOrUnknown(Keccak hash) => new(NodeType.Unknown, hash);
 
         public byte[] LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
@@ -36,7 +38,5 @@ namespace Nethermind.Trie.Pruning
         public void Dispose() { }
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => null;
-
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
     }
 }

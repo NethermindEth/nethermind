@@ -15,14 +15,12 @@ namespace Nethermind.Synchronization.Trie;
 
 public class HealingStateTree : StateTree
 {
-    private readonly ILogManager? _logManager;
     private ITrieNodeRecovery<GetTrieNodesRequest>? _recovery;
 
     [DebuggerStepThrough]
     public HealingStateTree(ITrieStore? store, ILogManager? logManager)
         : base(store, logManager)
     {
-        _logManager = logManager;
     }
 
     public void InitializeNetwork(ITrieNodeRecovery<GetTrieNodesRequest> recovery)
@@ -38,7 +36,7 @@ public class HealingStateTree : StateTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (BlockchainProcessor.IsMainProcessingThread && Recover(e.GetPathPart(), rootHash ?? RootHash))
+            if (Recover(e.GetPathPart(), rootHash ?? RootHash))
             {
                 return base.Get(rawKey, rootHash);
             }
@@ -55,7 +53,7 @@ public class HealingStateTree : StateTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (BlockchainProcessor.IsMainProcessingThread && Recover(e.GetPathPart(), RootHash))
+            if (Recover(e.GetPathPart(), RootHash))
             {
                 base.Set(rawKey, value);
             }
@@ -68,23 +66,26 @@ public class HealingStateTree : StateTree
 
     private bool Recover(ReadOnlySpan<byte> pathPart, Keccak rootHash)
     {
-        GetTrieNodesRequest request = new()
+        if (_recovery?.CanRecover == true)
         {
-            RootHash = rootHash,
-            AccountAndStoragePaths = new[]
+            GetTrieNodesRequest request = new()
             {
-                new PathGroup
+                RootHash = rootHash,
+                AccountAndStoragePaths = new[]
                 {
-                    Group = new[] { Nibbles.EncodePath(pathPart) }
+                    new PathGroup
+                    {
+                        Group = new[] { Nibbles.EncodePath(pathPart) }
+                    }
                 }
-            }
-        };
+            };
 
-        byte[]? rlp = _recovery?.Recover(request).GetAwaiter().GetResult();
-        if (rlp is not null)
-        {
-            TrieStore.Set(ValueKeccak.Compute(rlp).Bytes, rlp);
-            return true;
+            byte[]? rlp = _recovery.Recover(request).GetAwaiter().GetResult();
+            if (rlp is not null)
+            {
+                TrieStore.AsKeyValueStore().Set(ValueKeccak.Compute(rlp).Bytes, rlp);
+                return true;
+            }
         }
 
         return false;

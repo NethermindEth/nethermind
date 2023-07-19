@@ -35,7 +35,7 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (BlockchainProcessor.IsMainProcessingThread && Recover(e.GetPathPart()))
+            if (Recover(e.GetPathPart()))
             {
                 return base.Get(rawKey, rootHash);
             }
@@ -52,7 +52,7 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (BlockchainProcessor.IsMainProcessingThread && Recover(e.GetPathPart()))
+            if (Recover(e.GetPathPart()))
             {
                 base.Set(rawKey, value);
             }
@@ -65,23 +65,26 @@ public class HealingStorageTree : StorageTree
 
     private bool Recover(ReadOnlySpan<byte> pathPart)
     {
-        GetTrieNodesRequest request = new()
+        if (_recovery?.CanRecover == true)
         {
-            RootHash = _stateRoot,
-            AccountAndStoragePaths = new[]
+            GetTrieNodesRequest request = new()
             {
-                new PathGroup
+                RootHash = _stateRoot,
+                AccountAndStoragePaths = new[]
                 {
-                    Group = new[] { ValueKeccak.Compute(_address.Bytes).ToByteArray(), Nibbles.EncodePath(pathPart) }
+                    new PathGroup
+                    {
+                        Group = new[] { ValueKeccak.Compute(_address.Bytes).ToByteArray(), Nibbles.EncodePath(pathPart) }
+                    }
                 }
-            }
-        };
+            };
 
-        byte[]? rlp = _recovery?.Recover(request).GetAwaiter().GetResult();
-        if (rlp is not null)
-        {
-            TrieStore.Set(ValueKeccak.Compute(rlp).Bytes, rlp);
-            return true;
+            byte[]? rlp = _recovery.Recover(request).GetAwaiter().GetResult();
+            if (rlp is not null)
+            {
+                TrieStore.AsKeyValueStore().Set(ValueKeccak.Compute(rlp).Bytes, rlp);
+                return true;
+            }
         }
 
         return false;

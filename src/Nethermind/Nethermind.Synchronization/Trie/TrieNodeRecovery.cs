@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 
@@ -14,6 +15,7 @@ namespace Nethermind.Synchronization.Trie;
 
 public interface ITrieNodeRecovery<in TRequest>
 {
+    bool CanRecover => BlockchainProcessor.IsMainProcessingThread;
     Task<byte[]?> Recover(TRequest request);
 }
 

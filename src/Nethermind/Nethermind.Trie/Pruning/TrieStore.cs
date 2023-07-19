@@ -149,6 +149,7 @@ namespace Nethermind.Trie.Pruning
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _dirtyNodes = new DirtyNodesCache(this);
+            _publicStore = new TrieKeyValueStore(this);
         }
 
         public long LastPersistedBlockNumber
@@ -557,6 +558,8 @@ namespace Nethermind.Trie.Pruning
 
         protected readonly IKeyValueStoreWithBatching _keyValueStore;
 
+        private readonly TrieKeyValueStore _publicStore;
+
         private readonly IPruningStrategy _pruningStrategy;
 
         private readonly IPersistenceStrategy _persistenceStrategy;
@@ -815,7 +818,7 @@ namespace Nethermind.Trie.Pruning
             });
         }
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        private byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             return _pruningStrategy.PruningEnabled
                    && _dirtyNodes.AllNodes.TryGetValue(new ValueKeccak(key), out TrieNode? trieNode)
@@ -826,13 +829,21 @@ namespace Nethermind.Trie.Pruning
                 : _currentBatch?.Get(key, flags) ?? _keyValueStore.Get(key, flags);
         }
 
-        /// <summary>
-        /// Sets value in key-value store.
-        /// </summary>
-        /// <param name="key"></param>
-        /// <param name="value"></param>
-        /// <param name="flags"></param>
-        /// <remarks>For healing only!</remarks>
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => _keyValueStore.Set(key, value, flags);
+        public IKeyValueStore AsKeyValueStore() => _publicStore;
+
+        private class TrieKeyValueStore : IKeyValueStore
+        {
+            private readonly TrieStore _trieStore;
+
+            public TrieKeyValueStore(TrieStore trieStore)
+            {
+                _trieStore = trieStore;
+            }
+
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.Get(key, flags);
+
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                => _trieStore._keyValueStore.Set(key, value, flags);
+        }
     }
 }
