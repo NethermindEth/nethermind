@@ -7,7 +7,7 @@ namespace Nethermind.TxPool
     {
         public int PeerNotificationThreshold { get; set; } = 5;
         public int Size { get; set; } = 2048;
-        public int BlobPoolSize { get; set; } = 128 * 1024;
+        public int BlobPoolSize { get; set; } = 128 * 1024; // we need some limit of blob txs, but extremely high to be limitless in practice
         public int BlobCacheSize { get; set; } = 256;
         public int HashCacheSize { get; set; } = 512 * 1024;
         public long? GasLimit { get; set; } = null;
