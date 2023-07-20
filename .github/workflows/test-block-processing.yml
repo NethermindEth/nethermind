@@ -29,10 +29,13 @@ jobs:
         name: Generate Matrix based on provided branches and past results
         run: |
           branches=""
+          current_branch="${current_branch#refs/heads/}"
           if [ -z "${{ github.event.inputs.branches_to_compare }}" ]; then
-            branches="${{ github.ref }},master,State-cache"
+            current_branch="${{ github.ref }}"
+            branches="$current_branch,master,State-cache"
           else
-            branches="${{ github.event.inputs.branches_to_compare }},${{ github.ref }}"
+            current_branch="${{ github.ref }}"
+            branches="$current_branch,${{ github.event.inputs.branches_to_compare }}"
           fi
           
           IFS=',' read -ra branch_array <<< "$branches"
@@ -41,10 +44,10 @@ jobs:
           first=true
           for branch in "${branch_array[@]}"; do
             branch=$(echo "$branch" | xargs)
-            if [ "$branch" == "${{ github.ref }}" ] || [ "${{ github.event.inputs.force_refresh_artifacts }}" == "true" ]; then
+            if [ "$branch" == "$current_branch" ] || [ "${{ github.event.inputs.force_refresh_artifacts }}" == "true" ]; then
               artifactExists=false
             else
-              artifactExists=$(gh api repos/NethermindEth/nethermind/actions/artifacts | jq --arg branch "$branch" '.artifacts[] | select(.name == ("blockPerformanceReport-" + $branch)) | .id' -r)
+              artifactExists=$(gh api repos/${{ github.repository }}/actions/artifacts | jq --arg branch "$branch" '.artifacts[] | select(.name == ("blockPerformanceReport-" + $branch)) | .id' -r)
               if [ -z "$artifactExists" ]; then
                 artifactExists=false
               else
@@ -65,6 +68,7 @@ jobs:
           echo $matrix > matrix.json
           cat matrix.json
           echo "::set-output name=matrix::$(jq -c . matrix.json)"
+
           
   run-script:
     needs: [check-artifacts]
@@ -95,6 +99,16 @@ jobs:
         uses: actions/setup-dotnet@v3.2.0
         with:
           dotnet-version: '7.0'
+          
+      - name: Install libraries
+        run: |
+          apt install -y jq
+          type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+          && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+          && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+          && sudo apt update \
+          && sudo apt install gh -y
           
       - name: Configure settings
         id: settings
@@ -224,29 +238,35 @@ jobs:
           
       - name: Save Output from Kute
         run: |
-          apt install -y jq
           output_file="output.json"
           echo "$output" | jq '.' > "$output_file"
           echo "::set-output name=output_file::$output_file"
         id: save-output
         
+      - name: Prepare artifact name
+        id: prepare
+        run: |
+          branch_name="${{ matrix.branch }}"
+          sanitized_branch_name=$(echo $branch_name | tr '/:' '-')
+          echo "::set-output name=sanitized_branch_name::$sanitized_branch_name"
+      
       - name: Check and delete existing artifact
         run: |
-          artifact_name="blockPerformanceReport-${{ matrix.branch }}"
+          artifact_name="blockPerformanceReport-${{ steps.prepare.outputs.sanitized_branch_name }}"
           artifact_id=$(gh api repos/${{ github.repository }}/actions/artifacts | \
             jq -r --arg name "$artifact_name" '.artifacts[] | select(.name == $name) | .id' | head -1)
-          
+      
           if [ -n "$artifact_id" ]; then
             echo "Deleting existing artifact with ID: $artifact_id"
             gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/$artifact_id
           fi
-
+      
       - name: Upload Output Artifact from Kute
         uses: actions/upload-artifact@v3.1.2
         with:
-          name: blockPerformanceReport-${{ matrix.branch }}
+          name: blockPerformanceReport-${{ steps.prepare.outputs.sanitized_branch_name }}
           path: ${{ steps.save-output.outputs.output_file }}
-          
+
   compare-results:
     needs: [run-script]
     runs-on: ubuntu-latest
