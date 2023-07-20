@@ -24,7 +24,15 @@ namespace Nethermind.JsonRpc
         int Timeout { get; set; }
 
         [ConfigItem(
-            Description = "The limit for maximum pending requests for non shared requests such as eth_call, eth_estimateGas, eth_getLogs. If value is set to 0 limit won't be applied.",
+            Description = "The limit for maximum pending requests for non sharable calls (" +
+                          nameof(IEthRpcModule.eth_call) + ", " +
+                          nameof(IEthRpcModule.eth_estimateGas) + ", " +
+                          nameof(IEthRpcModule.eth_getLogs) + ", " +
+                          nameof(IEthRpcModule.eth_newFilter) + ", " +
+                          nameof(IEthRpcModule.eth_newBlockFilter) + ", " +
+                          nameof(IEthRpcModule.eth_newPendingTransactionFilter) + ", " +
+                          nameof(IEthRpcModule.eth_uninstallFilter) + "). " +
+                          " If value is set to 0 limit won't be applied.",
             DefaultValue = "500")]
         int MaxPendingNonSharedRequests { get; set; }
 
