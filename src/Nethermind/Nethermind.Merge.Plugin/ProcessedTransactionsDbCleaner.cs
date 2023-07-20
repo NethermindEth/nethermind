@@ -11,14 +11,14 @@ using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin;
 
-public class FinalizedTransactionsDbCleaner : IDisposable
+public class ProcessedTransactionsDbCleaner : IDisposable
 {
     private readonly IManualBlockFinalizationManager _finalizationManager;
     private readonly IDb _processedTxsDb;
     private readonly ILogger _logger;
     private long _lastFinalizedBlock = 0;
 
-    public FinalizedTransactionsDbCleaner(IManualBlockFinalizationManager finalizationManager, IDb processedTxsDb, ILogManager logManager)
+    public ProcessedTransactionsDbCleaner(IManualBlockFinalizationManager finalizationManager, IDb processedTxsDb, ILogManager logManager)
     {
         _finalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
         _processedTxsDb = processedTxsDb ?? throw new ArgumentNullException(nameof(processedTxsDb));
@@ -29,9 +29,9 @@ public class FinalizedTransactionsDbCleaner : IDisposable
 
     private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
     {
-        if (e.FinalizingBlock.Number > _lastFinalizedBlock)
+        if (e.FinalizedBlocks.Count > 0 && e.FinalizedBlocks[0].Number > _lastFinalizedBlock)
         {
-            Task.Run(() => CleanProcessedTransactionsDb(e.FinalizingBlock.Number));
+            Task.Run(() => CleanProcessedTransactionsDb(e.FinalizedBlocks[0].Number));
         }
     }
 
