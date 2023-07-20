@@ -14,6 +14,8 @@ on:
 jobs:
   check-artifacts:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
@@ -33,8 +35,8 @@ jobs:
           
           for branch in "${branch_array[@]}"; do
             branch=$(echo "$branch" | xargs)
-            artifactExists=$(gh api actions/artifacts | jq '.artifacts[] | select(.name == ("blockPerformanceReport-" + $branch)) | .id' -r)
-            if [ -z "$artifactExists" ]; then
+            artifactExists=$(gh api actions/artifacts --json artifacts | jq ".artifacts[] | select(.name == (\"blockPerformanceReport-\" + \"$branch\")) | .id" -r)
+              if [ -z "$artifactExists" ]; then
               matrix+=","
               matrix+="$( jq -n \
                           --arg branch "$branch" \
