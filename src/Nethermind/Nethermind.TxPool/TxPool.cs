@@ -574,7 +574,7 @@ namespace Nethermind.TxPool
                 hasBeenRemoved = _transactions.TryRemove(hash, out Transaction? transaction);
                 if (!hasBeenRemoved)
                 {
-                    hasBeenRemoved = _blobTransactions.TryRemoveProcessedButNotFinalizedBlobTx(hash, out transaction);
+                    hasBeenRemoved = _blobTransactions.TryRemove(hash, out transaction);
                 }
 
                 if (transaction is null || !hasBeenRemoved)
