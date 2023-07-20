@@ -32,7 +32,7 @@ jobs:
                       '{"branch":$branch, "artifactExists":$artifactExists}' )"
           
           for branch in "${branch_array[@]}"; do
-            branch=branch.trim() # Trim whitespaces
+            branch=$(echo "$branch" | xargs)
             artifactExists=$(gh api actions/artifacts | jq '.artifacts[] | select(.name == ("blockPerformanceReport-" + $branch)) | .id' -r)
             if [ -z "$artifactExists" ]; then
               matrix+=","
