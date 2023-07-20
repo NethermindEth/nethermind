@@ -89,21 +89,6 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
     internal bool TryGetLightValue(Keccak hash, out Transaction? lightBlobTx)
         => base.TryGetValue(hash, out lightBlobTx);
 
-    /// <summary>
-    /// Removing blob tx from in-memory collections and still keeps in persistent db in case of reorgs
-    /// </summary>
-    public bool TryRemoveProcessedButNotFinalizedBlobTx(ValueKeccak hash, out Transaction? removed)
-    {
-        if (base.TryRemove(hash, out removed))
-        {
-            // save somewhere to delete after finalization
-
-            return true;
-        }
-
-        return false;
-    }
-
     protected override bool Remove(ValueKeccak hash, Transaction tx)
     {
         _blobTxCache.Delete(hash);
