@@ -24,9 +24,9 @@ namespace Nethermind.JsonRpc
         int Timeout { get; set; }
 
         [ConfigItem(
-            Description = "The limit for maximum pending requests for shared requests such as eth_call, eth_estimateGas. If value is set to 0 limit won't be applied.",
+            Description = "The limit for maximum pending requests for non shared requests such as eth_call, eth_estimateGas, eth_getLogs. If value is set to 0 limit won't be applied.",
             DefaultValue = "500")]
-        int MaxPendingSharedRequests { get; set; }
+        int MaxPendingNonSharedRequests { get; set; }
 
         [ConfigItem(
             Description = "Base file path for diagnostic JSON RPC recorder.",

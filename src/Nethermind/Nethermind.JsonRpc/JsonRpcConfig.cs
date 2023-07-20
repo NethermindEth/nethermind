@@ -15,7 +15,7 @@ namespace Nethermind.JsonRpc
         public bool Enabled { get; set; }
         public string Host { get; set; } = "127.0.0.1";
         public int Timeout { get; set; } = 20000;
-        public int MaxPendingSharedRequests { get; set; } = 500;
+        public int MaxPendingNonSharedRequests { get; set; } = 500;
         public string RpcRecorderBaseFilePath { get; set; } = "logs/rpc.{counter}.txt";
 
         public RpcRecorderState RpcRecorderState { get; set; } = RpcRecorderState.None;
