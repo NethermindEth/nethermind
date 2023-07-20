@@ -52,6 +52,12 @@ public class ColumnDb : IDbWithSpan
         return _mainDb.GetAllCore(iterator);
     }
 
+    public IEnumerable<byte[]> GetAllKeys(bool ordered = false)
+    {
+        Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
+        return _mainDb.GetAllKeysCore(iterator);
+    }
+
     public IEnumerable<byte[]> GetAllValues(bool ordered = false)
     {
         Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);

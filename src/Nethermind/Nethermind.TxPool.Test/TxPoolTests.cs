@@ -1739,7 +1739,7 @@ namespace Nethermind.TxPool.Test
         public void should_add_blob_tx_and_return_when_requested()
         {
             TxPoolConfig txPoolConfig = new() { Size = 10 };
-            BlobTxStorage blobTxStorage = new(new MemDb());
+            BlobTxStorage blobTxStorage = new(new MemDb(), new MemDb());
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
@@ -1781,7 +1781,7 @@ namespace Nethermind.TxPool.Test
         {
             const int initialFee = 10;
             TxPoolConfig txPoolConfig = new() { Size = 10 };
-            BlobTxStorage blobTxStorage = new(new MemDb());
+            BlobTxStorage blobTxStorage = new(new MemDb(), new MemDb());
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
@@ -1935,7 +1935,7 @@ namespace Nethermind.TxPool.Test
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
-            txStorage ??= new BlobTxStorage(new MemDb());
+            txStorage ??= new BlobTxStorage(new MemDb(), new MemDb());
 
             _headInfo = chainHeadInfoProvider;
             _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);

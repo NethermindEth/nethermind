@@ -119,12 +119,20 @@ namespace Nethermind.Db
         public static long MetadataDbWrites { get; set; }
 
         [CounterMetric]
-        [Description("Number of BlobTransactions DB reads.")]
-        public static long BlobTransactionsDbReads { get; set; }
+        [Description("Number of PendingTransactions DB reads.")]
+        public static long PendingTransactionsDbReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of BlobTransactions DB writes.")]
-        public static long BlobTransactionsDbWrites { get; set; }
+        [Description("Number of PendingTransactions DB writes.")]
+        public static long PendingTransactionsDbWrites { get; set; }
+
+        [CounterMetric]
+        [Description("Number of ProcessedTransactions DB reads.")]
+        public static long ProcessedTransactionsDbReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of ProcessedTransactions DB writes.")]
+        public static long ProcessedTransactionsDbWrites { get; set; }
 
         [GaugeMetric]
         [Description("Indicator if StadeDb is being pruned.")]

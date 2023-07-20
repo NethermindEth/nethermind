@@ -120,6 +120,9 @@ namespace Nethermind.Db
             public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _wrapped.GetAll(ordered)
                 .Select(kvp => new KeyValuePair<byte[], byte[]>(kvp.Key, Decompress(kvp.Value)));
 
+            public IEnumerable<byte[]> GetAllKeys(bool ordered = false) =>
+                _wrapped.GetAllKeys(ordered).Select(Decompress);
+
             public IEnumerable<byte[]> GetAllValues(bool ordered = false) =>
                 _wrapped.GetAllValues(ordered).Select(Decompress);
 

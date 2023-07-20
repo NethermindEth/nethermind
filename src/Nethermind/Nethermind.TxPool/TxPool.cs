@@ -196,7 +196,7 @@ namespace Nethermind.TxPool
                         try
                         {
                             ReAddReorganisedTransactions(args.PreviousBlock);
-                            RemoveProcessedTransactions(args.Block.Transactions);
+                            RemoveProcessedTransactions(args.Block);
                             UpdateBuckets();
                             _broadcaster.BroadcastPersistentTxs();
                             Metrics.TransactionCount = _transactions.Count;
@@ -233,15 +233,27 @@ namespace Nethermind.TxPool
                     _hashCache.Delete(tx.Hash!);
                     SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                 }
+
+                if (_blobTxStorage.TryGetBlobTransactionsFromBlock(previousBlock.Number, out Transaction[]? blobTxs) && blobTxs is not null)
+                {
+                    foreach (Transaction blobTx in blobTxs)
+                    {
+                        _hashCache.Delete(blobTx.Hash!);
+                        SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
+                    }
+
+                    _blobTxStorage.DeleteBlobTransactionsFromBlock(previousBlock.Number);
+                }
             }
         }
 
-        private void RemoveProcessedTransactions(Transaction[] blockTransactions)
+        private void RemoveProcessedTransactions(Block block)
         {
+            Transaction[] blockTransactions = block.Transactions;
+            List<Transaction>? blobTxs = null;
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
             long eip1559Txs = 0;
-            long blobTxs = 0;
             long blobs = 0;
 
             for (int i = 0; i < blockTransactions.Length; i++)
@@ -266,9 +278,16 @@ namespace Nethermind.TxPool
 
                 if (transaction.SupportsBlobs)
                 {
-                    blobTxs++;
+                    blobTxs ??= new List<Transaction>((int)(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob));
+                    blobTxs.Add(transaction);
+
                     blobs += transaction.BlobVersionedHashes?.Length ?? 0;
                 }
+            }
+
+            if (blobTxs is not null)
+            {
+                _blobTxStorage.AddBlobTransactionsFromBlock(block.Number, blobTxs);
             }
 
             long transactionsInBlock = blockTransactions.Length;
@@ -277,7 +296,7 @@ namespace Nethermind.TxPool
                 Metrics.DarkPoolRatioLevel1 = (float)discoveredForHashCache / transactionsInBlock;
                 Metrics.DarkPoolRatioLevel2 = (float)discoveredForPendingTxs / transactionsInBlock;
                 Metrics.Eip1559TransactionsRatio = (float)eip1559Txs / transactionsInBlock;
-                Metrics.BlobTransactionsInBlock = blobTxs;
+                Metrics.BlobTransactionsInBlock = blobTxs?.Count ?? 0;
                 Metrics.BlobsInBlock = blobs;
             }
         }

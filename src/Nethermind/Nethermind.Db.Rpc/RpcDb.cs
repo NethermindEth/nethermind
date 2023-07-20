@@ -77,6 +77,8 @@ namespace Nethermind.Db.Rpc
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _recordDb.GetAll();
 
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _recordDb.GetAllKeys();
+
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _recordDb.GetAllValues();
 
         public IBatch StartBatch()

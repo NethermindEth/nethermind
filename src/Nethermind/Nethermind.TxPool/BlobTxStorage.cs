@@ -12,15 +12,18 @@ namespace Nethermind.TxPool;
 
 public class BlobTxStorage : ITxStorage
 {
-    private readonly IDb _database;
+    private readonly IDb _pendingTxsDb;
+    private readonly IDb _processedTxsDb;
+    private readonly TxDecoder _txDecoder = new();
 
-    public BlobTxStorage(IDb database)
+    public BlobTxStorage(IDb pendingTxsDb, IDb processedTxsDb)
     {
-        _database = database ?? throw new ArgumentNullException(nameof(database));
+        _pendingTxsDb = pendingTxsDb ?? throw new ArgumentNullException(nameof(pendingTxsDb));
+        _processedTxsDb = processedTxsDb ?? throw new ArgumentNullException(nameof(processedTxsDb));
     }
 
     public bool TryGet(Keccak hash, out Transaction? transaction)
-        => TryDecode(_database.Get(hash), out transaction);
+        => TryDecode(_pendingTxsDb.Get(hash), out transaction);
 
     private static bool TryDecode(byte[]? txBytes, out Transaction? transaction)
     {
@@ -43,7 +46,7 @@ public class BlobTxStorage : ITxStorage
 
     public IEnumerable<Transaction> GetAll()
     {
-        foreach (byte[] txBytes in _database.GetAllValues())
+        foreach (byte[] txBytes in _pendingTxsDb.GetAllValues())
         {
             if (TryDecode(txBytes, out Transaction? transaction))
             {
@@ -59,9 +62,55 @@ public class BlobTxStorage : ITxStorage
             throw new ArgumentNullException(nameof(transaction));
         }
 
-        _database.Set(transaction.Hash, Rlp.Encode(transaction, RlpBehaviors.InMempoolForm).Bytes);
+        _pendingTxsDb.Set(transaction.Hash, Rlp.Encode(transaction, RlpBehaviors.InMempoolForm).Bytes);
     }
 
     public void Delete(ValueKeccak hash)
-        => _database.Remove(hash.Bytes);
+        => _pendingTxsDb.Remove(hash.Bytes);
+
+    public void AddBlobTransactionsFromBlock(long blockNumber, IList<Transaction> blockBlobTransactions)
+    {
+        if (blockBlobTransactions.Count == 0)
+        {
+            return;
+        }
+
+        int contentLength = 0;
+        foreach (Transaction transaction in blockBlobTransactions)
+        {
+            contentLength += _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
+        }
+
+        RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));
+        rlpStream.StartSequence(contentLength);
+        foreach (Transaction transaction in blockBlobTransactions)
+        {
+            _txDecoder.Encode(rlpStream, transaction, RlpBehaviors.InMempoolForm);
+        }
+
+        if (rlpStream.Data is not null)
+        {
+            _processedTxsDb.Set(blockNumber, rlpStream.Data);
+        }
+    }
+
+    public bool TryGetBlobTransactionsFromBlock(long blockNumber, out Transaction[]? blockBlobTransactions)
+    {
+        byte[]? bytes = _processedTxsDb.Get(blockNumber);
+
+        if (bytes is not null)
+        {
+            RlpStream rlpStream = new(bytes);
+
+            blockBlobTransactions = _txDecoder.DecodeArray(rlpStream, RlpBehaviors.InMempoolForm);
+            return true;
+
+        }
+
+        blockBlobTransactions = default;
+        return false;
+    }
+
+    public void DeleteBlobTransactionsFromBlock(long blockNumber)
+        => _processedTxsDb.Delete(blockNumber);
 }

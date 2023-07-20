@@ -272,7 +272,7 @@ namespace Nethermind.Synchronization.Test
                 new TransactionComparerProvider(specProvider, tree);
 
             TxPool.TxPool txPool = new(ecdsa,
-                new BlobTxStorage(new MemDb()),
+                new BlobTxStorage(new MemDb(), new MemDb()),
                 new ChainHeadInfoProvider(specProvider, tree, stateReader),
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),

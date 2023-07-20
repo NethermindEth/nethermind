@@ -13,4 +13,7 @@ public interface ITxStorage
     IEnumerable<Transaction> GetAll();
     void Add(Transaction transaction);
     void Delete(ValueKeccak hash);
+    bool TryGetBlobTransactionsFromBlock(long blockNumber, out Transaction[]? blockBlobTransactions);
+    void AddBlobTransactionsFromBlock(long blockNumber, IList<Transaction> blockBlobTransactions);
+    void DeleteBlobTransactionsFromBlock(long blockNumber);
 }
