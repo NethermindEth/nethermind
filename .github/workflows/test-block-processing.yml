@@ -23,12 +23,11 @@ jobs:
         name: Generate Matrix based on provided branches and past results
         run: |
           branches=""
-          if [ -z "$branches" ]; then
-            branches="master,State-cache"
+          if [ -z "${{ github.event.inputs.branches_to_compare }}" ]; then
+            branches="${{ github.ref }},master,State-cache"
+          else
+            branches="${{ github.event.inputs.branches_to_compare }},${{ github.ref }}"
           fi
-          
-          # Append the current branch to the branches list
-          branches="${branches},${{ github.ref }}"
           
           IFS=',' read -ra branch_array <<< "$branches"
           
@@ -193,7 +192,7 @@ jobs:
           curl --data '{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8545
           
           echo "Running Nethermind Tools Kute..."
-          output=$(${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i ${{ github.workspace }}/sedge-data/execution-data/logs/rpc/logs/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json -p)
+          output=$(${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json -p)
           
           printf "%s\n" "$output"
           
