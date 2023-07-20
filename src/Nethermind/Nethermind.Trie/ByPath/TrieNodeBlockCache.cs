@@ -101,24 +101,18 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
         return null;
     }
 
-    public TrieNode? GetNode(Keccak rootHash, byte[] path)
+    public TrieNode? GetNode(Keccak? rootHash, byte[] path)
     {
         if (_nodesByBlock.Count == 0)
             return null;
 
-        long blockNo = _nodesByBlock.Keys.Max();
         long minBlockNumberStored = _nodesByBlock.Keys.Min();
+        long blockNo = _nodesByBlock.Keys.Max();
 
-        if (_rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
+        if (rootHash is not null && _rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
         {
             if (_nodesByBlock.Count > 0)
-            {
-                //temp fix to not start with a block that is no longer held in cache
-                //to be removed when reworking rootHash <-> block mapping
-                long maxBlockNo = blocks.Max();
-                if (maxBlockNo >= minBlockNumberStored)
-                    blockNo = maxBlockNo;
-            }
+                blockNo = blocks.Max();
         }
 
         while (blockNo >= minBlockNumberStored)
@@ -173,7 +167,8 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
     {
         if (_nodesByBlock.IsEmpty) return;
 
-        long currentBlockNumber = _nodesByBlock.Keys.Min();
+        long minHeldBlockNumber = _nodesByBlock.Keys.Min();
+        long currentBlockNumber = minHeldBlockNumber;
         while (currentBlockNumber <= blockNumber)
         {
             if (_removedPrefixes.TryRemove(blockNumber, out List<byte[]> prefixes))
@@ -200,6 +195,15 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             }
             currentBlockNumber++;
         }
+        List<Keccak> removedRoots = new();
+        foreach(KeyValuePair<Keccak, HashSet<long>> kvp in _rootHashToBlock)
+        {
+            kvp.Value.RemoveWhere(blk => blk <= blockNumber);
+            if (kvp.Value.Count == 0)
+                removedRoots.Add(kvp.Key);
+        }
+        foreach (Keccak rootHash in removedRoots)
+            _rootHashToBlock.Remove(rootHash, out _);
     }
 
     public void Prune()
@@ -238,5 +242,28 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
                 return true;
         }
         return false;
+    }
+
+
+    /// <summary>
+    /// Add inlined nodes to cache, so can be accessed directly using path
+    /// MOVED to PatriciaTrie Commit
+    /// </summary>
+    /// <param name="blockNumber"></param>
+    /// <param name="node"></param>
+    private void AddInlinedNodes(long blockNumber, TrieNode node)
+    {
+        //is it possible for other node types?
+        if (node.NodeType != NodeType.Branch)
+            return;
+
+        for (int i = 0; i < 16; i++)
+        {
+            TrieNode childNode = node.GetData(i) as TrieNode;
+            if (childNode?.NodeType == NodeType.Leaf && childNode?.FullRlp?.Length < 32)
+            {
+                _nodesByBlock.AddOrUpdate(blockNumber, childNode);
+            }
+        }
     }
 }

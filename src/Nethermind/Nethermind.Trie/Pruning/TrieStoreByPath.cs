@@ -3,15 +3,10 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Data.Common;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -179,8 +174,13 @@ namespace Nethermind.Trie.Pruning
                 }
                 // set rootHash here to account for root hashes for the storage trees also in every block
                 // there needs to be a better way to handle this
-                _committedNodes[StateColumns.State].SetRootHashForBlock(blockNumber, root?.Keccak);
-                _committedNodes[StateColumns.Storage].SetRootHashForBlock(blockNumber, root?.Keccak);
+                StateColumns column = trieType switch
+                {
+                    TrieType.State => StateColumns.State,
+                    TrieType.Storage => StateColumns.Storage,
+                    _ => throw new NotImplementedException()
+                };
+                _committedNodes[column].SetRootHashForBlock(blockNumber, root?.Keccak);
 
                 if (trieType == TrieType.State) CurrentPackage = null;
             }
@@ -235,30 +235,12 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsPersisted(Keccak keccak)
         {
-            //byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _stateDb[keccak.Bytes];
-
-            //if (rlp is null)
-            //{
-            //    return false;
-            //}
-
-            //Metrics.LoadedFromDbNodesCount++;
-
-            return true;
+            throw new InvalidOperationException("IsPersisted using Keccak has is not supported by path based storage");
         }
 
         public bool IsPersisted(in ValueKeccak keccak)
         {
-            //byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _stateDb[keccak.Bytes];
-
-            //if (rlp is null)
-            //{
-            //    return false;
-            //}
-
-            //Metrics.LoadedFromDbNodesCount++;
-
-            return true;
+            throw new InvalidOperationException("IsPersisted using Keccak has is not supported by path based storage");
         }
 
         public bool IsPersisted(Keccak keccak, byte[] childPath)
@@ -300,7 +282,7 @@ namespace Nethermind.Trie.Pruning
             return node.FullRlp is null ? null : node;
         }
 
-        public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, Span<byte> storagePrefix, Keccak rootHash)
+        public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, Span<byte> storagePrefix, Keccak? rootHash)
         {
             StateColumns column = storagePrefix.Length == 0 ? StateColumns.State : StateColumns.Storage;
             TrieNode node = _committedNodes[column].GetNode(rootHash, storagePrefix.ToArray().Concat(nodePath.ToArray()).ToArray());
@@ -616,47 +598,16 @@ namespace Nethermind.Trie.Pruning
                 _destroyPrefixes.Enqueue(keyPrefixNibbles.ToArray());
         }
 
-        public static (byte[], byte[]) GetDeleteKeyFromNibblePrefix(Span<byte> prefix, int maxLength, int oddityOverride)
+        public static (byte[], byte[]) GetDeleteKeyFromNibblePrefix(Span<byte> prefix)
         {
-            byte[] fromKey = new byte[maxLength];
-            byte[] toKey = new byte[maxLength];
-            Array.Fill(toKey, (byte)0xff, 1, maxLength - 1);
+            if (prefix.Length % 2 != 0)
+                throw new ArgumentException("Only even length prefixes supported");
 
-            int oddity = prefix.Length % 2;
+            Span<byte> fromKey = prefix;
+            byte[] toKey = new byte[prefix.Length];
+            prefix.CopyTo(toKey);
 
-            if (oddity == oddityOverride)
-            {
-                for (int i = 0; i < prefix.Length / 2; i++)
-                {
-                    toKey[i + 1] = fromKey[i + 1] = Nibbles.ToByte(prefix[2 * i + oddity], prefix[2 * i + 1 + oddity]);
-                }
-                if (oddity == 1)
-                {
-                    toKey[0] = fromKey[0] = Nibbles.ToByte(1, prefix[0]);
-                }
-            }
-            else if (oddity == 1 && oddityOverride == 0)
-            {
-                for (int i = 0; i < prefix.Length / 2; i++)
-                {
-                    toKey[i + 1] = fromKey[i + 1] = Nibbles.ToByte(prefix[2 * i], prefix[2 * i + 1]);
-                }
-                fromKey[prefix.Length / 2 + 1] = Nibbles.ToByte(prefix[^1], 0);
-                toKey[prefix.Length / 2 + 1] = Nibbles.ToByte(prefix[^1], 0xf);
-                //toKey[0] = fromKey[0] = 0x00;
-            }
-            else if (oddity == 0 && oddityOverride == 1)
-            {
-                for (int i = 0; i < prefix.Length / 2 - 1; i++)
-                {
-                    toKey[i + 1] = fromKey[i + 1] = Nibbles.ToByte(prefix[2 * i + oddityOverride], prefix[2 * i + 1 + oddityOverride]);
-                }
-                toKey[0] = fromKey[0] = Nibbles.ToByte(1, prefix[0]);
-
-                fromKey[prefix.Length / 2] = Nibbles.ToByte(prefix[^1], 0);
-                toKey[prefix.Length / 2] = Nibbles.ToByte(prefix[^1], 0xf);
-            }
-            return (fromKey, toKey);
+            return (fromKey.ToArray(), prefix.IncrementNibble().ToArray());
         }
 
         public static (byte[], byte[]) GetDeleteKeyFromNibbles(Span<byte> nibbleFrom, Span<byte> nibbleTo, int maxLength, int oddityOverride)

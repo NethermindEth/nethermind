@@ -4,8 +4,6 @@
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -555,6 +553,34 @@ namespace Nethermind.Store.Test
             Assert.That(_account0.Balance, Is.EqualTo(a0_1.Balance));
 
             Assert.That(a0_2.Balance, Is.EqualTo(new UInt256(20)));
+        }
+
+        [Test]
+        public void History_get_cached_from_root_with_no_changes()
+        {
+            MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
+            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
+            tree.Set(TestItem.AddressA, _account0);
+            tree.Set(TestItem.AddressB, _account1);
+            tree.Set(TestItem.AddressC, _account2);
+            tree.Commit(1);
+            Keccak root1 = tree.RootHash;
+
+            tree.Set(TestItem.AddressB, _account1.WithChangedBalance(15));
+            tree.Commit(2);
+            Keccak root2 = tree.RootHash;
+
+            tree.Set(TestItem.AddressC, _account2.WithChangedBalance(20));
+            tree.Commit(3);
+            Keccak root3 = tree.RootHash;
+
+            Account a0_1 = tree.Get(TestItem.AddressA, root1);
+            Account a0_2 = tree.Get(TestItem.AddressA, root2);
+            Account a0_3 = tree.Get(TestItem.AddressA, root3);
+
+            Assert.That(a0_1.Balance, Is.EqualTo(_account0.Balance));
+            Assert.That(a0_2.Balance, Is.EqualTo(_account0.Balance));
+            Assert.That(a0_3.Balance, Is.EqualTo(_account0.Balance));
         }
 
         [Test]

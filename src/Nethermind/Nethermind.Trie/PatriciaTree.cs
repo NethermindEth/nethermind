@@ -9,7 +9,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -54,6 +53,7 @@ namespace Nethermind.Trie
         /// operation is completed.
         /// </summary>
         private readonly ConcurrentQueue<TrieNode>? _deleteNodes;
+        private Bloom? _uncommitedPaths;
 
         protected readonly ITrieStore _trieStore;
         public TrieNodeResolverCapability Capability => _trieStore.Capability;
@@ -169,6 +169,7 @@ namespace Nethermind.Trie
                 _currentCommit = new ConcurrentQueue<NodeCommitInfo>();
                 _commitExceptions = new ConcurrentQueue<Exception>();
                 _deleteNodes = new ConcurrentQueue<TrieNode>();
+                _uncommitedPaths = new Bloom();
             }
         }
 
@@ -185,15 +186,17 @@ namespace Nethermind.Trie
                 throw new TrieException("Commits are not allowed on this trie.");
             }
 
+            // TODO: stcg
+            //process deletions - it can happend that a root is set too empty hash due to deletions - needs to be outside of root ref condition
+            while (_deleteNodes != null && _deleteNodes.TryDequeue(out TrieNode delNode))
+            {
+                _currentCommit.Enqueue(new NodeCommitInfo(delNode));
+            }
+
             if (RootRef is not null && RootRef.IsDirty)
             {
                 // _logger.Info("Commiting Changes to TrieStore");
                 Commit(new NodeCommitInfo(RootRef), skipSelf: skipRoot);
-                while (_currentCommit.TryDequeue(out NodeCommitInfo node))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
-                    TrieStore.CommitNode(blockNumber, node, writeFlags: writeFlags);
-                }
 
                 // reset objects
                 // TODO: why?
@@ -208,7 +211,14 @@ namespace Nethermind.Trie
                 }
             }
 
+            while (_currentCommit.TryDequeue(out NodeCommitInfo node))
+            {
+                if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
+                TrieStore.CommitNode(blockNumber, node, writeFlags: writeFlags);
+            }
+
             TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef, writeFlags);
+            _uncommitedPaths = new Bloom();
             if (_logger.IsDebug) _logger.Debug($"Finished committing block {blockNumber}");
         }
         private void Commit(NodeCommitInfo nodeCommitInfo, bool skipSelf = false)
@@ -223,12 +233,6 @@ namespace Nethermind.Trie
             {
                 throw new InvalidAsynchronousStateException(
                     $"{nameof(_commitExceptions)} is NULL when calling {nameof(Commit)}");
-            }
-
-            // TODO: stcg
-            while (_deleteNodes != null && _deleteNodes.TryDequeue(out TrieNode delNode))
-            {
-                _currentCommit.Enqueue(new NodeCommitInfo(delNode));
             }
 
             TrieNode node = nodeCommitInfo.Node;
@@ -328,7 +332,9 @@ namespace Nethermind.Trie
             node.ResolveKey(TrieStore, nodeCommitInfo.IsRoot);
             node.Seal();
 
-            if (node.FullRlp?.Length >= 32)
+
+            //for path based store, inlined nodes need to be stored separately to be access directly by path
+            if (node.FullRlp?.Length >= 32 || TrieStore.Capability == TrieNodeResolverCapability.Path)
             {
                 if (!skipSelf)
                 {
@@ -407,7 +413,7 @@ namespace Nethermind.Trie
             //    byte[] internalValue = GetInternal(rawKey, rootHash);
             //    byte[] pathValue = _trieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash);
             //    if (!Bytes.EqualityComparer.Equals(internalValue, pathValue))
-            //        Console.WriteLine($"Difference for key: {rawKey.ToHexString()} | ST prefix: {StoreNibblePathPrefix?.ToHexString()} | internal: {internalValue?.ToHexString()} | path value: {pathValue?.ToHexString()}");
+            //        if (_logger.IsWarn) _logger.Warn($"Difference for key: {rawKey.ToHexString()} | ST prefix: {StoreNibblePathPrefix?.ToHexString()} | internal: {internalValue?.ToHexString()} | path value: {pathValue?.ToHexString()}");
             //    return pathValue;
             //}
             //return GetInternal(rawKey, rootHash);
@@ -424,8 +430,11 @@ namespace Nethermind.Trie
             if (rootHash is null)
             {
                 if (RootRef is null) return null;
-                if (RootRef?.IsDirty == true)  return GetInternal(rawKey);
-                rootHash = RootHash;
+                if (RootRef?.IsDirty == true)
+                {
+                    if (_uncommitedPaths is null || _uncommitedPaths.Matches(rawKey))
+                        return GetInternal(rawKey);
+                }
             }
 
             // try and get cached nodes
@@ -462,6 +471,8 @@ namespace Nethermind.Trie
             Nibbles.BytesToNibbleBytes(rawKey, nibbles);
             Run(nibbles, nibblesCount, value, true);
             if (array is not null) ArrayPool<byte>.Shared.Return(array);
+
+            _uncommitedPaths?.Set(rawKey);
         }
 
         [DebuggerStepThrough]
