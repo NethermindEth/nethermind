@@ -24,14 +24,15 @@ jobs:
         run: |
           branches=""
           if [ -z "$branches" ]; then
-            branches="master,release/1.20.0,${{ github.ref }}"
+            branches="master,State-cache"
           fi
           IFS=',' read -ra branch_array <<< "$branches"
           
           matrix="{\"include\": ["
           first=true
           for branch in "${branch_array[@]}"; do
-            branch=$(echo "$branch" | xargs)
+            # Remove refs/heads/ prefix from the branch name
+            branch=$(echo "$branch" | sed 's/refs\/heads\///g' | xargs)
             if [ "$first" = true ] ; then
               first=false
             else
@@ -94,7 +95,7 @@ jobs:
           echo 'Generating sedge...'
           ./sedge deps install
           ./sedge generate --logging none \
-          execution    --map-all --no-mev-boost --no-validator --network mainnet \
+          execution --map-all --network mainnet \
           -e nethermind:${{ matrix.branch }} \
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -103,7 +104,8 @@ jobs:
           --el-extra-flag JsonRpc.ReportIntervalSeconds=3600 
           # --el-extra-flag Metrics.Enabled=true
           # --el-extra-flag Metrics.NodeName=Core_BlockProcessingBenchmark_${{ github.ref }}
-          # --el-extra-flag Seq.ServerUrl=${SEQ_API_KEY}
+          # --el-extra-flag Seq.ServerUrl=https://seq.nethermind.io
+          # --el-extra-flag Seq.ApiKey=${SEQ_API_KEY}
           # --el-extra-flag Seq.MinLevel=Info
           # --el-extra-flag Metrics.PushGatewayUrl=${GRAFANA_CONNECTION_STRING}
           echo 'Running sedge...'
