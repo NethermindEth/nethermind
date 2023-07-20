@@ -31,7 +31,7 @@ jobs:
           first=true
           for branch in "${branch_array[@]}"; do
             branch=$(echo "$branch" | xargs)
-            artifactExists=$(gh api actions/artifacts --token "${GH_TOKEN}" | jq --arg branch "$branch" '.artifacts[] | select(.name == ("blockPerformanceReport-" + $branch)) | .id' -r)
+            artifactExists=$(gh api actions/artifacts | jq --arg branch "$branch" '.artifacts[] | select(.name == ("blockPerformanceReport-" + $branch)) | .id' -r)
             if [ -z "$artifactExists" ]; then
               if [ "$first" = true ] ; then
                 first=false
@@ -45,7 +45,8 @@ jobs:
             fi
           done
           matrix+="]}"
-          echo "MATRIX=$matrix" >> $GITHUB_ENV
+          echo $matrix > matrix.json
+          echo "MATRIX=$(jq -c . matrix.json)" >> $GITHUB_ENV
           
   run-script:
     needs: [check-artifacts]
