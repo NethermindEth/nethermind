@@ -156,6 +156,7 @@ jobs:
           find . -type f | split -d -l $(( $(find . -type f | wc -l) / 6 )) - filelist.part.
           
           echo "Starting parallel rsync..."
+          mkdir -p ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet
           ls filelist.part.* | parallel -j6 rsync --progress -aWvm --files-from={} . ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet > /dev/null 2>&1 &
           
           rsyncPid=$!
