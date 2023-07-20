@@ -64,6 +64,78 @@ on:
         description: "SSH Keys to be installed in the smoke test nodes (separated by commas without space in-between commas) for example: key1,key2,key3"
         default: ""
         required: false
+      smoke_tests_ref:
+        description: "Ref of the smoke tests repository to be used for smoke tests"
+        default: "main"
+  workflow_call:
+    inputs:
+      smoke_tests_ref:
+        description: "Ref of the smoke tests repository to be used for smoke tests"
+        default: "main"
+        required: false
+        type: string
+      network:
+        description: "Select a network on which You want to run a node"
+        default: "mainnet"
+        required: false
+        type: string
+      cl_client:
+        description: "Select Consensus Layer Client to run node against"
+        default: "lighthouse"
+        required: false
+        type: string
+      cl_custom_image:
+        description: "In case of need to run non-default cl image (different than actually supported by Sedge) put it in there"
+        default: ""
+        required: false        
+        type: string
+      config:
+        description: "Select a config file which will be selected for tests."
+        default: "default.json"
+        required: false
+        type: string
+      non_validator_mode:
+        description: "If checked, node will be started in NonValidator mode (OldBodies and oldReceipts will not be synced)"
+        default: true
+        type: boolean
+      timeout:
+        description: "Timeout in hours before triggering the deletion of smoke test instances. Maximum time of node lifetime can be 72 hours."
+        default: "24"
+        required: false
+        type: string
+      volume:
+        description: "In case custom volume size needs to be applied, put value in GB here)"
+        required: false
+        default: ""
+        type: string
+      additional_nethermind_flags:
+        type: string
+        description: "Provide any additional flags to the Nethermind in space-separated format. Example: \"JsonRpc.Enabled=false Sync.SnapSync=false\"."
+        default: ""
+        required: false
+      additional_cl_flags:
+        type: string
+        description: "Provide any additional flags to the CL client in space-separated format. Example: \"clflag1=1 clflag2=2\"."
+        default: ""
+        required: false
+      ssh_keys:
+        type: string
+        description: "SSH Keys to be installed in the smoke test nodes (separated by commas without space in-between commas) for example: key1,key2,key3"
+        default: ""
+        required: false
+      allowed_ips:
+        type: string
+        description: "A comma-separated list of ips allowed to connect to the node"
+        default: ""
+        required: false
+    outputs:
+      base_tag:
+        description: ""
+        value: ${{ jobs.create_docker_image.outputs.base_tag }}
+      run_id:
+        description: ""
+        value: ${{ jobs.trigger_node_and_vm_creation.outputs.run_id }}
+
       
 jobs:
   create_docker_image:
@@ -72,7 +144,7 @@ jobs:
       base_tag: ${{ steps.set-base-tag.outputs.base_tag }}
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     - name: Prepare docker tag
       id: prepare_ref
@@ -98,21 +170,25 @@ jobs:
         echo "REPO=$(echo $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
     
     - name: Trigger Docker Build Action with Cleaned Ref
-      uses: benc-uk/workflow-dispatch@v1
-      with:
-          workflow: build-nethermind-docker-images.yml
-          ref: "${{ github.ref }}"
-          token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
-          inputs: '{
-              "repo": "${{ env.REPO }}",
-              "tag": "${{ env.CLEAN_REF }}",
-              "dockerfile": "Dockerfile"
-           }'
+      run: |
+        echo $INPUTS | gh workflow run $WORKFLOW_ID --ref $WORKFLOW_REF --json
+      env:
+        WORKFLOW_ID: 'build-nethermind-docker-images.yml'
+        WORKFLOW_REF: ${{ github.ref }}
+        GITHUB_USER: ${{ secrets.REPOSITORY_DISPATCH_USER }} 
+        GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+        INPUTS: >
+          {
+            "repo": "${{ env.REPO }}",
+            "tag": "${{ env.CLEAN_REF }}",
+            "dockerfile": "Dockerfile"
+          }
 
     - name: Set Repo and Org Variables
       run: |
         echo "ORG_NAME=$(echo $GITHUB_REPOSITORY | cut -d / -f 1)" >> $GITHUB_ENV
         echo "REPO_NAME=$(echo $GITHUB_REPOSITORY | cut -d / -f 2)" >> $GITHUB_ENV
+
     - name: Wait for Docker Build Action to complete
       env:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
@@ -131,9 +207,11 @@ jobs:
   trigger_node_and_vm_creation:
     needs: create_docker_image
     runs-on: ubuntu-latest
+    outputs:
+      run_id: ${{ steps.wait-for-node-creation.outputs.run_id }}
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     - name: Prepare docker tag
       id: prepare_ref
@@ -148,23 +226,37 @@ jobs:
         echo "BASE_TAG=${{ needs.create_docker_image.outputs.base_tag }}" >> $GITHUB_ENV
 
     - name: Trigger Node creation Repo Action
-      uses: benc-uk/workflow-dispatch@v1
-      with:
-          workflow: run-single-node.yml
-          repo: NethermindEth/post-merge-smoke-tests
-          ref: "main"
-          token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
-          inputs: '{
-                     "github_username": "${{ github.actor }}",
-                     "base_tag": "${{ env.BASE_TAG }}",
-                     "config_file": "${{ inputs.config }}",
-                     "nethermind_branch": "${{ env.CLEAN_REF }}",
-                     "network": "${{ inputs.network }}",
-                     "cl_client": "${{ inputs.cl_client }}",
-                     "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ inputs.timeout }}\", \"non_validator_mode\":${{ inputs.non_validator_mode }}, \"volume_size\":\"${{ inputs.volume }}\", \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ inputs.ssh_keys }}\"}"
-                   }'
+      run: |
+        echo $INPUTS | gh -R $WORKFLOW_REPO workflow run $WORKFLOW_ID --ref $WORKFLOW_REF --json
+      env:
+        WORKFLOW_ID: 'run-single-node.yml'
+        WORKFLOW_REF: main
+        WORKFLOW_REPO: NethermindEth/post-merge-smoke-tests
+        GITHUB_USER: ${{ secrets.REPOSITORY_DISPATCH_USER }} 
+        GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+        INPUTS: >
+          {
+            "github_username": "${{ github.actor }}",
+            "base_tag": "${{ env.BASE_TAG }}",
+            "config_file": "${{ inputs.config }}",
+            "nethermind_branch": "${{ env.CLEAN_REF }}",
+            "network": "${{ inputs.network }}",
+            "cl_client": "${{ inputs.cl_client }}",
+            "additional_options": 
+              "{
+                \"cl_custom_image\":\"${{ inputs.cl_custom_image }}\",
+                \"timeout\":\"${{ inputs.timeout }}\",
+                \"non_validator_mode\":\"${{ inputs.non_validator_mode }}\",
+                \"volume_size\":\"${{ inputs.volume }}\",
+                \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\",
+                \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\",
+                \"ssh_keys\":\"${{ inputs.ssh_keys }}\",
+                \"allowed_ips\":\"${{ inputs.allowed_ips }}\"
+              }"
+          }
 
     - name: Wait for creation of node
+      id: wait-for-node-creation
       env:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         WORKFLOW_ID: 'run-single-node.yml'
