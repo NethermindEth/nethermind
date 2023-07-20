@@ -26,6 +26,10 @@ jobs:
           if [ -z "$branches" ]; then
             branches="master,State-cache"
           fi
+          
+          # Append the current branch to the branches list
+          branches="${branches},${{ github.ref }}"
+          
           IFS=',' read -ra branch_array <<< "$branches"
           
           matrix="{\"include\": ["
