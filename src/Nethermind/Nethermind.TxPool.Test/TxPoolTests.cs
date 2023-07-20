@@ -1766,7 +1766,7 @@ namespace Nethermind.TxPool.Test
         public void should_not_throw_when_asking_for_non_existing_tx()
         {
             TxPoolConfig txPoolConfig = new() { Size = 10 };
-            BlobTxStorage blobTxStorage = new(new MemDb(), new MemDb());
+            BlobTxStorage blobTxStorage = new(new MemDb());
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
 
             _txPool.TryGetPendingTransaction(TestItem.KeccakA, out Transaction blobTxReturned).Should().BeFalse();
