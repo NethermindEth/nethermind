@@ -3,28 +3,109 @@ name: Run Block Processing Benchmark
 on:
   push:
     branches:
-      - main
       - kch/block_processing_benchmark
   workflow_dispatch:
+    inputs:
+      branches_to_compare:
+        description: "Branches to compare, separated by commas"
+        required: true
+        default: ""
 
 jobs:
+  check-artifacts:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          branches="${{ github.event.inputs.branches_to_compare }}"
+          if [ -z "$branches" ]; then
+            branches="master,release/1.20.0"
+          fi
+          IFS=',' read -ra branch_array <<< "$branches"
+          
+          matrix="{\"include\": ["
+          matrix+="$( jq -n \
+                      --arg branch "${{ github.ref }}" \
+                      --argjson artifactExists false \
+                      '{"branch":$branch, "artifactExists":$artifactExists}' )"
+          
+          for branch in "${branch_array[@]}"; do
+            branch=branch.trim() # Trim whitespaces
+            artifactExists=$(gh api actions/artifacts | jq '.artifacts[] | select(.name == ("blockPerformanceReport-" + $branch)) | .id' -r)
+            if [ -z "$artifactExists" ]; then
+              matrix+=","
+              matrix+="$( jq -n \
+                          --arg branch "$branch" \
+                          --argjson artifactExists false \
+                          '{"branch":$branch, "artifactExists":$artifactExists}' )"
+            fi
+          done
+          matrix+="]}"
+          echo "::set-output name=matrix::$matrix"
+          
   run-script:
+    needs: [check-artifacts]
     runs-on: [self-hosted, LinuxAMD]
+    strategy:
+      matrix: ${{ fromJson(needs.check-artifacts.outputs.matrix) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3.5.3
         with:
           clean: true
+          ref: ${{ matrix.branch }}
       
       - name: Setup .NET
         uses: actions/setup-dotnet@v3.2.0
         with:
           dotnet-version: '7.0'
+          
+      - name: Configure settings
+        id: settings
+        run: |
+          echo "BUILD_TIMESTAMP=$(date '+%s')" >> $GITHUB_OUTPUT
+          echo "COMMIT_HASH=$(git describe --always --exclude=* --abbrev=40)" >> $GITHUB_OUTPUT
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build docker image
+        run: docker buildx build --platform=linux/amd64 -t ${{ matrix.branch }} -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --load .
 
       - name: Build Kute
         run: dotnet build ./tools/Nethermind.Tools.Kute -c Release
+      
+      - name: Download Sedge
+        run: |
+          curl -LO https://github.com/NethermindEth/sedge/releases/download/v1.2.1/sedge-v1.2.1-linux-amd64
+          chmod +x sedge-v1.2.1-linux-amd64
+          mv sedge-v1.2.1-linux-amd64 sedge
+      
+      - name: Configure Sedge
+        # env:
+          # SEQ_API_KEY: ${{ secrets.SEQ_API_KEY }}
+          # GRAFANA_CONNECTION_STRING: ${{ secrets.GRAFANA_CONNECTION_STRING }}
+        run: |
+          echo 'Generating sedge...'
+          ./sedge deps install
+          ./sedge generate --logging none \
+          execution    --map-all --no-mev-boost --no-validator --network mainnet \
+          -e nethermind:${{ matrix.branch }} \
+          --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
+          --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
+          --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
+          --el-extra-flag Network.MaxActivePeers=0 \
+          --el-extra-flag JsonRpc.ReportIntervalSeconds=3600 
+          # --el-extra-flag Metrics.Enabled=true
+          # --el-extra-flag Metrics.NodeName=Core_BlockProcessingBenchmark_${{ github.ref }}
+          # --el-extra-flag Seq.ServerUrl=${SEQ_API_KEY}
+          # --el-extra-flag Seq.MinLevel=Info
+          # --el-extra-flag Metrics.PushGatewayUrl=${GRAFANA_CONNECTION_STRING}
+          echo 'Running sedge...'
 
-      - name: Run script
+      - name: Run Benchmark
         run: |
           #!/bin/bash
 
@@ -44,15 +125,15 @@ jobs:
           
           totalSize=$(du -sb /mnt/neth_backup/backup/mainnet | cut -f1)
           
-          echo "Stopping execution docker compose..."
-          docker compose -f /root/sedge-data/docker-compose.yml stop execution
+          # echo "Stopping execution docker compose..."
+          # docker compose -f ${{ github.workspace }}/sedge-data/docker-compose.yml stop execution
           
-          echo "Removing old mainnet data..."
-          dbCount=$(find /root/sedge-data/execution-data/nethermind_db/mainnet -type f | wc -l)
-          # Check if there are any files
-          if [ $dbCount -gt 0 ]; then
-            rm -r /root/sedge-data/execution-data/nethermind_db/mainnet/*
-          fi
+          # echo "Removing old mainnet data..."
+          # dbCount=$(find ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet -type f | wc -l)
+          # # Check if there are any files
+          # if [ $dbCount -gt 0 ]; then
+          #   rm -r ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet/*
+          # fi
           
           echo "Changing to backup directory..."
           cd /mnt/neth_backup/backup/mainnet
@@ -67,7 +148,7 @@ jobs:
           find . -type f | split -d -l $(( $(find . -type f | wc -l) / 6 )) - filelist.part.
           
           echo "Starting parallel rsync..."
-          ls filelist.part.* | parallel -j6 rsync --progress -aWvm --files-from={} . /root/sedge-data/execution-data/nethermind_db/mainnet > /dev/null 2>&1 &
+          ls filelist.part.* | parallel -j6 rsync --progress -aWvm --files-from={} . ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet > /dev/null 2>&1 &
           
           rsyncPid=$!
           
@@ -75,7 +156,7 @@ jobs:
           # We will exit the loop once the size of the destination directory matches the size of the source directory
           while true; do
               sleep 10 # Sleep for a while to avoid excessive disk usage
-              currentSize=$(du -sb /root/sedge-data/execution-data/nethermind_db/mainnet | cut -f1)
+              currentSize=$(du -sb ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet | cut -f1)
           
               # Calculate the percentage of the total size that's been copied
               percentCopied=$(echo "scale=4; $currentSize * 100 / $totalSize" | bc)
@@ -94,15 +175,21 @@ jobs:
           fi
           
           echo "Starting execution docker compose..."
-          docker compose -f /root/sedge-data/docker-compose.yml up -d execution
+          docker compose -f ${{ github.workspace }}/sedge-data/docker-compose.yml up -d execution
           
           echo "Sleeping for 120 seconds..."
           sleep 120
           
-          echo "Running Nethermind Tools Kute..."
-          output=$(${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/sedge-data/execution-data/logs/rpc/logs/filtered.txt -s /root/sedge-data/jwtsecret)
+          echo "Get Starting block and validate if correct..."
+          curl --data '{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8545
           
-          echo $output
+          echo "Running Nethermind Tools Kute..."
+          output=$(${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i ${{ github.workspace }}/sedge-data/execution-data/logs/rpc/logs/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret) -o Json
+          
+          printf "%s\n" "$output"
+          
+          echo "Get Final block and validate if correct..."
+          curl --data '{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8545
           
           echo "Script execution complete."
           
