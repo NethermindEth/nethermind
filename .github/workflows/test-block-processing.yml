@@ -99,8 +99,7 @@ jobs:
           echo 'Generating sedge...'
           ./sedge deps install
           ./sedge generate --logging none \
-          execution --map-all --network mainnet \
-          -e nethermind:${{ matrix.branch }} \
+          execution nethermind:${{ matrix.branch }} --map-all --network mainnet \
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
           --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
