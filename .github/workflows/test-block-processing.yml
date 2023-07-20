@@ -21,23 +21,23 @@ jobs:
     steps:
       - id: set-matrix
         run: |
-          branches="${{ github.event.inputs.branches_to_compare }}"
+          branches=""
           if [ -z "$branches" ]; then
             branches="master,release/1.20.0"
           fi
           IFS=',' read -ra branch_array <<< "$branches"
           
           matrix="{\"include\": ["
-          matrix+="$( jq -n \
-                      --arg branch "${{ github.ref }}" \
-                      --argjson artifactExists false \
-                      '{"branch":$branch, "artifactExists":$artifactExists}' )"
-          
+          first=true
           for branch in "${branch_array[@]}"; do
             branch=$(echo "$branch" | xargs)
-            artifactExists=$(gh api actions/artifacts --json artifacts | jq ".artifacts[] | select(.name == (\"blockPerformanceReport-\" + \"$branch\")) | .id" -r)
-              if [ -z "$artifactExists" ]; then
-              matrix+=","
+            artifactExists=$(gh api actions/artifacts --token "${GH_TOKEN}" | jq --arg branch "$branch" '.artifacts[] | select(.name == ("blockPerformanceReport-" + $branch)) | .id' -r)
+            if [ -z "$artifactExists" ]; then
+              if [ "$first" = true ] ; then
+                first=false
+              else
+                matrix+=","
+              fi
               matrix+="$( jq -n \
                           --arg branch "$branch" \
                           --argjson artifactExists false \
@@ -45,7 +45,7 @@ jobs:
             fi
           done
           matrix+="]}"
-          echo "::set-output name=matrix::$matrix"
+          echo "MATRIX=$matrix" >> $GITHUB_ENV
           
   run-script:
     needs: [check-artifacts]
