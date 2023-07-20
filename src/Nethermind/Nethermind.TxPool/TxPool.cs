@@ -765,8 +765,14 @@ Ratios in last block:
 * DarkPool Level1:      {Metrics.DarkPoolRatioLevel1,24:P5}
 * DarkPool Level2:      {Metrics.DarkPoolRatioLevel2,24:P5}
 Amounts:
-* Blob txs:             {Metrics.BlobTransactionsInBlock,24:P5}
-* Blobs:                {Metrics.BlobsInBlock,24:P5}
+* Blob txs:             {Metrics.BlobTransactionsInBlock,24:N0}
+* Blobs:                {Metrics.BlobsInBlock,24:N0}
+------------------------------------------------
+Db usage:
+* PendingDb writes:     {Db.Metrics.PendingTransactionsDbWrites,24:N0}
+* PendingDb reads:      {Db.Metrics.PendingTransactionsDbReads,24:N0}
+* ProcessedDb writes:   {Db.Metrics.ProcessedTransactionsDbWrites,24:N0}
+* ProcessedDb reads:    {Db.Metrics.ProcessedTransactionsDbReads,24:N0}
 ------------------------------------------------
 ");
         }
