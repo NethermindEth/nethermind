@@ -189,7 +189,7 @@ jobs:
           curl --data '{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8545
           
           echo "Running Nethermind Tools Kute..."
-          output=$(${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i ${{ github.workspace }}/sedge-data/execution-data/logs/rpc/logs/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret) -o Json
+          output=$(${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i ${{ github.workspace }}/sedge-data/execution-data/logs/rpc/logs/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json -p)
           
           printf "%s\n" "$output"
           
