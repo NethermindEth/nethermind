@@ -241,7 +241,7 @@ jobs:
           fi
 
       - name: Upload Output Artifact from Kute
-        uses: actions/upload-artifact@2
+        uses: actions/upload-artifact@v3.1.2
         with:
           name: blockPerformanceReport-${{ matrix.branch }}
           path: ${{ steps.save-output.outputs.output_file }}
