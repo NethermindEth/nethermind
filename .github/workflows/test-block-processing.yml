@@ -29,6 +29,7 @@ jobs:
         name: Generate Matrix based on provided branches and past results
         run: |
           branches=""
+          current_branch="${{ github.ref }}"
           current_branch="${current_branch#refs/heads/}"
           if [ -z "${{ github.event.inputs.branches_to_compare }}" ]; then
             current_branch="${{ github.ref }}"
