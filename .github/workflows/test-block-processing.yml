@@ -72,7 +72,6 @@ jobs:
     strategy:
       max-parallel: 1
       matrix: ${{ fromJson(needs.check-artifacts.outputs.matrix) }}
-    if: ${{ matrix.artifactExists == false }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3.5.3
