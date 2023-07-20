@@ -20,9 +20,7 @@ namespace Nethermind.JsonRpc.Modules
         private readonly ConcurrentQueue<T> _pool = new();
         private readonly SemaphoreSlim _semaphore;
         private readonly ILogger _logger;
-        private int _activeWorkers = 0;
         private int _rpcPendingCalls = 0;
-        private readonly int _exclusiveCapacity = 0;
         private readonly int _maxPendingSharedRequests = 0;
         private readonly bool _pendingRequestLimitsEnabled = false;
 
@@ -30,7 +28,6 @@ namespace Nethermind.JsonRpc.Modules
         {
             _maxPendingSharedRequests = maxPendingSharedRequests;
             _pendingRequestLimitsEnabled = _maxPendingSharedRequests > 0;
-            _exclusiveCapacity = exclusiveCapacity;
             _logger = logManager.GetClassLogger();
             _timeout = timeout;
             Factory = factory;
@@ -55,8 +52,8 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             IncrementRpcPendingCalls();
-            if (_logger.IsInfo) // ToDo change to trace before merging
-                _logger.Info($"{typeof(T).Name} Pending RPC requests {_rpcPendingCalls} Active Workers {_activeWorkers}/{_exclusiveCapacity}");
+            if (_logger.IsTrace)
+                _logger.Trace($"{typeof(T).Name} Pending RPC requests {_rpcPendingCalls}");
 
             if (!await _semaphore.WaitAsync(_timeout))
             {
@@ -65,7 +62,6 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             DecrementRpcPendingCalls();
-            ++_activeWorkers;
             _pool.TryDequeue(out T result);
             return result;
         }
@@ -89,7 +85,6 @@ namespace Nethermind.JsonRpc.Modules
                 return;
             }
 
-            --_activeWorkers;
             _pool.Enqueue(module);
             _semaphore.Release();
         }
