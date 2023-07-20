@@ -224,6 +224,7 @@ jobs:
           
       - name: Save Output from Kute
         run: |
+          apt install -y jq
           output_file="output.json"
           echo "$output" | jq '.' > "$output_file"
           echo "::set-output name=output_file::$output_file"
