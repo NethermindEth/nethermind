@@ -31,7 +31,7 @@ jobs:
           first=true
           for branch in "${branch_array[@]}"; do
             branch=$(echo "$branch" | xargs)
-            artifactExists=$(gh api actions/artifacts | jq --arg branch "$branch" '.artifacts[] | select(.name == ("blockPerformanceReport-" + $branch)) | .id' -r)
+            artifactExists=$(gh api repos/NethermindEth/nethermind/actions/artifacts | jq --arg branch "$branch" '.artifacts[] | select(.name == ("blockPerformanceReport-" + $branch)) | .id' -r)
             if [ -z "$artifactExists" ]; then
               if [ "$first" = true ] ; then
                 first=false
