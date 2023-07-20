@@ -24,7 +24,7 @@ jobs:
         run: |
           branches=""
           if [ -z "$branches" ]; then
-            branches="master,release/1.20.0"
+            branches="master,release/1.20.0,${{ github.ref }}"
           fi
           IFS=',' read -ra branch_array <<< "$branches"
           
@@ -32,18 +32,15 @@ jobs:
           first=true
           for branch in "${branch_array[@]}"; do
             branch=$(echo "$branch" | xargs)
-            artifactExists=$(gh api repos/NethermindEth/nethermind/actions/artifacts | jq --arg branch "$branch" '.artifacts[] | select(.name == ("blockPerformanceReport-" + $branch)) | .id' -r)
-            if [ -z "$artifactExists" ]; then
-              if [ "$first" = true ] ; then
-                first=false
-              else
-                matrix+=","
-              fi
-              matrix+="$( jq -n \
-                          --arg branch "$branch" \
-                          --argjson artifactExists false \
-                          '{"branch":$branch, "artifactExists":$artifactExists}' )"
+            if [ "$first" = true ] ; then
+              first=false
+            else
+              matrix+=","
             fi
+            matrix+="$( jq -n \
+                        --arg branch "$branch" \
+                        --argjson artifactExists false \
+                        '{"branch":$branch, "artifactExists":$artifactExists}' )"
           done
           matrix+="]}"
           echo $matrix > matrix.json
@@ -54,6 +51,7 @@ jobs:
     needs: [check-artifacts]
     runs-on: [self-hosted, LinuxAMD]
     strategy:
+      max-parallel: 1
       matrix: ${{ fromJson(needs.check-artifacts.outputs.matrix) }}
     steps:
       - name: Checkout code
@@ -200,3 +198,16 @@ jobs:
           
           # Clear the trap
           trap - INT TERM
+          
+      - name: Save Output from Kute
+        run: |
+          output_file="output.json"
+          echo "$output" | jq '.' > "$output_file"
+          echo "::set-output name=output_file::$output_file"
+        id: save-output
+
+      - name: Upload Output Artifact from Kute
+        uses: actions/upload-artifact@v2
+        with:
+          name: blockPerformanceReport-${{ matrix.branch }}
+          path: ${{ steps.save-output.outputs.output_file }}
