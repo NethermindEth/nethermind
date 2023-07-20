@@ -46,6 +46,7 @@ jobs:
           done
           matrix+="]}"
           echo $matrix > matrix.json
+          cat matrix.json
           echo "MATRIX=$(jq -c . matrix.json)" >> $GITHUB_ENV
           
   run-script:
