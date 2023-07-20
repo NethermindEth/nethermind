@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc
         int Timeout { get; set; }
 
         [ConfigItem(
-            Description = "The limit for maximum pending requests for non sharable calls (" +
+            Description = "The queued request limit for calls above the max concurrency amount for (" +
                           nameof(IEthRpcModule.eth_call) + ", " +
                           nameof(IEthRpcModule.eth_estimateGas) + ", " +
                           nameof(IEthRpcModule.eth_getLogs) + ", " +
@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc
                           nameof(IEthRpcModule.eth_uninstallFilter) + "). " +
                           " If value is set to 0 limit won't be applied.",
             DefaultValue = "500")]
-        int MaxPendingNonSharedRequests { get; set; }
+        int RequestQueueLimit { get; set; }
 
         [ConfigItem(
             Description = "Base file path for diagnostic JSON RPC recorder.",

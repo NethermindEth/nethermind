@@ -16,10 +16,10 @@ namespace Nethermind.JsonRpc.Modules
             int maxCount,
             int timeout,
             ILogManager logManager,
-            int maxPendingSharedRequests = 0)
+            int requestQueueLimit = 0)
             where T : IRpcModule
         {
-            rpcModuleProvider.Register(new BoundedModulePool<T>(factory, maxCount, timeout, logManager, maxPendingSharedRequests));
+            rpcModuleProvider.Register(new BoundedModulePool<T>(factory, maxCount, timeout, logManager, requestQueueLimit));
         }
 
         public static void RegisterBoundedByCpuCount<T>(
