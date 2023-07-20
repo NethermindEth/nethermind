@@ -4,12 +4,18 @@ on:
   push:
     branches:
       - kch/block_processing_benchmark
+      - master
   workflow_dispatch:
     inputs:
       branches_to_compare:
         description: "Branches to compare, separated by commas"
-        required: true
+        required: false
         default: ""
+      force_refresh_artifacts:
+        description: "Would force re-execute tests on all branches provided above"
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   check-artifacts:
@@ -34,8 +40,17 @@ jobs:
           matrix="{\"include\": ["
           first=true
           for branch in "${branch_array[@]}"; do
-            # Remove refs/heads/ prefix from the branch name
-            branch=$(echo "$branch" | sed 's/refs\/heads\///g' | xargs)
+            branch=$(echo "$branch" | xargs)
+            if [ "$branch" == "${{ github.ref }}" ] || [ "${{ github.event.inputs.force_refresh_artifacts }}" == "true" ]; then
+              artifactExists=false
+            else
+              artifactExists=$(gh api repos/NethermindEth/nethermind/actions/artifacts | jq --arg branch "$branch" '.artifacts[] | select(.name == ("blockPerformanceReport-" + $branch)) | .id' -r)
+              if [ -z "$artifactExists" ]; then
+                artifactExists=false
+              else
+                artifactExists=true
+              fi
+            fi
             if [ "$first" = true ] ; then
               first=false
             else
@@ -43,7 +58,7 @@ jobs:
             fi
             matrix+="$( jq -n \
                         --arg branch "$branch" \
-                        --argjson artifactExists false \
+                        --argjson artifactExists $artifactExists \
                         '{"branch":$branch, "artifactExists":$artifactExists}' )"
           done
           matrix+="]}"
@@ -57,12 +72,25 @@ jobs:
     strategy:
       max-parallel: 1
       matrix: ${{ fromJson(needs.check-artifacts.outputs.matrix) }}
+    if: ${{ matrix.artifactExists == false }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3.5.3
         with:
           clean: true
           ref: ${{ matrix.branch }}
+          
+      - name: Cleanup Docker
+        run: |
+          containers=$(docker ps -aq)
+          if [[ -n "$containers" ]]; then
+            docker stop $containers
+            docker system prune -a -f --volumes
+            docker ps -a && docker images -a && docker network ls && docker volume ls
+            echo "Docker system pruned."
+          else
+            echo "No Docker containers to remove."
+          fi      
       
       - name: Setup .NET
         uses: actions/setup-dotnet@v3.2.0
@@ -91,9 +119,9 @@ jobs:
           mv sedge-v1.2.1-linux-amd64 sedge
       
       - name: Configure Sedge
-        # env:
-          # SEQ_API_KEY: ${{ secrets.SEQ_API_KEY }}
-          # GRAFANA_CONNECTION_STRING: ${{ secrets.GRAFANA_CONNECTION_STRING }}
+        env:
+          SEQ_API_KEY: ${{ secrets.SEQ_API_KEY }}
+          GRAFANA_CONNECTION_STRING: ${{ secrets.GRAFANA_CONNECTION_STRING }}
         run: |
           echo 'Generating sedge...'
           ./sedge deps install
@@ -103,16 +131,17 @@ jobs:
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
           --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
           --el-extra-flag Network.MaxActivePeers=0 \
-          --el-extra-flag JsonRpc.ReportIntervalSeconds=3600 
-          # --el-extra-flag Metrics.Enabled=true
-          # --el-extra-flag Metrics.NodeName=Core_BlockProcessingBenchmark_${{ github.ref }}
-          # --el-extra-flag Seq.ServerUrl=https://seq.nethermind.io
-          # --el-extra-flag Seq.ApiKey=${SEQ_API_KEY}
-          # --el-extra-flag Seq.MinLevel=Info
-          # --el-extra-flag Metrics.PushGatewayUrl=${GRAFANA_CONNECTION_STRING}
+          --el-extra-flag JsonRpc.ReportIntervalSeconds=3600 \
+          --el-extra-flag Metrics.Enabled=true \
+          --el-extra-flag Metrics.NodeName=Core_BlockProcessingBenchmark_${{ github.ref }} \
+          --el-extra-flag Seq.ServerUrl=https://seq.nethermind.io \
+          --el-extra-flag Seq.ApiKey=${SEQ_API_KEY} \
+          --el-extra-flag Seq.MinLevel=Info \
+          --el-extra-flag Metrics.PushGatewayUrl=${GRAFANA_CONNECTION_STRING}
           echo 'Running sedge...'
 
       - name: Run Benchmark
+        id: benchmark
         run: |
           #!/bin/bash
 
@@ -131,17 +160,7 @@ jobs:
           scriptKilled=false
           
           totalSize=$(du -sb /mnt/neth_backup/backup/mainnet | cut -f1)
-          
-          # echo "Stopping execution docker compose..."
-          # docker compose -f ${{ github.workspace }}/sedge-data/docker-compose.yml stop execution
-          
-          # echo "Removing old mainnet data..."
-          # dbCount=$(find ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet -type f | wc -l)
-          # # Check if there are any files
-          # if [ $dbCount -gt 0 ]; then
-          #   rm -r ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet/*
-          # fi
-          
+                    
           echo "Changing to backup directory..."
           cd /mnt/neth_backup/backup/mainnet
           
@@ -210,9 +229,50 @@ jobs:
           echo "$output" | jq '.' > "$output_file"
           echo "::set-output name=output_file::$output_file"
         id: save-output
+        
+      - name: Check and delete existing artifact
+        run: |
+          artifact_name="blockPerformanceReport-${{ matrix.branch }}"
+          artifact_id=$(gh api repos/${{ github.repository }}/actions/artifacts | \
+            jq -r --arg name "$artifact_name" '.artifacts[] | select(.name == $name) | .id' | head -1)
+          
+          if [ -n "$artifact_id" ]; then
+            echo "Deleting existing artifact with ID: $artifact_id"
+            gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/$artifact_id
+          fi
 
       - name: Upload Output Artifact from Kute
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@3
         with:
           name: blockPerformanceReport-${{ matrix.branch }}
           path: ${{ steps.save-output.outputs.output_file }}
+          
+  compare-results:
+    needs: [run-script]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+    strategy:
+      matrix: ${{ fromJson(needs.check-artifacts.outputs.matrix) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3.5.3
+
+      - name: Download Artifacts
+        id: download-artifacts
+        run: |
+          mkdir artifacts
+          for branch in "${{ matrix.branch }}"; do
+            artifact_name="blockPerformanceReport-${{ matrix.branch }}"
+            artifact_id=$(gh api repos/${{ github.repository }}/actions/artifacts | \
+              jq -r --arg name "$artifact_name" '.artifacts[] | select(.name == $name) | .id' | head -1)
+            
+            if [ -n "$artifact_id" ]; then
+              gh api repos/${{ github.repository }}/actions/artifacts/$artifact_id/zip --output artifacts/$artifact_name.zip
+              unzip artifacts/$artifact_name.zip -d artifacts/
+            fi
+          done
+          
+      - name: Compare Artifacts
+        run: |
+          # Add your comparison logic here.
