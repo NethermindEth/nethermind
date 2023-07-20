@@ -1763,6 +1763,20 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_not_throw_when_asking_for_non_existing_tx()
+        {
+            TxPoolConfig txPoolConfig = new() { Size = 10 };
+            BlobTxStorage blobTxStorage = new(new MemDb(), new MemDb());
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
+
+            _txPool.TryGetPendingTransaction(TestItem.KeccakA, out Transaction blobTxReturned).Should().BeFalse();
+            blobTxReturned.Should().BeNull();
+
+            blobTxStorage.TryGet(TestItem.KeccakA, out Transaction blobTxFromDb).Should().BeFalse();
+            blobTxFromDb.Should().BeNull();
+        }
+
+        [Test]
         public void should_remove_replaced_blob_tx()
         {
             const int initialFee = 10;
