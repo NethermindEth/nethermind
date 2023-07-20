@@ -20,6 +20,7 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - id: set-matrix
+        name: Generate Matrix based on provided branches and past results
         run: |
           branches=""
           if [ -z "$branches" ]; then
@@ -47,7 +48,7 @@ jobs:
           matrix+="]}"
           echo $matrix > matrix.json
           cat matrix.json
-          echo "MATRIX=$(jq -c . matrix.json)" >> $GITHUB_ENV
+          echo "::set-output name=matrix::$(jq -c . matrix.json)"
           
   run-script:
     needs: [check-artifacts]
