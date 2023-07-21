@@ -272,15 +272,16 @@ jobs:
   compare-results:
     needs: [run-script]
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-      MATRIX: ${{ fromJson(needs.check-artifacts.outputs.matrix) }}
     steps:
+      - name: Extract keys from matrix
+        id: extract-keys
+        run: |
+          echo '${{ fromJson(needs.check-artifacts.outputs.matrix) }}' | jq -r 'keys[]' > matrix_keys.txt
       - name: Download Artifacts
         id: download-artifacts
         run: |
           mkdir artifacts
-          matrix=$(echo '$MATRIX' | jq -r 'keys[]')
+          matrix=$(cat matrix_keys.txt)
           for branch in $matrix; do
             branch=${item.branch}
             sanitized_branch_name=$(echo $branch | tr '/:' '-')
@@ -294,6 +295,8 @@ jobs:
               mv artifacts/output.json artifacts/${branch}.json
             fi
           done
+        env:
+          GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
       
       - name: Compare Artifacts
         run: |
