@@ -32,7 +32,7 @@ jobs:
           current_branch="${{ github.ref }}"
           current_branch="${current_branch#refs/heads/}"
           if [ -z "${{ github.event.inputs.branches_to_compare }}" ]; then
-            branches="$current_branch,master"
+            branches="$current_branch,master,State-cache"
           else
             branches="$current_branch,${{ github.event.inputs.branches_to_compare }}"
           fi
@@ -84,192 +84,192 @@ jobs:
           clean: true
           ref: ${{ matrix.branch }}
           
-      #- name: Cleanup Docker
-      #  if: matrix.artifactExists == false
-      #  run: |
-      #    containers=$(docker ps -aq)
-      #    if [[ -n "$containers" ]]; then
-      #      docker stop $containers
-      #      docker system prune -a -f --volumes
-      #      docker ps -a && docker images -a && docker network ls && docker volume ls
-      #      echo "Docker system pruned."
-      #    else
-      #      echo "No Docker containers to remove."
-      #    fi      
-      #
-      #- name: Setup .NET
-      #  if: matrix.artifactExists == false
-      #  uses: actions/setup-dotnet@v3.2.0
-      #  with:
-      #    dotnet-version: '7.0'
-      #    
-      #- name: Install libraries
-      #  if: matrix.artifactExists == false
-      #  run: |
-      #    apt install -y jq
-      #    type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
-      #    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-      #    && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-      #    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-      #    && sudo apt update \
-      #    && sudo apt install gh -y      
-      #
-      #- name: Prepare artifact name
-      #  if: matrix.artifactExists == false
-      #  id: prepare
-      #  run: |
-      #    branch_name="${{ matrix.branch }}"
-      #    sanitized_branch_name=$(echo $branch_name | tr '/:' '-')
-      #    echo "::set-output name=sanitized_branch_name::$sanitized_branch_name"
-      #    
-      #- name: Configure settings
-      #  if: matrix.artifactExists == false
-      #  id: settings
-      #  run: |
-      #    echo "BUILD_TIMESTAMP=$(date '+%s')" >> $GITHUB_OUTPUT
-      #    echo "COMMIT_HASH=$(git describe --always --exclude=* --abbrev=40)" >> $GITHUB_OUTPUT
-      #
-      #- name: Set up Docker Buildx
-      #  if: matrix.artifactExists == false
-      #  uses: docker/setup-buildx-action@v2
-#
-      ##- name: Build docker image
-      ##  if: matrix.artifactExists == false
-      ##  run: |
-      ##    branch_name=$(echo "${{ matrix.branch }}" | tr '[:upper:]' '[:lower:]')
-      ##    docker buildx build --platform=linux/amd64 -t $branch_name -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --load .
-#
-      #- name: Build Kute
-      #  if: matrix.artifactExists == false
-      #  run: dotnet build ./tools/Nethermind.Tools.Kute -c Release
-      #
-      #- name: Download Sedge
-      #  if: matrix.artifactExists == false
-      #  run: |
-      #    curl -LO https://github.com/NethermindEth/sedge/releases/download/v1.2.1/sedge-v1.2.1-linux-amd64
-      #    chmod +x sedge-v1.2.1-linux-amd64
-      #    mv sedge-v1.2.1-linux-amd64 sedge
-      #
-      #- name: Configure Sedge
-      #  if: matrix.artifactExists == false
-      #  env:
-      #    SEQ_API_KEY: ${{ secrets.SEQ_API_KEY }}
-      #    GRAFANA_CONNECTION_STRING: ${{ secrets.GRAFANA_CONNECTION_STRING }}
-      #  run: |
-      #    sanitized_current_branch=$(echo ${{ matrix.branch }} | tr '/:' '-')
-      #    echo 'Generating sedge...'
-      #    ./sedge deps install
-      #    ./sedge generate --logging none \
-      #    execution nethermind:${{ matrix.branch }} --map-all --network mainnet \
-      #    --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
-      #    --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
-      #    --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
-      #    --el-extra-flag Network.MaxActivePeers=0 \
-      #    --el-extra-flag JsonRpc.ReportIntervalSeconds=3600 \
-      #    --el-extra-flag Metrics.Enabled=true \
-      #    --el-extra-flag Metrics.NodeName=Core_BlockProcessingBenchmark_$sanitized_current_branch \
-      #    --el-extra-flag Seq.ServerUrl=https://seq.nethermind.io \
-      #    --el-extra-flag Seq.ApiKey=${SEQ_API_KEY} \
-      #    --el-extra-flag Seq.MinLevel=Info \
-      #    --el-extra-flag Metrics.PushGatewayUrl=${GRAFANA_CONNECTION_STRING}
-      #    echo 'Running sedge...'
-#
-      #- name: Run Benchmark
-      #  if: matrix.artifactExists == false
-      #  id: benchmark
-      #  run: |
-      #    #!/bin/bash
-#
-      #    ## Define a function to stop the rsync process
-      #    #stop_rsync() {
-      #    #    if [ -n "$rsyncPid" ]; then
-      #    #        echo "Stopping rsync process..."
-      #    #        kill $rsyncPid
-      #    #        scriptKilled=true
-      #    #    fi
-      #    #}
-      #    #
-      #    ## Set a trap to call stop_rsync function if the script is interrupted
-      #    #trap stop_rsync INT TERM
-      #    #
-      #    #scriptKilled=false
-      #    #
-      #    #totalSize=$(du -sb /mnt/neth_backup/backup/mainnet | cut -f1)
-      #    #          
-      #    #echo "Changing to backup directory..."
-      #    #cd /mnt/neth_backup/backup/mainnet
-      #    #
-      #    #echo "Splitting file list..."
-      #    #fileCount=$(find . -type f -name "filelist.*" | wc -l)
-      #    ## Check if there are any files
-      #    #if [ $fileCount -gt 0 ]; then
-      #    #    rm filelist.*
-      #    #fi
-      #    #
-      #    #find . -type f | split -d -l $(( $(find . -type f | wc -l) / 6 )) - filelist.part.
-      #    #
-      #    #echo "Starting parallel rsync..."
-      #    #mkdir -p ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet
-      #    #ls filelist.part.* | parallel -j6 rsync --progress -aWvm --files-from={} . ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet > /dev/null 2>&1 &
-      #    #
-      #    #rsyncPid=$!
-      #    #
-      #    ## Now we will enter a loop where we check the size of the destination directory
-      #    ## We will exit the loop once the size of the destination directory matches the size of the source directory
-      #    #while true; do
-      #    #    sleep 10 # Sleep for a while to avoid excessive disk usage
-      #    #    currentSize=$(du -sb ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet | cut -f1)
-      #    #
-      #    #    # Calculate the percentage of the total size that's been copied
-      #    #    percentCopied=$(echo "scale=4; $currentSize * 100 / $totalSize" | bc)
-      #    #    echo "Percentage copied: $percentCopied%"
-      #    #
-      #    #    # Break the loop if rsync process is not running anymore
-      #    #    if ! ps -p $rsyncPid > /dev/null; then
-      #    #        break
-      #    #    fi
-      #    #done
-      #    #
-      #    ## Break the loop if the script was interrupted
-      #    #if $scriptKilled; then
-      #    #    echo "Script was interrupted. Not proceeding with further iterations."
-      #    #    exit 1
-      #    #fi
-      #    #
-      #    #echo "Starting execution docker compose..."
-      #    #docker compose -f ${{ github.workspace }}/sedge-data/docker-compose.yml up -d execution
-      #    #
-      #    #echo "Sleeping for 120 seconds..."
-      #    #sleep 120
-#
-      #    echo "Running Nethermind Tools Kute..."
-      #    ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json -d >> ${{ steps.prepare.outputs.sanitized_branch_name }}.json
-      #      
-      #    echo "Script execution complete."
-      #    
-      #    # Clear the trap
-      #    trap - INT TERM      
-      #       
-      #- name: Check and delete existing artifact
-      #  env:
-      #    GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-      #  if: matrix.artifactExists == false
-      #  run: |
-      #    artifact_name="blockPerformanceReport-${{ steps.prepare.outputs.sanitized_branch_name }}"
-      #    artifact_id=$(gh api repos/${{ github.repository }}/actions/artifacts | \
-      #      jq -r --arg name "$artifact_name" '.artifacts[] | select(.name == $name) | .id' | head -1)
-      #
-      #    if [ -n "$artifact_id" ]; then
-      #      echo "Deleting existing artifact with ID: $artifact_id"
-      #      gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/$artifact_id
-      #    fi
-      #
-      #- name: Upload Output Artifact from Kute
-      #  if: matrix.artifactExists == false
-      #  uses: actions/upload-artifact@v3.1.2
-      #  with:
-      #    name: blockPerformanceReport-${{ steps.prepare.outputs.sanitized_branch_name }}
-      #    path: ${{ steps.prepare.outputs.sanitized_branch_name }}.json
+      - name: Cleanup Docker
+        if: matrix.artifactExists == false
+        run: |
+          containers=$(docker ps -aq)
+          if [[ -n "$containers" ]]; then
+            docker stop $containers
+            docker system prune -a -f --volumes
+            docker ps -a && docker images -a && docker network ls && docker volume ls
+            echo "Docker system pruned."
+          else
+            echo "No Docker containers to remove."
+          fi      
+      
+      - name: Setup .NET
+        if: matrix.artifactExists == false
+        uses: actions/setup-dotnet@v3.2.0
+        with:
+          dotnet-version: '7.0'
+          
+      - name: Install libraries
+        if: matrix.artifactExists == false
+        run: |
+          apt install -y jq
+          type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+          && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+          && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+          && sudo apt update \
+          && sudo apt install gh -y      
+      
+      - name: Prepare artifact name
+        if: matrix.artifactExists == false
+        id: prepare
+        run: |
+          branch_name="${{ matrix.branch }}"
+          sanitized_branch_name=$(echo $branch_name | tr '/:' '-')
+          echo "::set-output name=sanitized_branch_name::$sanitized_branch_name"
+          
+      - name: Configure settings
+        if: matrix.artifactExists == false
+        id: settings
+        run: |
+          echo "BUILD_TIMESTAMP=$(date '+%s')" >> $GITHUB_OUTPUT
+          echo "COMMIT_HASH=$(git describe --always --exclude=* --abbrev=40)" >> $GITHUB_OUTPUT
+      
+      - name: Set up Docker Buildx
+        if: matrix.artifactExists == false
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build docker image
+        if: matrix.artifactExists == false
+        run: |
+          branch_name=$(echo "${{ matrix.branch }}" | tr '[:upper:]' '[:lower:]')
+          docker buildx build --platform=linux/amd64 -t $branch_name -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --load .
+
+      - name: Build Kute
+        if: matrix.artifactExists == false
+        run: dotnet build ./tools/Nethermind.Tools.Kute -c Release
+      
+      - name: Download Sedge
+        if: matrix.artifactExists == false
+        run: |
+          curl -LO https://github.com/NethermindEth/sedge/releases/download/v1.2.1/sedge-v1.2.1-linux-amd64
+          chmod +x sedge-v1.2.1-linux-amd64
+          mv sedge-v1.2.1-linux-amd64 sedge
+      
+      - name: Configure Sedge
+        if: matrix.artifactExists == false
+        env:
+          SEQ_API_KEY: ${{ secrets.SEQ_API_KEY }}
+          GRAFANA_CONNECTION_STRING: ${{ secrets.GRAFANA_CONNECTION_STRING }}
+        run: |
+          sanitized_current_branch=$(echo ${{ matrix.branch }} | tr '/:' '-')
+          echo 'Generating sedge...'
+          ./sedge deps install
+          ./sedge generate --logging none \
+          execution nethermind:${{ matrix.branch }} --map-all --network mainnet \
+          --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
+          --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
+          --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
+          --el-extra-flag Network.MaxActivePeers=0 \
+          --el-extra-flag JsonRpc.ReportIntervalSeconds=3600 \
+          --el-extra-flag Metrics.Enabled=true \
+          --el-extra-flag Metrics.NodeName=Core_BlockProcessingBenchmark_$sanitized_current_branch \
+          --el-extra-flag Seq.ServerUrl=https://seq.nethermind.io \
+          --el-extra-flag Seq.ApiKey=${SEQ_API_KEY} \
+          --el-extra-flag Seq.MinLevel=Info \
+          --el-extra-flag Metrics.PushGatewayUrl=${GRAFANA_CONNECTION_STRING}
+          echo 'Running sedge...'
+
+      - name: Run Benchmark
+        if: matrix.artifactExists == false
+        id: benchmark
+        run: |
+          #!/bin/bash
+
+          # Define a function to stop the rsync process
+          stop_rsync() {
+              if [ -n "$rsyncPid" ]; then
+                  echo "Stopping rsync process..."
+                  kill $rsyncPid
+                  scriptKilled=true
+              fi
+          }
+          
+          # Set a trap to call stop_rsync function if the script is interrupted
+          trap stop_rsync INT TERM
+          
+          scriptKilled=false
+          
+          totalSize=$(du -sb /mnt/neth_backup/backup/mainnet | cut -f1)
+                    
+          echo "Changing to backup directory..."
+          cd /mnt/neth_backup/backup/mainnet
+          
+          echo "Splitting file list..."
+          fileCount=$(find . -type f -name "filelist.*" | wc -l)
+          # Check if there are any files
+          if [ $fileCount -gt 0 ]; then
+              rm filelist.*
+          fi
+          
+          find . -type f | split -d -l $(( $(find . -type f | wc -l) / 6 )) - filelist.part.
+          
+          echo "Starting parallel rsync..."
+          mkdir -p ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet
+          ls filelist.part.* | parallel -j6 rsync --progress -aWvm --files-from={} . ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet > /dev/null 2>&1 &
+          
+          rsyncPid=$!
+          
+          # Now we will enter a loop where we check the size of the destination directory
+          # We will exit the loop once the size of the destination directory matches the size of the source directory
+          while true; do
+              sleep 10 # Sleep for a while to avoid excessive disk usage
+              currentSize=$(du -sb ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet | cut -f1)
+          
+              # Calculate the percentage of the total size that's been copied
+              percentCopied=$(echo "scale=4; $currentSize * 100 / $totalSize" | bc)
+              echo "Percentage copied: $percentCopied%"
+          
+              # Break the loop if rsync process is not running anymore
+              if ! ps -p $rsyncPid > /dev/null; then
+                  break
+              fi
+          done
+          
+          # Break the loop if the script was interrupted
+          if $scriptKilled; then
+              echo "Script was interrupted. Not proceeding with further iterations."
+              exit 1
+          fi
+          
+          echo "Starting execution docker compose..."
+          docker compose -f ${{ github.workspace }}/sedge-data/docker-compose.yml up -d execution
+          
+          echo "Sleeping for 120 seconds..."
+          sleep 120
+
+          echo "Running Nethermind Tools Kute..."
+          ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json -d >> ${{ steps.prepare.outputs.sanitized_branch_name }}.json
+            
+          echo "Script execution complete."
+          
+          # Clear the trap
+          trap - INT TERM      
+             
+      - name: Check and delete existing artifact
+        env:
+          GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+        if: matrix.artifactExists == false
+        run: |
+          artifact_name="blockPerformanceReport-${{ steps.prepare.outputs.sanitized_branch_name }}"
+          artifact_id=$(gh api repos/${{ github.repository }}/actions/artifacts | \
+            jq -r --arg name "$artifact_name" '.artifacts[] | select(.name == $name) | .id' | head -1)
+      
+          if [ -n "$artifact_id" ]; then
+            echo "Deleting existing artifact with ID: $artifact_id"
+            gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/$artifact_id
+          fi
+      
+      - name: Upload Output Artifact from Kute
+        if: matrix.artifactExists == false
+        uses: actions/upload-artifact@v3.1.2
+        with:
+          name: blockPerformanceReport-${{ steps.prepare.outputs.sanitized_branch_name }}
+          path: ${{ steps.prepare.outputs.sanitized_branch_name }}.json
 
   compare-results:
     needs: [run-script, check-artifacts]
@@ -294,9 +294,10 @@ jobs:
             if [ -n "$artifact_id" ]; then
               gh api repos/${{ github.repository }}/actions/artifacts/$artifact_id/zip > $artifact_name.zip
               unzip $artifact_name.zip -d ./artifacts/
+              echo "Content of: $sanitized_branch_name json file"
+              cat ./artifacts/"$sanitized_branch_name".json
             fi
           done
-          ls -a ./artifacts/
         env:
           GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
       
