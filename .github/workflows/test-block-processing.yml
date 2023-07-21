@@ -110,7 +110,15 @@ jobs:
           && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
           && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
           && sudo apt update \
-          && sudo apt install gh -y
+          && sudo apt install gh -y      
+      
+      - name: Prepare artifact name
+        if: matrix.artifactExists == false
+        id: prepare
+        run: |
+          branch_name="${{ matrix.branch }}"
+          sanitized_branch_name=$(echo $branch_name | tr '/:' '-')
+          echo "::set-output name=sanitized_branch_name::$sanitized_branch_name"
           
       - name: Configure settings
         if: matrix.artifactExists == false
@@ -239,14 +247,6 @@ jobs:
           
           # Clear the trap
           trap - INT TERM      
-      
-      - name: Prepare artifact name
-        if: matrix.artifactExists == false
-        id: prepare
-        run: |
-          branch_name="${{ matrix.branch }}"
-          sanitized_branch_name=$(echo $branch_name | tr '/:' '-')
-          echo "::set-output name=sanitized_branch_name::$sanitized_branch_name"
              
       - name: Check and delete existing artifact
         env:
