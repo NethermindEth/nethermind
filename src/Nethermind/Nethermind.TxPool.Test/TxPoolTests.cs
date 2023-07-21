@@ -1709,7 +1709,7 @@ namespace Nethermind.TxPool.Test
             const long blockNumber = 358;
 
             BlobTxStorage blobTxStorage = new(new MemDb(), new MemDb());
-            _txPool = CreatePool(new TxPoolConfig(){ Size = 128}, GetCancunSpecProvider(), txStorage: blobTxStorage);
+            _txPool = CreatePool(new TxPoolConfig() { Size = 128 }, GetCancunSpecProvider(), txStorage: blobTxStorage);
 
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
@@ -1815,7 +1815,7 @@ namespace Nethermind.TxPool.Test
         public void should_not_throw_when_asking_for_non_existing_tx()
         {
             TxPoolConfig txPoolConfig = new() { Size = 10 };
-            BlobTxStorage blobTxStorage = new(new MemDb());
+            BlobTxStorage blobTxStorage = new(new MemDb(), new MemDb());
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
 
             _txPool.TryGetPendingTransaction(TestItem.KeccakA, out Transaction blobTxReturned).Should().BeFalse();
