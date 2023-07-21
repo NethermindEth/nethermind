@@ -157,7 +157,7 @@ jobs:
           GRAFANA_CONNECTION_STRING: ${{ secrets.GRAFANA_CONNECTION_STRING }}
         run: |
           sanitized_current_branch=$(echo ${{ matrix.branch }} | tr '/:' '-')
-          branch_name=$(echo "$sanitized_current_branch " | tr '[:upper:]' '[:lower:]')
+          branch_name=$(echo "${{ matrix.branch }}" | tr '[:upper:]' '[:lower:]')
           echo 'Generating sedge...'
           ./sedge deps install
           ./sedge generate --logging none \
