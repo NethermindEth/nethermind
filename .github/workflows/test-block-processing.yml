@@ -271,7 +271,7 @@ jobs:
 
   compare-results:
     needs: [run-script, check-artifacts]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, LinuxAMD]
     steps:
       - name: Extract keys from matrix
         id: extract-keys
