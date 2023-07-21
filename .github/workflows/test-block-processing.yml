@@ -32,7 +32,7 @@ jobs:
           current_branch="${{ github.ref }}"
           current_branch="${current_branch#refs/heads/}"
           if [ -z "${{ github.event.inputs.branches_to_compare }}" ]; then
-            branches="$current_branch,master,State-cache"
+            branches="$current_branch,master"
           else
             branches="$current_branch,${{ github.event.inputs.branches_to_compare }}"
           fi
