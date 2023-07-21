@@ -108,6 +108,7 @@ namespace Nethermind.Init.Steps
                 _api.GasPriceOracle,
                 _api.EthSyncingInfo);
 
+            RpcLimits.Init(rpcConfig.RequestQueueLimit);
             rpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout, _api.LogManager, rpcConfig.RequestQueueLimit);
 
             if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));

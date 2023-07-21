@@ -19,7 +19,7 @@ namespace Nethermind.JsonRpc.Modules
             int requestQueueLimit = 0)
             where T : IRpcModule
         {
-            rpcModuleProvider.Register(new BoundedModulePool<T>(factory, maxCount, timeout, logManager, requestQueueLimit));
+            rpcModuleProvider.Register(new BoundedModulePool<T>(factory, maxCount, timeout, logManager));
         }
 
         public static void RegisterBoundedByCpuCount<T>(
