@@ -241,18 +241,8 @@ jobs:
           echo "Script execution complete."
           
           # Clear the trap
-          trap - INT TERM
-          
-      - name: Save Output from Kute
-        if: matrix.artifactExists == false
-        id: save-output
-        run: |
-          output_file="${{ matrix.branch }}.json"
-          # Retrieve output from the previous step
-          output=${{ steps.benchmark.outputs.kute_output }}
-          echo "$output" | jq '.' > "$output_file"
-          echo "::set-output name=output_file::$output_file"
-        
+          trap - INT TERM      
+      
       - name: Prepare artifact name
         if: matrix.artifactExists == false
         id: prepare
@@ -260,6 +250,16 @@ jobs:
           branch_name="${{ matrix.branch }}"
           sanitized_branch_name=$(echo $branch_name | tr '/:' '-')
           echo "::set-output name=sanitized_branch_name::$sanitized_branch_name"
+          
+      - name: Save Output from Kute
+        if: matrix.artifactExists == false
+        id: save-output
+        run: |
+          output_file="${{ steps.prepare.outputs.sanitized_branch_name }}.json"
+          # Retrieve output from the previous step
+          output=${{ steps.benchmark.outputs.kute_output }}
+          echo "$output" | jq '.' > "$output_file"
+          echo "::set-output name=output_file::$output_file"
       
       - name: Check and delete existing artifact
         if: matrix.artifactExists == false
