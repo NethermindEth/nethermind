@@ -31,11 +31,10 @@ jobs:
           branches=""
           current_branch="${{ github.ref }}"
           current_branch="${current_branch#refs/heads/}"
-          sanitized_current_branch=$(echo $current_branch | tr '/:' '-')
           if [ -z "${{ github.event.inputs.branches_to_compare }}" ]; then
-            branches="master,State-cache"
+            branches="$current_branch,master,State-cache"
           else
-            branches="$sanitized_current_branch,${{ github.event.inputs.branches_to_compare }}"
+            branches="$current_branch,${{ github.event.inputs.branches_to_compare }}"
           fi
           
           IFS=',' read -ra branch_array <<< "$branches"
@@ -44,11 +43,10 @@ jobs:
           first=true
           for branch in "${branch_array[@]}"; do
             branch=$(echo "$branch" | xargs)
-            sanitized_branch=$(echo $branch | tr '/:' '-')
-            if [ "$sanitized_branch" == "$sanitized_current_branch" ] || [ "${{ github.event.inputs.force_refresh_artifacts }}" == "true" ]; then
+            if [ "$branch" == "$current_branch" ] || [ "${{ github.event.inputs.force_refresh_artifacts }}" == "true" ]; then
               artifactExists=false
             else
-              artifactExists=$(gh api repos/${{ github.repository }}/actions/artifacts | jq --arg branch "$sanitized_branch" '.artifacts[] | select(.name == ("blockPerformanceReport-" + $branch)) | .id' -r)
+              artifactExists=$(gh api repos/${{ github.repository }}/actions/artifacts | jq --arg branch "$branch" '.artifacts[] | select(.name == ("blockPerformanceReport-" + $branch)) | .id' -r)
               if [ -z "$artifactExists" ]; then
                 artifactExists=false
               else
@@ -61,7 +59,7 @@ jobs:
               matrix+=","
             fi
             matrix+="$( jq -n \
-                        --arg branch "$sanitized_branch" \
+                        --arg branch "$branch" \
                         --argjson artifactExists $artifactExists \
                         '{"branch":$branch, "artifactExists":$artifactExists}' )"
           done
@@ -148,6 +146,7 @@ jobs:
           SEQ_API_KEY: ${{ secrets.SEQ_API_KEY }}
           GRAFANA_CONNECTION_STRING: ${{ secrets.GRAFANA_CONNECTION_STRING }}
         run: |
+          sanitized_current_branch=$(echo ${{ matrix.branch }} | tr '/:' '-')
           echo 'Generating sedge...'
           ./sedge deps install
           ./sedge generate --logging none \
@@ -158,7 +157,7 @@ jobs:
           --el-extra-flag Network.MaxActivePeers=0 \
           --el-extra-flag JsonRpc.ReportIntervalSeconds=3600 \
           --el-extra-flag Metrics.Enabled=true \
-          --el-extra-flag Metrics.NodeName=Core_BlockProcessingBenchmark_${{ matrix.branch }} \
+          --el-extra-flag Metrics.NodeName=Core_BlockProcessingBenchmark_$sanitized_current_branch \
           --el-extra-flag Seq.ServerUrl=https://seq.nethermind.io \
           --el-extra-flag Seq.ApiKey=${SEQ_API_KEY} \
           --el-extra-flag Seq.MinLevel=Info \
