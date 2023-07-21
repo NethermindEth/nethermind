@@ -157,10 +157,11 @@ jobs:
           GRAFANA_CONNECTION_STRING: ${{ secrets.GRAFANA_CONNECTION_STRING }}
         run: |
           sanitized_current_branch=$(echo ${{ matrix.branch }} | tr '/:' '-')
+          branch_name=$(echo "$sanitized_current_branch " | tr '[:upper:]' '[:lower:]')
           echo 'Generating sedge...'
           ./sedge deps install
           ./sedge generate --logging none \
-          execution nethermind:${{ matrix.branch }} --map-all --network mainnet \
+          execution nethermind:$branch_name --map-all --network mainnet \
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
           --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
@@ -243,7 +244,7 @@ jobs:
           sleep 120
 
           echo "Running Nethermind Tools Kute..."
-          ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json > ${{ steps.prepare.outputs.sanitized_branch_name }}.json
+          ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json > ${{ github.workspace }}/${{ steps.prepare.outputs.sanitized_branch_name }}.json
             
           echo "Script execution complete."
           
