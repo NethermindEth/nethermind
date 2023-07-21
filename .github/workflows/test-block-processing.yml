@@ -233,7 +233,7 @@ jobs:
           #sleep 120
 
           echo "Running Nethermind Tools Kute..."
-          ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json -d > "${{ steps.prepare.outputs.sanitized_branch_name }}.json"
+          ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json -d >> ${{ steps.prepare.outputs.sanitized_branch_name }}.json
             
           echo "Script execution complete."
           
@@ -249,6 +249,8 @@ jobs:
           echo "::set-output name=sanitized_branch_name::$sanitized_branch_name"
              
       - name: Check and delete existing artifact
+        env:
+          GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         if: matrix.artifactExists == false
         run: |
           artifact_name="blockPerformanceReport-${{ steps.prepare.outputs.sanitized_branch_name }}"
