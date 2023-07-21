@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Tools.Kute.Auth;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
+using Nethermind.Tools.Kute.JsonRpcValidator;
 using Nethermind.Tools.Kute.MessageProvider;
 using Nethermind.Tools.Kute.MetricsConsumer;
 using Nethermind.Tools.Kute.ProgressReporter;
@@ -47,6 +48,11 @@ static class Program
         );
         collection.AddSingleton<IMessageProvider<string>>(new FileMessageProvider(config.MessagesFilePath));
         collection.AddSingleton<IMessageProvider<JsonRpc?>, JsonRpcMessageProvider>();
+        collection.AddSingleton<IJsonRpcValidator>(
+            config.DryRun
+                ? new NullJsonRpcValidator()
+                : new NonErrorJsonRpcValidator()
+        );
         collection.AddSingleton<IJsonRpcMethodFilter>(
             new ComposedJsonRpcMethodFilter(
                 config.MethodFilters
@@ -80,7 +86,7 @@ static class Program
             return new NullProgressReporter();
         });
         collection.AddSingleton<IMetricsConsumer, ConsoleMetricsConsumer>();
-        collection.AddSingleton<IMetricsOutputFormatter>(_ =>
+        collection.AddSingleton<IMetricsOutputFormatter>(
             config.MetricsOutputFormatter switch
             {
                 MetricsOutputFormatter.Report => new MetricsTextOutputFormatter(),
