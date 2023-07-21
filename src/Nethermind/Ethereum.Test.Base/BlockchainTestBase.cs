@@ -133,7 +133,7 @@ namespace Ethereum.Test.Base
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
             IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
             IChainHeadInfoProvider chainHeadInfoProvider = new ChainHeadInfoProvider(specProvider, blockTree, stateReader);
-            ITxStorage txStorage = new BlobTxStorage(new MemDb());
+            ITxStorage txStorage = new BlobTxStorage(new MemDb(), new MemDb());
             ITxPool transactionPool = new TxPool(ecdsa,
                 txStorage,
                 chainHeadInfoProvider,
