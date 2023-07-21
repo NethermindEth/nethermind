@@ -75,7 +75,7 @@ public class Config
         Separator = ',',
         Required = false,
         Default = new string[] { },
-        HelpText = "A comma separated List of regexes of methods to be executed"
+        HelpText = "A comma separated List of regexes of methods to be executed with optional limits"
     )]
     public IEnumerable<string> MethodFilters { get; }
 

@@ -48,8 +48,11 @@ static class Program
         collection.AddSingleton<IMessageProvider<string>>(new FileMessageProvider(config.MessagesFilePath));
         collection.AddSingleton<IMessageProvider<JsonRpc?>, JsonRpcMessageProvider>();
         collection.AddSingleton<IJsonRpcMethodFilter>(
-            new ComposedJsonRpcMethodFilter(config.MethodFilters.Select(pattern =>
-                new PatternJsonRpcMethodFilter(pattern)))
+            new ComposedJsonRpcMethodFilter(
+                config.MethodFilters
+                    .Select(pattern => new PatternJsonRpcMethodFilter(pattern))
+                    .ToList()
+            )
         );
         collection.AddSingleton<IJsonRpcSubmitter>(provider =>
             config.DryRun
@@ -77,12 +80,14 @@ static class Program
             return new NullProgressReporter();
         });
         collection.AddSingleton<IMetricsConsumer, ConsoleMetricsConsumer>();
-        collection.AddSingleton<IMetricsOutputFormatter>(_ => config.MetricsOutputFormatter switch
-        {
-            MetricsOutputFormatter.Report => new MetricsTextOutputFormatter(),
-            MetricsOutputFormatter.Json => new MetricsJsonOutputFormatter(),
-            _ => throw new ArgumentOutOfRangeException(),
-        });
+        collection.AddSingleton<IMetricsOutputFormatter>(_ =>
+            config.MetricsOutputFormatter switch
+            {
+                MetricsOutputFormatter.Report => new MetricsTextOutputFormatter(),
+                MetricsOutputFormatter.Json => new MetricsJsonOutputFormatter(),
+                _ => throw new ArgumentOutOfRangeException(),
+            }
+        );
 
         return collection.BuildServiceProvider();
     }
