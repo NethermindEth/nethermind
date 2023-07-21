@@ -46,7 +46,9 @@ jobs:
             if [ "$branch" == "$current_branch" ] || [ "${{ github.event.inputs.force_refresh_artifacts }}" == "true" ]; then
               artifactExists=false
             else
-              artifactExists=$(gh api repos/${{ github.repository }}/actions/artifacts | jq --arg branch "$branch" '.artifacts[] | select(.name == ("blockPerformanceReport-" + $branch)) | .id' -r)
+              sanitized_branch_name=$(echo $branch | tr '/:' '-')
+              artifact_name="blockPerformanceReport-$sanitized_branch_name"
+              artifactExists=$(gh api repos/${{ github.repository }}/actions/artifacts?name=$artifact_name | jq  '.artifacts[] | .id' -r)
               if [ -z "$artifactExists" ]; then
                 artifactExists=false
               else
@@ -305,7 +307,7 @@ jobs:
           # Process each downloaded artifact
           for branch in $(ls artifacts); do
             # Extract values from the JSON file using jq
-            file_path="artifacts/$branch.json"
+            file_path="artifacts/$branch"
             mean=$(jq -r '.contexts[].timers[] | select(.name == "engine_newPayloadV2") | .histogram.mean' $file_path)
             median=$(jq -r '.contexts[].timers[] | select(.name == "engine_newPayloadV2") | .histogram.median' $file_path)
             percentile95=$(jq -r '.contexts[].timers[] | select(.name == "engine_newPayloadV2") | .histogram.percentile95' $file_path)
