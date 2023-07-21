@@ -243,7 +243,7 @@ jobs:
           sleep 120
 
           echo "Running Nethermind Tools Kute..."
-          ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json >> ${{ steps.prepare.outputs.sanitized_branch_name }}.json
+          ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json > ${{ steps.prepare.outputs.sanitized_branch_name }}.json
             
           echo "Script execution complete."
           
