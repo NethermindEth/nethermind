@@ -257,8 +257,8 @@ jobs:
         if: matrix.artifactExists == false
         run: |
           artifact_name="blockPerformanceReport-${{ steps.prepare.outputs.sanitized_branch_name }}"
-          artifact_id=$(gh api repos/${{ github.repository }}/actions/artifacts | \
-            jq -r --arg name "$artifact_name" '.artifacts[] | select(.name == $name) | .id' | head -1)
+          artifact_id=$(gh api repos/${{ github.repository }}/actions/artifacts?name=$artifact_name | \
+            jq -r '.artifacts[] | .id' | head -1)
       
           if [ -n "$artifact_id" ]; then
             echo "Deleting existing artifact with ID: $artifact_id"
