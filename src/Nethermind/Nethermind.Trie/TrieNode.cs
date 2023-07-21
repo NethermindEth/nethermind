@@ -804,6 +804,13 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
+        public TrieNode CloneWithKeccak()
+        {
+            TrieNode trieNode = Clone();
+            trieNode.Keccak = Keccak;
+            return trieNode;
+        }
+
         public TrieNode CloneWithChangedValue(byte[]? changedValue)
         {
             TrieNode trieNode = Clone();

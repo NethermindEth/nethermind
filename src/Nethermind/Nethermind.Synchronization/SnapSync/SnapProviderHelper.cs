@@ -274,7 +274,7 @@ namespace Nethermind.Synchronization.SnapSync
                     node.ResolveNode(store);
                     node.ResolveKey(store, i == 0);
 
-                    dict[node.Keccak] = node.Clone();
+                    dict[node.Keccak] = node.CloneWithKeccak();
                     dict[node.Keccak].IsBoundaryProofNode = true;
                 }
                 else
