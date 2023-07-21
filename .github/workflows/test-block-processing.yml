@@ -168,7 +168,7 @@ jobs:
         if: matrix.artifactExists == false
         id: benchmark
         run: |
-          ##!/bin/bash
+          #!/bin/bash
 #
           ## Define a function to stop the rsync process
           #stop_rsync() {
