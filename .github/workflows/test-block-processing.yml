@@ -285,13 +285,15 @@ jobs:
           mkdir artifacts
           matrix=$(cat matrix_keys.txt)
           for branch in $matrix; do
+            echo $branch
             sanitized_branch_name=$(echo $branch | tr '/:' '-')
             artifact_name="blockPerformanceReport-$sanitized_branch_name"
-            artifact_id=$(gh api repos/${{ github.repository }}/actions/artifacts | \
-              jq -r --arg name "$artifact_name" '.artifacts[] | select(.name == $name) | .id' | head -1)
+            echo $artifact_name
+            artifact_id=$(gh api repos/NethermindEth/nethermind/actions/artifacts?name=$artifact_name | \
+              jq -r '.artifacts[] | select(.name == $name) | .id' | head -1)
+            echo $artifact_id
             if [ -n "$artifact_id" ]; then
               gh api repos/${{ github.repository }}/actions/artifacts/$artifact_id/zip > $artifact_name.zip
-              ls
               unzip $artifact_name.zip -d ./artifacts/
             fi
           done
