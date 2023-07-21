@@ -270,7 +270,7 @@ jobs:
           path: ${{ steps.prepare.outputs.sanitized_branch_name }}.json
 
   compare-results:
-    needs: [run-script]
+    needs: [run-script, check-artifacts]
     runs-on: ubuntu-latest
     steps:
       - name: Extract keys from matrix
