@@ -5,6 +5,9 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.JsonRpc.Exceptions;
+using Nethermind.Logging;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -15,9 +18,15 @@ namespace Nethermind.JsonRpc.Modules
         private readonly Task<T> _sharedAsTask;
         private readonly ConcurrentQueue<T> _pool = new();
         private readonly SemaphoreSlim _semaphore;
+        private readonly ILogger _logger;
+        private int _rpcQueuedCalls = 0;
+        private readonly int _requestQueueLimit = 0;
+        private bool RequestLimitEnabled => _requestQueueLimit > 0;
 
-        public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout)
+        public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout, ILogManager logManager, int requestQueueLimit = 0)
         {
+            _requestQueueLimit = requestQueueLimit;
+            _logger = logManager.GetClassLogger();
             _timeout = timeout;
             Factory = factory;
 
@@ -35,13 +44,36 @@ namespace Nethermind.JsonRpc.Modules
 
         private async Task<T> SlowPath()
         {
+            if (RequestLimitEnabled && _rpcQueuedCalls > _requestQueueLimit)
+            {
+                throw new LimitExceededException($"Unable to start new queued requests for {typeof(T).Name}. Too many queued requests. Queued calls {_rpcQueuedCalls}.");
+            }
+
+            IncrementRpcQueuedCalls();
+            if (_logger.IsTrace)
+                _logger.Trace($"{typeof(T).Name} Queued RPC requests {_rpcQueuedCalls}");
+
             if (!await _semaphore.WaitAsync(_timeout))
             {
+                DecrementRpcQueuedCalls();
                 throw new ModuleRentalTimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
             }
 
+            DecrementRpcQueuedCalls();
             _pool.TryDequeue(out T result);
             return result;
+        }
+
+        private void IncrementRpcQueuedCalls()
+        {
+            if (RequestLimitEnabled)
+                Interlocked.Increment(ref _rpcQueuedCalls);
+        }
+
+        private void DecrementRpcQueuedCalls()
+        {
+            if (RequestLimitEnabled)
+                Interlocked.Decrement(ref _rpcQueuedCalls);
         }
 
         public void ReturnModule(T module)
