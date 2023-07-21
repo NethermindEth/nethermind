@@ -123,11 +123,11 @@ jobs:
         if: matrix.artifactExists == false
         uses: docker/setup-buildx-action@v2
 
-      - name: Build docker image
-        if: matrix.artifactExists == false
-        run: |
-          branch_name=$(echo "${{ matrix.branch }}" | tr '[:upper:]' '[:lower:]')
-          docker buildx build --platform=linux/amd64 -t $branch_name -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --load .
+      #- name: Build docker image
+      #  if: matrix.artifactExists == false
+      #  run: |
+      #    branch_name=$(echo "${{ matrix.branch }}" | tr '[:upper:]' '[:lower:]')
+      #    docker buildx build --platform=linux/amd64 -t $branch_name -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --load .
 
       - name: Build Kute
         if: matrix.artifactExists == false
@@ -168,72 +168,72 @@ jobs:
         if: matrix.artifactExists == false
         id: benchmark
         run: |
-          #!/bin/bash
-
-          # Define a function to stop the rsync process
-          stop_rsync() {
-              if [ -n "$rsyncPid" ]; then
-                  echo "Stopping rsync process..."
-                  kill $rsyncPid
-                  scriptKilled=true
-              fi
-          }
-          
-          # Set a trap to call stop_rsync function if the script is interrupted
-          trap stop_rsync INT TERM
-          
-          scriptKilled=false
-          
-          totalSize=$(du -sb /mnt/neth_backup/backup/mainnet | cut -f1)
-                    
-          echo "Changing to backup directory..."
-          cd /mnt/neth_backup/backup/mainnet
-          
-          echo "Splitting file list..."
-          fileCount=$(find . -type f -name "filelist.*" | wc -l)
-          # Check if there are any files
-          if [ $fileCount -gt 0 ]; then
-              rm filelist.*
-          fi
-          
-          find . -type f | split -d -l $(( $(find . -type f | wc -l) / 6 )) - filelist.part.
-          
-          echo "Starting parallel rsync..."
-          mkdir -p ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet
-          ls filelist.part.* | parallel -j6 rsync --progress -aWvm --files-from={} . ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet > /dev/null 2>&1 &
-          
-          rsyncPid=$!
-          
-          # Now we will enter a loop where we check the size of the destination directory
-          # We will exit the loop once the size of the destination directory matches the size of the source directory
-          while true; do
-              sleep 10 # Sleep for a while to avoid excessive disk usage
-              currentSize=$(du -sb ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet | cut -f1)
-          
-              # Calculate the percentage of the total size that's been copied
-              percentCopied=$(echo "scale=4; $currentSize * 100 / $totalSize" | bc)
-              echo "Percentage copied: $percentCopied%"
-          
-              # Break the loop if rsync process is not running anymore
-              if ! ps -p $rsyncPid > /dev/null; then
-                  break
-              fi
-          done
-          
-          # Break the loop if the script was interrupted
-          if $scriptKilled; then
-              echo "Script was interrupted. Not proceeding with further iterations."
-              exit 1
-          fi
-          
-          echo "Starting execution docker compose..."
-          docker compose -f ${{ github.workspace }}/sedge-data/docker-compose.yml up -d execution
-          
-          echo "Sleeping for 120 seconds..."
-          sleep 120
+          ##!/bin/bash
+#
+          ## Define a function to stop the rsync process
+          #stop_rsync() {
+          #    if [ -n "$rsyncPid" ]; then
+          #        echo "Stopping rsync process..."
+          #        kill $rsyncPid
+          #        scriptKilled=true
+          #    fi
+          #}
+          #
+          ## Set a trap to call stop_rsync function if the script is interrupted
+          #trap stop_rsync INT TERM
+          #
+          #scriptKilled=false
+          #
+          #totalSize=$(du -sb /mnt/neth_backup/backup/mainnet | cut -f1)
+          #          
+          #echo "Changing to backup directory..."
+          #cd /mnt/neth_backup/backup/mainnet
+          #
+          #echo "Splitting file list..."
+          #fileCount=$(find . -type f -name "filelist.*" | wc -l)
+          ## Check if there are any files
+          #if [ $fileCount -gt 0 ]; then
+          #    rm filelist.*
+          #fi
+          #
+          #find . -type f | split -d -l $(( $(find . -type f | wc -l) / 6 )) - filelist.part.
+          #
+          #echo "Starting parallel rsync..."
+          #mkdir -p ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet
+          #ls filelist.part.* | parallel -j6 rsync --progress -aWvm --files-from={} . ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet > /dev/null 2>&1 &
+          #
+          #rsyncPid=$!
+          #
+          ## Now we will enter a loop where we check the size of the destination directory
+          ## We will exit the loop once the size of the destination directory matches the size of the source directory
+          #while true; do
+          #    sleep 10 # Sleep for a while to avoid excessive disk usage
+          #    currentSize=$(du -sb ${{ github.workspace }}/sedge-data/execution-data/nethermind_db/mainnet | cut -f1)
+          #
+          #    # Calculate the percentage of the total size that's been copied
+          #    percentCopied=$(echo "scale=4; $currentSize * 100 / $totalSize" | bc)
+          #    echo "Percentage copied: $percentCopied%"
+          #
+          #    # Break the loop if rsync process is not running anymore
+          #    if ! ps -p $rsyncPid > /dev/null; then
+          #        break
+          #    fi
+          #done
+          #
+          ## Break the loop if the script was interrupted
+          #if $scriptKilled; then
+          #    echo "Script was interrupted. Not proceeding with further iterations."
+          #    exit 1
+          #fi
+          #
+          #echo "Starting execution docker compose..."
+          #docker compose -f ${{ github.workspace }}/sedge-data/docker-compose.yml up -d execution
+          #
+          #echo "Sleeping for 120 seconds..."
+          #sleep 120
 
           echo "Running Nethermind Tools Kute..."
-          output=$(${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json)
+          output=$(${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json -d)
           
           printf "%s\n" "$output"
           echo "::set-output name=kute_output::$output"
@@ -258,6 +258,9 @@ jobs:
           output_file="${{ steps.prepare.outputs.sanitized_branch_name }}.json"
           # Retrieve output from the previous step
           output=${{ steps.benchmark.outputs.kute_output }}
+          
+          echo $output
+          
           echo "$output" | jq '.' > "$output_file"
           echo "::set-output name=output_file::$output_file"
       
