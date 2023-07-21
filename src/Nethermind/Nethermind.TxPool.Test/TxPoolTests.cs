@@ -1612,7 +1612,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_not_add_nonce_gap_blob_tx_even_to_not_full_TxPool([Values(true, false)] bool isBlob)
         {
-            _txPool = CreatePool(new TxPoolConfig(){ Size = 128 }, GetCancunSpecProvider());
+            _txPool = CreatePool(new TxPoolConfig() { Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction firstTx = Build.A.Transaction
@@ -1649,7 +1649,7 @@ namespace Nethermind.TxPool.Test
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             }
 
-            _txPool = CreatePool(new TxPoolConfig(){ Size = 128 }, GetCancunSpecProvider());
+            _txPool = CreatePool(new TxPoolConfig() { Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction firstTx = GetTx(firstIsBlob, UInt256.Zero);
@@ -1673,7 +1673,7 @@ namespace Nethermind.TxPool.Test
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             }
 
-            _txPool = CreatePool(new TxPoolConfig(){ Size = 128 }, GetCancunSpecProvider());
+            _txPool = CreatePool(new TxPoolConfig() { Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction firstTx = GetTx(firstIsBlob, UInt256.Zero);
@@ -1815,7 +1815,7 @@ namespace Nethermind.TxPool.Test
         public void should_not_throw_when_asking_for_non_existing_tx()
         {
             TxPoolConfig txPoolConfig = new() { Size = 10 };
-            BlobTxStorage blobTxStorage = new(new MemDb(), new MemDb());
+            BlobTxStorage blobTxStorage = new(new MemDb());
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
 
             _txPool.TryGetPendingTransaction(TestItem.KeccakA, out Transaction blobTxReturned).Should().BeFalse();
@@ -1865,7 +1865,7 @@ namespace Nethermind.TxPool.Test
             _txPool.TryGetPendingTransaction(newTx.Hash!, out blobTxReturned).Should().BeTrue();
             blobTxReturned.Should().BeEquivalentTo(newTx);
             blobTxStorage.TryGet(oldTx.Hash, out blobTxFromDb).Should().BeFalse();
-            blobTxStorage.TryGet(newTx.Hash, out  blobTxFromDb).Should().BeTrue();
+            blobTxStorage.TryGet(newTx.Hash, out blobTxFromDb).Should().BeTrue();
             blobTxFromDb.Should().BeEquivalentTo(newTx, options => options
                 .Excluding(t => t.SenderAddress) // sender is not encoded/decoded...
                 .Excluding(t => t.GasBottleneck) // ...as well as GasBottleneck...
@@ -1913,7 +1913,7 @@ namespace Nethermind.TxPool.Test
             bool shouldReplace = blobsInFirstTx <= blobsInSecondTx;
             const int initialFee = 10;
 
-            _txPool = CreatePool(new TxPoolConfig(){ Size = 128 }, GetCancunSpecProvider());
+            _txPool = CreatePool(new TxPoolConfig() { Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction firstTx = Build.A.Transaction
