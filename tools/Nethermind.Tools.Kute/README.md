@@ -34,16 +34,22 @@ Some typical usages are as follow:
 -i /rpc-logs -s keystore/jwt-secret -o Json
 ```
 
-### Use a single message file, using only `engine_` and `eth_` methods
+### Use a single message file, using only `engine` and `eth` methods
 
 ```
--i /rpc.0 -s keystore/jwt-secret -f engine_, eth_
+-i /rpc.0 -s keystore/jwt-secret -f engine, eth
 ```
 
-### Use a single message file, using only the first 100 `engine_` methods
+### Use a single message file, using only the first 100 methods
 
 ```
--i /rpc.0 -s keystore/jwt-secret -f engine_=100
+-i /rpc.0 -s keystore/jwt-secret -f .*=100
+```
+
+### Use a single message file, using only the first 50 `engine_newPayloadV2` or `engine_newPayloadV3` methods
+
+```
+-i /rpc.0 -s keystore/jwt-secret -f engine_newPayloadV[23]=50
 ```
 
 ### Connect to a Nethermind Client running in a specific address and TTL
