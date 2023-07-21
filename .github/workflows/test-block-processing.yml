@@ -284,6 +284,7 @@ jobs:
         run: |
           mkdir artifacts
           matrix=$(cat matrix_keys.txt)
+          echo $matrix
           for branch in $matrix; do
             sanitized_branch_name=$(echo $branch | tr '/:' '-')
             artifact_name="blockPerformanceReport-$sanitized_branch_name"
