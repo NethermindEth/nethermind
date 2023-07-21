@@ -295,7 +295,7 @@ jobs:
               #mv artifacts/output.json artifacts/${branch}.json
             fi
           done
-          ls -a
+          ls -a 
           ls -a artifacts
         env:
           GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
