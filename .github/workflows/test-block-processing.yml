@@ -235,8 +235,9 @@ jobs:
           echo "Running Nethermind Tools Kute..."
           output=$(${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json -d)
           
-          printf "%s\n" "$output"
           echo "::set-output name=kute_output::$output"
+          
+          echo $output
             
           echo "Script execution complete."
           
