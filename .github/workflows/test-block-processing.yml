@@ -119,7 +119,9 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
       - name: Build docker image
-        run: docker buildx build --platform=linux/amd64 -t ${{ matrix.branch }} -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --load .
+        run: |
+          branch_name=$(echo "${{ matrix.branch }}" | tr '[:upper:]' '[:lower:]')
+          docker buildx build --platform=linux/amd64 -t $branch_name -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --load .
 
       - name: Build Kute
         run: dotnet build ./tools/Nethermind.Tools.Kute -c Release
@@ -145,7 +147,7 @@ jobs:
           --el-extra-flag Network.MaxActivePeers=0 \
           --el-extra-flag JsonRpc.ReportIntervalSeconds=3600 \
           --el-extra-flag Metrics.Enabled=true \
-          --el-extra-flag Metrics.NodeName=Core_BlockProcessingBenchmark_${{ github.ref }} \
+          --el-extra-flag Metrics.NodeName=Core_BlockProcessingBenchmark_${{ matrix.branch }} \
           --el-extra-flag Seq.ServerUrl=https://seq.nethermind.io \
           --el-extra-flag Seq.ApiKey=${SEQ_API_KEY} \
           --el-extra-flag Seq.MinLevel=Info \
@@ -226,6 +228,7 @@ jobs:
           output=$(${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json -p)
           
           printf "%s\n" "$output"
+          echo "::set-output name=kute_output::$output"
           
           echo "Get Final block and validate if correct..."
           curl --data '{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8545
@@ -236,11 +239,13 @@ jobs:
           trap - INT TERM
           
       - name: Save Output from Kute
+        id: save-output
         run: |
-          output_file="output.json"
+          output_file="${{ matrix.branch }}.json"
+          # Retrieve output from the previous step
+          output=${{ steps.benchmark.outputs.kute_output }}
           echo "$output" | jq '.' > "$output_file"
           echo "::set-output name=output_file::$output_file"
-        id: save-output
         
       - name: Prepare artifact name
         id: prepare
@@ -271,27 +276,43 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-    strategy:
-      matrix: ${{ fromJson(needs.check-artifacts.outputs.matrix) }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3.5.3
-
       - name: Download Artifacts
         id: download-artifacts
         run: |
           mkdir artifacts
-          for branch in "${{ matrix.branch }}"; do
-            artifact_name="blockPerformanceReport-${{ matrix.branch }}"
+          matrix=${{ fromJson(needs.check-artifacts.outputs.matrix) }}
+          for item in "${matrix[@]}"; do
+            branch=${item.branch}
+            sanitized_branch_name=$(echo $branch | tr '/:' '-')
+            artifact_name="blockPerformanceReport-$sanitized_branch_name"
             artifact_id=$(gh api repos/${{ github.repository }}/actions/artifacts | \
               jq -r --arg name "$artifact_name" '.artifacts[] | select(.name == $name) | .id' | head -1)
             
             if [ -n "$artifact_id" ]; then
               gh api repos/${{ github.repository }}/actions/artifacts/$artifact_id/zip --output artifacts/$artifact_name.zip
               unzip artifacts/$artifact_name.zip -d artifacts/
+              mv artifacts/output.json artifacts/${branch}.json
             fi
           done
-          
+      
       - name: Compare Artifacts
         run: |
-          # Add your comparison logic here.
+          # Create header for CSV file
+          echo "branch,mean,median,percentile95,stdDev,count,sum" > output.csv
+          # Process each downloaded artifact
+          for branch in $(ls artifacts); do
+            # Extract values from the JSON file using jq
+            file_path="artifacts/$branch.json"
+            mean=$(jq -r '.contexts[].timers[] | select(.name == "engine_newPayloadV2") | .histogram.mean' $file_path)
+            median=$(jq -r '.contexts[].timers[] | select(.name == "engine_newPayloadV2") | .histogram.median' $file_path)
+            percentile95=$(jq -r '.contexts[].timers[] | select(.name == "engine_newPayloadV2") | .histogram.percentile95' $file_path)
+            stdDev=$(jq -r '.contexts[].timers[] | select(.name == "engine_newPayloadV2") | .histogram.stdDev' $file_path)
+            count=$(jq -r '.contexts[].timers[] | select(.name == "engine_newPayloadV2") | .count' $file_path)
+            sum=$(jq -r '.contexts[].timers[] | select(.name == "engine_newPayloadV2") | .histogram.sum' $file_path)
+            # Append data to the CSV file
+            echo "$branch,$mean,$median,$percentile95,$stdDev,$count,$sum" >> output.csv
+          done
+          # Output the CSV file in a pretty format
+          column -t -s ',' output.csv
+      
