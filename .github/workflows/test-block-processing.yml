@@ -169,7 +169,7 @@ jobs:
         id: benchmark
         run: |
           #!/bin/bash
-#
+
           ## Define a function to stop the rsync process
           #stop_rsync() {
           #    if [ -n "$rsyncPid" ]; then
