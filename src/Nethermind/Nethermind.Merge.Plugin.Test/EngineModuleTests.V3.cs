@@ -125,7 +125,7 @@ public partial class EngineModuleTests
 
     [TestCase(false, PayloadStatus.Valid)]
     [TestCase(true, PayloadStatus.Invalid)]
-    public async Task NewPayloadV3_should_decline_mempool_encoding(bool inMempoolForm, string expectedPayloadStatus)
+    public virtual async Task NewPayloadV3_should_decline_mempool_encoding(bool inMempoolForm, string expectedPayloadStatus)
     {
         (IEngineRpcModule rpcModule, string payloadId, Transaction[] transactions) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
 
