@@ -274,12 +274,13 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+      MATRIX: ${{ fromJson(needs.check-artifacts.outputs.matrix) }}
     steps:
       - name: Download Artifacts
         id: download-artifacts
         run: |
           mkdir artifacts
-          matrix=$(echo '${{ fromJson(needs.check-artifacts.outputs.matrix) }}' | jq -r 'keys[]')
+          matrix=$(echo '$MATRIX' | jq -r 'keys[]')
           for branch in $matrix; do
             branch=${item.branch}
             sanitized_branch_name=$(echo $branch | tr '/:' '-')
