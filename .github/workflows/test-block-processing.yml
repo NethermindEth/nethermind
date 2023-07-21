@@ -276,7 +276,8 @@ jobs:
       - name: Extract keys from matrix
         id: extract-keys
         run: |
-          echo '${{ fromJson(needs.check-artifacts.outputs.matrix) }}' | jq -r 'keys[]' > matrix_keys.txt
+          matrix=$(echo '${{ needs.check-artifacts.outputs.matrix }}' | jq -r 'keys[]')
+
       - name: Download Artifacts
         id: download-artifacts
         run: |
