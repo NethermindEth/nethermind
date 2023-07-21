@@ -1557,9 +1557,7 @@ namespace Nethermind.TxPool.Test
             {
                 Transaction tx = Build.A.Transaction
                     .WithNonce(0)
-                    .WithValue(0)
                     .WithGasPrice(10)
-                    .WithTo(TestItem.AddressB)
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
 
                 EnsureSenderBalance(TestItem.PrivateKeys[i].Address, UInt256.MaxValue);
@@ -1574,9 +1572,7 @@ namespace Nethermind.TxPool.Test
             PrivateKey privateKeyOfAttacker = TestItem.PrivateKeys[txPoolConfig.Size];
             Transaction nonceGapTx = Build.A.Transaction
                 .WithNonce(nonceGap)
-                .WithValue(0)
                 .WithGasPrice(1000)
-                .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, privateKeyOfAttacker).TestObject;
 
             EnsureSenderBalance(privateKeyOfAttacker.Address, UInt256.MaxValue);
@@ -1590,9 +1586,7 @@ namespace Nethermind.TxPool.Test
             {
                 Transaction tx = Build.A.Transaction
                     .WithNonce((UInt256)(i + 1 + nonceGap))
-                    .WithValue(0)
                     .WithGasPrice(1000)
-                    .WithTo(TestItem.AddressB)
                     .SignedAndResolved(_ethereumEcdsa, privateKeyOfAttacker).TestObject;
 
                 _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.FeeTooLowToCompete);
