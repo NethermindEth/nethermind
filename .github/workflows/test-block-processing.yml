@@ -44,7 +44,7 @@ jobs:
           for branch in "${branch_array[@]}"; do
             branch=$(echo "$branch" | xargs)
             if [ "$branch" == "$current_branch" ] || [ "${{ github.event.inputs.force_refresh_artifacts }}" == "true" ]; then
-              artifactExists=false
+              artifactExists=true
             else
               sanitized_branch_name=$(echo $branch | tr '/:' '-')
               artifact_name="blockPerformanceReport-$sanitized_branch_name"
@@ -274,7 +274,7 @@ jobs:
 
   compare-results:
     needs: [run-script, check-artifacts]
-    runs-on: [self-hosted, LinuxAMD]
+    runs-on: ubuntu-latest
     steps:
       - name: Extract keys from matrix
         id: extract-keys
