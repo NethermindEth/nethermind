@@ -746,8 +746,8 @@ Ratios in last block:
 * DarkPool Level1:      {Metrics.DarkPoolRatioLevel1,24:P5}
 * DarkPool Level2:      {Metrics.DarkPoolRatioLevel2,24:P5}
 Amounts:
-* Blob txs:             {Metrics.BlobTransactionsInBlock,24:P5}
-* Blobs:                {Metrics.BlobsInBlock,24:P5}
+* Blob txs:             {Metrics.BlobTransactionsInBlock,24:N0}
+* Blobs:                {Metrics.BlobsInBlock,24:N0}
 ------------------------------------------------
 ");
         }
