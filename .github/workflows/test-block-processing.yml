@@ -231,19 +231,13 @@ jobs:
           
           echo "Sleeping for 120 seconds..."
           sleep 120
-          
-          echo "Get Starting block and validate if correct..."
-          curl --data '{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8545
-          
+
           echo "Running Nethermind Tools Kute..."
-          output=$(${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json -p)
+          output=$(${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json)
           
           printf "%s\n" "$output"
           echo "::set-output name=kute_output::$output"
-          
-          echo "Get Final block and validate if correct..."
-          curl --data '{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8545
-          
+            
           echo "Script execution complete."
           
           # Clear the trap
