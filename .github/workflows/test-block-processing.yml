@@ -277,7 +277,7 @@ jobs:
         uses: actions/upload-artifact@v3.1.2
         with:
           name: blockPerformanceReport-${{ steps.prepare.outputs.sanitized_branch_name }}
-          path: ${{ steps.prepare.outputs.sanitized_branch_name }}.json
+          path: $HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json
 
   compare-results:
     needs: [run-script, check-artifacts]
