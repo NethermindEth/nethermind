@@ -244,7 +244,14 @@ jobs:
           sleep 120
 
           echo "Running Nethermind Tools Kute..."
-          ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json > ${{ github.workspace }}/${{ steps.prepare.outputs.sanitized_branch_name }}.json
+          if [ ! -d "$HOME/artifacts" ]; then
+            mkdir $HOME/artifacts
+          fi          
+          rm $HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json
+          
+          ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json > $HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json
+          echo "Content of ${{ steps.prepare.outputs.sanitized_branch_name }} json file"
+          cat $HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json
             
           echo "Script execution complete."
           
@@ -274,18 +281,17 @@ jobs:
 
   compare-results:
     needs: [run-script, check-artifacts]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, LinuxAMD]
     steps:
       - name: Extract keys from matrix
         id: extract-keys
         run: |
-          matrix=$(echo '${{ needs.check-artifacts.outputs.matrix }}' | jq -r '.include[].branch')
+          matrix=$(echo '${{ needs.check-artifacts.outputs.matrix }}' | jq -r '.include[] | select(.artifactExists==true) | .branch')
           echo "$matrix" > matrix_keys.txt
 
       - name: Download Artifacts
         id: download-artifacts
         run: |
-          mkdir artifacts
           matrix=$(cat matrix_keys.txt)
           for branch in $matrix; do
             sanitized_branch_name=$(echo $branch | tr '/:' '-')
@@ -294,9 +300,7 @@ jobs:
               jq -r '.artifacts[] | .id' | head -1)
             if [ -n "$artifact_id" ]; then
               gh api repos/${{ github.repository }}/actions/artifacts/$artifact_id/zip > $artifact_name.zip
-              unzip $artifact_name.zip -d ./artifacts/
-              echo "Content of: $sanitized_branch_name json file"
-              cat ./artifacts/"$sanitized_branch_name".json
+              unzip $artifact_name.zip -d $HOME/artifacts
             fi
           done
         env:
@@ -307,9 +311,9 @@ jobs:
           # Create header for CSV file
           echo "branch,mean,median,percentile95,stdDev,count,sum" > output.csv
           # Process each downloaded artifact
-          for branch in $(ls artifacts); do
+          for branch in $(ls $HOME/artifacts); do
             # Extract values from the JSON file using jq
-            file_path="artifacts/$branch"
+            file_path="$HOME/artifacts/$branch"
             mean=$(jq -r '.contexts[].timers[] | select(.name == "engine_newPayloadV2") | .histogram.mean' $file_path)
             median=$(jq -r '.contexts[].timers[] | select(.name == "engine_newPayloadV2") | .histogram.median' $file_path)
             percentile95=$(jq -r '.contexts[].timers[] | select(.name == "engine_newPayloadV2") | .histogram.percentile95' $file_path)
@@ -317,7 +321,13 @@ jobs:
             count=$(jq -r '.contexts[].timers[] | select(.name == "engine_newPayloadV2") | .count' $file_path)
             sum=$(jq -r '.contexts[].timers[] | select(.name == "engine_newPayloadV2") | .histogram.sum' $file_path)
             # Append data to the CSV file
-            echo "$branch,$mean,$median,$percentile95,$stdDev,$count,$sum" >> output.csv
+            echo "${branch%.json},$mean,$median,$percentile95,$stdDev,$count,$sum" >> output.csv
           done
           # Output the CSV file in a pretty format
           column -t -s ',' output.csv
+          
+      - name: Cleanup artifacts
+        run: |
+          if [ -d "$HOME/artifacts" ]; then
+            rm -r $HOME/artifacts
+          fi 
