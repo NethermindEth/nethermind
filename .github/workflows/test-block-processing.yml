@@ -1,9 +1,8 @@
-name: Run Block Processing Benchmark
+name: [TESTS] Run Block Processing Benchmark
 
 on:
   push:
     branches:
-      - kch/block_processing_benchmark
       - master
   workflow_dispatch:
     inputs:
@@ -31,11 +30,8 @@ jobs:
           branches=""
           current_branch="${{ github.ref }}"
           current_branch="${current_branch#refs/heads/}"
-          if [ -z "${{ github.event.inputs.branches_to_compare }}" ]; then
-            branches="$current_branch,master,State-cache"
-          else
-            branches="$current_branch,${{ github.event.inputs.branches_to_compare }}"
-          fi
+        
+          branches="$current_branch,${{ github.event.inputs.branches_to_compare }}"         
           
           IFS=',' read -ra branch_array <<< "$branches"
           
@@ -43,7 +39,7 @@ jobs:
           first=true
           for branch in "${branch_array[@]}"; do
             branch=$(echo "$branch" | xargs)
-            if [ "$branch" == "$current_branch" ] || [ "${{ github.event.inputs.force_refresh_artifacts }}" == "" ]; then
+            if [ "$branch" == "$current_branch" ] || [ "${{ github.event.inputs.force_refresh_artifacts }}" == "true" ]; then
               artifactExists=false
             else
               sanitized_branch_name=$(echo $branch | tr '/:' '-')
@@ -172,6 +168,9 @@ jobs:
           --el-extra-flag Seq.ServerUrl=https://seq.nethermind.io \
           --el-extra-flag Seq.ApiKey=${SEQ_API_KEY} \
           --el-extra-flag Seq.MinLevel=Info \
+          # --el-extra-flag Merge.CollectionsPerDecommit=-1
+          # --el-extra-flag Merge.CompactMemory=No
+          # --el-extra-flag Merge.SweepMemory=-1
           --el-extra-flag Metrics.PushGatewayUrl=${GRAFANA_CONNECTION_STRING}
           echo 'Running sedge...'
 
