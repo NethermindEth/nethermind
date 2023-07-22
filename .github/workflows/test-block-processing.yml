@@ -32,7 +32,8 @@ jobs:
           current_branch="${{ github.ref }}"
           current_branch="${current_branch#refs/heads/}"
         
-          branches="$current_branch,${{ github.event.inputs.branches_to_compare }}"         
+          #branches="$current_branch,${{ github.event.inputs.branches_to_compare }}"         
+          branches = "$current_branch,master,State-cache"
           
           IFS=',' read -ra branch_array <<< "$branches"
           
