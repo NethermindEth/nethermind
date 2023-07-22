@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - kch/block_processing_benchmark
   workflow_dispatch:
     inputs:
       branches_to_compare:
@@ -39,7 +40,7 @@ jobs:
           first=true
           for branch in "${branch_array[@]}"; do
             branch=$(echo "$branch" | xargs)
-            if [ "$branch" == "$current_branch" ] || [ "${{ github.event.inputs.force_refresh_artifacts }}" == "true" ]; then
+            if [ "$branch" == "$current_branch" ] || [ "${{ github.event.inputs.force_refresh_artifacts }}" == "" ]; then #temp
               artifactExists=false
             else
               sanitized_branch_name=$(echo $branch | tr '/:' '-')
@@ -246,7 +247,9 @@ jobs:
           if [ ! -d "$HOME/artifacts" ]; then
             mkdir $HOME/artifacts
           fi          
-          rm $HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json
+          if [ -f "$HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json" ]; then
+            rm "$HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json"
+          fi
           
           ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json > $HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json
           echo "Content of ${{ steps.prepare.outputs.sanitized_branch_name }} json file"
