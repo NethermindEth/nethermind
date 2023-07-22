@@ -43,8 +43,8 @@ jobs:
           first=true
           for branch in "${branch_array[@]}"; do
             branch=$(echo "$branch" | xargs)
-            if [ "$branch" == "$current_branch" ] || [ "${{ github.event.inputs.force_refresh_artifacts }}" == "true" ]; then
-              artifactExists=true
+            if [ "$branch" == "$current_branch" ] || [ "${{ github.event.inputs.force_refresh_artifacts }}" == "" ]; then
+              artifactExists=false
             else
               sanitized_branch_name=$(echo $branch | tr '/:' '-')
               artifact_name="blockPerformanceReport-$sanitized_branch_name"
