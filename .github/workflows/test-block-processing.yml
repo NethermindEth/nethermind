@@ -1,4 +1,4 @@
-name: [TESTS] Run Block Processing Benchmark
+name: Run Block Processing Benchmark
 
 on:
   push:
