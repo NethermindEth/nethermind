@@ -33,7 +33,7 @@ RUN dotnet tool install --tool-path /dotnetcore-tools dotnet-trace && \
 
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:7.0
 
-RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 procps && \
+RUN apt-get update && apt-get -y install libsnappy-dev procps && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /nethermind
