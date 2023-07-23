@@ -25,9 +25,9 @@ do
   cp -r configs $output_path/$rid
   mkdir $output_path/$rid/keystore
 
-  # A temporary symlink for Linux to support existing scripts
+  # A temporary symlink for Linux to support existing scripts if any
   # To be removed after a few months
-  [[ $rid == linux* ]] && ln -s $output_path/$rid/nethermind $output_path/$rid/Nethermind.Runner
+  [[ $rid == linux* ]] && ln -s -r $output_path/$rid/nethermind $output_path/$rid/Nethermind.Runner
 done
 
 cd ..
