@@ -32,6 +32,7 @@ env:
 jobs:
   publish-docker:
     if: github.repository_owner == 'NethermindEth'
+    name: Publish to Docker Hub
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
