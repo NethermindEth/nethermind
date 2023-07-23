@@ -13,9 +13,9 @@ ARG COMMIT_HASH
 COPY . .
 
 RUN if [ "$TARGETARCH" = "amd64" ]; \
-    then dotnet publish src/Nethermind/Nethermind.Runner -c release -r $TARGETOS-x64 -o out \
+    then dotnet publish src/Nethermind/Nethermind.Runner -c release -r $TARGETOS-x64 -o out --sc false \
       -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH -p:Deterministic=true ; \
-    else dotnet publish src/Nethermind/Nethermind.Runner -c release -r $TARGETOS-$TARGETARCH -o out \
+    else dotnet publish src/Nethermind/Nethermind.Runner -c release -r $TARGETOS-$TARGETARCH -o out --sc false \
       -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH -p:Deterministic=true ; \
     fi
 
@@ -26,7 +26,7 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG BUILDPLATFORM
 
-RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6
+RUN apt-get update && apt-get -y install libsnappy-dev
 
 WORKDIR /nethermind
 

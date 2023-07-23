@@ -17,13 +17,13 @@ RUN if [ "$TARGETARCH" = "amd64" ]; \
       dotnet tool install JetBrains.dotTrace.GlobalTools --version 2022.3.3 --tool-path /tmp/ && \
       dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.$TARGETOS-x64 \
         --version 2022.3.3 --package-directory /tmp/ && \
-      dotnet publish src/Nethermind/Nethermind.Runner -c release -r $TARGETOS-x64 -o out \
+      dotnet publish src/Nethermind/Nethermind.Runner -c release -r $TARGETOS-x64 -o out --sc false \
         -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH ; \
     else \
       dotnet tool install JetBrains.dotTrace.GlobalTools --version 2022.3.3 --tool-path /tmp/ && \
       dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.$TARGETOS-$TARGETARCH \
         --version 2022.3.3 --package-directory /tmp/ && \
-      dotnet publish src/Nethermind/Nethermind.Runner -c release -r $TARGETOS-$TARGETARCH -o out \
+      dotnet publish src/Nethermind/Nethermind.Runner -c release -r $TARGETOS-$TARGETARCH -o out --sc false \
         -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH ; \
     fi
 
