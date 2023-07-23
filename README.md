@@ -65,7 +65,7 @@ winget install Microsoft.VCRedist.2015+.x64
 #### Install using Windows Package Manager
 
 1. `winget install nethermind`
-2. To run directly: `nethermind.exe -c mainnet` \
+2. To run directly: `nethermind.runner.exe -c mainnet` \
    or with the assistant: `nethermind.launcher.exe` 
 
 ### On macOS
