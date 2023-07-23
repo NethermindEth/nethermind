@@ -213,7 +213,7 @@ namespace Nethermind.HealthChecks
                 {
                     if (_logger.IsWarn)
                         _logger.Warn(
-                            "No incoming messages from Consensus Client. Consensus Client is required to sync the node. Please make sure that it's working properly.");
+                            "No incoming messages from the Consensus Client. A Consensus Client is required to sync the node. Please make sure that it's working properly.");
                 }
             }
         }
