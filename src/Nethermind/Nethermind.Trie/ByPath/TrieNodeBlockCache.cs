@@ -156,6 +156,9 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
 
     public void SetRootHashForBlock(long blockNo, Keccak? rootHash)
     {
+        if (_nodesByBlock.Count == 0)
+            return;
+
         rootHash ??= Keccak.EmptyTreeHash;
         if (_rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
             blocks.Add(blockNo);
