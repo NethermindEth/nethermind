@@ -74,7 +74,7 @@ jobs:
           matrix+="]}"
           echo $matrix > matrix.json
           cat matrix.json
-          echo "::set-output name=matrix::$(jq -c . matrix.json)"
+          echo "matrix=$(jq -c . matrix.json)" >> $GITHUB_OUTPUT
           
   run-script:
     needs: [check-artifacts]
@@ -126,7 +126,7 @@ jobs:
         run: |
           branch_name="${{ matrix.branch }}"
           sanitized_branch_name=$(echo $branch_name | tr '/:' '-')
-          echo "::set-output name=sanitized_branch_name::$sanitized_branch_name"
+          echo "sanitized_branch_name=$sanitized_branch_name" >> $GITHUB_OUTPUT
           
       - name: Configure settings
         if: matrix.artifactExists == false
@@ -204,10 +204,10 @@ jobs:
           
           scriptKilled=false
           
-          totalSize=$(du -sb /mnt/neth_backup/backup/mainnet | cut -f1)
+          totalSize=$(du -sb /mnt/agent_sync_db/execution-data/nethermind_db/mainnet | cut -f1)
                     
           echo "Changing to backup directory..."
-          cd /mnt/neth_backup/backup/mainnet
+          cd /mnt/agent_sync_db/execution-data/nethermind_db/mainnet
           
           echo "Splitting file list..."
           fileCount=$(find . -type f -name "filelist.*" | wc -l)
