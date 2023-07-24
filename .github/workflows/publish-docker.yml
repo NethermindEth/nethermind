@@ -8,14 +8,6 @@ on:
       
   workflow_dispatch:
     inputs:
-      repo:
-        description: Docker Hub repo
-        required: true
-        default: Staging
-        type: choice
-        options:
-          - Production
-          - Staging
       tag:
         description: Image tag
         required: true
@@ -23,11 +15,6 @@ on:
         description: Dockerfile
         required: true
         default: Dockerfile
-        
-env:
-  REPO: ${{ github.event.inputs.repo == 'Production' && 'nethermind/nethermind' || 'nethermindeth/nethermind' }}
-  TAG: ${{ github.event.inputs.tag || 'master' }}
-  DOCKERFILE: ${{ github.event.inputs.dockerfile || 'Dockerfile' }}
 
 jobs:
   publish-docker:
@@ -37,44 +24,21 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
-      - name: Unshallow fetching
-        run: git fetch --unshallow
-      - name: Configure settings
-        id: settings
-        run: |
-          echo "BUILD_TIMESTAMP=$(date '+%s')" >> $GITHUB_OUTPUT
-          echo "COMMIT_HASH=$(git describe --always --exclude=* --abbrev=40)" >> $GITHUB_OUTPUT
-          echo "TAG_FROM_REPO=$(git describe --tags --always | cut -d- -f1)" >> $GITHUB_OUTPUT
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
       - name: Set up Docker Buildx
-        id: buildx
         uses: docker/setup-buildx-action@v2
       - name: Log in to Docker Hub
         if: success()
+        run: echo "${{ secrets.DOCKER_ACCESS_TOKEN }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: Build and push image to Docker Hub (staging)
         run: |
-          echo "${{ secrets.DOCKER_ACCESS_TOKEN }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-      - name: Build and pushing image to Docker Hub / Trigger DAppNode build
-        if: env.TAG == steps.settings.outputs.TAG_FROM_REPO
-        run: |
-          docker buildx build --platform=linux/amd64,linux/arm64 -f ${{ env.DOCKERFILE }} \
-            -t "${{ env.REPO }}:latest" \
-            -t "${{ env.REPO }}:${{ env.TAG }}" \
-            --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} \
-            --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} . --push
-          curl -s -X POST https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches \
-            -H "Accept: application/vnd.github.everest-preview+json" \
-            -H "Content-Type: application/json" \
-            -d '{"event_type":"dappnode","client_payload":{"tag":"${{ env.TAG }}"}}' \
-            -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
-      - name: Build and push image to Docker Hub
-        if: env.TAG != steps.settings.outputs.TAG_FROM_REPO
-        run: |
-          docker buildx build --platform=linux/amd64,linux/arm64 -f ${{ env.DOCKERFILE }} \
-            -t "${{ env.REPO }}:${{ env.TAG }}" \
-            --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} \
-            --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} . --push
+          build_timestamp=$(date '+%s')
+          docker buildx build --platform=linux/amd64,linux/arm64 \
+            -f ${{ github.event.inputs.dockerfile || 'Dockerfile' }} \
+            -t "nethermindeth/nethermind:${{ github.event.inputs.tag || 'master' }}" \
+            --build-arg COMMIT_HASH=$GITHUB_SHA \
+            --build-arg BUILD_TIMESTAMP=$build_timestamp . --push
       - name: Clear Docker cache
         if: always()
-        run: |
-          rm -f $HOME/.docker/config.json
+        run: rm -f $HOME/.docker/config.json
