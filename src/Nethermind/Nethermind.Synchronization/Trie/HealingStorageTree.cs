@@ -35,7 +35,7 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (Recover(e.GetPathPart()))
+            if (Recover(e.TrieNodeException.NodeHash, e.GetPathPart()))
             {
                 return base.Get(rawKey, rootHash);
             }
@@ -52,7 +52,7 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            if (Recover(e.GetPathPart()))
+            if (Recover(e.TrieNodeException.NodeHash, e.GetPathPart()))
             {
                 base.Set(rawKey, value);
             }
@@ -63,7 +63,7 @@ public class HealingStorageTree : StorageTree
         }
     }
 
-    private bool Recover(ReadOnlySpan<byte> pathPart)
+    private bool Recover(in ValueKeccak rlpHash, ReadOnlySpan<byte> pathPart)
     {
         if (_recovery?.CanRecover == true)
         {
@@ -79,10 +79,10 @@ public class HealingStorageTree : StorageTree
                 }
             };
 
-            byte[]? rlp = _recovery.Recover(request).GetAwaiter().GetResult();
+            byte[]? rlp = _recovery.Recover(rlpHash, request).GetAwaiter().GetResult();
             if (rlp is not null)
             {
-                TrieStore.AsKeyValueStore().Set(ValueKeccak.Compute(rlp).Bytes, rlp);
+                TrieStore.AsKeyValueStore().Set(rlpHash.Bytes, rlp);
                 return true;
             }
         }

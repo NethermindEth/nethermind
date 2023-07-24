@@ -40,7 +40,7 @@ public class HealingTrieStoreTests
         HealingTrieStore healingTrieStore = new(db, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, LimboLogs.Instance);
         ITrieNodeRecovery<IReadOnlyList<Keccak>> recovery = Substitute.For<ITrieNodeRecovery<IReadOnlyList<Keccak>>>();
         recovery.CanRecover.Returns(isMainThread);
-        recovery.Recover(Arg.Is<IReadOnlyList<Keccak>>(l => l.SequenceEqual(new[] { key })))
+        recovery.Recover(key, Arg.Is<IReadOnlyList<Keccak>>(l => l.SequenceEqual(new[] { key })))
             .Returns(successfullyRecovered ? Task.FromResult<byte[]?>(rlp) : Task.FromResult<byte[]?>(null));
 
         healingTrieStore.InitializeNetwork(recovery);

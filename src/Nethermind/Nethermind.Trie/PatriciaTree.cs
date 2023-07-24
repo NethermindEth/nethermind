@@ -1125,7 +1125,7 @@ namespace Nethermind.Trie
 
         [DoesNotReturn]
         [StackTraceHidden]
-        private static void ThrowMissingTrieNodeException(in TraverseContext traverseContext, TrieException e)
+        private static void ThrowMissingTrieNodeException(in TraverseContext traverseContext, TrieNodeException e)
         {
             throw new MissingTrieNodeException(e.Message, e, traverseContext.UpdatePath.ToArray(), traverseContext.CurrentIndex);
         }

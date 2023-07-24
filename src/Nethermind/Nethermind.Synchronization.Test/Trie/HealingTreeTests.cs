@@ -22,6 +22,9 @@ namespace Nethermind.Synchronization.Test.Trie;
 [Parallelizable(ParallelScope.Fixtures)]
 public class HealingTreeTests
 {
+    private static readonly byte[] _rlp = { 3, 4 };
+    private static readonly Keccak _key = Keccak.Compute(_rlp);
+
     [Test]
     public void get_state_tree_works()
     {
@@ -51,7 +54,7 @@ public class HealingTreeTests
     }
 
     private static bool PathMatch(GetTrieNodesRequest r, byte[] path, int lastPathIndex) =>
-        r.RootHash == TestItem.KeccakA
+        r.RootHash == _key
         && r.AccountAndStoragePaths.Length == 1
         && r.AccountAndStoragePaths[0].Group.Length == lastPathIndex + 1
         && Bytes.AreEqual(r.AccountAndStoragePaths[0].Group[lastPathIndex], Nibbles.EncodePath(path));
@@ -60,11 +63,11 @@ public class HealingTreeTests
     public void recovery_works_storage_trie([Values(true, false)] bool isMainThread, [Values(true, false)] bool successfullyRecovered)
     {
         HealingStorageTree CreateHealingStorageTree(ITrieStore trieStore, ITrieNodeRecovery<GetTrieNodesRequest> recovery) =>
-            new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, TestItem.KeccakA, recovery);
+            new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, _key, recovery);
         byte[] path = { 1, 2 };
         byte[] addressPath = ValueKeccak.Compute(TestItem.AddressA.Bytes).Bytes.ToArray();
-        recovery_works(isMainThread, successfullyRecovered, path, CreateHealingStorageTree, r =>
-            PathMatch(r, path, 1) && Bytes.AreEqual(r.AccountAndStoragePaths[0].Group[0], addressPath));
+        recovery_works(isMainThread, successfullyRecovered, path, CreateHealingStorageTree,
+            r => PathMatch(r, path, 1) && Bytes.AreEqual(r.AccountAndStoragePaths[0].Group[0], addressPath));
     }
 
     private void recovery_works<T>(
@@ -76,24 +79,23 @@ public class HealingTreeTests
         where T : PatriciaTree
     {
         ITrieStore trieStore = Substitute.For<ITrieStore>();
-        trieStore.FindCachedOrUnknown(TestItem.KeccakA).Returns(
-            k => throw new MissingTrieNodeException("", new TrieNodeException("", TestItem.KeccakA), path, 1),
+        trieStore.FindCachedOrUnknown(_key).Returns(
+            k => throw new MissingTrieNodeException("", new TrieNodeException("", _key), path, 1),
             k => new TrieNode(NodeType.Leaf) { Key = path });
         TestMemDb db = new();
         trieStore.AsKeyValueStore().Returns(db);
 
         ITrieNodeRecovery<GetTrieNodesRequest> recovery = Substitute.For<ITrieNodeRecovery<GetTrieNodesRequest>>();
         recovery.CanRecover.Returns(isMainThread);
-        byte[] rlp = { 3, 4 };
-        recovery.Recover(Arg.Is(requestMatch)).Returns(successfullyRecovered ? Task.FromResult<byte[]?>(rlp) : Task.FromResult<byte[]?>(null));
+        recovery.Recover(_key, Arg.Is(requestMatch)).Returns(successfullyRecovered ? Task.FromResult<byte[]?>(_rlp) : Task.FromResult<byte[]?>(null));
 
         T trie = createTrie(trieStore, recovery);
 
-        Action action = () => trie.Get(stackalloc byte[] { 1, 2, 3 }, TestItem.KeccakA);
+        Action action = () => trie.Get(stackalloc byte[] { 1, 2, 3 }, _key);
         if (isMainThread && successfullyRecovered)
         {
             action.Should().NotThrow();
-            db.KeyWasWritten(kvp => Bytes.AreEqual(kvp.Item1, ValueKeccak.Compute(rlp).Bytes) && Bytes.AreEqual(kvp.Item2, rlp));
+            db.KeyWasWritten(kvp => Bytes.AreEqual(kvp.Item1, ValueKeccak.Compute(_rlp).Bytes) && Bytes.AreEqual(kvp.Item2, _rlp));
         }
         else
         {

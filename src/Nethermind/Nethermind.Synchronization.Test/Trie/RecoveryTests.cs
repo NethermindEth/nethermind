@@ -122,6 +122,6 @@ public class RecoveryTests
     private Task<byte[]?> Recover<T, TRequest>(T recovery, TRequest request, params PeerInfo[] peers) where T : ITrieNodeRecovery<TRequest>
     {
         _syncPeerPool.InitializedPeers.Returns(peers);
-        return recovery.Recover(request);
+        return recovery.Recover(_key, request);
     }
 }

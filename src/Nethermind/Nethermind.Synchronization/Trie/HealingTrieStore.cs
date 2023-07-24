@@ -50,15 +50,15 @@ public class HealingTrieStore : TrieStore
         }
     }
 
-    private bool TryRecover(Keccak keccak, [NotNullWhen(true)] out byte[]? rlp)
+    private bool TryRecover(Keccak rlpHash, [NotNullWhen(true)] out byte[]? rlp)
     {
         if (_recovery?.CanRecover == true)
         {
-            using ArrayPoolList<Keccak> request = new(1) { keccak };
-            rlp = _recovery.Recover(request).GetAwaiter().GetResult();
+            using ArrayPoolList<Keccak> request = new(1) { rlpHash };
+            rlp = _recovery.Recover(rlpHash, request).GetAwaiter().GetResult();
             if (rlp is not null)
             {
-                _keyValueStore.Set(keccak.Bytes, rlp);
+                _keyValueStore.Set(rlpHash.Bytes, rlp);
                 return true;
             }
         }

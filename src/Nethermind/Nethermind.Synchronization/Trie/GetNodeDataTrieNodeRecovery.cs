@@ -22,13 +22,13 @@ public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Keccak
 
     protected override bool CanAllocatePeer(ISyncPeer peer) => peer.CanGetNodeData();
 
-    protected override async Task<byte[]?> RecoverRlpFromPeerBase(ISyncPeer peer, IReadOnlyList<Keccak> request, CancellationTokenSource cts)
+    protected override async Task<byte[]?> RecoverRlpFromPeerBase(ValueKeccak rlpHash, ISyncPeer peer, IReadOnlyList<Keccak> request, CancellationTokenSource cts)
     {
         byte[][] rlp = await peer.GetNodeData(request, cts.Token);
         if (rlp.Length == 1)
         {
             byte[] recoveredRlp = rlp[0];
-            if (ValueKeccak.Compute(recoveredRlp) == request[0])
+            if (ValueKeccak.Compute(recoveredRlp) == rlpHash)
             {
                 return recoveredRlp;
             }
