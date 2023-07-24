@@ -11,79 +11,79 @@ public interface IDiscoveryConfig : IConfig
     /// <summary>
     /// Kademlia - k
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int BucketSize { get; set; }
 
     /// <summary>
     /// Buckets count
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int BucketsCount { get; set; }
 
     /// <summary>
     /// Kademlia - alpha
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int Concurrency { get; }
 
     /// <summary>
     /// Kademlia - b
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int BitsPerHop { get; }
 
     /// <summary>
     /// Max Discovery Rounds
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int MaxDiscoveryRounds { get; }
 
     /// <summary>
     /// Eviction check interval in ms
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int EvictionCheckInterval { get; }
 
     /// <summary>
     /// Send Node Timeout in ms
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int SendNodeTimeout { get; }
 
     /// <summary>
     /// Pong Timeout in ms
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int PongTimeout { get; set; }
 
     /// <summary>
     /// Boot Node Pong Timeout in ms
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int BootnodePongTimeout { get; }
 
     /// <summary>
     /// Pong Timeout in ms
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int PingRetryCount { get; }
 
     /// <summary>
     /// Time between running discovery processes in milliseconds
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int DiscoveryInterval { get; }
 
     /// <summary>
     /// Time between persisting discovered nodes in milliseconds
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int DiscoveryPersistenceInterval { get; }
 
     /// <summary>
     /// Time between discovery cycles in milliseconds
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int DiscoveryNewCycleWaitTime { get; }
 
     /// <summary>
@@ -94,18 +94,18 @@ public interface IDiscoveryConfig : IConfig
     /// <summary>
     /// Timeout for closing UDP channel in milliseconds
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int UdpChannelCloseTimeout { get; }
 
     /// <summary>
     /// Maximum count of NodeLifecycleManagers stored in memory
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int MaxNodeLifecycleManagersCount { get; }
 
     /// <summary>
     /// Count of NodeLifecycleManagers to remove in one cleanup cycle
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem]
     int NodeLifecycleManagersCleanupCount { get; }
 }
