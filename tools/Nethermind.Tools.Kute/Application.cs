@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
 using Nethermind.Tools.Kute.Extensions;
 using Nethermind.Tools.Kute.MessageProvider;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
@@ -54,19 +55,22 @@ class Application
                 switch (jsonRpc)
                 {
                     case null:
+                    {
                         _metrics.TickFailed();
 
                         break;
-
+                    }
                     case JsonRpc.BatchJsonRpc batch:
+                    {
                         using (_metrics.TimeBatch())
                         {
                             await _submitter.Submit(batch);
                         }
 
                         break;
-
+                    }
                     case JsonRpc.SingleJsonRpc single:
+                    {
                         if (single.IsResponse)
                         {
                             _metrics.TickResponses();
@@ -85,19 +89,23 @@ class Application
                             continue;
                         }
 
+                        JsonDocument? result;
                         using (_metrics.TimeMethod(single.MethodName))
                         {
-                            var result = await _submitter.Submit(single);
-                            if (_validator.IsInvalid(result))
-                            {
-                                _metrics.TickFailed();
-                            }
+                            result = await _submitter.Submit(single);
+                        }
+
+                        if (_validator.IsInvalid(result))
+                        {
+                            _metrics.TickFailed();
                         }
 
                         break;
-
+                    }
                     default:
+                    {
                         throw new ArgumentOutOfRangeException(nameof(jsonRpc));
+                    }
                 }
             }
         }
