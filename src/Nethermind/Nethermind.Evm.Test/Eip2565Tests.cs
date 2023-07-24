@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Test
 
             Prepare input = Prepare.EvmCode.FromCode(randomInput);
 
-            (ReadOnlyMemory<byte>, bool) gmpPair = ModExpPrecompile.Instance.Run(input.Done.ToArray(), Berlin.Instance);
+            (ReadOnlyMemory<byte>, bool) gmpPair = ModExpPrecompile.Instance.Run(input.Done.ToArray(), Berlin.Instance, null);
 #pragma warning disable 618
             (ReadOnlyMemory<byte>, bool) bigIntPair = ModExpPrecompile.OldRun(input.Done.ToArray());
 #pragma warning restore 618
@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Test
         public void ModExp_run_should_not_throw_exception(string inputStr)
         {
             Prepare input = Prepare.EvmCode.FromCode(inputStr);
-            Assert.DoesNotThrow(() => ModExpPrecompile.Instance.Run(input.Done.ToArray(), London.Instance));
+            Assert.DoesNotThrow(() => ModExpPrecompile.Instance.Run(input.Done.ToArray(), London.Instance, null));
             long gas = ModExpPrecompile.Instance.DataGasCost(input.Done, London.Instance);
             gas.Should().Be(200);
         }
