@@ -319,7 +319,7 @@ public class TestBlockchain : IDisposable
 
         if (SpecProvider.GenesisSpec.IsEip4788Enabled)
         {
-            BeaconBlockRootPrecompile.SetupBeaconBlockRootPrecompileState(State, genesisBlockBuilder.TestObject.ParentBeaconBlockRoot, genesisBlockBuilder.TestObject.Timestamp);
+            BeaconBlockRootPrecompile.Instance.SetupBeaconBlockRootPrecompileState(isEip4788Enabled: true, State, genesisBlockBuilder.TestObject.ParentBeaconBlockRoot, genesisBlockBuilder.TestObject.Timestamp);
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);
 

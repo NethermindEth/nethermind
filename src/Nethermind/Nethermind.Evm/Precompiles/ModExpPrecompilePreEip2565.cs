@@ -15,9 +15,9 @@ namespace Nethermind.Evm.Precompiles
     ///     https://github.com/ethereum/EIPs/blob/vbuterin-patch-2/EIPS/bigint_modexp.md
     /// </summary>
     [Obsolete("Pre-eip2565 implementation")]
-    public class ModExpPrecompilePreEip2565 : IPrecompile
+    public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565>
     {
-        public static IPrecompile Instance = new ModExpPrecompilePreEip2565();
+        public static ModExpPrecompilePreEip2565 Instance = new ModExpPrecompilePreEip2565();
 
         private ModExpPrecompilePreEip2565()
         {

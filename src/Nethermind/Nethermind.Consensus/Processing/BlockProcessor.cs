@@ -223,18 +223,10 @@ public partial class BlockProcessor : IBlockProcessor
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        if (spec.IsBeaconParentBlockRootAvailable)
-        {
-            _stateProvider.CreateAccountIfNotExists(BeaconBlockRootPrecompile.Address, 1);
-        }
-
         _receiptsTracer.SetOtherTracer(blockTracer);
         _receiptsTracer.StartNewBlockTrace(block);
 
-        if (spec.IsBeaconParentBlockRootAvailable)
-        {
-            BeaconBlockRootPrecompile.SetupBeaconBlockRootPrecompileState(_stateProvider, block.ParentBeaconBlockRoot, block.Timestamp);
-        }
+        BeaconBlockRootPrecompile.Instance.SetupBeaconBlockRootPrecompileState(spec.IsBeaconParentBlockRootAvailable, _stateProvider, block.ParentBeaconBlockRoot, block.Timestamp);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
 

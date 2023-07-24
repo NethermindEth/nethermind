@@ -18,4 +18,10 @@ namespace Nethermind.Evm.Precompiles
 
         (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState state = null);
     }
+
+
+    public interface IPrecompile<TPrecompileTypeInstance> : IPrecompile
+    {
+        static TPrecompileTypeInstance Instance { get; }
+    }
 }

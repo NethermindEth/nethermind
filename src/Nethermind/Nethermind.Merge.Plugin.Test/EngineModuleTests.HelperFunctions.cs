@@ -114,7 +114,7 @@ namespace Nethermind.Merge.Plugin.Test
                 blockRequestV3.ExcessDataGas = excessDataGas;
                 blockRequestV3.ParentBeaconBlockRoot = beaconParentBlockRoot;
 
-                BeaconBlockRootPrecompile.SetupBeaconBlockRootPrecompileState(state, blockRequestV3.ParentBeaconBlockRoot, blockRequestV3.Timestamp);
+                BeaconBlockRootPrecompile.Instance.SetupBeaconBlockRootPrecompileState(spec.IsEip4788Enabled, state, blockRequestV3.ParentBeaconBlockRoot, blockRequestV3.Timestamp);
                 state.Commit(spec);
                 state.CommitTree(blockRequestV3.BlockNumber);
 

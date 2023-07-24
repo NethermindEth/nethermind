@@ -10,9 +10,9 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class Ripemd160Precompile : IPrecompile
+    public class Ripemd160Precompile : IPrecompile<Ripemd160Precompile>
     {
-        public static readonly IPrecompile Instance = new Ripemd160Precompile();
+        public static readonly Ripemd160Precompile Instance = new Ripemd160Precompile();
 
         // missing in .NET Core
         //        private static RIPEMD160 _ripemd;

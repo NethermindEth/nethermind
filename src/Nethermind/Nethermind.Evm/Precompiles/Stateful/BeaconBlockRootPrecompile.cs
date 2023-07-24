@@ -6,20 +6,23 @@ using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles.Stateful;
-public class BeaconBlockRootPrecompile : IPrecompile
+public class BeaconBlockRootPrecompile : IPrecompile<BeaconBlockRootPrecompile>
 {
     public static Address Address { get; } = Address.FromNumber(0x0B);
     public static UInt256 HISTORICAL_ROOTS_LENGTH = 98304;
 
-    public static IPrecompile Instance => new BeaconBlockRootPrecompile();
+    public static BeaconBlockRootPrecompile Instance => new BeaconBlockRootPrecompile();
 
     private byte[] SloadFromStorage(IWorldState state, in UInt256 index)
     {
         StorageCell storageCell = new(Address, index);
         return state.Get(storageCell);
     }
-    public static void SetupBeaconBlockRootPrecompileState(IWorldState stateProvider, Keccak parentBeaconBlockRoot, UInt256 timestamp)
+    public void SetupBeaconBlockRootPrecompileState(bool isEip4788Enabled, IWorldState stateProvider, Keccak parentBeaconBlockRoot, UInt256 timestamp)
     {
+        if (!isEip4788Enabled) return;
+        stateProvider.CreateAccountIfNotExists(BeaconBlockRootPrecompile.Address, 1);
+
         if (parentBeaconBlockRoot is null) return;
 
         UInt256.Mod(timestamp, HISTORICAL_ROOTS_LENGTH, out UInt256 timestampReduced);
