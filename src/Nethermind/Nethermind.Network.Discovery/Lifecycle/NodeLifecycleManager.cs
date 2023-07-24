@@ -199,7 +199,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
         Node[] nodes = _nodeTable
             .GetClosestNodes(msg.SearchedNodeId)
-            .Take(12) // Otherwise it the payload may become too big.
+            .Take(12) // Otherwise the payload may become too big, which is out of spec.
             .ToArray();
         SendNeighbors(nodes);
     }
