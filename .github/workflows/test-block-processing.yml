@@ -16,6 +16,10 @@ on:
         type: boolean
         required: false
         default: false
+        
+concurrency:
+  group: block-processing-benchmark
+  cancel-in-progress: false
 
 jobs:
   check-artifacts:
@@ -32,7 +36,11 @@ jobs:
           current_branch="${{ github.ref }}"
           current_branch="${current_branch#refs/heads/}"
         
-          #branches="$current_branch,${{ github.event.inputs.branches_to_compare }}"         
+          #branches="$current_branch"
+          #if [[ -n "${{ github.event.inputs.branches_to_compare }}" ]]; then
+          #  branches+=",${{ github.event.inputs.branches_to_compare }}"
+          #fi
+          
           branches="$current_branch,master,State-cache"
           
           IFS=',' read -ra branch_array <<< "$branches"
@@ -170,7 +178,10 @@ jobs:
           --el-extra-flag Seq.ServerUrl=https://seq.nethermind.io \
           --el-extra-flag Seq.ApiKey=${SEQ_API_KEY} \
           --el-extra-flag Seq.MinLevel=Info \
-          --el-extra-flag Metrics.PushGatewayUrl=${GRAFANA_CONNECTION_STRING}
+          --el-extra-flag Metrics.PushGatewayUrl=${GRAFANA_CONNECTION_STRING} \
+          --el-extra-flag Merge.CollectionsPerDecommit= 1
+          --el-extra-flag Merge.CompactMemory=No
+          --el-extra-flag Merge.SweepMemory=-1
           echo 'Running sedge...'
 
       - name: Run Benchmark
@@ -330,4 +341,4 @@ jobs:
         run: |
           if [ -d "$HOME/artifacts" ]; then
             rm -r $HOME/artifacts
-          fi 
+          fi
