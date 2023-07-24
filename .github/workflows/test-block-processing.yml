@@ -260,7 +260,7 @@ jobs:
             rm "$HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json"
           fi
           OUTPUT_PATH="$HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json"
-          echo "::set-output name=output_path::$OUTPUT_PATH"
+          echo "output_path=$OUTPUT_PATH" >> $GITHUB_OUTPUT
     
           ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json > $OUTPUT_PATH
           echo "Content of ${{ steps.prepare.outputs.sanitized_branch_name }} json file"
