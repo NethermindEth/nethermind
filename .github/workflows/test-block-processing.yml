@@ -204,10 +204,10 @@ jobs:
           
           scriptKilled=false
           
-          totalSize=$(du -sb /mnt/agent_sync_db/execution-data/nethermind_db/mainnet | cut -f1)
+          totalSize=$(du -sb /mnt/neth_backup/backup/mainnet | cut -f1)
                     
           echo "Changing to backup directory..."
-          cd /mnt/agent_sync_db/execution-data/nethermind_db/mainnet
+          cd /mnt/neth_backup/backup/mainnet
           
           echo "Splitting file list..."
           fileCount=$(find . -type f -name "filelist.*" | wc -l)
