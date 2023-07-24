@@ -259,8 +259,10 @@ jobs:
           if [ -f "$HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json" ]; then
             rm "$HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json"
           fi
-          
-          ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json > $HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json
+          OUTPUT_PATH="$HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json"
+          echo "::set-output name=output_path::$OUTPUT_PATH"
+    
+          ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json > $OUTPUT_PATH
           echo "Content of ${{ steps.prepare.outputs.sanitized_branch_name }} json file"
           cat $HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json
             
@@ -288,7 +290,7 @@ jobs:
         uses: actions/upload-artifact@v3.1.2
         with:
           name: blockPerformanceReport-${{ steps.prepare.outputs.sanitized_branch_name }}
-          path: $HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json
+          path: ${{ steps.benchmark.outputs.output_path }}
 
   compare-results:
     needs: [run-script, check-artifacts]
