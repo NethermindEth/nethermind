@@ -273,7 +273,7 @@ namespace Nethermind.Trie.Pruning
             TrieNode node = _committedNodes[column].GetNode(storagePrefix.ToArray().Concat(nodePath.ToArray()).ToArray(), keccak);
             if (node is null)
             {
-                return new TrieNode(NodeType.Unknown, path: nodePath)
+                return new TrieNode(NodeType.Unknown, path: nodePath, keccak: keccak)
                 {
                     StoreNibblePathPrefix = storagePrefix.ToArray()
                 };
@@ -382,6 +382,8 @@ namespace Nethermind.Trie.Pruning
                     _currentBatches[column] = null;
                 }
             }
+
+            PruneCurrentSet();
         }
 
         private void Persist(TrieNode currentNode, long blockNumber)
@@ -490,6 +492,24 @@ namespace Nethermind.Trie.Pruning
         private void PersistOnShutdown()
         {
             // TODO: this can be used to persist the cache if we want
+        }
+
+        /// <summary>
+        /// Prunes persisted branches of the current commit set root.
+        /// </summary>
+        private void PruneCurrentSet()
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            // We assume that the most recent package very likely resolved many persisted nodes and only replaced
+            // some top level branches. Any of these persisted nodes are held in cache now so we just prune them here
+            // to avoid the references still being held after we prune the cache.
+            // We prune them here but just up to two levels deep which makes it a very lightweight operation.
+            // Note that currently the TrieNode ResolveChild un-resolves any persisted child immediately which
+            // may make this call unnecessary.
+            CurrentPackage?.Root?.PrunePersistedRecursively(2);
+            stopwatch.Stop();
+            Metrics.DeepPruningTime = stopwatch.ElapsedMilliseconds;
         }
 
         #endregion

@@ -189,32 +189,24 @@ namespace Nethermind.Trie
             // TODO: stcg
             //process deletions - it can happend that a root is set too empty hash due to deletions - needs to be outside of root ref condition
             while (_deleteNodes != null && _deleteNodes.TryDequeue(out TrieNode delNode))
-            {
                 _currentCommit.Enqueue(new NodeCommitInfo(delNode));
-            }
 
-            if (RootRef is not null && RootRef.IsDirty)
-            {
-                // _logger.Info("Commiting Changes to TrieStore");
+            bool processCommits = RootRef?.IsDirty == true;
+            if (processCommits)
                 Commit(new NodeCommitInfo(RootRef), skipSelf: skipRoot);
-
-                // reset objects
-                // TODO: why?
-                RootRef!.ResolveKey(TrieStore, true);
-                if (Capability == TrieNodeResolverCapability.Hash)
-                {
-                    SetRootHash(RootRef.Keccak!, true);
-                }
-                else
-                {
-                    SetRootHash(RootRef.Keccak!, false);
-                }
-            }
 
             while (_currentCommit.TryDequeue(out NodeCommitInfo node))
             {
                 if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
                 TrieStore.CommitNode(blockNumber, node, writeFlags: writeFlags);
+            }
+
+            if (processCommits)
+            {
+                RootRef!.ResolveKey(TrieStore, true);
+                //resetting root reference for instances without cache will 'unresolve' root node, freeing TrieNode instances
+                //otherwise block commit sets will retain references to TrieNodes and not free them during e.g. snap sync
+                SetRootHash(RootRef.Keccak!, true);
             }
 
             TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef, writeFlags);
@@ -364,20 +356,7 @@ namespace Nethermind.Trie
             }
             else if (resetObjects)
             {
-                TrieNode? tempRoot = TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
-                try
-                {
-                    tempRoot.ResolveNode(TrieStore);
-                    tempRoot.ResolveKey(TrieStore, true);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e);
-                }
-                finally
-                {
-                    RootRef = tempRoot.Keccak != _rootHash ? TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>(), StoreNibblePathPrefix) : tempRoot;
-                }
+                RootRef = TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
             }
         }
 
@@ -1302,36 +1281,22 @@ namespace Nethermind.Trie
                         }
                         break;
                     case TrieNodeResolverCapability.Path:
-                        // _logger.Info($"Try to get root node from cache: {rootHash}");
                         rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
-                        // _logger.Info($"Try to get root node from cache: {rootRef}");
-                        ////
-
-                        ///
-                        // _logger.Info($"Starting Visitor - Resolve RootNode - rh:{rootHash} crh:{RootHash}");
                         try
                         {
-                            // TrieNode? testNode = new TrieNode(NodeType.Unknown, path: Array.Empty<byte>());
-                            // _logger.Info($"Test Node - try to resolve : {testNode}");
-                            // testNode!.ResolveNode(TrieStore);
-                            // _logger.Info($"Test Node - resolved : {testNode}");
-                            // testNode!.ResolveKey(TrieStore, true);
-                            // _logger.Info($"Test Root Node: Key:{testNode.Key} Keccak:{testNode.Keccak} FullPath:{testNode.FullPath}");
 
-                            // _logger.Info($"fetched rootRef node type: {rootRef?.NodeType}");
                             if (rootRef!.NodeType == NodeType.Unknown)
                             {
                                 rootRef!.ResolveNode(TrieStore);
+                                //as node is searched using path, need to verify that the keccak that was requested is the same as calculated from the resolved data
+                                //maybe this should have been done automatically in ResolveNode if TrieNode has non empty Keccak when resolving (or maybe too much overhead)?
                                 rootRef!.ResolveKey(TrieStore, true);
-                                // _logger.Info($"rootRef resolved keccak to:  {rootRef.Keccak}");
                                 if (rootRef.Keccak != rootHash)
                                 {
-                                    _logger.Error($"PT.Accept wanted: {rootHash} got: {rootRef.Keccak}");
+                                    if (_logger.IsWarn) _logger.Warn($"PatriciaTree.Accept - requested root: {rootHash} resolved root: {rootRef.Keccak}");
                                     throw new TrieException("Root ref hash mismatch!");
                                 }
                             }
-                            // _logger.Info($"root node found:  {rootRef.Keccak}");
-
                         }
                         catch (TrieException)
                         {

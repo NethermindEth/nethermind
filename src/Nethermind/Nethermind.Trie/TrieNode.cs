@@ -331,6 +331,8 @@ namespace Nethermind.Trie
                                 throw new TrieException("Unable to resolve node without its path");
 
                             FullRlp = tree.LoadRlp(FullPath);
+                            //if node was created as unknown, the hash may be different and needs to be recalculated - maybe should throw an exception here?
+                            Keccak = null;
                         }
                         IsPersisted = true;
 
