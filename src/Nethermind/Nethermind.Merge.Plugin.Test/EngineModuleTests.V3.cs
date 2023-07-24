@@ -139,7 +139,7 @@ public partial class EngineModuleTests
         payload.Transactions = transactions.Select(tx => rlpEncoder.Encode(tx, rlpBehaviors).Bytes).ToArray();
         byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
 
-        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, TestItem.KeccakA.BytesToArray());
+        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot.BytesToArray());
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
         result.Data.Status.Should().Be(expectedPayloadStatus);
@@ -405,7 +405,8 @@ public partial class EngineModuleTests
             Timestamp = chain.BlockTree.Head!.Timestamp + 1,
             PrevRandao = TestItem.KeccakH,
             SuggestedFeeRecipient = TestItem.AddressF,
-            Withdrawals = new List<Withdrawal> { TestItem.WithdrawalA_1Eth }
+            Withdrawals = new List<Withdrawal> { TestItem.WithdrawalA_1Eth },
+            BeaconParentBlockRoot = TestItem.KeccakE
         };
         Keccak currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
