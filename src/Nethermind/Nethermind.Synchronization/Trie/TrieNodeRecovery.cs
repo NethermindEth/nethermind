@@ -79,25 +79,14 @@ public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
         return keyRecoveries;
     }
 
-    private List<Recovery> AllocatePeers()
-    {
-        List<Recovery> syncPeerAllocations = new(MaxPeersForRecovery);
-
-        foreach (ISyncPeer peer in _syncPeerPool!.InitializedPeers
-                     .Select(p => p.SyncPeer)
-                     .Where(CanAllocatePeer)
-                     .OrderByDescending(p => p.HeadNumber))
-        {
-            syncPeerAllocations.Add(new Recovery { Peer = peer });
-
-            if (syncPeerAllocations.Count >= MaxPeersForRecovery)
-            {
-                break;
-            }
-        }
-
-        return syncPeerAllocations;
-    }
+    private List<Recovery> AllocatePeers() =>
+        _syncPeerPool!.InitializedPeers
+            .Select(p => p.SyncPeer)
+            .Where(CanAllocatePeer)
+            .OrderByDescending(p => p.HeadNumber)
+            .Take(MaxPeersForRecovery)
+            .Select(peer => new Recovery { Peer = peer })
+            .ToList();
 
     protected abstract bool CanAllocatePeer(ISyncPeer peer);
 
