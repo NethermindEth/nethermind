@@ -35,12 +35,7 @@ namespace Nethermind.Evm.Tracing
         {
             IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1, header.Timestamp + _blocksConfig.SecondsPerSlot);
 
-            long intrinsicGas = tx.GasLimit - gasTracer.IntrinsicGasAt;
-            if (tx.GasLimit > header.GasLimit)
-            {
-                return Math.Max(intrinsicGas, gasTracer.GasSpent + gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec));
-            }
-
+            tx.GasLimit = Math.Min(tx.GasLimit, header.GasLimit); // Limit Gas to the header
             tx.SenderAddress ??= Address.Zero; //If sender is not specified, use zero address.
 
             // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
