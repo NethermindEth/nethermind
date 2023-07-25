@@ -57,6 +57,7 @@ namespace Nethermind.Network.Benchmarks
             var specProvider = MainnetSpecProvider.Instance;
             TxPool.TxPool txPool = new TxPool.TxPool(
                 ecdsa,
+                new BlobTxStorage(new MemDb()),
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(TestBlockchainIds.ChainId),

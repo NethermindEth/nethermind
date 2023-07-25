@@ -12,6 +12,7 @@ namespace Nethermind.TxPool.Collections;
 
 public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 {
+    const int MaxNumberOfBlobsInBlock = (int)(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob);
     private readonly ITxStorage _blobTxStorage;
     private readonly LruCache<ValueKeccak, Transaction> _blobTxCache;
     private readonly ILogger _logger;
@@ -53,14 +54,43 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
         return false;
     }
 
+    // ToDo: add synchronized?
     public IEnumerable<Transaction> GetBlobTransactions()
     {
-        // ToDo: to refactor - it must lazy enumerate starting from the best
-        foreach (Transaction lightBlobTx in GetSnapshot())
+        int pickedBlobs = 0;
+        List<Transaction>? blobTxsToReadd = null;
+
+        while (pickedBlobs < MaxNumberOfBlobsInBlock)
         {
-            TryGetValue(lightBlobTx.Hash!, out Transaction? fullBlobTx);
-            yield return fullBlobTx!;
+            Transaction? bestTxLight = GetFirsts().Min;
+
+            if (bestTxLight?.Hash is null || bestTxLight.BlobVersionedHashes is null)
+            {
+                break;
+            }
+
+            if (TryGetValue(bestTxLight.Hash, out Transaction? fullBlobTx) && pickedBlobs + bestTxLight.BlobVersionedHashes.Length <= MaxNumberOfBlobsInBlock)
+            {
+                yield return fullBlobTx!;
+                pickedBlobs++;
+            }
+
+            if (TryRemove(bestTxLight.Hash))
+            {
+                blobTxsToReadd ??= new(MaxNumberOfBlobsInBlock);
+                blobTxsToReadd.Add(fullBlobTx!);
+            }
         }
+
+
+        if (blobTxsToReadd is not null)
+        {
+            foreach (Transaction fullBlobTx in blobTxsToReadd)
+            {
+                TryInsert(fullBlobTx!, out Transaction? removed);
+            }
+        }
+
     }
 
     public bool TryGetValue(Keccak hash, out Transaction? fullBlobTx)

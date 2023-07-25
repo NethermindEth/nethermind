@@ -15,6 +15,7 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
@@ -60,7 +61,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IGasPriceOracle>(),
                 Substitute.For<IEthSyncingInfo>()),
-                 1, 1000);
+                 1, 1000, LimboLogs.Instance);
         }
 
         [Test]
