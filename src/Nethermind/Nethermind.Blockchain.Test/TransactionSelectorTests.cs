@@ -241,6 +241,7 @@ namespace Nethermind.Blockchain.Test
             Transaction[] blobTransactions = testCase.Transactions
                 .Where(t => t?.SenderAddress is not null)
                 .Where(t => t.SupportsBlobs)
+                .OrderBy(t => t, comparer)
                 .ToArray();
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
             transactionPool.GetPendingBlobTransactions().Returns(blobTransactions);
