@@ -60,6 +60,7 @@ namespace Nethermind.Consensus.Producers
             int i = 0;
             int blobsCounter = 0;
             UInt256 dataGasPrice = UInt256.Zero;
+            List<Transaction>? selectedBlobTxs = null;
 
             foreach (Transaction blobTx in blobTransactions)
             {
@@ -110,7 +111,8 @@ namespace Nethermind.Consensus.Producers
                 if (_logger.IsTrace) _logger.Trace($"Selected shard blob tx {blobTx.ToShortString()} to be potentially included in block, total blobs included: {blobsCounter}.");
 
                 selectedTransactions++;
-                yield return blobTx;
+                selectedBlobTxs ??= new List<Transaction>((int)(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob));
+                selectedBlobTxs.Add(blobTx);
             }
 
             foreach (Transaction tx in transactions)
@@ -129,8 +131,28 @@ namespace Nethermind.Consensus.Producers
 
                 if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be potentially included in block.");
 
+                if (selectedBlobTxs?.Count > 0)
+                {
+                    foreach (Transaction blobTx in new List<Transaction>(selectedBlobTxs))
+                    {
+                        if (comparer.Compare(blobTx, tx) > 0)
+                        {
+                            yield return blobTx;
+                            selectedBlobTxs.Remove(blobTx);
+                        }
+                    }
+                }
+
                 selectedTransactions++;
                 yield return tx;
+            }
+
+            if (selectedBlobTxs?.Count > 0)
+            {
+                foreach (Transaction blobTx in selectedBlobTxs)
+                {
+                    yield return blobTx;
+                }
             }
 
             if (_logger.IsDebug) _logger.Debug($"Potentially selected {selectedTransactions} out of {i} pending transactions checked.");
