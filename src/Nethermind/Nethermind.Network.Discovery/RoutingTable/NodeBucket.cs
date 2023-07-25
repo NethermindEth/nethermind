@@ -11,12 +11,14 @@ public class NodeBucket
 {
     private readonly object _nodeBucketLock = new();
     private readonly LinkedList<NodeBucketItem> _items;
+    private readonly float _dropFullBucketProbability;
 
-    public NodeBucket(int distance, int bucketSize)
+    public NodeBucket(int distance, int bucketSize, float dropFullBucketProbability = 0.0f)
     {
         _items = new LinkedList<NodeBucketItem>();
         Distance = distance;
         BucketSize = bucketSize;
+        _dropFullBucketProbability = dropFullBucketProbability;
     }
 
     /// <summary>
@@ -83,6 +85,18 @@ public class NodeBucket
                 if (!_items.Contains(item))
                 {
                     _items.AddFirst(item);
+                }
+
+                return NodeAddResult.Added();
+            }
+
+            if (Random.Shared.NextSingle() < _dropFullBucketProbability)
+            {
+                NodeBucketItem item = new(node, DateTime.UtcNow);
+                if (!_items.Contains(item))
+                {
+                    _items.AddFirst(item);
+                    _items.RemoveLast();
                 }
 
                 return NodeAddResult.Added();
