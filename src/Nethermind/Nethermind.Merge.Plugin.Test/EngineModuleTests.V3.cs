@@ -117,7 +117,7 @@ public partial class EngineModuleTests
         (IEngineRpcModule rpcModule, string payloadId, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, blobTxCount);
         var result = await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId));
         BlobsBundleV1 getPayloadResultBlobsBundle = result.Data!.BlobsBundle!;
-        Assert.That(result.Data.ExecutionPayload.DataGasUsed, Is.EqualTo(DataGasCalculator.CalculateDataGas(blobTxCount)));
+        Assert.That(result.Data.ExecutionPayload.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobTxCount)));
         Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
@@ -169,7 +169,7 @@ public partial class EngineModuleTests
         moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(new SingletonFactory<IEngineRpcModule>(rpcModule), true));
 
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
-          CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), dataGasUsed: 0, excessDataGas: 0);
+          CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), blobGasUsed: 0, excessBlobGas: 0);
 
         return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig), new(RpcEndpoint.Http), new(), executionPayload);
     }
@@ -284,7 +284,7 @@ public partial class EngineModuleTests
                     .WithTo(TestItem.AddressB)
                     .WithValue(1.GWei())
                     .WithGasPrice(1.GWei())
-                    .WithMaxFeePerDataGas(1.GWei())
+                    .WithMaxFeePerBlobGas(1.GWei())
                     .WithChainId(chainId)
                     .WithSenderAddress(TestItem.AddressA)
                     .WithBlobVersionedHashes(txBlobVersionedHashes)
