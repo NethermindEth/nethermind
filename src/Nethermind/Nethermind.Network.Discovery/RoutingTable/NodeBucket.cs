@@ -99,7 +99,7 @@ public class NodeBucket
                     _items.RemoveLast();
                 }
 
-                return NodeAddResult.Added();
+                return NodeAddResult.Dropped();
             }
 
             NodeBucketItem evictionCandidate = GetEvictionCandidate();

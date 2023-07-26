@@ -110,6 +110,37 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             Assert.Throws<InvalidOperationException>(() => nodeBucket.ReplaceNode(nonExisting, node));
         }
 
+        [Test]
+        public void When_addingToFullBucket_then_randomlyDropEntry()
+        {
+            NodeBucket nodeBucket = new(1, 16, dropFullBucketProbability: .5f);
+            for (int i = 0; i < 16; i++)
+            {
+                Node node = new(
+                    TestItem.PublicKeys[i],
+                    IPAddress.Broadcast.ToString(),
+                    30000);
+
+                nodeBucket.AddNode(node);
+            }
+
+            int dropCount = 0;
+            for (int i = 0; i < 100; i++)
+            {
+                Node node = new(
+                    TestItem.PublicKeys[i+16],
+                    IPAddress.Broadcast.ToString(),
+                    30000);
+
+                if (nodeBucket.AddNode(node).ResultType == NodeAddResultType.Dropped)
+                {
+                    dropCount++;
+                }
+            }
+
+            dropCount.Should().BeInRange(25, 75);
+        }
+
         private static void AddNodes(NodeBucket nodeBucket, int count)
         {
             for (int i = 0; i < count; i++)

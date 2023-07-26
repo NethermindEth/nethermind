@@ -171,7 +171,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         if (_lastNeighbourSize + msg.Nodes.Length == 16)
         {
             // Turns out, other client will split the neighbour msg to two msg, whose size sum up to 16.
-            // Happens practically 99% of the time.
+            // Happens about 70% of the time.
             ProcessNodes(msg);
         }
         else if (_isNeighborsExpected)
