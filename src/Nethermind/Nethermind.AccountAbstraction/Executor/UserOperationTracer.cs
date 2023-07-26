@@ -151,7 +151,7 @@ namespace Nethermind.AccountAbstraction.Executor
             }
         }
 
-        public override  void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue,
+        public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue,
             ReadOnlySpan<byte> currentValue)
         {
             HandleStorageAccess(address, storageIndex);
@@ -198,7 +198,7 @@ namespace Nethermind.AccountAbstraction.Executor
             Error ??= $"simulation failed: balance write allowed only from sender to entrypoint, instead found from: {from} to: {_entryPointAddress} with value {value}";
         }
 
-        public override  void ReportActionError(EvmExceptionType evmExceptionType)
+        public override void ReportActionError(EvmExceptionType evmExceptionType)
         {
             if (evmExceptionType == EvmExceptionType.OutOfGas)
             {
