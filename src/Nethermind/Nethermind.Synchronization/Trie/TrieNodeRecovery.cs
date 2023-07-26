@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
@@ -36,15 +37,14 @@ public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
     {
         if (_logger.IsWarn) _logger.Warn($"Missing trie node {GetMissingNodes(request)}, trying to recover from network");
         using CancellationTokenSource cts = new(Timeouts.Eth);
-        List<Recovery> keyRecoveries = GenerateKeyRecoveries(rlpHash, request, cts);
+        using ArrayPoolList<Recovery> keyRecoveries = GenerateKeyRecoveries(rlpHash, request, cts);
         return await CheckKeyRecoveriesResults(keyRecoveries, cts);
     }
 
     protected abstract string GetMissingNodes(TRequest request);
 
-    protected async Task<byte[]?> CheckKeyRecoveriesResults(List<Recovery> keyRecoveries, CancellationTokenSource cts)
+    protected async Task<byte[]?> CheckKeyRecoveriesResults(ArrayPoolList<Recovery> keyRecoveries, CancellationTokenSource cts)
     {
-
         while (keyRecoveries.Count > 0)
         {
             Task<(Recovery, byte[]?)> task = await Task.WhenAny(keyRecoveries.Select(kr => kr.Task!));
@@ -67,9 +67,9 @@ public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
         return null;
     }
 
-    protected List<Recovery> GenerateKeyRecoveries(in ValueKeccak rlpHash, TRequest request, CancellationTokenSource cts)
+    protected ArrayPoolList<Recovery> GenerateKeyRecoveries(in ValueKeccak rlpHash, TRequest request, CancellationTokenSource cts)
     {
-        List<Recovery> keyRecoveries = AllocatePeers();
+        ArrayPoolList<Recovery> keyRecoveries = AllocatePeers();
         if (_logger.IsDebug) _logger.Debug($"Allocated {keyRecoveries.Count} peers (out of {_syncPeerPool!.InitializedPeers.Count()} initialized peers)");
         foreach (Recovery keyRecovery in keyRecoveries)
         {
@@ -79,14 +79,15 @@ public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
         return keyRecoveries;
     }
 
-    private List<Recovery> AllocatePeers() =>
-        _syncPeerPool!.InitializedPeers
-            .Select(p => p.SyncPeer)
-            .Where(CanAllocatePeer)
-            .OrderByDescending(p => p.HeadNumber)
-            .Take(MaxPeersForRecovery)
-            .Select(peer => new Recovery { Peer = peer })
-            .ToList();
+    private ArrayPoolList<Recovery> AllocatePeers() =>
+        new(MaxPeersForRecovery,
+                _syncPeerPool!.InitializedPeers
+                    .Select(p => p.SyncPeer)
+                    .Where(CanAllocatePeer)
+                    .OrderByDescending(p => p.HeadNumber)
+                    .Take(MaxPeersForRecovery)
+                    .Select(peer => new Recovery { Peer = peer })
+            );
 
     protected abstract bool CanAllocatePeer(ISyncPeer peer);
 
