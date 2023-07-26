@@ -21,12 +21,12 @@ using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Runtime.Intrinsics;
+using Nethermind.Evm.Tracing.Debugger;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 using static System.Runtime.InteropServices.MemoryMarshal;
 
 #if DEBUG
-using Nethermind.Evm.Tracing.DebugTrace;
 #endif
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
