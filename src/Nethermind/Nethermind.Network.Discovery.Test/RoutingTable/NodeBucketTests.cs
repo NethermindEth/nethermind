@@ -128,7 +128,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             for (int i = 0; i < 100; i++)
             {
                 Node node = new(
-                    TestItem.PublicKeys[i+16],
+                    TestItem.PublicKeys[i + 16],
                     IPAddress.Broadcast.ToString(),
                     30000);
 
