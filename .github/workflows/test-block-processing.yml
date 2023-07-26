@@ -41,7 +41,7 @@ jobs:
           #  branches+=",${{ github.event.inputs.branches_to_compare }}"
           #fi
           
-          branches="feature/replay_rpc,State-cache,release/1.19.3,release/1.20.1"
+          branches="release/1.19.3,release/1.20.1,master,State-cache"
           
           IFS=',' read -ra branch_array <<< "$branches"
           
@@ -94,7 +94,7 @@ jobs:
         uses: actions/checkout@v3.5.3
         if: matrix.artifactExists == false
         with:
-          ref: master
+          ref: feature/replay_rpc
           dir: nethermind_master
           
       - name: Cleanup Docker
