@@ -107,7 +107,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
                 IPAddress.Broadcast.ToString(),
                 30002);
 
-            Assert.Throws<InvalidOperationException>(() => nodeBucket.ReplaceNode(nonExisting, node));
+            Assert.DoesNotThrow(() => nodeBucket.ReplaceNode(nonExisting, node));
         }
 
         [Test]
