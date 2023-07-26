@@ -180,7 +180,7 @@ jobs:
           --el-extra-flag Seq.ApiKey=${SEQ_API_KEY} \
           --el-extra-flag Seq.MinLevel=Info \
           --el-extra-flag Metrics.PushGatewayUrl=${GRAFANA_CONNECTION_STRING} \
-          --el-extra-flag Merge.CollectionsPerDecommit=1 \
+          --el-extra-flag Merge.CollectionsPerDecommit=-1 \
           --el-extra-flag Merge.CompactMemory=No \
           --el-extra-flag Merge.SweepMemory=-1
           echo 'Running sedge...'
