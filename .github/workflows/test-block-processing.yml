@@ -95,7 +95,7 @@ jobs:
         if: matrix.artifactExists == false
         with:
           ref: feature/replay_rpc
-          dir: nethermind_master
+          path: nethermind_master
           
       - name: Cleanup Docker
         if: matrix.artifactExists == false
