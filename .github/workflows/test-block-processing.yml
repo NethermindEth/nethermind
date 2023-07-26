@@ -41,7 +41,7 @@ jobs:
           #  branches+=",${{ github.event.inputs.branches_to_compare }}"
           #fi
           
-          branches="$current_branch,master,State-cache"
+          branches="feature/replay_rpc,State-cache,release/1.19.3,release/1.20.1"
           
           IFS=',' read -ra branch_array <<< "$branches"
           
