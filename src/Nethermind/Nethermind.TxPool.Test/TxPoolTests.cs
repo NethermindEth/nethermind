@@ -1609,6 +1609,28 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLowToCompete);
         }
 
+        [TestCase(999_999_999, false)]
+        [TestCase(1_000_000_000, true)]
+        public void should_not_allow_to_add_blob_tx_with_MaxPriorityFeePerGas_lower_than_1GWei(int maxPriorityFeePerGas, bool expectedResult)
+        {
+            TxPoolConfig txPoolConfig = new() { Size = 10 };
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            _headInfo.CurrentPricePerDataGas = UInt256.MaxValue;
+
+            Transaction tx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithMaxFeePerGas((UInt256)maxPriorityFeePerGas)
+                .WithMaxPriorityFeePerGas((UInt256)maxPriorityFeePerGas)
+                .WithMaxFeePerDataGas(UInt256.One)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            _txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(expectedResult
+                ? AcceptTxResult.Accepted
+                : AcceptTxResult.FeeTooLow);
+        }
+
         [Test]
         public void should_not_add_nonce_gap_blob_tx_even_to_not_full_TxPool([Values(true, false)] bool isBlob)
         {
