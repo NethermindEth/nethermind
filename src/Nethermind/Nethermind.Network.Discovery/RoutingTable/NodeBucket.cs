@@ -117,11 +117,6 @@ public class NodeBucket
                 _items.Remove(item);
                 AddNode(nodeToAdd);
             }
-            else
-            {
-                throw new InvalidOperationException(
-                    "Cannot replace non-existing node in the node table bucket");
-            }
         }
     }
 
