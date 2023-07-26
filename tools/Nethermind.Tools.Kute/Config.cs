@@ -29,7 +29,7 @@ public class Config
         shortName: 's',
         longName: "secret",
         Required = true,
-        HelpText = "Path to file with hex encoded secret for JWT authentication"
+        HelpText = "Path to File with hex encoded secret for JWT authentication"
     )]
     public string JwtSecretFilePath { get; }
 
