@@ -84,7 +84,7 @@ public class Config
         longName: "trace",
         Required = false,
         Default = null,
-        HelpText = "An optional file to store JSON-RPC responses"
+        HelpText = "Path to File to store JSON-RPC responses"
     )]
     public string? ResponsesTraceFile { get; }
 
