@@ -21,7 +21,7 @@ public class Config
         longName: "address",
         Required = false,
         Default = "http://localhost:8551",
-        HelpText = "Address where to send JSON RPC calls"
+        HelpText = "Address where to send JSON RPC requests"
     )]
     public string HostAddress { get; }
 
@@ -79,6 +79,15 @@ public class Config
     )]
     public IEnumerable<string> MethodFilters { get; }
 
+    [Option(
+        shortName: 't',
+        longName: "trace",
+        Required = false,
+        Default = null,
+        HelpText = "An optional file to store JSON-RPC responses"
+    )]
+    public string? ResponsesTraceFile { get; }
+
     public Config(
         string messagesFilePath,
         string hostAddress,
@@ -87,7 +96,8 @@ public class Config
         bool dryRun,
         bool showProgress,
         MetricsOutputFormatter metricsOutputFormatter,
-        IEnumerable<string> methodFilters
+        IEnumerable<string> methodFilters,
+        string? responsesTraceFile
     )
     {
         MessagesFilePath = messagesFilePath;
@@ -98,6 +108,6 @@ public class Config
         ShowProgress = showProgress;
         MetricsOutputFormatter = metricsOutputFormatter;
         MethodFilters = methodFilters;
-        ShowProgress = showProgress;
+        ResponsesTraceFile = responsesTraceFile;
     }
 }

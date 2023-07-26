@@ -48,11 +48,20 @@ static class Program
         );
         collection.AddSingleton<IMessageProvider<string>>(new FileMessageProvider(config.MessagesFilePath));
         collection.AddSingleton<IMessageProvider<JsonRpc?>, JsonRpcMessageProvider>();
-        collection.AddSingleton<IJsonRpcValidator>(
-            config.DryRun
-                ? new NullJsonRpcValidator()
-                : new NonErrorJsonRpcValidator()
-        );
+        collection.AddSingleton<IJsonRpcValidator>(_ =>
+        {
+            if (config.DryRun)
+            {
+                return new NullJsonRpcValidator();
+            }
+
+            var validator = new NonErrorJsonRpcValidator();
+            if (config.ResponsesTraceFile is null)
+            {
+                return validator;
+            }
+            return new TracerValidator(validator, config.ResponsesTraceFile);
+        });
         collection.AddSingleton<IJsonRpcMethodFilter>(
             new ComposedJsonRpcMethodFilter(
                 config.MethodFilters
