@@ -78,7 +78,7 @@ jobs:
           
   run-script:
     needs: [check-artifacts]
-    runs-on: [self-hosted, LinuxAMD]
+    runs-on: [self-hosted, Linux, kute]
     strategy:
       max-parallel: 1
       matrix: ${{ fromJson(needs.check-artifacts.outputs.matrix) }}
@@ -204,10 +204,10 @@ jobs:
           
           scriptKilled=false
           
-          totalSize=$(du -sb /mnt/neth_backup/backup/mainnet | cut -f1)
+          totalSize=$(du -sb /mnt/agent_sync_db/backup/mainnet | cut -f1)
                     
           echo "Changing to backup directory..."
-          cd /mnt/neth_backup/backup/mainnet
+          cd /mnt/agent_sync_db/backup/mainnet
           
           echo "Splitting file list..."
           fileCount=$(find . -type f -name "filelist.*" | wc -l)
@@ -262,7 +262,7 @@ jobs:
           OUTPUT_PATH="$HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json"
           echo "output_path=$OUTPUT_PATH" >> $GITHUB_OUTPUT
     
-          ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /root/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json > $OUTPUT_PATH
+          ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /home/runner/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json > $OUTPUT_PATH
           echo "Content of ${{ steps.prepare.outputs.sanitized_branch_name }} json file"
           cat $HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json
             
@@ -294,7 +294,7 @@ jobs:
 
   compare-results:
     needs: [run-script, check-artifacts]
-    runs-on: [self-hosted, LinuxAMD]
+    runs-on: [self-hosted, Linux, kute]
     steps:
       - name: Extract keys from matrix
         id: extract-keys
