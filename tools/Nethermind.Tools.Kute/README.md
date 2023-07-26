@@ -31,7 +31,13 @@ Some typical usages are as follow:
 ### Use a single messages file and emit results as JSON
 
 ```
--i /rpc-logs -s keystore/jwt-secret -o Json
+-i /rpc.0 -s keystore/jwt-secret -o Json
+```
+
+### Use a single messages file and record all responses into a new file
+
+```
+-i /rpc.0 -s keystore/jwt-secret -t rpc.responses.txt
 ```
 
 ### Use a single message file, using only `engine` and `eth` methods
