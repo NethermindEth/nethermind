@@ -89,6 +89,13 @@ jobs:
         with:
           clean: true
           ref: ${{ matrix.branch }}
+
+      - name: Checkout master code for Kute
+        uses: actions/checkout@v3.5.3
+        if: matrix.artifactExists == false
+        with:
+          ref: master
+          dir: nethermind_master
           
       - name: Cleanup Docker
         if: matrix.artifactExists == false
@@ -148,7 +155,7 @@ jobs:
 
       - name: Build Kute
         if: matrix.artifactExists == false
-        run: dotnet build ./tools/Nethermind.Tools.Kute -c Release
+        run: dotnet build ./nethermind_master/tools/Nethermind.Tools.Kute -c Release
       
       - name: Download Sedge
         if: matrix.artifactExists == false
@@ -263,7 +270,7 @@ jobs:
           OUTPUT_PATH="$HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json"
           echo "output_path=$OUTPUT_PATH" >> $GITHUB_OUTPUT
     
-          ${{ github.workspace }}/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /home/runner/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json > $OUTPUT_PATH
+          ${{ github.workspace }}/nethermind_master/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /home/runner/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json > $OUTPUT_PATH
           echo "Content of ${{ steps.prepare.outputs.sanitized_branch_name }} json file"
           cat $HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json
             
