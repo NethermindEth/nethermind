@@ -3,8 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -84,7 +82,7 @@ namespace Nethermind.Evm.Tracing
         private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit)
         {
             OutOfGasTracer tracer = new();
-            transaction.GasLimit = (long)gasLimit;
+            transaction.GasLimit = gasLimit;
             _transactionProcessor.CallAndRestore(transaction, block, tracer);
 
             return !tracer.OutOfGas;
@@ -96,6 +94,7 @@ namespace Nethermind.Evm.Tracing
             {
                 OutOfGas = false;
             }
+
             public bool IsTracingReceipt => true;
             public bool IsTracingActions => false;
             public bool IsTracingOpLevelStorage => false;
@@ -111,22 +110,13 @@ namespace Nethermind.Evm.Tracing
             public bool IsTracingFees => false;
             public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
-            public bool OutOfGas { get; set; }
+            public bool OutOfGas { get; private set; }
 
-            public byte[] ReturnValue { get; set; }
-
-            public byte StatusCode { get; set; }
-
-            public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
+            public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
             {
-                ReturnValue = output;
-                StatusCode = Evm.StatusCode.Success;
             }
-
-            public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
+            public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
             {
-                ReturnValue = output ?? Array.Empty<byte>();
-                StatusCode = Evm.StatusCode.Failure;
             }
 
             public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
@@ -164,22 +154,18 @@ namespace Nethermind.Evm.Tracing
 
             public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportCodeChange(Address address, byte[] before, byte[] after)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportAccountRead(Address address)
@@ -188,42 +174,34 @@ namespace Nethermind.Evm.Tracing
 
             public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportStorageRead(in StorageCell storageCell)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportActionError(EvmExceptionType exceptionType)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportBlockHash(Keccak blockHash)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportByteCode(byte[] byteCode)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
@@ -232,17 +210,14 @@ namespace Nethermind.Evm.Tracing
 
             public void ReportRefund(long refund)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportExtraGasPressure(long extraGasPressure)
             {
-                throw new NotSupportedException();
             }
 
             public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
             {
-                throw new NotSupportedException();
             }
 
             public void SetOperationStack(List<string> stackTrace)
@@ -259,7 +234,6 @@ namespace Nethermind.Evm.Tracing
 
             public void ReportFees(UInt256 fees, UInt256 burntFees)
             {
-                throw new NotImplementedException();
             }
         }
     }
