@@ -66,10 +66,18 @@ class Application
                     }
                     case JsonRpc.BatchJsonRpc batch:
                     {
+                        JsonDocument? result;
                         using (_metrics.TimeBatch())
                         {
-                            await _submitter.Submit(batch);
+                            result = await _submitter.Submit(batch);
                         }
+
+                        if (_validator.IsInvalid(batch, result))
+                        {
+                            _metrics.TickFailed();
+                        }
+
+                        await _responseTracer.TraceResponse(result);
 
                         break;
                     }
