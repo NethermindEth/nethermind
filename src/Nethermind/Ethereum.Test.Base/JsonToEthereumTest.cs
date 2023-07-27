@@ -35,6 +35,7 @@ namespace Ethereum.Test.Base
             network = network.Replace("Merge+3540+3670", "Shanghai");
             network = network.Replace("Shanghai+3855", "Shanghai");
             network = network.Replace("Shanghai+3860", "Shanghai");
+            network = network.Replace("Shanghai+6780", "Cancun");
             return network switch
             {
                 "Frontier" => Frontier.Instance,

@@ -107,7 +107,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
+        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
         {
             specProvider ??= new TestSpecProvider(Berlin.Instance);
             await base.Build(specProvider, initialValues);

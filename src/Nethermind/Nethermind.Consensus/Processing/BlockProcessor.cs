@@ -232,7 +232,7 @@ public partial class BlockProcessor : IBlockProcessor
 
         if (spec.IsEip4844Enabled)
         {
-            block.Header.DataGasUsed = DataGasCalculator.CalculateDataGas(block.Transactions);
+            block.Header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
         block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
@@ -270,8 +270,8 @@ public partial class BlockProcessor : IBlockProcessor
             bh.GasLimit,
             bh.Timestamp,
             bh.ExtraData,
-            bh.DataGasUsed,
-            bh.ExcessDataGas)
+            bh.BlobGasUsed,
+            bh.ExcessBlobGas)
         {
             Bloom = Bloom.Empty,
             Author = bh.Author,
