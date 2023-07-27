@@ -24,5 +24,6 @@ public class LightTransaction : Transaction
         MaxFeePerBlobGas = fullTx.MaxFeePerBlobGas;
         BlobVersionedHashes = new byte[fullTx.BlobVersionedHashes!.Length][];
         GasBottleneck = fullTx.GasBottleneck;
+        Size = fullTx.GetLength();
     }
 }

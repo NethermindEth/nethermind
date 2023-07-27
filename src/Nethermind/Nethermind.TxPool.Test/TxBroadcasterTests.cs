@@ -168,6 +168,34 @@ public class TxBroadcasterTests
     }
 
     [Test]
+    public void should_announce_details_of_full_blob_tx()
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields()
+            .SignedAndResolved().TestObject;
+
+        Transaction lightTx = new LightTransaction(tx);
+
+        int size = tx.GetLength();
+        size.Should().Be(131324);
+        lightTx.GetLength().Should().Be(size);
+
+        _broadcaster.Broadcast(tx, true);
+        _broadcaster.GetSnapshot().Length.Should().Be(1);
+        _broadcaster.GetSnapshot().FirstOrDefault().Should().BeEquivalentTo(lightTx);
+
+        ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
+        peer.Id.Returns(TestItem.PublicKeyA);
+
+        _broadcaster.AddPeer(peer);
+        _broadcaster.BroadcastPersistentTxs();
+
+        peer.Received(1).SendNewTransactions(Arg.Is<IEnumerable<Transaction>>(t => t.FirstOrDefault().GetLength() == size), false);
+    }
+
+    [Test]
     public void should_skip_large_txs_when_picking_best_persistent_txs_to_broadcast([Values(1, 2, 25, 50, 99, 100, 101, 1000)] int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
