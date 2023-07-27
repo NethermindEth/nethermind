@@ -26,14 +26,23 @@ namespace Nethermind.Core
         public TxType Type { get; set; }
 
         public UInt256 Nonce { get; set; }
+
+        // max_priority_fee_per_gas
         public UInt256 GasPrice { get; set; }
+
+        // max_fee_per_gas
+        public UInt256 DecodedMaxFeePerGas { get; set; }
+
+
         public UInt256? GasBottleneck { get; set; }
         public UInt256 MaxPriorityFeePerGas => GasPrice;
-        public UInt256 DecodedMaxFeePerGas { get; set; }
+
         public UInt256 MaxFeePerGas => Supports1559 ? DecodedMaxFeePerGas : GasPrice;
         public bool SupportsAccessList => Type >= TxType.AccessList;
         public bool Supports1559 => Type >= TxType.EIP1559;
         public bool SupportsBlobs => Type == TxType.Blob;
+
+        // gas_limit
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }

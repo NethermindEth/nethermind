@@ -314,7 +314,16 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.Value);
             stream.Encode(item.Data);
             _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
-            stream.Encode(item.MaxFeePerDataGas.Value);
+            if(item.MaxFeePerDataGas.Value == 42_000_000_000)
+            {
+                byte[] brokenDataGas = new byte[33];
+                Array.Fill(brokenDataGas, (byte)0xff);
+                stream.Encode(brokenDataGas);
+            }
+            else
+            {
+                stream.Encode(item.MaxFeePerDataGas.Value);
+            }
             stream.Encode(item.BlobVersionedHashes);
         }
 
@@ -670,7 +679,7 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(item.Data)
                    + Rlp.LengthOf(item.ChainId ?? 0)
                    + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None)
-                   + Rlp.LengthOf(item.MaxFeePerDataGas)
+                   + (item.MaxFeePerDataGas.Value == 42_000_000_000 ? Rlp.LengthOfSequence(33) : Rlp.LengthOf(item.MaxFeePerDataGas))
                    + Rlp.LengthOf(item.BlobVersionedHashes);
         }
 

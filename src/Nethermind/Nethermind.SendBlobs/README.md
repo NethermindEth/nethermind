@@ -16,14 +16,47 @@ docker run ghcr.io/flcl42/send-blobs:latest http://localhost:8545 5x6 0x00000000
                        0x0000..0042          # receiver-address
                        10000                 # data gas price limit, 1000 by default
                        4                     # fee multiplier to compete with other txs in the pool, 4 by default
+
 # send 5 transactions, 1 blob each
 ./Nethermind.SendBlobs http://localhost:8545 5 \
                                              0x0000000000000000000000000000000000000000000000000000000000000000 \
                                              0x000000000000000000000000000000000000f1c1 10000 4
+
 # send several transactions with 1 blob, with 6 blobs and than with 2 blobs
 ./Nethermind.SendBlobs http://localhost:8545 10x1,10x6,10x2 \
                                              0x0000000000000000000000000000000000000000000000000000000000000000 \
                                              0x000000000000000000000000000000000000f1c1 10000 4
+
+#send a couple of transactions
+
+./Nethermind.SendBlobs http://localhost:8545 2x4-1 \
+                                             0x0000000000000000000000000000000000000000000000000000000000000000 \
+                                             0x0000000000000000000000000000000000000001 10000 4
+
+<<BrokenTxs
+Issues that can be intentionally added:
+  1 = 0 blobs
+  2 = 1st blob is of wrong size
+  3 = 7 blobs
+  4 = 1st blob's wrong proof
+  5 = 1st blob's wrong commitment
+  6 = 1st blob with a modulo correct, but > modulo value
+  7 = max fee per blob gas = max value
+  8 = max fee per blob gas > max value
+  9 = 1st proof removed
+  10 = 1st commitment removed
+  11 = max fee per blob gas = max value / blobgasperblob + 1
+  14 = 100 blobs
+  15 = 1000 blobs
+
+Syntax:
+
+         2x3-4
+         ^      tx count
+           ^    blobs in every tx (optional, default to 1)
+             ^  how it's broken (optional, tx is correct by default)
+
+BrokenTxs
 ```
 
 ## Build
