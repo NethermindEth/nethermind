@@ -18,7 +18,7 @@ public class TracerValidator : IJsonRpcValidator
 
     public bool IsValid(JsonDocument? document)
     {
-        using (StreamWriter sw = File.Exists(_tracesFilePath) ? File.CreateText(_tracesFilePath) : File.AppendText(_tracesFilePath))
+        using (StreamWriter sw = File.Exists(_tracesFilePath) ? File.AppendText(_tracesFilePath) : File.CreateText(_tracesFilePath))
         {
             sw.WriteLine(document?.RootElement.ToString() ?? "null");
         }
