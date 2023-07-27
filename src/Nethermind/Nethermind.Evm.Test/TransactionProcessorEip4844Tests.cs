@@ -41,10 +41,10 @@ internal class TransactionProcessorEip4844Tests
     }
 
 
-    [TestCaseSource(nameof(BalanceIsAffectedByDataGasTestCaseSource))]
+    [TestCaseSource(nameof(BalanceIsAffectedByBlobGasTestCaseSource))]
     [TestCaseSource(nameof(BalanceIsNotAffectedWhenNotEnoughFunds))]
-    public UInt256 Balance_is_affected_by_data_gas_on_execution(UInt256 balance, int blobCount,
-        ulong maxFeePerDataGas, ulong excessDataGas, ulong value)
+    public UInt256 Balance_is_affected_by_blob_gas_on_execution(UInt256 balance, int blobCount,
+        ulong maxFeePerBlobGas, ulong excessBlobGas, ulong value)
     {
         _stateProvider.CreateAccount(TestItem.AddressA, balance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
@@ -55,7 +55,7 @@ internal class TransactionProcessorEip4844Tests
             .WithValue(value)
             .WithGasPrice(1)
             .WithMaxFeePerGas(1)
-            .WithMaxFeePerDataGas(maxFeePerDataGas)
+            .WithMaxFeePerBlobGas(maxFeePerBlobGas)
             .WithGasLimit(gasLimit)
             .WithShardBlobTxTypeAndFields(blobCount)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
@@ -65,7 +65,7 @@ internal class TransactionProcessorEip4844Tests
             .WithNumber(1)
             .WithTransactions(blobTx)
             .WithGasLimit(gasLimit)
-            .WithExcessDataGas(excessDataGas)
+            .WithExcessBlobGas(excessBlobGas)
             .WithBaseFeePerGas(1)
             .TestObject;
 
@@ -79,70 +79,70 @@ internal class TransactionProcessorEip4844Tests
         return deltaBalance;
     }
 
-    public static IEnumerable<TestCaseData> BalanceIsAffectedByDataGasTestCaseSource()
+    public static IEnumerable<TestCaseData> BalanceIsAffectedByBlobGasTestCaseSource()
     {
-        yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.DataGasPerBlob), 1, 1ul, 0ul, 0ul)
+        yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.BlobGasPerBlob), 1, 1ul, 0ul, 0ul)
         {
-            TestName = "Data gas consumed for 1 blob, minimal balance",
-            ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.DataGasPerBlob),
+            TestName = "Blob gas consumed for 1 blob, minimal balance",
+            ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.BlobGasPerBlob),
         };
         yield return new TestCaseData(1.Ether(), 1, 1ul, 0ul, 0ul)
         {
-            TestName = "Data gas consumed for 1 blob",
-            ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.DataGasPerBlob),
+            TestName = "Blob gas consumed for 1 blob",
+            ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.BlobGasPerBlob),
         };
         yield return new TestCaseData(1.Ether(), 2, 1ul, 0ul, 0ul)
         {
-            TestName = "Data gas consumed for 2 blobs",
-            ExpectedResult = (UInt256)(GasCostOf.Transaction + 2 * Eip4844Constants.DataGasPerBlob),
+            TestName = "Blob gas consumed for 2 blobs",
+            ExpectedResult = (UInt256)(GasCostOf.Transaction + 2 * Eip4844Constants.BlobGasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), (int)(Eip4844Constants.MaxDataGasPerTransaction / Eip4844Constants.DataGasPerBlob), 1ul, 0ul, 0ul)
+        yield return new TestCaseData(1.Ether(), (int)(Eip4844Constants.MaxBlobGasPerTransaction / Eip4844Constants.BlobGasPerBlob), 1ul, 0ul, 0ul)
         {
-            TestName = "Data gas consumed for max blobs",
-            ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.MaxDataGasPerTransaction),
+            TestName = "Blob gas consumed for max blobs",
+            ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.MaxBlobGasPerTransaction),
         };
         yield return new TestCaseData(1.Ether(), 1, 10ul, 0ul, 0ul)
         {
-            TestName = $"Data gas consumed for 1 blob, with {nameof(Transaction.MaxFeePerDataGas)} more than needed",
-            ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.DataGasPerBlob),
+            TestName = $"Blob gas consumed for 1 blob, with {nameof(Transaction.MaxFeePerBlobGas)} more than needed",
+            ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.BlobGasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), 1, 10ul, (ulong)Eip4844Constants.DataGasUpdateFraction, 0ul)
+        yield return new TestCaseData(1.Ether(), 1, 10ul, (ulong)Eip4844Constants.BlobGasUpdateFraction, 0ul)
         {
-            TestName = $"Data gas consumed for 1 blob, with data gas price hiking",
-            ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.DataGasPerBlob * 2),
+            TestName = $"Blob gas consumed for 1 blob, with blob gas price hiking",
+            ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.BlobGasPerBlob * 2),
         };
-        yield return new TestCaseData(1.Ether(), 1, 10ul, (ulong)Eip4844Constants.DataGasUpdateFraction, 2ul)
+        yield return new TestCaseData(1.Ether(), 1, 10ul, (ulong)Eip4844Constants.BlobGasUpdateFraction, 2ul)
         {
-            TestName = $"Data gas consumed for 1 blob, with data gas price hiking and some {nameof(Transaction.Value)}",
-            ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.DataGasPerBlob * 2 + 2),
+            TestName = $"Blob gas consumed for 1 blob, with blob gas price hiking and some {nameof(Transaction.Value)}",
+            ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.BlobGasPerBlob * 2 + 2),
         };
     }
 
     public static IEnumerable<TestCaseData> BalanceIsNotAffectedWhenNotEnoughFunds()
     {
-        yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.DataGasPerBlob - 1), 1, 1ul, 0ul, 0ul)
+        yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.BlobGasPerBlob - 1), 1, 1ul, 0ul, 0ul)
         {
             TestName = $"Rejected if balance is not enough, all funds are returned",
             ExpectedResult = UInt256.Zero,
         };
-        yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.DataGasPerBlob + 41), 1, 1ul, 0ul, 42ul)
+        yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.BlobGasPerBlob + 41), 1, 1ul, 0ul, 42ul)
         {
             TestName = $"Rejected if balance is not enough to cover {nameof(Transaction.Value)} also, all funds are returned",
             ExpectedResult = UInt256.Zero,
         };
-        yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.DataGasPerBlob), 1, 10ul, (ulong)Eip4844Constants.DataGasUpdateFraction, 0ul)
+        yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.BlobGasPerBlob), 1, 10ul, (ulong)Eip4844Constants.BlobGasUpdateFraction, 0ul)
         {
-            TestName = $"Rejected if balance is not enough due to data gas price hiking, all funds are returned",
+            TestName = $"Rejected if balance is not enough due to blob gas price hiking, all funds are returned",
             ExpectedResult = UInt256.Zero,
         };
-        yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.DataGasPerBlob), 1, 2ul, 0ul, 0ul)
+        yield return new TestCaseData((UInt256)(GasCostOf.Transaction + Eip4844Constants.BlobGasPerBlob), 1, 2ul, 0ul, 0ul)
         {
-            TestName = $"Rejected if balance does not cover {nameof(Transaction.MaxFeePerDataGas)}, all funds are returned",
+            TestName = $"Rejected if balance does not cover {nameof(Transaction.MaxFeePerBlobGas)}, all funds are returned",
             ExpectedResult = UInt256.Zero,
         };
-        yield return new TestCaseData((UInt256)(GasCostOf.Transaction + 2 * Eip4844Constants.DataGasPerBlob + 41), 1, 2ul, 0ul, 42ul)
+        yield return new TestCaseData((UInt256)(GasCostOf.Transaction + 2 * Eip4844Constants.BlobGasPerBlob + 41), 1, 2ul, 0ul, 42ul)
         {
-            TestName = $"Rejected if balance does not cover {nameof(Transaction.MaxFeePerDataGas)} + {nameof(Transaction.Value)}, all funds are returned",
+            TestName = $"Rejected if balance does not cover {nameof(Transaction.MaxFeePerBlobGas)} + {nameof(Transaction.Value)}, all funds are returned",
             ExpectedResult = UInt256.Zero,
         };
     }

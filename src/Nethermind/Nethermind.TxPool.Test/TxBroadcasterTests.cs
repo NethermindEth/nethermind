@@ -389,13 +389,13 @@ public class TxBroadcasterTests
     }
 
     [Test]
-    public void should_not_pick_blob_txs_with_MaxFeePerDataGas_lower_than_CurrentPricePerDataGas([Values(1, 2, 99, 100, 101, 1000)] int threshold)
+    public void should_not_pick_blob_txs_with_MaxFeePerBlobGas_lower_than_CurrentPricePerBlobGas([Values(1, 2, 99, 100, 101, 1000)] int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
-        const int currentPricePerDataGasInGwei = 250;
-        _headInfo.CurrentPricePerDataGas.Returns(currentPricePerDataGasInGwei.GWei());
+        const int currentPricePerBlobGasInGwei = 250;
+        _headInfo.CurrentPricePerBlobGas.Returns(currentPricePerBlobGasInGwei.GWei());
 
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
@@ -404,7 +404,7 @@ public class TxBroadcasterTests
         {
             transactions[i] = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithMaxFeePerDataGas(i.GWei())
+                .WithMaxFeePerBlobGas(i.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
 
@@ -415,7 +415,7 @@ public class TxBroadcasterTests
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().HashesToSend;
 
-        int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentPricePerDataGasInGwei);
+        int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentPricePerBlobGasInGwei);
         pickedTxs.Count.Should().Be(expectedCount);
 
         List<Transaction> expectedTxs = new();
@@ -425,7 +425,7 @@ public class TxBroadcasterTests
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
-        expectedTxs.Count(t => t.MaxFeePerDataGas >= (UInt256)currentPricePerDataGasInGwei).Should().Be(expectedCount);
+        expectedTxs.Count(t => t.MaxFeePerBlobGas >= (UInt256)currentPricePerBlobGasInGwei).Should().Be(expectedCount);
     }
 
     [Test]

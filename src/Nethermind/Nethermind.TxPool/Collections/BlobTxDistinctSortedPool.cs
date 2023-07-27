@@ -10,7 +10,7 @@ namespace Nethermind.TxPool.Collections;
 
 public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 {
-    protected const int MaxNumberOfBlobsInBlock = (int)(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob);
+    protected const int MaxNumberOfBlobsInBlock = (int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob);
 
     public BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
         : base(capacity, comparer, logManager)

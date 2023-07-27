@@ -21,7 +21,7 @@ public class LightTransaction : Transaction
         GasLimit = fullTx.GasLimit;
         GasPrice = fullTx.GasPrice; // means MaxPriorityFeePerGas
         DecodedMaxFeePerGas = fullTx.DecodedMaxFeePerGas;
-        MaxFeePerDataGas = fullTx.MaxFeePerDataGas;
+        MaxFeePerBlobGas = fullTx.MaxFeePerBlobGas;
         BlobVersionedHashes = new byte[fullTx.BlobVersionedHashes!.Length][];
         GasBottleneck = fullTx.GasBottleneck;
     }

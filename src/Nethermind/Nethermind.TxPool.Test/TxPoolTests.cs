@@ -644,7 +644,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction firstTransaction = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithMaxFeePerDataGas(UInt256.Zero)
+                .WithMaxFeePerBlobGas(UInt256.Zero)
                 .WithNonce(UInt256.Zero)
                 .WithMaxFeePerGas(halfOfMaxGasPriceWithoutOverflow)
                 .WithMaxPriorityFeePerGas(halfOfMaxGasPriceWithoutOverflow)
@@ -653,7 +653,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction transactionWithPotentialOverflow = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithMaxFeePerDataGas(supportsBlobs
+                .WithMaxFeePerBlobGas(supportsBlobs
                     ? UInt256.One
                     : UInt256.Zero)
                 .WithNonce(UInt256.One)
@@ -1562,6 +1562,58 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size);
         }
 
+        [Test]
+        public void Should_not_replace_ready_txs_by_nonce_gap_ones()
+        {
+            TxPoolConfig txPoolConfig = new() { Size = 128 };
+            _txPool = CreatePool(txPoolConfig);
+
+            // send (size - 1) standard txs from different senders
+            for (int i = 0; i < txPoolConfig.Size - 1; i++)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce(0)
+                    .WithGasPrice(10)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
+
+                EnsureSenderBalance(TestItem.PrivateKeys[i].Address, UInt256.MaxValue);
+                _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            }
+
+            _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size - 1);
+            _txPool.GetPendingTransactionsBySender().Keys.Count.Should().Be(txPoolConfig.Size - 1);
+
+            const int nonceGap = 100;
+            // send 1 expensive nonce-gap tx from sender X
+            PrivateKey privateKeyOfAttacker = TestItem.PrivateKeys[txPoolConfig.Size];
+            Transaction nonceGapTx = Build.A.Transaction
+                .WithNonce(nonceGap)
+                .WithGasPrice(1000)
+                .SignedAndResolved(_ethereumEcdsa, privateKeyOfAttacker).TestObject;
+
+            EnsureSenderBalance(privateKeyOfAttacker.Address, UInt256.MaxValue);
+            _txPool.SubmitTx(nonceGapTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+
+            _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size);
+            _txPool.GetPendingTransactionsBySender().Keys.Count.Should().Be(txPoolConfig.Size);
+
+            // send (size - 1) expensive txs from sender X with consecutive nonces
+            for (int i = 0; i < txPoolConfig.Size - 1; i++)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce((UInt256)(i + 1 + nonceGap))
+                    .WithGasPrice(1000)
+                    .SignedAndResolved(_ethereumEcdsa, privateKeyOfAttacker).TestObject;
+
+                _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.FeeTooLowToCompete);
+
+                // newly coming txs should evict themselves
+                _txPool.GetPendingTransactionsBySender().Keys.Count.Should().Be(txPoolConfig.Size);
+            }
+
+            _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size);
+        }
+
         [TestCase(9, false)]
         [TestCase(11, true)]
         public void Should_not_add_underpaid_tx_even_if_lower_nonces_are_expensive(int gasPrice, bool expectedResult)
@@ -1617,13 +1669,13 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            _headInfo.CurrentPricePerDataGas = UInt256.MaxValue;
+            _headInfo.CurrentPricePerBlobGas = UInt256.MaxValue;
 
             Transaction tx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas((UInt256)maxPriorityFeePerGas)
                 .WithMaxPriorityFeePerGas((UInt256)maxPriorityFeePerGas)
-                .WithMaxFeePerDataGas(UInt256.One)
+                .WithMaxFeePerBlobGas(UInt256.One)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             _txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(expectedResult
@@ -1870,7 +1922,7 @@ namespace Nethermind.TxPool.Test
                 .WithNonce(UInt256.Zero)
                 .WithMaxFeePerGas(oldTx.MaxFeePerGas * 2)
                 .WithMaxPriorityFeePerGas(oldTx.MaxPriorityFeePerGas * 2)
-                .WithMaxFeePerDataGas(oldTx.MaxFeePerDataGas * 2)
+                .WithMaxFeePerBlobGas(oldTx.MaxFeePerBlobGas * 2)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
 
@@ -1908,7 +1960,7 @@ namespace Nethermind.TxPool.Test
                 .WithNonce(UInt256.Zero)
                 .WithMaxFeePerGas(1.GWei())
                 .WithMaxPriorityFeePerGas(1.GWei())
-                .WithMaxFeePerDataGas(UInt256.One)
+                .WithMaxFeePerBlobGas(UInt256.One)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             _txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
@@ -1926,7 +1978,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            _headInfo.CurrentPricePerDataGas = UInt256.MaxValue;
+            _headInfo.CurrentPricePerBlobGas = UInt256.MaxValue;
 
             Transaction tx = Build.A.Transaction
                 .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
@@ -1934,7 +1986,7 @@ namespace Nethermind.TxPool.Test
                 .WithNonce(UInt256.Zero)
                 .WithMaxFeePerGas(1.GWei())
                 .WithMaxPriorityFeePerGas(1.GWei())
-                .WithMaxFeePerDataGas(isBlob ? UInt256.One : null)
+                .WithMaxFeePerBlobGas(isBlob ? UInt256.One : null)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             _txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
@@ -1976,7 +2028,7 @@ namespace Nethermind.TxPool.Test
                 .WithNonce(UInt256.Zero)
                 .WithMaxFeePerGas(firstTx.MaxFeePerGas * 2)
                 .WithMaxPriorityFeePerGas(firstTx.MaxPriorityFeePerGas * 2)
-                .WithMaxFeePerDataGas(firstTx.MaxFeePerDataGas * 2)
+                .WithMaxFeePerBlobGas(firstTx.MaxFeePerBlobGas * 2)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);

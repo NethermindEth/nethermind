@@ -301,8 +301,8 @@ public class TestBlockchain : IDisposable
 
         if (SpecProvider.GenesisSpec.IsEip4844Enabled)
         {
-            genesisBlockBuilder.WithDataGasUsed(0);
-            genesisBlockBuilder.WithExcessDataGas(0);
+            genesisBlockBuilder.WithBlobGasUsed(0);
+            genesisBlockBuilder.WithExcessBlobGas(0);
         }
 
         return genesisBlockBuilder.TestObject;
