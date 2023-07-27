@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -55,5 +56,8 @@ namespace Nethermind.Merge.Plugin
 
         [ConfigItem(Description = "Requests the GC to release process memory back to OS. Accept values `-1` which disables it, `0` which releases every time, and any positive integer which does it after that many EngineApi calls.", DefaultValue = "75")]
         public int CollectionsPerDecommit { get; set; }
+
+        [ConfigItem(Description = "Maximum time in seconds for NewPayload request to be executed.")]
+        public int NewPayloadTimeout { get; }
     }
 }
