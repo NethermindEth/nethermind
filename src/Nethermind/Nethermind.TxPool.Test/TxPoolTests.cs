@@ -1758,9 +1758,9 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_add_blob_tx_and_return_when_requested()
+        public void should_add_blob_tx_and_return_when_requested([Values(true, false)] bool isPersistentStorage)
         {
-            TxPoolConfig txPoolConfig = new() { Size = 10 };
+            TxPoolConfig txPoolConfig = new() { Size = 10, PersistentBlobPoolEnabled = isPersistentStorage };
             BlobTxStorage blobTxStorage = new(new MemDb());
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
@@ -1775,13 +1775,16 @@ namespace Nethermind.TxPool.Test
             _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             _txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned);
 
-            blobTxReturned.Should().BeEquivalentTo(blobTxAdded); // comes from cache
+            blobTxReturned.Should().BeEquivalentTo(blobTxAdded);
 
-            blobTxStorage.TryGet(blobTxAdded.Hash, out Transaction blobTxFromDb).Should().BeTrue(); // additional check for persistent db
-            blobTxFromDb.Should().BeEquivalentTo(blobTxAdded, options => options
-                .Excluding(t => t.SenderAddress) // sender is not encoded/decoded...
-                .Excluding(t => t.GasBottleneck) // ...as well as GasBottleneck...
-                .Excluding(t => t.PoolIndex));   // ...and PoolIndex
+            blobTxStorage.TryGet(blobTxAdded.Hash, out Transaction blobTxFromDb).Should().Be(isPersistentStorage); // additional check for persistent db
+            if (isPersistentStorage)
+            {
+                blobTxFromDb.Should().BeEquivalentTo(blobTxAdded, options => options
+                    .Excluding(t => t.SenderAddress) // sender is not encoded/decoded...
+                    .Excluding(t => t.GasBottleneck) // ...as well as GasBottleneck...
+                    .Excluding(t => t.PoolIndex));   // ...and PoolIndex
+            }
         }
 
         [Test]
@@ -1801,7 +1804,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_remove_replaced_blob_tx()
         {
-            TxPoolConfig txPoolConfig = new() { Size = 10 };
+            TxPoolConfig txPoolConfig = new() { Size = 10, PersistentBlobPoolEnabled = true };
             BlobTxStorage blobTxStorage = new(new MemDb());
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
@@ -1845,9 +1848,32 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_dump_GasBottleneck_of_blob_tx_to_zero_if_MaxFeePerDataGas_is_lower_than_current([Values(true, false)] bool isBlob)
+        public void should_keep_in_memory_only_light_blob_tx_equivalent_if_persistent_storage_enabled([Values(true, false)] bool isPersistentStorage)
         {
-            TxPoolConfig txPoolConfig = new() { Size = 10 };
+            TxPoolConfig txPoolConfig = new() { Size = 10, PersistentBlobPoolEnabled = isPersistentStorage };
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction tx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithNonce(UInt256.Zero)
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithMaxFeePerDataGas(UInt256.One)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            _txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
+            _txPool.GetPendingTransactionsCount().Should().Be(0);
+
+            _txPool.TryGetBlobTxSortingEquivalent(tx.Hash!, out Transaction returned);
+            returned.Should().BeEquivalentTo(isPersistentStorage ? new LightTransaction(tx) : tx);
+        }
+
+        [Test]
+        public void should_dump_GasBottleneck_of_blob_tx_to_zero_if_MaxFeePerDataGas_is_lower_than_current([Values(true, false)] bool isBlob, [Values(true, false)] bool isPersistentStorage)
+        {
+            TxPoolConfig txPoolConfig = new() { Size = 10, PersistentBlobPoolEnabled = isPersistentStorage };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
@@ -1867,9 +1893,11 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingTransactionsCount().Should().Be(isBlob ? 0 : 1);
             if (isBlob)
             {
-                _txPool.TryGetLightBlobTransaction(tx.Hash!, out Transaction blobTxReturned);
-                blobTxReturned.Should().NotBeEquivalentTo(tx);
-                blobTxReturned.GasBottleneck.Should().Be(UInt256.Zero);
+                _txPool.TryGetBlobTxSortingEquivalent(tx.Hash!, out Transaction returned);
+                returned.GasBottleneck.Should().Be(UInt256.Zero);
+                returned.Should().BeEquivalentTo(isPersistentStorage ? new LightTransaction(tx) : tx,
+                    options => options.Excluding(t => t.GasBottleneck));
+                returned.Should().NotBeEquivalentTo(isPersistentStorage ? tx : new LightTransaction(tx));
             }
             else
             {
