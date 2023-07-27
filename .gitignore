@@ -409,3 +409,4 @@ src/Nethermind/Nethermind.BeaconNode.Host/release
 src/Nethermind/Nethermind.Runner/git-hash
 keystore/
 /.githooks
+.vscode

@@ -75,6 +75,7 @@ while true; do
       exit 1
     else
       echo "✅ The workflow completed successfully! Exiting."
+      echo "👀 Check workflow details at: https://github.com/${ORG_NAME}/${REPO_NAME}/actions/runs/$run_id"
       break
     fi
   fi
