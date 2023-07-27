@@ -41,7 +41,7 @@ jobs:
           #  branches+=",${{ github.event.inputs.branches_to_compare }}"
           #fi
           
-          branches="State-cache"
+          branches="kch/add_newPayload_configurable_timeout"
           
           IFS=',' read -ra branch_array <<< "$branches"
           
