@@ -561,7 +561,7 @@ namespace Nethermind.Trie.Pruning
                 }
                 else if (trieNode.IsExtension)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Missed extension handling {pathBytes.ToHexString()}");
+                    RequestDeletionForExtension(fullPath, trieNode.Key);
                 }
             }
 
@@ -630,7 +630,7 @@ namespace Nethermind.Trie.Pruning
             return (fromKey.ToArray(), prefix.IncrementNibble().ToArray());
         }
 
-        public static (byte[], byte[]) GetDeleteKeyFromNibbles(Span<byte> nibbleFrom, Span<byte> nibbleTo, int maxLength, int oddityOverride)
+        public static (byte[], byte[]) GetDeleteKeyFromNibbles(Span<byte> nibbleFrom, Span<byte> nibbleTo, int oddityOverride)
         {
             byte[] fromKey = EncodePathWithEnforcedOddity2(nibbleFrom, oddityOverride);
             byte[] toKey = EncodePathWithEnforcedOddity2(nibbleTo, oddityOverride);
@@ -707,7 +707,6 @@ namespace Nethermind.Trie.Pruning
 
         public void RequestDeletionForLeaf(Span<byte> pathToNodeNibbles, Span<byte> fullPathNibbles)
         {
-            int fullKeyLength = fullPathNibbles.Length >= 66 ? 66 : 33;
             byte[] from, to;
             StateColumns column = fullPathNibbles.Length >= 66 ? StateColumns.Storage : StateColumns.State;
 
@@ -722,10 +721,10 @@ namespace Nethermind.Trie.Pruning
 
             if (!keySlice.IsZero())
             {
-                (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathNibbles, fullKeyLength, 0);
+                (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathNibbles, 0);
                 _pathStateDb?.EnqueueDeleteRange(column, from, to);
 
-                (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathNibbles, fullKeyLength, 1);
+                (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathNibbles, 1);
                 _pathStateDb?.EnqueueDeleteRange(column, from, to);
             }
 
@@ -734,10 +733,10 @@ namespace Nethermind.Trie.Pruning
                 Span<byte> fullPathIncremented = stackalloc byte[fullPathNibbles.Length];
                 fullPathNibbles.CopyTo(fullPathIncremented);
                 Span<byte> endNibbles = fromNibblesKey.Slice(0, pathToNodeNibbles.Length).IncrementNibble(true);
-                (from, to) = GetDeleteKeyFromNibbles(fullPathIncremented.IncrementNibble(), endNibbles, fullKeyLength, 0);
+                (from, to) = GetDeleteKeyFromNibbles(fullPathIncremented.IncrementNibble(), endNibbles, 0);
                 _pathStateDb?.EnqueueDeleteRange(column, from, to);
 
-                (from, to) = GetDeleteKeyFromNibbles(fullPathIncremented, endNibbles, fullKeyLength, 1);
+                (from, to) = GetDeleteKeyFromNibbles(fullPathIncremented, endNibbles, 1);
                 _pathStateDb?.EnqueueDeleteRange(column, from, to);
             }
         }
@@ -807,6 +806,45 @@ namespace Nethermind.Trie.Pruning
                 Span<byte> nextSiblingPath = childPathTo.Slice(0, branchNode.FullPath.Length).IncrementNibble(true);
                 GenerateRangesAndRequest(childPathFrom, nextSiblingPath, ind1, null, 0x00);
                 ind1 = null;
+            }
+        }
+
+        public void RequestDeletionForExtension(Span<byte> fullPathNibbles, Span<byte> key)
+        {
+            byte[] from, to;
+            StateColumns column = fullPathNibbles.Length >= 66 ? StateColumns.Storage : StateColumns.State;
+
+            if (fullPathNibbles.Length == 0)
+                return;
+
+            Span<byte> fromNibblesKey = stackalloc byte[fullPathNibbles.Length + 1];
+            fullPathNibbles.CopyTo(fromNibblesKey);
+
+            Span<byte> fullPathAndKey = stackalloc byte[fullPathNibbles.Length + key.Length];
+            fullPathNibbles.CopyTo(fullPathAndKey);
+            key.CopyTo(fullPathAndKey[fullPathNibbles.Length..]);
+
+            if (!key.IsZero())
+            {
+                (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathAndKey, 0);
+                _pathStateDb?.EnqueueDeleteRange(column, from, to);
+
+                (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathAndKey, 1);
+                _pathStateDb?.EnqueueDeleteRange(column, from, to);
+            }
+
+            if (key.IndexOfAnyExcept((byte)0xf) >= 0)
+            {
+                //start path
+                fullPathAndKey.IncrementNibble();
+
+                Span<byte> endNibbles = fromNibblesKey[..fullPathNibbles.Length].IncrementNibble(true);
+
+                (from, to) = GetDeleteKeyFromNibbles(fullPathAndKey, endNibbles, 0);
+                _pathStateDb?.EnqueueDeleteRange(column, from, to);
+
+                (from, to) = GetDeleteKeyFromNibbles(fullPathAndKey, endNibbles, 1);
+                _pathStateDb?.EnqueueDeleteRange(column, from, to);
             }
         }
 
