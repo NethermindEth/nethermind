@@ -22,6 +22,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles.Stateful;
+using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -98,6 +99,8 @@ namespace Nethermind.Merge.Plugin.Test
 
             state.RecalculateStateRoot();
             blockRequestV3.StateRoot = state.StateRoot;
+            TryCalculateHash(blockRequestV3, out Keccak? hash);
+            blockRequestV3.BlockHash = hash;
             return blockRequestV3;
         }
 
