@@ -280,7 +280,7 @@ namespace Nethermind.TxPool
 
                 if (transaction.SupportsBlobs)
                 {
-                    blobTxs ??= new List<Transaction>((int)(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob));
+                    blobTxs ??= new List<Transaction>((int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob));
                     blobTxs.Add(transaction);
 
                     blobs += transaction.BlobVersionedHashes?.Length ?? 0;
