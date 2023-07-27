@@ -53,11 +53,13 @@ namespace Nethermind.Evm.Tracing
             }
 
             // Execute binary search to find the optimal gas estimation.
-            return BinarySearchEstimate(leftBound, rightBound, rightBound, tx, header);
+            return BinarySearchEstimate(leftBound, rightBound, tx, header);
         }
 
-        private long BinarySearchEstimate(long leftBound, long rightBound, long cap, Transaction tx, BlockHeader header)
+        private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header)
         {
+            long cap = rightBound;
+
             while (leftBound + 1 < rightBound)
             {
                 long mid = (leftBound + rightBound) / 2;
