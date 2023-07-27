@@ -16,13 +16,13 @@ public class TracerValidator : IJsonRpcValidator
         _tracesFilePath = tracesFilePath;
     }
 
-    public bool IsValid(JsonDocument? document)
+    public bool IsValid(JsonRpc request, JsonDocument? response)
     {
         using (StreamWriter sw = File.Exists(_tracesFilePath) ? File.AppendText(_tracesFilePath) : File.CreateText(_tracesFilePath))
         {
-            sw.WriteLine(document?.RootElement.ToString() ?? "null");
+            sw.WriteLine(response?.RootElement.ToString() ?? "null");
         }
 
-        return _validator.IsValid(document);
+        return _validator.IsValid(request, response);
     }
 }

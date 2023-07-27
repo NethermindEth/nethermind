@@ -95,7 +95,7 @@ class Application
                             result = await _submitter.Submit(single);
                         }
 
-                        if (_validator.IsInvalid(result))
+                        if (_validator.IsInvalid(single, result))
                         {
                             _metrics.TickFailed();
                         }

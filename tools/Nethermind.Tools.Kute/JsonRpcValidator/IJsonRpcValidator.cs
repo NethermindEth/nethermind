@@ -7,6 +7,6 @@ namespace Nethermind.Tools.Kute.JsonRpcValidator;
 
 public interface IJsonRpcValidator
 {
-    bool IsValid(JsonDocument? document);
-    bool IsInvalid(JsonDocument? document) => !IsValid(document);
+    bool IsValid(JsonRpc request, JsonDocument? response);
+    bool IsInvalid(JsonRpc request, JsonDocument? response) => !IsValid(request, response);
 }

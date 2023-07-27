@@ -8,13 +8,13 @@ namespace Nethermind.Tools.Kute.JsonRpcValidator;
 public class NonErrorJsonRpcValidator : IJsonRpcValidator
 {
 
-    public bool IsValid(JsonDocument? document)
+    public bool IsValid(JsonRpc request, JsonDocument? response)
     {
-        if (document is null)
+        if (response is null)
         {
             return false;
         }
 
-        return !document.RootElement.TryGetProperty("error", out _);
+        return !response.RootElement.TryGetProperty("error", out _);
     }
 }
