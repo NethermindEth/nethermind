@@ -5,7 +5,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -23,17 +22,16 @@ using System.Diagnostics;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
-using static System.Runtime.InteropServices.MemoryMarshal;
 
 #if DEBUG
-using Nethermind.Evm.Tracing.DebugTrace;
+using Nethermind.Evm.Tracing.Debugger;
 #endif
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
 namespace Nethermind.Evm;
 
-using Nethermind.Int256;
+using Int256;
 
 public class VirtualMachine : IVirtualMachine
 {
@@ -183,7 +181,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         where TTracingActions : struct, IIsTracing
     {
         _txTracer = txTracer;
-
         _state = worldState;
         _worldState = worldState;
 
@@ -192,6 +189,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         byte[] previousCallResult = null;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
         UInt256 previousCallOutputDestination = UInt256.Zero;
+        bool isTracing = _txTracer.IsTracing;
+
         while (true)
         {
             if (!currentState.IsContinuation)
@@ -260,7 +259,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                         if (currentState.IsTopLevel)
                         {
-                            return new TransactionSubstate(callResult.ExceptionType, _txTracer.IsTracing);
+                            return new TransactionSubstate(callResult.ExceptionType, isTracing);
                         }
 
                         previousCallResult = StatusCode.FailureBytes;
@@ -334,7 +333,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         (IReadOnlyCollection<Address>)currentState.DestroyList,
                         (IReadOnlyCollection<LogEntry>)currentState.Logs,
                         callResult.ShouldRevert,
-                        isTracerConnected: _txTracer.IsTracing);
+                        isTracerConnected: isTracing);
                 }
 
                 Address callCodeOwner = currentState.Env.ExecutingAccount;
@@ -451,7 +450,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                 if (currentState.IsTopLevel)
                 {
-                    return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, _txTracer.IsTracing);
+                    return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, isTracing);
                 }
 
                 previousCallResult = StatusCode.FailureBytes;
