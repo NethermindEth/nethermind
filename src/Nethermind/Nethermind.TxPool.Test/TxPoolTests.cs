@@ -1722,8 +1722,8 @@ namespace Nethermind.TxPool.Test
             {
                 return Build.A.Transaction
                     .WithShardBlobTxTypeAndFields()
-                    .WithMaxFeePerGas(UInt256.One)
-                    .WithMaxPriorityFeePerGas(UInt256.One)
+                    .WithMaxFeePerGas(1.GWei())
+                    .WithMaxPriorityFeePerGas(1.GWei())
                     .WithNonce(UInt256.Zero)
                     .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
             }
