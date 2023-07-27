@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.Producers
             int selectedTransactions = 0;
             int i = 0;
             int blobsCounter = 0;
-            UInt256 dataGasPrice = UInt256.Zero;
+            UInt256 blobGasPrice = UInt256.Zero;
             List<Transaction>? selectedBlobTxs = null;
 
             foreach (Transaction blobTx in blobTransactions)

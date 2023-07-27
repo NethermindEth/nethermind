@@ -19,21 +19,21 @@ public class ExecutionPayloadV3 : ExecutionPayload
 
     public ExecutionPayloadV3(Block block) : base(block)
     {
-        DataGasUsed = block.DataGasUsed;
-        ExcessDataGas = block.ExcessDataGas;
+        BlobGasUsed = block.BlobGasUsed;
+        ExcessBlobGas = block.ExcessBlobGas;
     }
 
     /// <summary>
-    /// Gets or sets <see cref="Block.DataGasUsed"/> as defined in
+    /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
-    public ulong? DataGasUsed { get; set; }
+    public ulong? BlobGasUsed { get; set; }
 
     /// <summary>
-    /// Gets or sets <see cref="Block.ExcessDataGas"/> as defined in
+    /// Gets or sets <see cref="Block.ExcessBlobGas"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
-    public ulong? ExcessDataGas { get; set; }
+    public ulong? ExcessBlobGas { get; set; }
 
     public override bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
     {
@@ -42,8 +42,8 @@ public class ExecutionPayloadV3 : ExecutionPayload
             return false;
         }
 
-        block!.Header.DataGasUsed = DataGasUsed;
-        block.Header.ExcessDataGas = ExcessDataGas;
+        block!.Header.BlobGasUsed = BlobGasUsed;
+        block.Header.ExcessBlobGas = ExcessBlobGas;
         return true;
     }
 
