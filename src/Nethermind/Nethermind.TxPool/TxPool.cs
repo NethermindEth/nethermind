@@ -99,7 +99,7 @@ namespace Nethermind.TxPool
             AddNodeInfoEntryForTxPool();
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
-            _blobTransactions = txPoolConfig.PersistentBlobPoolEnabled
+            _blobTransactions = txPoolConfig.PersistentBlobStorageEnabled
                 ? new PersistentBlobTxDistinctSortedPool(_blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(_txPoolConfig.InMemoryBlobPoolSize, comparer, logManager);
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
@@ -165,10 +165,6 @@ namespace Nethermind.TxPool
         public IEnumerable<Transaction> GetPendingBlobTransactions() => _blobTransactions.GetBlobTransactions();
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
-
-
-        // public Transaction[] GetPendingBlobTransactionsBySender(Address address) =>
-        //     _blobTransactions.GetBucketSnapshot(address);
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
@@ -500,11 +496,14 @@ namespace Nethermind.TxPool
                 _transactions.UpdatePool(_accounts, _updateBucket);
 
                 // ensure the capacity of the blob pool
-                if (_blobTransactions.Count > _txPoolConfig.PersistentBlobPoolSize)
-                    if (_logger.IsWarn) _logger.Warn($"Blob TxPool exceeds the config size {_blobTransactions.Count}/{_txPoolConfig.PersistentBlobPoolSize}");
+                if (_blobTransactions.Count > (_txPoolConfig.PersistentBlobStorageEnabled
+                        ? _txPoolConfig.PersistentBlobStorageSize
+                        : _txPoolConfig.InMemoryBlobPoolSize))
+                    if (_logger.IsWarn) _logger.Warn($"Blob TxPool exceeds the config size {_blobTransactions.Count}/{_txPoolConfig.PersistentBlobStorageSize}");
 
-                if (_blobTransactions.Count == _txPoolConfig.PersistentBlobPoolSize)
-                    if (_logger.IsDebug) _logger.Debug($"Blob TxPool has reached max size of {_txPoolConfig.PersistentBlobPoolSize}, blob txs can be evicted now");
+                if (_txPoolConfig.PersistentBlobStorageEnabled
+                    && _blobTransactions.Count == _txPoolConfig.PersistentBlobStorageSize)
+                    if (_logger.IsDebug) _logger.Debug($"Blob persistent storage has reached max size of {_txPoolConfig.PersistentBlobStorageSize}, blob txs can be evicted now");
 
                 _blobTransactions.UpdatePool(_accounts, _updateBucket);
             }

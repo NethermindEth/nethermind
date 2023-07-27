@@ -17,7 +17,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
     private readonly ILogger _logger;
 
     public PersistentBlobTxDistinctSortedPool(ITxStorage blobTxStorage, ITxPoolConfig txPoolConfig, IComparer<Transaction> comparer, ILogManager logManager)
-        : base(txPoolConfig.PersistentBlobPoolSize, comparer, logManager)
+        : base(txPoolConfig.PersistentBlobStorageSize, comparer, logManager)
     {
         _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
         _blobTxCache = new(txPoolConfig.BlobCacheSize, txPoolConfig.BlobCacheSize, "blob txs cache");

@@ -192,7 +192,7 @@ namespace Nethermind.TxPool
                         }
                         else
                         {
-                            if (tx.MaxFeePerBlobGas < _headInfo.CurrentPricePerBlobGas) // for not-blob tx MaxFeePerDataGas
+                            if (tx.MaxFeePerBlobGas < _headInfo.CurrentPricePerBlobGas) // for not-blob tx MaxFeePerBlobGas
                             {                                                           // is null so check will be skipped
                                 continue;
                             }
