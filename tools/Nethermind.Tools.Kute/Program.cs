@@ -11,6 +11,7 @@ using Nethermind.Tools.Kute.JsonRpcValidator.Eth;
 using Nethermind.Tools.Kute.MessageProvider;
 using Nethermind.Tools.Kute.MetricsConsumer;
 using Nethermind.Tools.Kute.ProgressReporter;
+using Nethermind.Tools.Kute.ResponseTracer;
 using Nethermind.Tools.Kute.SecretProvider;
 using Nethermind.Tools.Kute.SystemClock;
 
@@ -49,25 +50,14 @@ static class Program
         );
         collection.AddSingleton<IMessageProvider<string>>(new FileMessageProvider(config.MessagesFilePath));
         collection.AddSingleton<IMessageProvider<JsonRpc?>, JsonRpcMessageProvider>();
-        collection.AddSingleton<IJsonRpcValidator>(_ =>
-        {
-            if (config.DryRun)
-            {
-                return new NullJsonRpcValidator();
-            }
-
-            var validators = new List<IJsonRpcValidator>
-            {
-                new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator(),
-            };
-
-            if (config.ResponsesTraceFile is not null)
-            {
-                validators.Add(new TracerValidator(config.ResponsesTraceFile));
-            }
-
-            return new ComposedJsonRpcValidator(validators);
-        });
+        collection.AddSingleton<IJsonRpcValidator>(
+            config.DryRun
+                ? new NullJsonRpcValidator()
+                : new ComposedJsonRpcValidator(new List<IJsonRpcValidator>
+                {
+                    new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator(),
+                })
+        );
         collection.AddSingleton<IJsonRpcMethodFilter>(
             new ComposedJsonRpcMethodFilter(
                 config.MethodFilters
@@ -83,6 +73,11 @@ static class Program
                     provider.GetRequiredService<IAuth>(),
                     config.HostAddress
                 ));
+        collection.AddSingleton<IResponseTracer>(
+            config is { DryRun: false, ResponsesTraceFile: not null }
+                ? new FileResponseTracer(config.ResponsesTraceFile)
+                : new NullResponseTracer()
+        );
         collection.AddSingleton<IProgressReporter>(provider =>
         {
             if (config.ShowProgress)

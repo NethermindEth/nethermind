@@ -3,7 +3,7 @@
 
 using System.Text.Json;
 
-namespace Nethermind.Tools.Kute.JsonRpcValidator;
+namespace Nethermind.Tools.Kute.JsonRpcValidator.Eth;
 
 public class NonErrorJsonRpcValidator : IJsonRpcValidator
 {

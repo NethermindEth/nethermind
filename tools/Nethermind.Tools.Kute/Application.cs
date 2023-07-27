@@ -9,6 +9,7 @@ using Nethermind.Tools.Kute.JsonRpcSubmitter;
 using Nethermind.Tools.Kute.JsonRpcValidator;
 using Nethermind.Tools.Kute.MetricsConsumer;
 using Nethermind.Tools.Kute.ProgressReporter;
+using Nethermind.Tools.Kute.ResponseTracer;
 
 namespace Nethermind.Tools.Kute;
 
@@ -19,6 +20,7 @@ class Application
     private readonly IMessageProvider<JsonRpc?> _msgProvider;
     private readonly IJsonRpcSubmitter _submitter;
     private readonly IJsonRpcValidator _validator;
+    private readonly IResponseTracer _responseTracer;
     private readonly IProgressReporter _progressReporter;
     private readonly IMetricsConsumer _metricsConsumer;
     private readonly IJsonRpcMethodFilter _methodFilter;
@@ -27,6 +29,7 @@ class Application
         IMessageProvider<JsonRpc?> msgProvider,
         IJsonRpcSubmitter submitter,
         IJsonRpcValidator validator,
+        IResponseTracer responseTracer,
         IProgressReporter progressReporter,
         IMetricsConsumer metricsConsumer,
         IJsonRpcMethodFilter methodFilter
@@ -35,6 +38,7 @@ class Application
         _msgProvider = msgProvider;
         _submitter = submitter;
         _validator = validator;
+        _responseTracer = responseTracer;
         _progressReporter = progressReporter;
         _metricsConsumer = metricsConsumer;
         _methodFilter = methodFilter;
@@ -99,6 +103,8 @@ class Application
                         {
                             _metrics.TickFailed();
                         }
+
+                        await _responseTracer.TraceResponse(result);
 
                         break;
                     }
