@@ -267,7 +267,7 @@ jobs:
           OUTPUT_PATH="$HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json"
           echo "output_path=$OUTPUT_PATH" >> $GITHUB_OUTPUT
     
-          ${{ github.workspace }}/nethermind_master/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /home/runner/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json -t ${{ github.workspace }}/trace.txt > $OUTPUT_PATH
+          ${{ github.workspace }}/nethermind_master/tools/Nethermind.Tools.Kute/bin/Release/net7.0/Nethermind.Tools.Kute -i /home/runner/filtered.txt -s ${{ github.workspace }}/sedge-data/jwtsecret -o Json -v ${{ github.workspace }}/trace.txt > $OUTPUT_PATH
           echo "Content of ${{ steps.prepare.outputs.sanitized_branch_name }} json file"
           cat $HOME/artifacts/${{ steps.prepare.outputs.sanitized_branch_name }}.json
             
