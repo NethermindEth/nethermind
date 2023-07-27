@@ -43,7 +43,8 @@ public class Metrics
 
     public Metrics()
     {
-        _metrics = new MetricsBuilder().Build();
+        //TODO: HAAACK - this will use all requests from current set but thismagic number should be somehow replaced with all requests recognized at beggining
+        _metrics = new MetricsBuilder().SampleWith.AlgorithmR(10687).Build(); 
     }
 
     public MetricsDataValueSource Snapshot => _metrics.Snapshot.Get();
