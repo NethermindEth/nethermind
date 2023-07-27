@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,7 +30,7 @@ namespace Nethermind.Evm.Tracing
             _blocksConfig = blocksConfig;
         }
 
-        public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer)
+        public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, CancellationToken cancellationToken = new())
         {
             IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1, header.Timestamp + _blocksConfig.SecondsPerSlot);
 
@@ -53,17 +54,24 @@ namespace Nethermind.Evm.Tracing
             }
 
             // Execute binary search to find the optimal gas estimation.
-            return BinarySearchEstimate(leftBound, rightBound, tx, header);
+            try
+            {
+                return BinarySearchEstimate(leftBound, rightBound, tx, header, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return 0;
+            }
         }
 
-        private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header)
+        private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header, CancellationToken cancellationToken)
         {
             long cap = rightBound;
 
             while (leftBound + 1 < rightBound)
             {
                 long mid = (leftBound + rightBound) / 2;
-                if (!TryExecutableTransaction(tx, header, mid))
+                if (!TryExecutableTransaction(tx, header, mid, cancellationToken))
                 {
                     leftBound = mid;
                 }
@@ -73,7 +81,7 @@ namespace Nethermind.Evm.Tracing
                 }
             }
 
-            if (rightBound == cap && !TryExecutableTransaction(tx, header, rightBound))
+            if (rightBound == cap && !TryExecutableTransaction(tx, header, rightBound, cancellationToken))
             {
                 return 0;
             }
@@ -81,11 +89,11 @@ namespace Nethermind.Evm.Tracing
             return rightBound;
         }
 
-        private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit)
+        private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit, CancellationToken cancellationToken)
         {
             OutOfGasTracer tracer = new();
             transaction.GasLimit = gasLimit;
-            _transactionProcessor.CallAndRestore(transaction, block, tracer);
+            _transactionProcessor.CallAndRestore(transaction, block, tracer.WithCancellation(cancellationToken));
 
             return !tracer.OutOfGas;
         }
@@ -110,7 +118,9 @@ namespace Nethermind.Evm.Tracing
             public bool IsTracingBlockHash => false;
             public bool IsTracingAccess => false;
             public bool IsTracingFees => false;
-            public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
+
+            public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds ||
+                                     IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
             public bool OutOfGas { get; private set; }
 
