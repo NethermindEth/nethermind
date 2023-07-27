@@ -7,6 +7,7 @@ using Nethermind.Tools.Kute.Auth;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
 using Nethermind.Tools.Kute.JsonRpcValidator;
+using Nethermind.Tools.Kute.JsonRpcValidator.Eth;
 using Nethermind.Tools.Kute.MessageProvider;
 using Nethermind.Tools.Kute.MetricsConsumer;
 using Nethermind.Tools.Kute.ProgressReporter;
@@ -55,12 +56,17 @@ static class Program
                 return new NullJsonRpcValidator();
             }
 
-            var validator = new NonErrorJsonRpcValidator();
-            if (config.ResponsesTraceFile is null)
+            var validators = new List<IJsonRpcValidator>
             {
-                return validator;
+                new NonErrorJsonRpcValidator(), new NewPayloadJsonRpcValidator(),
+            };
+
+            if (config.ResponsesTraceFile is not null)
+            {
+                validators.Add(new TracerValidator(config.ResponsesTraceFile));
             }
-            return new TracerValidator(validator, config.ResponsesTraceFile);
+
+            return new ComposedJsonRpcValidator(validators);
         });
         collection.AddSingleton<IJsonRpcMethodFilter>(
             new ComposedJsonRpcMethodFilter(
