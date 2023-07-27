@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -11,6 +12,22 @@ namespace Nethermind.Evm.Tracing;
 
 public class TxTracer : ITxTracer
 {
+    [SuppressMessage("ReSharper", "VirtualMemberCallInConstructor")]
+    protected TxTracer()
+    {
+        IsTracing = IsTracingReceipt
+                    || IsTracingActions
+                    || IsTracingOpLevelStorage
+                    || IsTracingMemory
+                    || IsTracingInstructions
+                    || IsTracingRefunds
+                    || IsTracingCode
+                    || IsTracingStack
+                    || IsTracingBlockHash
+                    || IsTracingAccess
+                    || IsTracingFees;
+    }
+    public bool IsTracing { get; }
     public virtual bool IsTracingState { get; protected set; }
     public virtual bool IsTracingReceipt { get; protected set; }
     public virtual bool IsTracingActions { get; protected set; }

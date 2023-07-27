@@ -181,7 +181,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         where TTracingActions : struct, IIsTracing
     {
         _txTracer = txTracer;
-
         _state = worldState;
         _worldState = worldState;
 
@@ -190,6 +189,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         byte[] previousCallResult = null;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
         UInt256 previousCallOutputDestination = UInt256.Zero;
+        bool isTracing = _txTracer.IsTracing;
+
         while (true)
         {
             if (!currentState.IsContinuation)
@@ -258,7 +259,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                         if (currentState.IsTopLevel)
                         {
-                            return new TransactionSubstate(callResult.ExceptionType, _txTracer.IsTracing);
+                            return new TransactionSubstate(callResult.ExceptionType, isTracing);
                         }
 
                         previousCallResult = StatusCode.FailureBytes;
@@ -332,7 +333,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         (IReadOnlyCollection<Address>)currentState.DestroyList,
                         (IReadOnlyCollection<LogEntry>)currentState.Logs,
                         callResult.ShouldRevert,
-                        isTracerConnected: _txTracer.IsTracing);
+                        isTracerConnected: isTracing);
                 }
 
                 Address callCodeOwner = currentState.Env.ExecutingAccount;
@@ -449,7 +450,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                 if (currentState.IsTopLevel)
                 {
-                    return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, _txTracer.IsTracing);
+                    return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, isTracing);
                 }
 
                 previousCallResult = StatusCode.FailureBytes;
