@@ -186,7 +186,8 @@ jobs:
           --el-extra-flag Seq.ServerUrl=https://seq.nethermind.io \
           --el-extra-flag Seq.ApiKey=${SEQ_API_KEY} \
           --el-extra-flag Seq.MinLevel=Info \
-          --el-extra-flag Metrics.PushGatewayUrl=${GRAFANA_CONNECTION_STRING} 
+          --el-extra-flag Metrics.PushGatewayUrl=${GRAFANA_CONNECTION_STRING} \
+          --el-extra-flag Merge.NewPayloadTimeout=30
           echo 'Running sedge...'
 
       - name: Run Benchmark
