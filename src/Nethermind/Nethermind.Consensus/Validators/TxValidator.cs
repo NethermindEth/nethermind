@@ -111,15 +111,15 @@ namespace Nethermind.Consensus.Validators
             // Execution-payload version verification
             if (!transaction.SupportsBlobs)
             {
-                return transaction.MaxFeePerDataGas is null &&
+                return transaction.MaxFeePerBlobGas is null &&
                        transaction.BlobVersionedHashes is null &&
                        transaction is not { NetworkWrapper: ShardBlobNetworkWrapper };
             }
 
             if (transaction.To is null ||
-                transaction.MaxFeePerDataGas is null ||
+                transaction.MaxFeePerBlobGas is null ||
                 transaction.BlobVersionedHashes is null ||
-                DataGasCalculator.CalculateDataGas(transaction.BlobVersionedHashes!.Length) > Eip4844Constants.MaxDataGasPerTransaction ||
+                BlobGasCalculator.CalculateBlobGas(transaction.BlobVersionedHashes!.Length) > Eip4844Constants.MaxBlobGasPerTransaction ||
                 transaction.BlobVersionedHashes!.Length < Eip4844Constants.MinBlobsPerTransaction)
             {
                 return false;

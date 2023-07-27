@@ -632,7 +632,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         IPrecompile precompile = state.Env.CodeInfo.Precompile;
         long baseGasCost = precompile.BaseGasCost(spec);
-        long dataGasCost = precompile.DataGasCost(callData, spec);
+        long blobGasCost = precompile.DataGasCost(callData, spec);
 
         bool wasCreated = false;
         if (!_state.AccountExists(state.Env.ExecutingAccount))
@@ -661,7 +661,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        if (!UpdateGas(checked(baseGasCost + dataGasCost), ref gasAvailable))
+        if (!UpdateGas(checked(baseGasCost + blobGasCost), ref gasAvailable))
         {
             Metrics.EvmExceptions++;
             throw new OutOfGasException();
