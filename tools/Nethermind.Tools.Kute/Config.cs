@@ -80,8 +80,8 @@ public class Config
     public IEnumerable<string> MethodFilters { get; }
 
     [Option(
-        shortName: 't',
-        longName: "trace",
+        shortName: 'v',
+        longName: "verbose",
         Required = false,
         Default = null,
         HelpText = "Path to File to store JSON-RPC responses"
