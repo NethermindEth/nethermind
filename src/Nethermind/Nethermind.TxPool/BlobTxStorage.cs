@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -19,8 +20,8 @@ public class BlobTxStorage : ITxStorage
         _database = database ?? throw new ArgumentNullException(nameof(database));
     }
 
-    public bool TryGet(Keccak hash, out Transaction? transaction)
-        => TryDecode(_database.Get(hash), out transaction);
+    public bool TryGet(ValueKeccak hash, [NotNullWhen(true)] out Transaction? transaction)
+        => TryDecode(_database.Get(hash.Bytes), out transaction);
 
     private static bool TryDecode(byte[]? txBytes, out Transaction? transaction)
     {
