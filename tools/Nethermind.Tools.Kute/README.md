@@ -37,7 +37,7 @@ Some typical usages are as follow:
 ### Use a single messages file and record all responses into a new file
 
 ```
--i /rpc.0 -s keystore/jwt-secret -t rpc.responses.txt
+-i /rpc.0 -s keystore/jwt-secret -r rpc.responses.txt
 ```
 
 ### Use a single message file, using only `engine` and `eth` methods
