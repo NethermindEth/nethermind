@@ -174,9 +174,13 @@ jobs:
           branch_name=$(echo "${{ matrix.branch }}" | tr '[:upper:]' '[:lower:]')
           echo 'Generating sedge...'
           ./sedge deps install
-          ./sedge generate --logging none \
-          execution nethermind:$branch_name --map-all --network mainnet \
-          --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
+          ./sedge generate \
+          --logging none \
+          execution nethermind:$branch_name \
+          --map-all \
+          --network mainnet \
+          --el-extra-flag Sync.NonValidatorNode=true \
+          --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
           --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
           --el-extra-flag Network.MaxActivePeers=0 \
@@ -186,7 +190,11 @@ jobs:
           --el-extra-flag Seq.ServerUrl=https://seq.nethermind.io \
           --el-extra-flag Seq.ApiKey=${SEQ_API_KEY} \
           --el-extra-flag Seq.MinLevel=Info \
-          --el-extra-flag Metrics.PushGatewayUrl=${GRAFANA_CONNECTION_STRING} 
+          --el-extra-flag Metrics.PushGatewayUrl=${GRAFANA_CONNECTION_STRING} \
+          --el-extra-flag Merge.NewPayloadTimeout=30 \
+          --el-extra-flag Merge.CollectionsPerDecommit=-1 \
+          --el-extra-flag Merge.CompactMemory=No \
+          --el-extra-flag Merge.SweepMemory=-1
           echo 'Running sedge...'
 
       - name: Run Benchmark
