@@ -9,7 +9,7 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class TxDecoder : TxDecoder<Transaction>, ITransactionSizeCalculator
+    public class TxDecoder : TxDecoder<Transaction>
     {
         public const int MaxDelayedHashTxnSize = 32768;
         public static TxDecoder Instance = new TxDecoder();
@@ -21,11 +21,6 @@ namespace Nethermind.Serialization.Rlp
 
         public TxDecoder(bool lazyHash) : base(lazyHash)
         {
-        }
-
-        public int GetLength(Transaction tx)
-        {
-            return GetLength(tx, RlpBehaviors.None);
         }
     }
     public class SystemTxDecoder : TxDecoder<SystemTransaction> { }
@@ -198,7 +193,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Value = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.Data = rlpStream.DecodeByteArray();
             transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
-            transaction.MaxFeePerDataGas = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.MaxFeePerBlobGas = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.BlobVersionedHashes = rlpStream.DecodeByteArrays();
         }
 
@@ -256,7 +251,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Value = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.Data = decoderContext.DecodeByteArray();
             transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
-            transaction.MaxFeePerDataGas = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays();
         }
 
@@ -314,7 +309,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.Value);
             stream.Encode(item.Data);
             _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
-            stream.Encode(item.MaxFeePerDataGas.Value);
+            stream.Encode(item.MaxFeePerBlobGas.Value);
             stream.Encode(item.BlobVersionedHashes);
         }
 
@@ -670,11 +665,11 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(item.Data)
                    + Rlp.LengthOf(item.ChainId ?? 0)
                    + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None)
-                   + Rlp.LengthOf(item.MaxFeePerDataGas)
+                   + Rlp.LengthOf(item.MaxFeePerBlobGas)
                    + Rlp.LengthOf(item.BlobVersionedHashes);
         }
 
-        private int GetShardBlobNetwrokWrapperContentLength(T item, int txContentLength)
+        private int GetShardBlobNetworkWrapperContentLength(T item, int txContentLength)
         {
             ShardBlobNetworkWrapper networkWrapper = item.NetworkWrapper as ShardBlobNetworkWrapper;
             return Rlp.LengthOfSequence(txContentLength)
@@ -726,7 +721,7 @@ namespace Nethermind.Serialization.Rlp
                 switch (item.Type)
                 {
                     case TxType.Blob:
-                        contentLength = GetShardBlobNetwrokWrapperContentLength(item, contentLength);
+                        contentLength = GetShardBlobNetworkWrapperContentLength(item, contentLength);
                         break;
                 }
             }

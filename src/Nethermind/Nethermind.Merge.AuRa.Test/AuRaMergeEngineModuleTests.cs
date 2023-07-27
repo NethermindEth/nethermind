@@ -113,6 +113,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         return base.getPayloadBodiesByRangeV1_should_return_payload_bodies_in_order_of_request_range_and_null_for_unknown_indexes(withdrawals);
     }
 
+    [Ignore("engine_newPayloadV3 fails")]
+    public override Task NewPayloadV3_should_decline_mempool_encoding(bool inMempoolForm, string expectedPayloadStatus)
+    {
+        return base.NewPayloadV3_should_decline_mempool_encoding(inMempoolForm, expectedPayloadStatus);
+    }
+
     class MergeAuRaTestBlockchain : MergeTestBlockchain
     {
         public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)

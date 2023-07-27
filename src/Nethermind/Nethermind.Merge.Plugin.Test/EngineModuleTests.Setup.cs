@@ -81,12 +81,15 @@ public partial class EngineModuleTests
         return new EngineRpcModule(
             new GetPayloadV1Handler(
                 chain.PayloadPreparationService!,
+                chain.SpecProvider!,
                 chain.LogManager),
             new GetPayloadV2Handler(
                 chain.PayloadPreparationService!,
+                chain.SpecProvider!,
                 chain.LogManager),
             new GetPayloadV3Handler(
                 chain.PayloadPreparationService!,
+                chain.SpecProvider!,
                 chain.LogManager),
             new NewPayloadHandler(
                 chain.BlockValidator,

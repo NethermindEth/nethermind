@@ -534,12 +534,12 @@ namespace Nethermind.Core.Extensions
             return ByteArrayToHexViaLookup32(bytes, false, false, false);
         }
 
-        public static void StreamHex(this byte[] bytes, StreamWriter streamWriter)
+        public static void StreamHex(this byte[] bytes, TextWriter streamWriter)
         {
             bytes.AsSpan().StreamHex(streamWriter);
         }
 
-        public static void StreamHex(this Span<byte> bytes, StreamWriter streamWriter)
+        public static void StreamHex(this Span<byte> bytes, TextWriter streamWriter)
         {
             for (int i = 0; i < bytes.Length; i++)
             {

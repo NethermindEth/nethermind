@@ -17,7 +17,7 @@ namespace Nethermind.Evm.Precompiles
 
         public static readonly IPrecompile Instance = new Blake2FPrecompile();
 
-        public Address Address { get; } = Address.FromNumber(9);
+        public static Address Address { get; } = Address.FromNumber(9);
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
 

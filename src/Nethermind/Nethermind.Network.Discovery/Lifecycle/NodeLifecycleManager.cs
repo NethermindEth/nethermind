@@ -197,7 +197,10 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeIn);
         RefreshNodeContactTime();
 
-        Node[] nodes = _nodeTable.GetClosestNodes(msg.SearchedNodeId).ToArray();
+        Node[] nodes = _nodeTable
+            .GetClosestNodes(msg.SearchedNodeId)
+            .Take(12) // Otherwise the payload may become too big, which is out of spec.
+            .ToArray();
         SendNeighbors(nodes);
     }
 

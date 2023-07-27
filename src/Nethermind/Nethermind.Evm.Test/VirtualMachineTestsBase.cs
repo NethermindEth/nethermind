@@ -240,8 +240,8 @@ namespace Nethermind.Evm.Test
                 .WithTransactions(tx is null ? new Transaction[0] : new[] { tx })
                 .WithGasLimit(blockGasLimit)
                 .WithBeneficiary(senderRecipientAndMiner.Miner)
-                .WithDataGasUsed(0)
-                .WithExcessDataGas(0)
+                .WithBlobGasUsed(0)
+                .WithExcessBlobGas(0)
                 .WithTimestamp(timestamp)
                 .TestObject;
         }

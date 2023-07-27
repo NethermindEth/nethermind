@@ -3,7 +3,7 @@
 
 using System;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.JsonRpc.Exceptions
 {
     public class ModuleRentalTimeoutException : TimeoutException
     {

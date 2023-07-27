@@ -29,9 +29,18 @@ public class Config
         shortName: 's',
         longName: "secret",
         Required = true,
-        HelpText = "Path to file with hex encoded secret for jwt authentication"
+        HelpText = "Path to file with hex encoded secret for JWT authentication"
     )]
     public string JwtSecretFilePath { get; }
+
+    [Option(
+        shortName: 't',
+        longName: "ttl",
+        Required = false,
+        Default = 60,
+        HelpText = "Authentication time to live (ttl) in seconds"
+    )]
+    public int AuthTtl { get; }
 
     [Option(
         shortName: 'd',
@@ -43,13 +52,22 @@ public class Config
     public bool DryRun { get; }
 
     [Option(
+        shortName: 'p',
+        longName: "progress",
+        Required = false,
+        Default = false,
+        HelpText = "Show progress"
+    )]
+    public bool ShowProgress { get; }
+
+    [Option(
         shortName: 'o',
         longName: "output",
         Required = false,
-        Default = MetricConsumerStrategy.Report,
+        Default = MetricsOutputFormatter.Report,
         HelpText = "Strategy to report metrics"
     )]
-    public MetricConsumerStrategy MetricConsumerStrategy { get; }
+    public MetricsOutputFormatter MetricsOutputFormatter { get; }
 
     [Option(
         shortName: 'f',
@@ -65,16 +83,21 @@ public class Config
         string messagesFilePath,
         string hostAddress,
         string jwtSecretFilePath,
+        int authTtl,
         bool dryRun,
-        MetricConsumerStrategy metricConsumerStrategy,
+        bool showProgress,
+        MetricsOutputFormatter metricsOutputFormatter,
         IEnumerable<string> methodFilters
     )
     {
         MessagesFilePath = messagesFilePath;
         HostAddress = hostAddress;
         JwtSecretFilePath = jwtSecretFilePath;
+        AuthTtl = authTtl;
         DryRun = dryRun;
-        MetricConsumerStrategy = metricConsumerStrategy;
+        ShowProgress = showProgress;
+        MetricsOutputFormatter = metricsOutputFormatter;
         MethodFilters = methodFilters;
+        ShowProgress = showProgress;
     }
 }

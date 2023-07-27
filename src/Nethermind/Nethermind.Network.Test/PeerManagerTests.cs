@@ -662,7 +662,7 @@ namespace Nethermind.Network.Test
 
                 foreach (Session session in clone)
                 {
-                    session.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Remote, "test");
+                    session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
                 }
             }
 
