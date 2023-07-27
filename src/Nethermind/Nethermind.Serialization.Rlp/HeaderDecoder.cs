@@ -83,7 +83,7 @@ namespace Nethermind.Serialization.Rlp
                     blockHeader.ExcessDataGas = decoderContext.DecodeULong(allowLeadingZeroBytes: false);
                 }
 
-                if (itemsRemaining >= 4 && decoderContext.Position != headerCheck)
+                if (itemsRemaining == 4 && decoderContext.Position != headerCheck)
                 {
                     blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccak();
                 }
@@ -170,7 +170,7 @@ namespace Nethermind.Serialization.Rlp
                     blockHeader.ExcessDataGas = rlpStream.DecodeUlong(allowLeadingZeroBytes: false);
                 }
 
-                if (itemsRemaining >= 4 && rlpStream.Position != headerCheck)
+                if (itemsRemaining == 4 && rlpStream.Position != headerCheck)
                 {
                     blockHeader.ParentBeaconBlockRoot = rlpStream.DecodeKeccak();
                 }

@@ -30,7 +30,7 @@ public class Bn254PairingPrecompile : IPrecompile<Bn254PairingPrecompile>
         return (releaseSpec.IsEip1108Enabled ? 34000L : 80000L) * (inputData.Length / PairSize);
     }
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
+    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState? _ = null)
     {
         Metrics.Bn254PairingPrecompile++;
 

@@ -32,7 +32,7 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
         return 0L;
     }
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
+    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState? _ = null)
     {
         const int expectedInputLength = 2 * BlsParams.LenFp;
         if (inputData.Length != expectedInputLength)

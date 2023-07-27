@@ -90,7 +90,16 @@ namespace Nethermind.Merge.Plugin.Test
             => CreateBlockRequestInternal<ExecutionPayload>(spec, state, parent, miner, withdrawals, transactions: transactions, beaconParentBlockRoot: beaconParentBlockRoot);
 
         private static ExecutionPayloadV3 CreateBlockRequestV3(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? dataGasUsed = null, ulong? excessDataGas = null, Transaction[]? transactions = null, Keccak? beaconParentBlockRoot = null)
-            => CreateBlockRequestInternal<ExecutionPayloadV3>(spec, state, parent, miner, withdrawals, dataGasUsed, excessDataGas, transactions: transactions, beaconParentBlockRoot: beaconParentBlockRoot);
+        {
+            var blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(spec, state, parent, miner, withdrawals, dataGasUsed, excessDataGas, transactions: transactions, beaconParentBlockRoot: beaconParentBlockRoot);
+            BeaconBlockRootPrecompile.Instance.SetupBeaconBlockRootPrecompileState(spec, state, blockRequestV3.ParentBeaconBlockRoot, blockRequestV3.Timestamp);
+            state.Commit(spec);
+            state.CommitTree(blockRequestV3.BlockNumber);
+
+            state.RecalculateStateRoot();
+            blockRequestV3.StateRoot = state.StateRoot;
+            return blockRequestV3;
+        }
 
         private static T CreateBlockRequestInternal<T>(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? dataGasUsed = null, ulong? excessDataGas = null, Transaction[]? transactions = null, Keccak? beaconParentBlockRoot = null) where T : ExecutionPayload, new()
         {
@@ -113,13 +122,6 @@ namespace Nethermind.Merge.Plugin.Test
                 blockRequestV3.DataGasUsed = dataGasUsed;
                 blockRequestV3.ExcessDataGas = excessDataGas;
                 blockRequestV3.ParentBeaconBlockRoot = beaconParentBlockRoot;
-
-                BeaconBlockRootPrecompile.Instance.SetupBeaconBlockRootPrecompileState(spec.IsEip4788Enabled, state, blockRequestV3.ParentBeaconBlockRoot, blockRequestV3.Timestamp);
-                state.Commit(spec);
-                state.CommitTree(blockRequestV3.BlockNumber);
-
-                state.RecalculateStateRoot();
-                blockRequestV3.StateRoot = state.StateRoot;
             }
 
 

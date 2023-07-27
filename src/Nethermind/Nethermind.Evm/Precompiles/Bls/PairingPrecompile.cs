@@ -29,7 +29,7 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
         return 23000L * (inputData.Length / PairSize);
     }
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
+    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState? _ = null)
     {
         if (inputData.Length % PairSize > 0 || inputData.Length == 0)
         {

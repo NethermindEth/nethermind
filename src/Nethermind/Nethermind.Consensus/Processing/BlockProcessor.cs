@@ -226,7 +226,7 @@ public partial class BlockProcessor : IBlockProcessor
         _receiptsTracer.SetOtherTracer(blockTracer);
         _receiptsTracer.StartNewBlockTrace(block);
 
-        BeaconBlockRootPrecompile.Instance.SetupBeaconBlockRootPrecompileState(spec.IsBeaconParentBlockRootAvailable, _stateProvider, block.ParentBeaconBlockRoot, block.Timestamp);
+        BeaconBlockRootPrecompile.Instance.SetupBeaconBlockRootPrecompileState(spec, _stateProvider, block.ParentBeaconBlockRoot, block.Timestamp);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
 

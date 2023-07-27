@@ -32,7 +32,7 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
         return 0L;
     }
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
+    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState? _ = null)
     {
         const int expectedInputLength = 2 * BlsParams.LenFp + BlsParams.LenFr;
         if (inputData.Length != expectedInputLength)

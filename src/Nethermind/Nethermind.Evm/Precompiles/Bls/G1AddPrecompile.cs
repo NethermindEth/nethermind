@@ -32,7 +32,7 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
         return 0L;
     }
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
+    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState? _ = null)
     {
         const int expectedInputLength = 4 * BlsParams.LenFp;
         if (inputData.Length != expectedInputLength)

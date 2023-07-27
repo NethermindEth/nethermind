@@ -278,9 +278,9 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithParentBeaconBlockRoot(Keccak keccakG)
+        public BlockBuilder WithParentBeaconBlockRoot(Keccak parentBeaconBlockRoot)
         {
-            TestObjectInternal.Header.ParentBeaconBlockRoot = keccakG;
+            TestObjectInternal.Header.ParentBeaconBlockRoot = parentBeaconBlockRoot;
             return this;
         }
     }

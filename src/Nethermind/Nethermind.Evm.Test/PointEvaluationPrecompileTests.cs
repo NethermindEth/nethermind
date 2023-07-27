@@ -29,7 +29,7 @@ public class PointEvaluationPrecompileTests
     [TestCaseSource(nameof(OutputTests))]
     public bool Test_PointEvaluationPrecompile_Produces_Correct_Outputs(byte[] input)
     {
-        (ReadOnlyMemory<byte> output, bool success) = PointEvaluationPrecompile.Instance.Run(input, Cancun.Instance, null);
+        (ReadOnlyMemory<byte> output, bool success) = PointEvaluationPrecompile.Instance.Run(input, Cancun.Instance);
         output.ToArray().Should().BeEquivalentTo(success ? _predefinedSuccessAnswer : _predefinedFailureAnswer);
         return success;
     }

@@ -35,7 +35,7 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
 
     private const int ItemSize = 288;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState _)
+    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState? _ = null)
     {
         if (inputData.Length % ItemSize > 0 || inputData.Length == 0)
         {

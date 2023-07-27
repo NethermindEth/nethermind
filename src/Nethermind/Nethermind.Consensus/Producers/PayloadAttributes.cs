@@ -62,13 +62,13 @@ public static class PayloadAttributesExtensions
         bool hasWithdrawals = payloadAttributes.Withdrawals is not null;
         bool hasBeaconParentBlockRoot = payloadAttributes.BeaconParentBlockRoot is not null;
 
-        const int preambleLength = 32 + 32 + 32 + 20;
-        Span<byte> inputSpan = stackalloc byte[preambleLength + (hasWithdrawals ? 32 : 0) + (hasBeaconParentBlockRoot ? 32 : 0)];
+        const int preambleLength = Keccak.Size + Keccak.Size + Keccak.Size + Address.ByteLength;
+        Span<byte> inputSpan = stackalloc byte[preambleLength + (hasWithdrawals ? Keccak.Size : 0) + (hasBeaconParentBlockRoot ? Keccak.Size : 0)];
 
-        parentHeader.Hash!.Bytes.CopyTo(inputSpan[..32]);
-        BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(56, 8), payloadAttributes.Timestamp);
-        payloadAttributes.PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, 32));
-        payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
+        parentHeader.Hash!.Bytes.CopyTo(inputSpan[..Keccak.Size]);
+        BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(56, sizeof(UInt64)), payloadAttributes.Timestamp);
+        payloadAttributes.PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, Keccak.Size));
+        payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, Address.ByteLength));
 
         if (hasWithdrawals)
         {
@@ -81,7 +81,7 @@ public static class PayloadAttributesExtensions
 
         if (hasBeaconParentBlockRoot)
         {
-            payloadAttributes.BeaconParentBlockRoot.Bytes.CopyTo(inputSpan[(preambleLength + (hasWithdrawals ? 32 : 0))..]);
+            payloadAttributes.BeaconParentBlockRoot.Bytes.CopyTo(inputSpan[(preambleLength + (hasWithdrawals ? Keccak.Size : 0))..]);
         }
 
         ValueKeccak inputHash = ValueKeccak.Compute(inputSpan);

@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Test
 
             Prepare input = Prepare.EvmCode.FromCode(randomInput);
 
-            (ReadOnlyMemory<byte>, bool) gmpPair = ModExpPrecompile.Instance.Run(input.Done.ToArray(), Berlin.Instance, null);
+            (ReadOnlyMemory<byte>, bool) gmpPair = ModExpPrecompile.Instance.Run(input.Done.ToArray(), Berlin.Instance);
 #pragma warning disable 618
             (ReadOnlyMemory<byte>, bool) bigIntPair = ModExpPrecompile.OldRun(input.Done.ToArray());
 #pragma warning restore 618

@@ -108,7 +108,7 @@ public class TestBlockchain : IDisposable
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
-    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
+    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
     {
         Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
         JsonSerializer = new EthereumJsonSerializer();
@@ -119,7 +119,7 @@ public class TestBlockchain : IDisposable
         State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
 
         // Eip4788 precompile state account
-        if (specProvider?.GenesisSpec?.IsEip4788Enabled ?? false)
+        if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
         {
             State.CreateAccount(BeaconBlockRootPrecompile.Address, 1);
         }
@@ -202,7 +202,10 @@ public class TestBlockchain : IDisposable
         BlockTree.SuggestBlock(genesis);
 
         await WaitAsync(_resetEvent, "Failed to process genesis in time.");
-        await AddBlocksOnStart();
+
+        if(addBlockOnStart)
+            await AddBlocksOnStart();
+
         return this;
     }
 
@@ -305,7 +308,7 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithAura(0, new byte[65]);
         }
 
-        if (SpecProvider.GenesisSpec.IsEip4788Enabled)
+        if (SpecProvider.GenesisSpec.IsBeaconBlockRootAvailable)
         {
             genesisBlockBuilder.WithParentBeaconBlockRoot(TestItem.KeccakG);
         }
@@ -317,9 +320,9 @@ public class TestBlockchain : IDisposable
         }
 
 
-        if (SpecProvider.GenesisSpec.IsEip4788Enabled)
+        if (SpecProvider.GenesisSpec.IsBeaconBlockRootAvailable)
         {
-            BeaconBlockRootPrecompile.Instance.SetupBeaconBlockRootPrecompileState(isEip4788Enabled: true, State, genesisBlockBuilder.TestObject.ParentBeaconBlockRoot, genesisBlockBuilder.TestObject.Timestamp);
+            BeaconBlockRootPrecompile.Instance.SetupBeaconBlockRootPrecompileState(SpecProvider.GenesisSpec, State, genesisBlockBuilder.TestObject.ParentBeaconBlockRoot, genesisBlockBuilder.TestObject.Timestamp);
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);
 
