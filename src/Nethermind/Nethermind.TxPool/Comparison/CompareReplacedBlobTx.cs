@@ -32,7 +32,7 @@ public class CompareReplacedBlobTx : IComparer<Transaction?>
 
         if (y.MaxFeePerGas * 2 > x.MaxFeePerGas) return 1;
         if (y.MaxPriorityFeePerGas * 2 > x.MaxPriorityFeePerGas) return 1;
-        if (y.MaxFeePerDataGas * 2 > x.MaxFeePerDataGas) return 1;
+        if (y.MaxFeePerBlobGas * 2 > x.MaxFeePerBlobGas) return 1;
 
         // if we are here, it means that all new fees are at least 2x higher than old ones, so replacement is allowed
         return -1;

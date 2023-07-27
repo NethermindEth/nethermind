@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.Producers
 
             foreach (Transaction blobTx in blobTransactions)
             {
-                if (DataGasCalculator.CalculateDataGas(blobsCounter) == Eip4844Constants.MaxDataGasPerBlock)
+                if (BlobGasCalculator.CalculateBlobGas(blobsCounter) == Eip4844Constants.MaxBlobGasPerBlock)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, no more blob space. Block already have {blobsCounter} which is max value allowed.");
                     break;
@@ -75,15 +75,15 @@ namespace Nethermind.Consensus.Producers
                 bool success = _txFilterPipeline.Execute(blobTx, parent);
                 if (!success) continue;
 
-                if (dataGasPrice.IsZero)
+                if (blobGasPrice.IsZero)
                 {
-                    ulong? excessDataGas = DataGasCalculator.CalculateExcessDataGas(parent, _specProvider.GetSpec(parent));
+                    ulong? excessDataGas = BlobGasCalculator.CalculateExcessBlobGas(parent, _specProvider.GetSpec(parent));
                     if (excessDataGas is null)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, the specification is not configured to handle shard blob transactions.");
                         continue;
                     }
-                    if (!DataGasCalculator.TryCalculateDataGasPricePerUnit(excessDataGas.Value, out dataGasPrice))
+                    if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(excessDataGas.Value, out blobGasPrice))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to calculate data gas price.");
                         continue;
@@ -92,14 +92,14 @@ namespace Nethermind.Consensus.Producers
 
                 int txAmountOfBlobs = blobTx.BlobVersionedHashes?.Length ?? 0;
 
-                if (dataGasPrice > blobTx.MaxFeePerDataGas)
+                if (blobGasPrice > blobTx.MaxFeePerBlobGas)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, data gas fee is too low.");
                     continue;
                 }
 
-                if (DataGasCalculator.CalculateDataGas(blobsCounter + txAmountOfBlobs) >
-                    Eip4844Constants.MaxDataGasPerBlock)
+                if (BlobGasCalculator.CalculateBlobGas(blobsCounter + txAmountOfBlobs) >
+                    Eip4844Constants.MaxBlobGasPerBlock)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
                     continue;
@@ -109,7 +109,7 @@ namespace Nethermind.Consensus.Producers
                 if (_logger.IsTrace) _logger.Trace($"Selected shard blob tx {blobTx.ToShortString()} to be potentially included in block, total blobs included: {blobsCounter}.");
 
                 selectedTransactions++;
-                selectedBlobTxs ??= new List<Transaction>((int)(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob));
+                selectedBlobTxs ??= new List<Transaction>((int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob));
                 selectedBlobTxs.Add(blobTx);
             }
 
