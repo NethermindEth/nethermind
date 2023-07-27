@@ -394,9 +394,6 @@ namespace Nethermind.Trie.Pruning
             {
                 throw new ArgumentNullException(nameof(currentNode));
             }
-
-            if (currentNode.Keccak is not null || currentNode.FullRlp is null)
-            {
                 Debug.Assert(blockNumber == TrieNode.LastSeenNotSet || currentNode.LastSeen != TrieNode.LastSeenNotSet, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
                 // Note that the LastSeen value here can be 'in the future' (greater than block number
                 // if we replaced a newly added node with an older copy and updated the LastSeen value.
@@ -411,12 +408,6 @@ namespace Nethermind.Trie.Pruning
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
 
                 PersistedNodesCount++;
-            }
-            else
-            {
-                Debug.Assert(currentNode.FullRlp is not null && currentNode.FullRlp.Length < 32,
-                    "We only expect persistence call without Keccak for the nodes that are kept inside the parent RLP (less than 32 bytes).");
-            }
         }
 
         private bool IsNoLongerNeeded(TrieNode node)
