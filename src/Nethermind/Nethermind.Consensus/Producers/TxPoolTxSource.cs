@@ -72,8 +72,6 @@ namespace Nethermind.Consensus.Producers
 
                 i++;
 
-                //add removal of null sender txs? There shouldn't be null sender at this point
-
                 bool success = _txFilterPipeline.Execute(blobTx, parent);
                 if (!success) continue;
 

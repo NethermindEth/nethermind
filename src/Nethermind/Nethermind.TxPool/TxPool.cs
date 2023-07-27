@@ -99,7 +99,9 @@ namespace Nethermind.TxPool
             AddNodeInfoEntryForTxPool();
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
-            _blobTransactions = new BlobTxDistinctSortedPool(_blobTxStorage, _txPoolConfig, comparer, logManager);
+            _blobTransactions = txPoolConfig.PersistentBlobPoolEnabled
+                ? new PersistentBlobTxDistinctSortedPool(_blobTxStorage, _txPoolConfig, comparer, logManager)
+                : new BlobTxDistinctSortedPool(_txPoolConfig.InMemoryBlobPoolSize, comparer, logManager);
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
 
             _headInfo.HeadChanged += OnHeadChange;
@@ -404,7 +406,7 @@ namespace Nethermind.TxPool
                     : worstTx.GasBottleneck;
 
                 bool inserted = (tx.SupportsBlobs
-                    ? _blobTransactions.TryInsert(tx, out Transaction? removed)
+                    ? _blobTransactions.TryInsertBlobTx(tx, out Transaction? removed)
                     : _transactions.TryInsert(tx.Hash!, tx, out removed));
 
                 if (!inserted)
@@ -517,11 +519,11 @@ namespace Nethermind.TxPool
                 _transactions.UpdatePool(_accounts, _updateBucket);
 
                 // ensure the capacity of the blob pool
-                if (_blobTransactions.Count > _txPoolConfig.BlobPoolSize)
-                    if (_logger.IsWarn) _logger.Warn($"Blob TxPool exceeds the config size {_blobTransactions.Count}/{_txPoolConfig.BlobPoolSize}");
+                if (_blobTransactions.Count > _txPoolConfig.PersistentBlobPoolSize)
+                    if (_logger.IsWarn) _logger.Warn($"Blob TxPool exceeds the config size {_blobTransactions.Count}/{_txPoolConfig.PersistentBlobPoolSize}");
 
-                if (_blobTransactions.Count == _txPoolConfig.BlobPoolSize)
-                    if (_logger.IsDebug) _logger.Debug($"Blob TxPool has reached max size of {_txPoolConfig.BlobPoolSize}, blob txs can be evicted now");
+                if (_blobTransactions.Count == _txPoolConfig.PersistentBlobPoolSize)
+                    if (_logger.IsDebug) _logger.Debug($"Blob TxPool has reached max size of {_txPoolConfig.PersistentBlobPoolSize}, blob txs can be evicted now");
 
                 _blobTransactions.UpdatePool(_accounts, _updateBucket);
             }
@@ -616,14 +618,14 @@ namespace Nethermind.TxPool
             lock (_locker)
             {
                 return _transactions.TryGetValue(hash, out transaction)
-                       || _blobTransactions.TryGetValue(hash, out transaction)
+                       || _blobTransactions.TryGetBlobTx(hash, out transaction)
                        || _broadcaster.TryGetPersistentTx(hash, out transaction);
             }
         }
 
         // only for tests - to test sorting
-        internal bool TryGetLightBlobTransaction(Keccak hash, out Transaction? transaction)
-            => _blobTransactions.TryGetLightValue(hash, out transaction);
+        internal void TryGetBlobTxSortingEquivalent(Keccak hash, out Transaction? transaction)
+            => _blobTransactions.TryGetBlobTxSortingEquivalent(hash, out transaction);
 
         // should own transactions (in broadcaster) be also checked here?
         // maybe it should use NonceManager, as it already has info about local txs?

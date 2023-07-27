@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -32,6 +33,13 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
+            if (tx.SupportsBlobs && tx.MaxPriorityFeePerGas < 1.GWei())
+            {
+                Metrics.PendingTransactionsTooLowFee++;
+                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
+                return AcceptTxResult.FeeTooLow.WithMessage($"MaxPriorityFeePerGas for blob transaction needs to be at least {1.GWei()} (1 GWei), is {tx.MaxPriorityFeePerGas}.");
+            }
+
             bool isLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
             if (isLocal || tx.SupportsBlobs)
             {
