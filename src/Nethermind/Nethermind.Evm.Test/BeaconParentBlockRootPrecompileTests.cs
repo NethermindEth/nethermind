@@ -92,7 +92,7 @@ public class Eip4788Tests : TestBlockchain
                 .WithTransactions(tx)
                 .WithPostMergeFlag(true);
 
-        if(spec.IsBeaconBlockRootAvailable)
+        if (spec.IsBeaconBlockRootAvailable)
         {
             blockBuilder.WithParentBeaconBlockRoot(parentBeaconBlockRoot);
         }

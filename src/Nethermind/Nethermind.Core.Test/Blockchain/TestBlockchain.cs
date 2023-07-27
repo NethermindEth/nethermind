@@ -203,7 +203,7 @@ public class TestBlockchain : IDisposable
 
         await WaitAsync(_resetEvent, "Failed to process genesis in time.");
 
-        if(addBlockOnStart)
+        if (addBlockOnStart)
             await AddBlocksOnStart();
 
         return this;
