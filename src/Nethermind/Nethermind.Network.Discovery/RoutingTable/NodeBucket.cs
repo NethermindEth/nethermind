@@ -11,12 +11,14 @@ public class NodeBucket
 {
     private readonly object _nodeBucketLock = new();
     private readonly LinkedList<NodeBucketItem> _items;
+    private readonly float _dropFullBucketProbability;
 
-    public NodeBucket(int distance, int bucketSize)
+    public NodeBucket(int distance, int bucketSize, float dropFullBucketProbability = 0.0f)
     {
         _items = new LinkedList<NodeBucketItem>();
         Distance = distance;
         BucketSize = bucketSize;
+        _dropFullBucketProbability = dropFullBucketProbability;
     }
 
     /// <summary>
@@ -88,6 +90,18 @@ public class NodeBucket
                 return NodeAddResult.Added();
             }
 
+            if (Random.Shared.NextSingle() < _dropFullBucketProbability)
+            {
+                NodeBucketItem item = new(node, DateTime.UtcNow);
+                if (!_items.Contains(item))
+                {
+                    _items.AddFirst(item);
+                    _items.RemoveLast();
+                }
+
+                return NodeAddResult.Dropped();
+            }
+
             NodeBucketItem evictionCandidate = GetEvictionCandidate();
             return NodeAddResult.Full(evictionCandidate);
         }
@@ -102,11 +116,6 @@ public class NodeBucket
             {
                 _items.Remove(item);
                 AddNode(nodeToAdd);
-            }
-            else
-            {
-                throw new InvalidOperationException(
-                    "Cannot replace non-existing node in the node table bucket");
             }
         }
     }
