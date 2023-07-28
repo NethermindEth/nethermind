@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -81,7 +79,7 @@ namespace Nethermind.Evm.Tracing
                 }
             }
 
-            if (rightBound == cap && !TryExecutableTransaction(tx, header, rightBound))
+            if (rightBound == cap && !TryExecutableTransaction(tx, header, rightBound, cancellationToken))
             {
                 return 0;
             }
@@ -104,25 +102,8 @@ namespace Nethermind.Evm.Tracing
             {
                 OutOfGas = false;
             }
-            public override bool IsTracingReceipt => true;
-            public override bool IsTracingInstructions => true;
-            public bool OutOfGas { get; set; }
 
-            public byte[]? ReturnValue { get; set; }
-
-            public byte StatusCode { get; set; }
-
-            public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
-            {
-                ReturnValue = output;
-                StatusCode = Evm.StatusCode.Success;
-            }
-
-            public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
-            {
-                ReturnValue = output;
-                StatusCode = Evm.StatusCode.Failure;
-            }
+            public bool OutOfGas { get; private set; }
 
             public override void ReportOperationError(EvmExceptionType error)
             {
