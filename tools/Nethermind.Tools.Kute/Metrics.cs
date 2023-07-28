@@ -4,6 +4,7 @@
 using App.Metrics;
 using App.Metrics.Counter;
 using App.Metrics.Timer;
+using Nethermind.Tools.Kute.Extensions;
 
 namespace Nethermind.Tools.Kute;
 
@@ -43,8 +44,9 @@ public class Metrics
 
     public Metrics()
     {
-        //TODO: HAAACK - this will use all requests from current set but thismagic number should be somehow replaced with all requests recognized at beggining
-        _metrics = new MetricsBuilder().SampleWith.AlgorithmR(10687).Build(); 
+        _metrics = new MetricsBuilder()
+            .SampleWith.Reservoir<CompleteReservoir>()
+            .Build();
     }
 
     public MetricsDataValueSource Snapshot => _metrics.Snapshot.Get();
