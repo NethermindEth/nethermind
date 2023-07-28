@@ -60,7 +60,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         IInvalidChainTracker invalidChainTracker,
         IMergeSyncController mergeSyncController,
         ILogManager logManager,
-        MergeConfig mergeConfig,
+        IMergeConfig mergeConfig,
         TimeSpan? timeout = null,
         int cacheSize = 50)
     {
