@@ -270,10 +270,10 @@ namespace Nethermind.Facade
 
             if (releaseSpec.IsEip4844Enabled)
             {
-                callHeader.DataGasUsed = DataGasCalculator.CalculateDataGas(transaction);
-                callHeader.ExcessDataGas = treatBlockHeaderAsParentBlock
-                    ? DataGasCalculator.CalculateExcessDataGas(blockHeader, releaseSpec)
-                    : blockHeader.ExcessDataGas;
+                callHeader.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(transaction);
+                callHeader.ExcessBlobGas = treatBlockHeaderAsParentBlock
+                    ? BlobGasCalculator.CalculateExcessBlobGas(blockHeader, releaseSpec)
+                    : blockHeader.ExcessBlobGas;
             }
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;

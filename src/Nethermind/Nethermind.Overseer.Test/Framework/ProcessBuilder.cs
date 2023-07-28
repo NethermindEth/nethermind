@@ -21,10 +21,10 @@ namespace Nethermind.Overseer.Test.Framework
             process.Exited += ProcessOnExited;
             process.StartInfo.WorkingDirectory = workingDirectory;
             process.StartInfo.FileName = "dotnet";
-            var arguments = $"Nethermind.Runner.dll --config {config} --JsonRpc.Port {httpPort} --Network.P2PPort {p2pPort} --Network.DiscoveryPort {p2pPort} --KeyStore.TestNodeKey {nodeKey}";
+            var arguments = $"nethermind.dll -c {config} --JsonRpc.Port {httpPort} --Network.P2PPort {p2pPort} --Network.DiscoveryPort {p2pPort} --KeyStore.TestNodeKey {nodeKey}";
             if (!string.IsNullOrEmpty(dbPath))
             {
-                arguments = $"{arguments} --baseDbPath {dbPath}";
+                arguments = $"{arguments} -d {dbPath}";
             }
 
             if (!string.IsNullOrEmpty(bootnode))

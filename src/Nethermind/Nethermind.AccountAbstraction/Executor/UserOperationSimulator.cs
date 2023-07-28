@@ -124,9 +124,7 @@ namespace Nethermind.AccountAbstraction.Executor
             ITransactionProcessor transactionProcessor)
         {
             bool paymasterWhitelisted = _whitelistedPaymasters.Contains(userOperation.Paymaster);
-            UserOperationTxTracer txTracer = new(
-                transaction,
-                paymasterWhitelisted,
+            UserOperationTxTracer txTracer = new(paymasterWhitelisted,
                 userOperation.InitCode != Bytes.Empty, userOperation.Sender,
                 userOperation.Paymaster,
                 _entryPointContractAddress,

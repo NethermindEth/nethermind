@@ -13,7 +13,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
     public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLikeTxTracer>
     {
         private readonly IDictionary<Keccak, ParityTraceTypes>? _typesByTransaction;
-        private Block _block;
+        private Block? _block;
         private readonly ParityTraceTypes _types;
 
         public ParityLikeBlockTracer(Keccak txHash, ParityTraceTypes types)
