@@ -76,6 +76,10 @@ class Application
                         {
                             _metrics.TickFailed();
                         }
+                        else
+                        {
+                            _metrics.TickSucceeded();
+                        }
 
                         await _responseTracer.TraceResponse(result);
 
