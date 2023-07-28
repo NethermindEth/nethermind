@@ -162,24 +162,24 @@ public class HeaderDecoderTests
         blockHeader.GasLimit.Should().Be(negativeLong);
     }
 
-    [TestCaseSource(nameof(ExcessDataGasCaseSource))]
-    public void Can_encode_decode_with_excessDataGas(ulong? dataGasUsed, ulong? excessDataGas)
+    [TestCaseSource(nameof(ExcessBlobGasCaseSource))]
+    public void Can_encode_decode_with_excessBlobGas(ulong? blobGasUsed, ulong? excessBlobGas)
     {
         BlockHeader header = Build.A.BlockHeader
             .WithTimestamp(ulong.MaxValue)
             .WithBaseFee(1)
             .WithWithdrawalsRoot(Keccak.Zero)
-            .WithDataGasUsed(dataGasUsed)
-            .WithExcessDataGas(excessDataGas).TestObject;
+            .WithBlobGasUsed(blobGasUsed)
+            .WithExcessBlobGas(excessBlobGas).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        blockHeader.DataGasUsed.Should().Be(dataGasUsed);
-        blockHeader.ExcessDataGas.Should().Be(excessDataGas);
+        blockHeader.BlobGasUsed.Should().Be(blobGasUsed);
+        blockHeader.ExcessBlobGas.Should().Be(excessBlobGas);
     }
 
-    public static IEnumerable<object?[]> ExcessDataGasCaseSource()
+    public static IEnumerable<object?[]> ExcessBlobGasCaseSource()
     {
         yield return new object?[] { null, null };
         yield return new object?[] { 0ul, 0ul };

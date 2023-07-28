@@ -381,10 +381,10 @@ namespace Nethermind.Evm.TransactionProcessing
                     }
                     if (tx.SupportsBlobs)
                     {
-                        overflows = UInt256.MultiplyOverflow(DataGasCalculator.CalculateDataGas(tx), (UInt256)tx.MaxFeePerDataGas, out UInt256 maxDataGasFee);
-                        if (overflows || UInt256.AddOverflow(maxGasFee, maxDataGasFee, out UInt256 multidimGasFee) || multidimGasFee > balanceLeft)
+                        overflows = UInt256.MultiplyOverflow(BlobGasCalculator.CalculateBlobGas(tx), (UInt256)tx.MaxFeePerBlobGas, out UInt256 maxBlobGasFee);
+                        if (overflows || UInt256.AddOverflow(maxGasFee, maxBlobGasFee, out UInt256 multidimGasFee) || multidimGasFee > balanceLeft)
                         {
-                            TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_DATA_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
+                            TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
                             QuickFail(tx, header, spec, tracer, "insufficient sender balance");
                             return false;
                         }
@@ -394,10 +394,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
                 if (!overflows && tx.SupportsBlobs)
                 {
-                    overflows = !DataGasCalculator.TryCalculateDataGasPrice(header, tx, out UInt256 dataGasFee);
+                    overflows = !BlobGasCalculator.TryCalculateBlobGasPrice(header, tx, out UInt256 blobGasFee);
                     if (!overflows)
                     {
-                        overflows = UInt256.AddOverflow(senderReservedGasPayment, dataGasFee, out senderReservedGasPayment);
+                        overflows = UInt256.AddOverflow(senderReservedGasPayment, blobGasFee, out senderReservedGasPayment);
                     }
                 }
 
