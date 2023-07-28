@@ -106,12 +106,12 @@ namespace Nethermind.Init.Steps
             IKeyValueStore codeDb = getApi.DbProvider.CodeDb
                 .WitnessedBy(witnessCollector);
 
-            TrieStore trieStore;
-            IWorldState worldState;
             IKeyValueStoreWithBatching stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
+            IPersistenceStrategy persistenceStrategy;
+            IPruningStrategy pruningStrategy;
             if (pruningConfig.Mode.IsMemory())
             {
-                IPersistenceStrategy persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
+                persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
                 if (pruningConfig.Mode.IsFull())
                 {
                     PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new((IFullPruningDb)getApi.DbProvider!.StateDb, getApi.BlockTree!, getApi.LogManager);
@@ -119,39 +119,34 @@ namespace Nethermind.Init.Steps
                     persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
                 }
 
-                setApi.TrieStore = trieStore = new HealingTrieStore(
-                    stateWitnessedBy,
-                    Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
-                    persistenceStrategy,
-                    getApi.LogManager);
-
-                if (pruningConfig.Mode.IsFull())
-                {
-                    IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
-                    fullPruningDb.PruningStarted += (_, args) =>
-                    {
-                        cachedStateDb.PersistCache(args.Context);
-                        trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
-                    };
-                }
-
-                worldState = setApi.WorldState = new HealingWorldState(
-                    trieStore,
-                    codeDb,
-                    getApi.LogManager);
+                pruningStrategy = Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()); // TODO: memory hint should define this
             }
             else
             {
-                setApi.TrieStore = trieStore = new TrieStore(
-                    stateWitnessedBy,
-                    No.Pruning,
-                    Persist.EveryBlock,
-                    getApi.LogManager);
+                pruningStrategy = No.Pruning;
+                persistenceStrategy = Persist.EveryBlock;
+            }
 
-                worldState = setApi.WorldState = new WorldState(
-                    trieStore,
-                    codeDb,
-                    getApi.LogManager);
+            TrieStore trieStore = new HealingTrieStore(
+                stateWitnessedBy,
+                pruningStrategy,
+                persistenceStrategy,
+                getApi.LogManager);
+            setApi.TrieStore = trieStore;
+
+            IWorldState worldState = setApi.WorldState = new HealingWorldState(
+                trieStore,
+                codeDb,
+                getApi.LogManager);
+
+            if (pruningConfig.Mode.IsFull())
+            {
+                IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
+                fullPruningDb.PruningStarted += (_, args) =>
+                {
+                    cachedStateDb.PersistCache(args.Context);
+                    trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
+                };
             }
 
             TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);
