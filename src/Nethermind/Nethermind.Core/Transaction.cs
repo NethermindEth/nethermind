@@ -130,14 +130,14 @@ namespace Nethermind.Core
         /// <remarks>Used for sorting in edge cases.</remarks>
         public ulong PoolIndex { get; set; }
 
-        protected int? Size { get; set; } = null;
+        protected int? _size = null;
 
         /// <summary>
         /// Encoded transaction length
         /// </summary>
         public int GetLength(ITransactionSizeCalculator sizeCalculator)
         {
-            return Size ??= sizeCalculator.GetLength(this);
+            return _size ??= sizeCalculator.GetLength(this);
         }
 
         public string ToShortString()
