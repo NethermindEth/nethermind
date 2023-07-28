@@ -32,6 +32,10 @@ namespace Nethermind.Evm.Tracing
         {
             IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1, header.Timestamp + _blocksConfig.SecondsPerSlot);
 
+            // TODO: This is required since the estimation changes `tx.Value`
+            // If `Transaction` implemented `ICloneable` we could avoid this issue
+            long originalGasLimit = tx.GasLimit;
+
             tx.GasLimit = Math.Min(tx.GasLimit, header.GasLimit); // Limit Gas to the header
             tx.SenderAddress ??= Address.Zero; //If sender is not specified, use zero address.
 
@@ -54,7 +58,11 @@ namespace Nethermind.Evm.Tracing
             // Execute binary search to find the optimal gas estimation.
             try
             {
-                return BinarySearchEstimate(leftBound, rightBound, tx, header, cancellationToken);
+                long estimate = BinarySearchEstimate(leftBound, rightBound, tx, header, cancellationToken);
+                tx.GasLimit = originalGasLimit;
+                long additionalGas = gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
+
+                return estimate + additionalGas;
             }
             catch (OperationCanceledException)
             {
