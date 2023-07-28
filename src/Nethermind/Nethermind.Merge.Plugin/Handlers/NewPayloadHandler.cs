@@ -21,6 +21,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
+using Nethermind.Merge.Plugin;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -59,6 +60,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         IInvalidChainTracker invalidChainTracker,
         IMergeSyncController mergeSyncController,
         ILogManager logManager,
+        MergeConfig mergeConfig,
         TimeSpan? timeout = null,
         int cacheSize = 50)
     {
@@ -74,7 +76,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _mergeSyncController = mergeSyncController;
         _logger = logManager.GetClassLogger();
         _defaultProcessingOptions = initConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
-        _timeout = timeout ?? TimeSpan.FromSeconds(7);
+        _timeout = mergeConfig.Timeout;
         if (cacheSize > 0)
             _latestBlocks = new(cacheSize, 0, "LatestBlocks");
     }
