@@ -35,13 +35,11 @@ namespace Nethermind.Evm.Tracing
             tx.GasLimit = Math.Min(tx.GasLimit, header.GasLimit); // Limit Gas to the header
             tx.SenderAddress ??= Address.Zero; // If sender is not specified, use zero address.
 
-            long additionalGasRequired = gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
-
-            // Return additional gas required in case of insufficient funds.
+            // Calculate and return additional gas required in case of insufficient funds.
             UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);
             if (tx.Value != UInt256.Zero && tx.Value >= senderBalance)
             {
-                return additionalGasRequired;
+                return gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
             }
 
             // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
@@ -55,7 +53,8 @@ namespace Nethermind.Evm.Tracing
             // Execute binary search to find the optimal gas estimation.
             try
             {
-                return BinarySearchEstimate(leftBound, rightBound, tx, header, cancellationToken) + additionalGasRequired;
+                return BinarySearchEstimate(leftBound, rightBound, tx, header, cancellationToken)
+                       + Math.Max(0, gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec));
             }
             catch (OperationCanceledException)
             {
@@ -91,8 +90,14 @@ namespace Nethermind.Evm.Tracing
         private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit, CancellationToken cancellationToken)
         {
             OutOfGasTracer tracer = new();
+
+            // TODO: Workaround to not mutate the original Tx
+            long originalGasLimit = transaction.GasLimit;
+
             transaction.GasLimit = gasLimit;
             _transactionProcessor.CallAndRestore(transaction, block, tracer.WithCancellation(cancellationToken));
+
+            transaction.GasLimit = originalGasLimit;
 
             return !tracer.OutOfGas;
         }
