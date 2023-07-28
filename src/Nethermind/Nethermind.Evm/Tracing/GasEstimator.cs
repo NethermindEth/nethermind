@@ -58,7 +58,7 @@ namespace Nethermind.Evm.Tracing
             }
             catch (OperationCanceledException)
             {
-                return 0;
+                return long.MaxValue;
             }
         }
 
