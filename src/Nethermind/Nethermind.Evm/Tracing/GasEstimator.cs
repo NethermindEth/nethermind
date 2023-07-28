@@ -32,12 +32,17 @@ namespace Nethermind.Evm.Tracing
         {
             IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1, header.Timestamp + _blocksConfig.SecondsPerSlot);
 
-            // TODO: This is required since the estimation changes `tx.Value`
-            // If `Transaction` implemented `ICloneable` we could avoid this issue
-            long originalGasLimit = tx.GasLimit;
-
             tx.GasLimit = Math.Min(tx.GasLimit, header.GasLimit); // Limit Gas to the header
-            tx.SenderAddress ??= Address.Zero; //If sender is not specified, use zero address.
+            tx.SenderAddress ??= Address.Zero; // If sender is not specified, use zero address.
+
+            long additionalGasRequired = gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
+
+            // Return additional gas required in case of insufficient funds.
+            UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);
+            if (tx.Value != UInt256.Zero && tx.Value >= senderBalance)
+            {
+                return additionalGasRequired;
+            }
 
             // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
             long leftBound = (gasTracer.GasSpent != 0 && gasTracer.GasSpent >= Transaction.BaseTxGasCost)
@@ -47,22 +52,10 @@ namespace Nethermind.Evm.Tracing
                 ? tx.GasLimit
                 : header.GasLimit;
 
-            UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);
-
-            // Calculate and return additional gas required in case of insufficient funds.
-            if (tx.Value != UInt256.Zero && tx.Value >= senderBalance)
-            {
-                return gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
-            }
-
             // Execute binary search to find the optimal gas estimation.
             try
             {
-                long estimate = BinarySearchEstimate(leftBound, rightBound, tx, header, cancellationToken);
-                tx.GasLimit = originalGasLimit;
-                long additionalGas = gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
-
-                return estimate + additionalGas;
+                return BinarySearchEstimate(leftBound, rightBound, tx, header, cancellationToken) + additionalGasRequired;
             }
             catch (OperationCanceledException)
             {
