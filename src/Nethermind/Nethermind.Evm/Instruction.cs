@@ -40,7 +40,7 @@ namespace Nethermind.Evm
         SHR = 0x1c, // EIP-145
         SAR = 0x1d, // EIP-145
 
-        SHA3 = 0x20,
+        KECCAK256 = 0x20,
 
         ADDRESS = 0x30,
         BALANCE = 0x31,
@@ -162,8 +162,8 @@ namespace Nethermind.Evm
         LOG4 = 0xa4,
 
         // EIP-1153
-        TLOAD = 0xb3,
-        TSTORE = 0xb4,
+        TLOAD = 0x5c,
+        TSTORE = 0x5d,
 
         CREATE = 0xf0,
         CALL = 0xf1,
@@ -183,6 +183,8 @@ namespace Nethermind.Evm
             instruction switch
             {
                 Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
+                Instruction.TLOAD or Instruction.BEGINSUB => spec?.TransientStorageEnabled == true ? "TLOAD" : "BEGINSUB",
+                Instruction.TSTORE or Instruction.RETURNSUB => spec?.TransientStorageEnabled == true ? "TSTORE" : "RETURNSUB",
                 Instruction.JUMPSUB or Instruction.MCOPY => spec?.IsEip5656Enabled == true ? "MCOPY" : "JUMPSUB",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null
             };

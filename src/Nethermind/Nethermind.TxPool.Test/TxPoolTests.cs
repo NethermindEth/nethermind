@@ -1546,6 +1546,58 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size);
         }
 
+        [Test]
+        public void Should_not_replace_ready_txs_by_nonce_gap_ones()
+        {
+            TxPoolConfig txPoolConfig = new() { Size = 128 };
+            _txPool = CreatePool(txPoolConfig);
+
+            // send (size - 1) standard txs from different senders
+            for (int i = 0; i < txPoolConfig.Size - 1; i++)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce(0)
+                    .WithGasPrice(10)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
+
+                EnsureSenderBalance(TestItem.PrivateKeys[i].Address, UInt256.MaxValue);
+                _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            }
+
+            _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size - 1);
+            _txPool.GetPendingTransactionsBySender().Keys.Count.Should().Be(txPoolConfig.Size - 1);
+
+            const int nonceGap = 100;
+            // send 1 expensive nonce-gap tx from sender X
+            PrivateKey privateKeyOfAttacker = TestItem.PrivateKeys[txPoolConfig.Size];
+            Transaction nonceGapTx = Build.A.Transaction
+                .WithNonce(nonceGap)
+                .WithGasPrice(1000)
+                .SignedAndResolved(_ethereumEcdsa, privateKeyOfAttacker).TestObject;
+
+            EnsureSenderBalance(privateKeyOfAttacker.Address, UInt256.MaxValue);
+            _txPool.SubmitTx(nonceGapTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+
+            _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size);
+            _txPool.GetPendingTransactionsBySender().Keys.Count.Should().Be(txPoolConfig.Size);
+
+            // send (size - 1) expensive txs from sender X with consecutive nonces
+            for (int i = 0; i < txPoolConfig.Size - 1; i++)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce((UInt256)(i + 1 + nonceGap))
+                    .WithGasPrice(1000)
+                    .SignedAndResolved(_ethereumEcdsa, privateKeyOfAttacker).TestObject;
+
+                _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.FeeTooLowToCompete);
+
+                // newly coming txs should evict themselves
+                _txPool.GetPendingTransactionsBySender().Keys.Count.Should().Be(txPoolConfig.Size);
+            }
+
+            _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size);
+        }
+
         [TestCase(9, false)]
         [TestCase(11, true)]
         public void Should_not_add_underpaid_tx_even_if_lower_nonces_are_expensive(int gasPrice, bool expectedResult)
@@ -1591,6 +1643,22 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
 
             result.Should().Be(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLowToCompete);
+        }
+
+        [TestCase(0, 97)]
+        [TestCase(1, 131324)]
+        [TestCase(2, 262534)]
+        [TestCase(3, 393741)]
+        [TestCase(4, 524948)]
+        [TestCase(5, 656156)]
+        [TestCase(6, 787365)]
+        public void should_calculate_size_of_blob_tx_correctly(int numberOfBlobs, int expectedLength)
+        {
+            Transaction blobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(numberOfBlobs)
+                .SignedAndResolved()
+                .TestObject;
+            blobTx.GetLength().Should().Be(expectedLength);
         }
 
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)

@@ -12,12 +12,11 @@ namespace Nethermind.Tools.Kute.Auth;
 class JwtAuth : IAuth
 {
     private readonly byte[] _secret;
-    private readonly Lazy<string> _token;
     private readonly ISystemClock _clock;
 
     public string AuthToken
     {
-        get => _token.Value;
+        get => GenerateAuthToken();
     }
 
     public JwtAuth(ISystemClock clock, ISecretProvider secretProvider)
@@ -29,7 +28,6 @@ class JwtAuth : IAuth
             .Where(x => x % 2 == 0)
             .Select(x => Convert.ToByte(hexSecret.Substring(x, 2), 16))
             .ToArray();
-        _token = new Lazy<string>(GenerateAuthToken);
     }
 
     private string GenerateAuthToken()

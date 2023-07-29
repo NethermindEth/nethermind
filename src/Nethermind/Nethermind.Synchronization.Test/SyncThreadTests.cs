@@ -376,7 +376,7 @@ namespace Nethermind.Synchronization.Test
                 syncReport,
                 logManager);
             SyncServer syncServer = new(
-                trieStore,
+                trieStore.AsKeyValueStore(),
                 codeDb,
                 tree,
                 receiptStorage,

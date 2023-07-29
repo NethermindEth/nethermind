@@ -9,17 +9,16 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
-using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayload</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayload
+public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 {
     public ExecutionPayload() { } // Needed for tests
 
@@ -39,8 +38,6 @@ public class ExecutionPayload
         Timestamp = block.Timestamp;
         BaseFeePerGas = block.BaseFeePerGas;
         Withdrawals = block.Withdrawals;
-        DataGasUsed = block.DataGasUsed;
-        ExcessDataGas = block.ExcessDataGas;
 
         SetTransactions(block.Transactions);
     }
@@ -94,20 +91,6 @@ public class ExecutionPayload
     /// </summary>
     public IEnumerable<Withdrawal>? Withdrawals { get; set; }
 
-    /// <summary>
-    /// Gets or sets <see cref="Block.DataGasUsed"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
-    /// </summary>
-    [JsonProperty(ItemConverterType = typeof(NullableUInt256Converter), NullValueHandling = NullValueHandling.Ignore)]
-    public ulong? DataGasUsed { get; set; }
-
-    /// <summary>
-    /// Gets or sets <see cref="Block.ExcessDataGas"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
-    /// </summary>
-    [JsonProperty(ItemConverterType = typeof(NullableUInt256Converter), NullValueHandling = NullValueHandling.Ignore)]
-    public ulong? ExcessDataGas { get; set; }
-
 
     /// <summary>
     /// Creates the execution block from payload.
@@ -128,9 +111,7 @@ public class ExecutionPayload
                 BlockNumber,
                 GasLimit,
                 Timestamp,
-                ExtraData,
-                DataGasUsed,
-                ExcessDataGas)
+                ExtraData)
             {
                 Hash = BlockHash,
                 ReceiptsRoot = ReceiptsRoot,
@@ -157,6 +138,7 @@ public class ExecutionPayload
             return false;
         }
     }
+
 
     private Transaction[]? _transactions = null;
 
@@ -190,20 +172,20 @@ public class ExecutionPayload
     }
 
     public override string ToString() => $"{BlockNumber} ({BlockHash.ToShortString()})";
-}
 
-public static class ExecutionPayloadExtensions
-{
-    public static int GetVersion(this ExecutionPayload executionPayload) =>
-        executionPayload.Withdrawals is null ? 1 : 2;
+    ExecutionPayload IExecutionPayloadParams.ExecutionPayload => this;
 
-    public static bool Validate(
-        this ExecutionPayload executionPayload,
-        IReleaseSpec spec,
-        int version,
-        [NotNullWhen(false)] out string? error)
+    public virtual ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
-        int actualVersion = executionPayload.GetVersion();
+        int GetVersion() => Withdrawals is null ? 1 : 2;
+
+        if (spec.IsEip4844Enabled)
+        {
+            error = "ExecutionPayloadV3 expected";
+            return ValidationResult.Fail;
+        }
+
+        int actualVersion = GetVersion();
 
         error = actualVersion switch
         {
@@ -212,15 +194,9 @@ public static class ExecutionPayloadExtensions
             _ => actualVersion > version ? $"ExecutionPayloadV{version} expected" : null
         };
 
-        return error is null;
+        return error is null ? ValidationResult.Success : ValidationResult.Fail;
     }
 
-    public static bool Validate(this ExecutionPayload executionPayload,
-        ISpecProvider specProvider,
-        int version,
-        [NotNullWhen(false)] out string? error) =>
-        executionPayload.Validate(
-            specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp),
-            version,
-            out error);
+    public virtual bool ValidateFork(ISpecProvider specProvider) =>
+        !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 }
