@@ -14,6 +14,8 @@ public class OPL1CostHelper : IL1CostHelper
     private static readonly StorageCell _overheadSlot = new(_l1BlockAddr, new UInt256(5));
     private static readonly StorageCell _scalarSlot = new(_l1BlockAddr, new UInt256(6));
 
+    public OPL1CostHelper(Address address) { }
+
     public UInt256 ComputeL1Cost(Transaction tx, IWorldState worldState, long number, ulong timestamp, bool isDeposit)
     {
         ulong dataGas = ComputeDataGas();

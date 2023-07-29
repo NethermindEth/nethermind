@@ -28,7 +28,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         VirtualMachine virtualMachine = CreateVirtualMachine();
 
         OPL1CostHelper l1CostHelper = new(_opConfig.L1FeeReceiver);
-        OPConfigHelper opConfigHelper = new(_opConfig.RegolithBlockNumber, _opConfig.BedrockBlockNumber);
+        OPConfigHelper opConfigHelper = new(_opConfig.RegolithBlockNumber, _opConfig.BedrockBlockNumber, _opConfig.L1FeeReceiver);
 
         return new OptimismTransactionProcessor(
             _api.SpecProvider,
