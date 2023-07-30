@@ -76,25 +76,18 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
     {
         foreach (long blockNumber in _nodesByBlock.Keys.OrderByDescending(b => b))
         {
-            if (_removedPrefixes.TryGetValue(blockNumber, out List<byte[]> prefixes))
-            {
-                foreach (byte[] prefix in prefixes)
-                {
-                    if (path.Length >= prefix.Length &&
-                        Bytes.AreEqual(path.AsSpan()[0..prefix.Length], prefix))
-                    {
-                        return null;
-                    }
-                }
-            }
+            if (IsDeleted(blockNumber, path))
+                return null;
 
-            ConcurrentDictionary<byte[], TrieNode> nodeDictionary = _nodesByBlock[blockNumber];
-            if (nodeDictionary.TryGetValue(path, out TrieNode node))
+            if (_nodesByBlock.TryGetValue(blockNumber, out ConcurrentDictionary<byte[], TrieNode> nodeDictionary))
             {
-                if (node.Keccak == keccak)
+                if (nodeDictionary.TryGetValue(path, out TrieNode node))
                 {
-                    Pruning.Metrics.LoadedFromCacheNodesCount++;
-                    return node;
+                    if (node.Keccak == keccak)
+                    {
+                        Pruning.Metrics.LoadedFromCacheNodesCount++;
+                        return node;
+                    }
                 }
             }
         }
@@ -107,7 +100,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             return null;
 
         long minBlockNumberStored = _nodesByBlock.Keys.Min();
-        long blockNo = _nodesByBlock.Keys.Max();
+        long blockNo = Math.Max(_nodesByBlock.Keys.Max(), _removedPrefixes.Count == 0 ? 0 : _removedPrefixes.Keys.Max());
 
         if (rootHash is not null && _rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
         {
@@ -117,17 +110,8 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
 
         while (blockNo >= minBlockNumberStored)
         {
-            if (_removedPrefixes.TryGetValue(blockNo, out List<byte[]> prefixes))
-            {
-                foreach (byte[] prefix in prefixes)
-                {
-                    if (path.Length >= prefix.Length &&
-                        Bytes.AreEqual(path.AsSpan()[0..prefix.Length], prefix))
-                    {
-                        return null;
-                    }
-                }
-            }
+            if (IsDeleted(blockNo, path))
+                return null;
 
             if (_nodesByBlock.TryGetValue(blockNo, out ConcurrentDictionary<byte[], TrieNode> nodeDictionary))
             {
@@ -182,7 +166,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
                     _trieStore.DeleteByRange(startKey, endKey);
                 }
             }
-            if (_nodesByBlock.TryRemove(blockNumber, out ConcurrentDictionary<byte[], TrieNode> nodesByPath))
+            if (_nodesByBlock.TryRemove(currentBlockNumber, out ConcurrentDictionary<byte[], TrieNode> nodesByPath))
             {
                 IOrderedEnumerable<TrieNode> orderedValues = nodesByPath.Values.OrderBy(tn => tn.FullRlp, Bytes.Comparer);
                 foreach (TrieNode? node in orderedValues)
@@ -268,5 +252,18 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
                 _nodesByBlock.AddOrUpdate(blockNumber, childNode);
             }
         }
+    }
+
+    private bool IsDeleted(long blockNumber, byte[] path)
+    {
+        if (_removedPrefixes.TryGetValue(blockNumber, out List<byte[]> prefixes))
+        {
+            foreach (byte[] prefix in prefixes)
+            {
+                if (path.Length >= prefix.Length && Bytes.AreEqual(path.AsSpan()[0..prefix.Length], prefix))
+                    return true;
+            }
+        }
+        return false;
     }
 }

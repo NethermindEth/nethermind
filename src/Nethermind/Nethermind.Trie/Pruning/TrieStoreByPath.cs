@@ -41,8 +41,8 @@ namespace Nethermind.Trie.Pruning
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _stateDb = stateDb as IColumnsDb<StateColumns> ?? throw new ArgumentNullException(nameof(stateDb));
             _committedNodes = new ConcurrentDictionary<StateColumns, IPathTrieNodeCache>();
-            _committedNodes.TryAdd(StateColumns.State, new TrieNodeBlockCache(this, historyBlockDepth, logManager));
-            _committedNodes.TryAdd(StateColumns.Storage, new TrieNodeBlockCache(this, historyBlockDepth, logManager));
+            _committedNodes.TryAdd(StateColumns.State, new TrieNodePathCache(this, historyBlockDepth, logManager));
+            _committedNodes.TryAdd(StateColumns.Storage, new TrieNodePathCache(this, historyBlockDepth, logManager));
             _destroyPrefixes = new ConcurrentQueue<byte[]>();
             _pathStateDb = stateDb as IByPathStateDb;
             _currentBatches = new ConcurrentDictionary<StateColumns, IBatch?>();
