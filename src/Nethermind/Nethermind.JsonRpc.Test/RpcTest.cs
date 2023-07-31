@@ -31,20 +31,20 @@ namespace Nethermind.JsonRpc.Test
             {
                 try
                 {
-                    return ethereumJsonSerializer.Serialize(stream, jsonRpcResponse, indented);
+                    return ethereumJsonSerializer.SerializeWaitForEnumeration(stream, jsonRpcResponse, indented);
                 }
                 catch (Exception e) when (e.InnerException is OperationCanceledException)
                 {
-                    return SerializeTimeoutException(ethereumJsonSerializer, jsonRpcService, stream);
+                    return SerializeTimeoutException(ethereumJsonSerializer, jsonRpcResponse, jsonRpcService, stream);
                 }
                 catch (OperationCanceledException)
                 {
-                    return SerializeTimeoutException(ethereumJsonSerializer, jsonRpcService, stream);
+                    return SerializeTimeoutException(ethereumJsonSerializer, jsonRpcResponse, jsonRpcService, stream);
                 }
             }
 
-            static long SerializeTimeoutException(IJsonSerializer jsonSerializer, IJsonRpcService service, Stream resultStream) =>
-                jsonSerializer.Serialize(resultStream, service.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout."));
+            static long SerializeTimeoutException(IJsonSerializer jsonSerializer, JsonRpcResponse response, IJsonRpcService service, Stream resultStream) =>
+                jsonSerializer.Serialize(resultStream, service.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.", response.Id, response.MethodName));
 
             IJsonRpcService service = BuildRpcService(module, converters);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
