@@ -27,6 +27,25 @@ namespace Nethermind.JsonRpc.Test
 
         public static async Task<string> TestSerializedRequest<T>(IReadOnlyCollection<JsonConverter> converters, T module, string method, params string[] parameters) where T : class, IRpcModule
         {
+            long Serialize(EthereumJsonSerializer ethereumJsonSerializer, JsonRpcResponse jsonRpcResponse, IJsonRpcService jsonRpcService, Stream stream, bool indented = false)
+            {
+                try
+                {
+                    return ethereumJsonSerializer.Serialize(stream, jsonRpcResponse, indented);
+                }
+                catch (Exception e) when (e.InnerException is OperationCanceledException)
+                {
+                    return SerializeTimeoutException(ethereumJsonSerializer, jsonRpcService, stream);
+                }
+                catch (OperationCanceledException)
+                {
+                    return SerializeTimeoutException(ethereumJsonSerializer, jsonRpcService, stream);
+                }
+            }
+
+            static long SerializeTimeoutException(IJsonSerializer jsonSerializer, IJsonRpcService service, Stream resultStream) =>
+                jsonSerializer.Serialize(resultStream, service.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout."));
+
             IJsonRpcService service = BuildRpcService(module, converters);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
 
@@ -43,16 +62,16 @@ namespace Nethermind.JsonRpc.Test
             }
 
             await using Stream stream = new MemoryStream();
-            long size = serializer.Serialize(stream, response);
+            long size = Serialize(serializer, response, service, stream);
 
             // for coverage (and to prove that it does not throw
             await using Stream indentedStream = new MemoryStream();
-            serializer.Serialize(indentedStream, response, true);
+            Serialize(serializer, response, service, indentedStream, true);
 
             stream.Seek(0, SeekOrigin.Begin);
-            string serialized = new StreamReader(stream).ReadToEnd();
-            TestContext.Out?.WriteLine("Serialized:");
-            TestContext.Out?.WriteLine(serialized);
+            string serialized = await new StreamReader(stream).ReadToEndAsync();
+            await TestContext.Out.WriteLineAsync("Serialized:");
+            await TestContext.Out.WriteLineAsync(serialized);
 
             size.Should().Be(serialized.Length);
 
