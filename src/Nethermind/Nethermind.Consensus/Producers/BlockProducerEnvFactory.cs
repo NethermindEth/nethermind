@@ -150,8 +150,7 @@ namespace Nethermind.Consensus.Producers
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)),
-                new BeaconBlockRootHandler());
+                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)));
 
     }
 }

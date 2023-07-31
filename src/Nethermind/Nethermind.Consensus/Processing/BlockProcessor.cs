@@ -57,7 +57,7 @@ public partial class BlockProcessor : IBlockProcessor
         IWitnessCollector? witnessCollector,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
-        IBeaconBlockRootHandler? beaconBlockRootHandler = null)
+        IBeaconBlockRootHandler beaconBlockRootHandler = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -68,7 +68,7 @@ public partial class BlockProcessor : IBlockProcessor
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
-        _beaconBlockRootHandler = beaconBlockRootHandler ?? throw new ArgumentNullException(nameof(beaconBlockRootHandler));
+        _beaconBlockRootHandler = beaconBlockRootHandler ?? new BeaconBlockRootHandler();
 
         _receiptsTracer = new BlockReceiptsTracer();
     }

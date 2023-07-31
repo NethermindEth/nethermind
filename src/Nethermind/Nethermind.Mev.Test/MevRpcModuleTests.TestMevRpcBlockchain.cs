@@ -207,8 +207,7 @@ namespace Nethermind.Mev.Test
                     State,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
-                    LogManager,
-                    beaconBlockRootHandler: new BeaconBlockRootHandler());
+                    LogManager);
 
                 _tracerFactory = new TracerFactory(
                     DbProvider,

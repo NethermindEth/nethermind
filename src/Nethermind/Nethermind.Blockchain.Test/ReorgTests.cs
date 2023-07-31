@@ -86,8 +86,7 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 NullReceiptStorage.Instance,
                 new WitnessCollector(memDbProvider.StateDb, LimboLogs.Instance),
-                LimboLogs.Instance,
-                beaconBlockRootHandler: new BeaconBlockRootHandler());
+                LimboLogs.Instance);
             _blockchainProcessor = new BlockchainProcessor(
                 _blockTree,
                 blockProcessor,

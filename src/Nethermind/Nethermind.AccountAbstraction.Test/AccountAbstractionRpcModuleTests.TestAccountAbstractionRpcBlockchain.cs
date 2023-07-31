@@ -193,8 +193,7 @@ namespace Nethermind.AccountAbstraction.Test
                     State,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
-                    LogManager,
-                    beaconBlockRootHandler: new BeaconBlockRootHandler());
+                    LogManager);
 
                 var parser = new AbiDefinitionParser();
                 parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());

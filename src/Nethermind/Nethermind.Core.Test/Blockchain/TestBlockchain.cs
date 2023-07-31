@@ -352,8 +352,7 @@ public class TestBlockchain : IDisposable
             State,
             ReceiptStorage,
             NullWitnessCollector.Instance,
-            LogManager,
-            beaconBlockRootHandler: BeaconBlockRootHandler);
+            LogManager);
 
     public async Task WaitForNewHead()
     {
