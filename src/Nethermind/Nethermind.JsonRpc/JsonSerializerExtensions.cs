@@ -27,6 +27,7 @@ public static class JsonSerializerExtensions
             }
         }
 
+        // try target actually lazy enumerators
         if (value is JsonRpcSuccessResponse
             {
                 Result: IEnumerable enumerable
