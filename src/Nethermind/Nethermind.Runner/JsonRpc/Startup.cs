@@ -198,7 +198,7 @@ namespace Nethermind.Runner.JsonRpc
                                                 }
 
                                                 first = false;
-                                                responseSize += jsonSerializer.Serialize(resultStream, entry.Response);
+                                                responseSize += jsonSerializer.SerializeWaitForEnumeration(resultStream, entry.Response);
                                                 _ = jsonRpcLocalStats.ReportCall(entry.Report);
 
                                                 // We reached the limit and don't want to responded to more request in the batch
@@ -222,7 +222,7 @@ namespace Nethermind.Runner.JsonRpc
                                 {
                                     using (result.Response)
                                     {
-                                        jsonSerializer.Serialize(resultStream, result.Response);
+                                        jsonSerializer.SerializeWaitForEnumeration(resultStream, result.Response);
                                     }
                                 }
 

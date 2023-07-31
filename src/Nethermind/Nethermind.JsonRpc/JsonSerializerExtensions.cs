@@ -15,12 +15,6 @@ public static class JsonSerializerExtensions
         return serializer.Serialize(stream, value, indented);
     }
 
-    public static string SerializeWaitForEnumeration<T>(this IJsonSerializer serializer, T value, bool indented = false)
-    {
-        AmendValue(value);
-        return serializer.Serialize(value, indented);
-    }
-
     private static void AmendValue<T>(T value)
     {
         static IEnumerable NewEnumerable(IEnumerator enumerator)

@@ -163,12 +163,11 @@ namespace Nethermind.JsonRpc.WebSockets
         {
             void SerializeTimeoutException(MemoryStream stream, JsonRpcResult.Entry result)
             {
-                JsonRpcErrorResponse error = _jsonRpcService.GetErrorResponse(
+                _jsonSerializer.Serialize(stream, _jsonRpcService.GetErrorResponse(
                     ErrorCodes.Timeout,
                     "Request was canceled due to enabled timeout.",
                     result.Response.Id,
-                    result.Response.MethodName);
-                _jsonSerializer.Serialize(stream, error);
+                    result.Response.MethodName));
             }
 
             using (result)
@@ -177,7 +176,7 @@ namespace Nethermind.JsonRpc.WebSockets
 
                 try
                 {
-                    _jsonSerializer.Serialize(resultData, result.Response);
+                    _jsonSerializer.SerializeWaitForEnumeration(resultData, result.Response);
                 }
                 catch (Exception e) when (e.InnerException is OperationCanceledException)
                 {

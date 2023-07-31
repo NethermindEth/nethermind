@@ -543,7 +543,7 @@ public partial class EthRpcModuleTests
             });
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithConfig(new JsonRpcConfig() { Timeout = 10 }).Build();
-        string serialized  = await ctx.Test.TestEthRpc("eth_getLogs", "{}");
+        string serialized = await ctx.Test.TestEthRpc("eth_getLogs", "{}");
         serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32016,\"message\":\"Request was canceled due to enabled timeout.\"},\"id\":67}");
     }
 
