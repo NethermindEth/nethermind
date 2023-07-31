@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Facade;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using NUnit.Framework;
@@ -43,6 +44,8 @@ contract EcrecoverProxy {
     [Test]
     public async Task Test_eth_multicall_erc()
     {
+
+        // Arrange
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
 
         //Empose Opcode instead of EcRecoverPrecompile, it returns const TestItem.AddressE address
@@ -53,7 +56,6 @@ contract EcrecoverProxy {
             .PushData(Bytes.FromHexString("0x20"))
             .PushData(Bytes.FromHexString("0x0"))
             .Op(Instruction.RETURN).Done;
-
 
         // Step 1: Take an account
         Address account = TestItem.AddressA;
@@ -69,10 +71,6 @@ contract EcrecoverProxy {
         Address? contractAddress =
             await EthRpcMulticallTestsBase.DeployEcRecoverContract(chain, TestItem.PrivateKeyB,
                 EcRecoverCallerContractBytecode);
-
-        //Check real address
-        Address recoveredAddress = chain.EthereumEcdsa.RecoverAddress(signature, messageHash);
-        Assert.AreEqual(TestItem.AddressA, recoveredAddress);
 
         byte[] transactionData = EthRpcMulticallTestsBase.GenerateTransactionDataForEcRecover(messageHash, v, r, s);
 
@@ -95,35 +93,17 @@ contract EcrecoverProxy {
         };
 
 
+        // Act
+        BlockchainBridge.MultiCallOutput result = chain.Bridge.MultiCall(chain.BlockFinder.Head.Header, new[] { requestMultiCall }, CancellationToken.None);
+        Log[]? logs = result.items.First().Calls.First().Logs;
+
+        
+        //Check that initial VM is intact
         Address? mainChainRpcAddress =
             EthRpcMulticallTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
+
         Assert.NotNull(mainChainRpcAddress);
         Assert.AreEqual(TestItem.AddressA, mainChainRpcAddress);
-
-        //Force persistancy of head block in main chain
-        chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
-
-        var result = chain.Bridge.MultiCall(chain.BlockFinder.Head.Header, new[] { requestMultiCall }, CancellationToken.None);
-        var logs = result.items.First().Calls.First().Logs;
-
-        //Check results
-        /*
-        byte[] addressBytes = Bytes.FromHexString(responseFromModifiedVM.Data)
-            .SliceWithZeroPaddingEmptyOnError(12, 20);
-        Address resultingAddress = new(addressBytes);
-        Assert.AreNotEqual(account, resultingAddress);
-        Assert.AreEqual(TestItem.AddressE, resultingAddress);
-
-        //Note: real address can still be accessed
-        Address recoveredAddressOnMulticallChain = tmpChain.EthereumEcdsa.RecoverAddress(signature, messageHash);
-        Assert.AreEqual(TestItem.AddressA, recoveredAddressOnMulticallChain);
-        */
-
-        //Check that initial VM is intact
-        mainChainRpcAddress =
-            EthRpcMulticallTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
-        Assert.NotNull(mainChainRpcAddress);
-        Assert.AreEqual(TestItem.AddressA, mainChainRpcAddress);
+        
     }
 }

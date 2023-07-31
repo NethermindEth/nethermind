@@ -23,7 +23,7 @@ namespace Nethermind.TxPool
 
         public static bool CanBeBroadcast(this Transaction tx) => !tx.SupportsBlobs && tx.GetLength() <= MaxSizeOfTxForBroadcast;
 
-        internal static UInt256 CalculateGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
+        public static UInt256 CalculateGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
         {
             if (eip1559Enabled && tx.Supports1559)
             {
