@@ -27,7 +27,7 @@ public partial class EthRpcModuleTests
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).WithGasPriceOracle(gasPriceOracle)
             .Build();
 
-        string serialized  = await ctx.Test.TestEthRpc("eth_gasPrice");
+        string serialized = await ctx.Test.TestEthRpc("eth_gasPrice");
 
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}"));
     }
@@ -43,7 +43,7 @@ public partial class EthRpcModuleTests
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).WithGasPriceOracle(gasPriceOracle)
             .Build();
 
-        string serialized  = await ctx.Test.TestEthRpc("eth_gasPrice");
+        string serialized = await ctx.Test.TestEthRpc("eth_gasPrice");
 
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}"));
     }
