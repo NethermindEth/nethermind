@@ -134,7 +134,7 @@ namespace Nethermind.Clique.Test
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
                     nodeLogManager,
-                    beaconBlockRootHandler:  new BeaconBlockRootHandler());
+                    beaconBlockRootHandler: new BeaconBlockRootHandler());
 
                 BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
                 processor.Start();
