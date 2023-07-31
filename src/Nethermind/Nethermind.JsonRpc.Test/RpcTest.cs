@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
@@ -24,18 +25,16 @@ namespace Nethermind.JsonRpc.Test
             return service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http)).Result;
         }
 
-        public static string TestSerializedRequest<T>(IReadOnlyCollection<JsonConverter> converters, T module, string method, params string[] parameters) where T : class, IRpcModule
+        public static async Task<string> TestSerializedRequest<T>(IReadOnlyCollection<JsonConverter> converters, T module, string method, params string[] parameters) where T : class, IRpcModule
         {
             IJsonRpcService service = BuildRpcService(module, converters);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
 
-            JsonRpcContext context = new JsonRpcContext(RpcEndpoint.Http);
-            if (module is IContextAwareRpcModule contextAwareModule
-                && contextAwareModule.Context is not null)
-            {
-                context = contextAwareModule.Context;
-            }
-            JsonRpcResponse response = service.SendRequestAsync(request, context).Result;
+            JsonRpcContext context = module is IContextAwareRpcModule { Context: not null } contextAwareModule
+                ? contextAwareModule.Context
+                : new JsonRpcContext(RpcEndpoint.Http);
+
+            JsonRpcResponse response = await service.SendRequestAsync(request, context);
 
             EthereumJsonSerializer serializer = new();
             foreach (JsonConverter converter in converters)
@@ -43,11 +42,11 @@ namespace Nethermind.JsonRpc.Test
                 serializer.RegisterConverter(converter);
             }
 
-            Stream stream = new MemoryStream();
+            await using Stream stream = new MemoryStream();
             long size = serializer.Serialize(stream, response);
 
             // for coverage (and to prove that it does not throw
-            Stream indentedStream = new MemoryStream();
+            await using Stream indentedStream = new MemoryStream();
             serializer.Serialize(indentedStream, response, true);
 
             stream.Seek(0, SeekOrigin.Begin);
@@ -60,9 +59,9 @@ namespace Nethermind.JsonRpc.Test
             return serialized;
         }
 
-        public static string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
+        public static Task<string> TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
         {
-            return TestSerializedRequest(new JsonConverter[0], module, method, parameters);
+            return TestSerializedRequest(Array.Empty<JsonConverter>(), module, method, parameters);
         }
 
         public static IJsonRpcService BuildRpcService<T>(T module, IReadOnlyCollection<JsonConverter>? converters = null) where T : class, IRpcModule
