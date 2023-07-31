@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -36,7 +33,7 @@ namespace Nethermind.Evm.Tracing
         {
             IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1, header.Timestamp + _blocksConfig.SecondsPerSlot);
 
-            tx.SenderAddress ??= Address.Zero; //If sender is not specified, use zero address.
+            tx.SenderAddress ??= Address.Zero; // If sender is not specified, use zero address.
             tx.GasLimit = Math.Min(tx.GasLimit, header.GasLimit); // Limit Gas to the header
 
             // Calculate and return additional gas required in case of insufficient funds.
@@ -105,22 +102,14 @@ namespace Nethermind.Evm.Tracing
             }
             public override bool IsTracingReceipt => true;
             public override bool IsTracingInstructions => true;
-            public bool OutOfGas { get; set; }
-
-            public byte[]? ReturnValue { get; set; }
-
-            public byte StatusCode { get; set; }
+            public bool OutOfGas { get; private set; }
 
             public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
             {
-                ReturnValue = output;
-                StatusCode = Evm.StatusCode.Success;
             }
 
             public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
             {
-                ReturnValue = output;
-                StatusCode = Evm.StatusCode.Failure;
             }
 
             public override void ReportOperationError(EvmExceptionType error)
