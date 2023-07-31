@@ -258,7 +258,7 @@ namespace Nethermind.Facade.Test
                 ? Build.A.Transaction
                     .WithGasPrice(effectiveGasPrice)
                     .WithType(TxType.Blob)
-                    .WithMaxFeePerDataGas(2)
+                    .WithMaxFeePerBlobGas(2)
                     .WithBlobVersionedHashes(2)
                     .TestObject
                 : Build.A.Transaction
@@ -267,7 +267,7 @@ namespace Nethermind.Facade.Test
             Block block = postEip4844
                 ? Build.A.Block
                     .WithTransactions(tx)
-                    .WithExcessDataGas(2)
+                    .WithExcessBlobGas(2)
                     .TestObject
                 : Build.A.Block
                     .WithTransactions(tx)

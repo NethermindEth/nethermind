@@ -57,17 +57,11 @@ public class BlockValidator : IBlockValidator
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        if (!ValidateTransactions(block, spec, out int blobsInBlock, out string error))
-        {
-            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}");
+        if (!ValidateTransactions(block, spec))
             return false;
-        }
 
-        if (!ValidateDataGasUsed(block, spec, blobsInBlock, out string dataGasError))
-        {
-            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {dataGasError}");
+        if (!ValidateEip4844Fields(block, spec))
             return false;
-        }
 
         if (spec.MaximumUncleCount < block.Uncles.Length)
         {
@@ -142,14 +136,14 @@ public class BlockValidator : IBlockValidator
                 if (_logger.IsError) _logger.Error($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
             }
 
-            if (processedBlock.Header.DataGasUsed != suggestedBlock.Header.DataGasUsed)
+            if (processedBlock.Header.BlobGasUsed != suggestedBlock.Header.BlobGasUsed)
             {
-                if (_logger.IsError) _logger.Error($"- data gas used: expected {suggestedBlock.Header.DataGasUsed}, got {processedBlock.Header.DataGasUsed}");
+                if (_logger.IsError) _logger.Error($"- blob gas used: expected {suggestedBlock.Header.BlobGasUsed}, got {processedBlock.Header.BlobGasUsed}");
             }
 
-            if (processedBlock.Header.ExcessDataGas != suggestedBlock.Header.ExcessDataGas)
+            if (processedBlock.Header.ExcessBlobGas != suggestedBlock.Header.ExcessBlobGas)
             {
-                if (_logger.IsError) _logger.Error($"- excess data gas: expected {suggestedBlock.Header.ExcessDataGas}, got {processedBlock.Header.ExcessDataGas}");
+                if (_logger.IsError) _logger.Error($"- excess blob gas: expected {suggestedBlock.Header.ExcessBlobGas}, got {processedBlock.Header.ExcessBlobGas}");
             }
 
             for (int i = 0; i < processedBlock.Transactions.Length; i++)
@@ -203,12 +197,8 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
-    private bool ValidateTransactions(Block block, IReleaseSpec spec, out int blobsInBlock, out string? error)
+    private bool ValidateTransactions(Block block, IReleaseSpec spec)
     {
-        blobsInBlock = 0;
-
-        UInt256 dataGasPrice = UInt256.Zero;
-
         Transaction[] transactions = block.Transactions;
 
         for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
@@ -217,60 +207,66 @@ public class BlockValidator : IBlockValidator
 
             if (!_txValidator.IsWellFormed(transaction, spec))
             {
-                error = $"{Invalid(block)} Invalid transaction {transaction.Hash}";
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction {transaction.Hash}");
                 return false;
             }
+        }
+
+        return true;
+    }
+
+    private bool ValidateEip4844Fields(Block block, IReleaseSpec spec)
+    {
+        if (!spec.IsEip4844Enabled)
+        {
+            return true;
+        }
+
+        int blobsInBlock = 0;
+        UInt256 blobGasPrice = UInt256.Zero;
+        Transaction[] transactions = block.Transactions;
+
+        for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
+        {
+            Transaction transaction = transactions[txIndex];
 
             if (!transaction.SupportsBlobs)
             {
                 continue;
             }
 
-            if (dataGasPrice == UInt256.Zero)
+            if (blobGasPrice.IsZero)
             {
-                if (!DataGasCalculator.TryCalculateDataGasPricePerUnit(block.Header, out dataGasPrice))
+                if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block.Header, out blobGasPrice))
                 {
-                    error = $"{nameof(dataGasPrice)} overflow.";
+                    if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {nameof(blobGasPrice)} overflow.");
                     return false;
                 }
             }
 
-            if (transaction.MaxFeePerDataGas < dataGasPrice)
+            if (transaction.MaxFeePerBlobGas < blobGasPrice)
             {
-                error = $"A transaction has unsufficient {nameof(transaction.MaxFeePerDataGas)} to cover current data gas fee: {transaction.MaxFeePerDataGas} < {dataGasPrice}.";
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} A transaction has unsufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {blobGasPrice}.");
                 return false;
             }
 
             blobsInBlock += transaction.BlobVersionedHashes!.Length;
         }
 
-        error = null;
-        return true;
-    }
+        ulong blobGasUsed = BlobGasCalculator.CalculateBlobGas(blobsInBlock);
 
-    private bool ValidateDataGasUsed(Block block, IReleaseSpec spec, in int blobsInBlock, out string? error)
-    {
-        if (!spec.IsEip4844Enabled)
+        if (blobGasUsed > Eip4844Constants.MaxBlobGasPerBlock)
         {
-            error = null;
-            return true;
-        }
-
-        ulong dataGasUsed = DataGasCalculator.CalculateDataGas(blobsInBlock);
-
-        if (dataGasUsed > Eip4844Constants.MaxDataGasPerBlock)
-        {
-            error = $"A block cannot have more than {Eip4844Constants.MaxDataGasPerBlock} data gas.";
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} A block cannot have more than {Eip4844Constants.MaxBlobGasPerBlock} blob gas.");
             return false;
         }
 
-        if (dataGasUsed != block.Header.DataGasUsed)
+        if (blobGasUsed != block.Header.BlobGasUsed)
         {
-            error = $"{nameof(BlockHeader.DataGasUsed)} declared in the block header does not match actual data gas used: {block.Header.DataGasUsed} != {dataGasUsed}.";
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {nameof(BlockHeader.BlobGasUsed)} declared in the block header does not match actual blob gas used: {block.Header.BlobGasUsed} != {blobGasUsed}.");
             return false;
         }
 
-        error = null;
         return true;
     }
 

@@ -110,7 +110,7 @@ namespace Nethermind.Init.Steps
                 _api.EthSyncingInfo,
                 _api.DbProvider);
 
-            rpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
+            rpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout, _api.LogManager, rpcConfig.RequestQueueLimit);
 
             if (_api.BlockPreprocessor is null) throw new StepDependencyException(nameof(_api.BlockPreprocessor));
             if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
@@ -120,7 +120,7 @@ namespace Nethermind.Init.Steps
             if (_api.WitnessRepository is null) throw new StepDependencyException(nameof(_api.WitnessRepository));
 
             ProofModuleFactory proofModuleFactory = new(_api.DbProvider, _api.BlockTree, _api.ReadOnlyTrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
-            rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, rpcConfig.Timeout);
+            rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, rpcConfig.Timeout, _api.LogManager);
 
             DebugModuleFactory debugModuleFactory = new(
                 _api.DbProvider,
@@ -136,7 +136,7 @@ namespace Nethermind.Init.Steps
                 _api.SpecProvider,
                 _api.SyncModeSelector,
                 _api.LogManager);
-            rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, rpcConfig.Timeout);
+            rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, rpcConfig.Timeout, _api.LogManager);
 
             TraceModuleFactory traceModuleFactory = new(
                 _api.DbProvider,
@@ -150,7 +150,7 @@ namespace Nethermind.Init.Steps
                 _api.PoSSwitcher,
                 _api.LogManager);
 
-            rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, rpcConfig.Timeout);
+            rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, rpcConfig.Timeout, _api.LogManager);
 
             if (_api.EthereumEcdsa is null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
             if (_api.Wallet is null) throw new StepDependencyException(nameof(_api.Wallet));

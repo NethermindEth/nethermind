@@ -121,7 +121,7 @@ namespace Nethermind.Consensus.Validators
                 }
             }
 
-            bool eip4844Valid = ValidateDataGasFields(header, parent, spec);
+            bool eip4844Valid = ValidateBlobGasFields(header, parent, spec);
 
             return
                 totalDifficultyCorrect &&
@@ -279,42 +279,42 @@ namespace Nethermind.Consensus.Validators
                 header.ExtraData.Length <= _specProvider.GenesisSpec.MaximumExtraDataSize;
         }
 
-        private bool ValidateDataGasFields(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec)
+        private bool ValidateBlobGasFields(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec)
         {
             if (!spec.IsEip4844Enabled)
             {
-                if (header.DataGasUsed is not null)
+                if (header.BlobGasUsed is not null)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"DataGasUsed field should not have value.");
+                    if (_logger.IsWarn) _logger.Warn($"BlobGasUsed field should not have value.");
                     return false;
                 }
 
-                if (header.ExcessDataGas is not null)
+                if (header.ExcessBlobGas is not null)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"ExcessDataGas field should not have value.");
+                    if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field should not have value.");
                     return false;
                 }
 
                 return true;
             }
 
-            if (header.DataGasUsed is null)
+            if (header.BlobGasUsed is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"DataGasUsed field is not set.");
+                if (_logger.IsWarn) _logger.Warn($"BlobGasUsed field is not set.");
                 return false;
             }
 
-            if (header.ExcessDataGas is null)
+            if (header.ExcessBlobGas is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"ExcessDataGas field is not set.");
+                if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is not set.");
                 return false;
             }
 
-            UInt256? expectedExcessDataGas = DataGasCalculator.CalculateExcessDataGas(parentHeader, spec);
+            UInt256? expectedExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec);
 
-            if (header.ExcessDataGas != expectedExcessDataGas)
+            if (header.ExcessBlobGas != expectedExcessBlobGas)
             {
-                if (_logger.IsWarn) _logger.Warn($"ExcessDataGas field is incorrect: {header.ExcessDataGas}, should be {expectedExcessDataGas}.");
+                if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
                 return false;
             }
             return true;

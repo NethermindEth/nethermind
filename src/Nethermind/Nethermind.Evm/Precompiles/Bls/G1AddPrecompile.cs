@@ -19,7 +19,7 @@ public class G1AddPrecompile : IPrecompile
     {
     }
 
-    public Address Address { get; } = Address.FromNumber(0x0c);
+    public static Address Address { get; } = Address.FromNumber(0x0c);
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {

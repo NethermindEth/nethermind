@@ -1,22 +1,21 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public static class DataGasCalculator
+public static class BlobGasCalculator
 {
-    public static ulong CalculateDataGas(int blobCount) =>
-        (ulong)blobCount * Eip4844Constants.DataGasPerBlob;
+    public static ulong CalculateBlobGas(int blobCount) =>
+        (ulong)blobCount * Eip4844Constants.BlobGasPerBlob;
 
-    public static ulong CalculateDataGas(Transaction transaction) =>
-        CalculateDataGas(transaction.BlobVersionedHashes?.Length ?? 0);
+    public static ulong CalculateBlobGas(Transaction transaction) =>
+        CalculateBlobGas(transaction.BlobVersionedHashes?.Length ?? 0);
 
-    public static ulong CalculateDataGas(Transaction[] transactions)
+    public static ulong CalculateBlobGas(Transaction[] transactions)
     {
         int blobCount = 0;
         foreach (Transaction tx in transactions)
@@ -27,33 +26,35 @@ public static class DataGasCalculator
             }
         }
 
-        return CalculateDataGas(blobCount);
+        return CalculateBlobGas(blobCount);
     }
 
-    public static bool TryCalculateDataGasPrice(BlockHeader header, Transaction transaction, out UInt256 dataGasPrice)
+    public static bool TryCalculateBlobGasPrice(BlockHeader header, Transaction transaction, out UInt256 blobGasPrice)
     {
-        if (!TryCalculateDataGasPricePerUnit(header.ExcessDataGas.Value, out UInt256 dataGasPricePerUnit))
+        if (!TryCalculateBlobGasPricePerUnit(header.ExcessBlobGas.Value, out UInt256 blobGasPricePerUnit))
         {
-            dataGasPrice = UInt256.MaxValue;
+            blobGasPrice = UInt256.MaxValue;
             return false;
         }
-        return !UInt256.MultiplyOverflow(CalculateDataGas(transaction), dataGasPricePerUnit, out dataGasPrice);
+        return !UInt256.MultiplyOverflow(CalculateBlobGas(transaction), blobGasPricePerUnit, out blobGasPrice);
     }
 
-    public static bool TryCalculateDataGasPricePerUnit(BlockHeader header, out UInt256 dataGasPricePerUnit) =>
-        header.ExcessDataGas is null
-            ? throw new ArgumentException(nameof(BlockHeader.ExcessDataGas))
-            : TryCalculateDataGasPricePerUnit(header.ExcessDataGas.Value, out dataGasPricePerUnit);
-
-    public static bool TryCalculateDataGasPricePerUnit(ulong excessDataGas, out UInt256 dataGasPricePerUnit)
+    public static bool TryCalculateBlobGasPricePerUnit(BlockHeader header, out UInt256 blobGasPricePerUnit)
     {
-        static bool FakeExponentialOverflow(UInt256 factor, UInt256 num, UInt256 denominator, out UInt256 dataGasPricePerUnit)
+        blobGasPricePerUnit = UInt256.MaxValue;
+        return header.ExcessBlobGas is not null
+            && TryCalculateBlobGasPricePerUnit(header.ExcessBlobGas.Value, out blobGasPricePerUnit);
+    }
+
+    public static bool TryCalculateBlobGasPricePerUnit(ulong excessBlobGas, out UInt256 blobGasPricePerUnit)
+    {
+        static bool FakeExponentialOverflow(UInt256 factor, UInt256 num, UInt256 denominator, out UInt256 blobGasPricePerUnit)
         {
             UInt256 output = UInt256.Zero;
 
             if (UInt256.MultiplyOverflow(factor, denominator, out UInt256 numAccum))
             {
-                dataGasPricePerUnit = UInt256.MaxValue;
+                blobGasPricePerUnit = UInt256.MaxValue;
                 return true;
             }
 
@@ -61,33 +62,33 @@ public static class DataGasCalculator
             {
                 if (UInt256.AddOverflow(output, numAccum, out output))
                 {
-                    dataGasPricePerUnit = UInt256.MaxValue;
+                    blobGasPricePerUnit = UInt256.MaxValue;
                     return true;
                 }
 
                 if (UInt256.MultiplyOverflow(numAccum, num, out UInt256 updatedNumAccum))
                 {
-                    dataGasPricePerUnit = UInt256.MaxValue;
+                    blobGasPricePerUnit = UInt256.MaxValue;
                     return true;
                 }
 
                 if (UInt256.MultiplyOverflow(i, denominator, out UInt256 multipliedDeniminator))
                 {
-                    dataGasPricePerUnit = UInt256.MaxValue;
+                    blobGasPricePerUnit = UInt256.MaxValue;
                     return true;
                 }
 
                 numAccum = updatedNumAccum / multipliedDeniminator;
             }
 
-            dataGasPricePerUnit = output / denominator;
+            blobGasPricePerUnit = output / denominator;
             return false;
         }
 
-        return !FakeExponentialOverflow(Eip4844Constants.MinDataGasPrice, excessDataGas, Eip4844Constants.DataGasUpdateFraction, out dataGasPricePerUnit);
+        return !FakeExponentialOverflow(Eip4844Constants.MinBlobGasPrice, excessBlobGas, Eip4844Constants.BlobGasUpdateFraction, out blobGasPricePerUnit);
     }
 
-    public static ulong? CalculateExcessDataGas(BlockHeader? parentBlockHeader, IReleaseSpec releaseSpec)
+    public static ulong? CalculateExcessBlobGas(BlockHeader? parentBlockHeader, IReleaseSpec releaseSpec)
     {
         if (!releaseSpec.IsEip4844Enabled)
         {
@@ -99,10 +100,10 @@ public static class DataGasCalculator
             return 0;
         }
 
-        ulong excessDataGas = parentBlockHeader.ExcessDataGas ?? 0;
-        excessDataGas += parentBlockHeader.DataGasUsed ?? 0;
-        return excessDataGas < Eip4844Constants.TargetDataGasPerBlock
+        ulong excessBlobGas = parentBlockHeader.ExcessBlobGas ?? 0;
+        excessBlobGas += parentBlockHeader.BlobGasUsed ?? 0;
+        return excessBlobGas < Eip4844Constants.TargetBlobGasPerBlock
             ? 0
-            : (excessDataGas - Eip4844Constants.TargetDataGasPerBlock);
+            : (excessBlobGas - Eip4844Constants.TargetBlobGasPerBlock);
     }
 }

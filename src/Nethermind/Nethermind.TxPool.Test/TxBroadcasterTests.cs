@@ -20,8 +20,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
@@ -451,7 +451,9 @@ public class TxBroadcasterTests
     }
 
     [TestCase(1_000, true)]
-    [TestCase(128 * 1024, true)]
+    [TestCase(4 * 1024, true)]
+    [TestCase(4 * 1024 + 1, false)]
+    [TestCase(128 * 1024, false)]
     [TestCase(128 * 1024 + 1, false)]
     [TestCase(1_000_000, false)]
     public void should_broadcast_full_local_tx_up_to_max_size_and_only_announce_if_larger(int txSize, bool shouldBroadcastFullTx)

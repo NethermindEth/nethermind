@@ -25,10 +25,23 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "20000")]
     int Timeout { get; set; }
 
-    [ConfigItem(
-        Description = "Base file path for diagnostic JSON RPC recorder.",
-        DefaultValue = "\"logs/rpc.{counter}.txt\"")]
-    string RpcRecorderBaseFilePath { get; set; }
+        [ConfigItem(
+            Description = "The queued request limit for calls above the max concurrency amount for (" +
+                          nameof(IEthRpcModule.eth_call) + ", " +
+                          nameof(IEthRpcModule.eth_estimateGas) + ", " +
+                          nameof(IEthRpcModule.eth_getLogs) + ", " +
+                          nameof(IEthRpcModule.eth_newFilter) + ", " +
+                          nameof(IEthRpcModule.eth_newBlockFilter) + ", " +
+                          nameof(IEthRpcModule.eth_newPendingTransactionFilter) + ", " +
+                          nameof(IEthRpcModule.eth_uninstallFilter) + "). " +
+                          " If value is set to 0 limit won't be applied.",
+            DefaultValue = "500")]
+        int RequestQueueLimit { get; set; }
+
+        [ConfigItem(
+            Description = "Base file path for diagnostic JSON RPC recorder.",
+            DefaultValue = "\"logs/rpc.{counter}.txt\"")]
+        string RpcRecorderBaseFilePath { get; set; }
 
     [ConfigItem(
         Description =

@@ -16,7 +16,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Can_do_roundtrip()
         {
-            DisconnectMessage msg = new(DisconnectReason.AlreadyConnected);
+            DisconnectMessage msg = new(EthDisconnectReason.AlreadyConnected);
             DisconnectMessageSerializer serializer = new();
             byte[] serialized = serializer.Serialize(msg);
             Assert.That(serialized.ToHexString(true), Is.EqualTo("0xc105"), "bytes");
@@ -30,14 +30,14 @@ namespace Nethermind.Network.Test.P2P
             DisconnectMessageSerializer serializer = new();
             byte[] serialized = new byte[] { 16 };
             DisconnectMessage deserialized = serializer.Deserialize(serialized);
-            Assert.That((DisconnectReason)deserialized.Reason, Is.EqualTo(DisconnectReason.Other), "reason");
+            Assert.That((EthDisconnectReason)deserialized.Reason, Is.EqualTo(EthDisconnectReason.Other), "reason");
         }
 
-        [TestCase("", DisconnectReason.DisconnectRequested)]
-        [TestCase("00", DisconnectReason.DisconnectRequested)]
-        [TestCase("10", DisconnectReason.Other)]
-        [TestCase("82c104", DisconnectReason.TooManyPeers)]
-        public void Can_read_other_format_message(string hex, DisconnectReason expectedReason)
+        [TestCase("", EthDisconnectReason.DisconnectRequested)]
+        [TestCase("00", EthDisconnectReason.DisconnectRequested)]
+        [TestCase("10", EthDisconnectReason.Other)]
+        [TestCase("82c104", EthDisconnectReason.TooManyPeers)]
+        public void Can_read_other_format_message(string hex, EthDisconnectReason expectedReason)
         {
             DisconnectMessageSerializer serializer = new DisconnectMessageSerializer();
             byte[] serialized = Bytes.FromHexString(hex);

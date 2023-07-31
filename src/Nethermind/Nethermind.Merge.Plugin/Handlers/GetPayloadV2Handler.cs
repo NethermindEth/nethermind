@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
@@ -13,8 +14,8 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </summary>
 public class GetPayloadV2Handler : GetPayloadHandlerBase<GetPayloadV2Result>
 {
-    public GetPayloadV2Handler(IPayloadPreparationService payloadPreparationService, ILogManager logManager) : base(
-        2, payloadPreparationService, logManager)
+    public GetPayloadV2Handler(IPayloadPreparationService payloadPreparationService, ISpecProvider specProvider, ILogManager logManager) : base(
+        2, payloadPreparationService, specProvider, logManager)
     {
     }
 

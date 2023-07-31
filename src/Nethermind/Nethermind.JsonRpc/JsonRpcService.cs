@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -75,8 +76,15 @@ public class JsonRpcService : IJsonRpcService
             }
             catch (TargetInvocationException ex)
             {
-                if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
-                return GetErrorResponse(rpcRequest.Method, ErrorCodes.InternalError, "Internal error", ex.InnerException?.ToString(), rpcRequest.Id);
+                if (_logger.IsError)
+                    _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
+                return GetErrorResponse(rpcRequest.Method, ErrorCodes.InternalError, "Internal error",
+                    ex.InnerException?.ToString(), rpcRequest.Id);
+            }
+            catch (LimitExceededException ex)
+            {
+                if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
+                return GetErrorResponse(rpcRequest.Method, ErrorCodes.LimitExceeded, "Too many requests", ex.ToString(), rpcRequest.Id);
             }
             catch (ModuleRentalTimeoutException ex)
             {

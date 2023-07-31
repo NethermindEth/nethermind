@@ -220,15 +220,6 @@ namespace Nethermind.Evm.Tracing
         }
 
         /// <summary>
-        /// </summary>
-        /// <param name="stackItem"></param>
-        /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-        void ReportStackPush(in ZeroPaddedMemory stackItem)
-        {
-            ReportStackPush(stackItem.ToArray().AsSpan());
-        }
-
-        /// <summary>
         ///
         /// </summary>
         /// <param name="memoryTrace"></param>
@@ -282,16 +273,6 @@ namespace Nethermind.Evm.Tracing
         /// <param name="data"></param>
         /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
         void ReportMemoryChange(long offset, in ZeroPaddedSpan data)
-        {
-            ReportMemoryChange(offset, data.ToArray());
-        }
-
-        /// <summary>
-        /// </summary>
-        /// <param name="offset"></param>
-        /// <param name="data"></param>
-        /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-        void ReportMemoryChange(long offset, in ZeroPaddedMemory data)
         {
             ReportMemoryChange(offset, data.ToArray());
         }

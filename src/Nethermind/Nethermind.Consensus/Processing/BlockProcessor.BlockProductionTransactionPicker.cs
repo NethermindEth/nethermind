@@ -90,22 +90,24 @@ namespace Nethermind.Consensus.Processing
                     return false;
                 }
 
-                UInt256 maxFee = 0;
-
-                if (eip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (maxFee = (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + transaction.Value))
+                if (!transaction.IsServiceTransaction && eip1559Enabled)
                 {
-                    e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}");
-                    return false;
-                }
+                    UInt256 maxFee = (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + transaction.Value;
 
-                if (releaseSpec.IsEip4844Enabled && !transaction.IsServiceTransaction && (
-                    !DataGasCalculator.TryCalculateDataGasPrice(block.Header, transaction, out UInt256 dataGasPrice) ||
-                    senderBalance < (maxFee = (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + dataGasPrice + transaction.Value)))
-                {
-                    e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}, DataGasPrice: {dataGasPrice}");
-                    return false;
-                }
+                    if (senderBalance < maxFee)
+                    {
+                        e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}");
+                        return false;
+                    }
 
+                    if (transaction.SupportsBlobs && (
+                        !BlobGasCalculator.TryCalculateBlobGasPrice(block.Header, transaction, out UInt256 blobGasPrice) ||
+                        senderBalance < (maxFee += blobGasPrice)))
+                    {
+                        e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}, BlobGasPrice: {blobGasPrice}");
+                        return false;
+                    }
+                }
                 return true;
             }
         }
