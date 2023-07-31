@@ -21,7 +21,7 @@ public class BeaconBlockRootPrecompile : IPrecompile<BeaconBlockRootPrecompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState state)
     {
-        Metrics.ParentBeaconBlockRootPrecompile++;
+        Metrics.BeaconBlockRootPrecompile++;
 
         if (inputData.Length != Keccak.Size)
         {
@@ -46,7 +46,7 @@ public class BeaconBlockRootPrecompile : IPrecompile<BeaconBlockRootPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {
-        return GasCostOf.ParentBeaconBlockPrecompile;
+        return GasCostOf.BeaconBlockRootPrecompile;
     }
 
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

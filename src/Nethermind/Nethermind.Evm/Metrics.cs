@@ -86,7 +86,7 @@ public class Metrics
 
     [CounterMetric]
     [Description("Number of Parent Beacon Block Root precompile calls.")]
-    public static int ParentBeaconBlockRootPrecompile { get; set; }
+    public static int BeaconBlockRootPrecompile { get; set; }
 
 
     [Description("Number of calls made to addresses without code.")]
