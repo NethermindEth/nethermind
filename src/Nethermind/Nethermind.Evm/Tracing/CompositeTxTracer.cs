@@ -36,7 +36,6 @@ namespace Nethermind.Evm.Tracing
                 IsTracingStorage |= t.IsTracingStorage;
                 IsTracingAccess |= t.IsTracingAccess;
                 IsTracingFees |= t.IsTracingFees;
-                IsTracingEventLogs |= t.IsTracingEventLogs;
             }
         }
 
@@ -482,18 +481,6 @@ namespace Nethermind.Evm.Tracing
                 if (innerTracer.IsTracingFees)
                 {
                     innerTracer.ReportFees(fees, burntFees);
-                }
-            }
-        }
-
-        public void ReportEvent(LogEntry logEntry)
-        {
-            for (int index = 0; index < _txTracers.Count; index++)
-            {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingEventLogs)
-                {
-                    innerTracer.ReportEvent(logEntry);
                 }
             }
         }

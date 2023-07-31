@@ -95,6 +95,5 @@ namespace Nethermind.Evm.Tracing
         public void ReportExtraGasPressure(long extraGasPressure) => throw new OperationCanceledException(ErrorMessage);
         public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) => throw new OperationCanceledException(ErrorMessage);
         public void ReportFees(UInt256 fees, UInt256 burntFees) => throw new OperationCanceledException(ErrorMessage);
-        public void ReportEvent(LogEntry logEntry) => throw new OperationCanceledException(ErrorMessage);
     }
 }

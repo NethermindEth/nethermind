@@ -28,12 +28,6 @@ namespace Nethermind.Evm.Tracing
         private readonly bool _isTracingBlockAccess;
         private readonly bool _isTracingFees;
 
-        public bool IsTracingEventLogs
-        {
-            get => _isTracingEventLogs || _innerTracer.IsTracingEventLogs;
-            init => _isTracingEventLogs = value;
-        }
-
         public ITxTracer InnerTracer => _innerTracer;
 
         public CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default)
@@ -441,15 +435,6 @@ namespace Nethermind.Evm.Tracing
             if (_innerTracer.IsTracingFees)
             {
                 _innerTracer.ReportFees(fees, burntFees);
-            }
-        }
-
-        public void ReportEvent(LogEntry logEntry)
-        {
-            _token.ThrowIfCancellationRequested();
-            if (_innerTracer.IsTracingEventLogs)
-            {
-                _innerTracer.ReportEvent(logEntry);
             }
         }
     }

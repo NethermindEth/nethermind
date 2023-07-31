@@ -191,14 +191,6 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportEvent(LogEntry logEntry)
-        {
-            if (_currentTxTracer.IsTracingEventLogs)
-            {
-                _currentTxTracer.ReportEvent(logEntry);
-            }
-        }
-
         private ITxTracer _currentTxTracer = NullTxTracer.Instance;
         private int _currentIndex;
         private readonly List<TxReceipt> _txReceipts = new();

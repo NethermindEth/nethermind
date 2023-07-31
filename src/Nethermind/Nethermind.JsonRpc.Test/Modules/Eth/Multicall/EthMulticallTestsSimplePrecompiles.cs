@@ -97,13 +97,13 @@ contract EcrecoverProxy {
         BlockchainBridge.MultiCallOutput result = chain.Bridge.MultiCall(chain.BlockFinder.Head.Header, new[] { requestMultiCall }, CancellationToken.None);
         Log[]? logs = result.items.First().Calls.First().Logs;
 
-        
+
         //Check that initial VM is intact
         Address? mainChainRpcAddress =
             EthRpcMulticallTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
 
         Assert.NotNull(mainChainRpcAddress);
         Assert.AreEqual(TestItem.AddressA, mainChainRpcAddress);
-        
+
     }
 }

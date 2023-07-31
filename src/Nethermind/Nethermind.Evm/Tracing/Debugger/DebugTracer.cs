@@ -256,11 +256,6 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportFees(UInt256 fees, UInt256 burntFees)
         => InnerTracer.ReportFees(fees, burntFees);
 
-    public void ReportEvent(LogEntry logEntry)
-    {
-        ((ITxTracer)InnerTracer).ReportEvent(logEntry);
-    }
-
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         => InnerTracer.ReportBalanceChange(address, before, after);
 
