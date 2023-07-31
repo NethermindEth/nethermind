@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -223,7 +224,8 @@ public partial class EngineModuleTests
                 State,
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
-                LogManager);
+                LogManager,
+                beaconBlockRootHandler: new BeaconBlockRootHandler());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }

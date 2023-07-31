@@ -7,6 +7,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -85,7 +86,8 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 NullReceiptStorage.Instance,
                 new WitnessCollector(memDbProvider.StateDb, LimboLogs.Instance),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                beaconBlockRootHandler: new BeaconBlockRootHandler());
             _blockchainProcessor = new BlockchainProcessor(
                 _blockTree,
                 blockProcessor,

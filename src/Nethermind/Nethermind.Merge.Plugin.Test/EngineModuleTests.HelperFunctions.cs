@@ -23,6 +23,7 @@ using Nethermind.State;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles.Stateful;
 using Nethermind.Synchronization.Blocks;
+using Nethermind.Consensus.BeaconBlockRoot;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -30,8 +31,8 @@ namespace Nethermind.Merge.Plugin.Test
     public partial class EngineModuleTests
     {
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
+        private static readonly IBeaconBlockRootHandler _beaconBlockRootHandler = new BeaconBlockRootHandler();
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
-
         private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Keccak headBlockHash, Keccak finalizedBlockHash,
              Keccak safeBlockHash)
         {
@@ -93,7 +94,9 @@ namespace Nethermind.Merge.Plugin.Test
         private static ExecutionPayloadV3 CreateBlockRequestV3(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? beaconParentBlockRoot = null)
         {
             var blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(spec, state, parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, beaconParentBlockRoot: beaconParentBlockRoot);
-            BeaconBlockRootPrecompile.Instance.SetupBeaconBlockRootPrecompileState(spec, state, blockRequestV3.ParentBeaconBlockRoot, blockRequestV3.Timestamp);
+            blockRequestV3.TryGetBlock(out Block? block);
+            _beaconBlockRootHandler.HandleBeaconBlockRoot(block!, spec, state);
+
             state.Commit(spec);
             state.CommitTree(blockRequestV3.BlockNumber);
 

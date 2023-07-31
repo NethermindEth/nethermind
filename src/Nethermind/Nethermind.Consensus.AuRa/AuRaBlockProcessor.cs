@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
@@ -43,6 +44,7 @@ namespace Nethermind.Consensus.AuRa
             ILogManager logManager,
             IBlockTree blockTree,
             IWithdrawalProcessor withdrawalProcessor,
+            IBeaconBlockRootHandler beaconBlockRootHandler,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
             ContractRewriter? contractRewriter = null)
@@ -55,7 +57,8 @@ namespace Nethermind.Consensus.AuRa
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager,
-                withdrawalProcessor)
+                withdrawalProcessor,
+                beaconBlockRootHandler)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

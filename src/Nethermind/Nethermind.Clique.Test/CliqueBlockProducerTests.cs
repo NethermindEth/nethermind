@@ -37,6 +37,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using Nethermind.Config;
+using Nethermind.Consensus.BeaconBlockRoot;
 
 namespace Nethermind.Clique.Test
 {
@@ -132,7 +133,8 @@ namespace Nethermind.Clique.Test
                     stateProvider,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
-                    nodeLogManager);
+                    nodeLogManager,
+                    beaconBlockRootHandler:  new BeaconBlockRootHandler());
 
                 BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
                 processor.Start();
@@ -151,7 +153,8 @@ namespace Nethermind.Clique.Test
                     minerStateProvider,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
-                    nodeLogManager);
+                    nodeLogManager,
+                    beaconBlockRootHandler: new BeaconBlockRootHandler());
 
                 BlockchainProcessor minerProcessor = new(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
 

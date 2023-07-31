@@ -7,6 +7,7 @@ using System.Linq;
 using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -33,6 +34,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IReceiptStorage _receiptStorage;
     private readonly IWitnessCollector _witnessCollector;
     private readonly IWithdrawalProcessor _withdrawalProcessor;
+    private readonly IBeaconBlockRootHandler _beaconBlockRootHandler;
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
@@ -54,7 +56,8 @@ public partial class BlockProcessor : IBlockProcessor
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
         ILogManager? logManager,
-        IWithdrawalProcessor? withdrawalProcessor = null)
+        IWithdrawalProcessor? withdrawalProcessor = null,
+        IBeaconBlockRootHandler? beaconBlockRootHandler = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -65,7 +68,7 @@ public partial class BlockProcessor : IBlockProcessor
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
-
+        _beaconBlockRootHandler = beaconBlockRootHandler ?? throw new ArgumentNullException(nameof(beaconBlockRootHandler));
 
         _receiptsTracer = new BlockReceiptsTracer();
     }
@@ -226,7 +229,7 @@ public partial class BlockProcessor : IBlockProcessor
         _receiptsTracer.SetOtherTracer(blockTracer);
         _receiptsTracer.StartNewBlockTrace(block);
 
-        BeaconBlockRootPrecompile.Instance.SetupBeaconBlockRootPrecompileState(spec, _stateProvider, block.ParentBeaconBlockRoot, block.Timestamp);
+        _beaconBlockRootHandler.HandleBeaconBlockRoot(block, spec, _stateProvider);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
 

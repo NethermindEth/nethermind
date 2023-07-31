@@ -7,6 +7,7 @@ using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.BeaconBlockRoot;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Withdrawals;
@@ -156,7 +157,8 @@ public class TxCertifierFilterTests
                 ReceiptStorage,
                 LimboLogs.Instance,
                 BlockTree,
-                NullWithdrawalProcessor.Instance);
+                NullWithdrawalProcessor.Instance,
+                NullBeaconBlockRootHandler.Instance);
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;

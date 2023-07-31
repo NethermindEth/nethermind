@@ -18,20 +18,6 @@ public class BeaconBlockRootPrecompile : IPrecompile<BeaconBlockRootPrecompile>
         StorageCell storageCell = new(Address, index);
         return state.Get(storageCell);
     }
-    public void SetupBeaconBlockRootPrecompileState(IReleaseSpec spec, IWorldState stateProvider, Keccak parentBeaconBlockRoot, UInt256 timestamp)
-    {
-        if (!spec.IsBeaconBlockRootAvailable) return;
-        stateProvider.CreateAccountIfNotExists(BeaconBlockRootPrecompile.Address, 1);
-
-        UInt256.Mod(timestamp, HISTORICAL_ROOTS_LENGTH, out UInt256 timestampReduced);
-        UInt256 rootIndex = timestampReduced + HISTORICAL_ROOTS_LENGTH;
-
-        StorageCell tsStorageCell = new(Address, timestampReduced);
-        StorageCell brStorageCell = new(Address, rootIndex);
-
-        stateProvider.Set(tsStorageCell, timestamp.ToBigEndian());
-        stateProvider.Set(brStorageCell, parentBeaconBlockRoot.Bytes.ToArray());
-    }
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState state)
     {

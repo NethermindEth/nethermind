@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -50,7 +51,8 @@ namespace Nethermind.Consensus.Processing
                 StateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                logManager);
+                logManager,
+                beaconBlockRootHandler: new BeaconBlockRootHandler());
 
             _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, _txEnv.StateReader, logManager, BlockchainProcessor.Options.NoReceipts);
             BlockProcessingQueue = _blockProcessingQueue;

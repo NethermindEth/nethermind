@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -50,6 +51,7 @@ public class TestBlockchain : IDisposable
     public ITxPool TxPool { get; set; } = null!;
     public IDb CodeDb => DbProvider.CodeDb;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
+    public IBeaconBlockRootHandler BeaconBlockRootHandler { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
     public IBlockPreprocessorStep BlockPreprocessorStep { get; set; } = null!;
@@ -177,6 +179,7 @@ public class TestBlockchain : IDisposable
         BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId, LimboLogs.Instance), SpecProvider);
         LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
+        BeaconBlockRootHandler = new BeaconBlockRootHandler();
         BlockProcessor = CreateBlockProcessor();
 
         BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
@@ -322,7 +325,8 @@ public class TestBlockchain : IDisposable
 
         if (SpecProvider.GenesisSpec.IsBeaconBlockRootAvailable)
         {
-            BeaconBlockRootPrecompile.Instance.SetupBeaconBlockRootPrecompileState(SpecProvider.GenesisSpec, State, genesisBlockBuilder.TestObject.ParentBeaconBlockRoot, genesisBlockBuilder.TestObject.Timestamp);
+
+            BeaconBlockRootHandler.HandleBeaconBlockRoot(genesisBlockBuilder.TestObject, SpecProvider.GenesisSpec, State);
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);
 
@@ -348,7 +352,8 @@ public class TestBlockchain : IDisposable
             State,
             ReceiptStorage,
             NullWitnessCollector.Instance,
-            LogManager);
+            LogManager,
+            beaconBlockRootHandler: BeaconBlockRootHandler);
 
     public async Task WaitForNewHead()
     {

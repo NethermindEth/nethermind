@@ -38,6 +38,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
 using Nethermind.Config;
+using Nethermind.Consensus.BeaconBlockRoot;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -192,7 +193,8 @@ namespace Nethermind.AccountAbstraction.Test
                     State,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
-                    LogManager);
+                    LogManager,
+                    beaconBlockRootHandler: new BeaconBlockRootHandler());
 
                 var parser = new AbiDefinitionParser();
                 parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());

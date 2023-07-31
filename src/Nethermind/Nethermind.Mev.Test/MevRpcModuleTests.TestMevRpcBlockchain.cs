@@ -9,6 +9,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -206,7 +207,8 @@ namespace Nethermind.Mev.Test
                     State,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
-                    LogManager);
+                    LogManager,
+                    beaconBlockRootHandler: new BeaconBlockRootHandler());
 
                 _tracerFactory = new TracerFactory(
                     DbProvider,

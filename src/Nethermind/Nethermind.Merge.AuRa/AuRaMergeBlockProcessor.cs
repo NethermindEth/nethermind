@@ -5,6 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
@@ -30,6 +31,7 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
         ILogManager logManager,
         IBlockTree blockTree,
         IWithdrawalProcessor withdrawalProcessor,
+        IBeaconBlockRootHandler beaconBlockRootHandler,
         ITxFilter? txFilter = null,
         AuRaContractGasLimitOverride? gasLimitOverride = null,
         ContractRewriter? contractRewriter = null
@@ -43,6 +45,7 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
             logManager,
             blockTree,
             withdrawalProcessor,
+            beaconBlockRootHandler,
             txFilter,
             gasLimitOverride,
             contractRewriter
