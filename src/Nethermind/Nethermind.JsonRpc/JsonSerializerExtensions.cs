@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
 using System.IO;
 using Nethermind.Serialization.Json;
@@ -26,7 +27,16 @@ public static class JsonSerializerExtensions
             }
         }
 
-        if (value is JsonRpcSuccessResponse { Result: IEnumerable enumerable } response)
+        if (value is JsonRpcSuccessResponse
+            {
+                Result: IEnumerable enumerable
+                and not string
+                and not Array
+                and not IList
+                and not ICollection
+                and not IDictionary
+                and IEnumerator
+            } response)
         {
             IEnumerator enumerator = enumerable.GetEnumerator();
             if (enumerator.MoveNext())
