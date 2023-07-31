@@ -697,6 +697,68 @@ public class TrieByPathTests
         checkTree.Get(_keyAccountD).Should().BeEquivalentTo(_longLeaf1);
     }
 
+    [Test]
+    public void Persist_inlined_node()
+    {
+        MemColumnsDb<StateColumns> memDb = new();
+        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        PatriciaTree patriciaTree = new(trieStore, _logManager);
+
+        byte[] smallLeafValue = Bytes.FromHexString("00000010000000aa");
+        byte[] smallLeafValue2 = Bytes.FromHexString("00000010000000dd");
+
+        byte[] key1 = Bytes.FromHexString("abc000100000000aa").PadLeft(32);
+        byte[] key2 = Bytes.FromHexString("abc000200000000bb").PadLeft(32);
+
+        patriciaTree.Set(key1, smallLeafValue);
+        patriciaTree.Set(key2, _longLeaf1);
+        patriciaTree.UpdateRootHash();
+        patriciaTree.Commit(0);
+
+        //check inlined node was persisted under its full path
+        byte[] inlinedNodeData = patriciaTree.Get(key1);
+        Assert.That(inlinedNodeData, Is.EqualTo(smallLeafValue).Using<byte[]>(Bytes.Comparer));
+
+        byte[] key3 = Bytes.FromHexString("abc00010000f000aa").PadLeft(32);
+
+        //make an update enforcing inlined leaf to expand L -> E->B-LL
+        //ensure that inlined leaf is accessible via tree traversal as well
+        patriciaTree.Set(key3, smallLeafValue2);
+        patriciaTree.UpdateRootHash();
+        patriciaTree.Commit(1);
+
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        checkTree.Get(key1).Should().BeEquivalentTo(smallLeafValue);
+        checkTree.Get(key2).Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(key3).Should().BeEquivalentTo(smallLeafValue2);
+    }
+
+    [Test]
+    public void Request_deletion_for_leaf()
+    {
+        MemColumnsDb<StateColumns> memDb = new();
+        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+
+        Span<byte> fullPathNibbles = stackalloc byte[64];
+        Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x12345600000033333333333333300ee000000555555555555555550000abcdef"), fullPathNibbles);
+
+        trieStore.RequestDeletionForLeaf(fullPathNibbles.Slice(0, 5), fullPathNibbles);
+        //TODO - do some actuall asserts
+    }
+
+    [Test]
+    public void Request_deletion_for_extension()
+    {
+        MemColumnsDb<StateColumns> memDb = new();
+        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+
+        Span<byte> fullPathNibbles = stackalloc byte[5] { 3, 13, 3, 2, 13 };
+        Span<byte> extensionKey = stackalloc byte[2] { 7, 10 };
+
+        trieStore.RequestDeletionForExtension(fullPathNibbles, extensionKey);
+        //TODO - do some actuall asserts
+    }
+
     [TestCase(256, 128, 128, 32)]
     [TestCase(128, 128, 8, 8)]
     [TestCase(4, 16, 4, 4)]

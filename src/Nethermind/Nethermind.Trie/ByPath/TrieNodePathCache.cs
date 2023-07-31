@@ -16,49 +16,104 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Trie.ByPath;
 public class TrieNodePathCache : IPathTrieNodeCache
 {
-    class NodeVersions : IEnumerable<NodeAtBlock>
+    class NodeVersions : IDisposable
     {
-        private SortedSet<NodeAtBlock> _nodes;
+        private readonly SortedSet<NodeAtBlock> _nodes;
+        private readonly ReaderWriterLockSlim _lock = new();
 
         public NodeVersions()
         {
-            _nodes = new SortedSet<NodeAtBlock>(new NodeAtBlockComparere());
+            _nodes = new SortedSet<NodeAtBlock>(new NodeAtBlockComparer());
         }
 
         public void Add(long blockNumber, TrieNode node)
         {
-            NodeAtBlock nad = new(blockNumber, node);
-            _nodes.Remove(nad);
-            _nodes.Add(nad);
+            try
+            {
+                _lock.EnterWriteLock();
+
+                NodeAtBlock nad = new(blockNumber, node);
+                _nodes.Remove(nad);
+                _nodes.Add(nad);
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
         }
 
         public TrieNode? GetLatestUntil(long blockNumber, bool remove = false)
         {
-            if (blockNumber < _nodes.Min.BlockNumber)
-                return null;
-            NodeAtBlock atLatest = _nodes.GetViewBetween(_nodes.Min, new NodeAtBlock(blockNumber)).Max;
+            try
+            {
+                _lock.EnterUpgradeableReadLock();
 
-            if (remove && atLatest is not null)
-                _nodes.Remove(atLatest);
+                if (blockNumber < _nodes.Min.BlockNumber)
+                    return null;
 
-            return atLatest?.TrieNode;
+                NodeAtBlock atLatest = _nodes.GetViewBetween(_nodes.Min, new NodeAtBlock(blockNumber)).Max;
+
+                if (remove && atLatest is not null)
+                {
+                    try
+                    {
+                        _lock.EnterWriteLock();
+                        _nodes.Remove(atLatest);
+                    }
+                    finally
+                    {
+                        _lock.ExitWriteLock();
+                    }
+                }
+
+                return atLatest?.TrieNode;
+            }
+            finally
+            {
+                _lock.ExitUpgradeableReadLock();
+            }
         }
 
         public TrieNode? GetLatest()
         {
-            return _nodes.Max?.TrieNode;
+            try
+            {
+                _lock.EnterReadLock();
+                return _nodes.Max?.TrieNode;
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+        }
+
+        public TrieNode? Get(Keccak keccak)
+        {
+            try
+            {
+                _lock.EnterReadLock();
+
+                foreach (NodeAtBlock nodeVersion in _nodes)
+                {
+                    if (nodeVersion.TrieNode.Keccak == keccak)
+                    {
+                        Pruning.Metrics.LoadedFromCacheNodesCount++;
+                        return nodeVersion.TrieNode;
+                    }
+                }
+                return null;
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
         }
 
         public int Count => _nodes.Count;
 
-        public IEnumerator<NodeAtBlock> GetEnumerator()
+        public void Dispose()
         {
-            return _nodes.GetEnumerator();
-        }
-
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return _nodes.GetEnumerator();
+            _lock.Dispose();
         }
     }
 
@@ -75,7 +130,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
         public TrieNode? TrieNode { get; set; }
     }
 
-    class NodeAtBlockComparere : IComparer<NodeAtBlock>
+    class NodeAtBlockComparer : IComparer<NodeAtBlock>
     {
         public int Compare(NodeAtBlock? x, NodeAtBlock? y)
         {
@@ -106,16 +161,8 @@ public class TrieNodePathCache : IPathTrieNodeCache
     public TrieNode? GetNode(byte[] path, Keccak keccak)
     {
         if (_nodesByPath.TryGetValue(path, out NodeVersions nodeVersions))
-        {
-            foreach (NodeAtBlock nodeVersion in nodeVersions)
-            {
-                if (nodeVersion.TrieNode.Keccak == keccak)
-                {
-                    Pruning.Metrics.LoadedFromCacheNodesCount++;
-                    return nodeVersion.TrieNode;
-                }
-            }
-        }
+            return nodeVersions.Get(keccak);
+
         return null;
     }
 
@@ -124,7 +171,10 @@ public class TrieNodePathCache : IPathTrieNodeCache
         if (_nodesByPath.TryGetValue(path, out NodeVersions nodeVersions))
         {
             if (rootHash is null)
+            {
+                Pruning.Metrics.LoadedFromCacheNodesCount++;
                 return nodeVersions.GetLatest();
+            }
 
             if (_rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
             {
@@ -160,10 +210,8 @@ public class TrieNodePathCache : IPathTrieNodeCache
         }
         else
         {
-            nodeVersions = new NodeVersions
-            {
-                { blockNumber, trieNode }
-            };
+            nodeVersions = new NodeVersions();
+            nodeVersions.Add(blockNumber, trieNode);
             _nodesByPath[pathToNode] = nodeVersions;
         }
         Pruning.Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
