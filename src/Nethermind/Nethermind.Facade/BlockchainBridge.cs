@@ -377,23 +377,7 @@ namespace Nethermind.Facade
 
                     callHeader.MixHash = parent.MixHash;
                     callHeader.IsPostMerge = parent.Difficulty == 0;
-
-                    var transactions = callInputBlock.Calls.Select(model => model.GetTransaction()).ToList();
-                    foreach (Transaction transaction in transactions)
-                    {
-                        transaction.SenderAddress ??= Address.SystemUser;
-
-                        Keccak stateRoot = callHeader.StateRoot!;
-
-                        if (transaction.Nonce == 0)
-                        {
-                            transaction.Nonce = env.StateProvider.GetAccount(transaction.SenderAddress).Nonce;
-                        }
-
-                        transaction.Hash = transaction.CalculateHash();
-                    }
-
-                    Block? currentBlock = new(callHeader, transactions, Array.Empty<BlockHeader>());
+                    Block? currentBlock = new(callHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
 
                     var currentSpec = env.SpecProvider.GetSpec(currentBlock.Header);
                     if (callInputBlock.StateOverrides != null)
@@ -404,6 +388,31 @@ namespace Nethermind.Facade
                     env.StateProvider.Commit(currentSpec);
                     env.StateProvider.CommitTree(currentBlock.Number);
                     env.StateProvider.RecalculateStateRoot();
+
+                    var transactions = callInputBlock.Calls.Select(model => model.GetTransaction()).ToList();
+                    foreach (Transaction transaction in transactions)
+                    {
+                        transaction.SenderAddress ??= Address.SystemUser;
+
+                        Keccak stateRoot = callHeader.StateRoot!;
+
+                        if (transaction.Nonce == 0)
+                        {
+                            try
+                            {
+                                transaction.Nonce = env.StateProvider.GetAccount(transaction.SenderAddress).Nonce;
+                            }
+                            catch (TrieException)
+                            {
+                                // Transaction from unknown account
+                            }
+                        }
+
+                        transaction.Hash = transaction.CalculateHash();
+                    }
+
+                    currentBlock = currentBlock.WithReplacedBody(currentBlock.Body.WithChangedTransactions(transactions.ToArray()));
+
 
                     currentBlock.Header.StateRoot = env.StateProvider.StateRoot;
                     currentBlock.Header.IsPostMerge = true; //ToDo: Seal if necessary before merge 192 BPB

@@ -12,6 +12,7 @@ using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.JsonRpc.Modules.Eth;
 using NUnit.Framework;
+using static Nethermind.TxPool.TransactionExtensions;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -90,6 +91,15 @@ public class EthMulticallTestsPrecompilesWithRedirection
             To = contractAddress,
             SenderAddress = TestItem.PublicKeyB.Address
         };
+
+
+        chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
+        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
+
+        var header = chain.BlockFinder.Head.Header;
+        var spec = chain.SpecProvider.GetSpec(header);
+        systemTransactionForModifiedVM.GasPrice = header.BaseFeePerGas >= 1 ? header.BaseFeePerGas : 1;
+        systemTransactionForModifiedVM.GasLimit = (long)systemTransactionForModifiedVM.CalculateTransactionPotentialCost(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
         MultiCallBlockStateCallsModel requestMultiCall = new()
         {
