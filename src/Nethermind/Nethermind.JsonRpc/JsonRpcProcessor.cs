@@ -144,9 +144,7 @@ namespace Nethermind.JsonRpc
                 {
                     Metrics.JsonRpcRequestDeserializationFailures++;
                     if (_logger.IsError) _logger.Error($"Error during parsing/validation.", ex);
-                    JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(
-                        ErrorCodes.ParseError,
-                        "Incorrect message");
+                    JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
                     TraceResult(response);
                     stopwatch.Stop();
                     deserializationFailureResult = JsonRpcResult.Single(
@@ -215,9 +213,11 @@ namespace Nethermind.JsonRpc
 
                 JsonRpcResult.Entry response = enumerator.IsStopped
                     ? new JsonRpcResult.Entry(
-                        _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded,
+                        _jsonRpcService.GetErrorResponse(
+                            ErrorCodes.LimitExceeded,
                             $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB()}KB exceeded",
-                            jsonRpcRequest.Id, jsonRpcRequest.Method),
+                            jsonRpcRequest.Id,
+                            jsonRpcRequest.Method),
                         RpcReport.Error)
                     : await HandleSingleRequest(jsonRpcRequest, context);
 
