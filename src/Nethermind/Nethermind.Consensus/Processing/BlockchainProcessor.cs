@@ -28,6 +28,11 @@ namespace Nethermind.Consensus.Processing
         public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
         public const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
 
+        [ThreadStatic]
+        private static bool _isMainProcessingThread;
+        public static bool IsMainProcessingThread => _isMainProcessingThread;
+        public bool IsMainProcessor { get; init; }
+
         public ITracerBag Tracers => _compositeBlockTracer;
 
         private readonly IBlockProcessor _blockProcessor;
@@ -56,7 +61,7 @@ namespace Nethermind.Consensus.Processing
         private readonly CompositeBlockTracer _compositeBlockTracer = new();
         private readonly Stopwatch _stopwatch = new();
 
-        public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs> InvalidBlock;
+        public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
 
         /// <summary>
         ///
@@ -256,6 +261,8 @@ namespace Nethermind.Consensus.Processing
 
             Thread thread = new(() =>
             {
+                _isMainProcessingThread = IsMainProcessor;
+
                 try
                 {
                     RunProcessingLoop();

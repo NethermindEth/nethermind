@@ -4,72 +4,62 @@
 #if DEBUG
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Int256;
-using Nethermind.State;
-using Nethermind.State.Tracing;
 
-namespace Nethermind.Evm.Tracing.DebugTrace;
+namespace Nethermind.Evm.Tracing.Debugger;
 public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 {
-    public enum DebugPhase
-    {
-        Starting, Blocked, Running, Aborted
-    }
+    public enum DebugPhase { Starting, Blocked, Running, Aborted }
+
+    private readonly AutoResetEvent _autoResetEvent = new(false);
+    private readonly Dictionary<(int depth, int pc), Func<EvmState, bool>> _breakPoints = new();
+    private Func<EvmState, bool>? _globalBreakCondition;
+    private readonly object _lock = new();
 
     public DebugTracer(ITxTracer tracer)
     {
         InnerTracer = tracer;
     }
 
+    public event Action? BreakPointReached;
+    public event Action? ExecutionThreadSet;
     public ITxTracer InnerTracer { get; private set; }
     public DebugPhase CurrentPhase { get; private set; } = DebugPhase.Starting;
     public bool CanReadState => CurrentPhase is DebugPhase.Blocked;
+    public bool IsStepByStepModeOn { get; set; }
+    public EvmState? CurrentState { get; set; }
 
-    private AutoResetEvent _autoResetEvent = new AutoResetEvent(false);
+    public bool IsTracingReceipt => InnerTracer.IsTracingReceipt;
 
-    public event Action BreakPointReached;
-    public event Action ExecutionThreadSet;
+    public bool IsTracingActions => InnerTracer.IsTracingActions;
 
+    public bool IsTracingOpLevelStorage => InnerTracer.IsTracingOpLevelStorage;
 
-    public bool IsTracingReceipt => ((ITxTracer)InnerTracer).IsTracingReceipt;
+    public bool IsTracingMemory => InnerTracer.IsTracingMemory;
 
-    public bool IsTracingActions => ((ITxTracer)InnerTracer).IsTracingActions;
+    public bool IsTracingInstructions => InnerTracer.IsTracingInstructions;
 
-    public bool IsTracingOpLevelStorage => ((ITxTracer)InnerTracer).IsTracingOpLevelStorage;
+    public bool IsTracingRefunds => InnerTracer.IsTracingRefunds;
 
-    public bool IsTracingMemory => ((ITxTracer)InnerTracer).IsTracingMemory;
+    public bool IsTracingCode => InnerTracer.IsTracingCode;
 
-    public bool IsTracingInstructions => ((ITxTracer)InnerTracer).IsTracingInstructions;
+    public bool IsTracingStack => InnerTracer.IsTracingStack;
 
-    public bool IsTracingRefunds => ((ITxTracer)InnerTracer).IsTracingRefunds;
+    public bool IsTracingBlockHash => InnerTracer.IsTracingBlockHash;
 
-    public bool IsTracingCode => ((ITxTracer)InnerTracer).IsTracingCode;
+    public bool IsTracingAccess => InnerTracer.IsTracingAccess;
 
-    public bool IsTracingStack => ((ITxTracer)InnerTracer).IsTracingStack;
+    public bool IsTracingFees => InnerTracer.IsTracingFees;
 
-    public bool IsTracingBlockHash => ((ITxTracer)InnerTracer).IsTracingBlockHash;
+    public bool IsTracingState => InnerTracer.IsTracingState;
 
-    public bool IsTracingAccess => ((ITxTracer)InnerTracer).IsTracingAccess;
+    public bool IsTracingStorage => InnerTracer.IsTracingStorage;
 
-    public bool IsTracingFees => ((ITxTracer)InnerTracer).IsTracingFees;
+    public bool IsBreakpoitnSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
 
-    public bool IsTracingState => ((IStateTracer)InnerTracer).IsTracingState;
-
-    public bool IsTracingStorage => ((IStorageTracer)InnerTracer).IsTracingStorage;
-    public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingEventLogs;
-    public bool IsTracingEventLogs => ((ITxTracer) InnerTracer).IsTracingEventLogs;
-
-    internal Dictionary<(int depth, int pc), Func<EvmState, bool>> _breakPoints = new();
-    public bool IsBreakpoitnSet(int depth, int programCounter)
-        => _breakPoints.ContainsKey((depth, programCounter));
     public void SetBreakPoint((int depth, int pc) point, Func<EvmState, bool> condition = null)
     {
         if (CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting)
@@ -84,15 +74,12 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
             _breakPoints.Remove((depth, programCounter));
         }
     }
-    private Func<EvmState, bool> _globalBreakCondition = null;
-    public void SetCondtion(Func<EvmState, bool> condition = null)
+
+    public void SetCondtion(Func<EvmState, bool>? condition = null)
     {
         if (CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting) _globalBreakCondition = condition;
     }
 
-    private object _lock = new();
-    public bool IsStepByStepModeOn { get; set; } = false;
-    public EvmState CurrentState;
     public void TryWait(ref EvmState evmState, ref int programCounter, ref long gasAvailable, ref int stackHead)
     {
         if (CurrentPhase is DebugPhase.Aborted)
@@ -170,11 +157,11 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public void CheckBreakPoint()
     {
-        var breakpoint = (CurrentState.Env.CallDepth, CurrentState.ProgramCounter);
-        if (_breakPoints.ContainsKey(breakpoint))
+        (int CallDepth, int ProgramCounter) breakpoint = (CurrentState!.Env.CallDepth, CurrentState.ProgramCounter);
+
+        if (_breakPoints.TryGetValue(breakpoint, out Func<EvmState, bool>? point))
         {
-            Func<EvmState, bool> condition = _breakPoints[breakpoint];
-            bool conditionResults = condition is null ? true : condition.Invoke(CurrentState);
+            bool conditionResults = point?.Invoke(CurrentState) ?? true;
             if (conditionResults)
             {
                 Block();
@@ -198,124 +185,76 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     }
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
-    {
-        ((ITxTracer)InnerTracer).MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
-    }
+        => InnerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
 
     public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
-    {
-        ((ITxTracer)InnerTracer).MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
-    }
+        => InnerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
 
     public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
-    {
-        ((ITxTracer)InnerTracer).StartOperation(depth, gas, opcode, pc, isPostMerge);
-    }
+        => InnerTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
 
     public void ReportOperationError(EvmExceptionType error)
-    {
-        ((ITxTracer)InnerTracer).ReportOperationError(error);
-    }
+        => InnerTracer.ReportOperationError(error);
 
     public void ReportOperationRemainingGas(long gas)
-    {
-        ((ITxTracer)InnerTracer).ReportOperationRemainingGas(gas);
-    }
+        => InnerTracer.ReportOperationRemainingGas(gas);
 
     public void SetOperationStack(List<string> stackTrace)
-    {
-        ((ITxTracer)InnerTracer).SetOperationStack(stackTrace);
-    }
+        => InnerTracer.SetOperationStack(stackTrace);
 
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
-    {
-        ((ITxTracer)InnerTracer).ReportStackPush(stackItem);
-    }
+        => InnerTracer.ReportStackPush(stackItem);
 
     public void SetOperationMemory(List<string> memoryTrace)
-    {
-        ((ITxTracer)InnerTracer).SetOperationMemory(memoryTrace);
-    }
+        => InnerTracer.SetOperationMemory(memoryTrace);
 
     public void SetOperationMemorySize(ulong newSize)
-    {
-        ((ITxTracer)InnerTracer).SetOperationMemorySize(newSize);
-    }
+        => InnerTracer.SetOperationMemorySize(newSize);
 
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
-    {
-        ((ITxTracer)InnerTracer).ReportMemoryChange(offset, data);
-    }
+        => InnerTracer.ReportMemoryChange(offset, data);
 
     public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
-    {
-        ((ITxTracer)InnerTracer).SetOperationStorage(address, storageIndex, newValue, currentValue);
-    }
+        => InnerTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
 
     public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
-    {
-        ((ITxTracer)InnerTracer).LoadOperationStorage(address, storageIndex, value);
-    }
+        => InnerTracer.LoadOperationStorage(address, storageIndex, value);
 
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
-    {
-        ((ITxTracer)InnerTracer).ReportSelfDestruct(address, balance, refundAddress);
-    }
+        => InnerTracer.ReportSelfDestruct(address, balance, refundAddress);
 
     public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
-    {
-        ((ITxTracer)InnerTracer).ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
-    }
+        => InnerTracer.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
     public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
-    {
-        ((ITxTracer)InnerTracer).ReportActionEnd(gas, output);
-    }
+        => InnerTracer.ReportActionEnd(gas, output);
 
     public void ReportActionError(EvmExceptionType evmExceptionType)
-    {
-        ((ITxTracer)InnerTracer).ReportActionError(evmExceptionType);
-    }
+        => InnerTracer.ReportActionError(evmExceptionType);
 
     public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
-    {
-        ((ITxTracer)InnerTracer).ReportActionEnd(gas, deploymentAddress, deployedCode);
-    }
+        => InnerTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
 
     public void ReportBlockHash(Keccak blockHash)
-    {
-        ((ITxTracer)InnerTracer).ReportBlockHash(blockHash);
-    }
+        => InnerTracer.ReportBlockHash(blockHash);
 
     public void ReportByteCode(byte[] byteCode)
-    {
-        ((ITxTracer)InnerTracer).ReportByteCode(byteCode);
-    }
+        => InnerTracer.ReportByteCode(byteCode);
 
     public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
-    {
-        ((ITxTracer)InnerTracer).ReportGasUpdateForVmTrace(refund, gasAvailable);
-    }
+        => InnerTracer.ReportGasUpdateForVmTrace(refund, gasAvailable);
 
     public void ReportRefund(long refund)
-    {
-        ((ITxTracer)InnerTracer).ReportRefund(refund);
-    }
+        => InnerTracer.ReportRefund(refund);
 
     public void ReportExtraGasPressure(long extraGasPressure)
-    {
-        ((ITxTracer)InnerTracer).ReportExtraGasPressure(extraGasPressure);
-    }
+        => InnerTracer.ReportExtraGasPressure(extraGasPressure);
 
     public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
-    {
-        ((ITxTracer)InnerTracer).ReportAccess(accessedAddresses, accessedStorageCells);
-    }
+        => InnerTracer.ReportAccess(accessedAddresses, accessedStorageCells);
 
     public void ReportFees(UInt256 fees, UInt256 burntFees)
-    {
-        ((ITxTracer)InnerTracer).ReportFees(fees, burntFees);
-    }
+        => InnerTracer.ReportFees(fees, burntFees);
 
     public void ReportEvent(LogEntry logEntry)
     {
@@ -323,43 +262,29 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
-    {
-        ((IStateTracer)InnerTracer).ReportBalanceChange(address, before, after);
-    }
+        => InnerTracer.ReportBalanceChange(address, before, after);
 
     public void ReportCodeChange(Address address, byte[]? before, byte[]? after)
-    {
-        ((IStateTracer)InnerTracer).ReportCodeChange(address, before, after);
-    }
+        => InnerTracer.ReportCodeChange(address, before, after);
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
-    {
-        ((IStateTracer)InnerTracer).ReportNonceChange(address, before, after);
-    }
+        => InnerTracer.ReportNonceChange(address, before, after);
 
     public void ReportAccountRead(Address address)
-    {
-        ((IStateTracer)InnerTracer).ReportAccountRead(address);
-    }
+        => InnerTracer.ReportAccountRead(address);
 
     public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
-    {
-        ((IStorageTracer)InnerTracer).ReportStorageChange(key, value);
-    }
+        => InnerTracer.ReportStorageChange(key, value);
 
     public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
-    {
-        ((IStorageTracer)InnerTracer).ReportStorageChange(storageCell, before, after);
-    }
+        => InnerTracer.ReportStorageChange(storageCell, before, after);
 
     public void ReportStorageRead(in StorageCell storageCell)
-    {
-        ((IStorageTracer)InnerTracer).ReportStorageRead(storageCell);
-    }
+        => InnerTracer.ReportStorageRead(storageCell);
 
     public void Dispose()
     {
-        _autoResetEvent?.Dispose();
+        _autoResetEvent.Dispose();
     }
 }
 #endif

@@ -28,12 +28,10 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingBlockHash => _currentTxTracer.IsTracingBlockHash;
         public bool IsTracingAccess => _currentTxTracer.IsTracingAccess;
         public bool IsTracingFees => _currentTxTracer.IsTracingFees;
-        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingEventLogs;
-        public bool IsTracingEventLogs => _currentTxTracer.IsTracingEventLogs;
 
         private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
             _txReceipts.Add(BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot));
 
@@ -49,7 +47,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
         {
             _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent, error, stateRoot));
 
@@ -65,16 +63,16 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Keccak stateRoot = null)
+        private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Keccak? stateRoot = null)
         {
             TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, Array.Empty<LogEntry>(), stateRoot);
             receipt.Error = error;
             return receipt;
         }
 
-        private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Keccak stateRoot = null)
+        private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Keccak? stateRoot = null)
         {
-            Transaction transaction = _currentTx;
+            Transaction transaction = _currentTx!;
             TxReceipt txReceipt = new()
             {
                 Logs = logEntries,
@@ -261,9 +259,9 @@ namespace Nethermind.Evm.Tracing
             {
                 Bloom blockBloom = new();
                 _block.Header.Bloom = blockBloom;
-                for (var index = 0; index < _txReceipts.Count; index++)
+                for (int index = 0; index < _txReceipts.Count; index++)
                 {
-                    var receipt = _txReceipts[index];
+                    TxReceipt? receipt = _txReceipts[index];
                     blockBloom.Accumulate(receipt.Bloom!);
                 }
             }

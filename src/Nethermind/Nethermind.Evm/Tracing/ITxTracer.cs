@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.State;
 using Nethermind.State.Tracing;
 
 namespace Nethermind.Evm.Tracing
@@ -127,7 +125,17 @@ namespace Nethermind.Evm.Tracing
         /// </remarks>
         bool IsTracingFees { get; }
 
-        bool IsTracing { get; }
+        bool IsTracing => IsTracingReceipt
+                          || IsTracingActions
+                          || IsTracingOpLevelStorage
+                          || IsTracingMemory
+                          || IsTracingInstructions
+                          || IsTracingRefunds
+                          || IsTracingCode
+                          || IsTracingStack
+                          || IsTracingBlockHash
+                          || IsTracingAccess
+                          || IsTracingFees;
 
         /// <summary>
         /// Traces transaction logs and events
