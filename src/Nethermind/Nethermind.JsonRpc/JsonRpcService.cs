@@ -383,7 +383,7 @@ public class JsonRpcService : IJsonRpcService
     }
 
     public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, object? id = null, string? methodName = null) =>
-        GetErrorResponse(methodName ?? "", errorCode, errorMessage, null, id);
+        GetErrorResponse(methodName ?? string.Empty, errorCode, errorMessage, null, id);
 
     public JsonConverter[] Converters { get; }
 
