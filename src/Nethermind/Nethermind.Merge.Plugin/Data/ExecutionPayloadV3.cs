@@ -43,7 +43,7 @@ public class ExecutionPayloadV3 : ExecutionPayload
     /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
     /// </summary>
     [JsonIgnore]
-    public Keccak? ParentBeaconBlockRoot { get; set; } = null;
+    public Keccak? ParentBeaconBlockRoot { get; set; }
 
     public override bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
     {
