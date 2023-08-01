@@ -448,6 +448,7 @@ namespace Nethermind.TxPool
         {
             UInt256? previousTxBottleneck = null;
             int i = 0;
+            UInt256 cumulativeCost = 0;
 
             foreach (Transaction tx in transactions)
             {
@@ -472,6 +473,13 @@ namespace Nethermind.TxPool
                         UInt256 effectiveGasPrice =
                             tx.CalculateEffectiveGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                                 _headInfo.CurrentBaseFee);
+
+                        if (tx.CheckForNotEnoughBalance(cumulativeCost, balance, out cumulativeCost))
+                        {
+                            // balance too low, remove tx from the pool
+                            _broadcaster.StopBroadcast(tx.Hash!);
+                            yield return (tx, null);
+                        }
                         gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck ?? 0);
                     }
 

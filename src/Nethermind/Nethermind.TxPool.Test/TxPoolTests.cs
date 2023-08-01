@@ -598,9 +598,15 @@ namespace Nethermind.TxPool.Test
                 }
             }
 
-            _txPool.GetPendingTransactionsCount().Should().Be(8);
-            _txPool.SubmitTx(transactions[7], TxHandlingOptions.PersistentBroadcast);
-            _txPool.GetPendingTransactionsCount().Should().Be(9);
+            _txPool.GetPendingTransactionsCount().Should().Be(8); // nonces 0-6 and 8
+            _txPool.GetPendingTransactions().Last().Nonce.Should().Be(8);
+
+            _txPool.SubmitTx(transactions[8], TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.AlreadyKnown);
+            _txPool.SubmitTx(transactions[7], TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+
+            _txPool.GetPendingTransactionsCount().Should().Be(8); // nonces 0-7 - 8 was removed because of not enough balance
+            _txPool.GetPendingTransactions().Last().Nonce.Should().Be(7);
+            _txPool.GetPendingTransactions().Should().BeEquivalentTo(transactions.SkipLast(2));
         }
 
         [Test]

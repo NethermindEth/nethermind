@@ -63,6 +63,9 @@ namespace Nethermind.TxPool
             return balance <= tx.Value ? default : tx.GasPrice;
         }
 
+        internal static bool CheckForNotEnoughBalance(this Transaction tx, UInt256 currentCost, UInt256 balance, out UInt256 cumulativeCost)
+            => tx.IsOverflowWhenAddingTxCostToCumulative(currentCost, out cumulativeCost) || balance < cumulativeCost;
+
         internal static bool IsOverflowWhenAddingTxCostToCumulative(this Transaction tx, UInt256 currentCost, out UInt256 cumulativeCost)
         {
             bool overflow = false;
