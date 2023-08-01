@@ -126,13 +126,6 @@ namespace Nethermind.Runner.Test
             Test<IEthStatsConfig, bool>(configWildcard, c => c.Enabled, false);
         }
 
-        [TestCase("^ndm", false)]
-        [TestCase("ndm", true)]
-        public void Grpc_defaults(string configWildcard, bool expectedDefault)
-        {
-            Test<IGrpcConfig, bool>(configWildcard, c => c.Enabled, expectedDefault);
-        }
-
         [TestCase("*")]
         public void Analytics_defaults(string configWildcard)
         {
