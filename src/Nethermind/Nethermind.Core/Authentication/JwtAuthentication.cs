@@ -5,6 +5,7 @@ using System;
 using System.IdentityModel.Tokens.Jwt;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Microsoft.IdentityModel.Tokens;
@@ -19,6 +20,7 @@ public partial class JwtAuthentication : IRpcAuthentication
     private readonly ILogger _logger;
     private readonly ITimestamper _timestamper;
     private const string JwtMessagePrefix = "Bearer ";
+    private const string OldDefaultFilePath = "keystore/jwt-secret";
     private const int JwtTokenTtl = 60;
     private const int JwtSecretLength = 64;
 
@@ -40,65 +42,82 @@ public partial class JwtAuthentication : IRpcAuthentication
 
     public static JwtAuthentication FromFile(string filePath, ITimestamper timestamper, ILogger logger)
     {
-        ArgumentNullException.ThrowIfNull(filePath);
-
-        FileInfo fileInfo = new(filePath);
-        if (!fileInfo.Exists || fileInfo.Length == 0) // Generate secret
+        if (string.IsNullOrEmpty(filePath))
         {
-            if (logger.IsInfo) logger.Info("Generating authentication secret...");
-
-            byte[] secret = RandomNumberGenerator.GetBytes(JwtSecretLength / 2);
-
-            try
+            string defaultFilePath = GetDefaultFilePath();
+            FileInfo fileInfo = new(defaultFilePath);
+            if (fileInfo.Exists && fileInfo.Length > 0)
             {
-                Directory.CreateDirectory(fileInfo.DirectoryName!);
-                using StreamWriter writer = new(filePath);
-                writer.Write(secret.ToHexString());
-            }
-            catch (SystemException ex)
-            {
-                if (logger.IsError)
-                {
-                    logger.Error($"Cannot write authentication secret to '{fileInfo.FullName}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
-                }
-                throw;
+                return ReadFromFile(defaultFilePath, timestamper, logger, fileInfo);
             }
 
-            if (logger.IsWarn) logger.Warn($"The authentication secret hasn't been found in '{fileInfo.FullName}'so it has been automatically created.");
+            FileInfo fallbackFileInfo = new(OldDefaultFilePath);
+            if (fallbackFileInfo.Exists && fallbackFileInfo.Length > 0)
+            {
+                return ReadFromFile(OldDefaultFilePath, timestamper, logger, fallbackFileInfo);
+            }
 
-            return new(secret, timestamper, logger);
+            return GenerateSecret(defaultFilePath, timestamper, logger, fileInfo);
         }
         else
         {
-            // Secret exists read from file
-            if (logger.IsInfo) logger.Info($"Reading authentication secret from '{fileInfo.FullName}'");
-            string hexSecret;
-            try
-            {
-                using StreamReader stream = new(filePath);
-                hexSecret = stream.ReadToEnd();
-            }
-            catch (SystemException ex)
-            {
-                if (logger.IsError)
-                {
-                    logger.Error($"Cannot read authentication secret from '{fileInfo.FullName}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
-                }
-                throw;
-            }
+            FileInfo fileInfo = new(filePath);
+            if (fileInfo.Exists && fileInfo.Length > 0)
+                return ReadFromFile(filePath, timestamper, logger, fileInfo);
 
-            hexSecret = hexSecret.Trim();
-            if (!SecretRegex().IsMatch(hexSecret))
-            {
-                if (logger.IsError)
-                {
-                    logger.Error($"The specified authentication secret is not a 64-digit hex number. Delete the '{fileInfo.FullName}' to generate a new secret or set the 'JsonRpc.JwtSecretFile' parameter.");
-                }
-                throw new FormatException("The specified authentication secret must be a 64-digit hex number.");
-            }
-
-            return FromSecret(hexSecret, timestamper, logger);
+            return GenerateSecret(filePath, timestamper, logger, fileInfo);
         }
+    }
+
+    private static JwtAuthentication GenerateSecret(string filePath, ITimestamper timestamper, ILogger logger, FileInfo fileInfo)
+    {
+        if (logger.IsInfo) logger.Info("Generating authentication secret...");
+
+        byte[] secret = RandomNumberGenerator.GetBytes(JwtSecretLength / 2);
+
+        try
+        {
+            Directory.CreateDirectory(fileInfo.DirectoryName!);
+            using StreamWriter writer = new(filePath);
+            writer.Write(secret.ToHexString());
+        }
+        catch (SystemException ex)
+        {
+            if (logger.IsError) logger.Error($"Cannot write authentication secret to '{fileInfo.FullName}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
+
+            throw;
+        }
+
+        if (logger.IsWarn) logger.Warn($"The authentication secret hasn't been found in '{fileInfo.FullName}'so it has been automatically created.");
+
+        return new(secret, timestamper, logger);
+    }
+
+    private static JwtAuthentication ReadFromFile(string filePath, ITimestamper timestamper, ILogger logger, FileInfo fileInfo)
+    {
+        if (logger.IsInfo) logger.Info($"Reading authentication secret from '{fileInfo.FullName}'");
+        string hexSecret;
+        try
+        {
+            using StreamReader stream = new(filePath);
+            hexSecret = stream.ReadToEnd();
+        }
+        catch (SystemException ex)
+        {
+            if (logger.IsError) logger.Error($"Cannot read authentication secret from '{fileInfo.FullName}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
+
+            throw;
+        }
+
+        hexSecret = hexSecret.Trim();
+        if (!SecretRegex().IsMatch(hexSecret))
+        {
+            if (logger.IsError) logger.Error($"The specified authentication secret is not a 64-digit hex number. Delete the '{fileInfo.FullName}' to generate a new secret or set the 'JsonRpc.JwtSecretFile' parameter.");
+
+            throw new FormatException("The specified authentication secret must be a 64-digit hex number.");
+        }
+
+        return FromSecret(hexSecret, timestamper, logger);
     }
 
     public bool Authenticate(string? token)
@@ -173,6 +192,43 @@ public partial class JwtAuthentication : IRpcAuthentication
         if (!expires.HasValue) return true;
         long exp = ((DateTimeOffset)expires).ToUnixTimeSeconds();
         return _timestamper.UnixTime.SecondsLong < exp;
+    }
+
+    private static string GetDefaultFilePath()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            string? xdgDataDir = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
+
+            if (!string.IsNullOrEmpty(xdgDataDir))
+                return Path.Combine(xdgDataDir, "ethereum", "engine", "jwt.hex");
+
+            string? homeDir = Environment.GetEnvironmentVariable("HOME");
+
+            if (string.IsNullOrEmpty(homeDir))
+                throw new Exception("HOME environment variable is not set");
+
+            return Path.Combine(homeDir, ".local", "share", "ethereum", "engine", "jwt.hex");
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            string appDataDir = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+
+            return Path.Combine(appDataDir, "Ethereum", "Engine", "jwt.hex");
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            string? homeDir = Environment.GetEnvironmentVariable("HOME");
+
+            if (string.IsNullOrEmpty(homeDir))
+                throw new Exception("HOME environment variable is not set");
+
+            return Path.Combine(homeDir, "Library", "Application Support", "Ethereum", "Engine", "jwt.hex");
+        }
+
+        throw new Exception("Unsupported OS");
     }
 
     [GeneratedRegex("^(0x)?[0-9a-fA-F]{64}$")]
