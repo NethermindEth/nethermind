@@ -413,7 +413,7 @@ namespace Nethermind.Synchronization.Test
                 }
 
                 SyncServer = new SyncServer(
-                    trieStore,
+                    trieStore.AsKeyValueStore(),
                     codeDb,
                     BlockTree,
                     NullReceiptStorage.Instance,

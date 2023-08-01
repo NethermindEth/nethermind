@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #if DEBUG
-using Nethermind.Evm.Tracing.DebugTrace;
 using Nethermind.Evm.Tracing.GethStyle;
 using NUnit.Framework;
 using System.Threading;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.Tracing.Debugger;
 
 namespace Nethermind.Evm.Test
 {

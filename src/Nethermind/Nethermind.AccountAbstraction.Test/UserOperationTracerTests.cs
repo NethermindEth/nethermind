@@ -240,7 +240,7 @@ namespace Nethermind.AccountAbstraction.Test
         private (UserOperationTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, byte[] code, bool paymasterWhitelisted = false, bool firstSimulation = true)
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses, 0);
-            UserOperationTxTracer tracer = new(transaction, paymasterWhitelisted, firstSimulation, TestItem.AddressA, TestItem.AddressB, TestItem.AddressD, NullLogger.Instance);
+            UserOperationTxTracer tracer = new(paymasterWhitelisted, firstSimulation, TestItem.AddressA, TestItem.AddressB, TestItem.AddressD, NullLogger.Instance);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer, block, transaction);
         }
