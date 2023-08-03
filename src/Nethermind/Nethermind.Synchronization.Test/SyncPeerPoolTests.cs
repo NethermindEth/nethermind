@@ -20,6 +20,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -118,6 +119,7 @@ namespace Nethermind.Synchronization.Test
             public PublicKey Id => Node.Id;
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
+            public void AnnounceTransactions(IEnumerable<TxAnnouncement> txAnnouncements) { }
 
             public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {

@@ -41,6 +41,7 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.TxPool;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -205,6 +206,7 @@ namespace Nethermind.Synchronization.Test
             public PublicKey Id => Node.Id;
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
+            public void AnnounceTransactions(IEnumerable<TxAnnouncement> txAnnouncements) { }
 
             public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {
