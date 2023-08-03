@@ -15,7 +15,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Producers;
 
-public class PayloadAttributes 
+public class PayloadAttributes
 {
     public ulong Timestamp { get; set; }
 
@@ -106,7 +106,7 @@ public static class PayloadAttributesExtensions
             > 1 when !spec.WithdrawalsEnabled => "PayloadAttributesV1 expected",
             <= 2 when spec.IsBeaconBlockRootAvailable => "PayloadAttributesV3 expected",
             > 2 when !spec.IsBeaconBlockRootAvailable => "PayloadAttributesV2 or PayloadAttributesV1 expected",
-            _ when actualVersion > version =>  $"PayloadAttributesV{version} expected",
+            _ when actualVersion > version => $"PayloadAttributesV{version} expected",
             _ => null
         };
 
