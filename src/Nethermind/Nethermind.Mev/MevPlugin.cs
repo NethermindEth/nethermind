@@ -120,7 +120,7 @@ namespace Nethermind.Mev
                     getFromApi.SpecProvider!,
                     getFromApi.EngineSigner);
 
-                getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(mevModuleFactory, rpcConfig.Timeout, getFromApi.LogManager);
+                getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(mevModuleFactory, rpcConfig.Timeout);
 
                 if (_logger!.IsInfo) _logger.Info("Flashbots RPC plugin enabled");
             }

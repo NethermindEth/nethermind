@@ -13,13 +13,19 @@ namespace Nethermind.Core
     public static class TypeDiscovery
     {
         private static readonly HashSet<Assembly> _nethermindAssemblies = new();
-        private static readonly object _lock = new object();
+        private static readonly object _lock = new();
         private static int _allLoaded;
+        private static Type? _pluginType;
 
-        private static void LoadAll()
+        public static void Initialize(Type? pluginType = null)
         {
             // Early return if initialised
             if (Volatile.Read(ref _allLoaded) == 1) return;
+
+            if (pluginType is not null)
+            {
+                _pluginType = pluginType;
+            }
 
             LoadAllImpl();
         }
@@ -67,7 +73,8 @@ namespace Nethermind.Core
 
                 LoadOnce(loadedAssemblies, considered);
 
-                foreach (KeyValuePair<string, Assembly> kv in considered.Where(static kv => kv.Key.StartsWith("Nethermind")))
+                foreach (KeyValuePair<string, Assembly> kv in considered.Where(static kv =>
+                             kv.Key.StartsWith("Nethermind") || (_pluginType is not null && FindNethermindTypes(kv.Value, _pluginType).Any())))
                 {
                     _nethermindAssemblies.Add(kv.Value);
                 }
@@ -85,8 +92,7 @@ namespace Nethermind.Core
             Func<AssemblyName, bool> whereFilter = an => Filter(considered, an);
 
             List<AssemblyName> missingRefs = loadedAssemblies
-                .SelectMany(x => x.GetReferencedAssemblies()
-                                  .Where(whereFilter))
+                .SelectMany(x => x.GetReferencedAssemblies().Where(whereFilter))
                 .ToList();
 
             for (int i = 0; i < missingRefs.Count; i++)
@@ -101,7 +107,7 @@ namespace Nethermind.Core
 
                 Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyName(missingRef);
                 considered.Add(missingRef.Name, assembly);
-                if (assembly == null)
+                if (assembly is null)
                 {
                     // Shouldn't happen (completeness)
                     continue;
@@ -124,20 +130,32 @@ namespace Nethermind.Core
 
         public static IEnumerable<Type> FindNethermindTypes(Type baseType)
         {
-            LoadAll();
+            Initialize();
 
-            return _nethermindAssemblies
-                .SelectMany(a => (a?.IsDynamic ?? false ? Array.Empty<Type>() : a?.GetExportedTypes())?
-                    .Where(t => baseType.IsAssignableFrom(t) && baseType != t) ?? Array.Empty<Type>());
+            return FindNethermindTypes(_nethermindAssemblies, baseType);
         }
+
+        private static IEnumerable<Type> FindNethermindTypes(IEnumerable<Assembly> assemblies, Type baseType)
+        {
+            Func<Assembly,IEnumerable<Type>> assembliesSelector = a => FindNethermindTypes(a, baseType);
+
+            return assemblies.SelectMany(assembliesSelector);
+        }
+
+        private static IEnumerable<Type> FindNethermindTypes(Assembly assembly, Type baseType) =>
+            GetExportedTypes(assembly).Where(t => baseType.IsAssignableFrom(t) && baseType != t);
+
+        private static IEnumerable<Type> GetExportedTypes(Assembly? a)
+            => a is null || a.IsDynamic ? Array.Empty<Type>() : a.GetExportedTypes();
 
         public static IEnumerable<Type> FindNethermindTypes(string typeName)
         {
-            LoadAll();
+            Initialize();
 
-            return _nethermindAssemblies
-                .SelectMany(a => (a?.IsDynamic ?? false ? Array.Empty<Type>() : a?.GetExportedTypes())?
-                    .Where(t => t.Name == typeName) ?? Array.Empty<Type>());
+            Func<Assembly,IEnumerable<Type>> assembliesSelector = a => GetExportedTypes(a)
+                .Where(t => t.Name == typeName);
+
+            return _nethermindAssemblies.SelectMany(assembliesSelector);
         }
     }
 }

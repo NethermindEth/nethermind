@@ -143,6 +143,7 @@ namespace Nethermind.Runner
             // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
             // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
             pluginLoader.Load(SimpleConsoleLogManager.Instance);
+            TypeDiscovery.Initialize(typeof(INethermindPlugin));
 
             BuildOptionsFromConfigFiles(app);
 

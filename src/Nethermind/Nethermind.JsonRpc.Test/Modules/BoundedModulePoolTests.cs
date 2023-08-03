@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IGasPriceOracle>(),
                 Substitute.For<IEthSyncingInfo>()),
-                 1, 1000, LimboLogs.Instance);
+                 1, 1000);
         }
 
         [Test]
