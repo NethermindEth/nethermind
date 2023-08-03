@@ -123,6 +123,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance);
 
             IMultiCallBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
+                false,
                 new ReadOnlyDbProvider(dbProvider, true),
                 SpecProvider,
                 LimboLogs.Instance);
@@ -151,8 +152,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SpecProvider,
                 GasPriceOracle,
                 new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, new StaticSelector(SyncMode.All), LogManager),
-                FeeHistoryOracle,
-                dbProvider);
+                FeeHistoryOracle);
 
             return this;
         }

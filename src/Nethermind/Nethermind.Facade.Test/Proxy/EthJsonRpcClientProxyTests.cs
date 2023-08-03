@@ -89,29 +89,33 @@ namespace Nethermind.Facade.Test.Proxy
 
 
         [Test]
-        public async Task eth_multicall_should_invoke_client_method()
+        public async Task eth_multicall_should_invoke_client_method_even_empty()
         {
-            var multyCallTransaction = new MultiCallBlockStateCallsModel[] { };
+            MultiCallPayload payload = new();
             var blockParameter = BlockParameterModel.Latest;
-            var traceTransactions = true;
-            await _proxy.eth_multicall(1, multyCallTransaction, blockParameter, traceTransactions);
+            await _proxy.eth_multicallV1(payload, blockParameter);
 
             var calls = _client.ReceivedCalls().ToList();
-            await _client.Received().SendAsync<MultiCallBlockResult[]>(nameof(_proxy.eth_multicall),
-                (ulong)1, multyCallTransaction, blockParameter.Type, traceTransactions);
+            await _client.Received().SendAsync<MultiCallBlockResult[]>(nameof(_proxy.eth_multicallV1),
+                payload, blockParameter.Type);
         }
 
         [Test]
         public async Task eth_multicallV1_should_invoke_client_method()
         {
-            var multyCallTransaction = new MultiCallBlockStateCallsModel[] { };
+            MultiCallPayload payload = new()
+            {
+                BlockStateCalls = new BlockStateCalls[] { },
+                TraceTransfers = true
+            };
+
             var blockParameter = BlockParameterModel.Latest;
-            var traceTransactions = true;
-            await _proxy.eth_multicallV1(multyCallTransaction, blockParameter, traceTransactions);
+
+            await _proxy.eth_multicallV1(payload, blockParameter);
 
             var calls = _client.ReceivedCalls().ToList();
-            await _client.Received().SendAsync<MultiCallBlockResult[]>(nameof(_proxy.eth_multicall),
-                1, multyCallTransaction, blockParameter.Type, traceTransactions);
+            await _client.Received().SendAsync<MultiCallBlockResult[]>(nameof(_proxy.eth_multicallV1),
+                 payload, blockParameter.Type);
         }
 
         [Test]

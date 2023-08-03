@@ -186,13 +186,13 @@ namespace Nethermind.Facade
 
 
 
-        public MultiCallOutput MultiCall(BlockHeader header, MultiCallBlockStateCallsModel[] blocks, CancellationToken cancellationToken)
+        public MultiCallOutput MultiCall(BlockHeader header, MultiCallPayload payload, CancellationToken cancellationToken)
         {
             MultiCallBlockTracer multiCallOutputTracer = new();
             MultiCallOutput result = new();
             try
             {
-                (bool Success, string Error) tryMultiCallResult = TryMultiCallTrace(header, blocks,
+                (bool Success, string Error) tryMultiCallResult = TryMultiCallTrace(header, payload,
                     multiCallOutputTracer.WithCancellation(cancellationToken));
 
                 if (!tryMultiCallResult.Success)
@@ -324,30 +324,30 @@ namespace Nethermind.Facade
             transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
         }
 
-        private (bool Success, string Error) TryMultiCallTrace(BlockHeader parent, MultiCallBlockStateCallsModel[] blocks,
+        private (bool Success, string Error) TryMultiCallTrace(BlockHeader parent, MultiCallPayload payload,
            IBlockTracer tracer)
         {
-            using (IMultiCallBlocksProcessingEnv? env = _multiCallProcessingEnv.Clone())
+            using (IMultiCallBlocksProcessingEnv? env = _multiCallProcessingEnv.Clone(payload.TraceTransfers))
             {
                 var processor = env.GetProcessor();
-                var firstBlock = blocks.FirstOrDefault();
+                var firstBlock = payload.BlockStateCalls.FirstOrDefault();
                 var startStateRoot = parent.StateRoot;
-                if (firstBlock?.BlockOverride?.Number != null
-                    && firstBlock?.BlockOverride?.Number > UInt256.Zero
-                    && firstBlock?.BlockOverride?.Number < (ulong)long.MaxValue)
+                if (firstBlock?.BlockOverrides?.Number != null
+                    && firstBlock?.BlockOverrides?.Number > UInt256.Zero
+                    && firstBlock?.BlockOverrides?.Number < (ulong)long.MaxValue)
                 {
                     BlockHeader? searchResult =
-                        _multiCallProcessingEnv.BlockTree.FindHeader((long)firstBlock?.BlockOverride.Number);
+                        _multiCallProcessingEnv.BlockTree.FindHeader((long)firstBlock?.BlockOverrides.Number);
                     if (searchResult != null)
                     {
                         startStateRoot = searchResult.StateRoot;
                     }
                 }
 
-                foreach (MultiCallBlockStateCallsModel? callInputBlock in blocks)
+                foreach (BlockStateCalls? callInputBlock in payload.BlockStateCalls)
                 {
                     BlockHeader callHeader = null;
-                    if (callInputBlock.BlockOverride == null)
+                    if (callInputBlock.BlockOverrides == null)
                     {
                         callHeader = new BlockHeader(
                             parent.Hash,
@@ -362,18 +362,10 @@ namespace Nethermind.Facade
                     }
                     else
                     {
-                        callHeader = callInputBlock.BlockOverride.GetBlockHeader(parent, _blocksConfig);
+                        callHeader = callInputBlock.BlockOverrides.GetBlockHeader(parent, _blocksConfig);
                     }
 
                     env.StateProvider.StateRoot = parent.StateRoot;
-
-                    IReleaseSpec releaseSpec = _specProvider.GetSpec(parent);
-
-                    if (releaseSpec.IsEip4844Enabled)
-                    {
-                        // TODO: Calculate ExcessDataGas depending on parent ExcessDataGas and number of blobs in txs
-                        callHeader.ExcessDataGas = 0;
-                    }
 
                     callHeader.MixHash = parent.MixHash;
                     callHeader.IsPostMerge = parent.Difficulty == 0;
@@ -418,16 +410,19 @@ namespace Nethermind.Facade
                     currentBlock.Header.IsPostMerge = true; //ToDo: Seal if necessary before merge 192 BPB
                     currentBlock.Header.Hash = currentBlock.Header.CalculateHash();
 
+                    ProcessingOptions processingFlags = ProcessingOptions.ForceProcessing |
+                                                        ProcessingOptions.DoNotVerifyNonce |
+                                                        ProcessingOptions.IgnoreParentNotOnMainChain |
+                                                        ProcessingOptions.MarkAsProcessed |
+                                                        ProcessingOptions.StoreReceipts;
+
+                    if (!payload.Validation)
+                    {
+                        processingFlags |= ProcessingOptions.NoValidation;
+                    }
 
                     Block[]? currentBlocks = processor.Process(env.StateProvider.StateRoot,
-                        new List<Block> { currentBlock },
-                        ProcessingOptions.ForceProcessing |
-                        // ProcessingOptions.NoValidation | 
-                        ProcessingOptions.DoNotVerifyNonce |
-                        ProcessingOptions.IgnoreParentNotOnMainChain |
-                        ProcessingOptions.MarkAsProcessed |
-                        ProcessingOptions.StoreReceipts
-                        , tracer);
+                        new List<Block> { currentBlock }, processingFlags, tracer);
 
                     var processedBlock = currentBlocks.FirstOrDefault();
                     if (processedBlock != null)
@@ -482,7 +477,7 @@ namespace Nethermind.Facade
                     StateProvider.DecrementNonce(address);
                 else if (accNonce < accountOverride.Nonce) StateProvider.IncrementNonce(address);
 
-                _multiCallProcessingEnv.Machine.SetOverwrite(StateProvider, CurrentSpec, address,
+                _multiCallProcessingEnv.VirtualMachine.SetOverwrite(StateProvider, CurrentSpec, address,
                     new CodeInfo(accountOverride.Code), accountOverride.MoveToAddress);
 
 

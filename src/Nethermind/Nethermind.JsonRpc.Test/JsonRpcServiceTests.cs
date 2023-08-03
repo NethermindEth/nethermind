@@ -88,38 +88,16 @@ public class JsonRpcServiceTests
 
 
     [Test]
-    public void CanRunEthMulticallEmpty()
-    {
-        ulong version = 0;
-        MultiCallBlockStateCallsModel[] blockCalls = Array.Empty<MultiCallBlockStateCallsModel>();
-
-        EthereumJsonSerializer serializer = new();
-
-        string serializedVersion = serializer.Serialize(version);
-        string serializedCall = serializer.Serialize(blockCalls);
-
-        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_multicall(version, blockCalls).ReturnsForAnyArgs(x =>
-            ResultWrapper<MultiCallBlockResult[]>.Success(Array.Empty<MultiCallBlockResult>()));
-        JsonRpcSuccessResponse? response =
-            TestRequest(ethRpcModule, "eth_multicall", serializedVersion, serializedCall) as JsonRpcSuccessResponse;
-        Assert.IsTrue(response != null);
-        Assert.That(response?.Result, Is.EqualTo(Array.Empty<MultiCallBlockResult>()));
-    }
-
-
-    [Test]
     public void CanRunEthMulticallV1Empty()
     {
-        ulong version = 0;
-        MultiCallBlockStateCallsModel[] blockCalls = Array.Empty<MultiCallBlockStateCallsModel>();
+        MultiCallPayload payload = new() { BlockStateCalls = Array.Empty<BlockStateCalls>() };
 
         EthereumJsonSerializer serializer = new();
 
-        string serializedCall = serializer.Serialize(blockCalls);
+        string serializedCall = serializer.Serialize(payload);
 
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_multicallV1(blockCalls).ReturnsForAnyArgs(x =>
+        ethRpcModule.eth_multicallV1(payload).ReturnsForAnyArgs(x =>
             ResultWrapper<MultiCallBlockResult[]>.Success(Array.Empty<MultiCallBlockResult>()));
         JsonRpcSuccessResponse? response =
             TestRequest(ethRpcModule, "eth_multicallV1", serializedCall) as JsonRpcSuccessResponse;

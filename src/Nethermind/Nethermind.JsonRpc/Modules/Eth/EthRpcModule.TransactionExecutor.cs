@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Xml;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
@@ -15,49 +16,45 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
+    //General executor
     public partial class EthRpcModule
     {
-        private abstract class TxExecutor<TResult>
-        {
-            protected readonly IBlockchainBridge _blockchainBridge;
-            private readonly IBlockFinder _blockFinder;
-            private readonly IJsonRpcConfig _rpcConfig;
 
-            protected TxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
+
+
+        // Single call executor
+        private abstract class TxExecutor<TResult> : ExecutorBase<TResult, TransactionForRpc, Transaction>
+        {
+            protected TxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig) :
+                base(blockchainBridge, blockFinder, rpcConfig)
+            { }
+
+            protected override Transaction Prepare(TransactionForRpc call)
             {
-                _blockchainBridge = blockchainBridge;
-                _blockFinder = blockFinder;
-                _rpcConfig = rpcConfig;
+                return call.ToTransaction(_blockchainBridge.GetChainId());
+
+            }
+            protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, CancellationToken token)
+            {
+                return ExecuteTx(header, tx, token);
+            }
+
+            public override ResultWrapper<TResult> Execute(
+                TransactionForRpc transactionCall,
+                BlockParameter? blockParameter)
+            {
+                transactionCall.EnsureDefaults(_rpcConfig.GasCap);
+                return base.Execute(transactionCall, blockParameter);
             }
 
             public ResultWrapper<TResult> ExecuteTx(
                 TransactionForRpc transactionCall,
                 BlockParameter? blockParameter)
             {
-                SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-                if (searchResult.IsError)
-                {
-                    return ResultWrapper<TResult>.Fail(searchResult);
-                }
-
-                BlockHeader header = searchResult.Object;
-                if (!HasStateForBlock(_blockchainBridge, header))
-                {
-                    return ResultWrapper<TResult>.Fail($"No state available for block {header.Hash}",
-                        ErrorCodes.ResourceUnavailable);
-                }
-
-                transactionCall.EnsureDefaults(_rpcConfig.GasCap);
-
-                using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
-                Transaction tx = transactionCall.ToTransaction(_blockchainBridge.GetChainId());
-                return ExecuteTx(header.Clone(), tx, cancellationTokenSource.Token);
+                return Execute(transactionCall, blockParameter);
             }
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token);
-
-            protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) =>
-                ResultWrapper<TResult>.Fail(result.Error, ErrorCodes.InvalidInput);
         }
 
         private class CallTxExecutor : TxExecutor<string>
@@ -80,6 +77,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     ? GetInputError(result)
                     : ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
             }
+
         }
 
         private class EstimateGasTxExecutor : TxExecutor<UInt256?>

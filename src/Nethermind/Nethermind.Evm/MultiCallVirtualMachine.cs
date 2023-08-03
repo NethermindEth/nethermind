@@ -10,28 +10,38 @@ using Nethermind.State;
 
 namespace Nethermind.Evm;
 
-public class MultiCallVirtualMachine : VirtualMachine
-{
-    private readonly IBlockhashProvider? _blockhashProvider;
-    private readonly ILogManager? _logManager;
-    private readonly Dictionary<Address, CodeInfo> _overloaded = new();
-    private readonly ISpecProvider? _specProvider;
+public struct MultiCallDoNotTraceTransfers { }
+public struct MultiCallDoTraceTransfers { }
 
-    public MultiCallVirtualMachine(MultiCallVirtualMachine vm) :
-        this(vm._blockhashProvider, vm._specProvider, vm._logManager)
-    {
-        _overloaded = vm._overloaded;
-    }
+public class MultiCallVirtualMachine<TTraceTransfers> : VirtualMachine, IMultiCallVirtualMachine
+
+{
+    private readonly Dictionary<Address, CodeInfo> _overloaded = new();
 
     public MultiCallVirtualMachine(IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider, ILogManager? logManager) :
         base(blockhashProvider, specProvider, logManager)
     {
-        _blockhashProvider = blockhashProvider;
-        _specProvider = specProvider;
-        _logManager = logManager;
     }
 
+    protected override IVirtualMachine CreateVirtualMachine(IBlockhashProvider? blockhashProvider, ISpecProvider? specProvider,
+        ILogger? logger)
+    {
+        bool traceTransfers = typeof(TTraceTransfers) == typeof(MultiCallDoTraceTransfers);
+
+
+        IVirtualMachine result;
+        if (!logger.IsTrace)
+        {
+            result = new MultiCallVirtualMachineImpl<NotTracing>(traceTransfers, blockhashProvider, specProvider, logger);
+        }
+        else
+        {
+            result = new MultiCallVirtualMachineImpl<IsTracing>(traceTransfers, blockhashProvider, specProvider, logger);
+        }
+
+        return result;
+    }
 
     public void SetOverwrite(IWorldState worldState, IReleaseSpec vmSpec, Address key, CodeInfo value,
         Address? redirectAddress = null)
@@ -46,4 +56,5 @@ public class MultiCallVirtualMachine : VirtualMachine
             return result;
         return base.GetCachedCodeInfo(worldState, codeSource, vmSpec);
     }
+
 }

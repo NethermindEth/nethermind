@@ -29,10 +29,11 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
     private readonly InMemoryReceiptStorage _receiptStorage;
     public ITransactionProcessor TransactionProcessor { get; }
     public ISpecProvider SpecProvider { get; }
-    public MultiCallVirtualMachine Machine { get; }
+    public IMultiCallVirtualMachine VirtualMachine { get; }
+    public bool TraceTransfers { get; set; }
 
     //We need ability to get many instances that do not conflict in terms of editable tmp storage - thus we implement env cloning
-    public static IMultiCallBlocksProcessingEnv Create(IReadOnlyDbProvider? readOnlyDbProvider,
+    public static IMultiCallBlocksProcessingEnv Create(bool TraceTransfers, IReadOnlyDbProvider? readOnlyDbProvider,
         ISpecProvider? specProvider,
         ILogManager? logManager
         )
@@ -47,6 +48,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             logManager);
 
         return new MultiCallReadOnlyBlocksProcessingEnv(
+            TraceTransfers,
             DbProvider,
             trieStore,
             BlockTree,
@@ -54,12 +56,13 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             logManager);
     }
 
-    public IMultiCallBlocksProcessingEnv Clone()
+    public IMultiCallBlocksProcessingEnv Clone(bool TraceTransfers)
     {
-        return Create(DbProvider, SpecProvider, _logManager);
+        return Create(TraceTransfers, DbProvider, SpecProvider, _logManager);
     }
 
     private MultiCallReadOnlyBlocksProcessingEnv(
+        bool TraceTransfers,
         IReadOnlyDbProvider? readOnlyDbProvider,
         ITrieStore? trieStore,
         IBlockTree? blockTree,
@@ -75,7 +78,14 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
 
         _receiptStorage = new InMemoryReceiptStorage();
 
-        Machine = new MultiCallVirtualMachine(BlockhashProvider, specProvider, logManager);
+        if (TraceTransfers)
+        {
+            VirtualMachine = new MultiCallVirtualMachine<MultiCallDoTraceTransfers>(BlockhashProvider, specProvider, logManager);
+        }
+        else
+        {
+            VirtualMachine = new MultiCallVirtualMachine<MultiCallDoNotTraceTransfers>(BlockhashProvider, specProvider, logManager);
+        }
 
         HeaderValidator headerValidator = new(
             BlockTree,
@@ -93,7 +103,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
 
     public IBlockProcessor GetProcessor()
     {
-        var yransactionProcessor = new TransactionProcessor(SpecProvider, StateProvider, Machine, _logManager);
+        var yransactionProcessor = new TransactionProcessor(SpecProvider, StateProvider, VirtualMachine, _logManager);
 
         return new BlockProcessor(SpecProvider,
             _blockValidator,

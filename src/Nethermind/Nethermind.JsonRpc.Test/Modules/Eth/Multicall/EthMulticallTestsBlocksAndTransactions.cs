@@ -27,7 +27,7 @@ public class EthMulticallTestsBlocksAndTransactions
         {
             Value = ammount,
             Nonce = Nonce,
-            GasLimit = 3_000_000,
+            GasLimit = 50_000,
             SenderAddress = From.Address,
             To = To,
             GasPrice = 20.GWei()
@@ -56,33 +56,33 @@ public class EthMulticallTestsBlocksAndTransactions
             GetTransferTxData(nextNonceA,
                 chain.EthereumEcdsa, pk, new Address("0xA143c0eA6f8059f7B3651417ccD2bAA80FC2d4Ab"), 4_000_000);
 
-
-        MultiCallBlockStateCallsModel[] requestMultiCall =
+        MultiCallPayload payload = new()
         {
-            new()
+            BlockStateCalls = new BlockStateCalls[]
             {
-                BlockOverride = new BlockOverride()
+                new()
                 {
-                   Number = 18000000
-                },
-                Calls = new[]
-                {
-                    txMainnetAtoBtoFail.FromTransaction(),
-                    txMainnetAtoBToComplete.FromTransaction(),
-                },
-                StateOverrides = new[]
-                {
-                    new AccountOverride()
+                    BlockOverrides = new BlockOverride() { Number = 18000000 },
+                    Calls = new[]
                     {
-                        Address = pk.Address,
-                        Balance = Math.Max(420_000_004_000_001UL, 1_000_000_004_000_001UL)
+                        CallTransactionModel.FromTransaction(txMainnetAtoBtoFail),
+                        CallTransactionModel.FromTransaction(txMainnetAtoBToComplete),
+                    },
+                    StateOverrides = new[]
+                    {
+                        new AccountOverride()
+                        {
+                            Address = pk.Address,
+                            Balance = Math.Max(420_000_004_000_001UL, 1_000_000_004_000_001UL)
+                        }
                     }
                 }
-            }
+            },
+            TraceTransfers = true
         };
         EthereumJsonSerializer serializer = new();
 
-        string serializedCall = serializer.Serialize(requestMultiCall);
+        string serializedCall = serializer.Serialize(payload);
         Console.WriteLine(serializedCall);
 
 
@@ -90,9 +90,9 @@ public class EthMulticallTestsBlocksAndTransactions
         chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder, chain.SpecProvider, new JsonRpcConfig());
+        MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
         ResultWrapper<MultiCallBlockResult[]> result =
-            executor.Execute(1, requestMultiCall, BlockParameter.Latest, true);
+            executor.Execute(payload, BlockParameter.Latest);
         MultiCallBlockResult[] data = result.Data;
 
         Assert.AreEqual(1, data.Length);
@@ -100,8 +100,8 @@ public class EthMulticallTestsBlocksAndTransactions
         foreach (MultiCallBlockResult blockResult in data)
         {
             Assert.AreEqual(2, blockResult.Calls.Length);
-            Assert.AreEqual(blockResult.Calls[0].Type, ResultType.Failure);
-            Assert.AreEqual(blockResult.Calls[1].Type, ResultType.Success);
+            Assert.AreEqual(ResultType.Failure, blockResult.Calls[0].Type);
+            Assert.AreEqual(ResultType.Success, blockResult.Calls[1].Type);
         }
     }
 
@@ -128,38 +128,36 @@ public class EthMulticallTestsBlocksAndTransactions
         Transaction txAtoB4 =
             GetTransferTxData(nonceA + 4, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
 
-        MultiCallBlockStateCallsModel[] requestMultiCall =
+        MultiCallPayload payload = new()
         {
-            new()
+            BlockStateCalls = new BlockStateCalls[]
             {
-                BlockOverride =
-                    new BlockOverride
-                    {
-                        Number = (UInt256)new decimal(2),
-                        GasLimit = 5_000_000,
-                        FeeRecipient = TestItem.AddressC,
-                        BaseFee = 0
-                    },
-                Calls = new[]
+                new()
                 {
-                    txAtoB1.FromTransaction(), txAtoB2.FromTransaction()
+                    BlockOverrides =
+                        new BlockOverride
+                        {
+                            Number = (UInt256)new decimal(2),
+                            GasLimit = 5_000_000,
+                            FeeRecipient = TestItem.AddressC,
+                            BaseFee = 0
+                        },
+                    Calls = new[] { CallTransactionModel.FromTransaction(txAtoB1), CallTransactionModel.FromTransaction(txAtoB2) }
+                },
+                new()
+                {
+                    BlockOverrides =
+                        new BlockOverride
+                        {
+                            Number = (UInt256)new decimal(chain.Bridge.HeadBlock.Number + 10000),
+                            GasLimit = 5_000_000,
+                            FeeRecipient = TestItem.AddressC,
+                            BaseFee = 0
+                        },
+                    Calls = new[] { CallTransactionModel.FromTransaction(txAtoB3), CallTransactionModel.FromTransaction(txAtoB4) }
                 }
             },
-            new()
-            {
-                BlockOverride =
-                    new BlockOverride
-                    {
-                        Number = (UInt256)new decimal(chain.Bridge.HeadBlock.Number + 10000),
-                        GasLimit = 5_000_000,
-                        FeeRecipient = TestItem.AddressC,
-                        BaseFee = 0
-                    },
-                Calls = new[]
-                {
-                    txAtoB3.FromTransaction(), txAtoB4.FromTransaction()
-                }
-            }
+            TraceTransfers = true
         };
 
         //Test that transfer tx works on mainchain
@@ -176,9 +174,9 @@ public class EthMulticallTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder, chain.SpecProvider, new JsonRpcConfig());
+        MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
         ResultWrapper<MultiCallBlockResult[]> result =
-            executor.Execute(1, requestMultiCall, BlockParameter.Latest, true);
+            executor.Execute(payload, BlockParameter.Latest);
         MultiCallBlockResult[] data = result.Data;
 
         Assert.AreEqual(data.Length, 2);
@@ -208,39 +206,36 @@ public class EthMulticallTestsBlocksAndTransactions
         //shall fail
         Transaction txAtoB2 =
             GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, UInt256.MaxValue);
-
-        MultiCallBlockStateCallsModel[] requestMultiCall =
+        MultiCallPayload payload = new()
         {
-            new()
+            BlockStateCalls = new BlockStateCalls[]
             {
-                BlockOverride =
-                    new BlockOverride
-                    {
-                        Number = (UInt256)new decimal(chain.Bridge.HeadBlock.Number + 10),
-                        GasLimit = 5_000_000,
-                        FeeRecipient = TestItem.AddressC,
-                        BaseFee = 0
-                    },
-                Calls = new[]
+                new()
                 {
-                    txAtoB1.FromTransaction()
+                    BlockOverrides =
+                        new BlockOverride
+                        {
+                            Number = (UInt256)new decimal(chain.Bridge.HeadBlock.Number + 10),
+                            GasLimit = 5_000_000,
+                            FeeRecipient = TestItem.AddressC,
+                            BaseFee = 0
+                        },
+                    Calls = new[] { CallTransactionModel.FromTransaction(txAtoB1) }
+                },
+                new()
+                {
+                    BlockOverrides =
+                        new BlockOverride
+                        {
+                            Number = (UInt256)new decimal(123),
+                            GasLimit = 5_000_000,
+                            FeeRecipient = TestItem.AddressC,
+                            BaseFee = 0
+                        },
+                    Calls = new[] { CallTransactionModel.FromTransaction(txAtoB2) }
                 }
             },
-            new()
-            {
-                BlockOverride =
-                    new BlockOverride
-                    {
-                        Number = (UInt256)new decimal(123),
-                        GasLimit = 5_000_000,
-                        FeeRecipient = TestItem.AddressC,
-                        BaseFee = 0
-                    },
-                Calls = new[]
-                {
-                    txAtoB2.FromTransaction()
-                }
-            }
+            TraceTransfers = true
         };
 
         //Test that transfer tx works on mainchain
@@ -257,10 +252,10 @@ public class EthMulticallTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder, chain.SpecProvider, new JsonRpcConfig());
+        MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
         ResultWrapper<MultiCallBlockResult[]> result =
-            executor.Execute(1, requestMultiCall, BlockParameter.Latest, true);
+            executor.Execute(payload, BlockParameter.Latest);
         Assert.IsTrue(result.Data[1].Calls[0].Error.Message.StartsWith("insufficient"));
     }
 }

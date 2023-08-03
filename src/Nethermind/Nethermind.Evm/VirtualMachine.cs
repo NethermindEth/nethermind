@@ -32,28 +32,38 @@ using Nethermind.Evm.Tracing.Debugger;
 namespace Nethermind.Evm;
 
 using Int256;
+using Microsoft.Extensions.Logging;
 
 public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
 
-    private readonly IVirtualMachine _evm;
+    protected readonly IVirtualMachine _evm;
 
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
         ILogManager? logManager)
     {
-        ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        var logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _evm = CreateVirtualMachine(blockhashProvider, specProvider, logger);
+    }
+
+    protected virtual IVirtualMachine CreateVirtualMachine(IBlockhashProvider? blockhashProvider, ISpecProvider? specProvider, Logging.ILogger? logger)
+    {
+        IVirtualMachine result;
         if (!logger.IsTrace)
         {
-            _evm = new VirtualMachine<NotTracing>(blockhashProvider, specProvider, logger);
+            result = new VirtualMachine<NotTracing>(blockhashProvider, specProvider, logger);
         }
         else
         {
-            _evm = new VirtualMachine<IsTracing>(blockhashProvider, specProvider, logger);
+            result = new VirtualMachine<IsTracing>(blockhashProvider, specProvider, logger);
         }
+
+        return result;
     }
+
 
     public virtual CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
         => _evm.GetCachedCodeInfo(worldState, codeSource, spec);
@@ -125,7 +135,7 @@ public class VirtualMachine : IVirtualMachine
     public readonly struct IsTracing : IIsTracing { }
 }
 
-internal sealed class VirtualMachine<TLogger> : IVirtualMachine
+internal class VirtualMachine<TLogger> : IVirtualMachine
     where TLogger : struct, IIsTracing
 {
     private UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
@@ -156,7 +166,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     private readonly IBlockhashProvider _blockhashProvider;
     private readonly ISpecProvider _specProvider;
     private static readonly LruCache<ValueKeccak, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
-    private readonly ILogger _logger;
+    private readonly Logging.ILogger _logger;
     private IWorldState _worldState;
     private IWorldState _state;
     private readonly Stack<EvmState> _stateStack = new();
@@ -168,7 +178,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
-        ILogger? logger)
+        Logging.ILogger? logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
@@ -227,8 +237,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                 {
                     if (typeof(TTracingActions) == typeof(IsTracing) && !currentState.IsContinuation)
                     {
-                        _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData, currentState.ExecutionType);
-                        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);
+                        TraceAction<TTracingActions>(currentState);
                     }
 
                     if (!_txTracer.IsTracingInstructions)
@@ -463,6 +472,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                 currentState.IsContinuation = true;
             }
         }
+    }
+
+    protected virtual void TraceAction<TTracingActions>(EvmState currentState) where TTracingActions : struct, IIsTracing
+    {
+        _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To,
+            currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData,
+            currentState.ExecutionType);
+        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);
     }
 
     private void RevertParityTouchBugAccount(IReleaseSpec spec)
@@ -1791,7 +1808,7 @@ OutOfGas:
                     {
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        if (!InstructionLog(vmState, ref stack, ref gasAvailable, instruction, _txTracer)) goto OutOfGas;
+                        if (!InstructionLog(vmState, ref stack, ref gasAvailable, instruction)) goto OutOfGas;
                         break;
                     }
                 case Instruction.CREATE:
@@ -2513,7 +2530,7 @@ ReturnFailure:
     }
 
     [SkipLocalsInit]
-    private static bool InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction, ITxTracer _txTracer)
+    private static bool InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction)
         where TTracing : struct, IIsTracing
     {
         stack.PopUInt256(out UInt256 position);
@@ -2536,10 +2553,7 @@ ReturnFailure:
             data.ToArray(),
             topics);
         vmState.Logs.Add(logEntry);
-        if (_txTracer.IsTracingEventLogs)
-        {
-            _txTracer.ReportEvent(logEntry);
-        }
+
         return true;
     }
 

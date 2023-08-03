@@ -12,7 +12,6 @@ using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.JsonRpc.Modules.Eth;
 using NUnit.Framework;
-using static Nethermind.TxPool.TransactionExtensions;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -89,7 +88,8 @@ public class EthMulticallTestsPrecompilesWithRedirection
         {
             Data = transactionData,
             To = contractAddress,
-            SenderAddress = TestItem.PublicKeyB.Address
+            SenderAddress = TestItem.PublicKeyB.Address,
+            GasLimit = 50_000
         };
 
 
@@ -101,34 +101,36 @@ public class EthMulticallTestsPrecompilesWithRedirection
         systemTransactionForModifiedVM.GasPrice = header.BaseFeePerGas >= 1 ? header.BaseFeePerGas : 1;
         systemTransactionForModifiedVM.GasLimit = (long)systemTransactionForModifiedVM.CalculateTransactionPotentialCost(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
-        MultiCallBlockStateCallsModel requestMultiCall = new()
+        MultiCallPayload payload = new()
+        {
+            BlockStateCalls = new BlockStateCalls[] { new()
         {
             StateOverrides = new[]
             {
                 new AccountOverride
                 {
-                    Address = EcRecoverPrecompile.Instance.Address,
+                    Address = EcRecoverPrecompile.Address,
                     Code = code,
                     MoveToAddress = new Address("0x0000000000000000000000000000000000000666")
                 }
             },
             Calls = new[]
             {
-                systemTransactionForModifiedVM.FromTransaction()
+                CallTransactionModel.FromTransaction(systemTransactionForModifiedVM),
             }
+        }},
+            TraceTransfers = true
         };
-
 
         //Force persistancy of head block in main chain
         chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        MultiCallTxExecutor executor = new(chain.DbProvider, chain.Bridge, chain.BlockFinder, chain.SpecProvider, new JsonRpcConfig());
+        MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
         ResultWrapper<MultiCallBlockResult[]> result =
-            executor.Execute(1, new[] { requestMultiCall }, BlockParameter.Latest, true);
-
+            executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
         byte[] addressBytes = result.Data[0].Calls[0].Return

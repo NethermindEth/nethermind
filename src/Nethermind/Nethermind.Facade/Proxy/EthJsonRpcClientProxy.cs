@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -39,19 +40,8 @@ namespace Nethermind.Facade.Proxy
             BlockParameterModel blockParameter = null)
             => _proxy.SendAsync<byte[]>(nameof(eth_call), transaction, MapBlockParameter(blockParameter));
 
-        public Task<RpcResult<MultiCallBlockResult[]>> eth_multicall(ulong version, MultiCallBlockStateCallsModel[] blockCalls,
-            BlockParameterModel blockParameter = null, bool traceTransfers = true) => _proxy.SendAsync<MultiCallBlockResult[]>(
-            nameof(eth_multicall),
-            version, blockCalls,
-            MapBlockParameter(blockParameter),
-            traceTransfers);
-
-        public Task<RpcResult<MultiCallBlockResult[]>> eth_multicallV1(MultiCallBlockStateCallsModel[] blockCalls,
-            BlockParameterModel blockParameter = null, bool traceTransfers = true) => _proxy.SendAsync<MultiCallBlockResult[]>(
-            nameof(eth_multicall),
-            1, blockCalls,
-            MapBlockParameter(blockParameter),
-            traceTransfers);
+        public Task<RpcResult<MultiCallBlockResult[]>> eth_multicallV1(MultiCallPayload blockCalls, BlockParameterModel blockParameter = null)
+        => _proxy.SendAsync<MultiCallBlockResult[]>(nameof(eth_multicallV1), blockCalls, MapBlockParameter(blockParameter));
 
         public Task<RpcResult<byte[]>> eth_getCode(Address address, BlockParameterModel blockParameter = null)
             => _proxy.SendAsync<byte[]>(nameof(eth_getCode), address, MapBlockParameter(blockParameter));

@@ -328,18 +328,7 @@ public class JsonRpcService : IJsonRpcService
                     }
                     else
                     {
-                        if (providedParameter.StartsWith("\"") && providedParameter.EndsWith("\""))
-                        {
-                            executionParam =
-                                _serializer.Deserialize(
-                                    new JsonTextReader(new StringReader(providedParameter)), paramType);
-                        }
-                        else
-                        {
-                            executionParam =
-                                _serializer.Deserialize(
-                                    new JsonTextReader(new StringReader($"\"{providedParameter}\"")), paramType);
-                        }
+                        executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader($"\"{providedParameter}\"")), paramType);
                     }
                 }
 

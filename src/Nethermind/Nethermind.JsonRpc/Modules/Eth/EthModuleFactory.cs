@@ -7,7 +7,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
@@ -35,7 +34,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IReceiptStorage _receiptStorage;
         private readonly IGasPriceOracle _gasPriceOracle;
         private readonly IEthSyncingInfo _ethSyncingInfo;
-        private readonly IDbProvider _dbProvider;
 
         public EthModuleFactory(
             ITxPool txPool,
@@ -49,8 +47,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ISpecProvider specProvider,
             IReceiptStorage receiptStorage,
             IGasPriceOracle gasPriceOracle,
-            IEthSyncingInfo ethSyncingInfo,
-            IDbProvider dbProvider)
+            IEthSyncingInfo ethSyncingInfo)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
@@ -61,7 +58,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _blockchainBridgeFactory = blockchainBridgeFactory ?? throw new ArgumentNullException(nameof(blockchainBridgeFactory));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
-            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
             _blockTree = blockTree.AsReadOnly();
@@ -81,8 +77,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _specProvider,
                 _gasPriceOracle,
                 _ethSyncingInfo,
-                new FeeHistoryOracle(_blockTree, _receiptStorage, _specProvider),
-                _dbProvider);
+                 new FeeHistoryOracle(_blockTree, _receiptStorage, _specProvider));
         }
 
         public static List<JsonConverter> Converters = new()

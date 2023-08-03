@@ -12,6 +12,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
 using Nethermind.Trie;
+using static Nethermind.Facade.BlockchainBridge;
 using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
@@ -25,11 +26,10 @@ namespace Nethermind.Facade
         TxReceipt GetReceipt(Keccak txHash);
         (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Keccak txHash);
         (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash);
-        BlockchainBridge.MultiCallOutput MultiCall(BlockHeader header, MultiCallBlockStateCallsModel[] blocks,
-            CancellationToken cancellationToken);
-        BlockchainBridge.CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
-        BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
-        BlockchainBridge.CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize);
+        MultiCallOutput MultiCall(BlockHeader header, MultiCallPayload payload, CancellationToken cancellationToken);
+        CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
+        CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
+        CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize);
         ulong GetChainId();
 
         int NewBlockFilter();

@@ -14,7 +14,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -56,9 +55,7 @@ public partial class EthRpcModule : IEthRpcModule
     private readonly IEthSyncingInfo _ethSyncingInfo;
 
     private readonly IFeeHistoryOracle _feeHistoryOracle;
-    private readonly IDbProvider _dbProvider;
-
-    public static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
+    internal static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
         RootCheckVisitor rootCheckVisitor = new();
         blockchainBridge.RunTreeVisitor(rootCheckVisitor, header.StateRoot!);
@@ -77,8 +74,7 @@ public partial class EthRpcModule : IEthRpcModule
         ISpecProvider specProvider,
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
-        IFeeHistoryOracle feeHistoryOracle,
-        IDbProvider dbProvider)
+        IFeeHistoryOracle feeHistoryOracle)
     {
         _logger = logManager.GetClassLogger();
         _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -92,7 +88,6 @@ public partial class EthRpcModule : IEthRpcModule
         _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
         _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
         _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
-        _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider)); ;
     }
 
     public ResultWrapper<string> eth_protocolVersion()
@@ -354,17 +349,10 @@ public partial class EthRpcModule : IEthRpcModule
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter);
 
-    public ResultWrapper<MultiCallBlockResult[]> eth_multicall(ulong version, MultiCallBlockStateCallsModel[] blockCalls,
-        BlockParameter? blockParameter = null, bool traceTransfers = true)
+    public ResultWrapper<MultiCallBlockResult[]> eth_multicallV1(MultiCallPayload payload, BlockParameter? blockParameter = null)
     {
-        return new MultiCallTxExecutor(_dbProvider, _blockchainBridge, _blockFinder, _specProvider, _rpcConfig)
-            .Execute(version, blockCalls, blockParameter, traceTransfers);
-    }
-
-    public ResultWrapper<MultiCallBlockResult[]> eth_multicallV1(MultiCallBlockStateCallsModel[] blockCalls, BlockParameter? blockParameter = null,
-        bool traceTransfers = true)
-    {
-        return eth_multicall(1, blockCalls, blockParameter, traceTransfers);
+        return new MultiCallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
+            .Execute(payload, blockParameter);
     }
 
 
