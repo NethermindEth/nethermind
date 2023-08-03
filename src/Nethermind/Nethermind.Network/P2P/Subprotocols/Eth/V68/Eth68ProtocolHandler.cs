@@ -157,4 +157,32 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         Metrics.Eth68NewPooledTransactionHashesSent++;
         Send(message);
     }
+
+    public override void AnnounceTransactions(IEnumerable<TxAnnouncement> txAnnouncements)
+    {
+        using ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
+        using ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        using ArrayPoolList<Keccak> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
+
+        foreach (TxAnnouncement txAnnouncement in txAnnouncements)
+        {
+            if (hashes.Count == NewPooledTransactionHashesMessage68.MaxCount)
+            {
+                SendMessage(types, sizes, hashes);
+                types.Clear();
+                sizes.Clear();
+                hashes.Clear();
+            }
+
+            types.Add((byte)txAnnouncement.TxType);
+            sizes.Add(txAnnouncement.Size);
+            hashes.Add(txAnnouncement.Hash);
+            TxPool.Metrics.PendingTransactionsHashesSent++;
+        }
+
+        if (hashes.Count != 0)
+        {
+            SendMessage(types, sizes, hashes);
+        }
+    }
 }
