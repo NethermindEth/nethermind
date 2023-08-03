@@ -41,7 +41,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         if (payloadAttributes?.Validate(_specProvider, version, out string? error) == false)
         {
             if (_logger.IsWarn) _logger.Warn(error);
-            return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error, ErrorCodes.InvalidParams);
+            return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error, version == 3 ? ErrorCodes.UnsupportedFork : ErrorCodes.InvalidParams);
         }
 
         if (await _locker.WaitAsync(_timeout))

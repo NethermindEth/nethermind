@@ -15,7 +15,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Producers;
 
-public class PayloadAttributes
+public class PayloadAttributes 
 {
     public ulong Timestamp { get; set; }
 
@@ -90,7 +90,7 @@ public static class PayloadAttributesExtensions
     }
 
     public static int GetVersion(this PayloadAttributes executionPayload) =>
-        executionPayload.Withdrawals is null ? 1 : 2;
+        executionPayload.Withdrawals is null ? 1 : executionPayload.BeaconParentBlockRoot is null ? 2 : 3;
 
     public static bool Validate(
         this PayloadAttributes payloadAttributes,
@@ -102,9 +102,12 @@ public static class PayloadAttributesExtensions
 
         error = actualVersion switch
         {
-            1 when spec.WithdrawalsEnabled => "PayloadAttributesV2 expected",
+            <= 1 when spec.WithdrawalsEnabled => "PayloadAttributesV2 expected",
             > 1 when !spec.WithdrawalsEnabled => "PayloadAttributesV1 expected",
-            _ => actualVersion > version ? $"PayloadAttributesV{version} expected" : null
+            <= 2 when spec.IsBeaconBlockRootAvailable => "PayloadAttributesV3 expected",
+            > 2 when !spec.IsBeaconBlockRootAvailable => "PayloadAttributesV2 or PayloadAttributesV1 expected",
+            _ when actualVersion > version =>  $"PayloadAttributesV{version} expected",
+            _ => null
         };
 
         return error is null;
