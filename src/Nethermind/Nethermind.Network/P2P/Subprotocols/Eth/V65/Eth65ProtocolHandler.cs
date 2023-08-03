@@ -190,5 +190,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             Send(msg);
             Metrics.Eth65NewPooledTransactionHashesSent++;
         }
+
+        public override void AnnounceTransactions(IEnumerable<TxAnnouncement> txAnnouncements)
+        {
+            using ArrayPoolList<Keccak> hashes = new(NewPooledTransactionHashesMessage.MaxCount);
+
+            foreach (TxAnnouncement txAnnouncement in txAnnouncements)
+            {
+                if (hashes.Count == NewPooledTransactionHashesMessage.MaxCount)
+                {
+                    SendMessage(hashes);
+                    hashes.Clear();
+                }
+
+                hashes.Add(txAnnouncement.Hash);
+                TxPool.Metrics.PendingTransactionsHashesSent++;
+            }
+
+            if (hashes.Count != 0)
+            {
+                SendMessage(hashes);
+            }
+        }
     }
 }
