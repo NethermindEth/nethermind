@@ -116,6 +116,7 @@ namespace Nethermind.JsonRpc.Benchmark
                     specProvider,
                     LimboLogs.Instance),
                 MultiCallReadOnlyBlocksProcessingEnv.Create(
+                    false,
                     new ReadOnlyDbProvider(dbProvider, true),
                     specProvider,
                     LimboLogs.Instance),
@@ -149,8 +150,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 specProvider,
                 gasPriceOracle,
                 ethSyncingInfo,
-                feeHistoryOracle,
-                dbProvider);
+                feeHistoryOracle);
         }
 
         [Benchmark]
