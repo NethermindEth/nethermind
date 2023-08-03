@@ -113,9 +113,9 @@ namespace Nethermind.TxPool
             }
         }
 
-        public void BroadcastOnce(ITxPoolPeer peer, Transaction[] txs)
+        public void AnnounceOnce(ITxPoolPeer peer, TxAnnouncement[] announcements)
         {
-            Notify(peer, txs, false);
+            NotifyHashes(peer, announcements);
         }
 
         public void BroadcastPersistentTxs()
@@ -265,6 +265,22 @@ namespace Nethermind.TxPool
                 {
 
                     peer.SendNewTransactions(txs.Where(t => _txGossipPolicy.ShouldGossipTransaction(t)), sendFullTx);
+                    if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transactions.");
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error($"Failed to notify {peer} about transactions.", e);
+                }
+            }
+        }
+
+        private void NotifyHashes(ITxPoolPeer peer, IEnumerable<TxAnnouncement> announcements)
+        {
+            if (_txGossipPolicy.CanGossipTransactions)
+            {
+                try
+                {
+                    peer.AnnounceTransactions(announcements);
                     if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transactions.");
                 }
                 catch (Exception e)
