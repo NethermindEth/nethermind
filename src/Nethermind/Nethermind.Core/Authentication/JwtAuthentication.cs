@@ -4,7 +4,7 @@
 using System;
 using System.IdentityModel.Tokens.Jwt;
 using System.IO;
-using System.Linq;
+using System.IO.Abstractions;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
@@ -40,36 +40,36 @@ public partial class JwtAuthentication : IRpcAuthentication
         return new(Bytes.FromHexString(secret), timestamper, logger);
     }
 
-    public static JwtAuthentication FromFile(string filePath, ITimestamper timestamper, ILogger logger)
+    public static JwtAuthentication FromFile(string filePath, ITimestamper timestamper, ILogger logger, IFileSystem fileSystem)
     {
         if (string.IsNullOrEmpty(filePath))
         {
             string defaultFilePath = GetDefaultFilePath();
-            FileInfo fileInfo = new(defaultFilePath);
+            IFileInfo fileInfo = fileSystem.FileInfo.New(defaultFilePath);
             if (fileInfo.Exists && fileInfo.Length > 0)
             {
-                return ReadFromFile(defaultFilePath, timestamper, logger, fileInfo);
+                return ReadFromFile(defaultFilePath, timestamper, logger, fileSystem, fileInfo);
             }
 
-            FileInfo fallbackFileInfo = new(OldDefaultFilePath);
+            IFileInfo fallbackFileInfo = fileSystem.FileInfo.New(OldDefaultFilePath);
             if (fallbackFileInfo.Exists && fallbackFileInfo.Length > 0)
             {
-                return ReadFromFile(OldDefaultFilePath, timestamper, logger, fallbackFileInfo);
+                return ReadFromFile(OldDefaultFilePath, timestamper, logger, fileSystem, fallbackFileInfo);
             }
 
-            return GenerateSecret(defaultFilePath, timestamper, logger, fileInfo);
+            return GenerateSecret(defaultFilePath, timestamper, logger, fileSystem, fileInfo);
         }
         else
         {
-            FileInfo fileInfo = new(filePath);
+            IFileInfo fileInfo = fileSystem.FileInfo.New(filePath);
             if (fileInfo.Exists && fileInfo.Length > 0)
-                return ReadFromFile(filePath, timestamper, logger, fileInfo);
+                return ReadFromFile(filePath, timestamper, logger, fileSystem, fileInfo);
 
-            return GenerateSecret(filePath, timestamper, logger, fileInfo);
+            return GenerateSecret(filePath, timestamper, logger, fileSystem, fileInfo);
         }
     }
 
-    private static JwtAuthentication GenerateSecret(string filePath, ITimestamper timestamper, ILogger logger, FileInfo fileInfo)
+    private static JwtAuthentication GenerateSecret(string filePath, ITimestamper timestamper, ILogger logger, IFileSystem fileSystem, IFileInfo fileInfo)
     {
         if (logger.IsInfo) logger.Info("Generating authentication secret...");
 
@@ -77,8 +77,8 @@ public partial class JwtAuthentication : IRpcAuthentication
 
         try
         {
-            Directory.CreateDirectory(fileInfo.DirectoryName!);
-            using StreamWriter writer = new(filePath);
+            fileSystem.Directory.CreateDirectory(fileInfo.DirectoryName!);
+            using StreamWriter writer = fileSystem.File.CreateText(filePath);
             writer.Write(secret.ToHexString());
         }
         catch (SystemException ex)
@@ -93,13 +93,13 @@ public partial class JwtAuthentication : IRpcAuthentication
         return new(secret, timestamper, logger);
     }
 
-    private static JwtAuthentication ReadFromFile(string filePath, ITimestamper timestamper, ILogger logger, FileInfo fileInfo)
+    private static JwtAuthentication ReadFromFile(string filePath, ITimestamper timestamper, ILogger logger, IFileSystem fileSystem, IFileSystemInfo fileInfo)
     {
         if (logger.IsInfo) logger.Info($"Reading authentication secret from '{fileInfo.FullName}'");
         string hexSecret;
         try
         {
-            using StreamReader stream = new(filePath);
+            using StreamReader stream = fileSystem.File.OpenText(filePath);
             hexSecret = stream.ReadToEnd();
         }
         catch (SystemException ex)
@@ -206,7 +206,7 @@ public partial class JwtAuthentication : IRpcAuthentication
             string? homeDir = Environment.GetEnvironmentVariable("HOME");
 
             if (string.IsNullOrEmpty(homeDir))
-                throw new Exception("HOME environment variable is not set");
+                throw new ("HOME environment variable is not set");
 
             return Path.Combine(homeDir, ".local", "share", "ethereum", "engine", "jwt.hex");
         }
@@ -228,7 +228,7 @@ public partial class JwtAuthentication : IRpcAuthentication
             return Path.Combine(homeDir, "Library", "Application Support", "Ethereum", "Engine", "jwt.hex");
         }
 
-        throw new Exception("Unsupported OS");
+        throw new NotSupportedException("Unsupported OS");
     }
 
     [GeneratedRegex("^(0x)?[0-9a-fA-F]{64}$")]
