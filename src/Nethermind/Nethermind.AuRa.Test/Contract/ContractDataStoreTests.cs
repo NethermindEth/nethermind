@@ -168,7 +168,7 @@ namespace Nethermind.AuRa.Test.Contract
             testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
             testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
 
-            await Task.Delay(10); // delay for refresh from contract as its async
+            await Task.Delay(50); // delay for refresh from contract as its async
 
             Assert.That(
                 () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).ToList(),
