@@ -11,6 +11,7 @@ namespace Nethermind.TxPool
         public int PersistentBlobStorageSize { get; set; } = 128 * 1024; // we need some limit of blob txs, but extremely high to be limitless in practice
         public int BlobCacheSize { get; set; } = 256;
         public int InMemoryBlobPoolSize { get; set; } = 512; // it is used when persistent pool is disabled
+        public bool BlobReorgsSupportEnabled { get; set; } = true;
         public int HashCacheSize { get; set; } = 512 * 1024;
         public long? GasLimit { get; set; } = null;
         public int? ReportMinutes { get; set; } = null;

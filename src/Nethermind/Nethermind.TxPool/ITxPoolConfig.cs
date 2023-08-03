@@ -25,6 +25,9 @@ namespace Nethermind.TxPool
         [ConfigItem(DefaultValue = "512", Description = "Max number of full blob transactions stored in memory. Used only if persistent storage is disabled")]
         int InMemoryBlobPoolSize { get; set; }
 
+        [ConfigItem(DefaultValue = "true", Description = "If true, all blob processed blob transactions would be stored in persistent db until finalization to readd them to the pool in case of chain reorganization")]
+        bool BlobReorgsSupportEnabled { get; set; }
+
         [ConfigItem(DefaultValue = "524288",
             Description = "Max number of cached hashes of already known transactions." +
                           "It is set automatically by the memory hint.")]
