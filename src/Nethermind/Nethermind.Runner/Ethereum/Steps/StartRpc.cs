@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -44,7 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 IJsonSerializer jsonSerializer = CreateJsonSerializer(jsonRpcService);
                 IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
                     ? NoAuthentication.Instance
-                    : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, _api.Timestamper, logger);
+                    : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, _api.Timestamper, logger, new FileSystem());
 
 
                 JsonRpcProcessor jsonRpcProcessor = new(
