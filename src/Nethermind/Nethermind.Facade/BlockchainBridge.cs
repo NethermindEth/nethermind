@@ -270,6 +270,8 @@ namespace Nethermind.Facade
             }
         }
 
+
+        private Dictionary<Address, UInt256> NonceDictionary = new();
         private void CallAndRestore(
             BlockHeader blockHeader,
             Transaction transaction,
@@ -446,7 +448,27 @@ namespace Nethermind.Facade
 
         private UInt256 GetNonce(Keccak stateRoot, Address address)
         {
-            return _processingEnv.StateReader.GetNonce(stateRoot, address);
+            UInt256 nonce = 0;
+            if (!NonceDictionary.TryGetValue(address, out nonce))
+            {
+                try
+                {
+                    nonce = _processingEnv.StateReader.GetNonce(stateRoot, address);
+                }
+                catch (Exception)
+                {
+                    // TODO: handle missing state exception, may be account needs to be created
+                }
+
+                NonceDictionary[address] = nonce;
+            }
+            else
+            {
+                nonce += 1;
+                NonceDictionary[address] = nonce;
+            }
+
+            return nonce;
         }
 
         //Apply changes to accounts and contracts states including precompiles
@@ -459,7 +481,16 @@ namespace Nethermind.Facade
                 Address address = overrideData.Key;
                 AccountOverride? accountOverride = overrideData.Value;
 
-                bool accExists = StateProvider.AccountExists(address);
+                bool accExists = false;
+                try
+                {
+                    accExists = StateProvider.AccountExists(address);
+                }
+                catch (Exception)
+                {
+                    // TODO: handle missing block without exceptions
+                }
+
                 if (!accExists)
                 {
                     StateProvider.CreateAccount(address, accountOverride.Balance, accountOverride.Nonce);
