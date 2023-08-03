@@ -137,7 +137,7 @@ namespace Nethermind.Core
 
         private static IEnumerable<Type> FindNethermindTypes(IEnumerable<Assembly> assemblies, Type baseType)
         {
-            Func<Assembly,IEnumerable<Type>> assembliesSelector = a => FindNethermindTypes(a, baseType);
+            Func<Assembly, IEnumerable<Type>> assembliesSelector = a => FindNethermindTypes(a, baseType);
 
             return assemblies.SelectMany(assembliesSelector);
         }
@@ -152,7 +152,7 @@ namespace Nethermind.Core
         {
             Initialize();
 
-            Func<Assembly,IEnumerable<Type>> assembliesSelector = a => GetExportedTypes(a)
+            Func<Assembly, IEnumerable<Type>> assembliesSelector = a => GetExportedTypes(a)
                 .Where(t => t.Name == typeName);
 
             return _nethermindAssemblies.SelectMany(assembliesSelector);
