@@ -1771,7 +1771,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_add_processed_txs_to_db()
+        public async Task should_add_processed_txs_to_db([Values(true, false)] bool blobReorgsSupportEnabled)
         {
             Transaction GetTx(PrivateKey sender)
             {
@@ -1786,7 +1786,8 @@ namespace Nethermind.TxPool.Test
             const long blockNumber = 358;
 
             BlobTxStorage blobTxStorage = new(new MemDb(), new MemDb());
-            _txPool = CreatePool(new TxPoolConfig() { Size = 128 }, GetCancunSpecProvider(), txStorage: blobTxStorage);
+            TxPoolConfig txPoolConfig = new() { Size = 128, BlobReorgsSupportEnabled = blobReorgsSupportEnabled };
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
 
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
@@ -1808,15 +1809,18 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingTransactionsCount().Should().Be(0);
             _txPool.GetPendingBlobTransactionsCount().Should().Be(0);
 
-            blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] returnedTxs).Should().BeTrue();
-            returnedTxs.Length.Should().Be(txs.Length);
-            returnedTxs.Should().BeEquivalentTo(txs, options => options
-                .Excluding(t => t.SenderAddress) // sender is not encoded/decoded...
-                .Excluding(t => t.GasBottleneck) // ...as well as GasBottleneck...
-                .Excluding(t => t.PoolIndex));   // ...and PoolIndex
+            blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] returnedTxs).Should().Be(blobReorgsSupportEnabled);
+            if (blobReorgsSupportEnabled)
+            {
+                returnedTxs.Length.Should().Be(txs.Length);
+                returnedTxs.Should().BeEquivalentTo(txs, options => options
+                    .Excluding(t => t.SenderAddress) // sender is not encoded/decoded...
+                    .Excluding(t => t.GasBottleneck) // ...as well as GasBottleneck...
+                    .Excluding(t => t.PoolIndex));   // ...and PoolIndex
 
-            blobTxStorage.DeleteBlobTransactionsFromBlock(blockNumber);
-            blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out returnedTxs).Should().BeFalse();
+                blobTxStorage.DeleteBlobTransactionsFromBlock(blockNumber);
+                blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out returnedTxs).Should().BeFalse();
+            }
         }
 
         // blob collection is designed to be infinite, so there is no point in checking if is full and comparing
