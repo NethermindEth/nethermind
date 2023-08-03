@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -89,22 +90,20 @@ contract EcrecoverProxy {
             {
                 new BlockStateCalls()
                 {
-                    StateOverrides = new[]
+                    StateOverrides = new Dictionary<Address, AccountOverride>()
                     {
-                        new AccountOverride
-                        {
-                            Address = EcRecoverPrecompile.Address, Code = code
-                        }
+                        { EcRecoverPrecompile.Address, new AccountOverride { Code = code } }
                     },
                     Calls = new[] { CallTransactionModel.FromTransaction(systemTransactionForModifiedVM) }
                 }
             },
-            TraceTransfers = true
+            TraceTransfers = true,
+            Validation = true
         };
 
         // Act
         BlockchainBridge.MultiCallOutput result = chain.Bridge.MultiCall(chain.BlockFinder.Head.Header, payload, CancellationToken.None);
-        Log[]? logs = result.items.First().Calls.First().Logs;
+        Log[]? logs = result.Items.First().Calls.First().Logs;
 
 
         //Check that initial VM is intact

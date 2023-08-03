@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -20,16 +21,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public class EthMulticallTestsBlocksAndTransactions
 {
-    private Transaction GetTransferTxData(UInt256 Nonce, IEthereumEcdsa ethereumEcdsa, PrivateKey From, Address To,
-        UInt256 ammount)
+    private static Transaction GetTransferTxData(UInt256 nonce, IEthereumEcdsa ethereumEcdsa, PrivateKey from, Address to, UInt256 ammount)
     {
         Transaction tx = new()
         {
             Value = ammount,
-            Nonce = Nonce,
+            Nonce = nonce,
             GasLimit = 50_000,
-            SenderAddress = From.Address,
-            To = To,
+            SenderAddress = from.Address,
+            To = to,
             GasPrice = 20.GWei()
         };
 
@@ -44,7 +44,7 @@ public class EthMulticallTestsBlocksAndTransactions
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
 
 
-        var pk = new PrivateKey("0xc7ba1a2892ec0ea1940eebeae739b1effe0543b3104469d5b66625f49ca86e94");
+        PrivateKey pk = new("0xc7ba1a2892ec0ea1940eebeae739b1effe0543b3104469d5b66625f49ca86e94");
 
         UInt256 nonceA = chain.State.GetNonce(pk.Address);
         Transaction txMainnetAtoBtoFail =
@@ -68,17 +68,20 @@ public class EthMulticallTestsBlocksAndTransactions
                         CallTransactionModel.FromTransaction(txMainnetAtoBtoFail),
                         CallTransactionModel.FromTransaction(txMainnetAtoBToComplete),
                     },
-                    StateOverrides = new[]
+                    StateOverrides = new Dictionary<Address, AccountOverride>()
                     {
-                        new AccountOverride()
                         {
-                            Address = pk.Address,
-                            Balance = Math.Max(420_000_004_000_001UL, 1_000_000_004_000_001UL)
+                            pk.Address,
+                            new AccountOverride()
+                            {
+                                Balance = Math.Max(420_000_004_000_001UL, 1_000_000_004_000_001UL)
+                            }
                         }
                     }
                 }
             },
-            TraceTransfers = true
+            TraceTransfers = true,
+            Validation = true
         };
         EthereumJsonSerializer serializer = new();
 
@@ -140,7 +143,7 @@ public class EthMulticallTestsBlocksAndTransactions
                             Number = (UInt256)new decimal(2),
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
-                            BaseFee = 0
+                            BaseFeePerGas = 0
                         },
                     Calls = new[] { CallTransactionModel.FromTransaction(txAtoB1), CallTransactionModel.FromTransaction(txAtoB2) }
                 },
@@ -152,7 +155,7 @@ public class EthMulticallTestsBlocksAndTransactions
                             Number = (UInt256)new decimal(chain.Bridge.HeadBlock.Number + 10000),
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
-                            BaseFee = 0
+                            BaseFeePerGas = 0
                         },
                     Calls = new[] { CallTransactionModel.FromTransaction(txAtoB3), CallTransactionModel.FromTransaction(txAtoB4) }
                 }
@@ -166,8 +169,7 @@ public class EthMulticallTestsBlocksAndTransactions
         UInt256 after = chain.State.GetAccount(TestItem.AddressA).Balance;
         Assert.Less(after, before);
 
-        TxReceipt recept = chain.Bridge.GetReceipt(txMainnetAtoB.Hash);
-        LogEntry[]? ls = recept.Logs;
+        chain.Bridge.GetReceipt(txMainnetAtoB.Hash);
 
         //Force persistancy of head block in main chain
         chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
@@ -218,7 +220,7 @@ public class EthMulticallTestsBlocksAndTransactions
                             Number = (UInt256)new decimal(chain.Bridge.HeadBlock.Number + 10),
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
-                            BaseFee = 0
+                            BaseFeePerGas = 0
                         },
                     Calls = new[] { CallTransactionModel.FromTransaction(txAtoB1) }
                 },
@@ -230,7 +232,7 @@ public class EthMulticallTestsBlocksAndTransactions
                             Number = (UInt256)new decimal(123),
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
-                            BaseFee = 0
+                            BaseFeePerGas = 0
                         },
                     Calls = new[] { CallTransactionModel.FromTransaction(txAtoB2) }
                 }
@@ -244,8 +246,7 @@ public class EthMulticallTestsBlocksAndTransactions
         UInt256 after = chain.State.GetAccount(TestItem.AddressA).Balance;
         Assert.Less(after, before);
 
-        TxReceipt recept = chain.Bridge.GetReceipt(txMainnetAtoB.Hash);
-        LogEntry[]? ls = recept.Logs;
+        chain.Bridge.GetReceipt(txMainnetAtoB.Hash);
 
         //Force persistancy of head block in main chain
         chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);

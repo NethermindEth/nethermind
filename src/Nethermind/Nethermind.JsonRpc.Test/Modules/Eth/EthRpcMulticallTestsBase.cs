@@ -139,7 +139,7 @@ public class EthRpcMulticallTestsBase
         //createContractTxReceipt2.ContractAddress
         //    .Should().NotBeNull($"Contract transaction {tx.Hash} was not deployed.");
 
-        Address contractAddress1 = null;
+        Address contractAddress1;
         using (SecureStringWrapper pass = new("testB"))
         {
             wallet.Import(fromPrivateKey.KeyBytes, pass.SecureData);

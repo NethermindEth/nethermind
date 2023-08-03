@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
@@ -81,8 +83,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
         Address? contractAddress = await EthRpcMulticallTestsBase.DeployEcRecoverContract(chain, TestItem.PrivateKeyB,
             EthMulticallTestsSimplePrecompiles.EcRecoverCallerContractBytecode);
 
-        Address? mainChainRpcAddress =
-            EthRpcMulticallTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
+        EthRpcMulticallTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
 
         Transaction systemTransactionForModifiedVM = new()
         {
@@ -96,8 +97,8 @@ public class EthMulticallTestsPrecompilesWithRedirection
         chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
 
-        var header = chain.BlockFinder.Head.Header;
-        var spec = chain.SpecProvider.GetSpec(header);
+        BlockHeader header = chain.BlockFinder.Head.Header;
+        IReleaseSpec spec = chain.SpecProvider.GetSpec(header);
         systemTransactionForModifiedVM.GasPrice = header.BaseFeePerGas >= 1 ? header.BaseFeePerGas : 1;
         systemTransactionForModifiedVM.GasLimit = (long)systemTransactionForModifiedVM.CalculateTransactionPotentialCost(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
@@ -105,21 +106,21 @@ public class EthMulticallTestsPrecompilesWithRedirection
         {
             BlockStateCalls = new BlockStateCalls[] { new()
         {
-            StateOverrides = new[]
-            {
+            StateOverrides = new Dictionary<Address, AccountOverride>()
+            {   {EcRecoverPrecompile.Address,
                 new AccountOverride
                 {
-                    Address = EcRecoverPrecompile.Address,
                     Code = code,
                     MoveToAddress = new Address("0x0000000000000000000000000000000000000666")
-                }
+                }}
             },
             Calls = new[]
             {
                 CallTransactionModel.FromTransaction(systemTransactionForModifiedVM),
             }
         }},
-            TraceTransfers = true
+            TraceTransfers = true,
+            Validation = true
         };
 
         //Force persistancy of head block in main chain

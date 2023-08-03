@@ -142,7 +142,7 @@ namespace Nethermind.Facade
         {
             public string? Error { get; set; }
 
-            public List<MultiCallBlockResult> items;
+            public List<MultiCallBlockResult> Items { get; set; }
         }
 
         public class CallOutput
@@ -205,7 +205,7 @@ namespace Nethermind.Facade
                 result.Error = ex.ToString();
             }
 
-            result.items = multiCallOutputTracer._results;
+            result.Items = multiCallOutputTracer._results;
             return result;
         }
 
@@ -450,13 +450,15 @@ namespace Nethermind.Facade
         }
 
         //Apply changes to accounts and contracts states including precompiles
-        private void ModifyAccounts(AccountOverride[] StateOverrides, IWorldState? StateProvider, IReleaseSpec? CurrentSpec)
+        private void ModifyAccounts(Dictionary<Address, AccountOverride> StateOverrides, IWorldState? StateProvider, IReleaseSpec? CurrentSpec)
         {
             Account? acc;
 
-            foreach (AccountOverride accountOverride in StateOverrides)
+            foreach (KeyValuePair<Address, AccountOverride> overrideData in StateOverrides)
             {
-                Address address = accountOverride.Address;
+                Address address = overrideData.Key;
+                AccountOverride? accountOverride = overrideData.Value;
+
                 bool accExists = StateProvider.AccountExists(address);
                 if (!accExists)
                 {

@@ -16,9 +16,6 @@ public class AccountOverride
     public bool IsState => Type == AccountOverrideType.AccountOverrideState;
     public bool IsStateDiff => Type == AccountOverrideType.AccountOverrideStateDiff;
 
-    /// AccountOverrideState and AccountOverrideStateDiff base
-    public Address Address { get; set; }
-
     public Address? MoveToAddress { get; set; }
     public UInt256 Nonce { get; set; }
 

@@ -26,10 +26,10 @@ public class MultiCallTxExecutor : ExecutorBase<MultiCallBlockResult[], MultiCal
 
         if (results.Error == null)
         {
-            return ResultWrapper<MultiCallBlockResult[]>.Success(results.items.ToArray());
+            return ResultWrapper<MultiCallBlockResult[]>.Success(results.Items.ToArray());
         }
 
-        return ResultWrapper<MultiCallBlockResult[]>.Fail(results.Error, results.items.ToArray());
+        return ResultWrapper<MultiCallBlockResult[]>.Fail(results.Error, results.Items.ToArray());
 
     }
 }
