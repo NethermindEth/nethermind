@@ -45,7 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 IJsonSerializer jsonSerializer = CreateJsonSerializer(jsonRpcService);
                 IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
                     ? NoAuthentication.Instance
-                    : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, _api.Timestamper, logger, new FileSystem());
+                    : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, _api.Timestamper, logger, new FileSystem(), new JwtSecretPathResolver(new RuntimePlatformChecker()));
 
 
                 JsonRpcProcessor jsonRpcProcessor = new(

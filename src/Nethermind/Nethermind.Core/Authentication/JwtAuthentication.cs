@@ -40,11 +40,11 @@ public partial class JwtAuthentication : IRpcAuthentication
         return new(Bytes.FromHexString(secret), timestamper, logger);
     }
 
-    public static JwtAuthentication FromFile(string filePath, ITimestamper timestamper, ILogger logger, IFileSystem fileSystem)
+    public static JwtAuthentication FromFile(string filePath, ITimestamper timestamper, ILogger logger, IFileSystem fileSystem, IJwtSecretPathResolver pathResolver)
     {
         if (string.IsNullOrEmpty(filePath))
         {
-            string defaultFilePath = GetDefaultFilePath();
+            string defaultFilePath = pathResolver.GetDefaultFilePath();
             IFileInfo fileInfo = fileSystem.FileInfo.New(defaultFilePath);
             if (fileInfo.Exists && fileInfo.Length > 0)
             {
@@ -194,42 +194,6 @@ public partial class JwtAuthentication : IRpcAuthentication
         return _timestamper.UnixTime.SecondsLong < exp;
     }
 
-    private static string GetDefaultFilePath()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            string? xdgDataDir = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
-
-            if (!string.IsNullOrEmpty(xdgDataDir))
-                return Path.Combine(xdgDataDir, "ethereum", "engine", "jwt.hex");
-
-            string? homeDir = Environment.GetEnvironmentVariable("HOME");
-
-            if (string.IsNullOrEmpty(homeDir))
-                throw new ("HOME environment variable is not set");
-
-            return Path.Combine(homeDir, ".local", "share", "ethereum", "engine", "jwt.hex");
-        }
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            string appDataDir = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-
-            return Path.Combine(appDataDir, "Ethereum", "Engine", "jwt.hex");
-        }
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            string? homeDir = Environment.GetEnvironmentVariable("HOME");
-
-            if (string.IsNullOrEmpty(homeDir))
-                throw new Exception("HOME environment variable is not set");
-
-            return Path.Combine(homeDir, "Library", "Application Support", "Ethereum", "Engine", "jwt.hex");
-        }
-
-        throw new NotSupportedException("Unsupported OS");
-    }
 
     [GeneratedRegex("^(0x)?[0-9a-fA-F]{64}$")]
     private static partial Regex SecretRegex();

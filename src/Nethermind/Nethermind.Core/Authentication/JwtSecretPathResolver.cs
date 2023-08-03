@@ -7,7 +7,12 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Authentication;
 
-public class JwtSecretPathResolver
+public interface IJwtSecretPathResolver
+{
+    public string GetDefaultFilePath();
+}
+
+public class JwtSecretPathResolver : IJwtSecretPathResolver
 {
     private readonly IRuntimePlatformChecker _runtimePlatformChecker;
 
