@@ -100,7 +100,7 @@ public class JsonRpcService : IJsonRpcService
         catch (Exception ex)
         {
             if (_logger.IsError) _logger.Error($"Error during validation, request: {rpcRequest}", ex);
-            return GetErrorResponse(ErrorCodes.ParseError, "Parse error");
+            return GetErrorResponse(ErrorCodes.ParseError, "Parse error", rpcRequest.Id, rpcRequest.Method);
         }
     }
 
@@ -382,11 +382,8 @@ public class JsonRpcService : IJsonRpcService
         return response;
     }
 
-    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage) =>
-        GetErrorResponse("", errorCode, errorMessage, null, null);
-
-    public JsonRpcErrorResponse GetErrorResponse(string methodName, int errorCode, string errorMessage, object id) =>
-        GetErrorResponse(methodName, errorCode, errorMessage, null, id);
+    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, object? id = null, string? methodName = null) =>
+        GetErrorResponse(methodName ?? string.Empty, errorCode, errorMessage, null, id);
 
     public JsonConverter[] Converters { get; }
 
