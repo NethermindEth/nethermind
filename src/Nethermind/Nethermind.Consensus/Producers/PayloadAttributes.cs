@@ -97,6 +97,14 @@ public static class PayloadAttributesExtensions
             _ => EngineApiVersions.Paris
         };
 
+    public static int ExpectedVersion(this IReleaseSpec spec) =>
+        spec switch
+        {
+            { WithdrawalsEnabled: true, IsBeaconBlockRootAvailable: true } => EngineApiVersions.Cancun,
+            { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
+            _ => EngineApiVersions.Paris
+        };
+
     public static bool Validate(
         this PayloadAttributes payloadAttributes,
         IReleaseSpec spec,
@@ -104,13 +112,11 @@ public static class PayloadAttributesExtensions
         [NotNullWhen(false)] out string? error)
     {
         int actualVersion = payloadAttributes.GetVersion();
+        int expectedVersion = spec.ExpectedVersion();
 
         error = actualVersion switch
         {
-            <= 1 when spec.WithdrawalsEnabled => "PayloadAttributesV2 expected",
-            > 1 when !spec.WithdrawalsEnabled => "PayloadAttributesV1 expected",
-            <= 2 when spec.IsBeaconBlockRootAvailable => "PayloadAttributesV3 expected",
-            > 2 when !spec.IsBeaconBlockRootAvailable => "PayloadAttributesV2 or PayloadAttributesV1 expected",
+            _ when actualVersion != expectedVersion => $"PayloadAttributesV{expectedVersion} expected",
             _ when actualVersion > version => $"PayloadAttributesV{version} expected",
             _ => null
         };
