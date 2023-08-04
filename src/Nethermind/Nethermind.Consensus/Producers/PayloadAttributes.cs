@@ -92,9 +92,9 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
-            { BeaconParentBlockRoot: not null, Withdrawals: not null } => 3,
-            { Withdrawals: not null } => 2,
-            _ => 1
+            { BeaconParentBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
+            { Withdrawals: not null } => EngineApiVersions.Shanghai,
+            _ => EngineApiVersions.Paris
         };
 
     public static bool Validate(
