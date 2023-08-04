@@ -90,7 +90,12 @@ public static class PayloadAttributesExtensions
     }
 
     public static int GetVersion(this PayloadAttributes executionPayload) =>
-        executionPayload.Withdrawals is null ? 1 : executionPayload.BeaconParentBlockRoot is null ? 2 : 3;
+        executionPayload switch
+        {
+            { BeaconParentBlockRoot: not null, Withdrawals: not null } => 3,
+            { Withdrawals: not null } => 2,
+            _ => 1
+        };
 
     public static bool Validate(
         this PayloadAttributes payloadAttributes,

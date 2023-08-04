@@ -16,12 +16,13 @@ namespace Nethermind.Merge.Plugin;
 public partial class EngineRpcModule : IEngineRpcModule
 {
     private readonly IAsyncHandler<byte[], GetPayloadV3Result?> _getPayloadHandlerV3;
+    public const int CancunVersion = 3;
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => ForkchoiceUpdated(forkchoiceState, payloadAttributes, 3);
+        => ForkchoiceUpdated(forkchoiceState, payloadAttributes, CancunVersion);
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, byte[]? parentBeaconBlockRoot) =>
-        NewPayload(new ExecutionPayloadV3Params(executionPayload, blobVersionedHashes, parentBeaconBlockRoot), 3);
+        NewPayload(new ExecutionPayloadV3Params(executionPayload, blobVersionedHashes, parentBeaconBlockRoot), CancunVersion);
 
     public async Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId) =>
         await _getPayloadHandlerV3.HandleAsync(payloadId);

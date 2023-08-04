@@ -23,25 +23,26 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly SemaphoreSlim _locker = new(1, 1);
     private readonly TimeSpan _timeout = TimeSpan.FromSeconds(8);
     private readonly GCKeeper _gcKeeper;
+    public const int ParisVersion = 1;
 
     public ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
         TransitionConfigurationV1 beaconTransitionConfiguration) => _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => await ForkchoiceUpdated(forkchoiceState, payloadAttributes, 1);
+        => await ForkchoiceUpdated(forkchoiceState, payloadAttributes, ParisVersion);
 
     public Task<ResultWrapper<ExecutionPayload?>> engine_getPayloadV1(byte[] payloadId) =>
         _getPayloadHandlerV1.HandleAsync(payloadId);
 
     public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
-        => await NewPayload(executionPayload, 1);
+        => await NewPayload(executionPayload, ParisVersion);
 
     private async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
         if (payloadAttributes?.Validate(_specProvider, version, out string? error) == false)
         {
             if (_logger.IsWarn) _logger.Warn(error);
-            return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error, version == 3 ? ErrorCodes.UnsupportedFork : ErrorCodes.InvalidParams);
+            return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error, version >= CancunVersion ? ErrorCodes.UnsupportedFork : ErrorCodes.InvalidParams);
         }
 
         if (await _locker.WaitAsync(_timeout))
