@@ -389,6 +389,12 @@ public class ChainSpecLoader : IChainSpecLoader
             genesisHeader.ExcessBlobGas = chainSpecJson.Genesis.ExcessBlobGas;
         }
 
+        bool isEip4788Enabled = chainSpecJson.Params.Eip4788TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4788TransitionTimestamp;
+        if (isEip4788Enabled)
+        {
+            genesisHeader.ParentBeaconBlockRoot = chainSpecJson.Genesis.ParentBeaconBlockRoot;
+        }
+
         genesisHeader.AuRaStep = step;
         genesisHeader.AuRaSignature = auRaSignature;
 
