@@ -138,15 +138,12 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.Index = _transactionIndex;
                 if (receipt.Sender.Bytes == Address.Zero.Bytes)
                 {
-                    receipt.Sender = (transaction.SenderAddress ?? (_forceRecoverSender ? _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId) : Address.Zero))!
-                        .ToStructRef();
+                    receipt.Sender = (transaction.SenderAddress ?? (_forceRecoverSender ? _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId) : Address.Zero))!.ToStructRef();
                 }
                 receipt.Recipient = (transaction.IsContractCreation ? Address.Zero : transaction.To)!.ToStructRef();
 
                 // how would it be in CREATE2?
-                receipt.ContractAddress = (transaction.IsContractCreation && transaction.SenderAddress is not null
-                    ? ContractAddress.From(receipt.Sender.ToAddress(), transaction.Nonce)
-                    : Address.Zero)!.ToStructRef();
+                receipt.ContractAddress = (transaction.IsContractCreation && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender.ToAddress(), transaction.Nonce) : Address.Zero)!.ToStructRef();
                 receipt.GasUsed = receipt.GasUsedTotal - _gasUsedBefore;
                 if (receipt.StatusCode != StatusCode.Success)
                 {
