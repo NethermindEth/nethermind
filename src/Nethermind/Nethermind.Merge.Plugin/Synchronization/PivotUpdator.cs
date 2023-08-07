@@ -141,7 +141,7 @@ public class PivotUpdator
 
         if (finalizedBlockHash is null || finalizedBlockHash == Keccak.Zero)
         {
-            if (_logger.IsInfo && _attemptsLeft % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block. {_attemptsLeft} attempts left");
+            if (_logger.IsInfo && _attemptsLeft % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block.");
 
             return null;
         }
@@ -217,7 +217,7 @@ public class PivotUpdator
             }
         }
 
-        if (_logger.IsInfo && _attemptsLeft % 10 == 0) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}. Waiting for pivot block header. {_attemptsLeft} attempts left");
+        if (_logger.IsInfo && _attemptsLeft % 10 == 0) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}. Waiting for pivot block header.");
         return null;
     }
 
