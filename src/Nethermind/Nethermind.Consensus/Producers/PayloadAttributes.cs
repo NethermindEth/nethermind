@@ -97,7 +97,7 @@ public static class PayloadAttributesExtensions
             _ => EngineApiVersions.Paris
         };
 
-    public static int ExpectedVersion(this IReleaseSpec spec) =>
+    public static int ExpectedEngineSpecVersion(this IReleaseSpec spec) =>
         spec switch
         {
             { WithdrawalsEnabled: true, IsBeaconBlockRootAvailable: true } => EngineApiVersions.Cancun,
@@ -112,15 +112,16 @@ public static class PayloadAttributesExtensions
         [NotNullWhen(false)] out string? error)
     {
         int actualVersion = payloadAttributes.GetVersion();
-        int expectedVersion = spec.ExpectedVersion();
+        int expectedVersion = spec.ExpectedEngineSpecVersion();
 
-        error = actualVersion switch
+        error = null;
+        if(actualVersion != expectedVersion)
         {
-            _ when actualVersion != expectedVersion => $"PayloadAttributesV{expectedVersion} expected",
-            _ when actualVersion > version => $"PayloadAttributesV{version} expected",
-            _ => null
-        };
-
+            error = $"PayloadAttributesV{expectedVersion} expected";
+        } else if(actualVersion > version)
+        {
+            error = $"PayloadAttributesV{version} expected";
+        }
         return error is null;
     }
 

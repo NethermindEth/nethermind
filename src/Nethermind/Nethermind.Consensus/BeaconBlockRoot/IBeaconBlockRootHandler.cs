@@ -13,5 +13,5 @@ using Nethermind.State;
 namespace Nethermind.Consensus.BeaconBlockRoot;
 public interface IBeaconBlockRootHandler
 {
-    void HandleBeaconBlockRoot(Block block, IReleaseSpec spec, IWorldState state);
+    void InitStatefulPrecompiles(Block block, IReleaseSpec spec, IWorldState state);
 }

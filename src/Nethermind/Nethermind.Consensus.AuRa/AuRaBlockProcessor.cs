@@ -44,7 +44,6 @@ namespace Nethermind.Consensus.AuRa
             ILogManager logManager,
             IBlockTree blockTree,
             IWithdrawalProcessor withdrawalProcessor,
-            IBeaconBlockRootHandler beaconBlockRootHandler,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
             ContractRewriter? contractRewriter = null)
@@ -57,8 +56,7 @@ namespace Nethermind.Consensus.AuRa
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager,
-                withdrawalProcessor,
-                beaconBlockRootHandler)
+                withdrawalProcessor)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

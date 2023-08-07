@@ -160,7 +160,6 @@ public class StartBlockProducerAuRa
             _api.LogManager,
             changeableTxProcessingEnv.BlockTree,
             NullWithdrawalProcessor.Instance,
-            NullBeaconBlockRootHandler.Instance,
             auRaTxFilter,
             CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride,
             contractRewriter)

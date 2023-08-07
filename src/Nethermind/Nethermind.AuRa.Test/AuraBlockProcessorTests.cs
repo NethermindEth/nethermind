@@ -162,7 +162,6 @@ namespace Nethermind.AuRa.Test
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-                new BeaconBlockRootHandler(),
                 txFilter,
                 contractRewriter: contractRewriter);
 
