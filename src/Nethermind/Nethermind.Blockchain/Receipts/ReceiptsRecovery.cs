@@ -67,6 +67,7 @@ namespace Nethermind.Blockchain.Receipts
             if (receipts is null || receipts.Length == 0) return false;
 
             if (recoverSenderOnly) return (forceRecoverSender && receipts[0].Sender is null);
+
             return (receipts[0].BlockHash is null || (forceRecoverSender && receipts[0].Sender is null));
         }
 
@@ -97,13 +98,24 @@ namespace Nethermind.Blockchain.Receipts
 
                 Transaction transaction = _block.GetNextTransaction();
 
+                if (transaction.SenderAddress is null && _forceRecoverSender)
+                {
+                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId);
+                }
+
                 receipt.TxType = transaction.Type;
                 receipt.BlockHash = _block.Hash;
                 receipt.BlockNumber = _block.Number;
                 receipt.TxHash = transaction.Hash;
                 receipt.Index = _transactionIndex;
-                receipt.Sender ??= transaction.SenderAddress ?? (_forceRecoverSender ? _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId) : null);
+                receipt.Sender ??= transaction.SenderAddress;
                 receipt.Recipient = transaction.IsContractCreation ? null : transaction.To;
+
+                /*
+                 * receipt.ContractAddress is null if:
+                 * - transaction.IsContractCreation == false === transaction.To == null; OR
+                 * - transaction.SenderAddress == null;
+                 */
 
                 // how would it be in CREATE2?
                 receipt.ContractAddress = transaction.IsContractCreation && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender, transaction.Nonce) : null;
@@ -132,12 +144,15 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.Index = _transactionIndex;
                 if (receipt.Sender.Bytes == Address.Zero.Bytes)
                 {
-                    receipt.Sender = (transaction.SenderAddress ?? (_forceRecoverSender ? _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId) : Address.Zero))!.ToStructRef();
+                    receipt.Sender = (transaction.SenderAddress ?? (_forceRecoverSender ? _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId) : Address.Zero))!
+                        .ToStructRef();
                 }
                 receipt.Recipient = (transaction.IsContractCreation ? Address.Zero : transaction.To)!.ToStructRef();
 
                 // how would it be in CREATE2?
-                receipt.ContractAddress = (transaction.IsContractCreation && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender.ToAddress(), transaction.Nonce) : Address.Zero)!.ToStructRef();
+                receipt.ContractAddress = (transaction.IsContractCreation && transaction.SenderAddress is not null
+                    ? ContractAddress.From(receipt.Sender.ToAddress(), transaction.Nonce)
+                    : Address.Zero)!.ToStructRef();
                 receipt.GasUsed = receipt.GasUsedTotal - _gasUsedBefore;
                 if (receipt.StatusCode != StatusCode.Success)
                 {
