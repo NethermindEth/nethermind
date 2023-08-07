@@ -17,7 +17,7 @@ using static Nethermind.Evm.Precompiles.Stateful.BeaconBlockRootPrecompile;
 namespace Nethermind.Consensus.BeaconBlockRoot;
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 {
-    public void HandleBeaconBlockRoot(Block block, IReleaseSpec spec, IWorldState stateProvider)
+    public void InitStatefulPrecompiles(Block block, IReleaseSpec spec, IWorldState stateProvider)
     {
         if (!spec.IsBeaconBlockRootAvailable) return;
 

@@ -326,7 +326,7 @@ public class TestBlockchain : IDisposable
         if (SpecProvider.GenesisSpec.IsBeaconBlockRootAvailable)
         {
 
-            BeaconBlockRootHandler.HandleBeaconBlockRoot(genesisBlockBuilder.TestObject, SpecProvider.GenesisSpec, State);
+            BeaconBlockRootHandler.InitStatefulPrecompiles(genesisBlockBuilder.TestObject, SpecProvider.GenesisSpec, State);
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);
 

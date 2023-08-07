@@ -31,7 +31,6 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
         ILogManager logManager,
         IBlockTree blockTree,
         IWithdrawalProcessor withdrawalProcessor,
-        IBeaconBlockRootHandler beaconBlockRootHandler,
         ITxFilter? txFilter = null,
         AuRaContractGasLimitOverride? gasLimitOverride = null,
         ContractRewriter? contractRewriter = null
@@ -45,7 +44,6 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
             logManager,
             blockTree,
             withdrawalProcessor,
-            beaconBlockRootHandler,
             txFilter,
             gasLimitOverride,
             contractRewriter

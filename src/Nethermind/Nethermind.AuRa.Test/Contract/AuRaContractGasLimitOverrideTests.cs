@@ -101,7 +101,6 @@ public class AuRaContractGasLimitOverrideTests
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                NullBeaconBlockRootHandler.Instance,
                 null,
                 GasLimitCalculator as AuRaContractGasLimitOverride);
         }
