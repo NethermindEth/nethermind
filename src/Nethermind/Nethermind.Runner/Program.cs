@@ -261,7 +261,7 @@ namespace Nethermind.Runner
         private static void BuildOptionsFromConfigFiles(CommandLineApplication app)
         {
             Type configurationType = typeof(IConfig);
-            IEnumerable<Type> configTypes = TypeDiscovery.FindNethermindTypes(configurationType)
+            IEnumerable<Type> configTypes = TypeDiscovery.FindNethermindBasedTypes(configurationType)
                 .Where(ct => ct.IsInterface);
 
             foreach (Type configType in configTypes.Where(ct => !ct.IsAssignableTo(typeof(INoCategoryConfig))).OrderBy(c => c.Name))

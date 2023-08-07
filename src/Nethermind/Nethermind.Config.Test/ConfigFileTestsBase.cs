@@ -28,7 +28,7 @@ namespace Nethermind.Config.Test
         {
             // by pre-caching configs we make the tests do lot less work
 
-            IEnumerable<Type> configTypes = TypeDiscovery.FindNethermindTypes(typeof(IConfig)).Where(t => t.IsInterface).ToArray();
+            IEnumerable<Type> configTypes = TypeDiscovery.FindNethermindBasedTypes(typeof(IConfig)).Where(t => t.IsInterface).ToArray();
 
             Parallel.ForEach(Resolve("*"), configFile =>
             {

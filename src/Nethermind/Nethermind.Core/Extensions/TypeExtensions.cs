@@ -17,7 +17,7 @@ namespace Nethermind.Core.Extensions
             }
 
             Type[] baseInterfaces = interfaceType.GetInterfaces();
-            IEnumerable<Type> implementations = TypeDiscovery.FindNethermindTypes(interfaceType).Where(i => i.IsClass);
+            IEnumerable<Type> implementations = TypeDiscovery.FindNethermindBasedTypes(interfaceType).Where(i => i.IsClass);
 
             foreach (Type implementation in implementations)
             {

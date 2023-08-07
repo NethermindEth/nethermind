@@ -12,7 +12,7 @@ namespace Nethermind.Core
 {
     public static class TypeDiscovery
     {
-        private static readonly HashSet<Assembly> _nethermindAssemblies = new();
+        private static readonly HashSet<Assembly> _assembliesWithNethermindTypes = new();
         private static readonly object _lock = new();
         private static int _allLoaded;
         private static Type? _pluginType;
@@ -74,9 +74,9 @@ namespace Nethermind.Core
                 LoadOnce(loadedAssemblies, considered);
 
                 foreach (KeyValuePair<string, Assembly> kv in considered.Where(static kv =>
-                             kv.Key.StartsWith("Nethermind") || (_pluginType is not null && FindNethermindTypes(kv.Value, _pluginType).Any())))
+                             kv.Key.StartsWith("Nethermind") || (_pluginType is not null && FindNethermindBasedTypes(kv.Value, _pluginType).Any())))
                 {
-                    _nethermindAssemblies.Add(kv.Value);
+                    _assembliesWithNethermindTypes.Add(kv.Value);
                 }
 
                 // Mark initialised before releasing lock
@@ -128,34 +128,34 @@ namespace Nethermind.Core
             }
         }
 
-        public static IEnumerable<Type> FindNethermindTypes(Type baseType)
+        public static IEnumerable<Type> FindNethermindBasedTypes(Type baseType)
         {
             Initialize();
 
-            return FindNethermindTypes(_nethermindAssemblies, baseType);
+            return FindNethermindBasedTypes(_assembliesWithNethermindTypes, baseType);
         }
 
-        private static IEnumerable<Type> FindNethermindTypes(IEnumerable<Assembly> assemblies, Type baseType)
+        private static IEnumerable<Type> FindNethermindBasedTypes(IEnumerable<Assembly> assemblies, Type baseType)
         {
-            Func<Assembly, IEnumerable<Type>> assembliesSelector = a => FindNethermindTypes(a, baseType);
+            Func<Assembly, IEnumerable<Type>> assembliesSelector = a => FindNethermindBasedTypes(a, baseType);
 
             return assemblies.SelectMany(assembliesSelector);
         }
 
-        private static IEnumerable<Type> FindNethermindTypes(Assembly assembly, Type baseType) =>
+        private static IEnumerable<Type> FindNethermindBasedTypes(Assembly assembly, Type baseType) =>
             GetExportedTypes(assembly).Where(t => baseType.IsAssignableFrom(t) && baseType != t);
 
         private static IEnumerable<Type> GetExportedTypes(Assembly? a)
             => a is null || a.IsDynamic ? Array.Empty<Type>() : a.GetExportedTypes();
 
-        public static IEnumerable<Type> FindNethermindTypes(string typeName)
+        public static IEnumerable<Type> FindNethermindBasedTypes(string typeName)
         {
             Initialize();
 
             Func<Assembly, IEnumerable<Type>> assembliesSelector = a => GetExportedTypes(a)
                 .Where(t => t.Name == typeName);
 
-            return _nethermindAssemblies.SelectMany(assembliesSelector);
+            return _assembliesWithNethermindTypes.SelectMany(assembliesSelector);
         }
     }
 }

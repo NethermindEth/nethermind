@@ -45,7 +45,7 @@ public class StartMonitoring : IStep
             PrepareProductInfoMetrics();
             controller = new(_metricsConfig);
 
-            IEnumerable<Type> metrics = TypeDiscovery.FindNethermindTypes(nameof(Metrics));
+            IEnumerable<Type> metrics = TypeDiscovery.FindNethermindBasedTypes(nameof(Metrics));
             foreach (Type metric in metrics)
             {
                 controller.RegisterMetrics(metric);

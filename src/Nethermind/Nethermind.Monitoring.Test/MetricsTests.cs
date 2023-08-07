@@ -110,7 +110,7 @@ namespace Nethermind.Monitoring.Test
             };
             MetricsController metricsController = new(metricsConfig);
             MonitoringService monitoringService = new(metricsController, metricsConfig, LimboLogs.Instance);
-            List<Type> metrics = TypeDiscovery.FindNethermindTypes(nameof(Metrics)).ToList();
+            List<Type> metrics = TypeDiscovery.FindNethermindBasedTypes(nameof(Metrics)).ToList();
             metrics.AddRange(knownMetricsTypes);
 
             Assert.DoesNotThrow(() =>
