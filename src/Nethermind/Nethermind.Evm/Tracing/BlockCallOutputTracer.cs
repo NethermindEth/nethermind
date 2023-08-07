@@ -9,19 +9,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class BlockCallOutputTracer : IBlockTracer
+    public class BlockCallOutputTracer : BlockTracer
     {
         private readonly Dictionary<Keccak, CallOutputTracer> _results = new();
-        public bool IsTracingRewards => false;
-        public void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
-        public void StartNewBlockTrace(Block block) { }
-        public ITxTracer StartNewTxTrace(Transaction? tx)
-        {
-            return _results[tx?.Hash ?? Keccak.Zero] = new CallOutputTracer();
-        }
-
-        public void EndTxTrace() { }
-        public void EndBlockTrace() { }
+        public override ITxTracer StartNewTxTrace(Transaction? tx) => _results[tx?.Hash ?? Keccak.Zero] = new CallOutputTracer();
         public IReadOnlyDictionary<Keccak, CallOutputTracer> BuildResults() => _results;
     }
 }

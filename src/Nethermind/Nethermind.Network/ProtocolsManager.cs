@@ -7,14 +7,13 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
@@ -346,7 +345,7 @@ namespace Nethermind.Network
                     else
                     {
                         if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session} for {session.Node:s}");
-                        session.InitiateDisconnect(InitiateDisconnectReason.SessionIdAlreadyExists, "sync peer");
+                        session.InitiateDisconnect(DisconnectReason.SessionIdAlreadyExists, "sync peer");
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");

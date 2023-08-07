@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
+using FluentAssertions;
+using MathNet.Numerics.Random;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -105,6 +107,87 @@ namespace Nethermind.Network.Discovery.Test
             nodeManager.ProcessPongMsg(new PongMsg(node.Address, GetExpirationTime(), sentPing!.Mdc!));
 
             Assert.IsTrue(nodeManager.IsBonded);
+        }
+
+        [Test]
+        public async Task handling_findnode_msg_will_limit_result_to_12()
+        {
+            IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
+            discoveryConfig.PongTimeout = 50;
+            discoveryConfig.BucketSize = 32;
+            discoveryConfig.BucketsCount = 1;
+
+            _nodeTable = new NodeTable(new NodeDistanceCalculator(discoveryConfig), discoveryConfig, _networkConfig, LimboLogs.Instance);
+            _nodeTable.Initialize(TestItem.PublicKeyA);
+
+            Node node = new(TestItem.PublicKeyB, _host, _port);
+            NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock, _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
+
+            await BondWithSelf(nodeManager, node);
+
+            for (int i = 0; i < 32; i++)
+            {
+                _nodeTable.AddNode(
+                    new Node(
+                        new PublicKey(Random.Shared.NextBytes(64)),
+                        "127.0.0.1",
+                        i
+                    ));
+            }
+
+            NeighborsMsg? sentMsg = null;
+            _discoveryManagerMock.SendMessage(Arg.Do<NeighborsMsg>(msg =>
+            {
+                sentMsg = msg;
+            }));
+
+            nodeManager.ProcessFindNodeMsg(new FindNodeMsg(TestItem.PublicKeyA, 1, new byte[] { 0 }));
+
+            Assert.IsNotNull(sentMsg);
+            _nodeTable.Buckets[0].BondedItemsCount.Should().Be(32);
+            sentMsg!.Nodes.Length.Should().Be(12);
+        }
+
+        [Test]
+        public async Task processNeighboursMessage_willCombineTwoSubsequentMessage()
+        {
+            IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
+            discoveryConfig.PongTimeout = 50;
+            discoveryConfig.BucketSize = 32;
+            discoveryConfig.BucketsCount = 1;
+
+            _nodeTable = new NodeTable(new NodeDistanceCalculator(discoveryConfig), discoveryConfig, _networkConfig, LimboLogs.Instance);
+            _nodeTable.Initialize(TestItem.PublicKeyA);
+
+            Node node = new(TestItem.PublicKeyB, _host, _port);
+            NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock, _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
+
+            await BondWithSelf(nodeManager, node);
+
+            _discoveryManagerMock
+                .Received(0)
+                .GetNodeLifecycleManager(Arg.Any<Node>(), Arg.Any<bool>());
+
+            nodeManager.SendFindNode(Array.Empty<byte>());
+
+            Node[] firstNodes = TestItem.PublicKeys
+                .Take(12)
+                .Select(pubkey => new Node(pubkey, "127.0.0.2", 0))
+                .ToArray();
+            NeighborsMsg firstNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, firstNodes);
+            Node[] secondNodes = TestItem.PublicKeys
+                .Skip(12)
+                .Take(4)
+                .Select(pubkey => new Node(pubkey, "127.0.0.2", 0))
+                .ToArray();
+            NeighborsMsg secondNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, secondNodes);
+
+            nodeManager.ProcessNeighborsMsg(firstNodeMsg);
+            nodeManager.ProcessNeighborsMsg(secondNodeMsg);
+
+            _discoveryManagerMock
+                .Received(16)
+                .GetNodeLifecycleManager(Arg.Any<Node>(), Arg.Any<bool>());
         }
 
         [Test]
@@ -300,5 +383,19 @@ namespace Nethermind.Network.Discovery.Test
                 _nodeIds[i] = new PublicKey(nodeIdBytes);
             }
         }
+
+        private async Task BondWithSelf(NodeLifecycleManager nodeManager, Node node)
+        {
+            byte[] mdc = new byte[32];
+            PingMsg? sentPing = null;
+            _discoveryManagerMock.SendMessage(Arg.Do<PingMsg>(msg =>
+            {
+                msg.Mdc = mdc;
+                sentPing = msg;
+            }));
+            await nodeManager.SendPingAsync();
+            nodeManager.ProcessPongMsg(new PongMsg(node.Address, GetExpirationTime(), sentPing!.Mdc!));
+        }
+
     }
 }

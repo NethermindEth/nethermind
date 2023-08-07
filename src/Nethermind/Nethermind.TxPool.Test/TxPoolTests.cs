@@ -580,8 +580,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void
-            should_add_tx_if_cost_of_executing_all_txs_in_bucket_exceeds_balance_but_these_with_lower_nonces_doesnt()
+        public void should_add_tx_if_cost_of_executing_all_txs_in_bucket_exceeds_balance_but_these_with_lower_nonces_doesnt()
         {
             const int gasPrice = 10;
             const int value = 1;
@@ -606,9 +605,15 @@ namespace Nethermind.TxPool.Test
                 }
             }
 
-            _txPool.GetPendingTransactions().Length.Should().Be(8);
-            _txPool.SubmitTx(transactions[7], TxHandlingOptions.PersistentBroadcast);
-            _txPool.GetPendingTransactions().Length.Should().Be(9);
+            _txPool.GetPendingTransactions().Length.Should().Be(8); // nonces 0-6 and 8
+            _txPool.GetPendingTransactions().Last().Nonce.Should().Be(8);
+
+            _txPool.SubmitTx(transactions[8], TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.AlreadyKnown);
+            _txPool.SubmitTx(transactions[7], TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+
+            _txPool.GetPendingTransactions().Length.Should().Be(8); // nonces 0-7 - 8 was removed because of not enough balance
+            _txPool.GetPendingTransactions().Last().Nonce.Should().Be(7);
+            _txPool.GetPendingTransactions().Should().BeEquivalentTo(transactions.SkipLast(2));
         }
 
         [Test]
@@ -1538,6 +1543,58 @@ namespace Nethermind.TxPool.Test
 
                 AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
                 result.Should().Be(AcceptTxResult.FeeTooLowToCompete);
+
+                // newly coming txs should evict themselves
+                _txPool.GetPendingTransactionsBySender().Keys.Count.Should().Be(txPoolConfig.Size);
+            }
+
+            _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size);
+        }
+
+        [Test]
+        public void Should_not_replace_ready_txs_by_nonce_gap_ones()
+        {
+            TxPoolConfig txPoolConfig = new() { Size = 128 };
+            _txPool = CreatePool(txPoolConfig);
+
+            // send (size - 1) standard txs from different senders
+            for (int i = 0; i < txPoolConfig.Size - 1; i++)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce(0)
+                    .WithGasPrice(10)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
+
+                EnsureSenderBalance(TestItem.PrivateKeys[i].Address, UInt256.MaxValue);
+                _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            }
+
+            _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size - 1);
+            _txPool.GetPendingTransactionsBySender().Keys.Count.Should().Be(txPoolConfig.Size - 1);
+
+            const int nonceGap = 100;
+            // send 1 expensive nonce-gap tx from sender X
+            PrivateKey privateKeyOfAttacker = TestItem.PrivateKeys[txPoolConfig.Size];
+            Transaction nonceGapTx = Build.A.Transaction
+                .WithNonce(nonceGap)
+                .WithGasPrice(1000)
+                .SignedAndResolved(_ethereumEcdsa, privateKeyOfAttacker).TestObject;
+
+            EnsureSenderBalance(privateKeyOfAttacker.Address, UInt256.MaxValue);
+            _txPool.SubmitTx(nonceGapTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+
+            _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size);
+            _txPool.GetPendingTransactionsBySender().Keys.Count.Should().Be(txPoolConfig.Size);
+
+            // send (size - 1) expensive txs from sender X with consecutive nonces
+            for (int i = 0; i < txPoolConfig.Size - 1; i++)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce((UInt256)(i + 1 + nonceGap))
+                    .WithGasPrice(1000)
+                    .SignedAndResolved(_ethereumEcdsa, privateKeyOfAttacker).TestObject;
+
+                _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.FeeTooLowToCompete);
 
                 // newly coming txs should evict themselves
                 _txPool.GetPendingTransactionsBySender().Keys.Count.Should().Be(txPoolConfig.Size);

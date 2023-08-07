@@ -193,7 +193,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Value = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.Data = rlpStream.DecodeByteArray();
             transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
-            transaction.MaxFeePerDataGas = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.MaxFeePerBlobGas = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.BlobVersionedHashes = rlpStream.DecodeByteArrays();
         }
 
@@ -251,7 +251,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Value = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.Data = decoderContext.DecodeByteArray();
             transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
-            transaction.MaxFeePerDataGas = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
             transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays();
         }
 
@@ -309,7 +309,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.Value);
             stream.Encode(item.Data);
             _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
-            stream.Encode(item.MaxFeePerDataGas.Value);
+            stream.Encode(item.MaxFeePerBlobGas.Value);
             stream.Encode(item.BlobVersionedHashes);
         }
 
@@ -665,7 +665,7 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(item.Data)
                    + Rlp.LengthOf(item.ChainId ?? 0)
                    + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None)
-                   + Rlp.LengthOf(item.MaxFeePerDataGas)
+                   + Rlp.LengthOf(item.MaxFeePerBlobGas)
                    + Rlp.LengthOf(item.BlobVersionedHashes);
         }
 

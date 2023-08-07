@@ -19,7 +19,7 @@ public class MapToG2Precompile : IPrecompile
     {
     }
 
-    public Address Address { get; } = Address.FromNumber(0x14);
+    public static Address Address { get; } = Address.FromNumber(0x14);
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {

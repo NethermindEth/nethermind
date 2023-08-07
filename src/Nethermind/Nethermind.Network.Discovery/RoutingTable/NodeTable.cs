@@ -29,7 +29,7 @@ public class NodeTable : INodeTable
         Buckets = new NodeBucket[_discoveryConfig.BucketsCount];
         for (int i = 0; i < Buckets.Length; i++)
         {
-            Buckets[i] = new NodeBucket(i, _discoveryConfig.BucketSize);
+            Buckets[i] = new NodeBucket(i, _discoveryConfig.BucketSize, _discoveryConfig.DropFullBucketNodeProbability);
         }
     }
 
