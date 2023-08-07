@@ -111,12 +111,6 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.Sender ??= transaction.SenderAddress;
                 receipt.Recipient = transaction.IsContractCreation ? null : transaction.To;
 
-                /*
-                 * receipt.ContractAddress is null if:
-                 * - transaction.IsContractCreation == false === transaction.To == null; OR
-                 * - transaction.SenderAddress == null;
-                 */
-
                 // how would it be in CREATE2?
                 receipt.ContractAddress = transaction.IsContractCreation && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender, transaction.Nonce) : null;
                 receipt.GasUsed = receipt.GasUsedTotal - _gasUsedBefore;
