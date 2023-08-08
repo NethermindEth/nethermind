@@ -93,6 +93,8 @@ public static class DisconnectReasonExtension
             case DisconnectReason.MissingForkId:
             case DisconnectReason.InvalidForkId:
                 return EthDisconnectReason.BreachOfProtocol;
+            case DisconnectReason.ClientFiltered:
+                return EthDisconnectReason.DisconnectRequested;
 
             case DisconnectReason.ProtocolInitTimeout:
                 return EthDisconnectReason.ReceiveMessageTimeout;
