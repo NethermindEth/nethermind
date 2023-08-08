@@ -153,6 +153,21 @@ public partial class EngineModuleTests
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
     }
 
+    [TestCase(true, PayloadStatus.Valid)]
+    [TestCase(false, PayloadStatus.Invalid)]
+    public virtual async Task NewPayloadV3_should_fail_on_null_parentBeaconBlockHash(bool includeParentBeaconBlockRoot, string expectedPayloadStatus)
+    {
+        (IEngineRpcModule rpcModule, string payloadId, Transaction[] transactions) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+
+        ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
+        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, includeParentBeaconBlockRoot ? payload.ParentBeaconBlockRoot.BytesToArray() : null);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be(expectedPayloadStatus);
+    }
+
     [TestCase(false, PayloadStatus.Valid)]
     [TestCase(true, PayloadStatus.Invalid)]
     public virtual async Task NewPayloadV3_should_decline_mempool_encoding(bool inMempoolForm, string expectedPayloadStatus)
