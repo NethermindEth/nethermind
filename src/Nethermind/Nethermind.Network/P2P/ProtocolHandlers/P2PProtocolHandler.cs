@@ -204,13 +204,6 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
             //                throw new NodeDetailsMismatchException();
         }
 
-        if (_clientIdPattern?.IsMatch(hello.ClientId) == false)
-        {
-            Session.InitiateDisconnect(
-                DisconnectReason.ClientFiltered,
-                $"clientId: {hello.ClientId}");
-        }
-
         RemoteClientId = hello.ClientId;
         Session.Node.ClientId = hello.ClientId;
 
@@ -255,6 +248,13 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
             Session.InitiateDisconnect(
                 DisconnectReason.NoCapabilityMatched,
                 $"capabilities: {string.Join(", ", capabilities)}");
+        }
+
+        if (_clientIdPattern?.IsMatch(hello.ClientId) == false)
+        {
+            Session.InitiateDisconnect(
+                DisconnectReason.ClientFiltered,
+                $"clientId: {hello.ClientId}");
         }
 
         ReceivedProtocolInitMsg(hello);
