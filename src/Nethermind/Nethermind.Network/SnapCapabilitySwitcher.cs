@@ -23,7 +23,7 @@ public class SnapCapabilitySwitcher
     {
         _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
-        _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
     /// <summary>

@@ -9,8 +9,8 @@ namespace Nethermind.Core
     {
         new byte[]? this[ReadOnlySpan<byte> key]
         {
-            get => Get(key, ReadFlags.None);
-            set => Set(key, value, WriteFlags.None);
+            get => Get(key);
+            set => Set(key, value);
         }
 
         void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None);
@@ -18,7 +18,7 @@ namespace Nethermind.Core
 
     public interface IReadOnlyKeyValueStore
     {
-        byte[]? this[ReadOnlySpan<byte> key] => Get(key, ReadFlags.None);
+        byte[]? this[ReadOnlySpan<byte> key] => Get(key);
 
         byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
     }

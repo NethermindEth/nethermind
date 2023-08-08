@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
@@ -24,18 +25,35 @@ namespace Nethermind.JsonRpc.Test
             return service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http)).Result;
         }
 
-        public static string TestSerializedRequest<T>(IReadOnlyCollection<JsonConverter> converters, T module, string method, params string[] parameters) where T : class, IRpcModule
+        public static async Task<string> TestSerializedRequest<T>(IReadOnlyCollection<JsonConverter> converters, T module, string method, params string[] parameters) where T : class, IRpcModule
         {
+            long Serialize(EthereumJsonSerializer ethereumJsonSerializer, JsonRpcResponse jsonRpcResponse, IJsonRpcService jsonRpcService, Stream stream, bool indented = false)
+            {
+                try
+                {
+                    return ethereumJsonSerializer.SerializeWaitForEnumeration(stream, jsonRpcResponse, indented);
+                }
+                catch (Exception e) when (e.InnerException is OperationCanceledException)
+                {
+                    return SerializeTimeoutException(ethereumJsonSerializer, jsonRpcResponse, jsonRpcService, stream);
+                }
+                catch (OperationCanceledException)
+                {
+                    return SerializeTimeoutException(ethereumJsonSerializer, jsonRpcResponse, jsonRpcService, stream);
+                }
+            }
+
+            static long SerializeTimeoutException(IJsonSerializer jsonSerializer, JsonRpcResponse response, IJsonRpcService service, Stream resultStream) =>
+                jsonSerializer.Serialize(resultStream, service.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.", response.Id, response.MethodName));
+
             IJsonRpcService service = BuildRpcService(module, converters);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
 
-            JsonRpcContext context = new JsonRpcContext(RpcEndpoint.Http);
-            if (module is IContextAwareRpcModule contextAwareModule
-                && contextAwareModule.Context is not null)
-            {
-                context = contextAwareModule.Context;
-            }
-            JsonRpcResponse response = service.SendRequestAsync(request, context).Result;
+            JsonRpcContext context = module is IContextAwareRpcModule { Context: not null } contextAwareModule
+                ? contextAwareModule.Context
+                : new JsonRpcContext(RpcEndpoint.Http);
+
+            JsonRpcResponse response = await service.SendRequestAsync(request, context);
 
             EthereumJsonSerializer serializer = new();
             foreach (JsonConverter converter in converters)
@@ -43,26 +61,26 @@ namespace Nethermind.JsonRpc.Test
                 serializer.RegisterConverter(converter);
             }
 
-            Stream stream = new MemoryStream();
-            long size = serializer.Serialize(stream, response);
+            await using Stream stream = new MemoryStream();
+            long size = Serialize(serializer, response, service, stream);
 
             // for coverage (and to prove that it does not throw
-            Stream indentedStream = new MemoryStream();
-            serializer.Serialize(indentedStream, response, true);
+            await using Stream indentedStream = new MemoryStream();
+            Serialize(serializer, response, service, indentedStream, true);
 
             stream.Seek(0, SeekOrigin.Begin);
-            string serialized = new StreamReader(stream).ReadToEnd();
-            TestContext.Out?.WriteLine("Serialized:");
-            TestContext.Out?.WriteLine(serialized);
+            string serialized = await new StreamReader(stream).ReadToEndAsync();
+            await TestContext.Out.WriteLineAsync("Serialized:");
+            await TestContext.Out.WriteLineAsync(serialized);
 
             size.Should().Be(serialized.Length);
 
             return serialized;
         }
 
-        public static string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
+        public static Task<string> TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
         {
-            return TestSerializedRequest(new JsonConverter[0], module, method, parameters);
+            return TestSerializedRequest(Array.Empty<JsonConverter>(), module, method, parameters);
         }
 
         public static IJsonRpcService BuildRpcService<T>(T module, IReadOnlyCollection<JsonConverter>? converters = null) where T : class, IRpcModule

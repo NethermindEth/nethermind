@@ -142,9 +142,9 @@ namespace Nethermind.Evm.Test.Tracing
         public void Handles_well_revert()
         {
             TestEnvironment testEnvironment = new();
-            long gasLimit = 100000000;
-            Transaction tx = Build.A.Transaction.WithGasLimit(100000000).TestObject;
-            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+            long gasLimit = 100_000_000;
+            Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
             long gasLeft = gasLimit - 22000;
             testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),

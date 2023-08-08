@@ -65,10 +65,6 @@ namespace Nethermind.Config.Test
         protected IEnumerable<string> EnergyConfigs
             => Configs.Where(config => config.Contains("energy"));
 
-        [ConfigFileGroup("xdai")]
-        protected IEnumerable<string> XDaiConfigs
-            => Configs.Where(config => config.Contains("xdai"));
-
         [ConfigFileGroup("gnosis")]
         protected IEnumerable<string> GnosisConfigs
             => Configs.Where(config => config.Contains("gnosis"));
@@ -105,14 +101,9 @@ namespace Nethermind.Config.Test
         protected IEnumerable<string> ValidatorConfigs
             => Configs.Where(config => config.Contains("validator"));
 
-        [ConfigFileGroup("ndm")]
-        protected IEnumerable<string> NdmConfigs
-            => Configs.Where(config => config.Contains("ndm"));
-
         [ConfigFileGroup("aura")]
         protected IEnumerable<string> AuraConfigs
             => PoaCoreConfigs
-                .Union(XDaiConfigs)
                 .Union(GnosisConfigs)
                 .Union(ChiadoConfigs)
                 .Union(VoltaConfigs)
