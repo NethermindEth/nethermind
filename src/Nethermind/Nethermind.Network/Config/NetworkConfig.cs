@@ -38,5 +38,6 @@ namespace Nethermind.Network.Config
         public int MaxOutgoingConnectPerSec { get; set; } = 20;
         public int ConnectTimeoutMs { get; set; } = 2000;
         public int ProcessingThreadCount { get; set; } = 1;
+        public string? ClientIdMatcher { get; set; } = null;
     }
 }

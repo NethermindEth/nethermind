@@ -94,5 +94,8 @@ namespace Nethermind.Network.Config
 
         [ConfigItem(DefaultValue = "1", HiddenFromDocs = true, Description = "[TECHNICAL] Num of thread in final processing of network packet. Set to more than 1 if you have very fast internet.")]
         int ProcessingThreadCount { get; set; }
+
+        [ConfigItem(DefaultValue = null, HiddenFromDocs = true, Description = "[TECHNICAL] Only allow peer with clientId matching this regex. Useful for testing.")]
+        string? ClientIdMatcher { get; set; }
     }
 }

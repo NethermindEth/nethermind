@@ -6,12 +6,14 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
@@ -47,6 +49,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
     public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
     private readonly List<Capability> SupportedCapabilities = DefaultCapabilities.ToList();
+    private readonly Regex? _clientIdPattern;
 
     public int ListenPort { get; }
     public PublicKey LocalNodeId { get; }
@@ -61,9 +64,15 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         PublicKey localNodeId,
         INodeStatsManager nodeStatsManager,
         IMessageSerializationService serializer,
+        INetworkConfig networkConfig,
         ILogManager logManager) : base(session, nodeStatsManager, serializer, logManager)
     {
         _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
+        if (networkConfig.ClientIdMatcher != null)
+        {
+            _clientIdPattern = new Regex(networkConfig.ClientIdMatcher);
+        }
+
         LocalNodeId = localNodeId;
         ListenPort = session.LocalPort;
         _agreedCapabilities = new List<Capability>();
@@ -193,6 +202,13 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                              $"on {(isInbound ? "IN connection" : "OUT connection")}");
             // it does not really matter if there is mismatch - we do not use it anywhere
             //                throw new NodeDetailsMismatchException();
+        }
+
+        if (_clientIdPattern?.IsMatch(hello.ClientId) == false)
+        {
+            Session.InitiateDisconnect(
+                DisconnectReason.ClientFiltered,
+                $"clientId: {hello.ClientId}");
         }
 
         RemoteClientId = hello.ClientId;

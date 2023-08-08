@@ -32,6 +32,7 @@ public enum DisconnectReason : byte
     ProtocolInitTimeout,
     TxFlooding,
     NoCapabilityMatched,
+    ClientFiltered,
     AppClosing,
     DropWorstPeer,
     PeerRefreshFailed,
