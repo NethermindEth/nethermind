@@ -64,9 +64,6 @@ on:
         description: "SSH Keys to be installed in the smoke test nodes (separated by commas without space in-between commas) for example: key1,key2,key3"
         default: ""
         required: false
-      smoke_tests_ref:
-        description: "Ref of the smoke tests repository to be used for smoke tests"
-        default: "main"
   workflow_call:
     inputs:
       smoke_tests_ref:
