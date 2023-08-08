@@ -61,6 +61,11 @@ public class BlockForRpc
                 BlobGasUsed = block.Header.BlobGasUsed;
                 ExcessBlobGas = block.Header.ExcessBlobGas;
             }
+
+            if (spec.IsEip4788Enabled)
+            {
+                ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
+            }
         }
 
         Number = block.Number;
@@ -76,7 +81,6 @@ public class BlockForRpc
         Uncles = block.Uncles.Select(o => o.Hash);
         Withdrawals = block.Withdrawals;
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
-        ParentBeackBlockRoot = block.ParentBeaconBlockRoot;
     }
 
     public Address Author { get; set; }
@@ -133,5 +137,5 @@ public class BlockForRpc
     public ulong? ExcessBlobGas { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
-    public Keccak? ParentBeackBlockRoot { get; set; }
+    public Keccak? ParentBeaconBlockRoot { get; set; }
 }
