@@ -456,7 +456,11 @@ namespace Nethermind.Evm.Test
                 .MCOPY(32, 0, 32)
                 .STOP()
                 .Done;
-            GethLikeTxTrace traces = Execute(new GethLikeTxMemoryTracer(GethTraceOptions.Default), bytecode, MainnetSpecProvider.CancunActivation).BuildResult();
+            GethLikeTxTrace traces = Execute(
+                new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
+                bytecode,
+                MainnetSpecProvider.CancunActivation)
+                .BuildResult();
 
             var copied = traces.Entries.Last().Memory[0];
             var origin = traces.Entries.Last().Memory[1];
@@ -476,7 +480,11 @@ namespace Nethermind.Evm.Test
                 .MCOPY(1, 0, (UInt256)SLICE_SIZE)
                 .STOP()
                 .Done;
-            GethLikeTxTrace traces = Execute(new GethLikeTxMemoryTracer(GethTraceOptions.Default), bytecode, MainnetSpecProvider.CancunActivation).BuildResult();
+            GethLikeTxTrace traces = Execute(
+                new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
+                bytecode,
+                MainnetSpecProvider.CancunActivation)
+                .BuildResult();
 
             var result = traces.Entries.Last().Memory[0];
 
@@ -493,7 +501,11 @@ namespace Nethermind.Evm.Test
                 .MCOPY(0, 0, 32)
                 .STOP()
                 .Done;
-            GethLikeTxTrace traces = Execute(new GethLikeTxMemoryTracer(GethTraceOptions.Default), bytecode, MainnetSpecProvider.CancunActivation).BuildResult();
+            GethLikeTxTrace traces = Execute(
+                new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
+                bytecode,
+                MainnetSpecProvider.CancunActivation)
+                .BuildResult();
 
             Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32)), "gas");
             Assert.That(traces.Entries.Last().Memory.Count, Is.EqualTo(1));
@@ -509,7 +521,11 @@ namespace Nethermind.Evm.Test
                 .MCOPY(0, 1, (UInt256)SLICE_SIZE)
                 .STOP()
                 .Done;
-            GethLikeTxTrace traces = Execute(new GethLikeTxMemoryTracer(GethTraceOptions.Default), bytecode, MainnetSpecProvider.CancunActivation).BuildResult();
+            GethLikeTxTrace traces = Execute(
+                new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
+                bytecode,
+                MainnetSpecProvider.CancunActivation)
+                .BuildResult();
 
             var result = traces.Entries.Last().Memory[0];
 
