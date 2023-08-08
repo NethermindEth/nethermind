@@ -20,7 +20,9 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
+using ShouldGossip = Nethermind.Consensus.ShouldGossip;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
@@ -30,20 +32,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private readonly TxFloodController _floodController;
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;
+        private readonly ITxGossipPolicy _txGossipPolicy;
         private readonly LruKeyCache<Keccak> _lastBlockNotificationCache = new(10, "LastBlockNotificationCache");
 
-        public Eth62ProtocolHandler(
-            ISession session,
+        public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
-            ILogManager logManager) : base(session, serializer, statsManager, syncServer, logManager)
+            ILogManager logManager,
+            ITxGossipPolicy? transactionsGossipPolicy = null)
+            : base(session, serializer, statsManager, syncServer, logManager)
         {
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
+            _txGossipPolicy = transactionsGossipPolicy ?? TxPool.ShouldGossip.Instance;
 
             EnsureGossipPolicy();
         }
@@ -58,6 +63,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         public override int MessageIdSpaceSize => 8;
         public override string Name => "eth62";
         protected override TimeSpan InitTimeout => Timeouts.Eth62Status;
+        protected bool CanReceiveTransactions => _txGossipPolicy.ShouldListenToGossippedTransactions;
 
         public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 
@@ -112,7 +118,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 {
                     const string postFinalized = $"NewBlock message received after FIRST_FINALIZED_BLOCK PoS block. Disconnecting Peer.";
                     ReportIn(postFinalized, size);
-                    Disconnect(InitiateDisconnectReason.GossipingInPoS, postFinalized);
+                    Disconnect(DisconnectReason.GossipingInPoS, postFinalized);
                     return false;
                 }
 
@@ -153,17 +159,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     break;
                 case Eth62MessageCode.Transactions:
                     Metrics.Eth62TransactionsReceived++;
-                    if (_floodController.IsAllowed())
+                    if (CanReceiveTransactions)
                     {
-                        TransactionsMessage txMsg = Deserialize<TransactionsMessage>(message.Content);
-                        ReportIn(txMsg, size);
-                        Handle(txMsg);
+                        if (_floodController.IsAllowed())
+                        {
+                            TransactionsMessage txMsg = Deserialize<TransactionsMessage>(message.Content);
+                            ReportIn(txMsg, size);
+                            Handle(txMsg);
+                        }
+                        else
+                        {
+                            const string txFlooding = $"Ignoring {nameof(TransactionsMessage)} because of message flooding.";
+                            ReportIn(txFlooding, size);
+                        }
                     }
                     else
                     {
-                        const string txFlooding = $"Ignoring {nameof(TransactionsMessage)} because of message flooding.";
-                        ReportIn(txFlooding, size);
+                        const string ignored = $"{nameof(TransactionsMessage)} ignored, syncing";
+                        ReportIn(ignored, size);
                     }
+
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage

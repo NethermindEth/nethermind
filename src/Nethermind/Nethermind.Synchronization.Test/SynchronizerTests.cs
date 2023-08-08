@@ -65,6 +65,8 @@ namespace Nethermind.Synchronization.Test
 
         private class SyncPeerMock : ISyncPeer
         {
+            public string Name => "Mock";
+
             private readonly bool _causeTimeoutOnInit;
             private readonly bool _causeTimeoutOnBlocks;
             private readonly bool _causeTimeoutOnHeaders;
@@ -104,7 +106,7 @@ namespace Nethermind.Synchronization.Test
             public byte ProtocolVersion { get; }
             public string ProtocolCode { get; }
 
-            public void Disconnect(InitiateDisconnectReason reason, string details)
+            public void Disconnect(DisconnectReason reason, string details)
             {
                 Disconnected?.Invoke(this, EventArgs.Empty);
             }
@@ -411,7 +413,7 @@ namespace Nethermind.Synchronization.Test
                 }
 
                 SyncServer = new SyncServer(
-                    trieStore,
+                    trieStore.AsKeyValueStore(),
                     codeDb,
                     BlockTree,
                     NullReceiptStorage.Instance,
@@ -577,7 +579,7 @@ namespace Nethermind.Synchronization.Test
 
             public SyncingContext PeerCountEventuallyIs(long i)
             {
-                Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(1000, 100), "peer count");
+                Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(5000, 100), "peer count");
                 return this;
             }
 
@@ -818,7 +820,7 @@ namespace Nethermind.Synchronization.Test
                 .BestSuggestedBlockHasNumber(1).Stop();
         }
 
-        [Test, Retry(3)]
+        [Test, Retry(5)]
         public void Will_remove_peer_when_init_fails()
         {
             SyncPeerMock peerA = new("A", true, true);

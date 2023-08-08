@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Benchmark
         [ArgumentsSource(nameof(ValueSource))]
         public UInt256 Uint256(UInt256 v)
         {
-            EvmStack stack = new(_stack.AsSpan(), 0, NullTxTracer.Instance);
+            EvmStack<VirtualMachine.NotTracing> stack = new(_stack.AsSpan(), 0, NullTxTracer.Instance);
 
             stack.PushUInt256(in v);
             stack.PopUInt256(out UInt256 value);
@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Benchmark
         [ArgumentsSource(nameof(ValueSource))]
         public Int256.Int256 Int256(UInt256 v)
         {
-            EvmStack stack = new(_stack.AsSpan(), 0, NullTxTracer.Instance);
+            EvmStack<VirtualMachine.NotTracing> stack = new(_stack.AsSpan(), 0, NullTxTracer.Instance);
 
             stack.PushSignedInt256(new Int256.Int256(v));
             stack.PopSignedInt256(out Int256.Int256 value);
@@ -72,7 +72,7 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark(OperationsPerInvoke = 4)]
         public byte Byte()
         {
-            EvmStack stack = new(_stack.AsSpan(), 0, NullTxTracer.Instance);
+            EvmStack<VirtualMachine.NotTracing> stack = new(_stack.AsSpan(), 0, NullTxTracer.Instance);
 
             byte b = 1;
 
@@ -94,7 +94,7 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark(OperationsPerInvoke = 4)]
         public void PushZero()
         {
-            EvmStack stack = new(_stack.AsSpan(), 0, NullTxTracer.Instance);
+            EvmStack<VirtualMachine.NotTracing> stack = new(_stack.AsSpan(), 0, NullTxTracer.Instance);
 
             stack.PushZero();
             stack.PushZero();
@@ -105,7 +105,7 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark(OperationsPerInvoke = 4)]
         public void PushOne()
         {
-            EvmStack stack = new(_stack.AsSpan(), 0, NullTxTracer.Instance);
+            EvmStack<VirtualMachine.NotTracing> stack = new(_stack.AsSpan(), 0, NullTxTracer.Instance);
 
             stack.PushOne();
             stack.PushOne();
@@ -116,7 +116,7 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark(OperationsPerInvoke = 4)]
         public void Swap()
         {
-            EvmStack stack = new(_stack.AsSpan(), 2, NullTxTracer.Instance);
+            EvmStack<VirtualMachine.NotTracing> stack = new(_stack.AsSpan(), 2, NullTxTracer.Instance);
 
             stack.Swap(2);
             stack.Swap(2);
@@ -127,7 +127,7 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark(OperationsPerInvoke = 4)]
         public void Dup()
         {
-            EvmStack stack = new(_stack.AsSpan(), 1, NullTxTracer.Instance);
+            EvmStack<VirtualMachine.NotTracing> stack = new(_stack.AsSpan(), 1, NullTxTracer.Instance);
 
             stack.Dup(1);
             stack.Dup(1);

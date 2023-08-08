@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
@@ -23,6 +25,11 @@ namespace Nethermind.State
         private const int StartCapacity = Resettable.StartCapacity;
         private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
         private readonly ResettableHashSet<Address> _committedThisRound = new();
+        // Only guarding against hot duplicates so filter doesn't need to be too big
+        // Note:
+        // False negatives are fine as they will just result in a overwrite set
+        // False positives would be problematic as the code _must_ be persisted
+        private readonly LruKeyCache<Keccak> _codeInsertFilter = new(2048, "Code Insert Filter");
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
@@ -32,11 +39,11 @@ namespace Nethermind.State
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = Resettable.EmptyPosition;
 
-        public StateProvider(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+        public StateProvider(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, StateTree? stateTree = null)
         {
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _tree = new StateTree(trieStore, logManager);
+            _tree = stateTree ?? new StateTree(trieStore, logManager);
         }
 
         public void Accept(ITreeVisitor? visitor, Keccak? stateRoot, VisitingOptions? visitingOptions = null)
@@ -69,7 +76,7 @@ namespace Nethermind.State
             set => _tree.RootHash = value;
         }
 
-        private readonly StateTree _tree;
+        internal readonly StateTree _tree;
 
         public bool IsContract(Address address)
         {
@@ -141,7 +148,29 @@ namespace Nethermind.State
         {
             _needsStateRootUpdate = true;
             Keccak codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
-            _codeDb[codeHash.Bytes] = code.ToArray();
+
+            // Don't reinsert if already inserted. This can be the case when the same
+            // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
+            // or people copy and pasting popular contracts
+            if (!_codeInsertFilter.Get(codeHash))
+            {
+                if (_codeDb is IDbWithSpan dbWithSpan)
+                {
+                    dbWithSpan.PutSpan(codeHash.Bytes, code.Span);
+                }
+                else if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
+                        && codeArray.Offset == 0
+                        && codeArray.Count == code.Length)
+                {
+                    _codeDb[codeHash.Bytes] = codeArray.Array;
+                }
+                else
+                {
+                    _codeDb[codeHash.Bytes] = code.ToArray();
+                }
+
+                _codeInsertFilter.Set(codeHash);
+            }
 
             Account? account = GetThroughCache(address);
             if (account is null)
@@ -393,6 +422,18 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance} and nonce {nonce}");
             Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance);
             PushNew(address, account);
+        }
+
+        public void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)
+        {
+            if (AccountExists(address))
+            {
+                AddToBalance(address, balance, spec);
+            }
+            else
+            {
+                CreateAccount(address, balance);
+            }
         }
 
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)

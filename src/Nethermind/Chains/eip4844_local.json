@@ -56,7 +56,9 @@
       }
     },
     "timestamp": 0,
-    "baseFeePerGas": "0x7"
+    "baseFeePerGas": "0x7",
+    "blobGasUsed": "0x0",
+    "excessBlobGas": "0x0"
   },
   "accounts": {
     "0x8A04d14125D0FDCDc742F4A05C051De07232EDa4": {

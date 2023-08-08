@@ -6,11 +6,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Utils;
 using Nethermind.Logging;
@@ -23,7 +21,7 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcProcessor : IJsonRpcProcessor
     {
-        private JsonSerializer _traceSerializer;
+        private readonly JsonSerializer _traceSerializer;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly ILogger _logger;
         private readonly JsonSerializer _obsoleteBasicJsonSerializer = new();
@@ -31,7 +29,7 @@ namespace Nethermind.JsonRpc
         private readonly IJsonSerializer _jsonSerializer;
         private readonly Recorder _recorder;
 
-        public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager)
+        public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             if (fileSystem is null) throw new ArgumentNullException(nameof(fileSystem));
@@ -47,14 +45,14 @@ namespace Nethermind.JsonRpc
                 _recorder = new Recorder(recorderBaseFilePath, fileSystem, _logger);
             }
 
-            BuildTraceJsonSerializer();
+            _traceSerializer = BuildTraceJsonSerializer();
         }
 
         /// <summary>
         /// The serializer is created in a way that mimics the behaviour of the Kestrel serialization
         /// and can be used for recording and replaying JSON RPC calls.
         /// </summary>
-        private void BuildTraceJsonSerializer()
+        private JsonSerializer BuildTraceJsonSerializer()
         {
             JsonSerializerSettings jsonSettings = new()
             {
@@ -66,7 +64,7 @@ namespace Nethermind.JsonRpc
                 jsonSettings.Converters.Add(converter);
             }
 
-            _traceSerializer = JsonSerializer.Create(jsonSettings);
+            return JsonSerializer.Create(jsonSettings);
         }
 
         private IEnumerable<(JsonRpcRequest Model, List<JsonRpcRequest> Collection)> DeserializeObjectOrArray(TextReader json)
@@ -216,10 +214,10 @@ namespace Nethermind.JsonRpc
                 JsonRpcResult.Entry response = enumerator.IsStopped
                     ? new JsonRpcResult.Entry(
                         _jsonRpcService.GetErrorResponse(
-                            jsonRpcRequest.Method,
                             ErrorCodes.LimitExceeded,
                             $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB()}KB exceeded",
-                            jsonRpcRequest.Id),
+                            jsonRpcRequest.Id,
+                            jsonRpcRequest.Method),
                         RpcReport.Error)
                     : await HandleSingleRequest(jsonRpcRequest, context);
 
@@ -241,7 +239,11 @@ namespace Nethermind.JsonRpc
             bool isSuccess = localErrorResponse is null;
             if (!isSuccess)
             {
-                if (_logger.IsWarn) _logger.Warn($"Error when handling {request} | {_jsonSerializer.Serialize(localErrorResponse)}");
+                if (localErrorResponse.Error?.SuppressWarning == false)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Error when handling {request} | {_jsonSerializer.Serialize(localErrorResponse)}");
+                }
+
                 Metrics.JsonRpcErrors++;
             }
             else

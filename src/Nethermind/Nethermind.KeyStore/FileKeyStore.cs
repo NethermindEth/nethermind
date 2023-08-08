@@ -297,7 +297,7 @@ namespace Nethermind.KeyStore
             {
                 var files = Directory.GetFiles(_keyStoreIOSettingsProvider.StoreDirectory, "UTC--*--*");
                 var addresses = files.Select(Path.GetFileName).Select(fn => fn.Split("--").LastOrDefault()).Where(x => Address.IsValidAddress(x, false)).Select(x => new Address(x)).ToArray();
-                return (addresses, new Result { ResultType = ResultType.Success });
+                return (addresses, Result.Success);
             }
             catch (Exception e)
             {
@@ -332,7 +332,7 @@ namespace Nethermind.KeyStore
                 var storeDirectory = _keyStoreIOSettingsProvider.StoreDirectory;
                 var path = Path.Combine(storeDirectory, keyFileName);
                 File.WriteAllText(path, serializedKey, _keyStoreEncoding);
-                return new Result { ResultType = ResultType.Success };
+                return Result.Success;
             }
             catch (Exception e)
             {
@@ -358,7 +358,7 @@ namespace Nethermind.KeyStore
                     File.Delete(file);
                 }
 
-                return new Result { ResultType = ResultType.Success };
+                return Result.Success;
             }
             catch (Exception e)
             {

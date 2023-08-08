@@ -10,7 +10,6 @@ namespace Nethermind.Serialization.Rlp
 {
     public class HeaderDecoder : IRlpValueDecoder<BlockHeader>, IRlpStreamDecoder<BlockHeader>
     {
-
         public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -72,15 +71,16 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             }
 
-            int itemsRemaining = decoderContext.PeekNumberOfItemsRemaining(null, 2);
+            int itemsRemaining = decoderContext.PeekNumberOfItemsRemaining(null, 3);
             if (itemsRemaining > 0 &&
                 decoderContext.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
 
-                if (itemsRemaining == 2 && decoderContext.Position != headerCheck)
+                if (itemsRemaining == 3 && decoderContext.Position != headerCheck)
                 {
-                    blockHeader.ExcessDataGas = decoderContext.DecodeUInt256();
+                    blockHeader.BlobGasUsed = decoderContext.DecodeULong(allowLeadingZeroBytes: false);
+                    blockHeader.ExcessBlobGas = decoderContext.DecodeULong(allowLeadingZeroBytes: false);
                 }
             }
 
@@ -152,15 +152,16 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
             }
 
-            int itemsRemaining = rlpStream.PeekNumberOfItemsRemaining(null, 2);
+            int itemsRemaining = rlpStream.PeekNumberOfItemsRemaining(null, 3);
             if (itemsRemaining > 0 &&
                 rlpStream.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.WithdrawalsRoot = rlpStream.DecodeKeccak();
 
-                if (itemsRemaining == 2 && rlpStream.Position != headerCheck)
+                if (itemsRemaining == 3 && rlpStream.Position != headerCheck)
                 {
-                    blockHeader.ExcessDataGas = rlpStream.DecodeUInt256();
+                    blockHeader.BlobGasUsed = rlpStream.DecodeUlong(allowLeadingZeroBytes: false);
+                    blockHeader.ExcessBlobGas = rlpStream.DecodeUlong(allowLeadingZeroBytes: false);
                 }
             }
 
@@ -216,14 +217,15 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(header.BaseFeePerGas);
             }
 
-            if (header.WithdrawalsRoot is not null || header.ExcessDataGas is not null)
+            if (header.WithdrawalsRoot is not null || header.ExcessBlobGas is not null || header.BlobGasUsed is not null)
             {
                 rlpStream.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
             }
 
-            if (header.ExcessDataGas is not null)
+            if (header.BlobGasUsed is not null || header.ExcessBlobGas is not null)
             {
-                rlpStream.Encode(header.ExcessDataGas.Value);
+                rlpStream.Encode(header.BlobGasUsed.GetValueOrDefault());
+                rlpStream.Encode(header.ExcessBlobGas.GetValueOrDefault());
             }
         }
 
@@ -263,8 +265,9 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.Timestamp)
                                 + Rlp.LengthOf(item.ExtraData)
                                 + (item.BaseFeePerGas.IsZero ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
-                                + (item.WithdrawalsRoot is null && item.ExcessDataGas is null ? 0 : Rlp.LengthOfKeccakRlp)
-                                + (item.ExcessDataGas is null ? 0 : Rlp.LengthOf(item.ExcessDataGas.Value));
+                                + (item.WithdrawalsRoot is null && item.BlobGasUsed is null && item.ExcessBlobGas is null ? 0 : Rlp.LengthOfKeccakRlp)
+                                + (item.BlobGasUsed is null ? 0 : Rlp.LengthOf(item.BlobGasUsed.Value))
+                                + (item.ExcessBlobGas is null ? 0 : Rlp.LengthOf(item.ExcessBlobGas.Value));
 
             if (notForSealing)
             {

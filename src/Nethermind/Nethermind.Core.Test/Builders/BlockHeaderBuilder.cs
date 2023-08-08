@@ -30,8 +30,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
             DefaultDifficulty, 0,
             4_000_000,
             1_000_000,
-            new byte[] { 1, 2, 3 },
-            null);
+            new byte[] { 1, 2, 3 });
         TestObjectInternal.Bloom = Bloom.Empty;
         TestObjectInternal.MixHash = Keccak.Compute("mix_hash");
         TestObjectInternal.Nonce = 1000;
@@ -179,9 +178,15 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithExcessDataGas(UInt256? excessDataGas)
+    public BlockHeaderBuilder WithBlobGasUsed(ulong? blobGasUsed)
     {
-        TestObjectInternal.ExcessDataGas = excessDataGas;
+        TestObjectInternal.BlobGasUsed = blobGasUsed;
+        return this;
+    }
+
+    public BlockHeaderBuilder WithExcessBlobGas(ulong? excessBlobGas)
+    {
+        TestObjectInternal.ExcessBlobGas = excessBlobGas;
         return this;
     }
 }

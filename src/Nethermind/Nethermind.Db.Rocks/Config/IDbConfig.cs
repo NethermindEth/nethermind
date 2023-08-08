@@ -25,6 +25,7 @@ public interface IDbConfig : IConfig
     bool? UseDirectReads { get; set; }
     bool? UseDirectIoForFlushAndCompactions { get; set; }
     bool? DisableCompression { get; set; }
+    ulong? CompactionReadAhead { get; set; }
     IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
 
     ulong ReceiptsDbWriteBufferSize { get; set; }
@@ -33,9 +34,10 @@ public interface IDbConfig : IConfig
     bool ReceiptsDbCacheIndexAndFilterBlocks { get; set; }
     int? ReceiptsDbMaxOpenFiles { get; set; }
     long? ReceiptsDbMaxBytesPerSec { get; set; }
-    int? ReceiptsBlockSize { get; set; }
-    bool? ReceiptsUseDirectReads { get; set; }
-    bool? ReceiptsUseDirectIoForFlushAndCompactions { get; set; }
+    int? ReceiptsDbBlockSize { get; set; }
+    bool? ReceiptsDbUseDirectReads { get; set; }
+    bool? ReceiptsDbUseDirectIoForFlushAndCompactions { get; set; }
+    ulong? ReceiptsDbCompactionReadAhead { get; set; }
     IDictionary<string, string>? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
     ulong BlocksDbWriteBufferSize { get; set; }
@@ -45,8 +47,9 @@ public interface IDbConfig : IConfig
     int? BlocksDbMaxOpenFiles { get; set; }
     long? BlocksDbMaxBytesPerSec { get; set; }
     int? BlocksBlockSize { get; set; }
-    bool? BlocksUseDirectReads { get; set; }
-    bool? BlocksUseDirectIoForFlushAndCompactions { get; set; }
+    bool? BlocksDbUseDirectReads { get; set; }
+    bool? BlocksDbUseDirectIoForFlushAndCompactions { get; set; }
+    ulong? BlocksDbCompactionReadAhead { get; set; }
     IDictionary<string, string>? BlocksDbAdditionalRocksDbOptions { get; set; }
 
     ulong HeadersDbWriteBufferSize { get; set; }
@@ -55,9 +58,10 @@ public interface IDbConfig : IConfig
     bool HeadersDbCacheIndexAndFilterBlocks { get; set; }
     int? HeadersDbMaxOpenFiles { get; set; }
     long? HeadersDbMaxBytesPerSec { get; set; }
-    int? HeadersBlockSize { get; set; }
-    bool? HeadersUseDirectReads { get; set; }
-    bool? HeadersUseDirectIoForFlushAndCompactions { get; set; }
+    int? HeadersDbBlockSize { get; set; }
+    bool? HeadersDbUseDirectReads { get; set; }
+    bool? HeadersDbUseDirectIoForFlushAndCompactions { get; set; }
+    ulong? HeadersDbCompactionReadAhead { get; set; }
     IDictionary<string, string>? HeadersDbAdditionalRocksDbOptions { get; set; }
 
     ulong BlockInfosDbWriteBufferSize { get; set; }
@@ -66,9 +70,10 @@ public interface IDbConfig : IConfig
     bool BlockInfosDbCacheIndexAndFilterBlocks { get; set; }
     int? BlockInfosDbMaxOpenFiles { get; set; }
     long? BlockInfosDbMaxBytesPerSec { get; set; }
-    int? BlockInfosBlockSize { get; set; }
-    bool? BlockInfosUseDirectReads { get; set; }
-    bool? BlockInfosUseDirectIoForFlushAndCompactions { get; set; }
+    int? BlockInfosDbBlockSize { get; set; }
+    bool? BlockInfosDbUseDirectReads { get; set; }
+    bool? BlockInfosDbUseDirectIoForFlushAndCompactions { get; set; }
+    ulong? BlockInfosDbCompactionReadAhead { get; set; }
     IDictionary<string, string>? BlockInfosDbAdditionalRocksDbOptions { get; set; }
 
     ulong PendingTxsDbWriteBufferSize { get; set; }
@@ -77,9 +82,10 @@ public interface IDbConfig : IConfig
     bool PendingTxsDbCacheIndexAndFilterBlocks { get; set; }
     int? PendingTxsDbMaxOpenFiles { get; set; }
     long? PendingTxsDbMaxBytesPerSec { get; set; }
-    int? PendingTxsBlockSize { get; set; }
-    bool? PendingTxsUseDirectReads { get; set; }
-    bool? PendingTxsUseDirectIoForFlushAndCompactions { get; set; }
+    int? PendingTxsDbBlockSize { get; set; }
+    bool? PendingTxsDbUseDirectReads { get; set; }
+    bool? PendingTxsDbUseDirectIoForFlushAndCompactions { get; set; }
+    ulong? PendingTxsDbCompactionReadAhead { get; set; }
     IDictionary<string, string>? PendingTxsDbAdditionalRocksDbOptions { get; set; }
 
     ulong CodeDbWriteBufferSize { get; set; }
@@ -88,9 +94,10 @@ public interface IDbConfig : IConfig
     bool CodeDbCacheIndexAndFilterBlocks { get; set; }
     int? CodeDbMaxOpenFiles { get; set; }
     long? CodeDbMaxBytesPerSec { get; set; }
-    int? CodeBlockSize { get; set; }
+    int? CodeDbBlockSize { get; set; }
     bool? CodeUseDirectReads { get; set; }
     bool? CodeUseDirectIoForFlushAndCompactions { get; set; }
+    ulong? CodeCompactionReadAhead { get; set; }
     IDictionary<string, string>? CodeDbAdditionalRocksDbOptions { get; set; }
 
     ulong BloomDbWriteBufferSize { get; set; }
@@ -107,9 +114,10 @@ public interface IDbConfig : IConfig
     bool WitnessDbCacheIndexAndFilterBlocks { get; set; }
     int? WitnessDbMaxOpenFiles { get; set; }
     long? WitnessDbMaxBytesPerSec { get; set; }
-    int? WitnessBlockSize { get; set; }
+    int? WitnessDbBlockSize { get; set; }
     bool? WitnessUseDirectReads { get; set; }
     bool? WitnessUseDirectIoForFlushAndCompactions { get; set; }
+    ulong? WitnessCompactionReadAhead { get; set; }
     IDictionary<string, string>? WitnessDbAdditionalRocksDbOptions { get; set; }
 
     ulong CanonicalHashTrieDbWriteBufferSize { get; set; }
@@ -118,9 +126,10 @@ public interface IDbConfig : IConfig
     bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; }
     int? CanonicalHashTrieDbMaxOpenFiles { get; set; }
     long? CanonicalHashTrieDbMaxBytesPerSec { get; set; }
-    int? CanonicalHashTrieBlockSize { get; set; }
+    int? CanonicalHashTrieDbBlockSize { get; set; }
     bool? CanonicalHashTrieUseDirectReads { get; set; }
     bool? CanonicalHashTrieUseDirectIoForFlushAndCompactions { get; set; }
+    ulong? CanonicalHashTrieCompactionReadAhead { get; set; }
     IDictionary<string, string>? CanonicalHashTrieDbAdditionalRocksDbOptions { get; set; }
 
     ulong MetadataDbWriteBufferSize { get; set; }
@@ -129,9 +138,10 @@ public interface IDbConfig : IConfig
     bool MetadataDbCacheIndexAndFilterBlocks { get; set; }
     int? MetadataDbMaxOpenFiles { get; set; }
     long? MetadataDbMaxBytesPerSec { get; set; }
-    int? MetadataBlockSize { get; set; }
+    int? MetadataDbBlockSize { get; set; }
     bool? MetadataUseDirectReads { get; set; }
     bool? MetadataUseDirectIoForFlushAndCompactions { get; set; }
+    ulong? MetadataCompactionReadAhead { get; set; }
     IDictionary<string, string>? MetadataDbAdditionalRocksDbOptions { get; set; }
 
     ulong StateDbWriteBufferSize { get; set; }
@@ -143,6 +153,7 @@ public interface IDbConfig : IConfig
     int? StateDbBlockSize { get; set; }
     bool? StateDbUseDirectReads { get; set; }
     bool? StateDbUseDirectIoForFlushAndCompactions { get; set; }
+    ulong? StateDbCompactionReadAhead { get; set; }
     bool? StateDbDisableCompression { get; set; }
     IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 

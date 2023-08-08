@@ -222,6 +222,8 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         protected class SyncPeerMock : ISyncPeer
         {
+            public string Name => "Mock";
+
             public static Func<IList<Keccak>, Task<byte[][]>> NotPreimage = request =>
             {
                 var result = new byte[request.Count][];
@@ -280,7 +282,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             public byte ProtocolVersion { get; }
             public string ProtocolCode { get; }
 
-            public void Disconnect(InitiateDisconnectReason reason, string details)
+            public void Disconnect(DisconnectReason reason, string details)
             {
                 throw new NotImplementedException();
             }

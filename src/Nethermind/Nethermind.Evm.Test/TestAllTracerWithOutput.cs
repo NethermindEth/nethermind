@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
@@ -10,43 +11,47 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test
 {
-    public class TestAllTracerWithOutput : ITxTracer
+    public class TestAllTracerWithOutput : TxTracer
     {
-        public bool IsTracingReceipt => true;
-        public bool IsTracingActions => true;
-        public bool IsTracingOpLevelStorage => true;
-        public bool IsTracingMemory => true;
-        public bool IsTracingInstructions => true;
-        public bool IsTracingRefunds => true;
-        public bool IsTracingCode => true;
-        public bool IsTracingStack => true;
-        public bool IsTracingState => true;
-        public bool IsTracingStorage => true;
-        public bool IsTracingBlockHash => true;
-        public bool IsTracingAccess { get; set; } = true;
-        public bool IsTracingFees => true;
-        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
+        public TestAllTracerWithOutput()
+        {
+            IsTracingAccess = true;
+        }
 
-        public byte[] ReturnValue { get; set; }
+        public override bool IsTracingReceipt => true;
+        public override bool IsTracingActions => true;
+        public override bool IsTracingOpLevelStorage => true;
+        public override bool IsTracingMemory => true;
+        public override bool IsTracingInstructions => true;
+        public override bool IsTracingRefunds => true;
+        public override bool IsTracingCode => true;
+        public override bool IsTracingStack => true;
+        public override bool IsTracingState => true;
+        public override bool IsTracingStorage => true;
+        public override bool IsTracingBlockHash => true;
+        public new bool IsTracingAccess { get { return base.IsTracingAccess; } set { base.IsTracingAccess = value; } }
+        public override bool IsTracingFees => true;
 
-        public long GasSpent { get; set; }
+        public byte[]? ReturnValue { get; private set; }
 
-        public string Error { get; set; }
+        public long GasSpent { get; private set; }
 
-        public byte StatusCode { get; set; }
+        public string? Error { get; private set; }
 
-        public long Refund { get; set; }
+        public byte StatusCode { get; private set; }
+
+        public long Refund { get; private set; }
 
         public List<EvmExceptionType> ReportedActionErrors { get; set; } = new List<EvmExceptionType>();
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
             GasSpent = gasSpent;
             ReturnValue = output;
             StatusCode = Evm.StatusCode.Success;
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
+        public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)
         {
             GasSpent = gasSpent;
             Error = error;
@@ -54,122 +59,14 @@ namespace Nethermind.Evm.Test
             StatusCode = Evm.StatusCode.Failure;
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
-        {
-        }
-
-        public void ReportOperationError(EvmExceptionType error)
-        {
-        }
-
-        public void ReportOperationRemainingGas(long gas)
-        {
-        }
-
-        public void SetOperationStack(List<string> stackTrace)
-        {
-        }
-
-        public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
-        {
-        }
-
-        public void SetOperationMemory(IEnumerable<string> memoryTrace)
-        {
-        }
-
-        public void SetOperationMemorySize(ulong newSize)
-        {
-        }
-
-        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
-        {
-        }
-
-        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
-        {
-        }
-
-        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
-        {
-        }
-
-        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
-        {
-        }
-
-        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
-        {
-        }
-
-        public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
-        {
-        }
-
-        public void ReportCodeChange(Address address, byte[] before, byte[] after)
-        {
-        }
-
-        public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
-        {
-        }
-
-        public void ReportAccountRead(Address address)
-        {
-        }
-
-        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
-        {
-        }
-
-        public void ReportStorageRead(in StorageCell storageCell)
-        {
-        }
-
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
-        {
-        }
-
-        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
-        {
-        }
-
-        public void ReportActionError(EvmExceptionType exceptionType)
+        public override void ReportActionError(EvmExceptionType exceptionType)
         {
             ReportedActionErrors.Add(exceptionType);
         }
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
-        {
-        }
-
-        public void ReportBlockHash(Keccak blockHash)
-        {
-        }
-
-        public void ReportByteCode(byte[] byteCode)
-        {
-        }
-
-        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
-        {
-        }
-
-        public void ReportRefund(long refund)
+        public override void ReportRefund(long refund)
         {
             Refund += refund;
-        }
-
-        public void ReportExtraGasPressure(long extraGasPressure)
-        {
-        }
-
-        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
-        {
-        }
-
-        public void ReportFees(UInt256 fees, UInt256 burntFees)
-        {
         }
     }
 }

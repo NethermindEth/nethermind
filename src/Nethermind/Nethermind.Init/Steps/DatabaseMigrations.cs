@@ -10,7 +10,7 @@ using Nethermind.Init.Steps.Migrations;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(InitializeNetwork), typeof(ResetDatabaseMigrations))]
+    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(InitializeNetwork))]
     public sealed class DatabaseMigrations : IStep
     {
         private readonly IApiWithNetwork _api;

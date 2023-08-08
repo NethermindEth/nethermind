@@ -218,7 +218,7 @@ namespace Nethermind.Synchronization.SnapSync
                         if (nodeData.Length == 0)
                         {
                             RetryAccountRefresh(requestedPath);
-                            _logger.Trace($"SNAP - Empty Account Refresh:{requestedPath.PathAndAccount.Path}");
+                            _logger.Trace($"SNAP - Empty Account Refresh: {requestedPath.PathAndAccount.Path}");
                             continue;
                         }
 
@@ -336,7 +336,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 return new TrieStore(
                     _stateDb,
-                    Trie.Pruning.No.Pruning,
+                    Nethermind.Trie.Pruning.No.Pruning,
                     Persist.EveryBlock,
                     _logManager);
             }

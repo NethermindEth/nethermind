@@ -217,7 +217,7 @@ public class PivotUpdator
             }
         }
 
-        if (_logger.IsInfo) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}. Waiting for pivot block header. {_attemptsLeft} attempts left");
+        if (_logger.IsInfo && _attemptsLeft % 10 == 0) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}. Waiting for pivot block header. {_attemptsLeft} attempts left");
         return null;
     }
 
@@ -238,7 +238,7 @@ public class PivotUpdator
             pivotData.Encode(finalizedBlockHash);
             _metadataDb.Set(MetadataDbKeys.UpdatedPivotData, pivotData.Data!);
 
-            if (_logger.IsInfo) _logger.Info($"New pivot block has been set based on FCU from CL. Pivot block number: {finalizedBlockNumber}, hash: {finalizedBlockHash}");
+            if (_logger.IsInfo) _logger.Info($"New pivot block has been set based on ForkChoiceUpdate from CL. Pivot block number: {finalizedBlockNumber}, hash: {finalizedBlockHash}");
             return true;
         }
 

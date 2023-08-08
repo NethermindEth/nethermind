@@ -33,7 +33,7 @@ public partial class ShardBlobTxDecoderTests
     [TestCaseSource(nameof(TestCaseSource))]
     public void Roundtrip_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)
     {
-        RlpStream rlpStream = new RlpStream(_txDecoder.GetLength(testCase.Tx));
+        RlpStream rlpStream = new RlpStream(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
         _txDecoder.Encode(rlpStream, testCase.Tx);
         rlpStream.Position = 0;
         Transaction? decoded = _txDecoder.Decode(rlpStream);

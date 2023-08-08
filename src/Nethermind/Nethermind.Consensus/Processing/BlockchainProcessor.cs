@@ -28,6 +28,11 @@ namespace Nethermind.Consensus.Processing
         public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
         public const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
 
+        [ThreadStatic]
+        private static bool _isMainProcessingThread;
+        public static bool IsMainProcessingThread => _isMainProcessingThread;
+        public bool IsMainProcessor { get; init; }
+
         public ITracerBag Tracers => _compositeBlockTracer;
 
         private readonly IBlockProcessor _blockProcessor;
@@ -56,7 +61,7 @@ namespace Nethermind.Consensus.Processing
         private readonly CompositeBlockTracer _compositeBlockTracer = new();
         private readonly Stopwatch _stopwatch = new();
 
-        public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs> InvalidBlock;
+        public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
 
         /// <summary>
         ///
@@ -256,6 +261,8 @@ namespace Nethermind.Consensus.Processing
 
             Thread thread = new(() =>
             {
+                _isMainProcessingThread = IsMainProcessor;
+
                 try
                 {
                     RunProcessingLoop();
@@ -433,7 +440,7 @@ namespace Nethermind.Consensus.Processing
             return maxProcessingInterval is null || _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow;
         }
 
-        private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
+        private void TraceFailingBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
         {
             if ((_options.DumpOptions & dumpType) != 0)
             {
@@ -456,9 +463,9 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        private Block[]? ProcessBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer)
+        private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer)
         {
-            void DeleteInvalidBlocks(Keccak invalidBlockHash)
+            void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Keccak invalidBlockHash)
             {
                 for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
                 {
@@ -513,7 +520,7 @@ namespace Nethermind.Consensus.Processing
             {
                 if (invalidBlockHash is not null && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
                 {
-                    DeleteInvalidBlocks(invalidBlockHash);
+                    DeleteInvalidBlocks(in processingBranch, invalidBlockHash);
                 }
             }
 
@@ -539,7 +546,7 @@ namespace Nethermind.Consensus.Processing
                     {
                         if (_logger.IsInfo)
                             _logger.Info(
-                                $"Rerunning block after reorg or pruning: {block.ToString(Block.Format.FullHashAndNumber)}");
+                                $"Rerunning block after reorg or pruning: {block.ToString(Block.Format.Short)}");
                     }
 
                     blocksToProcess.Add(block);

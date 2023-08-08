@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
@@ -54,17 +55,13 @@ public class BlockValidator : IBlockValidator
     /// </returns>
     public bool ValidateSuggestedBlock(Block block)
     {
-        Transaction[] txs = block.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        for (int i = 0; i < txs.Length; i++)
-        {
-            if (!_txValidator.IsWellFormed(txs[i], spec))
-            {
-                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction {txs[i].Hash}");
-                return false;
-            }
-        }
+        if (!ValidateTransactions(block, spec))
+            return false;
+
+        if (!ValidateEip4844Fields(block, spec))
+            return false;
 
         if (spec.MaximumUncleCount < block.Uncles.Length)
         {
@@ -98,9 +95,6 @@ public class BlockValidator : IBlockValidator
         }
 
         if (!ValidateWithdrawals(block, spec, out _))
-            return false;
-
-        if (!ValidateBlobs(block, spec, out _))
             return false;
 
         return true;
@@ -140,6 +134,16 @@ public class BlockValidator : IBlockValidator
             if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
             {
                 if (_logger.IsError) _logger.Error($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
+            }
+
+            if (processedBlock.Header.BlobGasUsed != suggestedBlock.Header.BlobGasUsed)
+            {
+                if (_logger.IsError) _logger.Error($"- blob gas used: expected {suggestedBlock.Header.BlobGasUsed}, got {processedBlock.Header.BlobGasUsed}");
+            }
+
+            if (processedBlock.Header.ExcessBlobGas != suggestedBlock.Header.ExcessBlobGas)
+            {
+                if (_logger.IsError) _logger.Error($"- excess blob gas: expected {suggestedBlock.Header.ExcessBlobGas}, got {processedBlock.Header.ExcessBlobGas}");
             }
 
             for (int i = 0; i < processedBlock.Transactions.Length; i++)
@@ -193,36 +197,76 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
-    private bool ValidateBlobs(Block block, IReleaseSpec spec, out string? error)
+    private bool ValidateTransactions(Block block, IReleaseSpec spec)
     {
-        if (spec.IsEip4844Enabled && block.ExcessDataGas is null)
+        Transaction[] transactions = block.Transactions;
+
+        for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
         {
-            error = "ExcessDataGas field is not set.";
-            if (_logger.IsWarn) _logger.Warn(error);
+            Transaction transaction = transactions[txIndex];
+
+            if (!_txValidator.IsWellFormed(transaction, spec))
+            {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction {transaction.Hash}");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool ValidateEip4844Fields(Block block, IReleaseSpec spec)
+    {
+        if (!spec.IsEip4844Enabled)
+        {
+            return true;
+        }
+
+        int blobsInBlock = 0;
+        UInt256 blobGasPrice = UInt256.Zero;
+        Transaction[] transactions = block.Transactions;
+
+        for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
+        {
+            Transaction transaction = transactions[txIndex];
+
+            if (!transaction.SupportsBlobs)
+            {
+                continue;
+            }
+
+            if (blobGasPrice.IsZero)
+            {
+                if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block.Header, out blobGasPrice))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {nameof(blobGasPrice)} overflow.");
+                    return false;
+                }
+            }
+
+            if (transaction.MaxFeePerBlobGas < blobGasPrice)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} A transaction has unsufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {blobGasPrice}.");
+                return false;
+            }
+
+            blobsInBlock += transaction.BlobVersionedHashes!.Length;
+        }
+
+        ulong blobGasUsed = BlobGasCalculator.CalculateBlobGas(blobsInBlock);
+
+        if (blobGasUsed > Eip4844Constants.MaxBlobGasPerBlock)
+        {
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} A block cannot have more than {Eip4844Constants.MaxBlobGasPerBlock} blob gas.");
             return false;
         }
 
-        if (!spec.IsEip4844Enabled && block.ExcessDataGas is not null)
+        if (blobGasUsed != block.Header.BlobGasUsed)
         {
-            error = "ExcessDataGas field should not have value.";
-            if (_logger.IsWarn) _logger.Warn(error);
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {nameof(BlockHeader.BlobGasUsed)} declared in the block header does not match actual blob gas used: {block.Header.BlobGasUsed} != {blobGasUsed}.");
             return false;
         }
 
-        int? blobsInBlock = 0;
-        for (int txIndex = block.Transactions.Length - 1; txIndex >= 0; txIndex--)
-        {
-            blobsInBlock += block.Transactions[txIndex].BlobVersionedHashes?.Length ?? 0;
-        }
-
-        if (spec.IsEip4844Enabled && blobsInBlock > Eip4844Constants.MaxBlobsPerBlock)
-        {
-            error = $"A block cannot contain more than {Eip4844Constants.MaxBlobsPerBlock} blobs.";
-            if (_logger.IsWarn) _logger.Warn(error);
-            return false;
-        }
-
-        error = null;
         return true;
     }
 

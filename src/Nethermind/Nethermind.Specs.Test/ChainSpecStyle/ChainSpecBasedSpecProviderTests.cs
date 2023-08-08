@@ -22,6 +22,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle;
 [TestFixture]
 public class ChainSpecBasedSpecProviderTests
 {
+    private const double GnosisBlockTime = 5;
+
     [TestCase(0, null, false)]
     [TestCase(0, 0ul, false)]
     [TestCase(0, 4660ul, false)]
@@ -117,11 +119,7 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Sepolia_loads_properly()
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/sepolia.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-
+        ChainSpec chainSpec = LoadChainSpecFromChainFolder("sepolia");
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         SepoliaSpecProvider sepolia = SepoliaSpecProvider.Instance;
 
@@ -140,6 +138,9 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(long.MaxValue));
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Sepolia));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Sepolia));
+
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, SepoliaSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
     }
 
     [Test]
@@ -174,11 +175,7 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Goerli_loads_properly()
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/goerli.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-
+        ChainSpec chainSpec = LoadChainSpecFromChainFolder("goerli");
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         GoerliSpecProvider goerli = GoerliSpecProvider.Instance;
 
@@ -201,22 +198,22 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(GoerliSpecProvider.Instance.TerminalTotalDifficulty));
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Goerli));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Goerli));
+
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, GoerliSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
     }
 
     [Test]
     public void Chiado_loads_properly()
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/chiado.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-
+        ChainSpec chainSpec = LoadChainSpecFromChainFolder("chiado");
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         ChiadoSpecProvider chiado = ChiadoSpecProvider.Instance;
 
         List<ForkActivation> forkActivationsToTest = new()
         {
             (ForkActivation)0,
-            //(ForkActivation)1,
+            (ForkActivation)(1, 20),
             (1, ChiadoSpecProvider.ShanghaiTimestamp - 1),
             (1, ChiadoSpecProvider.ShanghaiTimestamp),
             (999_999_999, 999_999_999) // far in the future
@@ -227,18 +224,18 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Chiado));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Chiado));
 
-        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp - 1)).MaxCodeSize.Should().Be(long.MaxValue);
-        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxCodeSize.Should().Be(24576L);
-        provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp)).MaxInitCodeSize.Should().Be(2 * 24576L);
+        IReleaseSpec? preShanghaiSpec = provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp - 1));
+        IReleaseSpec? postShanghaiSpec = provider.GetSpec((1, ChiadoSpecProvider.ShanghaiTimestamp));
+
+        VerifyGnosisShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
     }
 
     [Test]
     public void Gnosis_loads_properly()
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/gnosis.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-
+        ChainSpec chainSpec = LoadChainSpecFromChainFolder("gnosis");
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         GnosisSpecProvider gnosisSpecProvider = GnosisSpecProvider.Instance;
 
@@ -266,22 +263,51 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Gnosis));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Gnosis));
 
-        provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp - 1)).MaxCodeSize.Should().Be(long.MaxValue);
+        VerifyGnosisPreShanghaiExceptions(provider);
 
-        /* ToDo uncomment when we have gnosis shapella timestamp
-        provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp)).MaxCodeSize.Should().Be(24576L);
-        provider.GetSpec((1, GnosisSpecProvider.ShanghaiTimestamp)).MaxInitCodeSize.Should().Be(2 * 24576L);*/
+        IReleaseSpec? preShanghaiSpec = provider.GetSpec((GnosisSpecProvider.LondonBlockNumber + 1,
+            GnosisSpecProvider.ShanghaiTimestamp - 1));
+        IReleaseSpec? postShanghaiSpec = provider.GetSpec((GnosisSpecProvider.LondonBlockNumber + 1,
+            GnosisSpecProvider.ShanghaiTimestamp));
+
+        VerifyGnosisShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
+    }
+
+    private void VerifyGnosisShanghaiExceptions(IReleaseSpec preShanghaiSpec, IReleaseSpec postShanghaiSpec)
+    {
+        preShanghaiSpec.MaxCodeSize.Should().Be(long.MaxValue);
+        postShanghaiSpec.MaxCodeSize.Should().Be(24576L);
+
+        preShanghaiSpec.MaxInitCodeSize.Should().Be(-2L); // doesn't have meaningful value before EIP3860
+        postShanghaiSpec.MaxInitCodeSize.Should().Be(2 * 24576L);
+
+        preShanghaiSpec.LimitCodeSize.Should().Be(false);
+        postShanghaiSpec.LimitCodeSize.Should().Be(true);
+
+        preShanghaiSpec.IsEip170Enabled.Should().Be(false);
+        postShanghaiSpec.IsEip170Enabled.Should().Be(true);
+    }
+
+    private void VerifyGnosisPreShanghaiExceptions(ISpecProvider specProvider)
+    {
+        specProvider.GenesisSpec.MaximumUncleCount.Should().Be(0);
+        specProvider.GetSpec((ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber - (1))).IsEip1283Enabled.Should()
+            .BeFalse();
+        specProvider.GetSpec((ForkActivation)GnosisSpecProvider.ConstantinopoleBlockNumber).IsEip1283Enabled.Should()
+            .BeTrue();
+        specProvider.GetSpec((ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber - 1)).UseConstantinopleNetGasMetering.Should()
+            .BeFalse();
+        specProvider.GetSpec((ForkActivation)GnosisSpecProvider.ConstantinopoleBlockNumber).UseConstantinopleNetGasMetering.Should()
+            .BeTrue();
     }
 
 
     [Test]
     public void Mainnet_loads_properly()
     {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/foundation.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-
+        ChainSpec chainSpec = LoadChainSpecFromChainFolder("foundation");
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         MainnetSpecProvider mainnet = MainnetSpecProvider.Instance;
 
@@ -321,6 +347,7 @@ public class ChainSpecBasedSpecProviderTests
         provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxCodeSize.Should().Be(24576L);
         provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxInitCodeSize.Should().Be(2 * 24576L);
 
+        provider.GetSpec((ForkActivation)(long.MaxValue - 1)).IsEip2537Enabled.Should().BeFalse();
         Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(MainnetSpecProvider.LondonBlockNumber));
         Assert.That(provider.GetSpec((ForkActivation)4_369_999).DifficultyBombDelay, Is.EqualTo(0_000_000));
         Assert.That(provider.GetSpec((ForkActivation)4_370_000).DifficultyBombDelay, Is.EqualTo(3_000_000));
@@ -340,6 +367,9 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(MainnetSpecProvider.Instance.TerminalTotalDifficulty));
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Mainnet));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Mainnet));
+
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, MainnetSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
     }
 
     [Flags]
@@ -409,41 +439,11 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
-    [Test]
-    public void Ropsten_loads_properly()
+    private ChainSpec LoadChainSpecFromChainFolder(string chain)
     {
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/ropsten.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-        RopstenSpecProvider ropsten = RopstenSpecProvider.Instance;
-
-        List<ForkActivation> forkActivationsToTest = new()
-        {
-            (ForkActivation)0,
-            (ForkActivation)1,
-            (ForkActivation)(RopstenSpecProvider.SpuriousDragonBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.SpuriousDragonBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.ByzantiumBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.ByzantiumBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.ConstantinopleFixBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.ConstantinopleFixBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.IstanbulBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.IstanbulBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.MuirGlacierBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.MuirGlacierBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.BerlinBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.BerlinBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.LondonBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.LondonBlockNumber,
-            (ForkActivation)999_999_999, // far in the future
-        };
-
-        CompareSpecProviders(ropsten, provider, forkActivationsToTest, CompareSpecsOptions.CheckDifficultyBomb);
-        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(RopstenSpecProvider.Instance.TerminalTotalDifficulty));
-        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(RopstenSpecProvider.LondonBlockNumber));
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"../../../../Chains/{chain}.json");
+        return loader.Load(File.ReadAllText(path));
     }
 
     [Test]
@@ -680,7 +680,6 @@ public class ChainSpecBasedSpecProviderTests
                 Eip2028Transition = 20280L,
                 Eip2200Transition = 22000L,
                 Eip2315Transition = 23150L,
-                Eip2537Transition = 25370L,
                 Eip2565Transition = 25650L,
                 Eip2929Transition = 29290L,
                 Eip2930Transition = 29300L,
@@ -700,6 +699,7 @@ public class ChainSpecBasedSpecProviderTests
                 Eip3855TransitionTimestamp = 1000000012,
                 Eip3860TransitionTimestamp = 1000000012,
                 Eip1153TransitionTimestamp = 1000000024,
+                Eip2537TransitionTimestamp = 1000000024
             }
         };
 
@@ -763,11 +763,13 @@ public class ChainSpecBasedSpecProviderTests
         TestTransitions((ForkActivation)22000L, r => { r.IsEip2200Enabled = true; });
         TestTransitions((ForkActivation)23000L, r => { r.IsEip1283Enabled = r.IsEip1344Enabled = true; });
         TestTransitions((ForkActivation)24000L, r => { r.IsEip2315Enabled = r.ValidateChainId = r.ValidateReceipts = true; });
-        TestTransitions((ForkActivation)29290L, r => { r.IsEip2929Enabled = r.IsEip2537Enabled = r.IsEip2565Enabled = true; });
+        TestTransitions((ForkActivation)29290L, r => { r.IsEip2929Enabled = r.IsEip2565Enabled = true; });
         TestTransitions((ForkActivation)29300L, r => { r.IsEip2930Enabled = true; });
         TestTransitions((ForkActivation)31980L, r => { r.IsEip3198Enabled = true; });
         TestTransitions((ForkActivation)35290L, r => { r.IsEip3529Enabled = true; });
         TestTransitions((ForkActivation)35410L, r => { r.IsEip3541Enabled = true; });
+        TestTransitions((ForkActivation)35410L, r => { r.IsEip3541Enabled = true; });
+
 
         TestTransitions((41000L, 1000000012), r =>
         {
@@ -775,6 +777,25 @@ public class ChainSpecBasedSpecProviderTests
             r.IsEip3855Enabled = true;
             r.IsEip3860Enabled = true;
         });
-        TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = true; });
+        TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = r.IsEip2537Enabled = true; });
     }
+
+    private static IEnumerable<ulong> GetTransitionTimestamps(ChainParameters parameters) => parameters.GetType()
+        .Properties()
+        .Where(p => p.Name.EndsWith("TransitionTimestamp", StringComparison.Ordinal))
+        .Select(p => (ulong?)p.GetValue(parameters))
+        .Where(t => t is not null)
+        .Select(t => t!.Value);
+
+    /// <summary>
+    /// Validates the timestamp specified by making sure the resulting slot is a multiple of 8192.
+    /// </summary>
+    /// <param name="timestamp">The timestamp to validate</param>
+    /// <param name="genesisTimestamp">The network's genesis timestamp</param>
+    /// <param name="blockTime">The network's block time in seconds</param>
+    /// <returns><c>true</c> if the timestamp is valid; otherwise, <c>false</c>.</returns>
+    private static bool ValidateSlotByTimestamp(ulong timestamp, ulong genesisTimestamp, double blockTime = 12) =>
+        timestamp > genesisTimestamp &&
+        Math.Round((timestamp - genesisTimestamp) / blockTime) % 0x2000 == 0 &&
+        Math.Ceiling((timestamp - genesisTimestamp) / blockTime) % 0x2000 == 0;
 }

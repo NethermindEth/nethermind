@@ -22,6 +22,7 @@ namespace Nethermind.Synchronization.Test
     /// </summary>
     public class LatencySyncPeerMock : ISyncPeer
     {
+        public string Name => "Latency";
         public IBlockTree Tree { get; }
         public bool IsReported { get; set; } = false;
         public long? BusyUntil { get; set; }
@@ -57,7 +58,7 @@ namespace Nethermind.Synchronization.Test
         public byte ProtocolVersion { get; }
         public string ProtocolCode { get; }
 
-        public void Disconnect(InitiateDisconnectReason reason, string details)
+        public void Disconnect(DisconnectReason reason, string details)
         {
             throw new NotImplementedException();
         }

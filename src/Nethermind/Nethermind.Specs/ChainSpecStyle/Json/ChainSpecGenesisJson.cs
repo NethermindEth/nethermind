@@ -22,5 +22,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public UInt256? BaseFeePerGas { get; set; }
 
         public Keccak StateRoot { get; set; }
+
+        public ulong? BlobGasUsed { get; set; }
+        public ulong? ExcessBlobGas { get; set; }
     }
 }

@@ -293,9 +293,15 @@ public class TestBlockchain : IDisposable
         }
 
         genesisBlockBuilder.WithStateRoot(State.StateRoot);
-        if (SealEngineType == Nethermind.Core.SealEngineType.AuRa)
+        if (SealEngineType == Core.SealEngineType.AuRa)
         {
             genesisBlockBuilder.WithAura(0, new byte[65]);
+        }
+
+        if (SpecProvider.GenesisSpec.IsEip4844Enabled)
+        {
+            genesisBlockBuilder.WithBlobGasUsed(0);
+            genesisBlockBuilder.WithExcessBlobGas(0);
         }
 
         return genesisBlockBuilder.TestObject;

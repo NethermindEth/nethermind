@@ -53,12 +53,12 @@ public partial class EngineModuleTests
         new(mergeConfig, mockedPayloadService, logManager);
 
 
-    protected async Task<MergeTestBlockchain> CreateBlockChain(IReleaseSpec? releaseSpec = null, IMergeConfig? mergeConfig = null,
+    protected async Task<MergeTestBlockchain> CreateBlockchain(IReleaseSpec? releaseSpec = null, IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null)
         => await CreateBaseBlockchain(mergeConfig, mockedPayloadService)
             .Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
-    protected async Task<MergeTestBlockchain> CreateBlockChain(ISpecProvider specProvider,
+    protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
         ILogManager? logManager = null)
         => await CreateBaseBlockchain(null, null, logManager).Build(specProvider);
 
@@ -80,12 +80,15 @@ public partial class EngineModuleTests
         return new EngineRpcModule(
             new GetPayloadV1Handler(
                 chain.PayloadPreparationService!,
+                chain.SpecProvider!,
                 chain.LogManager),
             new GetPayloadV2Handler(
                 chain.PayloadPreparationService!,
+                chain.SpecProvider!,
                 chain.LogManager),
             new GetPayloadV3Handler(
                 chain.PayloadPreparationService!,
+                chain.SpecProvider!,
                 chain.LogManager),
             new NewPayloadHandler(
                 chain.BlockValidator,
