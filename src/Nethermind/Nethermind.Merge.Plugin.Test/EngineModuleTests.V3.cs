@@ -173,7 +173,7 @@ public partial class EngineModuleTests
 
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
             chain.SpecProvider.GenesisSpec, chain.State,
-            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), blobGasUsed: 0, excessBlobGas: 0, beaconParentBlockRoot: TestItem.KeccakA);
+            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), blobGasUsed: 0, excessBlobGas: 0, parentBeaconBlockRoot: TestItem.KeccakA);
 
         return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig), new(RpcEndpoint.Http), new(), executionPayload);
     }
@@ -306,7 +306,7 @@ public partial class EngineModuleTests
 
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
             blockchain.SpecProvider.GenesisSpec, blockchain.State,
-            CreateParentBlockRequestOnHead(blockchain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), 0, 0, transactions: transactions, beaconParentBlockRoot: Keccak.Zero);
+            CreateParentBlockRequestOnHead(blockchain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), 0, 0, transactions: transactions, parentBeaconBlockRoot: Keccak.Zero);
         ResultWrapper<PayloadStatusV1> result = await engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, Keccak.Zero.BytesToArray());
 
         return result.Data.Status;
@@ -370,7 +370,7 @@ public partial class EngineModuleTests
     {
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
             chain.SpecProvider.GenesisSpec, chain.State,
-            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0, 0, beaconParentBlockRoot: TestItem.KeccakE);
+            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0, 0, parentBeaconBlockRoot: TestItem.KeccakE);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>(), executionPayload.ParentBeaconBlockRoot.BytesToArray());
 
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
@@ -406,7 +406,7 @@ public partial class EngineModuleTests
             PrevRandao = TestItem.KeccakH,
             SuggestedFeeRecipient = TestItem.AddressF,
             Withdrawals = new List<Withdrawal> { TestItem.WithdrawalA_1Eth },
-            BeaconParentBlockRoot = spec.IsBeaconBlockRootAvailable ? TestItem.KeccakE : null
+            ParentBeaconBlockRoot = spec.IsBeaconBlockRootAvailable ? TestItem.KeccakE : null
         };
         Keccak currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
