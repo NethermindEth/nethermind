@@ -13,7 +13,6 @@ on:
         required: false
 
 jobs:
-
   create_node: 
     name: Create node from current branch
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
