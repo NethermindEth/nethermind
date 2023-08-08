@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
             _chainSpec.Allocations = null;
 
-            _beaconBlockRootHandler?.HandleBeaconBlockRoot(genesis, _specProvider.GenesisSpec, _stateProvider);
+            _beaconBlockRootHandler?.InitStatefulPrecompiles(genesis, _specProvider.GenesisSpec, _stateProvider);
 
             _stateProvider.Commit(_specProvider.GenesisSpec, true);
 
