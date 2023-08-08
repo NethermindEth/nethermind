@@ -580,8 +580,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void
-            should_add_tx_if_cost_of_executing_all_txs_in_bucket_exceeds_balance_but_these_with_lower_nonces_doesnt()
+        public void should_add_tx_if_cost_of_executing_all_txs_in_bucket_exceeds_balance_but_these_with_lower_nonces_doesnt()
         {
             const int gasPrice = 10;
             const int value = 1;
@@ -606,9 +605,15 @@ namespace Nethermind.TxPool.Test
                 }
             }
 
-            _txPool.GetPendingTransactions().Length.Should().Be(8);
-            _txPool.SubmitTx(transactions[7], TxHandlingOptions.PersistentBroadcast);
-            _txPool.GetPendingTransactions().Length.Should().Be(9);
+            _txPool.GetPendingTransactions().Length.Should().Be(8); // nonces 0-6 and 8
+            _txPool.GetPendingTransactions().Last().Nonce.Should().Be(8);
+
+            _txPool.SubmitTx(transactions[8], TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.AlreadyKnown);
+            _txPool.SubmitTx(transactions[7], TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+
+            _txPool.GetPendingTransactions().Length.Should().Be(8); // nonces 0-7 - 8 was removed because of not enough balance
+            _txPool.GetPendingTransactions().Last().Nonce.Should().Be(7);
+            _txPool.GetPendingTransactions().Should().BeEquivalentTo(transactions.SkipLast(2));
         }
 
         [Test]
