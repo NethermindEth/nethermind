@@ -70,8 +70,6 @@ namespace Nethermind.JsonRpc.Test
 
             stream.Seek(0, SeekOrigin.Begin);
             string serialized = await new StreamReader(stream).ReadToEndAsync();
-            await TestContext.Out.WriteLineAsync("Serialized:");
-            await TestContext.Out.WriteLineAsync(serialized);
 
             size.Should().Be(serialized.Length);
 
