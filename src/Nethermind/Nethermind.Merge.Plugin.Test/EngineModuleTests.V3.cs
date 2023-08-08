@@ -8,6 +8,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using k8s;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -108,6 +110,31 @@ public partial class EngineModuleTests
         responseFirst.Should().NotBeNull();
         responseFirst.Result.ResultType.Should().Be(ResultType.Failure);
         responseFirst.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
+    }
+
+    [TestCase(1, true)]
+    [TestCase(2, true)]
+    [TestCase(3, false)]
+    public async Task ForkchoiceUpdatedV3_should_fail_on_wrong_payloadVersion(int version, bool shoudlFail)
+    {
+        using SemaphoreSlim blockImprovementLock = new(0);
+        using MergeTestBlockchain chain = await CreateBlockchain(Cancun.Instance);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        Keccak currentHeadHash = chain.BlockTree.HeadHash;
+        ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chain.BlockTree.Head!.Timestamp + 1,
+            PrevRandao = TestItem.KeccakH,
+            SuggestedFeeRecipient = TestItem.AddressF,
+            Withdrawals = version >= EngineApiVersions.Shanghai ? new List<Withdrawal> { TestItem.WithdrawalA_1Eth } : null,
+            BeaconParentBlockRoot = version >= EngineApiVersions.Cancun ? TestItem.KeccakE : null
+        };
+
+        ResultWrapper<ForkchoiceUpdatedV1Result?> responseFirst = await rpc.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
+        responseFirst.Should().NotBeNull();
+        responseFirst.Result.ResultType.Should().Be(shoudlFail ? ResultType.Failure : ResultType.Success);
     }
 
     [TestCase(0)]
