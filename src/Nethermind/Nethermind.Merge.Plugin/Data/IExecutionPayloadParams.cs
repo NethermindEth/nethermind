@@ -61,7 +61,7 @@ public class ExecutionPayloadV3Params : IExecutionPayloadParams
         if (_parentBeaconBlockRoot is null)
         {
             error = "Parent beacon block root must be set";
-            return ValidationResult.Invalid;
+            return ValidationResult.Fail;
         }
 
         _executionPayload.ParentBeaconBlockRoot = new Keccak(_parentBeaconBlockRoot);
