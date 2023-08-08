@@ -25,7 +25,7 @@ public class PayloadAttributes
 
     public IList<Withdrawal>? Withdrawals { get; set; }
 
-    public Keccak? BeaconParentBlockRoot { get; set; }
+    public Keccak? ParentBeaconBlockRoot { get; set; }
     /// <summary>Gets or sets the gas limit.</summary>
     /// <remarks>Used for MEV-Boost only.</remarks>
     public long? GasLimit { get; set; }
@@ -44,9 +44,9 @@ public class PayloadAttributes
             sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Count}");
         }
 
-        if (BeaconParentBlockRoot is not null)
+        if (ParentBeaconBlockRoot is not null)
         {
-            sb.Append($", {nameof(BeaconParentBlockRoot)} : {BeaconParentBlockRoot}");
+            sb.Append($", {nameof(ParentBeaconBlockRoot)} : {ParentBeaconBlockRoot}");
         }
 
         sb.Append('}');
@@ -60,7 +60,7 @@ public static class PayloadAttributesExtensions
     public static string ComputePayloadId(this PayloadAttributes payloadAttributes, BlockHeader parentHeader)
     {
         bool hasWithdrawals = payloadAttributes.Withdrawals is not null;
-        bool hasBeaconParentBlockRoot = payloadAttributes.BeaconParentBlockRoot is not null;
+        bool hasBeaconParentBlockRoot = payloadAttributes.ParentBeaconBlockRoot is not null;
 
         const int preambleLength = Keccak.Size + Keccak.Size + Keccak.Size + Address.ByteLength;
         Span<byte> inputSpan = stackalloc byte[preambleLength + (hasWithdrawals ? Keccak.Size : 0) + (hasBeaconParentBlockRoot ? Keccak.Size : 0)];
@@ -81,7 +81,7 @@ public static class PayloadAttributesExtensions
 
         if (hasBeaconParentBlockRoot)
         {
-            payloadAttributes.BeaconParentBlockRoot.Bytes.CopyTo(inputSpan[(preambleLength + (hasWithdrawals ? Keccak.Size : 0))..]);
+            payloadAttributes.ParentBeaconBlockRoot.Bytes.CopyTo(inputSpan[(preambleLength + (hasWithdrawals ? Keccak.Size : 0))..]);
         }
 
         ValueKeccak inputHash = ValueKeccak.Compute(inputSpan);
@@ -92,7 +92,7 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
-            { BeaconParentBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
+            { ParentBeaconBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
             { Withdrawals: not null } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris
         };

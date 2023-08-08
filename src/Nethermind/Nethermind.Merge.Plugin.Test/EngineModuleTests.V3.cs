@@ -129,7 +129,7 @@ public partial class EngineModuleTests
             PrevRandao = TestItem.KeccakH,
             SuggestedFeeRecipient = TestItem.AddressF,
             Withdrawals = version >= EngineApiVersions.Shanghai ? new List<Withdrawal> { TestItem.WithdrawalA_1Eth } : null,
-            BeaconParentBlockRoot = version >= EngineApiVersions.Cancun ? TestItem.KeccakE : null
+            ParentBeaconBlockRoot = version >= EngineApiVersions.Cancun ? TestItem.KeccakE : null
         };
 
         ResultWrapper<ForkchoiceUpdatedV1Result?> responseFirst = await rpc.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
@@ -448,7 +448,7 @@ public partial class EngineModuleTests
             PrevRandao = TestItem.KeccakH,
             SuggestedFeeRecipient = TestItem.AddressF,
             Withdrawals = new List<Withdrawal> { TestItem.WithdrawalA_1Eth },
-            BeaconParentBlockRoot = spec.IsBeaconBlockRootAvailable ? TestItem.KeccakE : null
+            ParentBeaconBlockRoot = spec.IsBeaconBlockRootAvailable ? TestItem.KeccakE : null
         };
         Keccak currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
