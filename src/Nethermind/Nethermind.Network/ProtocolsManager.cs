@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Logging;
@@ -57,6 +58,7 @@ namespace Nethermind.Network
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly HashSet<Capability> _capabilities = new();
+        private readonly Regex? _clientIdPattern;
         public event EventHandler<ProtocolInitializedEventArgs>? P2PProtocolInitialized;
 
         public ProtocolsManager(
@@ -92,6 +94,11 @@ namespace Nethermind.Network
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            if (networkConfig.ClientIdMatcher != null)
+            {
+                _clientIdPattern = new Regex(networkConfig.ClientIdMatcher, RegexOptions.Compiled);
+            }
 
             _protocolFactories = GetProtocolFactories();
             rlpxHost.SessionCreated += SessionCreated;
@@ -181,7 +188,7 @@ namespace Nethermind.Network
             {
                 [Protocol.P2P] = (session, _) =>
                 {
-                    P2PProtocolHandler handler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _networkConfig, _logManager);
+                    P2PProtocolHandler handler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _clientIdPattern, _logManager);
                     session.PingSender = handler;
                     InitP2PProtocol(session, handler);
 

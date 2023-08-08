@@ -64,14 +64,11 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         PublicKey localNodeId,
         INodeStatsManager nodeStatsManager,
         IMessageSerializationService serializer,
-        INetworkConfig networkConfig,
+        Regex? clientIdPattern,
         ILogManager logManager) : base(session, nodeStatsManager, serializer, logManager)
     {
         _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-        if (networkConfig.ClientIdMatcher != null)
-        {
-            _clientIdPattern = new Regex(networkConfig.ClientIdMatcher);
-        }
+        _clientIdPattern = clientIdPattern;
 
         LocalNodeId = localNodeId;
         ListenPort = session.LocalPort;

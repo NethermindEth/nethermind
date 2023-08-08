@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
@@ -39,7 +40,7 @@ namespace Nethermind.Network.Test.P2P
         private IMessageSerializationService _serializer;
         private Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
         private INodeStatsManager _nodeStatsManager;
-        private NetworkConfig _networkConfig = new NetworkConfig();
+        private Regex? _clientIdPattern;
 
         private Packet CreatePacket<T>(T message) where T : P2PMessage
         {
@@ -64,7 +65,7 @@ namespace Nethermind.Network.Test.P2P
                 TestItem.PublicKeyA,
                 _nodeStatsManager,
                 _serializer,
-                _networkConfig,
+                _clientIdPattern,
                 LimboLogs.Instance);
         }
 
@@ -126,7 +127,7 @@ namespace Nethermind.Network.Test.P2P
         [TestCase("^((?!besu).)*$", "besu/v23.4.0/linux-x86_64/openjdk-java-17", true)]
         public void On_hello_with_not_matching_client_id(string pattern, string clientId, bool shouldDisconnect)
         {
-            _networkConfig.ClientIdMatcher = pattern;
+            _clientIdPattern = new Regex(pattern);
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
 
             HelloMessage message = new HelloMessage()
