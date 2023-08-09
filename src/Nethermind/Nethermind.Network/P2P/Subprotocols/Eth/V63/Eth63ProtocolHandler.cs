@@ -27,9 +27,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
     {
         private readonly MessageQueue<GetNodeDataMessage, byte[][]> _nodeDataRequests;
 
-        private readonly MessageQueue<GetReceiptsMessage, TxReceipt[][]> _receiptsRequests;
+        private readonly MessageQueue<GetReceiptsMessage, (TxReceipt[][], long)> _receiptsRequests;
 
-        private const int ReceiptTxCountUpperWatermark = 20000;
+        private const int ReceiptMessageSizeUpperWatermark = 4_000_000;
         private readonly TimeSpan _receiptsLatencyLowerWatermark = TimeSpan.FromMilliseconds(2000);
         private readonly TimeSpan _receiptsLatencyUpperWatermark = TimeSpan.FromMilliseconds(3000);
         private readonly AdaptiveRequestSizer _receiptsRequestSizer = new(
@@ -49,7 +49,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
             _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
-            _receiptsRequests = new MessageQueue<GetReceiptsMessage, TxReceipt[][]>(Send);
+            _receiptsRequests = new MessageQueue<GetReceiptsMessage, (TxReceipt[][], long)>(Send);
         }
 
         public override byte ProtocolVersion => EthVersions.Eth63;
@@ -91,7 +91,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         protected virtual void Handle(ReceiptsMessage msg, long size)
         {
             Metrics.Eth63ReceiptsReceived++;
-            _receiptsRequests.Handle(msg.TxReceipts, size);
+            _receiptsRequests.Handle((msg.TxReceipts, size), size);
         }
 
         private void Handle(GetNodeDataMessage msg)
@@ -149,7 +149,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 GetReceiptsMessage msg = new(blockHashes.Clamp(requestSize));
 
                 Stopwatch sw = new();
-                TxReceipt[][] response = await SendRequest(msg, token);
+                (TxReceipt[][] response, long size) = await SendRequest(msg, token);
                 TimeSpan duration = sw.Elapsed;
 
                 if (duration > _receiptsLatencyUpperWatermark)
@@ -157,21 +157,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                     return (response, AdaptiveRequestSizer.Direction.Decrease);
                 }
 
-                int txCount = 0;
-                if (response != null)
-                {
-                    foreach (TxReceipt[]? receipts in response)
-                    {
-                        txCount += receipts?.Length ?? 0;
-                    }
-                }
-
-                if (txCount > ReceiptTxCountUpperWatermark)
+                if (size > ReceiptMessageSizeUpperWatermark)
                 {
                     return (response, AdaptiveRequestSizer.Direction.Decrease);
                 }
 
-                if (blockHashes.Count > requestSize && duration < _receiptsLatencyLowerWatermark && txCount < ReceiptTxCountUpperWatermark)
+                if (blockHashes.Count > requestSize && duration < _receiptsLatencyLowerWatermark && size < ReceiptMessageSizeUpperWatermark)
                 {
                     return (response, AdaptiveRequestSizer.Direction.Increase);
                 }
@@ -198,7 +189,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 token);
         }
 
-        protected virtual async Task<TxReceipt[][]> SendRequest(GetReceiptsMessage message, CancellationToken token)
+        protected virtual async Task<(TxReceipt[][], long)> SendRequest(GetReceiptsMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

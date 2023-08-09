@@ -54,9 +54,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly TxDecoder _txDecoder;
 
         protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests;
-        protected readonly MessageQueue<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests;
+        protected readonly MessageQueue<GetBlockBodiesMessage, (BlockBody[], long)> _bodiesRequests;
 
-        private const int BodiesTxCountUpperWatermark = 20000;
+        private const int BodiesMsgSizeUpperWatermark = 4_000_000;
         private readonly TimeSpan _bodiesLatencyLowerWatermark = TimeSpan.FromMilliseconds(2000);
         private readonly TimeSpan _bodiesLatencyUpperWatermark = TimeSpan.FromMilliseconds(3000);
         private readonly AdaptiveRequestSizer _bodiesRequestSizer = new(
@@ -77,7 +77,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _timestamper = Timestamper.Default;
             _txDecoder = new TxDecoder();
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
-            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
+            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (BlockBody[], long)>(Send);
 
         }
 
@@ -99,7 +99,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 GetBlockBodiesMessage bodiesMsg = new(blockHashes.Clamp(requestSize));
 
                 Stopwatch sw = new Stopwatch();
-                BlockBody[]? response = await SendRequest(bodiesMsg, token);
+                (BlockBody[]? response, long size) = await SendRequest(bodiesMsg, token);
                 TimeSpan duration = sw.Elapsed;
 
                 if (duration > _bodiesLatencyUpperWatermark)
@@ -107,21 +107,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     return (response, AdaptiveRequestSizer.Direction.Decrease);
                 }
 
-                int txCount = 0;
-                if (response != null)
-                {
-                    foreach (BlockBody? blockBody in response)
-                    {
-                        txCount += blockBody?.Transactions?.Length ?? 0;
-                    }
-                }
-
-                if (txCount > BodiesTxCountUpperWatermark)
+                if (size > BodiesMsgSizeUpperWatermark)
                 {
                     return (response, AdaptiveRequestSizer.Direction.Decrease);
                 }
 
-                if (blockHashes.Count > requestSize && duration < _bodiesLatencyLowerWatermark && txCount < BodiesTxCountUpperWatermark)
+                if (blockHashes.Count > requestSize && duration < _bodiesLatencyLowerWatermark && size < BodiesMsgSizeUpperWatermark)
                 {
                     return (response, AdaptiveRequestSizer.Direction.Increase);
                 }
@@ -132,7 +123,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return blocks;
         }
 
-        protected virtual async Task<BlockBody[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
+        protected virtual async Task<(BlockBody[], long)> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -395,7 +386,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
         {
             Metrics.Eth62BlockBodiesReceived++;
-            _bodiesRequests.Handle(blockBodiesMessage.Bodies, size);
+            _bodiesRequests.Handle((blockBodiesMessage.Bodies, size), size);
         }
 
         protected void Handle(GetReceiptsMessage msg)

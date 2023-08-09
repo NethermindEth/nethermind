@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
     {
         private const int MaxBytesLimit = 3_000_000;
         private const int MinBytesLimit = 50_000;
-        private static readonly TimeSpan _lowerLatencyThreshold = TimeSpan.FromMilliseconds(3000);
+        private static readonly TimeSpan _lowerLatencyThreshold = TimeSpan.FromMilliseconds(2000);
         private static readonly TimeSpan _upperLatencyThreshold = TimeSpan.FromMilliseconds(3000);
         private readonly LatencyBasedRequestSizer _basedRequestSizer = new(
             MinBytesLimit,
