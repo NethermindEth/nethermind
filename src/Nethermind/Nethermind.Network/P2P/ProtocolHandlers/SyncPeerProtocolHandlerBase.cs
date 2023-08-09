@@ -14,6 +14,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Collections;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -95,7 +96,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             BlockBody[] blocks = await _bodiesRequestSizer.Run(async (requestSize) =>
             {
-                GetBlockBodiesMessage bodiesMsg = new(blockHashes.Take(requestSize).ToArray());
+                GetBlockBodiesMessage bodiesMsg = new(blockHashes.Clamp(requestSize));
 
                 Stopwatch sw = new Stopwatch();
                 BlockBody[]? response = await SendRequest(bodiesMsg, token);

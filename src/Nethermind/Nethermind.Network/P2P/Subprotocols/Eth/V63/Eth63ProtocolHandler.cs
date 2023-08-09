@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Collections;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
@@ -145,7 +146,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
             TxReceipt[][] txReceipts = await _receiptsRequestSizer.Run(async (requestSize) =>
             {
-                GetReceiptsMessage msg = new(blockHashes.Take(requestSize).ToArray());
+                GetReceiptsMessage msg = new(blockHashes.Clamp(requestSize));
 
                 Stopwatch sw = new();
                 TxReceipt[][] response = await SendRequest(msg, token);
