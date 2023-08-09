@@ -22,6 +22,7 @@ public class AdaptiveRequestSizer
     public AdaptiveRequestSizer(
         int minRequestLimit,
         int maxRequestLimit,
+        int? initialRequestSize = null,
         double adjustmentFactor = 2.0
     )
     {
@@ -29,7 +30,7 @@ public class AdaptiveRequestSizer
         _minRequestLimit = minRequestLimit;
         _adjustmentFactor = adjustmentFactor;
 
-        RequestSize = _minRequestLimit;
+        RequestSize = initialRequestSize ?? _minRequestLimit;
     }
 
     /// <summary>

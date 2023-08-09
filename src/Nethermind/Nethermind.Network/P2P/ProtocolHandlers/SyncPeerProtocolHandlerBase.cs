@@ -55,7 +55,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests;
 
-        private AdaptiveRequestSizer _bodiesRequestSizer;
+        private const int BodiesTxCountUpperWatermark = 20000;
+        private readonly TimeSpan _bodiesLatencyLowerWatermark = TimeSpan.FromMilliseconds(2000);
+        private readonly TimeSpan _bodiesLatencyUpperWatermark = TimeSpan.FromMilliseconds(3000);
+        private readonly AdaptiveRequestSizer _bodiesRequestSizer = new(
+            1,
+            128,
+            initialRequestSize: 8
+        );
+
         protected LruKeyCache<Keccak> NotifiedTransactions { get; } = new(2 * MemoryAllowance.MemPoolSize, "notifiedTransactions");
 
         protected SyncPeerProtocolHandlerBase(ISession session,
@@ -70,10 +78,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
 
-            _bodiesRequestSizer = new AdaptiveRequestSizer(
-                1,
-                128
-            );
         }
 
         public void Disconnect(DisconnectReason reason, string details)
@@ -97,7 +101,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 BlockBody[]? response = await SendRequest(bodiesMsg, token);
                 TimeSpan duration = sw.Elapsed;
 
-                if (duration > TimeSpan.FromMilliseconds(3000))
+                if (duration > _bodiesLatencyUpperWatermark)
                 {
                     return (response, AdaptiveRequestSizer.Direction.Decrease);
                 }
@@ -111,12 +115,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     }
                 }
 
-                if (txCount > 20000)
+                if (txCount > BodiesTxCountUpperWatermark)
                 {
                     return (response, AdaptiveRequestSizer.Direction.Decrease);
                 }
 
-                if (blockHashes.Count > requestSize && duration < TimeSpan.FromMilliseconds(2000) && txCount < 1000)
+                if (blockHashes.Count > requestSize && duration < _bodiesLatencyLowerWatermark && txCount < BodiesTxCountUpperWatermark)
                 {
                     return (response, AdaptiveRequestSizer.Direction.Increase);
                 }

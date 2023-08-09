@@ -25,7 +25,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
-        private LatencyBasedRequestSizer _basedRequestSizer;
+        private const int MaxBytesLimit = 3_000_000;
+        private const int MinBytesLimit = 50_000;
+        private static readonly TimeSpan _lowerLatencyThreshold = TimeSpan.FromMilliseconds(3000);
+        private static readonly TimeSpan _upperLatencyThreshold = TimeSpan.FromMilliseconds(3000);
+        private readonly LatencyBasedRequestSizer _basedRequestSizer = new(
+            MinBytesLimit,
+            MaxBytesLimit,
+            _lowerLatencyThreshold,
+            _upperLatencyThreshold
+        );
 
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -53,13 +62,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getByteCodesRequests = new(Send);
             _getTrieNodesRequests = new(Send);
 
-            _basedRequestSizer = new LatencyBasedRequestSizer(
-                50000,
-                3000000,
-                TimeSpan.FromMilliseconds(2000),
-                TimeSpan.FromMilliseconds(3000),
-                2.0
-            );
         }
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;

@@ -24,7 +24,7 @@ public class LatencyBasedRequestSizer
         _upperWatermark = upperWatermark;
         _lowerWatermark = lowerWatermark;
 
-        _requestSizer = new AdaptiveRequestSizer(minRequestLimit, maxRequestLimit, adjustmentFactor);
+        _requestSizer = new AdaptiveRequestSizer(minRequestLimit, maxRequestLimit, adjustmentFactor: adjustmentFactor);
     }
 
     /// <summary>

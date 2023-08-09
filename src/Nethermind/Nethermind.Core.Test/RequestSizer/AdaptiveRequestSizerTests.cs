@@ -20,7 +20,7 @@ public class AdaptiveRequestSizerTests
     [TestCase(1, 100, 100, AdaptiveRequestSizer.Direction.Stay, 100)]
     public async Task Test_Threshold(int minSize, int maxSize, int startingSize, AdaptiveRequestSizer.Direction direction, int afterRequestSize)
     {
-        AdaptiveRequestSizer sizer = new(minSize, maxSize) { RequestSize = startingSize };
+        AdaptiveRequestSizer sizer = new(minSize, maxSize, startingSize);
 
         await sizer.Run((async requestSize => (requestSize, direction)));
 

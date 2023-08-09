@@ -28,7 +28,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private readonly MessageQueue<GetReceiptsMessage, TxReceipt[][]> _receiptsRequests;
 
-        private AdaptiveRequestSizer _receiptsRequestSizer;
+        private const int ReceiptTxCountUpperWatermark = 20000;
+        private readonly TimeSpan _receiptsLatencyLowerWatermark = TimeSpan.FromMilliseconds(2000);
+        private readonly TimeSpan _receiptsLatencyUpperWatermark = TimeSpan.FromMilliseconds(3000);
+        private readonly AdaptiveRequestSizer _receiptsRequestSizer = new(
+            1,
+            128,
+            initialRequestSize: 8
+        );
 
         public Eth63ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -42,10 +49,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests = new MessageQueue<GetReceiptsMessage, TxReceipt[][]>(Send);
-
-            _receiptsRequestSizer = new AdaptiveRequestSizer(
-                1,
-                128);
         }
 
         public override byte ProtocolVersion => EthVersions.Eth63;
@@ -144,11 +147,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             {
                 GetReceiptsMessage msg = new(blockHashes.Take(requestSize).ToArray());
 
-                Stopwatch sw = new Stopwatch();
+                Stopwatch sw = new();
                 TxReceipt[][] response = await SendRequest(msg, token);
                 TimeSpan duration = sw.Elapsed;
 
-                if (duration > TimeSpan.FromMilliseconds(3000))
+                if (duration > _receiptsLatencyUpperWatermark)
                 {
                     return (response, AdaptiveRequestSizer.Direction.Decrease);
                 }
@@ -162,12 +165,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                     }
                 }
 
-                if (txCount > 20000)
+                if (txCount > ReceiptTxCountUpperWatermark)
                 {
                     return (response, AdaptiveRequestSizer.Direction.Decrease);
                 }
 
-                if (blockHashes.Count > requestSize && duration < TimeSpan.FromMilliseconds(2000) && txCount < 1000)
+                if (blockHashes.Count > requestSize && duration < _receiptsLatencyLowerWatermark && txCount < ReceiptTxCountUpperWatermark)
                 {
                     return (response, AdaptiveRequestSizer.Direction.Increase);
                 }
