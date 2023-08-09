@@ -27,7 +27,7 @@ public static class AddressExtensions
                 0x08 => releaseSpec.Bn128Enabled,
                 0x09 => releaseSpec.BlakeEnabled,
                 0x0a => releaseSpec.IsEip4844Enabled,
-                0x0b => releaseSpec.IsBeaconBlockRootAvailable,
+                // 0x0b => releaseSpec.IsBeaconBlockRootAvailable,
                 0x0c => releaseSpec.Bls381Enabled,
                 0x0d => releaseSpec.Bls381Enabled,
                 0x0e => releaseSpec.Bls381Enabled,
