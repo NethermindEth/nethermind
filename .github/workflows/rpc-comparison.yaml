@@ -3,7 +3,7 @@ name: '[JSON-RPC] Compare Nethermind between clients and versions'
 on:
   push:
     branches:
-      - 'rpc-comparison-testing'
+      - 'rpc-comparison-testing-v1.20.1'
   workflow_dispatch:
     inputs:
       allowed_ips:
