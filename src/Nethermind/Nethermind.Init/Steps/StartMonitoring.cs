@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -45,7 +44,7 @@ public class StartMonitoring : IStep
             PrepareProductInfoMetrics();
             controller = new(_metricsConfig);
 
-            IEnumerable<Type> metrics = TypeDiscovery.FindNethermindTypes(nameof(Metrics));
+            IEnumerable<Type> metrics = TypeDiscovery.FindNethermindBasedTypes(nameof(Metrics));
             foreach (Type metric in metrics)
             {
                 controller.RegisterMetrics(metric);
