@@ -17,8 +17,8 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
@@ -46,6 +46,7 @@ public class Eth68ProtocolHandlerTests
     private Block _genesisBlock = null!;
     private Eth68ProtocolHandler _handler = null!;
     private ITxGossipPolicy _txGossipPolicy = null!;
+    private ITimerFactory _timerFactory = null!;
 
     [SetUp]
     public void Setup()
@@ -65,14 +66,14 @@ public class Eth68ProtocolHandlerTests
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
-        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+        _timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
         _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(true);
         _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
         _handler = new Eth68ProtocolHandler(
             _session,
             _svc,
-            new NodeStatsManager(timerFactory, LimboLogs.Instance),
+            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
             _syncManager,
             _transactionPool,
             _pooledTxsRequestor,
@@ -114,8 +115,9 @@ public class Eth68ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
-        _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactionsEth66(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IReadOnlyList<Keccak>>());
+
+        _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
+            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>());
     }
 
     [TestCase(true)]
@@ -146,16 +148,14 @@ public class Eth68ProtocolHandlerTests
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithData(new byte[2 * 1024 * 1024])
             .WithHash(TestItem.KeccakA).TestObject;
 
-        TxDecoder txDecoder = new();
-
         var msg = new NewPooledTransactionHashesMessage68(new[] { (byte)tx.Type },
-            new[] { txDecoder.GetLength(tx, RlpBehaviors.None) }, new[] { tx.Hash });
+            new[] { tx.GetLength() }, new[] { tx.Hash });
 
         HandleIncomingStatusMessage();
-
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
-        _pooledTxsRequestor.Received().RequestTransactionsEth66(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IReadOnlyList<Keccak>>());
+
+        _pooledTxsRequestor.Received(1).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
+            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>());
     }
 
     [TestCase(1)]
@@ -193,6 +193,42 @@ public class Eth68ProtocolHandlerTests
         _handler.SendNewTransactions(txs, false);
 
         _session.Received(messagesCount).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage68>(m => m.Hashes.Count == NewPooledTransactionHashesMessage68.MaxCount || m.Hashes.Count == nonFullMsgTxsCount));
+    }
+
+    [Test]
+    public void should_divide_GetPooledTransactionsMessage_if_max_message_size_is_exceeded([Values(0, 1, 100, 10_000)] int numberOfTransactions, [Values(97, TransactionsMessage.MaxPacketSize, 200_000)] int sizeOfOneTx)
+    {
+        _handler = new Eth68ProtocolHandler(
+            _session,
+            _svc,
+            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+            _syncManager,
+            _transactionPool,
+            new PooledTxsRequestor(_transactionPool),
+            _gossipPolicy,
+            new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+            LimboLogs.Instance,
+            _txGossipPolicy);
+
+        int maxNumberOfTxsInOneMsg = sizeOfOneTx < TransactionsMessage.MaxPacketSize ? TransactionsMessage.MaxPacketSize / sizeOfOneTx : 1;
+        int messagesCount = numberOfTransactions / maxNumberOfTxsInOneMsg + (numberOfTransactions % maxNumberOfTxsInOneMsg == 0 ? 0 : 1);
+
+        List<byte> types = new(numberOfTransactions);
+        List<int> sizes = new(numberOfTransactions);
+        List<Keccak> hashes = new(numberOfTransactions);
+
+        for (int i = 0; i < numberOfTransactions; i++)
+        {
+            types.Add(0);
+            sizes.Add(sizeOfOneTx);
+            hashes.Add(new Keccak(i.ToString("X64")));
+        }
+
+        NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+
+        _session.Received(messagesCount).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg));
     }
 
     private void HandleIncomingStatusMessage()

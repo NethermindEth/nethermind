@@ -296,7 +296,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(newBlockMessage, Eth62MessageCode.NewBlock);
 
-            _session.Received().InitiateDisconnect(InitiateDisconnectReason.GossipingInPoS, "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block. Disconnecting Peer.");
+            _session.Received().InitiateDisconnect(DisconnectReason.GossipingInPoS, "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block. Disconnecting Peer.");
         }
 
         [Test]
@@ -335,7 +335,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.NewBlockHashes);
 
-            _session.Received().InitiateDisconnect(InitiateDisconnectReason.GossipingInPoS, "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block. Disconnecting Peer.");
+            _session.Received().InitiateDisconnect(DisconnectReason.GossipingInPoS, "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block. Disconnecting Peer.");
         }
 
         [Test]

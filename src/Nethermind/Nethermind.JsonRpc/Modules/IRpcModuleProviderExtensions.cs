@@ -3,38 +3,38 @@
 
 using System;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.JsonRpc.Modules;
+
+public static class IRpcModuleProviderExtensions
 {
-    public static class IRpcModuleProviderExtensions
+    private static readonly int _cpuCount = Environment.ProcessorCount;
+
+    public static void RegisterBounded<T>(
+        this IRpcModuleProvider rpcModuleProvider,
+        ModuleFactoryBase<T> factory,
+        int maxCount,
+        int timeout,
+        int requestQueueLimit = 0)
+        where T : IRpcModule
     {
-        private static readonly int _cpuCount = Environment.ProcessorCount;
+        rpcModuleProvider.Register(new BoundedModulePool<T>(factory, maxCount, timeout, requestQueueLimit));
+    }
 
-        public static void RegisterBounded<T>(
-            this IRpcModuleProvider rpcModuleProvider,
-            ModuleFactoryBase<T> factory,
-            int maxCount,
-            int timeout)
-            where T : IRpcModule
-        {
-            rpcModuleProvider.Register(new BoundedModulePool<T>(factory, maxCount, timeout));
-        }
+    public static void RegisterBoundedByCpuCount<T>(
+        this IRpcModuleProvider rpcModuleProvider,
+        ModuleFactoryBase<T> factory,
+        int timeout)
+        where T : IRpcModule
+    {
+        RegisterBounded(rpcModuleProvider, factory, _cpuCount, timeout);
+    }
 
-        public static void RegisterBoundedByCpuCount<T>(
-            this IRpcModuleProvider rpcModuleProvider,
-            ModuleFactoryBase<T> factory,
-            int timeout)
-            where T : IRpcModule
-        {
-            RegisterBounded(rpcModuleProvider, factory, _cpuCount, timeout);
-        }
-
-        public static void RegisterSingle<T>(
-            this IRpcModuleProvider rpcModuleProvider,
-            T module,
-            bool allowExclusive = true)
-            where T : IRpcModule
-        {
-            rpcModuleProvider.Register(new SingletonModulePool<T>(module, allowExclusive));
-        }
+    public static void RegisterSingle<T>(
+        this IRpcModuleProvider rpcModuleProvider,
+        T module,
+        bool allowExclusive = true)
+        where T : IRpcModule
+    {
+        rpcModuleProvider.Register(new SingletonModulePool<T>(module, allowExclusive));
     }
 }

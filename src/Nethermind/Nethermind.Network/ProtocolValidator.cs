@@ -45,7 +45,7 @@ namespace Nethermind.Network
         private bool ValidateP2PProtocol(ISession session, ProtocolInitializedEventArgs eventArgs)
         {
             P2PProtocolInitializedEventArgs args = (P2PProtocolInitializedEventArgs)eventArgs;
-            return ValidateP2PVersion(args.P2PVersion) || Disconnect(session, InitiateDisconnectReason.IncompatibleP2PVersion, CompatibilityValidationType.P2PVersion, $"p2p.{args.P2PVersion}");
+            return ValidateP2PVersion(args.P2PVersion) || Disconnect(session, DisconnectReason.IncompatibleP2PVersion, CompatibilityValidationType.P2PVersion, $"p2p.{args.P2PVersion}");
         }
 
         private bool ValidateEthProtocol(ISession session, ProtocolInitializedEventArgs eventArgs)
@@ -53,30 +53,30 @@ namespace Nethermind.Network
             SyncPeerProtocolInitializedEventArgs syncPeerArgs = (SyncPeerProtocolInitializedEventArgs)eventArgs;
             if (!ValidateNetworkId(syncPeerArgs.NetworkId))
             {
-                return Disconnect(session, InitiateDisconnectReason.InvalidNetworkId, CompatibilityValidationType.NetworkId, $"invalid network id - {syncPeerArgs.NetworkId}",
+                return Disconnect(session, DisconnectReason.InvalidNetworkId, CompatibilityValidationType.NetworkId, $"invalid network id - {syncPeerArgs.NetworkId}",
                     _logger.IsTrace ? $", different networkId: {BlockchainIds.GetBlockchainName(syncPeerArgs.NetworkId)}, our networkId: {BlockchainIds.GetBlockchainName(_blockTree.NetworkId)}" : "");
             }
 
             if (syncPeerArgs.GenesisHash != _blockTree.Genesis.Hash)
             {
-                return Disconnect(session, InitiateDisconnectReason.InvalidGenesis, CompatibilityValidationType.DifferentGenesis, "invalid genesis",
+                return Disconnect(session, DisconnectReason.InvalidGenesis, CompatibilityValidationType.DifferentGenesis, "invalid genesis",
                     _logger.IsTrace ? $", different genesis hash: {syncPeerArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}" : "");
             }
 
             if (syncPeerArgs.ForkId == null)
             {
-                return Disconnect(session, InitiateDisconnectReason.MissingForkId, CompatibilityValidationType.MissingForkId, "missing fork id");
+                return Disconnect(session, DisconnectReason.MissingForkId, CompatibilityValidationType.MissingForkId, "missing fork id");
             }
 
             if (_forkInfo.ValidateForkId(syncPeerArgs.ForkId.Value, _blockTree.Head?.Header) != ValidationResult.Valid)
             {
-                return Disconnect(session, InitiateDisconnectReason.InvalidForkId, CompatibilityValidationType.InvalidForkId, "invalid fork id");
+                return Disconnect(session, DisconnectReason.InvalidForkId, CompatibilityValidationType.InvalidForkId, "invalid fork id");
             }
 
             return true;
         }
 
-        private bool Disconnect(ISession session, InitiateDisconnectReason reason, CompatibilityValidationType type, string details, string traceDetails = "")
+        private bool Disconnect(ISession session, DisconnectReason reason, CompatibilityValidationType type, string details, string traceDetails = "")
         {
             if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, {details}{traceDetails}");
             _nodeStatsManager.ReportFailedValidation(session.Node, type);

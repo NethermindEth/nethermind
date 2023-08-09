@@ -15,7 +15,7 @@ public class Bn254AddPrecompile : IPrecompile
 {
     public static IPrecompile Instance = new Bn254AddPrecompile();
 
-    public Address Address { get; } = Address.FromNumber(6);
+    public static Address Address { get; } = Address.FromNumber(6);
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {

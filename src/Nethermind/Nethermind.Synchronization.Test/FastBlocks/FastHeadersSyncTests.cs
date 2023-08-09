@@ -119,7 +119,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
 
             feed.HandleResponse(batch4);
 
-            syncPeerPool.DidNotReceive().ReportBreachOfProtocol(peerInfo, Arg.Any<InitiateDisconnectReason>(), Arg.Any<string>());
+            syncPeerPool.DidNotReceive().ReportBreachOfProtocol(peerInfo, Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
 
         [Test]

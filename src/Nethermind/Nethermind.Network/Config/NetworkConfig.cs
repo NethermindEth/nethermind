@@ -51,5 +51,6 @@ namespace Nethermind.Network.Config
         public int ReceiptsRequestMaxSize { get; set; } = 128;
         public long ReceiptsResponseLatencyLowWatermarkMs { get; set; } = 2000;
         public long ReceiptsResponseLatencyHighWatermarkMs { get; set; } = 3000;
+        public string? ClientIdMatcher { get; set; } = null;
     }
 }

@@ -29,7 +29,7 @@ namespace Nethermind.Trie
         {
             if (rootHash == Keccak.EmptyTreeHash)
             {
-                _builder.AppendLine("EMPTY TREEE");
+                _builder.AppendLine("EMPTY TREE");
             }
             else
             {

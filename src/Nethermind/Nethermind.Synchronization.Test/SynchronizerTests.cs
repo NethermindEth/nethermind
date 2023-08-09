@@ -106,7 +106,7 @@ namespace Nethermind.Synchronization.Test
             public byte ProtocolVersion { get; }
             public string ProtocolCode { get; }
 
-            public void Disconnect(InitiateDisconnectReason reason, string details)
+            public void Disconnect(DisconnectReason reason, string details)
             {
                 Disconnected?.Invoke(this, EventArgs.Empty);
             }
@@ -413,7 +413,7 @@ namespace Nethermind.Synchronization.Test
                 }
 
                 SyncServer = new SyncServer(
-                    trieStore,
+                    trieStore.AsKeyValueStore(),
                     codeDb,
                     BlockTree,
                     NullReceiptStorage.Instance,

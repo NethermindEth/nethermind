@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Context context = new();
             await context.Build();
-            string serialized = RpcTest.TestSerializedRequest(
+            string serialized = await RpcTest.TestSerializedRequest(
                 EthModuleFactory.Converters.Union(TraceModuleFactory.Converters).ToList(), context.TraceRpcModule,
                 "trace_block", "latest");
             Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0xa1e0e640b433d5a8931881b8eee7b1a125474b04e430c0bf8afff52584c53273\",\"transactionPosition\":0,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0x5cf5d4a0a93000beb1cfb373508ce4c0153ab491be99b3c927f482346c86a0e1\",\"transactionPosition\":1,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0x02d2cde9120e37722f607771ebaa0d4e98c5d99a8a9e7df6872e8c8c9f5c0bc5\",\"transactionPosition\":2,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0xe50a2a2d170011b1f9ee080c3810bed0c63dbb1b2b2c541c78ada5b222cc3fd2\",\"transactionPosition\":3,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0xff0d4524d379fc15c41a9b0444b943e1a530779b7d09c8863858267c5ef92b24\",\"transactionPosition\":4,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0xf9b69366c82084e3799dc4a7ad87dc173ef4923d853bc250de86b81786f2972a\",\"transactionPosition\":5,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0x28171c29b23cd96f032fe43f444402af4555ee5f074d5d0d0a1089d940f136e7\",\"transactionPosition\":6,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0x09b01caf4b7ecfe9d02251b2e478f2da0fdf08412e3fa1ff963fa80635dab031\",\"transactionPosition\":7,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0xd82382905afbe4ca4c2b8e54cea43818c91e0014c3827e3020fbd82b732b8239\",\"transactionPosition\":8,\"type\":\"call\"},{\"action\":{\"author\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"rewardType\":\"block\",\"value\":\"0x1bc16d674ec80000\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"subtraces\":0,\"traceAddress\":[],\"type\":\"reward\"}],\"id\":67}"));
@@ -109,7 +109,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Context context = new();
             await context.Build();
             string request = "{\"fromBlock\":\"0x154\",\"after\":0}";
-            string serialized = RpcTest.TestSerializedRequest(
+            string serialized = await RpcTest.TestSerializedRequest(
                 EthModuleFactory.Converters.Union(TraceModuleFactory.Converters).ToList(), context.TraceRpcModule,
                 "trace_filter", request);
             Assert.That(
@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Context context = new();
             await context.Build();
             string request = "{\"fromBlock\":\"0x8\",\"toBlock\":\"0x6\"}";
-            string serialized = RpcTest.TestSerializedRequest(
+            string serialized = await RpcTest.TestSerializedRequest(
                 EthModuleFactory.Converters.Union(TraceModuleFactory.Converters).ToList(), context.TraceRpcModule,
                 "trace_filter", request);
             Assert.That(
@@ -135,7 +135,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Context context = new();
             await context.Build();
             string request = "{\"count\":0x0, \"fromBlock\":\"0x3\",\"toBlock\":\"0x3\"}";
-            string serialized = RpcTest.TestSerializedRequest(
+            string serialized = await RpcTest.TestSerializedRequest(
                 EthModuleFactory.Converters.Union(TraceModuleFactory.Converters).ToList(), context.TraceRpcModule,
                 "trace_filter", request);
             Assert.That(
@@ -148,7 +148,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Context context = new();
             await context.Build();
             TraceFilterForRpc traceFilterRequest = new();
-            string serialized = RpcTest.TestSerializedRequest(
+            string serialized = await RpcTest.TestSerializedRequest(
                 EthModuleFactory.Converters.Union(TraceModuleFactory.Converters).ToList(), context.TraceRpcModule,
                 "trace_filter", new EthereumJsonSerializer().Serialize(traceFilterRequest));
 
@@ -684,7 +684,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string blockParameter = "latest";
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"callType\":\"call\",\"from\":\"0xaaaaaaaa8583de65cc752fe3fad5098643244d22\",\"gas\":\"0x5f58ef8\",\"input\":\"0x\",\"to\":\"0xd6a8d04cb9846759416457e2c593c99390092df6\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}],\"vmTrace\":null},\"id\":67}";
 
-            string serialized = RpcTest.TestSerializedRequest(
+            string serialized = await RpcTest.TestSerializedRequest(
                 EthModuleFactory.Converters.Union(TraceModuleFactory.Converters).ToList(), context.TraceRpcModule,
                 "trace_call", transaction, traceTypes, blockParameter);
 
@@ -697,7 +697,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Context context = new();
             await context.Build();
-            string serialized = RpcTest.TestSerializedRequest(
+            string serialized = await RpcTest.TestSerializedRequest(
                 EthModuleFactory.Converters.Union(TraceModuleFactory.Converters).ToList(), context.TraceRpcModule,
                 "trace_call", transaction, traceTypes);
 
@@ -746,11 +746,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             await context.Build();
             string calls = "[[{\"from\":\"0xfe35e70599578efef562e1f1cdc9ef693b865e9d\",\"to\":\"0x8cf85548ae57a91f8132d0831634c0fcef06e505\"},[\"trace\"]],[{\"from\":\"0x2a6ae6f33729384a00b4ffbd25e3f1bf1b9f5b8d\",\"to\":\"0xab736519b5433974059da38da74b8db5376942cd\",\"gasPrice\":\"0xb2b29a6dc\"},[\"trace\"]]]";
 
-            string serialized = RpcTest.TestSerializedRequest(
+            string serialized = await RpcTest.TestSerializedRequest(
                 EthModuleFactory.Converters.Union(TraceModuleFactory.Converters).ToList(), context.TraceRpcModule,
                 "trace_callMany", calls, "latest");
 
-            string serialized_without_blockParameter_param = RpcTest.TestSerializedRequest(
+            string serialized_without_blockParameter_param = await RpcTest.TestSerializedRequest(
                 EthModuleFactory.Converters.Union(TraceModuleFactory.Converters).ToList(), context.TraceRpcModule,
                 "trace_callMany", calls);
 
@@ -766,7 +766,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string calls = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"1\"}},[\"statediff\"]],[{{\"from\":\"{TestItem.AddressA}\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"1\"}},[\"statediff\"]]]";
 
-            string serialized = RpcTest.TestSerializedRequest(
+            string serialized = await RpcTest.TestSerializedRequest(
                 EthModuleFactory.Converters.Union(TraceModuleFactory.Converters).ToList(), context.TraceRpcModule,
                 "trace_callMany", calls);
 

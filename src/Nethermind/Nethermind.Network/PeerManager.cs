@@ -638,7 +638,7 @@ namespace Nethermind.Network
                 if (peer.OutSession is not null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
-                    peer.OutSession?.MarkDisconnected(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local, "timeout");
+                    peer.OutSession?.MarkDisconnected(DisconnectReason.OutgoingConnectionFailed, DisconnectType.Local, "timeout");
                 }
 
                 peer.IsAwaitingConnection = false;
@@ -688,7 +688,7 @@ namespace Nethermind.Network
 
             if (!_peerPool.ActivePeers.TryGetValue(id, out Peer peer))
             {
-                session.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local, "peer removed");
+                session.MarkDisconnected(DisconnectReason.DuplicatedConnection, DisconnectType.Local, "peer removed");
                 return;
             }
 
@@ -735,7 +735,7 @@ namespace Nethermind.Network
                 if (initCount >= MaxActivePeers)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with {session} {DisconnectReason.TooManyPeers} {DisconnectType.Local}");
-                    session.InitiateDisconnect(InitiateDisconnectReason.TooManyPeers, $"{initCount}");
+                    session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"{initCount}");
                     return;
                 }
             }
@@ -870,7 +870,7 @@ namespace Nethermind.Network
                 if (newSessionIsIn && peerHasAnOpenInSession || newSessionIsOut && peerHasAnOpenOutSession)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Disconnecting a {session} - already connected");
-                    session.InitiateDisconnect(InitiateDisconnectReason.SessionAlreadyExist, "same");
+                    session.InitiateDisconnect(DisconnectReason.SessionAlreadyExist, "same");
                 }
                 else if (newSessionIsIn && peerHasAnOpenOutSession || newSessionIsOut && peerHasAnOpenInSession)
                 {
@@ -879,7 +879,7 @@ namespace Nethermind.Network
                     if (session.Direction != directionToKeep)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Disconnecting a new {session} - {directionToKeep} session already connected");
-                        session.InitiateDisconnect(InitiateDisconnectReason.ReplacingSessionWithOppositeDirection, "same");
+                        session.InitiateDisconnect(DisconnectReason.ReplacingSessionWithOppositeDirection, "same");
                         if (newSessionIsIn)
                         {
                             peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
@@ -895,13 +895,13 @@ namespace Nethermind.Network
                     {
                         peer.InSession = session;
                         if (_logger.IsDebug) _logger.Debug($"Disconnecting an existing {session} - {directionToKeep} session to replace");
-                        peer.OutSession?.InitiateDisconnect(InitiateDisconnectReason.OppositeDirectionCleanup, "same");
+                        peer.OutSession?.InitiateDisconnect(DisconnectReason.OppositeDirectionCleanup, "same");
                     }
                     else
                     {
                         peer.OutSession = session;
                         if (_logger.IsDebug) _logger.Debug($"Disconnecting an existing {session} - {directionToKeep} session to replace");
-                        peer.InSession?.InitiateDisconnect(InitiateDisconnectReason.OppositeDirectionCleanup, "same");
+                        peer.InSession?.InitiateDisconnect(DisconnectReason.OppositeDirectionCleanup, "same");
                     }
                 }
             }

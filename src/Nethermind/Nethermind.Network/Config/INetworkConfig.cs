@@ -121,5 +121,7 @@ namespace Nethermind.Network.Config
         long ReceiptsResponseLatencyLowWatermarkMs { get; set; }
         [ConfigItem(DefaultValue = "3000", HiddenFromDocs = true, Description = "[TECHNICAL] Max receipt response latency before reducing receipt request size.")]
         long ReceiptsResponseLatencyHighWatermarkMs { get; set; }
+        [ConfigItem(DefaultValue = null, HiddenFromDocs = true, Description = "[TECHNICAL] Only allow peer with clientId matching this regex. Useful for testing. eg: 'besu' to only connect to BeSU")]
+        string? ClientIdMatcher { get; set; }
     }
 }

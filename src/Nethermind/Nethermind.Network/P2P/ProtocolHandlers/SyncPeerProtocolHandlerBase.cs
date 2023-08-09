@@ -78,7 +78,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             );
         }
 
-        public void Disconnect(InitiateDisconnectReason reason, string details)
+        public void Disconnect(DisconnectReason reason, string details)
         {
             if (Logger.IsTrace) Logger.Trace($"Disconnecting {Node:c} because of the {details}");
             Session.InitiateDisconnect(reason, details);

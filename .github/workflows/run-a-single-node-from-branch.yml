@@ -100,11 +100,10 @@ jobs:
     - name: Trigger Docker Build Action with Cleaned Ref
       uses: benc-uk/workflow-dispatch@v1
       with:
-          workflow: build-nethermind-docker-images.yml
+          workflow: publish-docker.yml
           ref: "${{ github.ref }}"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
-              "repo": "${{ env.REPO }}",
               "tag": "${{ env.CLEAN_REF }}",
               "dockerfile": "Dockerfile"
            }'
@@ -116,7 +115,7 @@ jobs:
     - name: Wait for Docker Build Action to complete
       env:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-        WORKFLOW_ID: 'build-nethermind-docker-images.yml'
+        WORKFLOW_ID: 'publish-docker.yml'
         MAX_WAIT_MINUTES: '5'
         INTERVAL: '5'
         TIMEOUT: '10'

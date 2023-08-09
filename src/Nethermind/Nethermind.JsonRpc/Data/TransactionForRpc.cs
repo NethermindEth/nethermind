@@ -39,7 +39,7 @@ public class TransactionForRpc
         ChainId = transaction.ChainId;
         Type = transaction.Type;
         AccessList = transaction.AccessList is null ? null : AccessListItemForRpc.FromAccessList(transaction.AccessList);
-        MaxFeePerDataGas = transaction.MaxFeePerDataGas;
+        MaxFeePerBlobGas = transaction.MaxFeePerBlobGas;
         BlobVersionedHashes = transaction.BlobVersionedHashes;
 
         Signature? signature = transaction.Signature;
@@ -49,7 +49,9 @@ public class TransactionForRpc
             YParity = transaction.SupportsAccessList ? signature.RecoveryId : null;
             R = new UInt256(signature.R, true);
             S = new UInt256(signature.S, true);
-            V = transaction.Type == TxType.Legacy ? (UInt256?)signature.V : (UInt256?)signature.RecoveryId;
+            // V must be null for non-legacy transactions. Temporarily set to recovery id for Geth compatibility.
+            // See https://github.com/ethereum/go-ethereum/issues/27727
+            V = transaction.Type == TxType.Legacy ? signature.V : signature.RecoveryId;
         }
     }
 
@@ -95,7 +97,7 @@ public class TransactionForRpc
 
 
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
-    public UInt256? MaxFeePerDataGas { get; set; } // eip4844
+    public UInt256? MaxFeePerBlobGas { get; set; } // eip4844
 
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
     public byte[][]? BlobVersionedHashes { get; set; } // eip4844
@@ -136,7 +138,7 @@ public class TransactionForRpc
 
         if (tx.SupportsBlobs)
         {
-            tx.MaxFeePerDataGas = MaxFeePerDataGas;
+            tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
             tx.BlobVersionedHashes = BlobVersionedHashes;
         }
 
@@ -176,7 +178,7 @@ public class TransactionForRpc
 
         if (tx.SupportsBlobs)
         {
-            tx.MaxFeePerDataGas = MaxFeePerDataGas;
+            tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
             tx.BlobVersionedHashes = BlobVersionedHashes;
         }
 

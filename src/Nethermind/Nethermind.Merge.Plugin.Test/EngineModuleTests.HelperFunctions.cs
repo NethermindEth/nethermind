@@ -84,9 +84,15 @@ namespace Nethermind.Merge.Plugin.Test
             };
         }
 
-        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? dataGasUsed = null, ulong? excessDataGas = null, Transaction[]? transactions = null)
+        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, Transaction[]? transactions = null)
+            => CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, transactions: transactions);
+
+        private static ExecutionPayloadV3 CreateBlockRequestV3(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null)
+            => CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions);
+
+        private static T CreateBlockRequestInternal<T>(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null) where T : ExecutionPayload, new()
         {
-            ExecutionPayload blockRequest = new()
+            T blockRequest = new()
             {
                 ParentHash = parent.BlockHash,
                 FeeRecipient = miner,
@@ -98,9 +104,13 @@ namespace Nethermind.Merge.Plugin.Test
                 LogsBloom = Bloom.Empty,
                 Timestamp = parent.Timestamp + 1,
                 Withdrawals = withdrawals,
-                DataGasUsed = dataGasUsed,
-                ExcessDataGas = excessDataGas,
             };
+
+            if (blockRequest is ExecutionPayloadV3 blockRequestV3)
+            {
+                blockRequestV3.BlobGasUsed = blobGasUsed;
+                blockRequestV3.ExcessBlobGas = excessBlobGas;
+            }
 
             blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());
             TryCalculateHash(blockRequest, out Keccak? hash);

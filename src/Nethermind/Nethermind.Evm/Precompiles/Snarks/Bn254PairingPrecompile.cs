@@ -17,7 +17,7 @@ public class Bn254PairingPrecompile : IPrecompile
 
     public static IPrecompile Instance = new Bn254PairingPrecompile();
 
-    public Address Address { get; } = Address.FromNumber(8);
+    public static Address Address { get; } = Address.FromNumber(8);
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {

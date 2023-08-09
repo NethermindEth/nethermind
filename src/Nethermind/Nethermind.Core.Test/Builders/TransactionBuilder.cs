@@ -134,9 +134,9 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithMaxFeePerDataGas(UInt256? maxFeePerDataGas)
+        public TransactionBuilder<T> WithMaxFeePerBlobGas(UInt256? maxFeePerBlobGas)
         {
-            TestObjectInternal.MaxFeePerDataGas = maxFeePerDataGas;
+            TestObjectInternal.MaxFeePerBlobGas = maxFeePerBlobGas;
             return this;
         }
 
@@ -173,7 +173,7 @@ namespace Nethermind.Core.Test.Builders
             }
 
             TestObjectInternal.Type = TxType.Blob;
-            TestObjectInternal.MaxFeePerDataGas ??= 1;
+            TestObjectInternal.MaxFeePerBlobGas ??= 1;
 
             if (isMempoolTx)
             {
