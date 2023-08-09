@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         Keccak? PivotHashParsed => PivotHash is null ? null : new Keccak(Bytes.FromHexString(PivotHash));
 
-        [ConfigItem(Description = "Max number of attempts (seconds) to update pivot block basing on Forkchoice message from Consensus Layer. Only for PoS chains.", DefaultValue = "900")]
+        [ConfigItem(Description = "Max number of attempts (seconds) to update pivot block basing on Forkchoice message from Consensus Layer. Only for PoS chains. Infinite by default.", DefaultValue = "2147483647")]
         int MaxAttemptsToUpdatePivot { get; set; }
 
         [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest body downloaded in fast sync when DownloadBodiesInFastSync is enabled. Actual values used will be Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier))", DefaultValue = "0")]
