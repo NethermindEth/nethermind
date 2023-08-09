@@ -7,7 +7,7 @@ tag_name=$(echo $json | jq -r '.tag_name')
 if [[ $arch == x86_64* ]]; then
   echo $json | jq -r '.assets[].browser_download_url | select(contains("linux-x64"))' | xargs -I % curl -sSL % -o nethermind.zip
   ln -s /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so > /dev/null 2>&1
-elif  [[ $arch == arm* ]] || [[ $arch = aarch64 ]]; then
+elif [[ $arch == arm* ]] || [[ $arch = aarch64 ]]; then
   echo $json | jq -r '.assets[].browser_download_url | select(contains("linux-arm64"))' | xargs -I % curl -sSL % -o nethermind.zip
   ln -s /usr/lib/aarch64-linux-gnu/libdl.so.2 /usr/lib/aarch64-linux-gnu/libdl.so > /dev/null 2>&1
   apt update > /dev/null 2>&1 && apt install libgflags-dev -y > /dev/null 2>&1
