@@ -79,7 +79,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _syncManager,
                 _transactionPool,
                 _gossipPolicy,
-            Substitute.For<INetworkConfig>(),
                 LimboLogs.Instance,
                 _txGossipPolicy);
             _handler.Init();
@@ -123,7 +122,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _syncManager,
                 _transactionPool,
                 _gossipPolicy,
-            Substitute.For<INetworkConfig>(),
                 LimboLogs.Instance);
 
             _syncManager.Received().StopNotifyingPeersAboutNewBlocks();

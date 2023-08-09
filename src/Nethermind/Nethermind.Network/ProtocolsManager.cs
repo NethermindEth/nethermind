@@ -52,7 +52,6 @@ namespace Nethermind.Network
         private readonly INetworkStorage _peerStorage;
         private readonly ForkInfo _forkInfo;
         private readonly IGossipPolicy _gossipPolicy;
-        private readonly INetworkConfig _networkConfig;
         private readonly ITxGossipPolicy _txGossipPolicy;
         private readonly INetworkConfig _networkConfig;
         private readonly ILogManager _logManager;
@@ -198,9 +197,9 @@ namespace Nethermind.Network
                 {
                     var ethHandler = version switch
                     {
-                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _networkConfig, _logManager, _txGossipPolicy),
-                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _networkConfig, _logManager, _txGossipPolicy),
-                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _networkConfig, _logManager, _txGossipPolicy),
+                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 
@@ -211,7 +210,7 @@ namespace Nethermind.Network
                 {
                     var handler = version switch
                     {
-                        1 => new SnapProtocolHandler(session, _stats, _serializer, _networkConfig, _logManager),
+                        1 => new SnapProtocolHandler(session, _stats, _serializer, _logManager),
                         _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
                     };
                     InitSatelliteProtocol(session, handler);
@@ -231,7 +230,7 @@ namespace Nethermind.Network
                 },
                 [Protocol.Les] = (session, version) =>
                 {
-                    LesProtocolHandler handler = new(session, _serializer, _stats, _syncServer, _networkConfig, _logManager);
+                    LesProtocolHandler handler = new(session, _serializer, _stats, _syncServer, _logManager);
                     InitSyncPeerProtocol(session, handler);
 
                     return handler;

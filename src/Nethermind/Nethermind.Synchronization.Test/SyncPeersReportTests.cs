@@ -182,7 +182,6 @@ namespace Nethermind.Synchronization.Test
                     serializer,
                     statsManager,
                     syncServer,
-            Substitute.For<INetworkConfig>(),
                     NoErrorLimboLogs.Instance)
             {
                 IsInitialized = initialized;

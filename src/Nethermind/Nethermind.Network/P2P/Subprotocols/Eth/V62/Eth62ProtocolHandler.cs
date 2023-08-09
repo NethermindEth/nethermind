@@ -42,10 +42,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             ISyncServer syncServer,
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
-            INetworkConfig networkConfig,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, statsManager, syncServer, networkConfig, logManager)
+            : base(session, serializer, statsManager, syncServer, logManager)
         {
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));

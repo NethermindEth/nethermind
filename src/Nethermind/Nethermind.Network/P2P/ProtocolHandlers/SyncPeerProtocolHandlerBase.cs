@@ -62,7 +62,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
-            INetworkConfig networkConfig,
             ILogManager logManager) : base(session, statsManager, serializer, logManager)
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
@@ -72,9 +71,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
 
             _bodiesRequestSizer = new AdaptiveRequestSizer(
-                networkConfig.BodiesRequestMinSize,
-                networkConfig.BodiesRequestMaxSize,
-                2.0
+                1,
+                128
             );
         }
 

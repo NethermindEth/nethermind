@@ -45,7 +45,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public SnapProtocolHandler(ISession session,
             INodeStatsManager nodeStats,
             IMessageSerializationService serializer,
-            INetworkConfig networkConfig,
             ILogManager logManager)
             : base(session, nodeStats, serializer, logManager)
         {
@@ -55,10 +54,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getTrieNodesRequests = new(Send);
 
             _basedRequestSizer = new LatencyBasedRequestSizer(
-                networkConfig.SnapRequestMinBytes,
-                networkConfig.SnapRequestMaxBytes,
-                TimeSpan.FromMilliseconds(networkConfig.SnapResponseLatencyLowWatermarkMs),
-                TimeSpan.FromMilliseconds(networkConfig.SnapResponseLatencyHighWatermarkMs),
+                50000,
+                3000000,
+                TimeSpan.FromMilliseconds(2000),
+                TimeSpan.FromMilliseconds(3000),
                 2.0
             );
         }

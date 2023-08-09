@@ -36,19 +36,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ISyncServer syncServer,
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
-            INetworkConfig networkConfig,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, networkConfig, logManager, transactionsGossipPolicy)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
             _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests = new MessageQueue<GetReceiptsMessage, TxReceipt[][]>(Send);
 
             _receiptsRequestSizer = new AdaptiveRequestSizer(
-                networkConfig.ReceiptsRequestMinSize,
-                networkConfig.ReceiptsRequestMaxSize,
-                2.0
-            );
+                1,
+                128);
         }
 
         public override byte ProtocolVersion => EthVersions.Eth63;

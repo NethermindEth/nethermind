@@ -37,7 +37,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Substitute.For<ISyncServer>(),
                 Substitute.For<ITxPool>(),
                 Substitute.For<IGossipPolicy>(),
-            Substitute.For<INetworkConfig>(),
                 LimboLogs.Instance);
 
             _timestamper = Substitute.For<ITimestamper>();

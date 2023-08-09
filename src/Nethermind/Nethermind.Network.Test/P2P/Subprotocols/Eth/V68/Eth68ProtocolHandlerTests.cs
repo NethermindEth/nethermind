@@ -79,7 +79,6 @@ public class Eth68ProtocolHandlerTests
             _pooledTxsRequestor,
             _gossipPolicy,
             new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
-            Substitute.For<INetworkConfig>(),
             LimboLogs.Instance,
             _txGossipPolicy);
         _handler.Init();

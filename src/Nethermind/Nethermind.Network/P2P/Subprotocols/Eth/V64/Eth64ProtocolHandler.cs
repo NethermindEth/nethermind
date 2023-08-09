@@ -31,10 +31,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
             ForkInfo forkInfo,
-            INetworkConfig networkConfig,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, networkConfig, logManager, transactionsGossipPolicy)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
             _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
         }

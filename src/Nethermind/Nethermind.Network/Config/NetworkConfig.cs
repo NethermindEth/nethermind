@@ -38,19 +38,6 @@ namespace Nethermind.Network.Config
         public int MaxOutgoingConnectPerSec { get; set; } = 20;
         public int ConnectTimeoutMs { get; set; } = 2000;
         public int ProcessingThreadCount { get; set; } = 1;
-
-        public int SnapRequestMinBytes { get; set; } = 20_000;
-        public int SnapRequestMaxBytes { get; set; } = 2_000_000;
-        public long SnapResponseLatencyLowWatermarkMs { get; set; } = 1000;
-        public long SnapResponseLatencyHighWatermarkMs { get; set; } = 2000;
-        public int BodiesRequestMinSize { get; set; } = 4;
-        public int BodiesRequestMaxSize { get; set; } = 128;
-        public long BodiesResponseLatencyLowWatermarkMs { get; set; } = 2000;
-        public long BodiesResponseLatencyHighWatermarkMs { get; set; } = 3000;
-        public int ReceiptsRequestMinSize { get; set; } = 4;
-        public int ReceiptsRequestMaxSize { get; set; } = 128;
-        public long ReceiptsResponseLatencyLowWatermarkMs { get; set; } = 2000;
-        public long ReceiptsResponseLatencyHighWatermarkMs { get; set; } = 3000;
         public string? ClientIdMatcher { get; set; } = null;
     }
 }
