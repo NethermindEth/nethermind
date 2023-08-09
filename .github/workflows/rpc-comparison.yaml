@@ -71,7 +71,11 @@ jobs:
         WIREGUARD_ALLOWED_IPS: '${{ secrets.WIREGUARD_ALLOWED_IPS }}'
         WIREGUARD_SERVER_IP: '${{ secrets.WIREGUARD_SERVER_IP }}'
         WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
+    
+    - name: Wait for the node to sync
+      run: |
+        while curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' ${{ needs.extract_rpc_url.outputs.rpc_url }} | jq -e '.result'
+        do sleep 300; done 
   
     - name: Test equality of responses
       run: flood all nethermind_current=${{ needs.extract_rpc_url.outputs.rpc_url }} ${{ matrix.rpc_to_compare }}=${{ secrets[matrix.rpc_to_compare] }} --equality
-    
