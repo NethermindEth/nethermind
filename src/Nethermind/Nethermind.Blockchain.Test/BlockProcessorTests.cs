@@ -97,6 +97,42 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
+        public void Creates_BeaconRootPrecompile_on_cancun_genesis()
+        {
+            IDb stateDb = new MemDb();
+            IDb codeDb = new MemDb();
+            var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+
+            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+            IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
+            BlockProcessor processor = new(
+                new TestSpecProvider(Cancun.Instance),
+                TestBlockValidator.AlwaysValid,
+                NoBlockRewards.Instance,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+                stateProvider,
+                NullReceiptStorage.Instance,
+                witnessCollector,
+                LimboLogs.Instance);
+
+            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
+            Block block = Build.A.Block.WithHeader(header)
+                .WithParentBeaconBlockRoot(Keccak.Zero)
+                .TestObject;
+
+            Assert.IsFalse(stateProvider.AccountExists(Evm.Precompiles.Stateful.BeaconBlockRootPrecompile.Address));
+
+            _ = processor.Process(
+                Keccak.EmptyTreeHash,
+                new List<Block> { block },
+                ProcessingOptions.None,
+                NullBlockTracer.Instance);
+
+            Assert.IsTrue(stateProvider.AccountExists(Evm.Precompiles.Stateful.BeaconBlockRootPrecompile.Address));
+        }
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Recovers_state_on_cancel()
         {
             IDb stateDb = new MemDb();

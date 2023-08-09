@@ -8,6 +8,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using k8s;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -110,6 +112,31 @@ public partial class EngineModuleTests
         responseFirst.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
     }
 
+    [TestCase(1, true)]
+    [TestCase(2, true)]
+    [TestCase(3, false)]
+    public async Task ForkchoiceUpdatedV3_should_fail_on_wrong_payloadVersion(int version, bool shoudlFail)
+    {
+        using SemaphoreSlim blockImprovementLock = new(0);
+        using MergeTestBlockchain chain = await CreateBlockchain(Cancun.Instance);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        Keccak currentHeadHash = chain.BlockTree.HeadHash;
+        ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chain.BlockTree.Head!.Timestamp + 1,
+            PrevRandao = TestItem.KeccakH,
+            SuggestedFeeRecipient = TestItem.AddressF,
+            Withdrawals = version >= EngineApiVersions.Shanghai ? new List<Withdrawal> { TestItem.WithdrawalA_1Eth } : null,
+            ParentBeaconBlockRoot = version >= EngineApiVersions.Cancun ? TestItem.KeccakE : null
+        };
+
+        ResultWrapper<ForkchoiceUpdatedV1Result?> responseFirst = await rpc.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
+        responseFirst.Should().NotBeNull();
+        responseFirst.Result.ResultType.Should().Be(shoudlFail ? ResultType.Failure : ResultType.Success);
+    }
+
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(2)]
@@ -124,6 +151,21 @@ public partial class EngineModuleTests
         Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
+    }
+
+    [TestCase(true, PayloadStatus.Valid)]
+    [TestCase(false, PayloadStatus.Invalid)]
+    public virtual async Task NewPayloadV3_should_fail_on_null_parentBeaconBlockHash(bool includeParentBeaconBlockRoot, string expectedPayloadStatus)
+    {
+        (IEngineRpcModule rpcModule, string payloadId, Transaction[] transactions) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+
+        ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
+        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, includeParentBeaconBlockRoot ? payload.ParentBeaconBlockRoot.BytesToArray() : null);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be(expectedPayloadStatus);
     }
 
     [TestCase(false, PayloadStatus.Valid)]
@@ -406,7 +448,7 @@ public partial class EngineModuleTests
             PrevRandao = TestItem.KeccakH,
             SuggestedFeeRecipient = TestItem.AddressF,
             Withdrawals = new List<Withdrawal> { TestItem.WithdrawalA_1Eth },
-            BeaconParentBlockRoot = spec.IsBeaconBlockRootAvailable ? TestItem.KeccakE : null
+            ParentBeaconBlockRoot = spec.IsBeaconBlockRootAvailable ? TestItem.KeccakE : null
         };
         Keccak currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);

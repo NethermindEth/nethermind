@@ -76,7 +76,7 @@ public partial class EngineModuleTests
             JsonConvert.SerializeObject(preparePayloadParams)
         };
         // prepare a payload
-        string result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters!);
+        string result = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters!);
         byte[] expectedPayloadId = Bytes.FromHexString(payloadId);
         result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\",\"latestValidHash\":\"{latestValidHash}\",\"validationError\":null}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
 
@@ -99,10 +99,10 @@ public partial class EngineModuleTests
             Transactions = Array.Empty<byte[]>()
         });
         // get the payload
-        result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", expectedPayloadId.ToHexString(true));
+        result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", expectedPayloadId.ToHexString(true));
         result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedPayload},\"id\":67}}");
         // execute the payload
-        result = RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV1", expectedPayload);
+        result = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV1", expectedPayload);
         result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"latestValidHash\":\"{expectedBlockHash}\",\"validationError\":null}},\"id\":67}}");
 
         forkChoiceUpdatedParams = new
@@ -113,7 +113,7 @@ public partial class EngineModuleTests
         };
         parameters = new[] { JsonConvert.SerializeObject(forkChoiceUpdatedParams), null };
         // update the fork choice
-        result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters!);
+        result = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters!);
         result.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"VALID\",\"latestValidHash\":\"" +
                            expectedBlockHash +
                            "\",\"validationError\":null},\"payloadId\":null},\"id\":67}");
@@ -131,7 +131,7 @@ public partial class EngineModuleTests
             finalizedBlockHash = Keccak.Zero.ToString(),
         };
         string[] parameters = new[] { JsonConvert.SerializeObject(forkChoiceUpdatedParams) };
-        string? result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
+        string? result = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
         result.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"SYNCING\",\"latestValidHash\":null,\"validationError\":null},\"payloadId\":null},\"id\":67}");
     }
 
