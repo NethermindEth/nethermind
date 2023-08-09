@@ -542,6 +542,7 @@ public class InitializeNetwork : IStep
             peerStorage,
             forkInfo,
             _api.GossipPolicy,
+            _networkConfig,
             _api.LogManager,
             _api.TxGossipPolicy);
 
