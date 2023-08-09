@@ -47,8 +47,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             _receiptsRequestSizer = new AdaptiveRequestSizer(
                 networkConfig.ReceiptsRequestMinSize,
                 networkConfig.ReceiptsRequestMaxSize,
-                TimeSpan.FromMilliseconds(networkConfig.ReceiptsResponseLatencyLowWatermarkMs),
-                TimeSpan.FromMilliseconds(networkConfig.ReceiptsResponseLatencyHighWatermarkMs),
                 2.0
             );
         }
@@ -145,11 +143,41 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return Array.Empty<TxReceipt[]>();
             }
 
-            TxReceipt[][] txReceipts = await _receiptsRequestSizer.MeasureLatency(async (requestSize) =>
+            TxReceipt[][] txReceipts = await _receiptsRequestSizer.Run(async (requestSize) =>
             {
                 GetReceiptsMessage msg = new(blockHashes.Take(requestSize).ToArray());
-                return await SendRequest(msg, token);
+
+                Stopwatch sw = new Stopwatch();
+                TxReceipt[][] response = await SendRequest(msg, token);
+                TimeSpan duration = sw.Elapsed;
+
+                if (duration > TimeSpan.FromMilliseconds(3000))
+                {
+                    return (response, AdaptiveRequestSizer.Direction.Decrease);
+                }
+
+                int txCount = 0;
+                if (response != null)
+                {
+                    foreach (TxReceipt[]? receipts in response)
+                    {
+                        txCount += receipts?.Length ?? 0;
+                    }
+                }
+
+                if (txCount > 20000)
+                {
+                    return (response, AdaptiveRequestSizer.Direction.Decrease);
+                }
+
+                if (blockHashes.Count > requestSize && duration < TimeSpan.FromMilliseconds(2000) && txCount < 1000)
+                {
+                    return (response, AdaptiveRequestSizer.Direction.Increase);
+                }
+
+                return (response, AdaptiveRequestSizer.Direction.Stay);
             });
+
             return txReceipts;
         }
 

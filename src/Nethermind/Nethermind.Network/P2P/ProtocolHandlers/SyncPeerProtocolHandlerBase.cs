@@ -74,8 +74,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _bodiesRequestSizer = new AdaptiveRequestSizer(
                 networkConfig.BodiesRequestMinSize,
                 networkConfig.BodiesRequestMaxSize,
-                TimeSpan.FromMilliseconds(networkConfig.BodiesResponseLatencyLowWatermarkMs),
-                TimeSpan.FromMilliseconds(networkConfig.BodiesResponseLatencyHighWatermarkMs),
                 2.0
             );
         }
@@ -93,12 +91,41 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 return Array.Empty<BlockBody>();
             }
 
-            BlockBody[] blocks = await _bodiesRequestSizer.MeasureLatency(async (requestSize) =>
+            BlockBody[] blocks = await _bodiesRequestSizer.Run(async (requestSize) =>
             {
                 GetBlockBodiesMessage bodiesMsg = new(blockHashes.Take(requestSize).ToArray());
 
-                return await SendRequest(bodiesMsg, token);
+                Stopwatch sw = new Stopwatch();
+                BlockBody[]? response = await SendRequest(bodiesMsg, token);
+                TimeSpan duration = sw.Elapsed;
+
+                if (duration > TimeSpan.FromMilliseconds(3000))
+                {
+                    return (response, AdaptiveRequestSizer.Direction.Decrease);
+                }
+
+                int txCount = 0;
+                if (response != null)
+                {
+                    foreach (BlockBody? blockBody in response)
+                    {
+                        txCount += blockBody?.Transactions?.Length ?? 0;
+                    }
+                }
+
+                if (txCount > 20000)
+                {
+                    return (response, AdaptiveRequestSizer.Direction.Decrease);
+                }
+
+                if (blockHashes.Count > requestSize && duration < TimeSpan.FromMilliseconds(2000) && txCount < 1000)
+                {
+                    return (response, AdaptiveRequestSizer.Direction.Increase);
+                }
+
+                return (response, AdaptiveRequestSizer.Direction.Stay);
             });
+
             return blocks;
         }
 

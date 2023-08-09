@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
-using System.Net;
 using System.Threading.Tasks;
 
 namespace Nethermind.Core;
@@ -17,43 +15,21 @@ public class AdaptiveRequestSizer
 {
     private readonly int _minRequestLimit;
     private readonly int _maxRequestLimit;
-    private readonly int _lowerWatermark;
-    private readonly int _upperWatermark;
     private readonly double _adjustmentFactor;
 
-    public int RequestSize { get; private set; }
+    internal int RequestSize { get; set; }
 
     public AdaptiveRequestSizer(
         int minRequestLimit,
         int maxRequestLimit,
-        int lowerWatermark,
-        int upperWatermark,
         double adjustmentFactor = 2.0
     )
     {
         _maxRequestLimit = maxRequestLimit;
         _minRequestLimit = minRequestLimit;
-        _lowerWatermark = lowerWatermark;
-        _upperWatermark = upperWatermark;
         _adjustmentFactor = adjustmentFactor;
 
         RequestSize = _minRequestLimit;
-    }
-
-    /// <summary>
-    /// Adjust the RequestSize depending on the latency of the request (in millis) and if the request failed.
-    /// </summary>
-    /// <param name="func"></param>
-    /// <typeparam name="T"></typeparam>
-    /// <returns></returns>
-    public async Task<T> MeasureLatency<T>(Func<int, Task<T>> func)
-    {
-        return await Measure(async (requestSize) =>
-        {
-            Stopwatch sw = Stopwatch.StartNew();
-            T result = await func(requestSize);
-            return (result, (int)sw.ElapsedMilliseconds);
-        });
     }
 
     /// <summary>
@@ -62,38 +38,35 @@ public class AdaptiveRequestSizer
     /// <param name="func"></param>
     /// <typeparam name="T"></typeparam>
     /// <returns></returns>
-    public async Task<T> Measure<T>(Func<int, Task<(T, int)>> func)
+    public async Task<T> Run<T>(Func<int, Task<(T, Direction)>> func)
     {
         // Record starting limit so that in case multiple concurrent request happens, we do not multiply the
         // limit on top of other adjustment, so only the last adjustment will stick, which is fine.
         int startingRequestSize = RequestSize;
-        bool failed = false;
-        int metric = 0;
+        Direction dir = Direction.Decrease; // For when it throws
         try
         {
-            (T response, int m) = await func(startingRequestSize);
-            metric = m;
+            (T response, Direction d) = await func(startingRequestSize);
+            dir = d;
             return response;
-        }
-        catch (Exception)
-        {
-            failed = true;
-            throw;
         }
         finally
         {
-            if (failed)
-            {
-                RequestSize = _minRequestLimit;
-            }
-            else if (metric < _lowerWatermark)
+            if (dir == Direction.Increase && startingRequestSize < _maxRequestLimit)
             {
                 RequestSize = Math.Min((int)(startingRequestSize * _adjustmentFactor), _maxRequestLimit);
             }
-            else if (metric > _upperWatermark && startingRequestSize > _minRequestLimit)
+            else if (dir == Direction.Decrease && startingRequestSize > _minRequestLimit)
             {
-                RequestSize = (int)(startingRequestSize / _adjustmentFactor);
+                RequestSize = Math.Max((int)(startingRequestSize / _adjustmentFactor), _minRequestLimit);
             }
         }
+    }
+
+    public enum Direction
+    {
+        Decrease,
+        Increase,
+        Stay
     }
 }
