@@ -9,6 +9,10 @@ using Nethermind.Core.Test.Collections;
 
 namespace Nethermind.Core;
 
+/// <summary>
+/// Encapsulate pattern of auto adjusting the request size depending on latency and response size.
+/// Used for bodies and receipts where the response size affect memory usage also.
+/// </summary>
 public class LatencyAndMessageSizeBasedRequestSizer
 {
     private readonly TimeSpan _upperLatencyWatermark;
@@ -38,10 +42,15 @@ public class LatencyAndMessageSizeBasedRequestSizer
     }
 
     /// <summary>
-    /// Adjust the RequestSize depending on the latency of the request (in millis) and if the request failed.
+    /// Adjust the request size depending on the latency and response size.
+    /// If the response size is too large, reduce request size.
+    /// If the latency is above watermark, reduce request size.
+    /// If the latency is below watermark and response size is not too large, increase request size.
     /// </summary>
+    /// <param name="request"></param>
     /// <param name="func"></param>
     /// <typeparam name="T"></typeparam>
+    /// <typeparam name="R"></typeparam>
     /// <returns></returns>
     public async Task<T> Run<T, R>(IReadOnlyList<R> request, Func<IReadOnlyList<R>, Task<(T, long)>> func)
     {
@@ -62,8 +71,7 @@ public class LatencyAndMessageSizeBasedRequestSizer
 
             if (
                 request.Count >= adjustedRequestSize // If the original request size is low, increasing wont do anything
-                && duration < _lowerLatencyWatermark
-                && messageSize < _maxResponseSize)
+                && duration < _lowerLatencyWatermark)
             {
                 return (result, AdaptiveRequestSizer.Direction.Increase);
             }
