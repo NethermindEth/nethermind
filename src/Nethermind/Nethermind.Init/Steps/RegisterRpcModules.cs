@@ -104,7 +104,7 @@ public class RegisterRpcModules : IStep
             _api.ReceiptStorage,
             _api.GasPriceOracle,
             _api.EthSyncingInfo);
-        
+
         RpcLimits.Init(rpcConfig.RequestQueueLimit);
         rpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
 
