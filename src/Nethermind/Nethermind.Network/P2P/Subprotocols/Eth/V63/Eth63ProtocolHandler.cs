@@ -29,12 +29,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private readonly MessageQueue<GetReceiptsMessage, (TxReceipt[][], long)> _receiptsRequests;
 
-        private const int ReceiptMessageSizeUpperWatermark = 4_000_000;
-        private readonly TimeSpan _receiptsLatencyLowerWatermark = TimeSpan.FromMilliseconds(2000);
-        private readonly TimeSpan _receiptsLatencyUpperWatermark = TimeSpan.FromMilliseconds(3000);
-        private readonly AdaptiveRequestSizer _receiptsRequestSizer = new(
-            1,
-            128,
+        private readonly LatencyAndMessageSizeBasedRequestSizer _receiptsRequestSizer = new(
+            minRequestLimit: 1,
+            maxRequestLimit: 128,
+
+            // In addition to the byte limit, we also try to keep the latency of the get receipts between these two
+            // watermark. This reduce timeout rate, and subsequently disconnection rate.
+            lowerLatencyWatermark: TimeSpan.FromMilliseconds(2000),
+            upperLatencyWatermark: TimeSpan.FromMilliseconds(3000),
+
+            // When the receipts message size exceed this, we try to reduce the maximum number of block for this peer.
+            // This is for BeSU and Reth which does not seems to use the 2MB soft limit, causing them to send 20MB of bodies
+            // or receipts. This is not great as large message size are harder for DotNetty to pool byte buffer, causing
+            // higher memory usage. Reducing this even further does seems to help with memory, but may reduce throughput.
+            maxResponseSize: 3_000_000,
             initialRequestSize: 8
         );
 
@@ -144,31 +152,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return Array.Empty<TxReceipt[]>();
             }
 
-            TxReceipt[][] txReceipts = await _receiptsRequestSizer.Run(async (requestSize) =>
-            {
-                GetReceiptsMessage msg = new(blockHashes.Clamp(requestSize));
-
-                Stopwatch sw = new();
-                (TxReceipt[][] response, long size) = await SendRequest(msg, token);
-                TimeSpan duration = sw.Elapsed;
-
-                if (duration > _receiptsLatencyUpperWatermark)
-                {
-                    return (response, AdaptiveRequestSizer.Direction.Decrease);
-                }
-
-                if (size > ReceiptMessageSizeUpperWatermark)
-                {
-                    return (response, AdaptiveRequestSizer.Direction.Decrease);
-                }
-
-                if (blockHashes.Count > requestSize && duration < _receiptsLatencyLowerWatermark && size < ReceiptMessageSizeUpperWatermark)
-                {
-                    return (response, AdaptiveRequestSizer.Direction.Increase);
-                }
-
-                return (response, AdaptiveRequestSizer.Direction.Stay);
-            });
+            TxReceipt[][] txReceipts = await _receiptsRequestSizer.Run(blockHashes, async clampedBlockHashes =>
+                await SendRequest(new GetReceiptsMessage(clampedBlockHashes), token));
 
             return txReceipts;
         }

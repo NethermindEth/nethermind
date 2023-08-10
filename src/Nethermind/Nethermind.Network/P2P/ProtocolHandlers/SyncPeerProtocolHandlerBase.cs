@@ -56,13 +56,21 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, (BlockBody[], long)> _bodiesRequests;
 
-        private const int BodiesMsgSizeUpperWatermark = 4_000_000;
-        private readonly TimeSpan _bodiesLatencyLowerWatermark = TimeSpan.FromMilliseconds(2000);
-        private readonly TimeSpan _bodiesLatencyUpperWatermark = TimeSpan.FromMilliseconds(3000);
-        private readonly AdaptiveRequestSizer _bodiesRequestSizer = new(
-            1,
-            128,
-            initialRequestSize: 8
+        private readonly LatencyAndMessageSizeBasedRequestSizer _bodiesRequestSizer = new(
+            minRequestLimit: 1,
+            maxRequestLimit: 128,
+
+            // In addition to the byte limit, we also try to keep the latency of the get block bodies between these two
+            // watermark. This reduce timeout rate, and subsequently disconnection rate.
+            lowerLatencyWatermark: TimeSpan.FromMilliseconds(2000),
+            upperLatencyWatermark: TimeSpan.FromMilliseconds(3000),
+
+            // When the bodies message size exceed this, we try to reduce the maximum number of block for this peer.
+            // This is for BeSU and Reth which does not seems to use the 2MB soft limit, causing them to send 20MB of bodies
+            // or receipts. This is not great as large message size are harder for DotNetty to pool byte buffer, causing
+            // higher memory usage. Reducing this even further does seems to help with memory, but may reduce throughput.
+            maxResponseSize: 3_000_000,
+            initialRequestSize: 4
         );
 
         protected LruKeyCache<Keccak> NotifiedTransactions { get; } = new(2 * MemoryAllowance.MemPoolSize, "notifiedTransactions");
@@ -94,31 +102,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 return Array.Empty<BlockBody>();
             }
 
-            BlockBody[] blocks = await _bodiesRequestSizer.Run(async (requestSize) =>
-            {
-                GetBlockBodiesMessage bodiesMsg = new(blockHashes.Clamp(requestSize));
-
-                Stopwatch sw = new Stopwatch();
-                (BlockBody[]? response, long size) = await SendRequest(bodiesMsg, token);
-                TimeSpan duration = sw.Elapsed;
-
-                if (duration > _bodiesLatencyUpperWatermark)
-                {
-                    return (response, AdaptiveRequestSizer.Direction.Decrease);
-                }
-
-                if (size > BodiesMsgSizeUpperWatermark)
-                {
-                    return (response, AdaptiveRequestSizer.Direction.Decrease);
-                }
-
-                if (blockHashes.Count > requestSize && duration < _bodiesLatencyLowerWatermark && size < BodiesMsgSizeUpperWatermark)
-                {
-                    return (response, AdaptiveRequestSizer.Direction.Increase);
-                }
-
-                return (response, AdaptiveRequestSizer.Direction.Stay);
-            });
+            BlockBody[] blocks = await _bodiesRequestSizer.Run(blockHashes, async clampedBlockHashes =>
+                await SendRequest(new GetBlockBodiesMessage(clampedBlockHashes), token));
 
             return blocks;
         }
