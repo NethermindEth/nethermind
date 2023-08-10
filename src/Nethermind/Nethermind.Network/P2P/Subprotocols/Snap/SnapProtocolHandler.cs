@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
-        private readonly LatencyBasedRequestSizer _basedRequestSizer = new(
+        private readonly LatencyBasedRequestSizer _requestSizer = new(
             minRequestLimit: 50000,
             maxRequestLimit: 3_000_000,
             lowerWatermark: TimeSpan.FromMilliseconds(2000),
@@ -184,7 +184,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         public async Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)
         {
-            AccountRangeMessage response = await _basedRequestSizer.MeasureLatency((bytesLimit) =>
+            AccountRangeMessage response = await _requestSizer.MeasureLatency((bytesLimit) =>
                 SendRequest(new GetAccountRangeMessage()
                 {
                     AccountRange = range,
@@ -198,7 +198,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         public async Task<SlotsAndProofs> GetStorageRange(StorageRange range, CancellationToken token)
         {
-            StorageRangeMessage response = await _basedRequestSizer.MeasureLatency((bytesLimit) =>
+            StorageRangeMessage response = await _requestSizer.MeasureLatency((bytesLimit) =>
                 SendRequest(new GetStorageRangeMessage()
                 {
                     StoragetRange = range,
@@ -212,7 +212,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         public async Task<byte[][]> GetByteCodes(IReadOnlyList<ValueKeccak> codeHashes, CancellationToken token)
         {
-            ByteCodesMessage response = await _basedRequestSizer.MeasureLatency((bytesLimit) =>
+            ByteCodesMessage response = await _requestSizer.MeasureLatency((bytesLimit) =>
                 SendRequest(new GetByteCodesMessage()
                 {
                     Hashes = codeHashes,
@@ -238,7 +238,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private async Task<byte[][]> GetTrieNodes(ValueKeccak rootHash, PathGroup[] groups, CancellationToken token)
         {
-            TrieNodesMessage response = await _basedRequestSizer.MeasureLatency((bytesLimit) =>
+            TrieNodesMessage response = await _requestSizer.MeasureLatency((bytesLimit) =>
                 SendRequest(new GetTrieNodesMessage()
                 {
                     RootHash = rootHash,
