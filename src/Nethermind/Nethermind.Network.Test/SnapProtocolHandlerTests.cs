@@ -12,7 +12,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Snap;
@@ -48,21 +47,6 @@ public class SnapProtocolHandlerTests
         }
 
         public INodeStatsManager NodeStatsManager { get; set; } = Substitute.For<INodeStatsManager>();
-
-        private INetworkConfig _networkConfig;
-        public INetworkConfig NetworkConfig
-        {
-            get
-            {
-                if (_networkConfig is null)
-                {
-                    _networkConfig = new NetworkConfig();
-                }
-
-                return _networkConfig;
-            }
-            set => _networkConfig = value;
-        }
 
 
         private SnapProtocolHandler _snapProtocolHandler;

@@ -31,7 +31,6 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using Prometheus;
 
 namespace Nethermind.Network.Test
 {

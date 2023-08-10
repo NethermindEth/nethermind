@@ -7,9 +7,10 @@ using System.Threading.Tasks;
 namespace Nethermind.Core;
 
 /// <summary>
-/// Encapsulate the pattern of adjusting request size depending on another metrics (usually the latency)
-/// If the metric is lower that _lowerLatencyWatermark, the request size is increased,
-/// if the metric is higher than _upperLatencyWatermark, the request size is decreased.
+/// Encapsulate the pattern of adjusting request size depending on returned direction.
+/// Usually that depends on another metrics (usually the latency). This class just handle changing the request size.
+/// If the direction is Increase, the request size is increased,
+/// if the direction is Decrease, the request size is decreased.
 /// </summary>
 public class AdaptiveRequestSizer
 {
@@ -34,7 +35,7 @@ public class AdaptiveRequestSizer
     }
 
     /// <summary>
-    /// Adjust the RequestSize depending on the metrics of the request and if the request failed.
+    /// Adjust the RequestSize depending on the requested direction or if the request failed.
     /// </summary>
     /// <param name="func"></param>
     /// <typeparam name="T"></typeparam>

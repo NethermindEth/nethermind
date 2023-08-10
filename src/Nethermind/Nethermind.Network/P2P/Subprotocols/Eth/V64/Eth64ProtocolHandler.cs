@@ -5,7 +5,6 @@ using System;
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;

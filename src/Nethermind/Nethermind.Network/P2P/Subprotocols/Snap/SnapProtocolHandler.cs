@@ -11,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -57,7 +56,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getStorageRangeRequests = new(Send);
             _getByteCodesRequests = new(Send);
             _getTrieNodesRequests = new(Send);
-
         }
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;

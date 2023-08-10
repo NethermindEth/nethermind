@@ -404,7 +404,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public async Task Can_handle_block_bodies()
+        public async Task Can_LimitGetBlockBodiesRequestSize()
         {
             BlockBodiesMessage msg = new(Build.A.Block.TestObjectNTimes(3));
             Transaction signedTransaction = Build.A.Transaction.SignedAndResolved().TestObject;
@@ -440,7 +440,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Limit_GetBlockBodiesSize()
+        public void Can_handle_block_bodies()
         {
             BlockBodiesMessage msg = new(Build.A.Block.TestObjectNTimes(3));
 

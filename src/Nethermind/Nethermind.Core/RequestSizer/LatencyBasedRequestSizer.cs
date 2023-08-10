@@ -28,7 +28,7 @@ public class LatencyBasedRequestSizer
     }
 
     /// <summary>
-    /// Adjust the RequestSize depending on the latency of the request (in millis) and if the request failed.
+    /// Adjust the RequestSize depending on the latency of the request
     /// </summary>
     /// <param name="func"></param>
     /// <typeparam name="T"></typeparam>

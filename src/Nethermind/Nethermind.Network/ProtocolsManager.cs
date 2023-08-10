@@ -61,7 +61,8 @@ namespace Nethermind.Network
         private readonly Regex? _clientIdPattern;
         public event EventHandler<ProtocolInitializedEventArgs>? P2PProtocolInitialized;
 
-        public ProtocolsManager(ISyncPeerPool syncPeerPool,
+        public ProtocolsManager(
+            ISyncPeerPool syncPeerPool,
             ISyncServer syncServer,
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
