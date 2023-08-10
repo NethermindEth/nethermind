@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -34,7 +35,17 @@ public class ClampedReadOnlyList<T> : IReadOnlyList<T>
 
     public int Count { get; }
 
-    public T this[int index] => _baseImplementation[index];
+    public T this[int index]
+    {
+        get
+        {
+            if (index >= Count)
+            {
+                throw new IndexOutOfRangeException();
+            }
+            return _baseImplementation[index];
+        }
+    }
 }
 
 public static class ReadOnlyListExtensions
