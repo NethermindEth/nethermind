@@ -57,15 +57,15 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithDataGasUsed(ulong? dataGasUsed)
+        public BlockBuilder WithBlobGasUsed(ulong? blobGasUsed)
         {
-            TestObjectInternal.Header.DataGasUsed = dataGasUsed;
+            TestObjectInternal.Header.BlobGasUsed = blobGasUsed;
             return this;
         }
 
-        public BlockBuilder WithExcessDataGas(ulong? excessDataGas)
+        public BlockBuilder WithExcessBlobGas(ulong? excessBlobGas)
         {
-            TestObjectInternal.Header.ExcessDataGas = excessDataGas;
+            TestObjectInternal.Header.ExcessBlobGas = excessBlobGas;
             return this;
         }
 

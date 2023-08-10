@@ -112,7 +112,7 @@ namespace Nethermind.Core
 
         public AccessList? AccessList { get; set; } // eip2930
 
-        public UInt256? MaxFeePerDataGas { get; set; } // eip4844
+        public UInt256? MaxFeePerBlobGas { get; set; } // eip4844
 
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
 
@@ -173,7 +173,7 @@ namespace Nethermind.Core
 
             if (SupportsBlobs)
             {
-                builder.AppendLine($"{indent}{nameof(MaxFeePerDataGas)}: {MaxFeePerDataGas}");
+                builder.AppendLine($"{indent}{nameof(MaxFeePerBlobGas)}: {MaxFeePerBlobGas}");
                 builder.AppendLine($"{indent}{nameof(BlobVersionedHashes)}: {BlobVersionedHashes?.Length}");
             }
 

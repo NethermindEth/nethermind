@@ -7,7 +7,7 @@ namespace Nethermind.Network.Discovery;
 
 public class DiscoveryConfig : IDiscoveryConfig
 {
-    public int BucketSize { get; set; } = 12;
+    public int BucketSize { get; set; } = 16;
 
     public int BucketsCount { get; set; } = 256;
 
@@ -38,6 +38,7 @@ public class DiscoveryConfig : IDiscoveryConfig
     public int MaxNodeLifecycleManagersCount { get; set; } = 8000;
 
     public int NodeLifecycleManagersCleanupCount { get; set; } = 4000;
+    public float DropFullBucketNodeProbability { get; set; } = 0.05f;
 
     public string Bootnodes { get; set; } = string.Empty;
 }

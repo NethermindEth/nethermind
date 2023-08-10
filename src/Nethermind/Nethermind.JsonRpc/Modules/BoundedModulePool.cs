@@ -20,7 +20,6 @@ namespace Nethermind.JsonRpc.Modules
         private static int Limit { get; set; }
         private static bool Enabled => Limit > 0;
         private static int _queuedCalls = 0;
-        public static int QueuedCalls => _queuedCalls;
 
         public static void IncrementQueuedCalls()
         {
@@ -49,11 +48,9 @@ namespace Nethermind.JsonRpc.Modules
         private readonly Task<T> _sharedAsTask;
         private readonly ConcurrentQueue<T> _pool = new();
         private readonly SemaphoreSlim _semaphore;
-        private readonly ILogger _logger;
 
-        public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout, ILogManager logManager)
+        public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout)
         {
-            _logger = logManager.GetClassLogger();
             _timeout = timeout;
             Factory = factory;
 
@@ -73,8 +70,6 @@ namespace Nethermind.JsonRpc.Modules
         {
             RpcLimits.EnsureLimits();
             RpcLimits.IncrementQueuedCalls();
-            if (_logger.IsTrace)
-                _logger.Trace($"{typeof(T).Name} Queued RPC requests {RpcLimits.QueuedCalls}");
 
             if (!await _semaphore.WaitAsync(_timeout))
             {

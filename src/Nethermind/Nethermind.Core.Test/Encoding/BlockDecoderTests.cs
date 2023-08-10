@@ -63,8 +63,8 @@ public class BlockDecoderTests
                 .WithTransactions(transactions)
                 .WithUncles(uncles)
                 .WithWithdrawals(8)
-                .WithDataGasUsed(0)
-                .WithExcessDataGas(0)
+                .WithBlobGasUsed(0)
+                .WithExcessBlobGas(0)
                 .WithMixHash(Keccak.EmptyTreeHash)
                 .TestObject,
             Build.A.Block
@@ -73,8 +73,8 @@ public class BlockDecoderTests
                 .WithTransactions(transactions)
                 .WithUncles(uncles)
                 .WithWithdrawals(8)
-                .WithDataGasUsed(0xff)
-                .WithExcessDataGas(0xff)
+                .WithBlobGasUsed(0xff)
+                .WithExcessBlobGas(0xff)
                 .WithMixHash(Keccak.EmptyTreeHash)
                 .TestObject,
             Build.A.Block
@@ -83,8 +83,8 @@ public class BlockDecoderTests
                 .WithTransactions(transactions)
                 .WithUncles(uncles)
                 .WithWithdrawals(8)
-                .WithDataGasUsed(ulong.MaxValue)
-                .WithExcessDataGas(ulong.MaxValue)
+                .WithBlobGasUsed(ulong.MaxValue)
+                .WithExcessBlobGas(ulong.MaxValue)
                 .WithMixHash(Keccak.EmptyTreeHash)
                 .TestObject
         };
