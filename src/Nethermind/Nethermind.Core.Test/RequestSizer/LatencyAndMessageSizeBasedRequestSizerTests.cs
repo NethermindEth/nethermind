@@ -13,7 +13,7 @@ public class LatencyAndMessageSizeBasedRequestSizerTests
 {
     private static readonly int[] _sampleRequest = Enumerable.Range(0, 10).ToArray();
 
-    [TestCase(0, 0, 4)]
+    [TestCase(0, 0, 3)]
     [TestCase(0, 10000, 1)]
     [TestCase(20, 0, 2)]
     [TestCase(20, 10000, 1)]

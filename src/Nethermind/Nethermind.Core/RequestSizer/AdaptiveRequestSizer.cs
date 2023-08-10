@@ -23,7 +23,7 @@ public class AdaptiveRequestSizer
         int minRequestLimit,
         int maxRequestLimit,
         int? initialRequestSize = null,
-        double adjustmentFactor = 2.0
+        double adjustmentFactor = 1.5
     )
     {
         _maxRequestLimit = maxRequestLimit;
@@ -55,7 +55,7 @@ public class AdaptiveRequestSizer
         {
             if (dir == Direction.Increase && startingRequestSize < _maxRequestLimit)
             {
-                RequestSize = Math.Min((int)(startingRequestSize * _adjustmentFactor), _maxRequestLimit);
+                RequestSize = Math.Min((int)(Math.Ceiling(startingRequestSize * _adjustmentFactor)), _maxRequestLimit);
             }
             else if (dir == Direction.Decrease && startingRequestSize > _minRequestLimit)
             {

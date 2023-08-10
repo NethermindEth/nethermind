@@ -25,15 +25,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
-        private const int MaxBytesLimit = 3_000_000;
-        private const int MinBytesLimit = 50_000;
-        private static readonly TimeSpan _lowerLatencyThreshold = TimeSpan.FromMilliseconds(2000);
-        private static readonly TimeSpan _upperLatencyThreshold = TimeSpan.FromMilliseconds(3000);
         private readonly LatencyBasedRequestSizer _basedRequestSizer = new(
-            MinBytesLimit,
-            MaxBytesLimit,
-            _lowerLatencyThreshold,
-            _upperLatencyThreshold
+            minRequestLimit: 50000,
+            maxRequestLimit: 3_000_000,
+            lowerWatermark: TimeSpan.FromMilliseconds(2000),
+            upperWatermark: TimeSpan.FromMilliseconds(3000)
         );
 
         public override string Name => "snap1";
@@ -217,7 +213,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public async Task<byte[][]> GetByteCodes(IReadOnlyList<ValueKeccak> codeHashes, CancellationToken token)
         {
             ByteCodesMessage response = await _basedRequestSizer.MeasureLatency((bytesLimit) =>
-                SendRequest( new GetByteCodesMessage()
+                SendRequest(new GetByteCodesMessage()
                 {
                     Hashes = codeHashes,
                     Bytes = bytesLimit,

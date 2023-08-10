@@ -26,139 +26,157 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 {
-    [TestFixture, Parallelizable(ParallelScope.All)]
+    [TestFixture, Parallelizable(ParallelScope.Fixtures)]
     public class Eth63ProtocolHandlerTests
     {
         [Test]
         public async Task Can_request_and_handle_receipts()
         {
             Context ctx = new();
-            StatusMessageSerializer statusMessageSerializer = new();
-            ReceiptsMessageSerializer receiptMessageSerializer
-                = new(MainnetSpecProvider.Instance);
-            MessageSerializationService serializationService = new();
-            serializationService.Register(statusMessageSerializer);
-            serializationService.Register(receiptMessageSerializer);
-
-            Eth63ProtocolHandler protocolHandler = new(
-                ctx.Session,
-                serializationService,
-                Substitute.For<INodeStatsManager>(),
-                Substitute.For<ISyncServer>(),
-                Substitute.For<ITxPool>(),
-                Substitute.For<IGossipPolicy>(),
-                LimboLogs.Instance);
-
-            var receipts = Enumerable.Repeat(
+            TxReceipt[][]? receipts = Enumerable.Repeat(
                 Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 100).ToArray(),
                 1000).ToArray(); // TxReceipt[1000][100]
 
-            StatusMessage statusMessage = new();
-            Packet statusPacket =
-                new("eth", Eth62MessageCode.Status, statusMessageSerializer.Serialize(statusMessage));
-
             ReceiptsMessage receiptsMsg = new(receipts);
             Packet receiptsPacket =
-                new("eth", Eth63MessageCode.Receipts, receiptMessageSerializer.Serialize(receiptsMsg));
+                new("eth", Eth63MessageCode.Receipts, ctx._receiptMessageSerializer.Serialize(receiptsMsg));
 
-            protocolHandler.HandleMessage(statusPacket);
-            Task<TxReceipt[][]> task = protocolHandler.GetReceipts(
+            Task<TxReceipt[][]> task = ctx.ProtocolHandler.GetReceipts(
                 Enumerable.Repeat(Keccak.Zero, 1000).ToArray(),
                 CancellationToken.None);
 
-            protocolHandler.HandleMessage(receiptsPacket);
+            ctx.ProtocolHandler.HandleMessage(receiptsPacket);
 
             var result = await task;
             result.Should().HaveCount(1000);
         }
 
         [Test]
+        public async Task Limit_receipt_request()
+        {
+            Context ctx = new();
+            TxReceipt[] oneBlockReceipt = Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 100).ToArray();
+            Packet smallReceiptsPacket =
+                new("eth", Eth63MessageCode.Receipts, ctx._receiptMessageSerializer.Serialize(
+                    new(Enumerable.Repeat(oneBlockReceipt, 10).ToArray())
+                ));
+            Packet largeReceiptsPacket =
+                new("eth", Eth63MessageCode.Receipts, ctx._receiptMessageSerializer.Serialize(
+                    new(Enumerable.Repeat(oneBlockReceipt, 1000).ToArray())
+                ));
+
+            GetReceiptsMessage? receiptsMessage = null;
+
+            ctx.Session
+                .When(session => session.DeliverMessage(Arg.Any<GetReceiptsMessage>()))
+                .Do((info => receiptsMessage = (GetReceiptsMessage)info[0]));
+
+            Task<TxReceipt[][]> receiptsTask = ctx.ProtocolHandler.GetReceipts(
+                Enumerable.Repeat(Keccak.Zero, 1000).ToArray(),
+                CancellationToken.None);
+
+            ctx.ProtocolHandler.HandleMessage(smallReceiptsPacket);
+            await receiptsTask;
+
+            Assert.That(receiptsMessage?.Hashes?.Count, Is.EqualTo(8));
+
+            receiptsTask = ctx.ProtocolHandler.GetReceipts(
+                Enumerable.Repeat(Keccak.Zero, 1000).ToArray(),
+                CancellationToken.None);
+
+            ctx.ProtocolHandler.HandleMessage(largeReceiptsPacket);
+            await receiptsTask;
+
+            Assert.That(receiptsMessage?.Hashes?.Count, Is.EqualTo(12));
+
+            // Back to 10
+            receiptsTask = ctx.ProtocolHandler.GetReceipts(
+                Enumerable.Repeat(Keccak.Zero, 1000).ToArray(),
+                CancellationToken.None);
+
+            ctx.ProtocolHandler.HandleMessage(smallReceiptsPacket);
+            await receiptsTask;
+
+            Assert.That(receiptsMessage?.Hashes?.Count, Is.EqualTo(8));
+        }
+
+        [Test]
         public void Will_not_serve_receipts_requests_above_512()
         {
             Context ctx = new();
-            StatusMessageSerializer statusMessageSerializer = new();
-            ReceiptsMessageSerializer receiptMessageSerializer
-                = new(MainnetSpecProvider.Instance);
-            GetReceiptsMessageSerializer getReceiptMessageSerializer
-                = new();
-            MessageSerializationService serializationService = new();
-            serializationService.Register(statusMessageSerializer);
-            serializationService.Register(receiptMessageSerializer);
-            serializationService.Register(getReceiptMessageSerializer);
-
-            ISyncServer syncServer = Substitute.For<ISyncServer>();
-            Eth63ProtocolHandler protocolHandler = new(
-                ctx.Session,
-                serializationService,
-                Substitute.For<INodeStatsManager>(),
-                syncServer,
-                Substitute.For<ITxPool>(),
-                Substitute.For<IGossipPolicy>(),
-                LimboLogs.Instance);
-
-            StatusMessage statusMessage = new();
-            Packet statusPacket =
-                new("eth", Eth62MessageCode.Status, statusMessageSerializer.Serialize(statusMessage));
-
             GetReceiptsMessage getReceiptsMessage = new(
                 Enumerable.Repeat(Keccak.Zero, 513).ToArray());
             Packet getReceiptsPacket =
-                new("eth", Eth63MessageCode.GetReceipts, getReceiptMessageSerializer.Serialize(getReceiptsMessage));
+                new("eth", Eth63MessageCode.GetReceipts, ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
-            protocolHandler.HandleMessage(statusPacket);
-            Assert.Throws<EthSyncException>(() => protocolHandler.HandleMessage(getReceiptsPacket));
+            Assert.Throws<EthSyncException>(() => ctx.ProtocolHandler.HandleMessage(getReceiptsPacket));
         }
 
         [Test]
         public void Will_not_send_messages_larger_than_2MB()
         {
             Context ctx = new();
-            StatusMessageSerializer statusMessageSerializer = new();
-            ReceiptsMessageSerializer receiptMessageSerializer
-                = new(MainnetSpecProvider.Instance);
-            GetReceiptsMessageSerializer getReceiptMessageSerializer
-                = new();
-            MessageSerializationService serializationService = new();
-            serializationService.Register(statusMessageSerializer);
-            serializationService.Register(receiptMessageSerializer);
-            serializationService.Register(getReceiptMessageSerializer);
-
-            ISyncServer syncServer = Substitute.For<ISyncServer>();
-            Eth63ProtocolHandler protocolHandler = new(
-                ctx.Session,
-                serializationService,
-                Substitute.For<INodeStatsManager>(),
-                syncServer,
-                Substitute.For<ITxPool>(),
-                Substitute.For<IGossipPolicy>(),
-                LimboLogs.Instance);
-
-            syncServer.GetReceipts(Arg.Any<Keccak>()).Returns(
+            ctx.SyncServer.GetReceipts(Arg.Any<Keccak>()).Returns(
                 Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 512).ToArray());
-
-            StatusMessage statusMessage = new();
-            Packet statusPacket =
-                new("eth", Eth62MessageCode.Status, statusMessageSerializer.Serialize(statusMessage));
 
             GetReceiptsMessage getReceiptsMessage = new(
                 Enumerable.Repeat(Keccak.Zero, 512).ToArray());
             Packet getReceiptsPacket =
-                new("eth", Eth63MessageCode.GetReceipts, getReceiptMessageSerializer.Serialize(getReceiptsMessage));
+                new("eth", Eth63MessageCode.GetReceipts, ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
-            protocolHandler.HandleMessage(statusPacket);
-            protocolHandler.HandleMessage(getReceiptsPacket);
+            ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
             ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Length == 14));
         }
 
         private class Context
         {
-            public ISession Session { get; set; }
+            readonly MessageSerializationService _serializationService = new();
+            private readonly StatusMessageSerializer _statusMessageSerializer = new();
+            public readonly ReceiptsMessageSerializer _receiptMessageSerializer = new(MainnetSpecProvider.Instance);
+            public readonly GetReceiptsMessageSerializer _getReceiptMessageSerializer = new();
+
+            public ISession Session { get; }
+
+            private ISyncServer? _syncServer;
+            public ISyncServer SyncServer => _syncServer ??= Substitute.For<ISyncServer>();
+
+            private Eth63ProtocolHandler? _protocolHandler;
+            public Eth63ProtocolHandler ProtocolHandler
+            {
+                get
+                {
+                    if (_protocolHandler != null)
+                    {
+                        return _protocolHandler;
+                    }
+
+                    _protocolHandler = new Eth63ProtocolHandler(
+                        Session,
+                        _serializationService,
+                        Substitute.For<INodeStatsManager>(),
+                        SyncServer,
+                        Substitute.For<ITxPool>(),
+                        Substitute.For<IGossipPolicy>(),
+                        LimboLogs.Instance);
+
+                    StatusMessage statusMessage = new();
+                    Packet statusPacket =
+                        new("eth", Eth62MessageCode.Status, _statusMessageSerializer.Serialize(statusMessage));
+                    _protocolHandler.HandleMessage(statusPacket);
+
+                    return _protocolHandler;
+                }
+            }
 
             public Context()
             {
                 Session = Substitute.For<ISession>();
                 Session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 1000, true));
                 NetworkDiagTracer.IsEnabled = true;
+
+                _serializationService.Register(_statusMessageSerializer);
+                _serializationService.Register(_receiptMessageSerializer);
+                _serializationService.Register(_getReceiptMessageSerializer);
             }
         }
     }

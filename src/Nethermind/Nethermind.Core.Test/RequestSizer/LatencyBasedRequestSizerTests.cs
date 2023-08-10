@@ -10,7 +10,7 @@ namespace Nethermind.Core.Test.RequestSizer;
 
 public class LatencyBasedRequestSizerTests
 {
-    [TestCase(0, 4)]
+    [TestCase(0, 3)]
     [TestCase(20, 2)]
     [TestCase(100, 1)]
     public async Task TestWait(int waitTimeMs, int afterRequestSize)

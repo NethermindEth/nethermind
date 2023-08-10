@@ -7,7 +7,7 @@ using System.Linq;
 
 namespace Nethermind.Core.Test.Collections;
 
-public class ClampedReadOnlyList<T>: IReadOnlyList<T>
+public class ClampedReadOnlyList<T> : IReadOnlyList<T>
 {
     private IReadOnlyList<T> _baseImplementation;
 

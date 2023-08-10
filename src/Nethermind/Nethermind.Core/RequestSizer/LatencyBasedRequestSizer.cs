@@ -18,7 +18,7 @@ public class LatencyBasedRequestSizer
         int maxRequestLimit,
         TimeSpan lowerWatermark,
         TimeSpan upperWatermark,
-        double adjustmentFactor = 2.0
+        double adjustmentFactor = 1.5
     )
     {
         _upperWatermark = upperWatermark;

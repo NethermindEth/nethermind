@@ -27,7 +27,7 @@ public class LatencyAndMessageSizeBasedRequestSizer
         TimeSpan upperLatencyWatermark,
         long maxResponseSize,
         int? initialRequestSize,
-        double adjustmentFactor = 2.0
+        double adjustmentFactor = 1.5
     )
     {
         _upperLatencyWatermark = upperLatencyWatermark;
@@ -42,17 +42,17 @@ public class LatencyAndMessageSizeBasedRequestSizer
     }
 
     /// <summary>
-    /// Adjust the request size depending on the latency and response size.
+    /// Adjust the request size depending on the latency and response size. Accept a list as request which will be capped.
     /// If the response size is too large, reduce request size.
     /// If the latency is above watermark, reduce request size.
     /// If the latency is below watermark and response size is not too large, increase request size.
     /// </summary>
     /// <param name="request"></param>
     /// <param name="func"></param>
-    /// <typeparam name="T"></typeparam>
-    /// <typeparam name="R"></typeparam>
+    /// <typeparam name="T">response type</typeparam>
+    /// <typeparam name="TR">request type</typeparam>
     /// <returns></returns>
-    public async Task<T> Run<T, R>(IReadOnlyList<R> request, Func<IReadOnlyList<R>, Task<(T, long)>> func)
+    public async Task<T> Run<T, TR>(IReadOnlyList<TR> request, Func<IReadOnlyList<TR>, Task<(T, long)>> func)
     {
         return await _requestSizer.Run(async (adjustedRequestSize) =>
         {
@@ -75,7 +75,6 @@ public class LatencyAndMessageSizeBasedRequestSizer
             {
                 return (result, AdaptiveRequestSizer.Direction.Increase);
             }
-
 
             return (result, AdaptiveRequestSizer.Direction.Stay);
         });
