@@ -4,7 +4,6 @@
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;

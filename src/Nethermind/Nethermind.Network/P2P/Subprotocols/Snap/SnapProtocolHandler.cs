@@ -24,11 +24,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
+        public static TimeSpan LowerLatencyThreshold = TimeSpan.FromMilliseconds(2000);
+        public static TimeSpan UpperLatencyThreshold = TimeSpan.FromMilliseconds(3000);
+
         private readonly LatencyBasedRequestSizer _requestSizer = new(
             minRequestLimit: 50000,
             maxRequestLimit: 3_000_000,
-            lowerWatermark: TimeSpan.FromMilliseconds(2000),
-            upperWatermark: TimeSpan.FromMilliseconds(3000)
+            lowerWatermark: LowerLatencyThreshold,
+            upperWatermark: UpperLatencyThreshold
         );
 
         public override string Name => "snap1";

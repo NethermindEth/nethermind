@@ -128,12 +128,12 @@ public class SnapProtocolHandlerTests
         await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
         ctx.RecordedMessageSizesShouldIncrease();
 
-        ctx.SimulatedLatency = TimeSpan.FromMilliseconds(2000) + TimeSpan.FromMilliseconds(1);
+        ctx.SimulatedLatency = SnapProtocolHandler.LowerLatencyThreshold + TimeSpan.FromMilliseconds(1);
         await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
         await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
         ctx.RecordedMessageSizesShouldNotChange();
 
-        ctx.SimulatedLatency = TimeSpan.FromMilliseconds(3000) + TimeSpan.FromMilliseconds(1);
+        ctx.SimulatedLatency = SnapProtocolHandler.UpperLatencyThreshold + TimeSpan.FromMilliseconds(1);
         await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
         await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
         ctx.RecordedMessageSizesShouldDecrease();

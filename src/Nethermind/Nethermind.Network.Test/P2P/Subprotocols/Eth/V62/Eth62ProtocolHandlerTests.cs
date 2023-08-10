@@ -17,7 +17,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
@@ -27,7 +26,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -445,7 +443,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             BlockBodiesMessage msg = new(Build.A.Block.TestObjectNTimes(3));
 
             HandleIncomingStatusMessage();
-
             ((ISyncPeer)_handler).GetBlockBodies(new List<Keccak>(new[] { Keccak.Zero }), CancellationToken.None);
             HandleZeroMessage(msg, Eth62MessageCode.BlockBodies);
         }
