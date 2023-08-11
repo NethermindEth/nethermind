@@ -1,35 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain;
-using Nethermind.Config;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Evm;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
-using Nethermind.TxPool.Filters;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test
