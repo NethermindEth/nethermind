@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -308,6 +310,71 @@ namespace Nethermind.TxPool.Test
             _txPool.TryGetPendingTransaction(secondTx.Hash!, out Transaction returnedSecondTx).Should().Be(shouldReplace);
             returnedFirstTx.Should().BeEquivalentTo(shouldReplace ? null : firstTx);
             returnedSecondTx.Should().BeEquivalentTo(shouldReplace ? secondTx : null);
+        }
+
+        [Test]
+        public void should_discard_tx_when_data_gas_cost_cause_overflow([Values(false, true)] bool supportsBlobs)
+        {
+            _txPool = CreatePool(null, GetCancunSpecProvider());
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            UInt256.MaxValue.Divide(GasCostOf.Transaction * 2, out UInt256 halfOfMaxGasPriceWithoutOverflow);
+
+            Transaction firstTransaction = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithMaxFeePerBlobGas(UInt256.Zero)
+                .WithNonce(UInt256.Zero)
+                .WithMaxFeePerGas(halfOfMaxGasPriceWithoutOverflow)
+                .WithMaxPriorityFeePerGas(halfOfMaxGasPriceWithoutOverflow)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            _txPool.SubmitTx(firstTransaction, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+
+            Transaction transactionWithPotentialOverflow = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithMaxFeePerBlobGas(supportsBlobs
+                    ? UInt256.One
+                    : UInt256.Zero)
+                .WithNonce(UInt256.One)
+                .WithMaxFeePerGas(halfOfMaxGasPriceWithoutOverflow)
+                .WithMaxPriorityFeePerGas(halfOfMaxGasPriceWithoutOverflow)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            _txPool.SubmitTx(transactionWithPotentialOverflow, TxHandlingOptions.PersistentBroadcast).Should().Be(supportsBlobs ? AcceptTxResult.Int256Overflow : AcceptTxResult.Accepted);
+        }
+
+        [Test]
+        public async Task should_allow_to_have_pending_transaction_of_other_type_if_conflicting_one_was_included([Values(true, false)] bool firstIsBlob, [Values(true, false)] bool secondIsBlob)
+        {
+            Transaction GetTx(bool isBlob, UInt256 nonce)
+            {
+                return Build.A.Transaction
+                    .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
+                    .WithShardBlobTxTypeAndFieldsIfBlobTx()
+                    .WithMaxFeePerGas(1.GWei())
+                    .WithMaxPriorityFeePerGas(1.GWei())
+                    .WithNonce(nonce)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            }
+
+            _txPool = CreatePool(new TxPoolConfig() { Size = 128 }, GetCancunSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction firstTx = GetTx(firstIsBlob, UInt256.Zero);
+            Transaction secondTx = GetTx(secondIsBlob, UInt256.One);
+
+            _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+            _txPool.GetPendingTransactionsCount().Should().Be(firstIsBlob ? 0 : 1);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(firstIsBlob ? 1 : 0);
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+            await RaiseBlockAddedToMainAndWaitForTransactions(1);
+
+            _txPool.GetPendingTransactionsCount().Should().Be(0);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(0);
+            _txPool.SubmitTx(secondTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetPendingTransactionsCount().Should().Be(secondIsBlob ? 0 : 1);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(secondIsBlob ? 1 : 0);
         }
 
         [TestCase(0, 97)]

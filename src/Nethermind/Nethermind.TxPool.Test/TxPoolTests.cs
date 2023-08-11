@@ -640,37 +640,6 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_discard_tx_when_data_gas_cost_cause_overflow([Values(false, true)] bool supportsBlobs)
-        {
-            _txPool = CreatePool(null, GetCancunSpecProvider());
-
-            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-
-            UInt256.MaxValue.Divide(GasCostOf.Transaction * 2, out UInt256 halfOfMaxGasPriceWithoutOverflow);
-
-            Transaction firstTransaction = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields()
-                .WithMaxFeePerBlobGas(UInt256.Zero)
-                .WithNonce(UInt256.Zero)
-                .WithMaxFeePerGas(halfOfMaxGasPriceWithoutOverflow)
-                .WithMaxPriorityFeePerGas(halfOfMaxGasPriceWithoutOverflow)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            _txPool.SubmitTx(firstTransaction, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
-
-            Transaction transactionWithPotentialOverflow = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields()
-                .WithMaxFeePerBlobGas(supportsBlobs
-                    ? UInt256.One
-                    : UInt256.Zero)
-                .WithNonce(UInt256.One)
-                .WithMaxFeePerGas(halfOfMaxGasPriceWithoutOverflow)
-                .WithMaxPriorityFeePerGas(halfOfMaxGasPriceWithoutOverflow)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-
-            _txPool.SubmitTx(transactionWithPotentialOverflow, TxHandlingOptions.PersistentBroadcast).Should().Be(supportsBlobs ? AcceptTxResult.Int256Overflow : AcceptTxResult.Accepted);
-        }
-
-        [Test]
         public async Task should_not_dump_GasBottleneck_of_all_txs_in_bucket_if_first_tx_in_bucket_has_insufficient_balance_but_has_old_nonce()
         {
             _txPool = CreatePool();
@@ -1665,40 +1634,6 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
 
             result.Should().Be(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLowToCompete);
-        }
-
-        [Test]
-        public async Task should_allow_to_have_pending_transaction_of_other_type_if_conflicting_one_was_included([Values(true, false)] bool firstIsBlob, [Values(true, false)] bool secondIsBlob)
-        {
-            Transaction GetTx(bool isBlob, UInt256 nonce)
-            {
-                return Build.A.Transaction
-                    .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
-                    .WithShardBlobTxTypeAndFieldsIfBlobTx()
-                    .WithMaxFeePerGas(1.GWei())
-                    .WithMaxPriorityFeePerGas(1.GWei())
-                    .WithNonce(nonce)
-                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            }
-
-            _txPool = CreatePool(new TxPoolConfig() { Size = 128 }, GetCancunSpecProvider());
-            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-
-            Transaction firstTx = GetTx(firstIsBlob, UInt256.Zero);
-            Transaction secondTx = GetTx(secondIsBlob, UInt256.One);
-
-            _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-
-            _txPool.GetPendingTransactionsCount().Should().Be(firstIsBlob ? 0 : 1);
-            _txPool.GetPendingBlobTransactionsCount().Should().Be(firstIsBlob ? 1 : 0);
-            _stateProvider.IncrementNonce(TestItem.AddressA);
-            await RaiseBlockAddedToMainAndWaitForTransactions(1);
-
-            _txPool.GetPendingTransactionsCount().Should().Be(0);
-            _txPool.GetPendingBlobTransactionsCount().Should().Be(0);
-            _txPool.SubmitTx(secondTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-            _txPool.GetPendingTransactionsCount().Should().Be(secondIsBlob ? 0 : 1);
-            _txPool.GetPendingBlobTransactionsCount().Should().Be(secondIsBlob ? 1 : 0);
         }
 
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
