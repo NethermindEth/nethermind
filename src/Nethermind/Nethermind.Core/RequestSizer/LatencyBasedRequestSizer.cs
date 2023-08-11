@@ -31,15 +31,15 @@ public class LatencyBasedRequestSizer
     /// Adjust the RequestSize depending on the latency of the request
     /// </summary>
     /// <param name="func"></param>
-    /// <typeparam name="T"></typeparam>
+    /// <typeparam name="TResponse"></typeparam>
     /// <returns></returns>
-    public async Task<T> MeasureLatency<T>(Func<int, Task<T>> func)
+    public async Task<TResponse> MeasureLatency<TResponse>(Func<int, Task<TResponse>> func)
     {
         return await _requestSizer.Run(async (requestSize) =>
         {
-            Stopwatch sw = Stopwatch.StartNew();
-            T result = await func(requestSize);
-            TimeSpan duration = sw.Elapsed;
+            long startTime = Stopwatch.GetTimestamp();
+            TResponse result = await func(requestSize);
+            TimeSpan duration = Stopwatch.GetElapsedTime(startTime);
             if (duration < _lowerWatermark)
             {
                 return (result, AdaptiveRequestSizer.Direction.Increase);

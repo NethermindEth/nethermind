@@ -38,9 +38,9 @@ public class AdaptiveRequestSizer
     /// Adjust the RequestSize depending on the requested direction or if the request failed.
     /// </summary>
     /// <param name="func"></param>
-    /// <typeparam name="T"></typeparam>
+    /// <typeparam name="TResponse"></typeparam>
     /// <returns></returns>
-    public async Task<T> Run<T>(Func<int, Task<(T, Direction)>> func)
+    public async Task<TResponse> Run<TResponse>(Func<int, Task<(TResponse, Direction)>> func)
     {
         // Record starting limit so that in case multiple concurrent request happens, we do not multiply the
         // limit on top of other adjustment, so only the last adjustment will stick, which is fine.
@@ -48,7 +48,7 @@ public class AdaptiveRequestSizer
         Direction dir = Direction.Decrease; // For when it throws
         try
         {
-            (T response, Direction d) = await func(startingRequestSize);
+            (TResponse response, Direction d) = await func(startingRequestSize);
             dir = d;
             return response;
         }

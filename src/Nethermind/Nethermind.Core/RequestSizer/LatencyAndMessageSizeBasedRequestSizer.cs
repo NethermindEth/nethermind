@@ -49,16 +49,16 @@ public class LatencyAndMessageSizeBasedRequestSizer
     /// </summary>
     /// <param name="request"></param>
     /// <param name="func"></param>
-    /// <typeparam name="T">response type</typeparam>
-    /// <typeparam name="TR">request type</typeparam>
+    /// <typeparam name="TResponse">response type</typeparam>
+    /// <typeparam name="TRequest">request type</typeparam>
     /// <returns></returns>
-    public async Task<T> Run<T, TR>(IReadOnlyList<TR> request, Func<IReadOnlyList<TR>, Task<(T, long)>> func)
+    public async Task<TResponse> Run<TResponse, TRequest>(IReadOnlyList<TRequest> request, Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func)
     {
         return await _requestSizer.Run(async (adjustedRequestSize) =>
         {
-            Stopwatch sw = Stopwatch.StartNew();
-            (T result, long messageSize) = await func(request.Clamp(adjustedRequestSize));
-            TimeSpan duration = sw.Elapsed;
+            long startTime = Stopwatch.GetTimestamp();
+            (TResponse result, long messageSize) = await func(request.Clamp(adjustedRequestSize));
+            TimeSpan duration = Stopwatch.GetElapsedTime(startTime);
             if (messageSize > _maxResponseSize)
             {
                 return (result, AdaptiveRequestSizer.Direction.Decrease);
