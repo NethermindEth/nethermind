@@ -126,7 +126,7 @@ namespace Nethermind.Synchronization
 
             if (_syncConfig.ExitOnSynced)
             {
-                new ExitOnSyncComplete(_syncMode, _exitSource, _logManager);
+                ExitOnSyncComplete.WatchForExit(_syncMode, _exitSource, _logManager);
             }
         }
 
@@ -347,6 +347,37 @@ namespace Nethermind.Synchronization
                     _headersFeed?.FeedTask ?? Task.CompletedTask,
                     _bodiesFeed?.FeedTask ?? Task.CompletedTask,
                     _receiptsFeed?.FeedTask ?? Task.CompletedTask));
+        }
+
+        public void WatchForExit(
+            IProcessExitSource exitSource,
+            TimeSpan? exitConditionDuration = null
+        )
+        {
+            // Usually there are time where the mode changed to WaitingForBlock temporarily. So there need to be a small
+            // wait to make sure the sync more really is completed.
+            exitConditionDuration ??= TimeSpan.FromSeconds(5);
+
+            DateTime lastExitConditionTime = DateTime.MaxValue;
+            _syncMode.Changed += ((sender, args) =>
+            {
+                if (args.Current is SyncMode.WaitingForBlock or SyncMode.None)
+                {
+                    if (lastExitConditionTime == DateTime.MaxValue)
+                    {
+                        lastExitConditionTime = DateTime.Now;
+                    }
+                    else if (DateTime.Now - lastExitConditionTime > exitConditionDuration)
+                    {
+                        _logger.Info($"Sync finished. Exiting....");
+                        exitSource.Exit(0);
+                    }
+                }
+                else
+                {
+                    lastExitConditionTime = DateTime.MaxValue;
+                }
+            });
         }
 
         public void Dispose()

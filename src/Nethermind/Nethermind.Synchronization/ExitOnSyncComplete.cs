@@ -8,17 +8,22 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization;
 
-public class ExitOnSyncComplete
+public static class ExitOnSyncComplete
 {
-    public ExitOnSyncComplete(
+    public static void WatchForExit(
         ISyncModeSelector syncMode,
         IProcessExitSource exitSource,
-        ILogManager logManager
-    ) {
+        ILogManager logManager,
+        TimeSpan? exitConditionDuration = null
+    )
+    {
         ILogger logger = logManager.GetClassLogger();
 
+        // Usually there are time where the mode changed to WaitingForBlock temporarily. So there need to be a small
+        // wait to make sure the sync more really is completed.
+        exitConditionDuration ??= TimeSpan.FromSeconds(5);
+
         DateTime lastExitConditionTime = DateTime.MaxValue;
-        TimeSpan exitConditionDuration = TimeSpan.FromSeconds(5);
         syncMode.Changed += ((sender, args) =>
         {
             if (args.Current is SyncMode.WaitingForBlock or SyncMode.None)
