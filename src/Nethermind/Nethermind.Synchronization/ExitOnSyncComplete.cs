@@ -20,7 +20,7 @@ public static class ExitOnSyncComplete
         ILogger logger = logManager.GetClassLogger();
 
         // Usually there are time where the mode changed to WaitingForBlock temporarily. So there need to be a small
-        // wait to make sure the sync more really is completed.
+        // wait to make sure the sync really is completed.
         exitConditionDuration ??= TimeSpan.FromSeconds(5);
 
         DateTime lastExitConditionTime = DateTime.MaxValue;
