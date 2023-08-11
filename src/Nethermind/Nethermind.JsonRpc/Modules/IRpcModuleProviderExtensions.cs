@@ -13,11 +13,10 @@ public static class IRpcModuleProviderExtensions
         this IRpcModuleProvider rpcModuleProvider,
         ModuleFactoryBase<T> factory,
         int maxCount,
-        int timeout,
-        int requestQueueLimit = 0)
+        int timeout)
         where T : IRpcModule
     {
-        rpcModuleProvider.Register(new BoundedModulePool<T>(factory, maxCount, timeout, requestQueueLimit));
+        rpcModuleProvider.Register(new BoundedModulePool<T>(factory, maxCount, timeout));
     }
 
     public static void RegisterBoundedByCpuCount<T>(
