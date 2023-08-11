@@ -4,21 +4,7 @@
 		{
 			"label": "Nethermind: Install .NET debugger in Docker",
 			"type": "shell",
-			"command": "docker",
-			"args": [
-				"exec",
-				"sedge-execution-client",
-				"bash",
-				"-c",
-				// Installs git & curl
-				// Get the latest version of the .NET Core debugger
-				// Get Nethermind's source code
-				// TODO: select the proper branch
-				{
-					"value": "apt-get install git curl -y; curl -sSL https://aka.ms/getvsdbgsh | /bin/sh /dev/stdin -v latest -l /root/vsdbg; git clone https://github.com/NethermindEth/nethermind.git --depth=1 /src; echo '>>> Setup completed ***'",
-					"quoting": "weak"
-				}
-			],
+			"command": "cat .vscode/setup-docker-debugger.sh | docker exec -i sedge-execution-client bash -s",
 			"group": "none",
 			"problemMatcher": []
 		}
