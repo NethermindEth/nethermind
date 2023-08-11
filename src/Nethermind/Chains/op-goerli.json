@@ -1,7 +1,16 @@
 {
-  "name": "Ethereum",
-  "dataDir": "ethereum",
+  "name": "Optimism goerli",
+  "dataDir": "op-goerli",
   "engine": {
+    "Ethash": {
+      "params": {
+        "minimumDifficulty": "0x0",
+        "difficultyBombDisabled": "true",
+        "durationLimit": "0xd",
+        "homesteadTransition": "0x0",
+        "eip100bTransition": "0x0"
+      }
+    }
   },
   "params": {
     "chainId": "0x1",
@@ -53,22 +62,22 @@
     "eip3860TransitionTimestamp": "0x64373057",
     "eip4895TransitionTimestamp": "0x64373057",
 
-    "terminalTotalDifficulty": "C70D808A128D7380000"
+    "terminalTotalDifficulty": "0"
   },
   "genesis": {
     "seal": {
       "ethereum": {
-        "nonce": "0x0000000000000042",
+        "nonce": "0x0000000000000000",
         "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
       }
     },
-    "difficulty": "0x400000000",
+    "difficulty": "0x1",
     "author": "0x0000000000000000000000000000000000000000",
     "timestamp": "0x0",
     "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-    "extraData": "0x11bbe8db4e347b4e8c937c1c8370e4b5ed33adb3db69cbdb7a38e1e50b1b82fa",
-    "gasLimit": "0x1388",
-    "stateRoot": "0xd7f8974fb5ac78d9ac099b9ad5018bedc2ce0a72dad1827a1709da30580f0544"
+    "extraData": "0x000000000000000000000000000000000000000000000000000000000000000027770a9694e4b4b1e130ab91bc327c36855f612e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "gasLimit": "0xe4e1c0",
+    "stateRoot": "0x9e6b478a1cd331a979c39e4bddf42c676bcf5a63382f898dc441fe3fe5eb0837"
   },
   "nodes": [
   ],
