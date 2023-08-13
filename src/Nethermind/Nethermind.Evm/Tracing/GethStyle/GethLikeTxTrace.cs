@@ -9,12 +9,9 @@ namespace Nethermind.Evm.Tracing.GethStyle;
 
 public class GethLikeTxTrace
 {
-    public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
+    public GethLikeTxTrace() => Entries = new List<GethTxTraceEntry>();
 
-    public GethLikeTxTrace()
-    {
-        Entries = new List<GethTxTraceEntry>();
-    }
+    public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
 
     public long Gas { get; set; }
 

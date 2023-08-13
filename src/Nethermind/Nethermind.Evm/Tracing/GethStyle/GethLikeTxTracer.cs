@@ -53,10 +53,7 @@ public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxT
         CurrentTraceEntry.ProgramCounter = pc;
     }
 
-    public override void ReportOperationError(EvmExceptionType error)
-    {
-        CurrentTraceEntry.Error = GetErrorDescription(error);
-    }
+    public override void ReportOperationError(EvmExceptionType error) => CurrentTraceEntry.Error = GetErrorDescription(error);
 
     private string? GetErrorDescription(EvmExceptionType evmExceptionType)
     {
@@ -76,20 +73,11 @@ public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxT
         };
     }
 
-    public override void ReportOperationRemainingGas(long gas)
-    {
-        CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
-    }
+    public override void ReportOperationRemainingGas(long gas) => CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
 
-    public override void SetOperationMemorySize(ulong newSize)
-    {
-        CurrentTraceEntry.UpdateMemorySize(newSize);
-    }
+    public override void SetOperationMemorySize(ulong newSize) => CurrentTraceEntry.UpdateMemorySize(newSize);
 
-    public override void SetOperationStack(List<string> stackTrace)
-    {
-        CurrentTraceEntry.Stack = stackTrace;
-    }
+    public override void SetOperationStack(List<string> stackTrace) => CurrentTraceEntry.Stack = stackTrace;
 
     public override void SetOperationMemory(IEnumerable<string> memoryTrace)
     {

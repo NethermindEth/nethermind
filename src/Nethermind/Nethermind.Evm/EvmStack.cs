@@ -290,7 +290,7 @@ public ref struct EvmStack<TTracing>
         return Unsafe.ReadUnaligned<UInt256>(ref bytes).IsZero;
     }
 
-    public Span<byte> PeekWord256()
+    public readonly Span<byte> PeekWord256()
     {
         int head = Head;
         if (head-- == 0)
@@ -383,7 +383,7 @@ public ref struct EvmStack<TTracing>
         }
     }
 
-    public void EnsureDepth(int depth)
+    public readonly void EnsureDepth(int depth)
     {
         if (Head < depth)
         {
@@ -391,7 +391,7 @@ public ref struct EvmStack<TTracing>
         }
     }
 
-    public void Swap(int depth)
+    public readonly void Swap(int depth)
     {
         EnsureDepth(depth);
 
@@ -418,7 +418,7 @@ public ref struct EvmStack<TTracing>
         }
     }
 
-    public List<string> GetStackTrace()
+    public readonly List<string> GetStackTrace()
     {
         List<string> stackTrace = new();
         for (int i = 0; i < Head; i++)
@@ -431,7 +431,7 @@ public ref struct EvmStack<TTracing>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void ClearWordAtHead()
+    private readonly void ClearWordAtHead()
     {
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Word.Zero);
     }

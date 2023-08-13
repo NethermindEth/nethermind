@@ -277,17 +277,11 @@ public class EvmPooledMemory : IEvmMemory
     private void UpdateSize(ulong length, bool rentIfNeeded = true)
     {
         Length = length;
+
         if (Length > Size)
         {
             ulong remainder = Length % WordSize;
-            if (remainder != 0)
-            {
-                Size = Length + WordSize - remainder;
-            }
-            else
-            {
-                Size = Length;
-            }
+            Size = remainder != 0 ? Length + WordSize - remainder : Length;
         }
 
         if (rentIfNeeded)
