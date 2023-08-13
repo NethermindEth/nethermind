@@ -132,6 +132,7 @@ public class RegisterRpcModules : IStep
             _api.ConfigProvider,
             _api.SpecProvider,
             _api.SyncModeSelector,
+            _api.FileSystem,
             _api.LogManager);
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, rpcConfig.Timeout);
 
