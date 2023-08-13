@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.Debugger;
+
 public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 {
     public enum DebugPhase { Starting, Blocked, Running, Aborted }

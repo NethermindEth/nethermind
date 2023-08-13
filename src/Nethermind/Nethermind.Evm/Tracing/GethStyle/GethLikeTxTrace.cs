@@ -5,24 +5,23 @@ using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 
-namespace Nethermind.Evm.Tracing.GethStyle
+namespace Nethermind.Evm.Tracing.GethStyle;
+
+public class GethLikeTxTrace
 {
-    public class GethLikeTxTrace
+    public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
+
+    public GethLikeTxTrace()
     {
-        public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
-
-        public GethLikeTxTrace()
-        {
-            Entries = new List<GethTxTraceEntry>();
-        }
-
-        public long Gas { get; set; }
-
-        public bool Failed { get; set; }
-
-        public byte[] ReturnValue { get; set; } = Array.Empty<byte>();
-
-        [JsonProperty(PropertyName = "structLogs")]
-        public List<GethTxTraceEntry> Entries { get; set; }
+        Entries = new List<GethTxTraceEntry>();
     }
+
+    public long Gas { get; set; }
+
+    public bool Failed { get; set; }
+
+    public byte[] ReturnValue { get; set; } = Array.Empty<byte>();
+
+    [JsonProperty(PropertyName = "structLogs")]
+    public List<GethTxTraceEntry> Entries { get; set; }
 }

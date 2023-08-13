@@ -6,110 +6,105 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Int256;
-using Nethermind.State;
-using Nethermind.State.Tracing;
 
-namespace Nethermind.Evm.Tracing.GethStyle
+namespace Nethermind.Evm.Tracing.GethStyle;
+
+public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxTraceEntry
 {
-    public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxTraceEntry
+    protected GethLikeTxTracer(GethTraceOptions options)
     {
-        protected GethLikeTxTracer(GethTraceOptions options)
-        {
-            ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(options);
 
-            IsTracingFullMemory = options.EnableMemory;
-            IsTracingOpLevelStorage = !options.DisableStorage;
-            IsTracingStack = !options.DisableStack;
-            IsTracing = IsTracing || IsTracingFullMemory;
-        }
-
-        public sealed override bool IsTracingOpLevelStorage { get; protected set; }
-        public override bool IsTracingReceipt => true;
-        public sealed override bool IsTracingMemory { get; protected set; }
-        public override bool IsTracingInstructions => true;
-        public sealed override bool IsTracingStack { get; protected set; }
-        protected bool IsTracingFullMemory { get; }
-        protected TEntry? CurrentTraceEntry { get; set; }
-        protected GethLikeTxTrace Trace { get; } = new();
-
-        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
-        {
-            Trace.ReturnValue = output;
-        }
-
-        public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)
-        {
-            Trace.Failed = true;
-            Trace.ReturnValue = output ?? Array.Empty<byte>();
-        }
-
-        public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
-        {
-            if (CurrentTraceEntry is not null)
-                AddTraceEntry(CurrentTraceEntry);
-
-            CurrentTraceEntry = CreateTraceEntry(opcode);
-            CurrentTraceEntry.Depth = depth;
-            CurrentTraceEntry.Gas = gas;
-            CurrentTraceEntry.Opcode = opcode.GetName(isPostMerge);
-            CurrentTraceEntry.ProgramCounter = pc;
-        }
-
-        public override void ReportOperationError(EvmExceptionType error)
-        {
-            CurrentTraceEntry.Error = GetErrorDescription(error);
-        }
-
-        private string? GetErrorDescription(EvmExceptionType evmExceptionType)
-        {
-            return evmExceptionType switch
-            {
-                EvmExceptionType.None => null,
-                EvmExceptionType.BadInstruction => "BadInstruction",
-                EvmExceptionType.StackOverflow => "StackOverflow",
-                EvmExceptionType.StackUnderflow => "StackUnderflow",
-                EvmExceptionType.OutOfGas => "OutOfGas",
-                EvmExceptionType.InvalidSubroutineEntry => "InvalidSubroutineEntry",
-                EvmExceptionType.InvalidSubroutineReturn => "InvalidSubroutineReturn",
-                EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
-                EvmExceptionType.AccessViolation => "AccessViolation",
-                EvmExceptionType.StaticCallViolation => "StaticCallViolation",
-                _ => "Error"
-            };
-        }
-
-        public override void ReportOperationRemainingGas(long gas)
-        {
-            CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
-        }
-
-        public override void SetOperationMemorySize(ulong newSize)
-        {
-            CurrentTraceEntry.UpdateMemorySize(newSize);
-        }
-
-        public override void SetOperationStack(List<string> stackTrace)
-        {
-            CurrentTraceEntry.Stack = stackTrace;
-        }
-
-        public override void SetOperationMemory(IEnumerable<string> memoryTrace)
-        {
-            if (IsTracingFullMemory)
-                CurrentTraceEntry.Memory = memoryTrace.ToList();
-        }
-
-        public virtual GethLikeTxTrace BuildResult()
-        {
-            if (CurrentTraceEntry is not null)
-                AddTraceEntry(CurrentTraceEntry);
-
-            return Trace;
-        }
-        protected abstract void AddTraceEntry(TEntry entry);
-
-        protected abstract TEntry CreateTraceEntry(Instruction opcode);
+        IsTracingFullMemory = options.EnableMemory;
+        IsTracingOpLevelStorage = !options.DisableStorage;
+        IsTracingStack = !options.DisableStack;
+        IsTracing = IsTracing || IsTracingFullMemory;
     }
+
+    public sealed override bool IsTracingOpLevelStorage { get; protected set; }
+    public override bool IsTracingReceipt => true;
+    public sealed override bool IsTracingMemory { get; protected set; }
+    public override bool IsTracingInstructions => true;
+    public sealed override bool IsTracingStack { get; protected set; }
+    protected bool IsTracingFullMemory { get; }
+    protected TEntry? CurrentTraceEntry { get; set; }
+    protected GethLikeTxTrace Trace { get; } = new();
+
+    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+    {
+        Trace.ReturnValue = output;
+    }
+
+    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)
+    {
+        Trace.Failed = true;
+        Trace.ReturnValue = output ?? Array.Empty<byte>();
+    }
+
+    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+    {
+        if (CurrentTraceEntry is not null)
+            AddTraceEntry(CurrentTraceEntry);
+
+        CurrentTraceEntry = CreateTraceEntry(opcode);
+        CurrentTraceEntry.Depth = depth;
+        CurrentTraceEntry.Gas = gas;
+        CurrentTraceEntry.Opcode = opcode.GetName(isPostMerge);
+        CurrentTraceEntry.ProgramCounter = pc;
+    }
+
+    public override void ReportOperationError(EvmExceptionType error)
+    {
+        CurrentTraceEntry.Error = GetErrorDescription(error);
+    }
+
+    private string? GetErrorDescription(EvmExceptionType evmExceptionType)
+    {
+        return evmExceptionType switch
+        {
+            EvmExceptionType.None => null,
+            EvmExceptionType.BadInstruction => "BadInstruction",
+            EvmExceptionType.StackOverflow => "StackOverflow",
+            EvmExceptionType.StackUnderflow => "StackUnderflow",
+            EvmExceptionType.OutOfGas => "OutOfGas",
+            EvmExceptionType.InvalidSubroutineEntry => "InvalidSubroutineEntry",
+            EvmExceptionType.InvalidSubroutineReturn => "InvalidSubroutineReturn",
+            EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
+            EvmExceptionType.AccessViolation => "AccessViolation",
+            EvmExceptionType.StaticCallViolation => "StaticCallViolation",
+            _ => "Error"
+        };
+    }
+
+    public override void ReportOperationRemainingGas(long gas)
+    {
+        CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
+    }
+
+    public override void SetOperationMemorySize(ulong newSize)
+    {
+        CurrentTraceEntry.UpdateMemorySize(newSize);
+    }
+
+    public override void SetOperationStack(List<string> stackTrace)
+    {
+        CurrentTraceEntry.Stack = stackTrace;
+    }
+
+    public override void SetOperationMemory(IEnumerable<string> memoryTrace)
+    {
+        if (IsTracingFullMemory)
+            CurrentTraceEntry.Memory = memoryTrace.ToList();
+    }
+
+    public virtual GethLikeTxTrace BuildResult()
+    {
+        if (CurrentTraceEntry is not null)
+            AddTraceEntry(CurrentTraceEntry);
+
+        return Trace;
+    }
+    protected abstract void AddTraceEntry(TEntry entry);
+
+    protected abstract TEntry CreateTraceEntry(Instruction opcode);
 }
