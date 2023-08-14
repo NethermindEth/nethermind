@@ -9,13 +9,14 @@ ARG TARGETARCH
 ARG BUILDPLATFORM
 ARG BUILD_TIMESTAMP
 ARG COMMIT_HASH
+ARG BUILD_CONFIG=Release
 
 COPY . .
 
 RUN if [ "$TARGETARCH" = "amd64" ]; \
-    then dotnet publish src/Nethermind/Nethermind.Runner -c release -r $TARGETOS-x64 -o out --sc false \
+    then dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -r $TARGETOS-x64 -o out --sc false \
       -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH -p:Deterministic=true ; \
-    else dotnet publish src/Nethermind/Nethermind.Runner -c release -r $TARGETOS-$TARGETARCH -o out --sc false \
+    else dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -r $TARGETOS-$TARGETARCH -o out --sc false \
       -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH -p:Deterministic=true ; \
     fi
 
