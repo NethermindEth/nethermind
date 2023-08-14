@@ -39,6 +39,8 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Synchronization.StateSync;
+using Nethermind.Synchronization.Trie;
 
 namespace Nethermind.Init.Steps;
 
@@ -87,6 +89,7 @@ public class InitializeNetwork : IStep
     private async Task Initialize(CancellationToken cancellationToken)
     {
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
+        if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
         if (_networkConfig.DiagTracerEnabled)
         {
@@ -100,11 +103,11 @@ public class InitializeNetwork : IStep
 
         CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
-        ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager, _syncConfig.SnapSyncAccountRangePartitionCount);
+        ProgressTracker progressTracker = new(_api.BlockTree, _api.DbProvider.StateDb, _api.LogManager, _syncConfig.SnapSyncAccountRangePartitionCount);
         _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
 
         SyncProgressResolver syncProgressResolver = new(
-            _api.BlockTree!,
+            _api.BlockTree,
             _api.ReceiptStorage!,
             _api.DbProvider.StateDb,
             _api.ReadOnlyTrieStore!,
@@ -118,11 +121,21 @@ public class InitializeNetwork : IStep
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
-        SyncPeerPool apiSyncPeerPool = new(_api.BlockTree!, _api.NodeStatsManager!, _api.BetterPeerStrategy, _api.LogManager, maxPeersCount, maxPriorityPeersCount);
+        SyncPeerPool apiSyncPeerPool = new(_api.BlockTree, _api.NodeStatsManager!, _api.BetterPeerStrategy, _api.LogManager, maxPeersCount, maxPriorityPeersCount);
 
         _api.SyncPeerPool = apiSyncPeerPool;
         _api.PeerDifficultyRefreshPool = apiSyncPeerPool;
         _api.DisposeStack.Push(_api.SyncPeerPool);
+
+        if (_api.TrieStore is HealingTrieStore healingTrieStore)
+        {
+            healingTrieStore.InitializeNetwork(new GetNodeDataTrieNodeRecovery(apiSyncPeerPool, _api.LogManager));
+        }
+
+        if (_api.WorldState is HealingWorldState healingWorldState)
+        {
+            healingWorldState.InitializeNetwork(new SnapTrieNodeRecovery(apiSyncPeerPool, _api.LogManager));
+        }
 
         IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
         foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
@@ -133,7 +146,7 @@ public class InitializeNetwork : IStep
         _api.SyncModeSelector ??= CreateMultiSyncModeSelector(syncProgressResolver);
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
 
-        _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree!, _api.ReceiptStorage!, _syncConfig, _api.SyncModeSelector, _api.LogManager);
+        _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _syncConfig, _api.SyncModeSelector, _api.LogManager);
         _api.DisposeStack.Push(_api.SyncModeSelector);
 
         _api.Pivot ??= new Pivot(_syncConfig);
@@ -144,7 +157,7 @@ public class InitializeNetwork : IStep
 
             _api.BlockDownloaderFactory ??= new BlockDownloaderFactory(
                 _api.SpecProvider!,
-                _api.BlockTree!,
+                _api.BlockTree,
                 _api.ReceiptStorage!,
                 _api.BlockValidator!,
                 _api.SealValidator!,
@@ -155,7 +168,7 @@ public class InitializeNetwork : IStep
             _api.Synchronizer ??= new Synchronizer(
                 _api.DbProvider,
                 _api.SpecProvider!,
-                _api.BlockTree!,
+                _api.BlockTree,
                 _api.ReceiptStorage!,
                 _api.SyncPeerPool,
                 _api.NodeStatsManager!,
@@ -165,15 +178,16 @@ public class InitializeNetwork : IStep
                 _api.BlockDownloaderFactory,
                 _api.Pivot,
                 syncReport,
+                _api.ProcessExit!,
                 _api.LogManager);
         }
 
         _api.DisposeStack.Push(_api.Synchronizer);
 
         ISyncServer syncServer = _api.SyncServer = new SyncServer(
-            _api.TrieStore!,
+            _api.TrieStore!.AsKeyValueStore(),
             _api.DbProvider.CodeDb,
-            _api.BlockTree!,
+            _api.BlockTree,
             _api.ReceiptStorage!,
             _api.BlockValidator!,
             _api.SealValidator!,
@@ -214,8 +228,9 @@ public class InitializeNetwork : IStep
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
 
-        if (_syncConfig.SnapSync && !stateSyncFinished)
+        if (_syncConfig.SnapSync)
         {
+            // TODO: Should we keep snap capability even after finishing sync?
             SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
@@ -513,7 +528,7 @@ public class InitializeNetwork : IStep
         ISyncServer syncServer = _api.SyncServer!;
         ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
 
-        ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree!, forkInfo, _api.LogManager);
+        ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!);
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
@@ -528,6 +543,7 @@ public class InitializeNetwork : IStep
             peerStorage,
             forkInfo,
             _api.GossipPolicy,
+            _networkConfig,
             _api.LogManager,
             _api.TxGossipPolicy);
 

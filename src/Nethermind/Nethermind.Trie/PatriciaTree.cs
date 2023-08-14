@@ -33,7 +33,7 @@ namespace Nethermind.Trie
         /// </summary>
         public static readonly Keccak EmptyTreeHash = Keccak.EmptyTreeHash;
 
-        public TrieType TrieType { get; protected set; }
+        public TrieType TrieType { get; init; }
 
         /// <summary>
         /// To save allocations this used to be static but this caused one of the hardest to reproduce issues
@@ -45,7 +45,7 @@ namespace Nethermind.Trie
 
         private readonly ConcurrentQueue<NodeCommitInfo>? _currentCommit;
 
-        public readonly ITrieStore TrieStore;
+        public ITrieStore TrieStore { get; }
 
         private readonly bool _parallelBranches;
 
@@ -53,7 +53,7 @@ namespace Nethermind.Trie
 
         private Keccak _rootHash = Keccak.EmptyTreeHash;
 
-        public TrieNode? RootRef;
+        public TrieNode? RootRef { get; set; }
 
         /// <summary>
         /// Only used in EthereumTests
@@ -302,31 +302,56 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
+        public virtual byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
         {
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
                 byte[] array = null;
                 Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
-                    ? stackalloc byte[MaxKeyStackAlloc]
-                    : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
-                [..nibblesCount]; // Slice to exact size;
-                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                var result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
-                if (array is not null) ArrayPool<byte>.Shared.Return(array);
-                return result;
+                        ? stackalloc byte[MaxKeyStackAlloc]
+                        : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
+                    [..nibblesCount]; // Slice to exact size;
+
+                try
+                {
+                    Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+                    return Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
+                }
+                finally
+                {
+                    if (array is not null) ArrayPool<byte>.Shared.Return(array);
+                }
             }
             catch (TrieException e)
             {
-                TrieException.ThrowOnLoadFailure(rawKey, rootHash ?? RootHash, e);
-                return null;
+                EnhanceException(rawKey, rootHash ?? RootHash, e);
+                throw;
+            }
+        }
+
+        private static void EnhanceException(ReadOnlySpan<byte> rawKey, ValueKeccak rootHash, TrieException baseException)
+        {
+            TrieNodeException? GetTrieNodeException(TrieException? exception) =>
+                exception switch
+                {
+                    null => null,
+                    TrieNodeException ex => ex,
+                    _ => GetTrieNodeException(exception.InnerException as TrieException)
+                };
+
+            TrieNodeException? trieNodeException = GetTrieNodeException(baseException);
+            if (trieNodeException is not null)
+            {
+                trieNodeException.EnhancedMessage = trieNodeException.NodeHash == rootHash
+                    ? $"Failed to load root hash {rootHash} while loading key {rawKey.ToHexString()}."
+                    : $"Failed to load key {rawKey.ToHexString()} from root hash {rootHash}.";
             }
         }
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public void Set(ReadOnlySpan<byte> rawKey, byte[] value)
+        public virtual void Set(ReadOnlySpan<byte> rawKey, byte[] value)
         {
             if (_logger.IsTrace)
                 _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
@@ -334,12 +359,19 @@ namespace Nethermind.Trie
             int nibblesCount = 2 * rawKey.Length;
             byte[] array = null;
             Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
-                ? stackalloc byte[MaxKeyStackAlloc] // Fixed size stack allocation
-                : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
+                    ? stackalloc byte[MaxKeyStackAlloc] // Fixed size stack allocation
+                    : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                 [..nibblesCount]; // Slice to exact size
-            Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-            Run(nibbles, nibblesCount, value, true);
-            if (array is not null) ArrayPool<byte>.Shared.Return(array);
+
+            try
+            {
+                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+                Run(nibbles, nibblesCount, value, true);
+            }
+            finally
+            {
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
+            }
         }
 
         [DebuggerStepThrough]
@@ -382,7 +414,7 @@ namespace Nethermind.Trie
             {
                 if (_logger.IsTrace) _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
                 TrieNode startNode = TrieStore.FindCachedOrUnknown(startRootHash);
-                startNode.ResolveNode(TrieStore);
+                ResolveNode(startNode, in traverseContext);
                 result = TraverseNode(startNode, in traverseContext);
             }
             else
@@ -402,13 +434,25 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    RootRef.ResolveNode(TrieStore);
+                    ResolveNode(RootRef, in traverseContext);
                     if (_logger.IsTrace) _logger.Trace($"{traverseContext.ToString()}");
                     result = TraverseNode(RootRef, in traverseContext);
                 }
             }
 
             return result;
+        }
+
+        private void ResolveNode(TrieNode node, in TraverseContext traverseContext)
+        {
+            try
+            {
+                node.ResolveNode(TrieStore);
+            }
+            catch (TrieNodeException e)
+            {
+                ThrowMissingTrieNodeException(in traverseContext, e);
+            }
         }
 
         private byte[]? TraverseNode(TrieNode node, in TraverseContext traverseContext)
@@ -429,7 +473,7 @@ namespace Nethermind.Trie
             };
         }
 
-        private void ConnectNodes(TrieNode? node)
+        private void ConnectNodes(TrieNode? node, in TraverseContext traverseContext)
         {
             bool isRoot = _nodeStack.Count == 0;
             TrieNode nextNode = node;
@@ -504,7 +548,7 @@ namespace Nethermind.Trie
                                     "Before updating branch should have had at least two non-empty children");
                             }
 
-                            childNode.ResolveNode(TrieStore);
+                            ResolveNode(childNode, in traverseContext);
                             if (childNode.IsBranch)
                             {
                                 TrieNode extensionFromBranch =
@@ -669,7 +713,7 @@ namespace Nethermind.Trie
                         return null;
                     }
 
-                    ConnectNodes(null);
+                    ConnectNodes(null, in traverseContext);
                 }
                 else if (Bytes.AreEqual(traverseContext.UpdateValue, node.Value))
                 {
@@ -678,7 +722,7 @@ namespace Nethermind.Trie
                 else
                 {
                     TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
-                    ConnectNodes(withUpdatedValue);
+                    ConnectNodes(withUpdatedValue, in traverseContext);
                 }
 
                 return traverseContext.UpdateValue;
@@ -711,12 +755,12 @@ namespace Nethermind.Trie
                 byte[] leafPath = traverseContext.UpdatePath[
                     currentIndex..].ToArray();
                 TrieNode leaf = TrieNodeFactory.CreateLeaf(leafPath, traverseContext.UpdateValue);
-                ConnectNodes(leaf);
+                ConnectNodes(leaf, in traverseContext);
 
                 return traverseContext.UpdateValue;
             }
 
-            childNode.ResolveNode(TrieStore);
+            ResolveNode(childNode, in traverseContext);
             TrieNode nextNode = childNode;
 
             return TraverseNext(in traverseContext, 1, nextNode);
@@ -767,14 +811,14 @@ namespace Nethermind.Trie
 
                 if (traverseContext.IsDelete)
                 {
-                    ConnectNodes(null);
+                    ConnectNodes(null, in traverseContext);
                     return traverseContext.UpdateValue;
                 }
 
                 if (!Bytes.AreEqual(node.Value, traverseContext.UpdateValue))
                 {
                     TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
-                    ConnectNodes(withUpdatedValue);
+                    ConnectNodes(withUpdatedValue, in traverseContext);
                     return traverseContext.UpdateValue;
                 }
 
@@ -820,7 +864,7 @@ namespace Nethermind.Trie
                 leafPath.ToArray(), longerPathValue);
 
             _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
-            ConnectNodes(withUpdatedKeyAndValue);
+            ConnectNodes(withUpdatedKeyAndValue, in traverseContext);
 
             return traverseContext.UpdateValue;
         }
@@ -849,7 +893,7 @@ namespace Nethermind.Trie
                     ThrowMissingChildException(node);
                 }
 
-                next.ResolveNode(TrieStore);
+                ResolveNode(next, in traverseContext);
 
                 return TraverseNext(in traverseContext, extensionLength, next);
             }
@@ -908,7 +952,7 @@ namespace Nethermind.Trie
                 branch.SetChild(pathBeforeUpdate[extensionLength], childNode);
             }
 
-            ConnectNodes(branch);
+            ConnectNodes(branch, in traverseContext);
             return traverseContext.UpdateValue;
         }
 
@@ -1077,6 +1121,13 @@ namespace Nethermind.Trie
         private static void ThrowMissingPrefixException()
         {
             throw new InvalidDataException("An attempt to visit a node without a prefix path.");
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static void ThrowMissingTrieNodeException(in TraverseContext traverseContext, TrieNodeException e)
+        {
+            throw new MissingTrieNodeException(e.Message, e, traverseContext.UpdatePath.ToArray(), traverseContext.CurrentIndex);
         }
     }
 }

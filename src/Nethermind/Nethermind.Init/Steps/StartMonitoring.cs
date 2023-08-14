@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -45,7 +44,7 @@ public class StartMonitoring : IStep
             PrepareProductInfoMetrics();
             controller = new(_metricsConfig);
 
-            IEnumerable<Type> metrics = TypeDiscovery.FindNethermindTypes(nameof(Metrics));
+            IEnumerable<Type> metrics = TypeDiscovery.FindNethermindBasedTypes(nameof(Metrics));
             foreach (Type metric in metrics)
             {
                 controller.RegisterMetrics(metric);
@@ -54,17 +53,17 @@ public class StartMonitoring : IStep
 
         if (_metricsConfig.Enabled)
         {
-            _api.MonitoringService = new MonitoringService(controller, _metricsConfig, _api.LogManager);
+            IMonitoringService monitoringService = _api.MonitoringService = new MonitoringService(controller, _metricsConfig, _api.LogManager);
 
-            await _api.MonitoringService.StartAsync().ContinueWith(x =>
+            SetupMetrics(monitoringService);
+
+            await monitoringService.StartAsync().ContinueWith(x =>
             {
                 if (x.IsFaulted && _logger.IsError)
                     _logger.Error("Error during starting a monitoring.", x.Exception);
             }, cancellationToken);
 
-            SetupMetrics();
-
-            _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => _api.MonitoringService.StopAsync())); // do not await
+            _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => monitoringService.StopAsync())); // do not await
         }
         else
         {
@@ -80,11 +79,11 @@ public class StartMonitoring : IStep
         }
     }
 
-    private void SetupMetrics()
+    private void SetupMetrics(IMonitoringService monitoringService)
     {
         if (_metricsConfig.EnableDbSizeMetrics)
         {
-            _api.MonitoringService.AddMetricsUpdateAction(() =>
+            monitoringService.AddMetricsUpdateAction(() =>
             {
                 IDbProvider? dbProvider = _api.DbProvider;
                 if (dbProvider is null)
@@ -143,7 +142,7 @@ public class StartMonitoring : IStep
             });
         }
 
-        _api.MonitoringService.AddMetricsUpdateAction(() =>
+        monitoringService.AddMetricsUpdateAction(() =>
         {
             Synchronization.Metrics.SyncTime = (long?)_api.EthSyncingInfo?.UpdateAndGetSyncTime().TotalSeconds ?? 0;
         });

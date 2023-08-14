@@ -379,9 +379,10 @@ namespace Nethermind.Synchronization.Test
                 blockDownloaderFactory,
                 pivot,
                 syncReport,
+                Substitute.For<IProcessExitSource>(),
                 logManager);
             SyncServer syncServer = new(
-                trieStore,
+                trieStore.AsKeyValueStore(),
                 codeDb,
                 tree,
                 receiptStorage,
