@@ -91,8 +91,9 @@ jobs:
     - name: Extract dockerfile from additional_options
       id: extract_dockerfile
       run: |
-        echo "dockerfile=$(echo ${{ inputs.additional_options }} | jq -r .default_dockerfile)" >> $GITHUB_OUTPUT
-        echo "build_config=$(echo ${{ inputs.additional_options }} | jq -r .default_dockerfile_build_type)" >> $GITHUB_OUTPUT
+        echo "dockerfile=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile)" >> $GITHUB_ENV
+        echo "build_config=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile_build_type)" >> $GITHUB_ENV
+
 
     - name: Trigger Docker Build Action with Cleaned Ref
       uses: benc-uk/workflow-dispatch@v1
