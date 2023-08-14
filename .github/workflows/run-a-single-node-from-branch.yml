@@ -54,7 +54,7 @@ on:
         required: false
       additional_options:
         description: "A Json property which allows to customize node even more"
-        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"Release", ssh_keys":"", "allowed_ips":""}'
+        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"Release", "ssh_keys":"", "allowed_ips":""}'
       
 jobs:
   create_docker_image:
