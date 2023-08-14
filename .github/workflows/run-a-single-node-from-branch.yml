@@ -105,7 +105,7 @@ jobs:
           inputs: '{
               "tag": "${{ env.CLEAN_REF }}",
               "dockerfile": "${{ steps.extract_dockerfile.outputs.dockerfile }}",
-              "build-config": ${{ steps.extract_dockerfile.outputs.build-config }}
+              "build-config": "${{ steps.extract_dockerfile.outputs.build-config }}"
            }'
 
     - name: Set Repo and Org Variables
