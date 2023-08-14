@@ -54,7 +54,7 @@ on:
         required: false
       additional_options:
         description: "A Json property which allows to customize node even more"
-        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"Release", "ssh_keys":"", "allowed_ips":""}'
+        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":""}'
       
 jobs:
   create_docker_image:
@@ -92,8 +92,7 @@ jobs:
       id: extract_dockerfile
       run: |
         echo "dockerfile=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile)" >> $GITHUB_OUTPUT
-        echo "build_config=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile_build_type)" >> $GITHUB_OUTPUT
-
+        echo "build_config=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile_build_type | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
     - name: Trigger Docker Build Action with Cleaned Ref
       uses: benc-uk/workflow-dispatch@v1
