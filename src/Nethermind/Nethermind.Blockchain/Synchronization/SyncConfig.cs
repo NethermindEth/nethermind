@@ -63,6 +63,7 @@ namespace Nethermind.Blockchain.Synchronization
         public ITunableDb.TuneType TuneDbMode { get; set; } = ITunableDb.TuneType.Default;
         public ITunableDb.TuneType BlocksDbTuneDbMode { get; set; } = ITunableDb.TuneType.EnableBlobFiles;
         public int MaxProcessingThreads { get; set; }
+        public bool ExitOnSynced { get; set; } = false;
 
         public override string ToString()
         {
