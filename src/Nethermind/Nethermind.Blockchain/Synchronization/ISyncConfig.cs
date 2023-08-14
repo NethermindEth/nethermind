@@ -112,5 +112,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         [ConfigItem(Description = "[TECHNICAL] Specify max num of thread used for processing. Default is same as logical core count.", DefaultValue = "0")]
         public int MaxProcessingThreads { get; set; }
+
+        [ConfigItem(Description = "Exit Nethermind once sync is finished", DefaultValue = "false")]
+        public bool ExitOnSynced { get; set; }
     }
 }

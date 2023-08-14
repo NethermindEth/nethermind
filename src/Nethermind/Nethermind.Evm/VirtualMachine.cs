@@ -32,6 +32,7 @@ using Nethermind.Evm.Tracing.Debugger;
 namespace Nethermind.Evm;
 
 using Nethermind.Evm.Precompiles.Stateful;
+using System.Linq;
 using Int256;
 
 public class VirtualMachine : IVirtualMachine
@@ -2771,7 +2772,8 @@ ReturnFailure:
         _txTracer.StartOperation(vmState.Env.CallDepth + 1, gasAvailable, instruction, programCounter, vmState.Env.TxExecutionContext.Header.IsPostMerge);
         if (_txTracer.IsTracingMemory)
         {
-            _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? new List<string>());
+            _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? Enumerable.Empty<string>());
+            _txTracer.SetOperationMemorySize(vmState.Memory?.Size ?? 0);
         }
 
         if (_txTracer.IsTracingStack)
@@ -2783,11 +2785,6 @@ ReturnFailure:
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void EndInstructionTrace(long gasAvailable, ulong memorySize)
     {
-        if (_txTracer.IsTracingMemory)
-        {
-            _txTracer.SetOperationMemorySize(memorySize);
-        }
-
         _txTracer.ReportOperationRemainingGas(gasAvailable);
     }
 
