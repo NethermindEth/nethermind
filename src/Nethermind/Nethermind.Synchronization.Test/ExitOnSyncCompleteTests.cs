@@ -21,7 +21,7 @@ public class ExitOnSyncCompleteTests
         IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
         TimeSpan exitConditionDuration = TimeSpan.FromMilliseconds(10);
 
-        ExitOnSyncComplete.WatchForExit(syncMode, exitSource, LimboLogs.Instance, exitConditionDuration: exitConditionDuration);
+        exitSource.WatchForExit(syncMode, LimboLogs.Instance, exitConditionDuration: exitConditionDuration);
 
         syncMode.Changed += Raise.EventWith(this, new SyncModeChangedEventArgs(SyncMode.All, SyncMode.WaitingForBlock));
         await Task.Delay(exitConditionDuration);
@@ -37,7 +37,7 @@ public class ExitOnSyncCompleteTests
         IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
         TimeSpan exitConditionDuration = TimeSpan.FromMilliseconds(10);
 
-        ExitOnSyncComplete.WatchForExit(syncMode, exitSource, LimboLogs.Instance, exitConditionDuration: exitConditionDuration);
+        exitSource.WatchForExit(syncMode, LimboLogs.Instance, exitConditionDuration: exitConditionDuration);
 
         syncMode.Changed += Raise.EventWith(this, new SyncModeChangedEventArgs(SyncMode.All, SyncMode.WaitingForBlock));
         await Task.Delay(exitConditionDuration);

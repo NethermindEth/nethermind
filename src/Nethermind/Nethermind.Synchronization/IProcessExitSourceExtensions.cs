@@ -8,14 +8,13 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization;
 
-public static class ExitOnSyncComplete
+public static class IProcessExitSourceExtensions
 {
     public static void WatchForExit(
+        this IProcessExitSource exitSource,
         ISyncModeSelector syncMode,
-        IProcessExitSource exitSource,
         ILogManager logManager,
-        TimeSpan? exitConditionDuration = null
-    )
+        TimeSpan? exitConditionDuration = null)
     {
         ILogger logger = logManager.GetClassLogger();
 

@@ -17,7 +17,7 @@ public class ProcessExitSource : IProcessExitSource
     private CancellationTokenSource _cancellationTokenSource = new();
     public int ExitCode { get; set; } = ExitCodes.Ok;
 
-    private TaskCompletionSource _exitResult = new TaskCompletionSource();
+    private readonly TaskCompletionSource _exitResult = new();
 
     public Task ExitTask => _exitResult.Task;
 
