@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -17,12 +16,10 @@ namespace Nethermind.Synchronization.Peers
         /// <summary>
         /// this should be used whenever we change IsAllocated property on PeerInfo-
         /// </summary>
-        private static readonly object _allocationLock = new();
+        private static object _allocationLock = new();
 
-        private readonly IPeerAllocationStrategy _peerAllocationStrategy;
+        private IPeerAllocationStrategy _peerAllocationStrategy;
         public AllocationContexts Contexts { get; }
-
-        [MemberNotNullWhen(true, nameof(HasPeer))]
         public PeerInfo? Current { get; private set; }
 
         public bool HasPeer => Current is not null;

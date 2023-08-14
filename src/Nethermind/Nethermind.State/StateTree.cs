@@ -36,14 +36,24 @@ namespace Nethermind.State
         public Account? Get(Address address, Keccak? rootHash = null)
         {
             byte[]? bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
-            return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
+            if (bytes is null)
+            {
+                return null;
+            }
+
+            return _decoder.Decode(bytes.AsRlpStream());
         }
 
         [DebuggerStepThrough]
         internal Account? Get(Keccak keccak) // for testing
         {
             byte[]? bytes = Get(keccak.Bytes);
-            return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
+            if (bytes is null)
+            {
+                return null;
+            }
+
+            return _decoder.Decode(bytes.AsRlpStream());
         }
 
         public void Set(Address address, Account? account)

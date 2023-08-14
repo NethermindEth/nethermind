@@ -336,7 +336,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 return new TrieStore(
                     _stateDb,
-                    Nethermind.Trie.Pruning.No.Pruning,
+                    Trie.Pruning.No.Pruning,
                     Persist.EveryBlock,
                     _logManager);
             }

@@ -300,12 +300,12 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    throw new TrieNodeException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp?.ToHexString()})", Keccak ?? Keccak.Zero);
+                    throw new TrieException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp?.ToHexString()})");
                 }
             }
             catch (RlpException rlpException)
             {
-                throw new TrieNodeException($"Error when decoding node {Keccak}", Keccak ?? Keccak.Zero, rlpException);
+                throw new TrieException($"Error when decoding node {Keccak}", rlpException);
             }
         }
 

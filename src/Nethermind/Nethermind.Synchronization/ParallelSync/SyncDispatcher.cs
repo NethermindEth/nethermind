@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 
@@ -70,14 +69,14 @@ namespace Nethermind.Synchronization.ParallelSync
 
                     if (currentStateLocal == SyncFeedState.Dormant)
                     {
-                        if (Logger.IsDebug) Logger.Debug($"{GetType().NameWithGenerics()} is going to sleep.");
+                        if (Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
                         if (dormantTaskLocal is null)
                         {
                             if (Logger.IsWarn) Logger.Warn("Dormant task is NULL when trying to await it");
                         }
 
                         await (dormantTaskLocal?.Task ?? Task.CompletedTask).WaitAsync(cancellationToken);
-                        if (Logger.IsDebug) Logger.Debug($"{GetType().NameWithGenerics()} got activated.");
+                        if (Logger.IsDebug) Logger.Debug($"{GetType().Name} got activated.");
                     }
                     else if (currentStateLocal == SyncFeedState.Active)
                     {
@@ -87,7 +86,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         {
                             if (!Feed.IsMultiFeed)
                             {
-                                if (Logger.IsTrace) Logger.Trace($"{Feed.GetType().NameWithGenerics()} enqueued a null request.");
+                                if (Logger.IsTrace) Logger.Trace($"{Feed.GetType().Name} enqueued a null request.");
                             }
 
                             await Task.Delay(10, cancellationToken);
@@ -107,20 +106,20 @@ namespace Nethermind.Synchronization.ParallelSync
 
                             if (!Feed.IsMultiFeed)
                             {
-                                if (Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().NameWithGenerics()} with allocated {allocatedPeer}");
+                                if (Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer}");
                                 await task;
-                                if (Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().NameWithGenerics()} with allocated {allocatedPeer} has been processed");
+                                if (Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer} has been processed");
                             }
                         }
                         else
                         {
-                            Logger.Debug($"DISPATCHER - {GetType().NameWithGenerics()}: peer NOT allocated");
+                            Logger.Debug($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
                             DoHandleResponse(request);
                         }
                     }
                     else if (currentStateLocal == SyncFeedState.Finished)
                     {
-                        if (Logger.IsInfo) Logger.Info($"{GetType().NameWithGenerics()} has finished work.");
+                        if (Logger.IsInfo) Logger.Info($"{GetType().Name} has finished work.");
                         break;
                     }
                 }

@@ -149,7 +149,6 @@ namespace Nethermind.Trie.Pruning
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _dirtyNodes = new DirtyNodesCache(this);
-            _publicStore = new TrieKeyValueStore(this);
         }
 
         public long LastPersistedBlockNumber
@@ -329,7 +328,7 @@ namespace Nethermind.Trie.Pruning
 
             if (rlp is null)
             {
-                throw new TrieNodeException($"Node {keccak} is missing from the DB", keccak);
+                throw new MissingNodeException(keccak);
             }
 
             Metrics.LoadedFromDbNodesCount++;
@@ -337,7 +336,21 @@ namespace Nethermind.Trie.Pruning
             return rlp;
         }
 
-        public virtual byte[] LoadRlp(Keccak keccak, ReadFlags readFlags = ReadFlags.None) => LoadRlp(keccak, null, readFlags);
+        public byte[] LoadRlp(Keccak keccak, ReadFlags readFlags = ReadFlags.None) => LoadRlp(keccak, null, readFlags);
+
+        public bool IsPersisted(Keccak keccak)
+        {
+            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
+
+            if (rlp is null)
+            {
+                return false;
+            }
+
+            Metrics.LoadedFromDbNodesCount++;
+
+            return true;
+        }
 
         public bool IsPersisted(in ValueKeccak keccak)
         {
@@ -556,9 +569,7 @@ namespace Nethermind.Trie.Pruning
 
         #region Private
 
-        protected readonly IKeyValueStoreWithBatching _keyValueStore;
-
-        private readonly TrieKeyValueStore _publicStore;
+        private readonly IKeyValueStoreWithBatching _keyValueStore;
 
         private readonly IPruningStrategy _pruningStrategy;
 
@@ -818,7 +829,12 @@ namespace Nethermind.Trie.Pruning
             });
         }
 
-        private byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        public byte[]? this[ReadOnlySpan<byte> key]
+        {
+            get => Get(key);
+        }
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             return _pruningStrategy.PruningEnabled
                    && _dirtyNodes.AllNodes.TryGetValue(new ValueKeccak(key), out TrieNode? trieNode)
@@ -827,23 +843,6 @@ namespace Nethermind.Trie.Pruning
                    && trieNode.FullRlp is not null
                 ? trieNode.FullRlp
                 : _currentBatch?.Get(key, flags) ?? _keyValueStore.Get(key, flags);
-        }
-
-        public IKeyValueStore AsKeyValueStore() => _publicStore;
-
-        private class TrieKeyValueStore : IKeyValueStore
-        {
-            private readonly TrieStore _trieStore;
-
-            public TrieKeyValueStore(TrieStore trieStore)
-            {
-                _trieStore = trieStore;
-            }
-
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.Get(key, flags);
-
-            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-                => _trieStore._keyValueStore.Set(key, value, flags);
         }
     }
 }

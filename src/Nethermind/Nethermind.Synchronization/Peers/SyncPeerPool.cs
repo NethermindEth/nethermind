@@ -325,9 +325,18 @@ namespace Nethermind.Synchronization.Peers
             SyncPeerAllocation allocation = new(peerAllocationStrategy, allocationContexts);
             while (true)
             {
-                if (TryAllocateOnce(peerAllocationStrategy, allocationContexts, allocation))
+                lock (_isAllocatedChecks)
                 {
-                    return allocation;
+                    allocation.AllocateBestPeer(InitializedPeers.Where(p => p.CanBeAllocated(allocationContexts)), _stats, _blockTree);
+                    if (allocation.HasPeer)
+                    {
+                        if (peerAllocationStrategy.CanBeReplaced)
+                        {
+                            _replaceableAllocations.TryAdd(allocation, null);
+                        }
+
+                        return allocation;
+                    }
                 }
 
                 bool timeoutReached = timeoutMilliseconds == 0
@@ -345,25 +354,6 @@ namespace Nethermind.Synchronization.Peers
                     }
                 }
             }
-        }
-
-        private bool TryAllocateOnce(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts, SyncPeerAllocation allocation)
-        {
-            lock (_isAllocatedChecks)
-            {
-                allocation.AllocateBestPeer(InitializedPeers.Where(p => p.CanBeAllocated(allocationContexts)), _stats, _blockTree);
-                if (allocation.HasPeer)
-                {
-                    if (peerAllocationStrategy.CanBeReplaced)
-                    {
-                        _replaceableAllocations.TryAdd(allocation, null);
-                    }
-
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         /// <summary>

@@ -18,24 +18,19 @@ using Nethermind.Trie.Pruning;
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Synchronization")]
 
 namespace Nethermind.State
 {
     public class WorldState : IWorldState
     {
-        internal readonly StateProvider _stateProvider;
-        internal readonly PersistentStorageProvider _persistentStorageProvider;
+        private readonly StateProvider _stateProvider;
+        private readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
 
         public Keccak StateRoot
         {
             get => _stateProvider.StateRoot;
-            set
-            {
-                _stateProvider.StateRoot = value;
-                _persistentStorageProvider.StateRoot = value;
-            }
+            set => _stateProvider.StateRoot = value;
         }
 
         public WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
@@ -44,14 +39,6 @@ namespace Nethermind.State
             _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
-
-        internal WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, StateTree stateTree, IStorageTreeFactory storageTreeFactory)
-        {
-            _stateProvider = new StateProvider(trieStore, codeDb, logManager, stateTree);
-            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory);
-            _transientStorageProvider = new TransientStorageProvider(logManager);
-        }
-
         public Account GetAccount(Address address)
         {
             return _stateProvider.GetAccount(address);
@@ -139,7 +126,6 @@ namespace Nethermind.State
         {
             _persistentStorageProvider.CommitTrees(blockNumber);
             _stateProvider.CommitTree(blockNumber);
-            _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
         }
 
         public void TouchCode(Keccak codeHash)
