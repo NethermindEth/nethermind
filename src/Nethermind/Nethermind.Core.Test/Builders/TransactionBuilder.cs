@@ -236,6 +236,14 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public TransactionBuilder<T> Signed(PrivateKey? privateKey = null)
+        {
+            privateKey ??= TestItem.IgnoredPrivateKey;
+            EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? TestBlockchainIds.ChainId, LimboLogs.Instance);
+
+            return Signed(ecdsa, privateKey, true);
+        }
+
         // TODO: auto create ecdsa here
         public TransactionBuilder<T> SignedAndResolved(IEthereumEcdsa ecdsa, PrivateKey privateKey, bool isEip155Enabled = true)
         {

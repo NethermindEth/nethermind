@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -534,17 +535,20 @@ public partial class EthRpcModuleTests
             {
                 return GetLogs(c.ArgAt<CancellationToken>(4));
 
+                [DoesNotReturn]
                 IEnumerable<FilterLog> GetLogs(CancellationToken ct)
                 {
-                    Thread.Sleep(100);
-                    ct.ThrowIfCancellationRequested();
-                    yield return new FilterLog(1, 0, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakC, TestItem.KeccakD });
+                    while (true)
+                    {
+                        Thread.Sleep(10);
+                        ct.ThrowIfCancellationRequested();
+                    }
                 }
             });
 
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithConfig(new JsonRpcConfig() { Timeout = 10 }).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithConfig(new JsonRpcConfig() { Timeout = 50 }).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getLogs", "{}");
-        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32016,\"message\":\"Request was canceled due to enabled timeout.\"},\"id\":67}");
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32016,\"message\":\"eth_getLogs request was canceled due to enabled timeout.\"},\"id\":67}");
     }
 
     [TestCase("{\"fromBlock\":\"earliest\",\"toBlock\":\"latest\"}", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"resource not found message\"},\"id\":67}")]
