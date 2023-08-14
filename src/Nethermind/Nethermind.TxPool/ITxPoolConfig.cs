@@ -16,7 +16,7 @@ namespace Nethermind.TxPool
         [ConfigItem(DefaultValue = "false", Description = "If true, all blob transactions would be stored in persistent db")]
         bool PersistentBlobStorageEnabled { get; set; }
 
-        [ConfigItem(DefaultValue = "131072", Description = "Max number of full blob transactions stored in db (but more transactions in blob pool mean more memory use too")]
+        [ConfigItem(DefaultValue = "16384", Description = "Max number of full blob transactions stored in db (but more transactions in blob pool mean more memory use too")]
         int PersistentBlobStorageSize { get; set; }
 
         [ConfigItem(DefaultValue = "256", Description = "Max number of full blob transactions stored in memory as a cache for persistent storage")]
