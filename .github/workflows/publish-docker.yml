@@ -15,6 +15,10 @@ on:
         description: Dockerfile
         required: true
         default: Dockerfile
+      build_config:
+        description: Build config for solution
+        required: true
+        default: Release
 
 jobs:
   publish-docker:
@@ -37,7 +41,8 @@ jobs:
             -f ${{ github.event.inputs.dockerfile || 'Dockerfile' }} \
             -t "nethermindeth/nethermind:${{ github.event.inputs.tag || 'master' }}" \
             --build-arg COMMIT_HASH=$GITHUB_SHA \
-            --build-arg BUILD_TIMESTAMP=$build_timestamp . --push
+            --build-arg BUILD_TIMESTAMP=$build_timestamp \
+            --build-arg BUILD_CONFIG=${{ github.event.inputs.tag || 'Release' }} . --push
       - name: Clear Docker cache
         if: always()
         run: rm -f $HOME/.docker/config.json
