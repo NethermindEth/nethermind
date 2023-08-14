@@ -75,8 +75,15 @@ namespace Nethermind.Runner.JsonRpc
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer)
         {
-            long SerializeTimeoutException(IJsonRpcService service, Stream resultStream) =>
-                jsonSerializer.Serialize(resultStream, service.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout."));
+            long SerializeTimeoutException(IJsonRpcService service, Stream resultStream, JsonRpcResult result)
+            {
+                JsonRpcResponse response = result.SingleResponse?.Response;
+                return jsonSerializer.Serialize(resultStream, service.GetErrorResponse(
+                    ErrorCodes.Timeout,
+                    "Request was canceled due to enabled timeout.",
+                    response?.Id,
+                    response?.MethodName));
+            }
 
             if (env.IsDevelopment())
             {
@@ -191,7 +198,7 @@ namespace Nethermind.Runner.JsonRpc
                                                 }
 
                                                 first = false;
-                                                responseSize += jsonSerializer.Serialize(resultStream, entry.Response);
+                                                responseSize += jsonSerializer.SerializeWaitForEnumeration(resultStream, entry.Response);
                                                 _ = jsonRpcLocalStats.ReportCall(entry.Report);
 
                                                 // We reached the limit and don't want to responded to more request in the batch
@@ -215,7 +222,7 @@ namespace Nethermind.Runner.JsonRpc
                                 {
                                     using (result.Response)
                                     {
-                                        jsonSerializer.Serialize(resultStream, result.Response);
+                                        jsonSerializer.SerializeWaitForEnumeration(resultStream, result.Response);
                                     }
                                 }
 
@@ -228,11 +235,11 @@ namespace Nethermind.Runner.JsonRpc
                             }
                             catch (Exception e) when (e.InnerException is OperationCanceledException)
                             {
-                                responseSize = SerializeTimeoutException(jsonRpcService, resultStream);
+                                responseSize = SerializeTimeoutException(jsonRpcService, resultStream, result);
                             }
                             catch (OperationCanceledException)
                             {
-                                responseSize = SerializeTimeoutException(jsonRpcService, resultStream);
+                                responseSize = SerializeTimeoutException(jsonRpcService, resultStream, result);
                             }
                             finally
                             {
