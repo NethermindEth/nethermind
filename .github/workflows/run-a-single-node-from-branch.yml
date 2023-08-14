@@ -140,9 +140,13 @@ jobs:
 
         echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
 
-    - name: Use BASE_TAG
+    - name: Extract Variables
+      id: extract_variables
       run: |
         echo "BASE_TAG=${{ needs.create_docker_image.outputs.base_tag }}" >> $GITHUB_ENV
+        echo "timeout=$(echo ${{ inputs.additional_options }} | jq -r .timeout)" >> $GITHUB_OUTPUT
+        echo "ssh_keys=$(echo ${{ inputs.additional_options }} | jq -r .ssh_keys)" >> $GITHUB_OUTPUT
+        echo "allowed_ips=$(echo ${{ inputs.additional_options }} | jq -r .allowed_ips)" >> $GITHUB_OUTPUT
 
     - name: Trigger Node creation Repo Action
       uses: benc-uk/workflow-dispatch@v1
@@ -158,7 +162,7 @@ jobs:
                      "nethermind_branch": "${{ env.CLEAN_REF }}",
                      "network": "${{ inputs.network }}",
                      "cl_client": "${{ inputs.cl_client }}",
-                     "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ inputs.timeout }}\", \"non_validator_mode\":${{ inputs.non_validator_mode }}, \"volume_size\":\"${{ inputs.volume }}\", \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ inputs.ssh_keys }}\"}"
+                     "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ steps.extract_variables.outputs.timeout }}\", \"non_validator_mode\":${{ inputs.non_validator_mode }}, \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ steps.extract_variables.outputs.ssh_keys }}\", \"allowed_ips\":\"${{ steps.extract_variables.outputs.allowed_ips }}\"}"
                    }'
 
     - name: Wait for creation of node
