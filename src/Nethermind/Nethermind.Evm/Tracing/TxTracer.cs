@@ -27,7 +27,7 @@ public class TxTracer : ITxTracer
                     || IsTracingAccess
                     || IsTracingFees;
     }
-    public bool IsTracing { get; }
+    public bool IsTracing { get; protected set; }
     public virtual bool IsTracingState { get; protected set; }
     public virtual bool IsTracingReceipt { get; protected set; }
     public virtual bool IsTracingActions { get; protected set; }
@@ -55,7 +55,7 @@ public class TxTracer : ITxTracer
     public virtual void ReportOperationRemainingGas(long gas) { }
     public virtual void SetOperationStack(List<string> stackTrace) { }
     public virtual void ReportStackPush(in ReadOnlySpan<byte> stackItem) { }
-    public virtual void SetOperationMemory(List<string> memoryTrace) { }
+    public virtual void SetOperationMemory(IEnumerable<string> memoryTrace) { }
     public virtual void SetOperationMemorySize(ulong newSize) { }
     public virtual void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
     public virtual void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }

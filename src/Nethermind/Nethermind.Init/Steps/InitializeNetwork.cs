@@ -178,6 +178,7 @@ public class InitializeNetwork : IStep
                 _api.BlockDownloaderFactory,
                 _api.Pivot,
                 syncReport,
+                _api.ProcessExit!,
                 _api.LogManager);
         }
 
@@ -542,6 +543,7 @@ public class InitializeNetwork : IStep
             peerStorage,
             forkInfo,
             _api.GossipPolicy,
+            _networkConfig,
             _api.LogManager,
             _api.TxGossipPolicy);
 

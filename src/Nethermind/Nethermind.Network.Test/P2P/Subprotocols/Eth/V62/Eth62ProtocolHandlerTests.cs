@@ -402,6 +402,42 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
+        public async Task Can_LimitGetBlockBodiesRequestSize()
+        {
+            BlockBodiesMessage msg = new(Build.A.Block.TestObjectNTimes(3));
+            Transaction signedTransaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            Block largerBlock = Build.A.Block.WithTransactions(Enumerable.Repeat(signedTransaction, 1000).ToArray()).TestObject;
+
+            BlockBodiesMessage largeMsg = new(Enumerable.Repeat(largerBlock, 100).ToArray());
+            List<Keccak> requests = Enumerable.Repeat(Keccak.Zero, 1000).ToList();
+
+            GetBlockBodiesMessage? getMsg = null;
+
+            _session
+                .When(session => session.DeliverMessage(Arg.Any<GetBlockBodiesMessage>()))
+                .Do((info => getMsg = (GetBlockBodiesMessage)info[0]));
+
+            HandleIncomingStatusMessage();
+            Task getTask = ((ISyncPeer)_handler).GetBlockBodies(requests, CancellationToken.None);
+            HandleZeroMessage(msg, Eth62MessageCode.BlockBodies);
+            await getTask;
+
+            Assert.That(getMsg.BlockHashes.Count, Is.EqualTo(4));
+
+            getTask = ((ISyncPeer)_handler).GetBlockBodies(requests, CancellationToken.None);
+            HandleZeroMessage(largeMsg, Eth62MessageCode.BlockBodies);
+            await getTask;
+
+            Assert.That(getMsg.BlockHashes.Count, Is.EqualTo(6));
+
+            getTask = ((ISyncPeer)_handler).GetBlockBodies(requests, CancellationToken.None);
+            HandleZeroMessage(msg, Eth62MessageCode.BlockBodies);
+            await getTask;
+
+            Assert.That(getMsg.BlockHashes.Count, Is.EqualTo(4));
+        }
+
+        [Test]
         public void Can_handle_block_bodies()
         {
             BlockBodiesMessage msg = new(Build.A.Block.TestObjectNTimes(3));
