@@ -47,7 +47,8 @@ jobs:
     name: Wait for the node to sync
     runs-on: ubuntu-latest
     needs: extract_rpc_url
-    steps: 
+    steps:
+    - uses: actions/checkout@v3
     - name: Install WireGuard
       run: |
         sudo apt update
