@@ -32,7 +32,7 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
         stateProvider.Set(tsStorageCell, timestamp.ToBigEndian());
         stateProvider.Set(brStorageCell, parentBeaconBlockRoot.Bytes.ToArray());
 
-        if (!stateProvider.AccountExists(SystemUser))
+        if (stateProvider.AccountExists(SystemUser))
         {
             stateProvider.IncrementNonce(SystemUser);
         }
