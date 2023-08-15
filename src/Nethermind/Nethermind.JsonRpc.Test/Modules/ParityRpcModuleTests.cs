@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -47,13 +46,17 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         private IParityRpcModule _parityRpcModule = null!;
         private Signer _signerStore = null!;
+        private EthereumEcdsa _ethereumEcdsa = null!;
+        private ITxPool _txPool = null!;
+        private IBlockTree _blockTree = null!;
+        private IReceiptStorage _receiptStorage = null!;
 
         [SetUp]
         public void Initialize()
         {
             LimboLogs logger = LimboLogs.Instance;
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
-            EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, logger);
+            _ethereumEcdsa = new(specProvider.ChainId, logger);
 
             Peer peerA = SetUpPeerA();      //standard case
             Peer peerB = SetUpPeerB();      //Session is null
@@ -68,46 +71,43 @@ namespace Nethermind.JsonRpc.Test.Modules
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
-            IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+            _blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, logger);
 
             ITransactionComparerProvider transactionComparerProvider =
-                new TransactionComparerProvider(specProvider, blockTree);
-            TxPool.TxPool txPool = new(ethereumEcdsa,
+                new TransactionComparerProvider(specProvider, _blockTree);
+            _txPool = new TxPool.TxPool(_ethereumEcdsa,
                 new BlobTxStorage(new MemDb()),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), blockTree, stateProvider),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
                 LimboLogs.Instance,
                 transactionComparerProvider.GetDefaultComparer());
 
-            IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
+            _receiptStorage = new InMemoryReceiptStorage();
 
             _signerStore = new Signer(specProvider.ChainId, TestItem.PrivateKeyB, logger);
-            _parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage,
-                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545), _signerStore,
-                new MemKeyStore(new[] { TestItem.PrivateKeyA }, Environment.SpecialFolder.ApplicationData.ToString()),
-                MainnetSpecProvider.Instance, peerManager);
+            _parityRpcModule = CreateParityRpcModule(peerManager);
 
             int blockNumber = 2;
-            Transaction pendingTransaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
+            Transaction pendingTransaction = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber)).TestObject;
             pendingTransaction.Signature!.V = 37;
             stateProvider.CreateAccount(pendingTransaction.SenderAddress!, UInt256.UInt128MaxValue);
-            txPool.SubmitTx(pendingTransaction, TxHandlingOptions.None);
+            _txPool.SubmitTx(pendingTransaction, TxHandlingOptions.None);
 
             blockNumber = 1;
-            Transaction transaction1 = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
+            Transaction transaction1 = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(100).TestObject;
             transaction1.Signature!.V = 37;
             stateProvider.CreateAccount(transaction1.SenderAddress!, UInt256.UInt128MaxValue);
 
-            var transaction2 = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
+            var transaction2 = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(120).TestObject;
             transaction2.Signature!.V = 37;
 
-            var transaction3 = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
+            var transaction3 = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(110).TestObject;
             transaction2.Signature.V = 37;
@@ -116,8 +116,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
                 .TestObject;
 
-            blockTree.SuggestBlock(genesis);
-            blockTree.UpdateMainChain(new[] { genesis }, true);
+            _blockTree.SuggestBlock(genesis);
+            _blockTree.UpdateMainChain(new[] { genesis }, true);
 
             Block previousBlock = genesis;
             Block block = Build.A.Block.WithNumber(blockNumber).WithParent(previousBlock)
@@ -125,8 +125,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                     .WithTransactions(transaction1, transaction2, transaction3)
                     .TestObject;
 
-            blockTree.SuggestBlock(block);
-            blockTree.UpdateMainChain(new[] { block }, true);
+            _blockTree.SuggestBlock(block);
+            _blockTree.UpdateMainChain(new[] { block }, true);
 
             LogEntry[] logEntries = new[] { Build.A.LogEntry.TestObject };
 
@@ -178,7 +178,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Logs = logEntries
             };
 
-            receiptStorage.Insert(block, receipt1, receipt2, receipt3);
+            _receiptStorage.Insert(block, receipt1, receipt2, receipt3);
         }
 
         private static Peer SetUpPeerA()
@@ -253,6 +253,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
 
             return peer;
+        }
+
+        private IParityRpcModule CreateParityRpcModule(IPeerManager? peerManager = null)
+        {
+            return new ParityRpcModule(_ethereumEcdsa, _txPool, _blockTree, _receiptStorage,
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
+                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
+                MainnetSpecProvider.Instance, peerManager ?? Substitute.For<IPeerManager>());
         }
 
         [Test]
@@ -340,34 +348,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task parity_netPeers_empty_ActivePeers()
         {
-            LimboLogs logger = LimboLogs.Instance;
-            MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
-            EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, logger);
-            IDb blockDb = new MemDb();
-            IDb headerDb = new MemDb();
-            IDb blockInfoDb = new MemDb();
-            IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
-
-            ITransactionComparerProvider transactionComparerProvider =
-                new TransactionComparerProvider(specProvider, blockTree);
-            TxPool.TxPool txPool = new(ethereumEcdsa,
-                new BlobTxStorage(new MemDb()),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), blockTree, new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)),
-                new TxPoolConfig(),
-                new TxValidator(specProvider.ChainId),
-                LimboLogs.Instance,
-                transactionComparerProvider.GetDefaultComparer());
-
-            IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
-
             IPeerManager peerManager = Substitute.For<IPeerManager>();
             peerManager.ActivePeers.Returns(new List<Peer> { });
             peerManager.ConnectedPeers.Returns(new List<Peer> { new(new Node(TestItem.PublicKeyA, "111.1.1.1", 11111, true)) });
 
-            IParityRpcModule parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage,
-                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
-                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
-                MainnetSpecProvider.Instance, peerManager);
+            IParityRpcModule parityRpcModule = CreateParityRpcModule(peerManager);
 
             string serialized = await RpcTest.TestSerializedRequest(parityRpcModule, "parity_netPeers");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"active\":0,\"connected\":1,\"max\":0,\"peers\":[]},\"id\":67}";
@@ -377,32 +362,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task parity_netPeers_null_ActivePeers()
         {
-            LimboLogs logger = LimboLogs.Instance;
-            MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
-            EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, logger);
+            IParityRpcModule parityRpcModule = CreateParityRpcModule();
 
-            IDb blockDb = new MemDb();
-            IDb headerDb = new MemDb();
-            IDb blockInfoDb = new MemDb();
-            IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
-            ITransactionComparerProvider transactionComparerProvider =
-                new TransactionComparerProvider(specProvider, blockTree);
-            TxPool.TxPool txPool = new(ethereumEcdsa,
-                new BlobTxStorage(new MemDb()),
-                new ChainHeadInfoProvider(specProvider, blockTree, new StateReader(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)),
-                new TxPoolConfig(),
-                new TxValidator(specProvider.ChainId),
-                LimboLogs.Instance,
-                transactionComparerProvider.GetDefaultComparer());
-
-            IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
-
-            IPeerManager peerManager = Substitute.For<IPeerManager>();
-
-            IParityRpcModule parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage,
-                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
-                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
-                MainnetSpecProvider.Instance, peerManager);
             string serialized = await RpcTest.TestSerializedRequest(parityRpcModule, "parity_netPeers");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"active\":0,\"connected\":0,\"max\":0,\"peers\":[]},\"id\":67}";
             Assert.That(serialized, Is.EqualTo(expectedResult));
