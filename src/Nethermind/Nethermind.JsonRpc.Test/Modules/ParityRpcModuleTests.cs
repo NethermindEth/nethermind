@@ -261,7 +261,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _receiptStorage,
                 new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
                 _signerStore,
-                new MemKeyStore(new[] { TestItem.PrivateKeyA },Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
+                new MemKeyStore(new[] { TestItem.PrivateKeyA }, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
                 MainnetSpecProvider.Instance,
                 peerManager ?? Substitute.For<IPeerManager>());
         }
