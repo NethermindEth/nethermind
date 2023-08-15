@@ -18,8 +18,6 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
     {
         if (!spec.IsBeaconBlockRootAvailable) return;
 
-        stateProvider.CreateAccountIfNotExists(SystemUser, 0, 1);
-
         if (block.Header.ParentBeaconBlockRoot is null)
         {
             return;
