@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -9,6 +10,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     public class ChainParameters
     {
+        //public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode { get; set; }
         public long? MaxCodeSize { get; set; }
         public long? MaxCodeSizeTransition { get; set; }
         public ulong? MaxCodeSizeTransitionTimestamp { get; set; }

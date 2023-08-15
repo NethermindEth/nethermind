@@ -9,9 +9,11 @@ using System.Threading.Tasks;
 using Nethermind.Core.Specs;
 using Nethermind.Core;
 using Nethermind.State;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.BeaconBlockRoot;
 public interface IBeaconBlockRootHandler
 {
-    void InitStatefulPrecompiles(Block block, IReleaseSpec spec, IWorldState state);
+    void ScheduleSystemCall(Block block);
 }

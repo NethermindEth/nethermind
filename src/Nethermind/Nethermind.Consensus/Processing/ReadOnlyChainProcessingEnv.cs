@@ -51,7 +51,8 @@ namespace Nethermind.Consensus.Processing
                 StateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                logManager);
+                logManager,
+                _txEnv.TransactionProcessor);
 
             _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, _txEnv.StateReader, logManager, BlockchainProcessor.Options.NoReceipts);
             BlockProcessingQueue = _blockProcessingQueue;

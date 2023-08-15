@@ -11,31 +11,22 @@ using Nethermind.Core;
 using Nethermind.Evm.Precompiles.Stateful;
 using Nethermind.Int256;
 using Nethermind.State;
-using static Nethermind.Evm.Precompiles.Stateful.BeaconBlockRootPrecompile;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Evm.Tracing;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.BeaconBlockRoot;
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 {
-    public void InitStatefulPrecompiles(Block block, IReleaseSpec spec, IWorldState stateProvider)
+    IBeaconRootContract _beaconRootContract { get; set; }
+    Address _address = new Address("0x0b");
+    public BeaconBlockRootHandler(ITransactionProcessor processor)
     {
-        if (!spec.IsBeaconBlockRootAvailable) return;
-        if (block.IsGenesis)
-        {
-            block.Header.ParentBeaconBlockRoot = Keccak.Zero;
-            return;
-        }
-
-        var timestamp = (UInt256)block.Timestamp;
-        var parentBeaconBlockRoot = block.ParentBeaconBlockRoot;
-
-        UInt256.Mod(timestamp, HISTORICAL_ROOTS_LENGTH, out UInt256 timestampReduced);
-        UInt256 rootIndex = timestampReduced + HISTORICAL_ROOTS_LENGTH;
-
-        StorageCell tsStorageCell = new(BeaconBlockRootPrecompile.Address, timestampReduced);
-        StorageCell brStorageCell = new(BeaconBlockRootPrecompile.Address, rootIndex);
-
-        stateProvider.Set(tsStorageCell, timestamp.ToBigEndian());
-        stateProvider.Set(brStorageCell, parentBeaconBlockRoot.Bytes.ToArray());
+        _beaconRootContract = new BeaconRootContract(processor, _address);
+    }
+    public void ScheduleSystemCall(Block block)
+    {
+        _beaconRootContract.Invoke(block.Header);
     }
 }

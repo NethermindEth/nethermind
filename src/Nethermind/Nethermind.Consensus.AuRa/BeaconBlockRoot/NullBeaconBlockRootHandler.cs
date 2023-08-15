@@ -9,12 +9,14 @@ using System.Threading.Tasks;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.BeaconBlockRoot;
 internal class NullBeaconBlockRootHandler : IBeaconBlockRootHandler
 {
-    public void InitStatefulPrecompiles(Block block, IReleaseSpec spec, IWorldState state)
+    public void ScheduleSystemCall(Block block)
     {
     }
 

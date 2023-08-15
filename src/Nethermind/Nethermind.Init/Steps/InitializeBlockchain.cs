@@ -365,7 +365,8 @@ namespace Nethermind.Init.Steps
                 _api.WorldState,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
-                _api.LogManager);
+                _api.LogManager,
+                _api.TransactionProcessor);
         }
 
         // TODO: remove from here - move to consensus?

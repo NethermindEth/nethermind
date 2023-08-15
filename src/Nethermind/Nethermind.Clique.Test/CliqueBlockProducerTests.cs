@@ -133,7 +133,8 @@ namespace Nethermind.Clique.Test
                     stateProvider,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
-                    nodeLogManager);
+                    nodeLogManager,
+                    transactionProcessor);
 
                 BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
                 processor.Start();
@@ -152,7 +153,8 @@ namespace Nethermind.Clique.Test
                     minerStateProvider,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
-                    nodeLogManager);
+                    nodeLogManager,
+                    minerTransactionProcessor);
 
                 BlockchainProcessor minerProcessor = new(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
 

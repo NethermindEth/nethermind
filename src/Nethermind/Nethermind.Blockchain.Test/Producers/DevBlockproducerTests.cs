@@ -77,7 +77,8 @@ namespace Nethermind.Blockchain.Test.Producers
                 stateProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                txProcessor);
             BlockchainProcessor blockchainProcessor = new(
                 blockTree,
                 blockProcessor,

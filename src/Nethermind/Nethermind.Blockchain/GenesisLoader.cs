@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-            _beaconBlockRootHandler = new BeaconBlockRootHandler();
+            _beaconBlockRootHandler = new BeaconBlockRootHandler(transactionProcessor);
         }
 
         public Block Load()
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
             _chainSpec.Allocations = null;
 
-            _beaconBlockRootHandler?.InitStatefulPrecompiles(genesis, _specProvider.GenesisSpec, _stateProvider);
+            _beaconBlockRootHandler?.ScheduleSystemCall(genesis);
 
             _stateProvider.Commit(_specProvider.GenesisSpec, true);
 

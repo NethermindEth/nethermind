@@ -60,6 +60,13 @@ namespace Nethermind.Blockchain.Contracts
             return objects;
         }
 
+        protected byte[] Call(BlockHeader header, Address sender, long gasLimit)
+        {
+            var transaction = GenerateTransaction<SystemTransaction>(ContractAddress, Array.Empty<byte>(), sender, gasLimit, header);
+            var result = CallCore(_transactionProcessor, header, string.Empty, transaction);
+            return result;
+        }
+
         private bool TryCall(BlockHeader header, Transaction transaction, out byte[] result)
         {
             CallOutputTracer tracer = new();
