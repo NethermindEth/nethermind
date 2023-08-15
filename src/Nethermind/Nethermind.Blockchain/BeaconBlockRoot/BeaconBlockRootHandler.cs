@@ -17,19 +17,16 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
     public void InitStatefulPrecompiles(Block block, IReleaseSpec spec, IWorldState stateProvider)
     {
         if (!spec.IsBeaconBlockRootAvailable) return;
-        if (block.IsGenesis)
-        {
-            block.Header.ParentBeaconBlockRoot = Keccak.Zero;
-            return;
-        }
 
-        if(!stateProvider.AccountExists(SystemUser))
+        block.Header.ParentBeaconBlockRoot ??= Keccak.Zero;
+
+        if (!stateProvider.AccountExists(SystemUser))
         {
             return;
         }
 
-        var timestamp = (UInt256)block.Timestamp;
-        var parentBeaconBlockRoot = block.ParentBeaconBlockRoot;
+        UInt256 timestamp = (UInt256)block.Timestamp;
+        Keccak parentBeaconBlockRoot = block.ParentBeaconBlockRoot;
 
         UInt256.Mod(timestamp, HISTORICAL_ROOTS_LENGTH, out UInt256 timestampReduced);
         UInt256 rootIndex = timestampReduced + HISTORICAL_ROOTS_LENGTH;
