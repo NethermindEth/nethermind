@@ -73,15 +73,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             IDb blockInfoDb = new MemDb();
             _blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, logger);
 
-            ITransactionComparerProvider transactionComparerProvider =
-                new TransactionComparerProvider(specProvider, _blockTree);
             _txPool = new TxPool.TxPool(_ethereumEcdsa,
                 new BlobTxStorage(new MemDb()),
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
                 LimboLogs.Instance,
-                transactionComparerProvider.GetDefaultComparer());
+                new TransactionComparerProvider(specProvider, _blockTree).GetDefaultComparer());
 
             _receiptStorage = new InMemoryReceiptStorage();
 
@@ -257,10 +255,15 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private IParityRpcModule CreateParityRpcModule(IPeerManager? peerManager = null)
         {
-            return new ParityRpcModule(_ethereumEcdsa, _txPool, _blockTree, _receiptStorage,
+            return new ParityRpcModule(_ethereumEcdsa,
+                _txPool,
+                _blockTree,
+                _receiptStorage,
                 new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
-                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
-                MainnetSpecProvider.Instance, peerManager ?? Substitute.For<IPeerManager>());
+                _signerStore,
+                new MemKeyStore(new[] { TestItem.PrivateKeyA },Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
+                MainnetSpecProvider.Instance,
+                peerManager ?? Substitute.For<IPeerManager>());
         }
 
         [Test]
