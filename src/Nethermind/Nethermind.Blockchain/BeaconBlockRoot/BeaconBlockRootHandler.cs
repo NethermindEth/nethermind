@@ -8,6 +8,7 @@ using Nethermind.Int256;
 using Nethermind.State;
 using static Nethermind.Evm.Precompiles.Stateful.BeaconBlockRootPrecompile;
 using Nethermind.Core.Crypto;
+using System.Linq;
 
 namespace Nethermind.Consensus.BeaconBlockRoot;
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
@@ -32,7 +33,7 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
         StorageCell tsStorageCell = new(BeaconBlockRootPrecompile.Address, timestampReduced);
         StorageCell brStorageCell = new(BeaconBlockRootPrecompile.Address, rootIndex);
 
-        stateProvider.Set(tsStorageCell, timestamp.ToBigEndian());
-        stateProvider.Set(brStorageCell, parentBeaconBlockRoot.Bytes.ToArray());
+        stateProvider.Set(tsStorageCell, timestamp.ToBigEndian().SkipWhile(x=>x==0).ToArray());
+        stateProvider.Set(brStorageCell, parentBeaconBlockRoot.Bytes.ToArray().SkipWhile(x => x == 0).ToArray());
     }
 }
