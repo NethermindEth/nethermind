@@ -23,6 +23,11 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
             return;
         }
 
+        if(!stateProvider.AccountExists(SystemUser))
+        {
+            return;
+        }
+
         var timestamp = (UInt256)block.Timestamp;
         var parentBeaconBlockRoot = block.ParentBeaconBlockRoot;
 
@@ -34,8 +39,6 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 
         stateProvider.Set(tsStorageCell, timestamp.ToBigEndian());
         stateProvider.Set(brStorageCell, parentBeaconBlockRoot.Bytes.ToArray());
-
-        stateProvider.CreateAccountIfNotExists(SystemUser, 0);
         stateProvider.IncrementNonce(SystemUser);
     }
 }
