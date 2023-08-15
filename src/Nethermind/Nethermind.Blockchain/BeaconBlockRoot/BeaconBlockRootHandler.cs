@@ -20,11 +20,6 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 
         block.Header.ParentBeaconBlockRoot ??= Keccak.Zero;
 
-        if (!stateProvider.AccountExists(SystemUser))
-        {
-            return;
-        }
-
         UInt256 timestamp = (UInt256)block.Timestamp;
         Keccak parentBeaconBlockRoot = block.ParentBeaconBlockRoot;
 
@@ -36,6 +31,10 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 
         stateProvider.Set(tsStorageCell, timestamp.ToBigEndian());
         stateProvider.Set(brStorageCell, parentBeaconBlockRoot.Bytes.ToArray());
-        stateProvider.IncrementNonce(SystemUser);
+
+        if (!stateProvider.AccountExists(SystemUser))
+        {
+            stateProvider.IncrementNonce(SystemUser);
+        }
     }
 }
