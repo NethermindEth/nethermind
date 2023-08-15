@@ -94,14 +94,11 @@ namespace Nethermind.Core
 
         public void SetPreHashMemoryNoLock(Memory<byte> transactionSequence, IMemoryOwner<byte>? preHashMemoryOwner = null)
         {
-            SetPreHashNoLock(transactionSequence.Span);
             // Used to delay hash generation, as may be filtered as having too low gas etc
-            /*
             _hash = null;
             _preHashMemoryOwner = MemoryPool<byte>.Shared.Rent(transactionSequence.Length);
             _preHash = transactionSequence;
             _preHashMemoryOwner = preHashMemoryOwner;
-            */
         }
 
         public void ClearPreHash()
