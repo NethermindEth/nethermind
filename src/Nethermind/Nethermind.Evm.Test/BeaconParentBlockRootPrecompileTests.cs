@@ -45,13 +45,13 @@ public class Eip4788Tests : TestBlockchain
     {
         specProvider = new TestSpecProvider(testCase.Spec);
         TestBlockchain testBlockchain = await base.Build(specProvider, addBlockOnStart: false);
-        GethLikeBlockTracer? tracer = new(GethTraceOptions.Default);
+        GethLikeBlockMemoryTracer? tracer = new(GethTraceOptions.Default);
         Block block = CreateBlock(testBlockchain.State, testCase.Spec);
         _ = testBlockchain.BlockProcessor.Process(
-            testBlockchain.State.StateRoot,
-            new List<Block> { block },
-            ProcessingOptions.NoValidation,
-            tracer);
+             testBlockchain.State.StateRoot,
+             new List<Block> { block },
+             ProcessingOptions.NoValidation,
+             tracer);
         List<GethLikeTxTrace>? traces = tracer.BuildResult().ToList();
         Assert.That(testCase.ShouldFail, Is.EqualTo(traces[0].Failed));
     }
