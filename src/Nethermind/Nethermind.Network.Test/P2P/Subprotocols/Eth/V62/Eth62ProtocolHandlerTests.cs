@@ -373,7 +373,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
 
             response.Should().NotBeNull();
-            var bodies = response.Bodies.DeserializeBodies();
+            var bodies = response.Bodies.Bodies;
             bodies.Length.Should().Be(expectedResponseSize);
             foreach (BlockBody responseBody in bodies)
             {
@@ -454,7 +454,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             UnmanagedBlockBodies bodies =
                 await ((ISyncPeer)_handler).GetBlockBodies(new List<Keccak>(), CancellationToken.None);
 
-            bodies.DeserializeBodies().Should().HaveCount(0);
+            bodies.Bodies.Should().HaveCount(0);
         }
 
         [Test]

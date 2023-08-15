@@ -32,7 +32,7 @@ public class BlockBodiesMessageSerializerTests
         BlockBodiesMessageSerializer serializer = new();
         serializer.Serialize(buffer, new BlockBodiesMessage(bodies));
         BlockBodiesMessage deserializedMessage = serializer.Deserialize(buffer);
-        foreach (BlockBody? body in deserializedMessage.Bodies.DeserializeBodies())
+        foreach (BlockBody? body in deserializedMessage.Bodies.Bodies)
         {
             if (body is null) continue;
             foreach (Transaction tx in body.Transactions.Where(t => t.SupportsBlobs))

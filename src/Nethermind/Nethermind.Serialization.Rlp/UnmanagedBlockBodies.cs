@@ -24,10 +24,7 @@ public class UnmanagedBlockBodies : IDisposable
         _rawBodies = bodies;
     }
 
-    public BlockBody?[] DeserializeBodies()
-    {
-        return _rawBodies;
-    }
+    public BlockBody?[] Bodies => _rawBodies;
 
     public void Dispose()
     {

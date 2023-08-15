@@ -21,7 +21,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             byteBuffer.EnsureWritable(totalLength, true);
             NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(contentLength);
-            foreach (BlockBody? body in message.Bodies.DeserializeBodies())
+            foreach (BlockBody? body in message.Bodies.Bodies)
             {
                 if (body == null)
                 {
@@ -69,7 +69,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int GetLength(BlockBodiesMessage message, out int contentLength)
         {
-            contentLength = message.Bodies.DeserializeBodies().Select(b => b == null
+            contentLength = message.Bodies.Bodies.Select(b => b == null
                 ? Rlp.OfEmptySequence.Length
                 : Rlp.LengthOfSequence(_blockBodyDecoder.GetBodyLength(b))
             ).Sum();

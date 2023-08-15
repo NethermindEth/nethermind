@@ -261,7 +261,7 @@ namespace Nethermind.Synchronization.Test
                     BlockBody?[] response = ctx.ResponseBuilder
                         .BuildBlocksResponse(blockHashes, Response.AllCorrect | Response.WithTransactions & ~Response.AllKnown)
                         .Result
-                        .DeserializeBodies();
+                        .Bodies;
 
                     if (response.Length < minResponseLength)
                     {
