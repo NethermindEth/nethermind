@@ -76,7 +76,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         int pickedBlobs = 0;
         List<Transaction>? blobTxsToReadd = null;
 
-        while (pickedBlobs < MaxNumberOfBlobsInBlock)
+        while (pickedBlobs < Eip4844Constants.MaxBlobsPerBlock)
         {
             Transaction? bestTxLight = GetFirsts().Min;
 
@@ -85,7 +85,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
                 break;
             }
 
-            if (TryGetValue(bestTxLight.Hash, out Transaction? fullBlobTx) && pickedBlobs + fullBlobTx.BlobVersionedHashes!.Length <= MaxNumberOfBlobsInBlock)
+            if (TryGetValue(bestTxLight.Hash, out Transaction? fullBlobTx) && pickedBlobs + fullBlobTx.BlobVersionedHashes!.Length <= Eip4844Constants.MaxBlobsPerBlock)
             {
                 yield return fullBlobTx!;
                 pickedBlobs += fullBlobTx.BlobVersionedHashes.Length;
@@ -93,7 +93,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
 
             if (TryRemove(bestTxLight.Hash))
             {
-                blobTxsToReadd ??= new(MaxNumberOfBlobsInBlock);
+                blobTxsToReadd ??= new(Eip4844Constants.MaxBlobsPerBlock);
                 blobTxsToReadd.Add(fullBlobTx!);
             }
         }

@@ -10,8 +10,6 @@ namespace Nethermind.TxPool.Collections;
 
 public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 {
-    protected const int MaxNumberOfBlobsInBlock = (int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob);
-
     public BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
         : base(capacity, comparer, logManager)
     {
@@ -31,7 +29,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
         int pickedBlobs = 0;
         List<Transaction>? blobTxsToReadd = null;
 
-        while (pickedBlobs < MaxNumberOfBlobsInBlock)
+        while (pickedBlobs < Eip4844Constants.MaxBlobsPerBlock)
         {
             Transaction? bestTx = GetFirsts().Min;
 
@@ -40,7 +38,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
                 break;
             }
 
-            if (pickedBlobs + bestTx.BlobVersionedHashes.Length <= MaxNumberOfBlobsInBlock)
+            if (pickedBlobs + bestTx.BlobVersionedHashes.Length <= Eip4844Constants.MaxBlobsPerBlock)
             {
                 yield return bestTx;
                 pickedBlobs += bestTx.BlobVersionedHashes.Length;
@@ -48,7 +46,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 
             if (TryRemove(bestTx.Hash))
             {
-                blobTxsToReadd ??= new(MaxNumberOfBlobsInBlock);
+                blobTxsToReadd ??= new(Eip4844Constants.MaxBlobsPerBlock);
                 blobTxsToReadd.Add(bestTx!);
             }
         }

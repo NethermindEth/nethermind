@@ -9,9 +9,10 @@ public class Eip4844Constants
 {
     public const int MinBlobsPerTransaction = 1;
 
+    public const int MaxBlobsPerBlock = 6;
     public const ulong BlobGasPerBlob = 1 << 17;
-    public const ulong TargetBlobGasPerBlock = BlobGasPerBlob * 3;
-    public const ulong MaxBlobGasPerBlock = BlobGasPerBlob * 6;
+    public const ulong MaxBlobGasPerBlock = BlobGasPerBlob * MaxBlobsPerBlock;
+    public const ulong TargetBlobGasPerBlock = MaxBlobGasPerBlock / 2;
     public const ulong MaxBlobGasPerTransaction = MaxBlobGasPerBlock;
 
     public static readonly UInt256 BlobGasUpdateFraction = 3338477;
