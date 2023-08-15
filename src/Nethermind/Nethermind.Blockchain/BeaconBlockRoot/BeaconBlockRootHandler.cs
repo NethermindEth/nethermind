@@ -12,6 +12,8 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Consensus.BeaconBlockRoot;
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 {
+    public static Address SystemUser { get; } = new("0xfffffffffffffffffffffffffffffffffffffffe");
+
     public void InitStatefulPrecompiles(Block block, IReleaseSpec spec, IWorldState stateProvider)
     {
         if (!spec.IsBeaconBlockRootAvailable) return;
@@ -32,5 +34,6 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 
         stateProvider.Set(tsStorageCell, timestamp.ToBigEndian());
         stateProvider.Set(brStorageCell, parentBeaconBlockRoot.Bytes.ToArray());
+        stateProvider.IncrementNonce(SystemUser);
     }
 }
