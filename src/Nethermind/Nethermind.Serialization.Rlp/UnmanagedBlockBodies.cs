@@ -3,9 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Core;
 
@@ -22,6 +19,11 @@ public class UnmanagedBlockBodies : IDisposable
     public UnmanagedBlockBodies(BlockBody?[] bodies, IMemoryOwner<byte>? memoryOwner = null)
     {
         _rawBodies = bodies;
+        _memoryOwner = memoryOwner;
+    }
+
+    ~UnmanagedBlockBodies() {
+        _memoryOwner?.Dispose();
     }
 
     public BlockBody?[] Bodies => _rawBodies;
@@ -29,5 +31,6 @@ public class UnmanagedBlockBodies : IDisposable
     public void Dispose()
     {
         _memoryOwner?.Dispose();
+        _memoryOwner = null;
     }
 }
