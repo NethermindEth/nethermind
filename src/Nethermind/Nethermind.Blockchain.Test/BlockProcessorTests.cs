@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -25,8 +26,10 @@ using System.Threading;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Consensus.BeaconBlockRoot;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -49,7 +52,8 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                transactionProcessor);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -80,7 +84,8 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 NullReceiptStorage.Instance,
                 witnessCollector,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                transactionProcessor);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -109,7 +114,8 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                transactionProcessor);
 
             BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;

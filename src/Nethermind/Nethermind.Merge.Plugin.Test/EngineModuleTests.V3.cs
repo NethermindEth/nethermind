@@ -70,7 +70,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = CreateBlockRequest(
             chain.SpecProvider.GenesisSpec, chain.State,
             CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(),
-                blobGasUsed: blobGasUsed, excessBlobGas: excessBlobGas, parentBeaconBlockRoot: parentBlockBeaconRoot);
+                blobGasUsed: blobGasUsed, excessBlobGas: excessBlobGas, beaconParentBlockRoot: parentBlockBeaconRoot);
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV2(executionPayload);
 

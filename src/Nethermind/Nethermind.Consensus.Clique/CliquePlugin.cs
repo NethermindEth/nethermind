@@ -110,6 +110,7 @@ namespace Nethermind.Consensus.Clique
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 getFromApi.LogManager,
+                getFromApi.TransactionProcessor,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(producerEnv.StateProvider, getFromApi.LogManager)));
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(

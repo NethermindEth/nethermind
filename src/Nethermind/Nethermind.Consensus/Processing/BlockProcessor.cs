@@ -16,6 +16,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -54,6 +55,7 @@ public partial class BlockProcessor : IBlockProcessor
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
         ILogManager? logManager,
+        ITransactionProcessor transactionProcessor,
         IWithdrawalProcessor? withdrawalProcessor = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -65,8 +67,7 @@ public partial class BlockProcessor : IBlockProcessor
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
-        _beaconBlockRootHandler = new BeaconBlockRootHandler();
-
+        _beaconBlockRootHandler = new BeaconBlockRootHandler(transactionProcessor);
         _receiptsTracer = new BlockReceiptsTracer();
     }
 
@@ -226,8 +227,7 @@ public partial class BlockProcessor : IBlockProcessor
         _receiptsTracer.SetOtherTracer(blockTracer);
         _receiptsTracer.StartNewBlockTrace(block);
 
-        _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
-        _stateProvider.Commit(spec);
+        _beaconBlockRootHandler.ScheduleSystemCall(block);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
 

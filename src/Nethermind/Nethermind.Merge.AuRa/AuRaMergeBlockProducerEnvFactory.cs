@@ -86,7 +86,8 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
                     withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
                     logManager
                     )
-                ));
+                ),
+            readOnlyTxProcessingEnv.TransactionProcessor);
     }
 
     protected override TxPoolTxSource CreateTxPoolTxSource(

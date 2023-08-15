@@ -161,7 +161,7 @@ public class TestBlockchain : IDisposable
         TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, LogManager);
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
-
+        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor);
         new ReceiptCanonicalityMonitor(BlockTree, ReceiptStorage, LogManager);
 
         BlockValidator = new BlockValidator(
@@ -178,7 +178,7 @@ public class TestBlockchain : IDisposable
         BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId, LimboLogs.Instance), SpecProvider);
         LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
-        BeaconBlockRootHandler = new BeaconBlockRootHandler();
+        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor);
         BlockProcessor = CreateBlockProcessor();
 
         BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
@@ -342,7 +342,8 @@ public class TestBlockchain : IDisposable
             State,
             ReceiptStorage,
             NullWitnessCollector.Instance,
-            LogManager);
+            LogManager,
+            TxProcessor);
 
     public async Task WaitForNewHead()
     {

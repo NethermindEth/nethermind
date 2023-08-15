@@ -24,7 +24,6 @@ namespace Nethermind.Blockchain
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _stateProvider;
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly BeaconBlockRootHandler _beaconBlockRootHandler;
 
         public GenesisLoader(
             ChainSpec chainSpec,
@@ -36,7 +35,6 @@ namespace Nethermind.Blockchain
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-            _beaconBlockRootHandler = new BeaconBlockRootHandler();
         }
 
         public Block Load()
