@@ -13,7 +13,7 @@ public interface IPathTrieNodeCache
     TrieNode? GetNode(byte[] path, Keccak keccak);
     void SetRootHashForBlock(long blockNumber, Keccak? rootHash);
     void PersistUntilBlock(long blockNumber, IBatch? batch = null);
-    void Prune();
+    void Clear();
     int Count { get; }
     int MaxNumberOfBlocks { get; }
     void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix);

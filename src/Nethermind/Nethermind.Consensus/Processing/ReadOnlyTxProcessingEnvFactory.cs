@@ -20,7 +20,6 @@ public class ReadOnlyTxProcessingEnvFactory
     public ReadOnlyTxProcessingEnvFactory(
         IDbProvider? dbProvider,
         IReadOnlyTrieStore? trieStore,
-        IReadOnlyTrieStore? storageTrieStore,
         IBlockTree? blockTree,
         ISpecProvider? specProvider,
         ILogManager? logManager)

@@ -870,7 +870,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
         private WorldState CreateInitialState(byte[] code)
         {
-            WorldState stateProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
+            //WorldState stateProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
+            WorldState stateProvider = new(new TrieStoreByPath(_dbProvider.PathStateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
             AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
             AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 

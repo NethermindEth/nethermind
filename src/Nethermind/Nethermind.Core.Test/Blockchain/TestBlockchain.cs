@@ -69,7 +69,6 @@ public class TestBlockchain : IDisposable
     public IDb StateDb => DbProvider.StateDb;
     public IColumnsDb<StateColumns> PathStateDb => DbProvider.PathStateDb;
     public ITrieStore TrieStore { get; set; } = null!;
-    public ITrieStore StorageTrieStore { get; set; } = null!;
     public IBlockProducer BlockProducer { get; private set; } = null!;
     public IDbProvider DbProvider { get; set; } = null!;
     public ISpecProvider SpecProvider { get; set; } = null!;
@@ -102,7 +101,6 @@ public class TestBlockchain : IDisposable
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
     public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; } = null!;
-    public IReadOnlyTrieStore ReadOnlyStorageTrieStore { get; private set; } = null!;
     public ManualTimestamper Timestamper { get; protected set; } = null!;
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
@@ -116,7 +114,9 @@ public class TestBlockchain : IDisposable
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
         DbProvider = await CreateDbProvider();
-        TrieStore = new TrieStore(StateDb, LogManager);
+        //TODO - make this configurable / overridable
+        //TrieStore = new TrieStore(StateDb, LogManager);
+        TrieStore = new TrieStoreByPath(PathStateDb, LogManager);
         State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
@@ -131,8 +131,8 @@ public class TestBlockchain : IDisposable
         State.Commit(SpecProvider.GenesisSpec);
         State.CommitTree(0);
 
-        ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
-        ReadOnlyStorageTrieStore = StorageTrieStore.AsReadOnly();
+        //ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
+        ReadOnlyTrieStore = TrieStore.AsReadOnly(PathStateDb);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
         IDb blockDb = new MemDb();
@@ -239,7 +239,6 @@ public class TestBlockchain : IDisposable
             DbProvider,
             BlockTree,
             ReadOnlyTrieStore,
-            ReadOnlyStorageTrieStore,
             SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,

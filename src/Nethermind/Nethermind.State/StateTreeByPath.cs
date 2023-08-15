@@ -43,7 +43,7 @@ namespace Nethermind.State
 
         [DebuggerStepThrough]
         public StateTreeByPath()
-            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, TrieNodeResolverCapability.Path)
+            : base(new MemColumnsDb<StateColumns>(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, TrieNodeResolverCapability.Path)
         {
             TrieType = TrieType.State;
         }
@@ -91,73 +91,6 @@ namespace Nethermind.State
 
             Set(keccak.Bytes, rlp);
             return rlp;
-        }
-
-        public byte[]? GetStorage(in UInt256 index, in Address accountAddress, Keccak? root = null)
-        {
-            Account? account = Get(accountAddress, root);
-            if (account is null || (account.StorageRoot == Keccak.EmptyTreeHash)) return new byte[] { 0 };
-
-            StorageTree tree = new StorageTree(_trieStore, NullLogManager.Instance, accountAddress)
-            {
-                RootHash = account.StorageRoot
-            };
-            return tree.Get(index, account.StorageRoot);
-        }
-
-        public void SetStorage(in UInt256 index, byte[] value, in Address accountAddress)
-        {
-            int storageKeyLength = StorageKeyLength;
-            if (Capability == TrieNodeResolverCapability.Path) storageKeyLength += StoragePrefixLength;
-
-            Span<byte> key = stackalloc byte[storageKeyLength];
-            switch (Capability)
-            {
-                case TrieNodeResolverCapability.Hash:
-                    GetStorageKey(index, key);
-                    break;
-                case TrieNodeResolverCapability.Path:
-                    Keccak.Compute(accountAddress.Bytes).Bytes.CopyTo(key);
-                    key[32] = StorageTree.StorageDifferentiatingByte;
-                    GetStorageKey(index, key.Slice(33));
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-
-            SetInternal(key, value);
-        }
-
-        public void SetStorage(Keccak key, byte[] value, in Address accountAddress, bool rlpEncode = true)
-        {
-            throw new ArgumentException("not possible");
-        }
-
-        private static void GetStorageKey(in UInt256 index, in Span<byte> key)
-        {
-            if (index < CacheSize)
-            {
-                Cache[index].CopyTo(key);
-                return;
-            }
-
-            index.ToBigEndian(key);
-
-            // in situ calculation
-            KeccakHash.ComputeHashBytesToSpan(key, key);
-        }
-
-        private void SetInternal(Span<byte> rawKey, byte[] value, bool rlpEncode = true)
-        {
-            if (value.IsZero())
-            {
-                Set(rawKey, Array.Empty<byte>());
-            }
-            else
-            {
-                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
-                Set(rawKey, rlpEncoded);
-            }
         }
     }
 }

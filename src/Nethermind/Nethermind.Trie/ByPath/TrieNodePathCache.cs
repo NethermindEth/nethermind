@@ -259,8 +259,10 @@ public class TrieNodePathCache : IPathTrieNodeCache
             _rootHashToBlock.Remove(rootHash, out _);
     }
 
-    public void Prune()
+    public void Clear()
     {
+        _rootHashToBlock.Clear();
+        _nodesByPath.Clear();
     }
 
     public void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix)

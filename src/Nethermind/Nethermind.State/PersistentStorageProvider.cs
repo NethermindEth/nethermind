@@ -298,13 +298,17 @@ namespace Nethermind.State
 
             //_trieStore.DeleteByPrefix(storagePrefix);
 
-            Span<byte> storagePrefix = new byte[33];
-            Keccak.Compute(address.Bytes).Bytes.CopyTo(storagePrefix);
-            storagePrefix[^1] = 128;
-            Span<byte> storagePrefixNibbles = new byte[66];
-            Nibbles.BytesToNibbleBytes(storagePrefix, storagePrefixNibbles);
+            //mark the prefix consisting of the account address as deleted to avoid dirty reads after storage is cleared
+            if (_trieStore.Capability == TrieNodeResolverCapability.Path)
+            {
+                Span<byte> storagePrefix = new byte[33];
+                Keccak.Compute(address.Bytes).Bytes.CopyTo(storagePrefix);
+                storagePrefix[^1] = 128;
+                Span<byte> storagePrefixNibbles = new byte[66];
+                Nibbles.BytesToNibbleBytes(storagePrefix, storagePrefixNibbles);
 
-            _trieStore.MarkPrefixDeleted(storagePrefixNibbles);
+                _trieStore.MarkPrefixDeleted(storagePrefixNibbles);
+            }
         }
     }
 }

@@ -44,7 +44,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [OneTimeSetUp]
         public void Setup()
         {
-            _store = _resolverCapability.CreateTrieStore(new MemDb(), LimboLogs.Instance);
+            _store = _resolverCapability.CreateTrieStore(new MemColumnsDb<StateColumns>(), LimboLogs.Instance);
             if (_resolverCapability == TrieNodeResolverCapability.Hash)
             {
                 (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTrees(_store);

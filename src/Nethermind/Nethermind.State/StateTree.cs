@@ -84,58 +84,5 @@ namespace Nethermind.State
             Set(keccak.Bytes, rlp);
             return rlp;
         }
-
-        public byte[] GetStorage(in UInt256 index, in Address? accountAddress, Keccak? root = null)
-        {
-            Span<byte> key = stackalloc byte[32];
-            GetStorageKey(index, key);
-            byte[]? value = Get(key, root);
-
-
-            if (value is null)
-            {
-                return new byte[] { 0 };
-            }
-
-            Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
-            return rlp.DecodeByteArray();
-        }
-        public void SetStorage(in UInt256 index, byte[] value, in Address? accountAddress)
-        {
-            Span<byte> key = stackalloc byte[32];
-            GetStorageKey(index, key);
-            SetInternal(key, value);
-        }
-        public void SetStorage(Keccak key, byte[] value, in Address? accountAddress, bool rlpEncode = true)
-        {
-            SetInternal(key.Bytes, value, rlpEncode);
-        }
-
-        private static void GetStorageKey(in UInt256 index, in Span<byte> key)
-        {
-            if (index < CacheSize)
-            {
-                Cache[index].CopyTo(key);
-                return;
-            }
-
-            index.ToBigEndian(key);
-
-            // in situ calculation
-            KeccakHash.ComputeHashBytesToSpan(key, key);
-        }
-
-        private void SetInternal(Span<byte> rawKey, byte[] value, bool rlpEncode = true)
-        {
-            if (value.IsZero())
-            {
-                Set(rawKey, Array.Empty<byte>());
-            }
-            else
-            {
-                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
-                Set(rawKey, rlpEncoded);
-            }
-        }
     }
 }

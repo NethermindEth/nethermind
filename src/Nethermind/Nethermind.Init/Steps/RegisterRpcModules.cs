@@ -131,7 +131,6 @@ namespace Nethermind.Init.Steps
                 _api.ReceiptStorage,
                 new ReceiptMigration(_api),
                 _api.ReadOnlyTrieStore,
-                _api.ReadOnlyStorageTrieStore!,
                 _api.ConfigProvider,
                 _api.SpecProvider,
                 _api.SyncModeSelector,

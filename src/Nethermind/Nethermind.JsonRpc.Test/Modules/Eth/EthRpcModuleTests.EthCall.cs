@@ -146,6 +146,8 @@ public partial class EthRpcModuleTests
         transaction.To = TestItem.AddressB;
 
         ctx.Test.StateDb.Clear();
+        //shouldn't MemColumnsDb Clear, call Clear on all column dbs?
+        ctx.Test.PathStateDb.GetColumnDb(Db.StateColumns.State).Clear();
         ctx.Test.TrieStore.ClearCache();
 
         string serialized =

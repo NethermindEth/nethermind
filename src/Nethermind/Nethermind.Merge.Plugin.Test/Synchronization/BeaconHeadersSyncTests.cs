@@ -100,7 +100,7 @@ public class BeaconHeadersSyncTests
             {
                 if (_selector is null)
                 {
-                    MemDb stateDb = new();
+                    MemColumnsDb<StateColumns> stateDb = new();
                     ProgressTracker progressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
                     SyncProgressResolver syncProgressResolver = new(
                         BlockTree,

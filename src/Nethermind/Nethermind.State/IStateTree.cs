@@ -12,13 +12,6 @@ namespace Nethermind.State;
 public interface IStateTree : IPatriciaTree
 {
     Account? Get(Address address, Keccak? rootHash = null);
-
     void Set(Address address, Account? account);
     Rlp? Set(in ValueKeccak keccak, Account? account);
-
-    public byte[] GetStorage(in UInt256 index, in Address accountAddress,  Keccak? root = null);
-
-    public void SetStorage(in UInt256 index, byte[] value, in Address accountAddress);
-
-    public void SetStorage(Keccak key, byte[] value, in Address accountAddress, bool rlpEncode = true);
 }

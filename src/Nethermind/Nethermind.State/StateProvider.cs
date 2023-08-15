@@ -57,7 +57,7 @@ namespace Nethermind.State
             if (visitor is null) throw new ArgumentNullException(nameof(visitor));
             if (stateRoot is null) throw new ArgumentNullException(nameof(stateRoot));
 
-            _tree.Accept(visitor, stateRoot, visitingOptions, _storageTrieStore);
+            _tree.Accept(visitor, stateRoot, visitingOptions);
         }
 
         private bool _needsStateRootUpdate;

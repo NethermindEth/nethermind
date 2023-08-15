@@ -47,7 +47,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IReceiptStorage receiptStorage,
             IReceiptsMigration receiptsMigration,
             IReadOnlyTrieStore trieStore,
-            IReadOnlyTrieStore storageTrieStore,
             IConfigProvider configProvider,
             ISpecProvider specProvider,
             ISyncModeSelector syncModeSelector,

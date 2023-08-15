@@ -903,7 +903,7 @@ namespace Nethermind.Synchronization.Test
         private class Context
         {
             private Block genesis = Build.A.Block.Genesis.TestObject;
-            private MemDb _stateDb = new();
+            private MemColumnsDb<StateColumns> _stateDb = new();
             private MemDb _blockInfoDb = new();
             private SyncConfig syncConfig = new();
             protected readonly TrieNodeResolverCapability _resolverCapability;

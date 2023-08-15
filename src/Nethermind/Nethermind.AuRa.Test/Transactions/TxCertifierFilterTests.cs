@@ -138,7 +138,7 @@ public class TxCertifierFilterTests
             AbiEncoder abiEncoder = AbiEncoder.Instance;
             ReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessingEnv(
                 DbProvider,
-                new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                ReadOnlyTrieStore,
             BlockTree, SpecProvider,
                 LimboLogs.Instance);
             RegisterContract = new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, ReadOnlyTransactionProcessorSource);

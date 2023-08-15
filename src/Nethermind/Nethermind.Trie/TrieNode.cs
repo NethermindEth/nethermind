@@ -323,7 +323,7 @@ namespace Nethermind.Trie
                             if (Keccak is null)
                                 throw new TrieException("Unable to resolve node without Keccak");
 
-                            FullRlp = tree.LoadRlp(Keccak);
+                            FullRlp = tree.LoadRlp(Keccak, readFlags);
                         }
                         else if (tree.Capability == TrieNodeResolverCapability.Path)
                         {
@@ -1158,9 +1158,21 @@ namespace Nethermind.Trie
                             {
                                 rlpStream.Position--;
                                 Span<byte> fullRlp = rlpStream.PeekNextItem();
-                                Span<byte> childPath = stackalloc byte[GetChildPathLength()];
-                                GetChildPath(i, childPath);
-                                TrieNode child = new(NodeType.Unknown, childPath.ToArray(), null, fullRlp.ToArray());
+                                TrieNode child = null;
+                                switch (tree.Capability)
+                                {
+                                    case TrieNodeResolverCapability.Hash:
+                                        child = new(NodeType.Unknown, fullRlp.ToArray());
+                                        break;
+                                    case TrieNodeResolverCapability.Path:
+                                        Span<byte> childPath = stackalloc byte[GetChildPathLength()];
+                                        GetChildPath(i, childPath);
+                                        child = new(NodeType.Unknown, childPath.ToArray(), null, fullRlp.ToArray());
+                                        break;
+                                    default:
+                                        throw new ArgumentOutOfRangeException($"tree capability cannot be {tree.Capability}");
+                                }
+
                                 _data![i] = childOrRef = child;
                                 break;
                             }

@@ -587,7 +587,10 @@ namespace Nethermind.Trie.Pruning
         /// This method is here to support testing.
         /// </summary>
         public void ClearCache()
-        { }
+        {
+            _committedNodes[StateColumns.State].Clear();
+            _committedNodes[StateColumns.Storage].Clear();
+        }
 
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
         {

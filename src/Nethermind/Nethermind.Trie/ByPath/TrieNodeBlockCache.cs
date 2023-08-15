@@ -193,17 +193,23 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             _rootHashToBlock.Remove(rootHash, out _);
     }
 
-    public void Prune()
+    //public void Prune()
+    //{
+    //    while (_nodesByBlock.Count > _maxNumberOfBlocks)
+    //    {
+    //        long blockToRemove = _nodesByBlock.Keys.Min();
+    //        if (_nodesByBlock.TryRemove(blockToRemove, out ConcurrentDictionary<byte[], TrieNode> nodesByPath))
+    //        {
+    //            Pruning.Metrics.CachedNodesCount = Interlocked.Add(ref _count, -nodesByPath.Count);
+    //        }
+    //        if (_logger.IsInfo) _logger.Info($"Block {blockToRemove} removed from cache");
+    //    }
+    //}
+
+    public void Clear()
     {
-        while (_nodesByBlock.Count > _maxNumberOfBlocks)
-        {
-            long blockToRemove = _nodesByBlock.Keys.Min();
-            if (_nodesByBlock.TryRemove(blockToRemove, out ConcurrentDictionary<byte[], TrieNode> nodesByPath))
-            {
-                Pruning.Metrics.CachedNodesCount = Interlocked.Add(ref _count, -nodesByPath.Count);
-            }
-            if (_logger.IsInfo) _logger.Info($"Block {blockToRemove} removed from cache");
-        }
+        _rootHashToBlock.Clear();
+        _nodesByBlock.Clear();
     }
 
     public void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix)

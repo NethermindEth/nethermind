@@ -80,7 +80,11 @@ namespace Nethermind.Store.Test
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit(0);
 
-            Assert.That(db.Keys.Count, Is.EqualTo(2));
+            Account a1 = stateTree.Get(TestItem.AddressA, rootHash);
+            Account a2 = stateTree.Get(TestItem.AddressA);
+
+            Assert.That(a1.Balance, Is.EqualTo((UInt256)1));
+            Assert.That(a2.Balance, Is.EqualTo((UInt256)2));
         }
 
         [TestCase(true, false)]
@@ -91,7 +95,7 @@ namespace Nethermind.Store.Test
             ITrieStore trieStore = _resolverCapability.CreateTrieStore(db, LimboLogs.Instance);
             Account account = new(1);
 
-            ITrieStore storagerTrieStore = _resolverCapability.CreateTrieStore(db.GetColumnDb(StateColumns.Storage), LimboLogs.Instance);
+            ITrieStore storagerTrieStore = _resolverCapability.CreateTrieStore(db, LimboLogs.Instance);
 
             IStateTree stateTree = _resolverCapability.CreateStateStore(trieStore, storagerTrieStore, LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
@@ -99,13 +103,22 @@ namespace Nethermind.Store.Test
             Keccak stateRoot = stateTree.RootHash;
             stateTree.Commit(0, skipRoot);
 
-            if (hasRoot)
+            switch (_resolverCapability)
             {
-                trieStore.LoadRlp(Array.Empty<byte>(), stateRoot).Length.Should().BeGreaterThan(0);
-            }
-            else
-            {
-                trieStore.Invoking(ts => ts.LoadRlp(stateRoot)).Should().Throw<TrieException>();
+                case TrieNodeResolverCapability.Hash:
+                    if (hasRoot)
+                        trieStore.LoadRlp(stateRoot).Length.Should().BeGreaterThan(0);
+                    else
+                        trieStore.Invoking(ts => ts.LoadRlp(stateRoot)).Should().Throw<TrieException>();
+                    break;
+                case TrieNodeResolverCapability.Path:
+                    if (hasRoot)
+                        trieStore.LoadRlp(Array.Empty<byte>(), stateRoot).Length.Should().BeGreaterThan(0);
+                    else
+                        trieStore.Invoking(ts => ts.LoadRlp(Array.Empty<byte>(), stateRoot)).Should().Throw<TrieException>();
+                    break;
+                default:
+                    break;
             }
         }
     }

@@ -99,7 +99,6 @@ namespace Nethermind.Mev.Test
                     DbProvider,
                     BlockTree,
                     ReadOnlyTrieStore,
-                    ReadOnlyStorageTrieStore,
                     SpecProvider,
                     BlockValidator,
                     NoBlockRewards.Instance,

@@ -207,11 +207,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 if (!skipLogs) _logger.Info(remote);
                 if (!skipLogs) _logger.Info("-------------------- LOCAL --------------------");
                 dumper.Reset();
-                if (ResolverCapability == TrieNodeResolverCapability.Path)
-                    LocalStateTree.Accept(dumper, LocalStateTree.RootHash, null, ResolverCapability.CreateTrieStore(LocalStateDb, _logManager));
-                else if (ResolverCapability == TrieNodeResolverCapability.Hash)
-                    LocalStateTree.Accept(dumper, LocalStateTree.RootHash);
-
+                LocalStateTree.Accept(dumper, LocalStateTree.RootHash);
                 string local = dumper.ToString();
                 if (!skipLogs) _logger.Info(local);
 
@@ -219,10 +215,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 {
                     Assert.That(local, Is.EqualTo(remote), $"{remote}{Environment.NewLine}{local}");
                     TrieStatsCollector collector = new(LocalCodeDb, LimboLogs.Instance);
-                    if (ResolverCapability == TrieNodeResolverCapability.Path)
-                        LocalStateTree.Accept(collector, LocalStateTree.RootHash, null, ResolverCapability.CreateTrieStore(LocalStateDb, _logManager));
-                    else if (ResolverCapability == TrieNodeResolverCapability.Hash)
-                        LocalStateTree.Accept(collector, LocalStateTree.RootHash);
+                    LocalStateTree.Accept(collector, LocalStateTree.RootHash);
                     Assert.AreEqual(0, collector.Stats.MissingNodes);
                     Assert.AreEqual(0, collector.Stats.MissingCode);
                 }

@@ -24,7 +24,6 @@ namespace Nethermind.Consensus.Producers
         protected readonly IDbProvider _dbProvider;
         protected readonly IBlockTree _blockTree;
         protected readonly IReadOnlyTrieStore _readOnlyTrieStore;
-        protected readonly IReadOnlyTrieStore _readOnlyStorageTrieStore;
         protected readonly ISpecProvider _specProvider;
         protected readonly IBlockValidator _blockValidator;
         protected readonly IRewardCalculatorSource _rewardCalculatorSource;
@@ -41,7 +40,6 @@ namespace Nethermind.Consensus.Producers
             IDbProvider dbProvider,
             IBlockTree blockTree,
             IReadOnlyTrieStore readOnlyTrieStore,
-            IReadOnlyTrieStore readOnlyStorageTrieStore,
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculatorSource rewardCalculatorSource,
@@ -55,7 +53,6 @@ namespace Nethermind.Consensus.Producers
             _dbProvider = dbProvider;
             _blockTree = blockTree;
             _readOnlyTrieStore = readOnlyTrieStore;
-            _readOnlyStorageTrieStore = readOnlyStorageTrieStore;
             _specProvider = specProvider;
             _blockValidator = blockValidator;
             _rewardCalculatorSource = rewardCalculatorSource;
