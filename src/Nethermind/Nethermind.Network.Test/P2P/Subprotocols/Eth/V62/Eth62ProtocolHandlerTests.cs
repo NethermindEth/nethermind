@@ -373,8 +373,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
 
             response.Should().NotBeNull();
-            response.Bodies.Length.Should().Be(expectedResponseSize);
-            foreach (BlockBody responseBody in response.Bodies)
+            var bodies = response.Bodies.DeserializeBodies();
+            bodies.Length.Should().Be(expectedResponseSize);
+            foreach (BlockBody responseBody in bodies)
             {
                 responseBody.Should().NotBeNull();
             }
@@ -450,10 +451,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public async Task Get_block_bodies_returns_immediately_when_empty_hash_list()
         {
-            BlockBody[] bodies =
+            UnmanagedBlockBodies bodies =
                 await ((ISyncPeer)_handler).GetBlockBodies(new List<Keccak>(), CancellationToken.None);
 
-            bodies.Should().HaveCount(0);
+            bodies.DeserializeBodies().Should().HaveCount(0);
         }
 
         [Test]

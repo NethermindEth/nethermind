@@ -1046,10 +1046,15 @@ namespace Nethermind.Serialization.Rlp
 
             public Span<byte> PeekNextItem()
             {
-                int length = PeekNextRlpLength();
-                Span<byte> item = Read(length);
+                Span<byte> item = ReadNextItem();
                 Position -= item.Length;
                 return item;
+            }
+
+            public Span<byte> ReadNextItem()
+            {
+                int length = PeekNextRlpLength();
+                return Read(length);
             }
 
             public bool IsNextItemNull()
@@ -1399,6 +1404,32 @@ namespace Nethermind.Serialization.Rlp
                 for (int i = 0; i < itemsCount; i++)
                 {
                     result[i] = DecodeByteArray();
+                }
+
+                return result;
+            }
+
+            public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true,
+                T defaultElement = default)
+            {
+                if (decoder == null)
+                {
+                    decoder = GetValueDecoder<T>();
+                }
+                int positionCheck = ReadSequenceLength() + Position;
+                int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
+                T[] result = new T[count];
+                for (int i = 0; i < result.Length; i++)
+                {
+                    if (PeekByte() == Rlp.OfEmptySequence[0])
+                    {
+                        result[i] = defaultElement;
+                        Position++;
+                    }
+                    else
+                    {
+                        result[i] = decoder.Decode(ref this);
+                    }
                 }
 
                 return result;

@@ -54,7 +54,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly TxDecoder _txDecoder;
 
         protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests;
-        protected readonly MessageQueue<GetBlockBodiesMessage, (BlockBody[], long)> _bodiesRequests;
+        protected readonly MessageQueue<GetBlockBodiesMessage, (UnmanagedBlockBodies, long)> _bodiesRequests;
 
         private readonly LatencyAndMessageSizeBasedRequestSizer _bodiesRequestSizer = new(
             minRequestLimit: 1,
@@ -85,7 +85,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _timestamper = Timestamper.Default;
             _txDecoder = new TxDecoder();
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
-            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (BlockBody[], long)>(Send);
+            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (UnmanagedBlockBodies, long)>(Send);
 
         }
 
@@ -95,20 +95,20 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Session.InitiateDisconnect(reason, details);
         }
 
-        async Task<BlockBody[]> ISyncPeer.GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+        async Task<UnmanagedBlockBodies> ISyncPeer.GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
         {
             if (blockHashes.Count == 0)
             {
-                return Array.Empty<BlockBody>();
+                return new UnmanagedBlockBodies(Array.Empty<BlockBody>());
             }
 
-            BlockBody[] blocks = await _bodiesRequestSizer.Run(blockHashes, async clampedBlockHashes =>
+            UnmanagedBlockBodies blocks = await _bodiesRequestSizer.Run(blockHashes, async clampedBlockHashes =>
                 await SendRequest(new GetBlockBodiesMessage(clampedBlockHashes), token));
 
             return blocks;
         }
 
-        protected virtual async Task<(BlockBody[], long)> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
+        protected virtual async Task<(UnmanagedBlockBodies, long)> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

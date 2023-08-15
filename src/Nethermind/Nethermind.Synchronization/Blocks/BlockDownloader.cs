@@ -445,9 +445,11 @@ namespace Nethermind.Synchronization.Blocks
             while (offset != context.NonEmptyBlockHashes.Count)
             {
                 IReadOnlyList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxBodiesPerRequest());
-                Task<BlockBody[]> getBodiesRequest = peer.SyncPeer.GetBlockBodies(hashesToRequest, cancellation);
+                Task<UnmanagedBlockBodies> getBodiesRequest = peer.SyncPeer.GetBlockBodies(hashesToRequest, cancellation);
                 await getBodiesRequest.ContinueWith(_ => DownloadFailHandler(getBodiesRequest, "bodies"), cancellation);
-                BlockBody?[] result = getBodiesRequest.Result;
+
+                using UnmanagedBlockBodies unmanagedBlockBodies = getBodiesRequest.Result;
+                BlockBody?[] result = unmanagedBlockBodies.DeserializeBodies();
 
                 int receivedBodies = 0;
                 for (int i = 0; i < result.Length; i++)

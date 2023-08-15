@@ -1,45 +1,37 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
-using Nethermind.Core;
+using FluentAssertions;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using NUnit.Framework;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
+namespace Nethermind.Core.Test.Encoding;
 
-[TestFixture, Parallelizable(ParallelScope.All)]
-public class BlockBodiesMessageSerializerTests
+public class UnmanagedBlockBodiesTests
 {
     [TestCaseSource(nameof(GetBlockBodyValues))]
-    public void Should_pass_roundtrip(BlockBody[] bodies) => SerializerTester.TestZero(
-        new BlockBodiesMessageSerializer(),
-        new BlockBodiesMessage(bodies),
-        additionallyExcluding: (o) =>
+    public void Should_pass_roundtrip(BlockBody?[] bodies)
+    {
+        BlockBodiesMessageSerializer serializer = new BlockBodiesMessageSerializer();
+        IByteBuffer buffer = Unpooled.Buffer(1);
+
+        serializer.Serialize(buffer, new BlockBodiesMessage(bodies));
+
+        NettyBufferMemoryOwner memoryOwner = new NettyBufferMemoryOwner(buffer);
+        UnmanagedBlockBodies unmanagedBlockBodies = new UnmanagedBlockBodies(memoryOwner.Memory);
+
+        BlockBody?[] bodyBack = unmanagedBlockBodies.DeserializeBodies();
+        bodyBack.Should().BeEquivalentTo(bodies, o =>
             o.Excluding(c => c.Name == nameof(Transaction.SenderAddress))
                 .Excluding(c => c.Name == nameof(Transaction.NetworkWrapper)));
-
-    [TestCaseSource(nameof(GetBlockBodyValues))]
-    public void Should_not_contain_network_form_tx_wrapper(BlockBody[] bodies)
-    {
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
-        BlockBodiesMessageSerializer serializer = new();
-        serializer.Serialize(buffer, new BlockBodiesMessage(bodies));
-        BlockBodiesMessage deserializedMessage = serializer.Deserialize(buffer);
-        foreach (BlockBody? body in deserializedMessage.Bodies.DeserializeBodies())
-        {
-            if (body is null) continue;
-            foreach (Transaction tx in body.Transactions.Where(t => t.SupportsBlobs))
-            {
-                Assert.That(tx.NetworkWrapper, Is.Null);
-            }
-        }
     }
 
     private static IEnumerable<BlockBody[]> GetBlockBodyValues()

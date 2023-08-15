@@ -11,26 +11,33 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public override int PacketType { get; } = Eth62MessageCode.BlockBodies;
         public override string Protocol { get; } = "eth";
 
+        public UnmanagedBlockBodies Bodies;
+
         public BlockBodiesMessage()
         {
         }
 
         public BlockBodiesMessage(Block[] blocks)
         {
-            Bodies = new BlockBody[blocks.Length];
+            BlockBody[] bodies = new BlockBody[blocks.Length];
             for (int i = 0; i < blocks.Length; i++)
             {
-                Bodies[i] = blocks[i]?.Body;
+                bodies[i] = blocks[i]?.Body;
             }
+
+            Bodies = new UnmanagedBlockBodies(bodies);
         }
 
-        public BlockBodiesMessage(BlockBody[] bodies)
+        public BlockBodiesMessage(BlockBody?[] bodies)
+        {
+            Bodies = new UnmanagedBlockBodies(bodies);
+        }
+
+        public BlockBodiesMessage(UnmanagedBlockBodies bodies)
         {
             Bodies = bodies;
         }
 
-        public BlockBody?[] Bodies { get; set; }
-
-        public override string ToString() => $"{nameof(BlockBodiesMessage)}({Bodies?.Length ?? 0})";
+        public override string ToString() => $"{nameof(BlockBodiesMessage)}({-1})";
     }
 }

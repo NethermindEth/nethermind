@@ -40,7 +40,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
             try
             {
-                batch.Response = await peer.GetBlockBodies(hashes, cancellationToken);
+                using UnmanagedBlockBodies unmanagedBlockBodies = await peer.GetBlockBodies(hashes, cancellationToken);
+                batch.Response = unmanagedBlockBodies.DeserializeBodies();
             }
             catch (TimeoutException)
             {

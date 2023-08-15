@@ -111,11 +111,11 @@ namespace Nethermind.Synchronization.Test
                 Disconnected?.Invoke(this, EventArgs.Empty);
             }
 
-            public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+            public Task<UnmanagedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
             {
                 if (_causeTimeoutOnBlocks)
                 {
-                    return Task.FromException<BlockBody[]>(new TimeoutException());
+                    return Task.FromException<UnmanagedBlockBodies>(new TimeoutException());
                 }
 
                 BlockBody[] result = new BlockBody[blockHashes.Count];
@@ -130,7 +130,7 @@ namespace Nethermind.Synchronization.Test
                     }
                 }
 
-                return Task.FromResult(result);
+                return Task.FromResult(new UnmanagedBlockBodies(result));
             }
 
             public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)

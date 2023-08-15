@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -1350,6 +1351,26 @@ namespace Nethermind.Serialization.Rlp
         {
             (int prefix, int content) = PeekPrefixAndContentLength();
             SkipBytes(prefix + content);
+        }
+
+        public (Memory<byte>, IMemoryOwner<byte>) ReadItem()
+        {
+            (int prefix, int content) = PeekPrefixAndContentLength();
+            int totalLength = prefix + content;
+            IMemoryOwner<byte> memOwner = MemoryPool<byte>.Shared.Rent(totalLength);
+            Memory<byte> theMemory = memOwner.Memory[..totalLength];
+            Read(totalLength).CopyTo(theMemory.Span);
+            return (theMemory, memOwner);
+        }
+
+        public (Memory<byte>, IMemoryOwner<byte>) PeekItem()
+        {
+            (int prefix, int content) = PeekPrefixAndContentLength();
+            int totalLength = prefix + content;
+            IMemoryOwner<byte> memOwner = MemoryPool<byte>.Shared.Rent(totalLength);
+            Memory<byte> theMemory = memOwner.Memory[..totalLength];
+            Peek(totalLength).CopyTo(theMemory.Span);
+            return (theMemory, memOwner);
         }
 
         public void Reset()

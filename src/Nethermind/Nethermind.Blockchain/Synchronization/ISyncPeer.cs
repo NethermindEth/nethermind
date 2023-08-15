@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Synchronization
         byte ProtocolVersion { get; }
         string ProtocolCode { get; }
         void Disconnect(DisconnectReason reason, string details);
-        Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token);
+        Task<UnmanagedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token);
