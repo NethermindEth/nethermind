@@ -1,16 +1,10 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using DotNetty.Buffers;
-using FluentAssertions;
-using Nethermind.Core.Buffers;
+using System.Buffers;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
-using Nethermind.Logging;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Specs;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
@@ -18,8 +12,12 @@ namespace Nethermind.Core.Test.Encoding;
 public class UnmanagedBlockBodiesTests
 {
     [Test]
-    public void Should_pass_roundtrip()
+    public void Should_dispose_memory_owner()
     {
-        // TODO: Test that if there are memory owner, it should dispose them
+        IMemoryOwner<byte> memoryOwner = Substitute.For<IMemoryOwner<byte>>();
+        BlockBody[] blockBodies = new[] { Build.A.Block.WithTransactions(2, MainnetSpecProvider.Instance).TestObject.Body };
+        UnmanagedBlockBodies unmanagedBlockBodies = new UnmanagedBlockBodies(blockBodies, memoryOwner);
+        unmanagedBlockBodies.Dispose();
+        memoryOwner.Received().Dispose();
     }
 }
