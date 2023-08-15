@@ -14,6 +14,7 @@ namespace Nethermind.Core.Buffers;
 public class NettyBufferMemoryOwner : IMemoryOwner<byte>
 {
     private readonly IByteBuffer _byteBuffer;
+    private bool _disposed = false;
 
     public NettyBufferMemoryOwner(IByteBuffer byteBuffer)
     {
@@ -21,9 +22,22 @@ public class NettyBufferMemoryOwner : IMemoryOwner<byte>
         _byteBuffer.Retain();
     }
 
+    ~NettyBufferMemoryOwner() {
+        Dispose(false);
+    }
+
     public void Dispose()
     {
-        _byteBuffer.Release();
+        Dispose(false);
+    }
+
+    protected virtual void Dispose(bool isDisposing)
+    {
+        if (!_disposed)
+        {
+            _byteBuffer.Release();
+            _disposed = true;
+        }
     }
 
     public Memory<byte> Memory => _byteBuffer

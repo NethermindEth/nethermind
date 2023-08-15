@@ -22,10 +22,6 @@ public class UnmanagedBlockBodies : IDisposable
         _memoryOwner = memoryOwner;
     }
 
-    ~UnmanagedBlockBodies() {
-        _memoryOwner?.Dispose();
-    }
-
     public BlockBody?[] Bodies => _rawBodies;
 
     public void Dispose()
