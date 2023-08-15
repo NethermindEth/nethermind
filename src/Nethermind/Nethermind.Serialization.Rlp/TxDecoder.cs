@@ -126,7 +126,7 @@ namespace Nethermind.Serialization.Rlp
             else if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
-                transaction.SetPreHash(transactionSequence);
+                transaction.SetPreHashNoLock(transactionSequence);
             }
             else
             {
@@ -343,12 +343,15 @@ namespace Nethermind.Serialization.Rlp
             }
             transaction.Type = TxType.Legacy;
 
+            int txSequenceStart = decoderContext.Position;
             Span<byte> transactionSequence = decoderContext.PeekNextItem();
+
             if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
             {
                 byte firstByte = decoderContext.PeekByte();
                 if (firstByte <= 0x7f) // it is typed transactions
                 {
+                    txSequenceStart = decoderContext.Position;
                     transactionSequence = decoderContext.Peek(decoderContext.Length);
                     transaction.Type = (TxType)decoderContext.ReadByte();
                 }
@@ -359,6 +362,7 @@ namespace Nethermind.Serialization.Rlp
                 {
                     (int PrefixLength, int ContentLength) prefixAndContentLength =
                         decoderContext.ReadPrefixAndContentLength();
+                    txSequenceStart = decoderContext.Position;
                     transactionSequence = decoderContext.Peek(prefixAndContentLength.ContentLength);
                     transaction.Type = (TxType)decoderContext.ReadByte();
                 }
@@ -370,6 +374,7 @@ namespace Nethermind.Serialization.Rlp
                 int networkWrapperLength = decoderContext.ReadSequenceLength();
                 networkWrapperCheck = decoderContext.Position + networkWrapperLength;
                 int rlpRength = decoderContext.PeekNextRlpLength();
+                txSequenceStart = decoderContext.Position;
                 transactionSequence = decoderContext.Peek(rlpRength);
             }
 
@@ -421,7 +426,18 @@ namespace Nethermind.Serialization.Rlp
             else if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
             {
                 // Delay hash generation, as may be filtered as having too low gas etc
-                transaction.SetPreHash(transactionSequence);
+                if (decoderContext.ShouldSliceMemory)
+                {
+                    int currentPosition = decoderContext.Position;
+                    decoderContext.Position = txSequenceStart;
+                    transaction.SetPreHashMemoryNoLock(decoderContext.ReadMemory(transactionSequence.Length));
+                    decoderContext.Position = currentPosition;
+                }
+                else
+                {
+                    transaction.SetPreHashNoLock(transactionSequence);
+                }
+                // transaction.SetPreHashNoLock(transactionSequence);
             }
             else
             {

@@ -55,9 +55,9 @@ namespace Nethermind.Core
                 {
                     if (_hash is not null) return _hash;
 
-                    if (_preHash.Count > 0)
+                    if (_preHash.Length > 0)
                     {
-                        _hash = Keccak.Compute(_preHash.AsSpan());
+                        _hash = Keccak.Compute(_preHash.Span);
                         ClearPreHashInternal();
                     }
                 }
@@ -71,24 +71,42 @@ namespace Nethermind.Core
             }
         }
 
-        private ArraySegment<byte> _preHash;
+        private Memory<byte> _preHash;
+        private IMemoryOwner<byte>? _preHashMemoryOwner;
         public void SetPreHash(ReadOnlySpan<byte> transactionSequence)
         {
             lock (this)
             {
-                // Used to delay hash generation, as may be filtered as having too low gas etc
-                _hash = null;
-
-                int size = transactionSequence.Length;
-                byte[] preHash = ArrayPool<byte>.Shared.Rent(size);
-                transactionSequence.CopyTo(preHash);
-                _preHash = new ArraySegment<byte>(preHash, 0, size);
+                SetPreHashNoLock(transactionSequence);
             }
+        }
+
+        public void SetPreHashNoLock(ReadOnlySpan<byte> transactionSequence)
+        {
+            // Used to delay hash generation, as may be filtered as having too low gas etc
+            _hash = null;
+
+            int size = transactionSequence.Length;
+            _preHashMemoryOwner = MemoryPool<byte>.Shared.Rent(size);
+            _preHash = _preHashMemoryOwner.Memory[..size];
+            transactionSequence.CopyTo(_preHash.Span);
+        }
+
+        public void SetPreHashMemoryNoLock(Memory<byte> transactionSequence, IMemoryOwner<byte>? preHashMemoryOwner = null)
+        {
+            SetPreHashNoLock(transactionSequence.Span);
+            // Used to delay hash generation, as may be filtered as having too low gas etc
+            /*
+            _hash = null;
+            _preHashMemoryOwner = MemoryPool<byte>.Shared.Rent(transactionSequence.Length);
+            _preHash = transactionSequence;
+            _preHashMemoryOwner = preHashMemoryOwner;
+            */
         }
 
         public void ClearPreHash()
         {
-            if (_preHash.Count > 0)
+            if (_preHash.Length > 0)
             {
                 lock (this)
                 {
@@ -99,9 +117,9 @@ namespace Nethermind.Core
 
         private void ClearPreHashInternal()
         {
-            if (_preHash.Count > 0)
+            if (_preHash.Length > 0)
             {
-                ArrayPool<byte>.Shared.Return(_preHash.Array!);
+                _preHashMemoryOwner?.Dispose();
                 _preHash = default;
             }
         }

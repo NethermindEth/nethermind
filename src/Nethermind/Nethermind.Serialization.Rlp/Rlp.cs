@@ -568,6 +568,8 @@ namespace Nethermind.Serialization.Rlp
 
             public int Length => Data.Length;
 
+            public bool ShouldSliceMemory => _sliceMemory;
+
             public bool IsSequenceNext()
             {
                 return Data[Position] >= 192;
