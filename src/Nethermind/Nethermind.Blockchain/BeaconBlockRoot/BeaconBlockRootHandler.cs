@@ -18,7 +18,9 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
     {
         if (!spec.IsBeaconBlockRootAvailable) return;
 
-        if(block.Header.ParentBeaconBlockRoot is null)
+        stateProvider.CreateAccountIfNotExists(SystemUser, 0, 1);
+
+        if (block.Header.ParentBeaconBlockRoot is null)
         {
             return;
         }
@@ -34,7 +36,5 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 
         stateProvider.Set(tsStorageCell, timestamp.ToBigEndian());
         stateProvider.Set(brStorageCell, parentBeaconBlockRoot.Bytes.ToArray());
-
-        stateProvider.CreateAccountIfNotExists(SystemUser, 0, 0);
     }
 }
