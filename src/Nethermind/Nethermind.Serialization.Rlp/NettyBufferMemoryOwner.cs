@@ -11,7 +11,7 @@ namespace Nethermind.Core.Buffers;
 /// A wrapper around IByteBuffer to expose standard Memory.
 /// Internally, IByteBuffer is already a standard array, so no need for a MemoryManager.
 /// </summary>
-public class NettyBufferMemoryOwner: IMemoryOwner<byte>
+public class NettyBufferMemoryOwner : IMemoryOwner<byte>
 {
     private readonly IByteBuffer _byteBuffer;
 

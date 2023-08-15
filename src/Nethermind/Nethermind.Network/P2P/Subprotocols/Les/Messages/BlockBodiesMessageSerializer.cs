@@ -8,6 +8,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 {
     public class BlockBodiesMessageSerializer : IZeroMessageSerializer<BlockBodiesMessage>
     {
+        private readonly Eth.V62.Messages.BlockBodiesMessageSerializer _baseDeserializer = new();
+
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
         {
             Eth.V62.Messages.BlockBodiesMessageSerializer ethSerializer = new();
@@ -28,16 +30,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
         public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyRlpStream rlpStream = new(byteBuffer);
-            return Deserialize(rlpStream);
-        }
-
-        private static BlockBodiesMessage Deserialize(RlpStream rlpStream)
-        {
             BlockBodiesMessage blockBodiesMessage = new();
             rlpStream.ReadSequenceLength();
             blockBodiesMessage.RequestId = rlpStream.DecodeLong();
             blockBodiesMessage.BufferValue = rlpStream.DecodeInt();
-            blockBodiesMessage.EthMessage = Eth.V62.Messages.BlockBodiesMessageSerializer.Deserialize(rlpStream);
+
+            IByteBuffer remaining = byteBuffer.ReadSlice(byteBuffer.ReadableBytes);
+            blockBodiesMessage.EthMessage = _baseDeserializer.Deserialize(remaining);
             return blockBodiesMessage;
         }
     }
