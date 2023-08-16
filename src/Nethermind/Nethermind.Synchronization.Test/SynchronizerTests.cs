@@ -330,7 +330,6 @@ namespace Nethermind.Synchronization.Test
                 SyncProgressResolver syncProgressResolver = new(
                     BlockTree,
                     NullReceiptStorage.Instance,
-                    stateDb,
                     trieStore,
                     progressTracker,
                     syncConfig,

@@ -25,7 +25,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
-        private readonly IDb _stateDb;
         private readonly ITrieNodeResolver _trieNodeResolver;
         private readonly ProgressTracker _progressTracker;
         private readonly ISyncConfig _syncConfig;
@@ -38,7 +37,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public SyncProgressResolver(IBlockTree blockTree,
             IReceiptStorage receiptStorage,
-            IDb stateDb,
             ITrieNodeResolver trieNodeResolver,
             ProgressTracker progressTracker,
             ISyncConfig syncConfig,
@@ -47,31 +45,12 @@ namespace Nethermind.Synchronization.ParallelSync
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _trieNodeResolver = trieNodeResolver ?? throw new ArgumentNullException(nameof(trieNodeResolver));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
             _bodiesBarrier = _syncConfig.AncientBodiesBarrierCalc;
             _receiptsBarrier = _syncConfig.AncientReceiptsBarrierCalc;
-        }
-
-        private bool IsFullySynced(Keccak stateRoot)
-        {
-            if (stateRoot == Keccak.EmptyTreeHash)
-            {
-                return true;
-            }
-
-            TrieNode trieNode = _trieNodeResolver.FindCachedOrUnknown(stateRoot);
-            bool stateRootIsInMemory = trieNode.NodeType != NodeType.Unknown;
-            // We check whether one of below happened:
-            //   1) the block has been processed but not yet persisted (pruning) OR
-            //   2) the block has been persisted and removed from cache already OR
-            //   3) the full block state has been synced in the state nodes sync (fast sync)
-            // In 2) and 3) the state root will be saved in the database.
-            // In fast sync we never save the state root unless all the descendant nodes have been stored in the DB.
-            return stateRootIsInMemory || _stateDb.Get(stateRoot) is not null;
         }
 
         public long FindBestFullState()
@@ -116,7 +95,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     break;
                 }
 
-                if (IsFullySynced(startHeader.StateRoot!))
+                if (_trieNodeResolver.IsFullySynced(startHeader.StateRoot!))
                 {
                     bestFullState = startHeader.Number;
                     break;
