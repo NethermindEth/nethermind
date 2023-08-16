@@ -128,6 +128,67 @@ namespace Nethermind.Core.Extensions
 
                 return y.Length > x.Length ? 1 : 0;
             }
+
+            public static int CompareDiffLength(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
+            {
+                if (Unsafe.AreSame(ref MemoryMarshal.GetReference(x), ref MemoryMarshal.GetReference(y)) &&
+                    x.Length == y.Length)
+                {
+                    return 0;
+                }
+
+                if (x.Length == 0)
+                {
+                    return y.Length == 0 ? 0 : -1;
+                }
+
+                for (int i = 0; i < x.Length; i++)
+                {
+                    if (y.Length <= i)
+                    {
+                        return 1;
+                    }
+
+                    int result = x[i].CompareTo(y[i]);
+                    if (result != 0)
+                    {
+                        return result;
+                    }
+                }
+
+                return y.Length > x.Length ? -1 : 0;
+            }
+
+            public int CompareGreaterThan(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
+            {
+                if (x.Length == 0)
+                {
+                    return y.Length == 0 ? 0 : 1;
+                }
+
+                ReadOnlySpan<ulong> ulongX = MemoryMarshal.Cast<byte, ulong>(x);
+                ReadOnlySpan<ulong> ulongY = MemoryMarshal.Cast<byte, ulong>(y);
+
+                for (int i = 0; i < ulongX.Length; i++)
+                {
+                    if (ulongX[i] > ulongY[i])
+                        return 1;
+
+                    if (ulongX[i] < ulongY[i])
+                        return -1;
+                }
+
+                for (int i = ulongX.Length * Unsafe.SizeOf<ulong>(); i < x.Length; i++)
+                {
+                    if (x[i] > y[i])
+                        return 1;
+
+                    if (x[i] < y[i])
+                        return -1;
+                }
+
+                return y.Length > x.Length ? 1 : 0;
+            }
         }
 
         public static readonly byte[] Zero32 = new byte[32];
