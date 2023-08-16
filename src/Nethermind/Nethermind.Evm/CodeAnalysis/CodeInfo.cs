@@ -2,13 +2,129 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
-using System.Reflection.PortableExecutable;
-using System.Threading;
+using System.Linq;
+using DotNetty.Common.Utilities;
+using Nethermind.Core;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
+
+    public interface ICode
+    {
+        byte this[int index] { get; }
+        int Length { get; }
+
+        ZeroPaddedSpan SliceWithZeroPadding(scoped in UInt256 startIndex, int length,
+            PadDirection padDirection = PadDirection.Right);
+
+        byte[] ToBytes();
+        Span<byte> Slice(int index, int length);
+    }
+    public readonly struct ByteCode: ICode
+    {
+
+        public ByteCode(byte[] code)
+        {
+            MachineCode = code;
+        }
+
+        public byte[] MachineCode { get; }
+
+        public byte this[int index]
+        {
+            get => MachineCode[index];
+        }
+
+        public int Length => MachineCode.Length;
+
+        public ZeroPaddedSpan SliceWithZeroPadding(scoped in UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right) => MachineCode.SliceWithZeroPadding(startIndex, length, padDirection);
+
+        public byte[] ToBytes() => MachineCode.ToArray();
+
+        public Span<byte> Slice(int index, int length) => MachineCode.Slice(index, length);
+    }
+
+    public readonly struct VerkleCode: ICode
+    {
+        private IWorldState WorldState { get; }
+        private Address Owner { get; }
+        public VerkleCode(IWorldState worldState, Address codeOwner)
+        {
+            if (worldState.StateType != StateType.Verkle) throw new NotSupportedException("verkle state needed");
+            Owner = codeOwner;
+            WorldState = worldState;
+            Length = (int)worldState.GetAccount(codeOwner).CodeSize;
+        }
+
+        public byte this[int index]
+        {
+            get
+            {
+                int chunkId = index / 31;
+                int chunkLoc = index % 31;
+                return WorldState.GetCodeChunk(Owner, (UInt256)chunkId)[chunkLoc];
+            }
+        }
+
+        public int Length { get; init; }
+
+        public ZeroPaddedSpan SliceWithZeroPadding(scoped in UInt256 startIndex, int length,
+            PadDirection padDirection = PadDirection.Right)
+        {
+            if (startIndex >= Length || startIndex > int.MaxValue)
+            {
+                return new ZeroPaddedSpan(default, length, PadDirection.Right);
+            }
+
+            Span<byte> toReturn = Slice((int)startIndex, length);
+            return new ZeroPaddedSpan(toReturn, length - toReturn.Length, padDirection);
+
+        }
+
+        public byte[] ToBytes() => Slice(0, Length).ToArray();
+
+        public Span<byte> Slice(int index, int length)
+        {
+            if (index >= Length)
+                return Array.Empty<byte>();
+
+            int endIndex = index + length - 1;
+            if (endIndex >= length)
+            {
+                endIndex = Length - 1;
+            }
+
+            int startChunkId = index / 31;
+            int startChunkLoc = (index % 31) + 1;
+
+            int endChunkId = endIndex / 31;
+            int endChunkLoc = (endIndex % 31) + 1;
+
+            byte[] codeSlice = new byte[(endIndex - index) + 1];
+            Span<byte> codeSliceSpan = codeSlice;
+            if (startChunkId == endChunkId)
+            {
+                WorldState.GetCodeChunk(Owner, (UInt256)startChunkId)[startChunkLoc..(endChunkLoc + 1)].CopyTo(codeSliceSpan);
+            }
+            else
+            {
+                WorldState.GetCodeChunk(Owner, (UInt256)startChunkId)[startChunkLoc..].CopyTo(codeSliceSpan);
+                codeSliceSpan = codeSliceSpan.Slice(32 - startChunkLoc);
+                for (int i = (startChunkId+1); i < endChunkId; i++)
+                {
+                    WorldState.GetCodeChunk(Owner, (UInt256)i)[1..].CopyTo(codeSliceSpan);
+                    codeSliceSpan = codeSliceSpan.Slice(31);
+                }
+                WorldState.GetCodeChunk(Owner, (UInt256)endChunkId)[1..(endChunkLoc + 1)].CopyTo(codeSliceSpan);
+            }
+            return codeSlice;
+        }
+    }
+
+
     public class CodeInfo
     {
         private const int SampledCodeLength = 10_001;
@@ -16,13 +132,18 @@ namespace Nethermind.Evm.CodeAnalysis
         private const int NumberOfSamples = 100;
         private static Random _rand = new();
 
-        public byte[] MachineCode { get; set; }
+        public ICode MachineCode { get; set; }
         public IPrecompile? Precompile { get; set; }
         private ICodeInfoAnalyzer? _analyzer;
 
+        public CodeInfo(IWorldState worldState, Address codeOwner)
+        {
+            MachineCode = new VerkleCode(worldState, codeOwner);
+        }
+
         public CodeInfo(byte[] code)
         {
-            MachineCode = code;
+            MachineCode = new ByteCode(code);
         }
 
         public bool IsPrecompile => Precompile is not null;
@@ -30,7 +151,7 @@ namespace Nethermind.Evm.CodeAnalysis
         public CodeInfo(IPrecompile precompile)
         {
             Precompile = precompile;
-            MachineCode = Array.Empty<byte>();
+            MachineCode = new ByteCode(Array.Empty<byte>());
         }
 
         public bool ValidateJump(int destination, bool isSubroutine)

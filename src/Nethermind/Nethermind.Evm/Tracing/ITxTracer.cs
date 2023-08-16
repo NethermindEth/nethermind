@@ -125,6 +125,15 @@ public interface ITxTracer : IWorldStateTracer
     /// </remarks>
     bool IsTracingFees { get; }
 
+    /// <summary>
+    /// Defines whether SetVerkleWitnessKeys will be called
+    /// </summary>
+    /// <remarks>
+    /// Controls
+    /// - <see cref="SetVerkleWitnessKeys"/>
+    /// </remarks>
+    bool IsTracingVerkleWitness { get; }
+
     bool IsTracing => IsTracingReceipt
                       || IsTracingActions
                       || IsTracingOpLevelStorage
@@ -419,4 +428,11 @@ public interface ITxTracer : IWorldStateTracer
     /// <param name="burntFees">EIP-1559 burnt fees</param>
     /// <remarks>Depends on <see cref="IsTracingFees"/></remarks>
     void ReportFees(UInt256 fees, UInt256 burntFees);
+
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="verkleWitnessKeys"></param>
+    /// <remarks>Depends on <see cref="IsTracingVerkleWitness"/></remarks>
+    void SetVerkleWitnessKeys(IReadOnlyList<byte[]> verkleWitnessKeys);
 }

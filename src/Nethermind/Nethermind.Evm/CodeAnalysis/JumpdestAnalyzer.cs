@@ -9,12 +9,12 @@ namespace Nethermind.Evm.CodeAnalysis
 {
     public class JumpdestAnalyzer : ICodeInfoAnalyzer
     {
-        private byte[] MachineCode { get; set; }
+        private ICode MachineCode { get; set; }
 
         private BitArray? _validJumpDestinations;
         private BitArray? _validJumpSubDestinations;
 
-        public JumpdestAnalyzer(byte[] code)
+        public JumpdestAnalyzer(ICode code)
         {
             MachineCode = code;
         }

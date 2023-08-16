@@ -11,6 +11,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
@@ -24,6 +25,9 @@ namespace Nethermind.Evm.Test;
 
 public class VirtualMachineTestsBase
 {
+    public VirtualMachineTestsBase(StateType stateType = StateType.Merkle) { _stateType = stateType; }
+    public VirtualMachineTestsBase() { _stateType = StateType.Merkle; }
+
     protected const string SampleHexData1 = "a01234";
     protected const string SampleHexData2 = "b15678";
     protected const string HexZero = "00";
@@ -49,6 +53,8 @@ public class VirtualMachineTestsBase
     protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
     protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber, Timestamp);
 
+    private readonly StateType _stateType;
+
     protected virtual ILogManager GetLogManager()
     {
         return LimboLogs.Instance;
@@ -59,10 +65,23 @@ public class VirtualMachineTestsBase
     {
         ILogManager logManager = GetLogManager();
 
-        IDb codeDb = new MemDb();
-        _stateDb = new MemDb();
-        ITrieStore trieStore = new TrieStore(_stateDb, logManager);
-        TestState = new WorldState(trieStore, codeDb, logManager);
+        switch (_stateType)
+        {
+            case StateType.Merkle:
+                IDb codeDb = new MemDb();
+                _stateDb = new MemDb();
+                ITrieStore trieStore = new TrieStore(_stateDb, logManager);
+                TestState = new WorldState(trieStore, codeDb, logManager);
+                break;
+            case StateType.Verkle:
+                IDbProvider provider = VerkleDbFactory.InitDatabase(DbMode.MemDb, null);
+                _stateDb = provider.StateDb;
+                VerkleStateTree vTree = new VerkleStateTree(provider, LimboLogs.Instance);
+                TestState = new VerkleWorldState(vTree, new MemDb(), logManager);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
         IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
         Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);

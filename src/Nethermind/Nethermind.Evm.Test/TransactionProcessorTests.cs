@@ -725,7 +725,7 @@ public class TransactionProcessorTests
         }
 
         IBlockTracer otherTracer = types != ParityTraceTypes.None ? new ParityLikeBlockTracer(tx.Hash, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff) : (IBlockTracer)NullBlockTracer.Instance;
-        BlockReceiptsTracer tracer = new();
+        BlockReceiptsTracer tracer = new(true, false);
         tracer.SetOtherTracer(otherTracer);
         return tracer;
     }

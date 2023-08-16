@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
@@ -13,7 +15,6 @@ namespace Nethermind.Evm.Tracing;
 public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
 {
     private Block _block = null!;
-    public bool IsTracingReceipt => true;
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
     public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
     public bool IsTracingMemory => _currentTxTracer.IsTracingMemory;
@@ -27,12 +28,22 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public bool IsTracingBlockHash => _currentTxTracer.IsTracingBlockHash;
     public bool IsTracingAccess => _currentTxTracer.IsTracingAccess;
     public bool IsTracingFees => _currentTxTracer.IsTracingFees;
+    private readonly bool _isTracingReceipt;
+    private readonly bool _isTracingVerkleWitness;
+    public bool IsTracingReceipt => _isTracingReceipt | _currentTxTracer.IsTracingReceipt;
+    public bool IsTracingVerkleWitness => _isTracingVerkleWitness | _currentTxTracer.IsTracingVerkleWitness;
 
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
+    public BlockReceiptsTracer(bool traceReceipts, bool traceWitness)
+    {
+        _isTracingReceipt = traceReceipts;
+        _isTracingVerkleWitness = traceWitness;
+    }
+
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
     {
-        _txReceipts.Add(BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot));
+        if(_isTracingReceipt) _txReceipts.Add(BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot));
 
         // hacky way to support nested receipt tracers
         if (_otherTracer is ITxTracer otherTxTracer)
@@ -48,7 +59,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
     public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
     {
-        _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent, error, stateRoot));
+        if(_isTracingReceipt) _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent, error, stateRoot));
 
         // hacky way to support nested receipt tracers
         if (_otherTracer is ITxTracer otherTxTracer)
@@ -210,6 +221,11 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
             _txReceipts.RemoveAt(_txReceipts.Count - 1);
         }
 
+        for (int i = 0; i < numToRemove; i++)
+        {
+            _witnessKeys.RemoveAt(_witnessKeys.Count - 1);
+        }
+
         _block.Header.GasUsed = _txReceipts.Count > 0 ? _txReceipts.Last().GasUsedTotal : 0;
     }
 
@@ -226,6 +242,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         _block = block;
         _currentIndex = 0;
         _txReceipts.Clear();
+        _witnessKeys.Clear();
 
         _otherTracer.StartNewBlockTrace(block);
     }
@@ -256,10 +273,41 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
                 blockBloom.Accumulate(receipt.Bloom!);
             }
         }
+        if (_witnessKeys.Count > 0)
+        {
+            _aggregatedWitnessKeys = new SortedSet<byte[]>(Bytes.Comparer);
+            foreach (IReadOnlyList<byte[]>? keys in _witnessKeys)
+            {
+                _aggregatedWitnessKeys.AddRange(keys);
+            }
+        }
     }
 
     public void SetOtherTracer(IBlockTracer blockTracer)
     {
         _otherTracer = blockTracer;
+    }
+
+
+    private readonly List<IReadOnlyList<byte[]>> _witnessKeys = new();
+    private SortedSet<byte[]> _aggregatedWitnessKeys = new(Bytes.Comparer);
+    public SortedSet<byte[]> WitnessKeys => _aggregatedWitnessKeys;
+    public IReadOnlyList<byte[]> LastWitness => _witnessKeys[^1];
+
+    public void SetVerkleWitnessKeys(IReadOnlyList<byte[]> verkleWitnessKeys)
+    {
+        if(_isTracingVerkleWitness)
+            _witnessKeys.Add(verkleWitnessKeys);
+
+        // hacky way to support nested witness tracers
+        if (_otherTracer is ITxTracer otherTxTracer)
+        {
+            otherTxTracer.SetVerkleWitnessKeys(verkleWitnessKeys);
+        }
+
+        if (_currentTxTracer.IsTracingReceipt)
+        {
+            _currentTxTracer.SetVerkleWitnessKeys(verkleWitnessKeys);
+        }
     }
 }

@@ -923,7 +923,7 @@ public partial class EngineModuleTests
 
     private MultiSyncModeSelector CreateMultiSyncModeSelector(MergeTestBlockchain chain)
     {
-        SyncProgressResolver syncProgressResolver = new(chain.BlockTree, chain.ReceiptStorage, chain.DbProvider.StateDb, chain.TrieStore, new ProgressTracker(chain.BlockTree, chain.StateDb, LimboLogs.Instance), new SyncConfig(), LimboLogs.Instance);
+        SyncProgressResolver syncProgressResolver = new(chain.BlockTree, chain.ReceiptStorage, chain.TrieStore, new ProgressTracker(chain.BlockTree, chain.StateDb, LimboLogs.Instance), new SyncConfig(), LimboLogs.Instance);
         BlockHeader peerHeader = chain.BlockTree.Head!.Header;
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.HeadHash.Returns(peerHeader.Hash);

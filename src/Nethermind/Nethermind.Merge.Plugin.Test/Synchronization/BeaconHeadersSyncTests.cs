@@ -105,7 +105,6 @@ public class BeaconHeadersSyncTests
                     SyncProgressResolver syncProgressResolver = new(
                         BlockTree,
                         NullReceiptStorage.Instance,
-                        stateDb,
                         new TrieStore(stateDb, LimboLogs.Instance),
                         progressTracker,
                         SyncConfig,

@@ -9,9 +9,9 @@ namespace Nethermind.Evm.CodeAnalysis
     public class CodeDataAnalyzer : ICodeInfoAnalyzer
     {
         private byte[]? _codeBitmap;
-        public byte[] MachineCode { get; set; }
+        public ICode MachineCode { get; set; }
 
-        public CodeDataAnalyzer(byte[] code)
+        public CodeDataAnalyzer(ICode code)
         {
             MachineCode = code;
         }
@@ -54,7 +54,7 @@ namespace Nethermind.Evm.CodeAnalysis
         /// Collects data locations in code.
         /// An unset bit means the byte is an opcode, a set bit means it's data.
         /// </summary>
-        public static byte[] CreateCodeBitmap(byte[] code)
+        public static byte[] CreateCodeBitmap(ICode code)
         {
             // The bitmap is 4 bytes longer than necessary, in case the code
             // ends with a PUSH32, the algorithm will push zeroes onto the

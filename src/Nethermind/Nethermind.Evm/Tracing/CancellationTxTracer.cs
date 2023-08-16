@@ -27,6 +27,7 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
     private readonly bool _isTracingBlockHash;
     private readonly bool _isTracingBlockAccess;
     private readonly bool _isTracingFees;
+    private readonly bool _isTracingVerkleWitness;
 
     public ITxTracer InnerTracer => _innerTracer;
 
@@ -112,6 +113,12 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
     {
         get => _isTracingFees || _innerTracer.IsTracingFees;
         init => _isTracingFees = value;
+    }
+
+    public bool IsTracingVerkleWitness
+    {
+        get => _isTracingVerkleWitness || _innerTracer.IsTracingVerkleWitness;
+        init => _isTracingVerkleWitness = value;
     }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -435,6 +442,15 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         if (_innerTracer.IsTracingFees)
         {
             _innerTracer.ReportFees(fees, burntFees);
+        }
+    }
+
+    public void SetVerkleWitnessKeys(IReadOnlyList<byte[]> verkleWitnessKeys)
+    {
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingVerkleWitness)
+        {
+            _innerTracer.SetVerkleWitnessKeys(verkleWitnessKeys);
         }
     }
 }

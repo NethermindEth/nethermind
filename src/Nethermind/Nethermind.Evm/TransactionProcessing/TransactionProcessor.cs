@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Tracing;
+using Nethermind.Verkle.Tree;
 using static Nethermind.Core.Extensions.MemoryExtensions;
 
 using static Nethermind.Evm.VirtualMachine;
@@ -26,6 +27,7 @@ namespace Nethermind.Evm.TransactionProcessing
     {
         private readonly EthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
+        private readonly ILogManager? _logManager;
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _worldState;
         private readonly IVirtualMachine _virtualMachine;
@@ -65,6 +67,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IVirtualMachine? virtualMachine,
             ILogManager? logManager)
         {
+            _logManager = logManager;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
@@ -95,6 +98,11 @@ namespace Nethermind.Evm.TransactionProcessing
             Execute(transaction, block, txTracer, ExecutionOptions.NoValidation);
         }
 
+        public ITransactionProcessor WithNewStateProvider(IWorldState worldState)
+        {
+            return new TransactionProcessor(_specProvider, worldState, _virtualMachine, _logManager);
+        }
+
         protected virtual void Execute(Transaction tx, BlockHeader header, ITxTracer tracer, ExecutionOptions opts)
         {
             IReleaseSpec spec = _specProvider.GetSpec(header);
@@ -114,7 +122,7 @@ namespace Nethermind.Evm.TransactionProcessing
             UInt256 effectiveGasPrice =
                 tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
-            if (opts == ExecutionOptions.Commit || opts == ExecutionOptions.None)
+            if (opts is ExecutionOptions.Commit or ExecutionOptions.None)
             {
                 decimal gasPrice = (decimal)effectiveGasPrice / 1_000_000_000m;
                 Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
@@ -315,7 +323,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     TraceLogInvalidTx(tx, $"SENDER_ACCOUNT_DOES_NOT_EXIST {tx.SenderAddress}");
                     if (!commit || noValidation || effectiveGasPrice == UInt256.Zero)
                     {
-                        deleteCallerAccount = !commit || restore;
+                        deleteCallerAccount = (!commit || restore) && !spec.IsVerkleTreeEipEnabled;
                         _worldState.CreateAccount(tx.SenderAddress, UInt256.Zero);
                     }
                 }

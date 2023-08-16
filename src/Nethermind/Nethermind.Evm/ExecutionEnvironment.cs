@@ -20,7 +20,8 @@ namespace Nethermind.Evm
             TxExecutionContext txExecutionContext,
             UInt256 transferValue,
             UInt256 value,
-            int callDepth = 0)
+            int callDepth = 0,
+            IVerkleWitness? verkleWitness = null)
         {
             CodeInfo = codeInfo;
             ExecutingAccount = executingAccount;
@@ -31,12 +32,15 @@ namespace Nethermind.Evm
             TransferValue = transferValue;
             Value = value;
             CallDepth = callDepth;
+            VerkleWitness = verkleWitness;
         }
 
         /// <summary>
         /// Parsed bytecode for the current call.
         /// </summary>
         public readonly CodeInfo CodeInfo;
+
+        public readonly IVerkleWitness? VerkleWitness;
 
         /// <summary>
         /// Currently executing account (in DELEGATECALL this will be equal to caller).

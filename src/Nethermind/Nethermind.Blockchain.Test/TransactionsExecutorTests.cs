@@ -326,7 +326,7 @@ namespace Nethermind.Blockchain.Test
 
             SetAccountStates(testCase.MissingAddresses);
 
-            BlockReceiptsTracer receiptsTracer = new();
+            BlockReceiptsTracer receiptsTracer = new(true, false);
             receiptsTracer.StartNewBlockTrace(blockToProduce);
 
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer, spec);

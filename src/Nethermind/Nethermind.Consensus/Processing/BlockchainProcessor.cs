@@ -498,7 +498,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             TraceFailingBranch(
                 processingBranch,
                 options,
-                new BlockReceiptsTracer(),
+                new BlockReceiptsTracer(true, false),
                 DumpOptions.Receipts);
 
             TraceFailingBranch(

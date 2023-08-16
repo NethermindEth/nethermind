@@ -146,7 +146,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             Block block = searchResult.Object;
             TxReceipt receipt = _receiptFinder.Get(block).ForTransaction(txHash);
-            BlockReceiptsTracer receiptsTracer = new();
+            BlockReceiptsTracer receiptsTracer = new(true, false);
             receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
             _tracer.Trace(block, receiptsTracer);
 

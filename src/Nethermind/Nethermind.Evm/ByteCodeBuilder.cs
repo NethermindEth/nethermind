@@ -308,7 +308,7 @@ namespace Nethermind.Evm
         }
 
         /// <summary>
-        /// Take the data already on stack and store it in memory 
+        /// Take the data already on stack and store it in memory
         /// at specified position
         /// </summary>
         /// <param name="position">Memory position</param>

@@ -36,6 +36,7 @@ public class CompositeTxTracer : ITxTracer
             IsTracingStorage |= t.IsTracingStorage;
             IsTracingAccess |= t.IsTracingAccess;
             IsTracingFees |= t.IsTracingFees;
+            IsTracingVerkleWitness |= t.IsTracingVerkleWitness;
         }
     }
 
@@ -52,6 +53,7 @@ public class CompositeTxTracer : ITxTracer
     public bool IsTracingBlockHash { get; }
     public bool IsTracingAccess { get; }
     public bool IsTracingFees { get; }
+    public bool IsTracingVerkleWitness { get; }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -481,6 +483,18 @@ public class CompositeTxTracer : ITxTracer
             if (innerTracer.IsTracingFees)
             {
                 innerTracer.ReportFees(fees, burntFees);
+            }
+        }
+    }
+
+    public void SetVerkleWitnessKeys(IReadOnlyList<byte[]> verkleWitnessKeys)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions)
+            {
+                innerTracer.SetVerkleWitnessKeys(verkleWitnessKeys);
             }
         }
     }

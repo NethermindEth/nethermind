@@ -41,6 +41,7 @@ public class AlwaysCancelTxTracer : ITxTracer
     public bool IsTracingBlockHash => true;
     public bool IsTracingAccess => true;
     public bool IsTracingFees => true;
+    public bool IsTracingVerkleWitness => true;
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
@@ -95,4 +96,5 @@ public class AlwaysCancelTxTracer : ITxTracer
     public void ReportExtraGasPressure(long extraGasPressure) => throw new OperationCanceledException(ErrorMessage);
     public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) => throw new OperationCanceledException(ErrorMessage);
     public void ReportFees(UInt256 fees, UInt256 burntFees) => throw new OperationCanceledException(ErrorMessage);
+    public void SetVerkleWitnessKeys(IReadOnlyList<byte[]> verkleWitnessKeys) => throw new OperationCanceledException(ErrorMessage);
 }

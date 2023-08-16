@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Verkle.Tree;
 
 namespace Nethermind.Evm;
 
@@ -19,6 +20,14 @@ public static class IntrinsicGasCalculator
         result += DataCost(transaction, releaseSpec);
         result += CreateCost(transaction, releaseSpec);
         result += AccessListCost(transaction, releaseSpec);
+        return result;
+    }
+
+    public static long Calculate(Transaction transaction, IReleaseSpec releaseSpec, ref VerkleWitness witness)
+    {
+        long result = Calculate(transaction, releaseSpec);
+        if (releaseSpec.IsVerkleTreeEipEnabled)
+            result += witness.AccessForTransaction(transaction.SenderAddress!, transaction.To!, !transaction.Value.IsZero);
         return result;
     }
 
