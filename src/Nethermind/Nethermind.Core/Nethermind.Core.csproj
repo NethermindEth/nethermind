@@ -20,4 +20,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nethermind.Verkle" />
+  </ItemGroup>
 </Project>
