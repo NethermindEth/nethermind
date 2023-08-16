@@ -96,7 +96,6 @@ namespace Nethermind.Core
         {
             // Used to delay hash generation, as may be filtered as having too low gas etc
             _hash = null;
-            _preHashMemoryOwner = MemoryPool<byte>.Shared.Rent(transactionSequence.Length);
             _preHash = transactionSequence;
             _preHashMemoryOwner = preHashMemoryOwner;
         }
