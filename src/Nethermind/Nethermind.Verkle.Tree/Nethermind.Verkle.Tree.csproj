@@ -4,11 +4,20 @@
         <TargetFramework>net7.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <RootNamespace>Nethermind.Verkle</RootNamespace>
+        <RootNamespace>Nethermind.Verkle.Tree</RootNamespace>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Nethermind.Verkle" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
+    <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
+    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
+    <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
   </ItemGroup>
 
 </Project>

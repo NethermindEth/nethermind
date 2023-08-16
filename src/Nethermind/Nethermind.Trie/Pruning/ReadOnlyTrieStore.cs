@@ -52,6 +52,8 @@ namespace Nethermind.Trie.Pruning
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
 
+        public bool IsFullySynced(Keccak stateRoot) => _trieStore.IsFullySynced(stateRoot);
+
         private class ReadOnlyValueStore : IKeyValueStore
         {
             private readonly IKeyValueStore _keyValueStore;

@@ -32,6 +32,13 @@ namespace Nethermind.Db
 
         public IDb MetadataDb => GetDb<IDb>(DbNames.Metadata);
 
+        public IDb LeafDb => GetDb<IDb>(DbNames.Leaf);
+        public IDb InternalNodesDb => GetDb<IDb>(DbNames.InternalNodes);
+
+        public IDb ForwardDiff => GetDb<IDb>(DbNames.ForwardDiff);
+        public IDb ReverseDiff => GetDb<IDb>(DbNames.ReverseDiff);
+        public IDb StateRootToBlocks => GetDb<IDb>(DbNames.StateRootToBlock);
+
         T GetDb<T>(string dbName) where T : class, IDb;
 
         void RegisterDb<T>(string dbName, T db) where T : class, IDb;

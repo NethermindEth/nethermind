@@ -215,6 +215,10 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Ss
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Contract", "Nethermind.Network.Contract\Nethermind.Network.Contract.csproj", "{AD151E35-4BBC-4A83-8F57-CC8665F6E007}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Verkle.Tree", "Nethermind.Verkle.Tree\Nethermind.Verkle.Tree.csproj", "{B98230F7-B82C-4E55-AA3C-C9E55C4690F8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Verkle.Tree.Test", "Nethermind.Verkle.Tree.Test\Nethermind.Verkle.Tree.Test.csproj", "{2DC86275-2940-4D6C-A9A8-D9D670D48E33}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -597,6 +601,14 @@ Global
 		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B98230F7-B82C-4E55-AA3C-C9E55C4690F8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B98230F7-B82C-4E55-AA3C-C9E55C4690F8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B98230F7-B82C-4E55-AA3C-C9E55C4690F8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B98230F7-B82C-4E55-AA3C-C9E55C4690F8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2DC86275-2940-4D6C-A9A8-D9D670D48E33}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2DC86275-2940-4D6C-A9A8-D9D670D48E33}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2DC86275-2940-4D6C-A9A8-D9D670D48E33}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2DC86275-2940-4D6C-A9A8-D9D670D48E33}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -661,6 +673,7 @@ Global
 		{2EDE2554-59C0-4E78-92F7-EB8077AA597D} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
 		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE} = {2EDE2554-59C0-4E78-92F7-EB8077AA597D}
 		{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{2DC86275-2940-4D6C-A9A8-D9D670D48E33} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

@@ -118,6 +118,62 @@ namespace Nethermind.Db
         [Description("Number of Metadata DB writes.")]
         public static long MetadataDbWrites { get; set; }
 
+        [CounterMetric]
+        [Description("Number of Leaf DB reads.")]
+        public static long LeafDbReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of Leaf DB writes.")]
+        public static long LeafDbWrites { get; set; }
+
+        [CounterMetric]
+        [Description("Number of Stem DB reads.")]
+        public static long StemDbReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of Stem DB writes.")]
+        public static long StemDbWrites { get; set; }
+
+        [CounterMetric]
+        [Description("Number of Branch DB reads.")]
+        public static long BranchDbReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of Branch DB writes.")]
+        public static long BranchDbWrites { get; set; }
+
+        [CounterMetric]
+        [Description("Number of ForwardDiff DB reads.")]
+        public static long ForwardDiffDbReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of ForwardDiff DB writes.")]
+        public static long ForwardDiffDbWrites { get; set; }
+
+        [CounterMetric]
+        [Description("Number of ReverseDiff DB reads.")]
+        public static long ReverseDiffDbReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of ReverseDiff DB writes.")]
+        public static long ReverseDiffDbWrites { get; set; }
+
+        [CounterMetric]
+        [Description("Number of StateRootToBlock DB reads.")]
+        public static long StateRootToBlockDbReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of StateRootToBlock DB writes.")]
+        public static long StateRootToBlockDbWrites { get; set; }
+
+        [CounterMetric]
+        [Description("Number of Preimages DB reads.")]
+        public static long PreimagesDbReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of Preimages DB writes.")]
+        public static long PreimagesDbWrites { get; set; }
+
         [GaugeMetric]
         [Description("Indicator if StadeDb is being pruned.")]
         public static int StateDbPruning { get; set; }

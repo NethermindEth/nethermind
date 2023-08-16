@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public interface ITrieNodeResolver
+    public interface ITrieNodeResolver: ISyncTrieStore
     {
         /// <summary>
         /// Returns a cached and resolved <see cref="TrieNode"/> or a <see cref="TrieNode"/> with Unknown type

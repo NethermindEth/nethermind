@@ -7,6 +7,8 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Verkle;
 using Nethermind.Int256;
 
 namespace Nethermind.Core;
@@ -24,10 +26,11 @@ public class Block
         BlockHeader header,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
-        IEnumerable<Withdrawal>? withdrawals = null)
+        IEnumerable<Withdrawal>? withdrawals = null,
+        ExecutionWitness? execWitness = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
-        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
+        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray(), execWitness);
     }
 
     public Block(BlockHeader header) : this(
@@ -57,6 +60,8 @@ public class Block
     public BlockHeader[] Uncles => Body.Uncles; // do not add setter here
 
     public Withdrawal[]? Withdrawals => Body.Withdrawals;
+
+    public ExecutionWitness? ExecutionWitness => Body.ExecutionWitness;
 
     public Keccak? Hash => Header.Hash; // do not add setter here
 
@@ -147,6 +152,25 @@ public class Block
         foreach (var w in Body?.Withdrawals ?? Array.Empty<Withdrawal>())
         {
             builder.Append(w.ToString("    "));
+        }
+
+        if (ExecutionWitness is not null)
+        {
+            builder.AppendLine($"  ExecutionWitness");
+            builder.AppendLine($"    StateDiff: {ExecutionWitness.StateDiff.Count}");
+            builder.AppendLine($"    WitnessVerkleProof: {ExecutionWitness.VerkleProof!.D}");
+            builder.AppendLine($"      D: {ExecutionWitness.VerkleProof.D.ToBytes().ToHexString()}");
+            builder.AppendLine(
+                $"      IpaProof: {ExecutionWitness.VerkleProof.IpaProof.Encode().ToHexString()}");
+            builder.AppendLine(
+                $"      ExtensionPresent: {ExecutionWitness.VerkleProof.DepthExtensionPresent.ToHexString()}");
+
+            if (ExecutionWitness.VerkleProof.OtherStems is not null)
+                builder.AppendLine(
+                    $"      OtherStems: {string.Join(", ", ExecutionWitness.VerkleProof.OtherStems.Select(x => x.ToString()))}");
+
+            builder.AppendLine(
+                $"      ExtensionPresent: {string.Join(", ", ExecutionWitness.VerkleProof.CommitmentsByPath.Select(x => x.ToBytes().ToHexString()))}");
         }
 
         return builder.ToString();

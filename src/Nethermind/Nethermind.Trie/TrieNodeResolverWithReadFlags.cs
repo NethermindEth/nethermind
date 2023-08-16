@@ -32,4 +32,5 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
 
         return _baseResolver.LoadRlp(hash, _defaultFlags);
     }
+    public bool IsFullySynced(Keccak stateRoot) => _baseResolver.IsFullySynced(stateRoot);
 }

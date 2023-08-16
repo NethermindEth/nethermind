@@ -1,19 +1,18 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-
-using System;
-using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Int256;
+using Nethermind.Db.Rocks;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Trie.Pruning;
+using Nethermind.Verkle.Tree;
+using Nethermind.Verkle.Tree.Interfaces;
+using Nethermind.Verkle.Tree.Sync;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -23,12 +22,12 @@ namespace Nethermind.Core.Test.Builders
         {
             public static Keccak AccountAddress0 = new Keccak("0000000000000000000000000000000000000000000000000000000001101234");
 
-            private static readonly Account _account0 = Build.An.Account.WithBalance(0).TestObject;
-            private static readonly Account _account1 = Build.An.Account.WithBalance(1).TestObject;
-            private static readonly Account _account2 = Build.An.Account.WithBalance(2).TestObject;
-            private static readonly Account _account3 = Build.An.Account.WithBalance(3).TestObject;
-            private static readonly Account _account4 = Build.An.Account.WithBalance(4).TestObject;
-            private static readonly Account _account5 = Build.An.Account.WithBalance(5).TestObject;
+            public static readonly Account _account0 = Build.An.Account.WithBalance(0).TestObject;
+            public static readonly Account _account1 = Build.An.Account.WithBalance(1).TestObject;
+            public static readonly Account _account2 = Build.An.Account.WithBalance(2).TestObject;
+            public static readonly Account _account3 = Build.An.Account.WithBalance(3).TestObject;
+            public static readonly Account _account4 = Build.An.Account.WithBalance(4).TestObject;
+            public static readonly Account _account5 = Build.An.Account.WithBalance(5).TestObject;
 
             public static PathWithAccount[] AccountsWithPaths = new PathWithAccount[]
                 {
@@ -61,6 +60,17 @@ namespace Nethermind.Core.Test.Builders
                 return stateTree;
             }
 
+            public static VerkleStateTree GetVerkleStateTree(IVerkleTrieStore? store)
+            {
+                store ??= new VerkleStateStore(VerkleDbFactory.InitDatabase(DbMode.MemDb, null), LimboLogs.Instance);
+
+                var stateTree = new VerkleStateTree(store, LimboLogs.Instance);
+
+                // FillStateTreeWithTestAccounts(stateTree);
+
+                return stateTree;
+            }
+
             public static void FillStateTreeWithTestAccounts(StateTree stateTree)
             {
                 stateTree.Set(AccountsWithPaths[0].Path, AccountsWithPaths[0].Account);
@@ -70,6 +80,35 @@ namespace Nethermind.Core.Test.Builders
                 stateTree.Set(AccountsWithPaths[4].Path, AccountsWithPaths[4].Account);
                 stateTree.Set(AccountsWithPaths[5].Path, AccountsWithPaths[5].Account);
                 stateTree.Commit(0);
+            }
+
+            public static byte[] stem0 = new Keccak("0000000000000000000000000000000000000000000000000000000001101234").Bytes[1..].ToArray();
+            public static byte[] stem1 = new Keccak("0000000000000000000000000000000000000000000000000000000001112345").Bytes[1..].ToArray();
+            public static byte[] stem2 = new Keccak("0000000000000000000000000000000000000000000000000000000001113456").Bytes[1..].ToArray();
+            public static byte[] stem3 = new Keccak("0000000000000000000000000000000000000000000000000000000001114567").Bytes[1..].ToArray();
+            public static byte[] stem4 = new Keccak("0000000000000000000000000000000000000000000000000000000001123456").Bytes[1..].ToArray();
+            public static byte[] stem5 = new Keccak("0000000000000000000000000000000000000000000000000000000001123457").Bytes[1..].ToArray();
+
+            public static PathWithSubTree[] SubTreesWithPaths = new PathWithSubTree[]
+            {
+                new PathWithSubTree(stem0, _account0.ToVerkleDict()),
+                new PathWithSubTree(stem1, _account1.ToVerkleDict()),
+                new PathWithSubTree(stem2, _account2.ToVerkleDict()),
+                new PathWithSubTree(stem3, _account3.ToVerkleDict()),
+                new PathWithSubTree(stem4, _account4.ToVerkleDict()),
+                new PathWithSubTree(stem5, _account5.ToVerkleDict()),
+            };
+
+            public static void FillStateTreeWithTestAccounts(VerkleStateTree stateTree)
+            {
+                stateTree.InsertStemBatch(stem0, _account0.ToVerkleDict());
+                stateTree.InsertStemBatch(stem1, _account1.ToVerkleDict());
+                stateTree.InsertStemBatch(stem2, _account2.ToVerkleDict());
+                stateTree.InsertStemBatch(stem3, _account3.ToVerkleDict());
+                stateTree.InsertStemBatch(stem4, _account4.ToVerkleDict());
+                stateTree.InsertStemBatch(stem5, _account5.ToVerkleDict());
+                stateTree.Commit();
+                stateTree.CommitTree(0);
             }
 
             public static (StateTree stateTree, StorageTree storageTree) GetTrees(ITrieStore? store)

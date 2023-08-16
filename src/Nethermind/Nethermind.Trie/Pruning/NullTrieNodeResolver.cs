@@ -14,5 +14,6 @@ namespace Nethermind.Trie.Pruning
 
         public TrieNode FindCachedOrUnknown(Keccak hash) => new(NodeType.Unknown, hash);
         public byte[]? LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None) => null;
+        public bool IsFullySynced(Keccak stateRoot) => false;
     }
 }

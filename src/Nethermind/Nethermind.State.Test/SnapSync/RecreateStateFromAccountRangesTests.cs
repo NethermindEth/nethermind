@@ -3,26 +3,20 @@
 
 #nullable disable
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
-namespace Nethermind.Store.Test
+namespace Nethermind.Store.Test.SnapSync
 {
     [TestFixture]
     public class RecreateStateFromAccountRangesTests

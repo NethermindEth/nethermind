@@ -65,6 +65,15 @@ namespace Nethermind.Db
                 RegisterCustomDb(DbNames.Receipts, () => new ReadOnlyColumnsDb<ReceiptsColumns>(new MemColumnsDb<ReceiptsColumns>(), false));
             }
             RegisterDb(BuildRocksDbSettings(DbNames.Metadata, () => Metrics.MetadataDbReads++, () => Metrics.MetadataDbWrites++));
+
+            // TODO: convert this to two column families
+            RegisterDb(BuildRocksDbSettings(DbNames.Leaf, () => Metrics.LeafDbReads++, () => Metrics.LeafDbWrites++));
+            RegisterDb(BuildRocksDbSettings(DbNames.InternalNodes, () => Metrics.BranchDbReads++, () => Metrics.BranchDbWrites++));
+
+            RegisterDb(BuildRocksDbSettings(DbNames.ForwardDiff, () => Metrics.ForwardDiffDbReads++, () => Metrics.ForwardDiffDbWrites++));
+            RegisterDb(BuildRocksDbSettings(DbNames.ReverseDiff, () => Metrics.ReverseDiffDbReads++, () => Metrics.ReverseDiffDbWrites++));
+            RegisterDb(BuildRocksDbSettings(DbNames.StateRootToBlock, () => Metrics.StateRootToBlockDbReads++, () => Metrics.StateRootToBlockDbWrites++));
+            RegisterDb(BuildRocksDbSettings(DbNames.Preimages, () => Metrics.PreimagesDbReads++, () => Metrics.PreimagesDbWrites++));
         }
 
         private RocksDbSettings BuildRocksDbSettings(string dbName, Action updateReadsMetrics, Action updateWriteMetrics, bool deleteOnStart = false)
