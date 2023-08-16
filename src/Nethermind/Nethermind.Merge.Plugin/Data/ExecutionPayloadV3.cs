@@ -25,18 +25,6 @@ public class ExecutionPayloadV3 : ExecutionPayload
         ExcessBlobGas = block.ExcessBlobGas;
     }
 
-    /// <summary>
-    /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
-    /// </summary>
-    public ulong? BlobGasUsed { get; set; }
-
-    /// <summary>
-    /// Gets or sets <see cref="Block.ExcessBlobGas"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
-    /// </summary>
-    public ulong? ExcessBlobGas { get; set; }
-
 
     /// <summary>
     /// Gets or sets <see cref="Block.ParentBeaconBlockRoot"/> as defined in

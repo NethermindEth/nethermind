@@ -93,6 +93,18 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
 
     /// <summary>
+    /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
+    /// </summary>
+    public ulong? BlobGasUsed { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.ExcessBlobGas"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
+    /// </summary>
+    public ulong? ExcessBlobGas { get; set; }
+
+    /// <summary>
     /// Creates the execution block from payload.
     /// </summary>
     /// <param name="block">When this method returns, contains the execution block.</param>
@@ -174,6 +186,12 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
         if (spec.IsEip4844Enabled)
         {
             error = "ExecutionPayloadV3 expected";
+            return ValidationResult.Fail;
+        }
+        
+        if (BlobGasUsed is not null || ExcessBlobGas is not null)
+        {
+            error = "ExecutionPayloadV3 is not expected";
             return ValidationResult.Fail;
         }
 
