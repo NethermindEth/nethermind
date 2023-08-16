@@ -82,12 +82,12 @@ namespace Nethermind.Evm.Test
             else
                 AssertDestroyed();
         }
-        
+
         [TestCase(0ul, false)]
         [TestCase(MainnetSpecProvider.CancunBlockTimestamp, true)]
         public void self_destruct_not_in_same_transaction_should_not_burn(ulong timestamp, bool onlyOnSameTransaction)
         {
-            _selfDestructCode =  Prepare.EvmCode
+            _selfDestructCode = Prepare.EvmCode
                 .SELFDESTRUCT(_contractAddress)
                 .Done;
             _initCode = Prepare.EvmCode
