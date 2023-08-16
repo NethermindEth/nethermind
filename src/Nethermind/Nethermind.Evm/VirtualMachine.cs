@@ -2365,8 +2365,10 @@ ReturnFailure:
             _state.AddToBalance(inheritor, result, spec);
         }
 
-        if (spec.SelfdestructOnlyOnSameTransaction && !vmState.CreateList.Contains(executingAccount) && !inheritor.Equals(executingAccount))
-            _state.SubtractFromBalance(executingAccount, result, spec);
+        if (spec.SelfdestructOnlyOnSameTransaction && !vmState.CreateList.Contains(executingAccount) && inheritor.Equals(executingAccount))
+            return true;
+
+        _state.SubtractFromBalance(executingAccount, result, spec);
         return true;
     }
 
