@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers;
+using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Core;
 
@@ -24,8 +26,38 @@ public class UnmanagedBlockBodies : IDisposable
 
     public BlockBody?[] Bodies => _rawBodies;
 
+    public void DisOwn()
+    {
+        foreach (BlockBody? blockBody in Bodies)
+        {
+            if (blockBody == null) continue;
+            foreach (Transaction tx in blockBody.Transactions)
+            {
+                Keccak? _ = tx.Hash; // Just need to trigger hash calculation
+                if (tx.Data != null)
+                {
+                    tx.Data = tx.Data.Value.ToArray();
+                }
+            }
+        }
+
+        _memoryOwner?.Dispose();
+        _memoryOwner = null;
+    }
+
     public void Dispose()
     {
+        if (_memoryOwner == null) return;
+
+        foreach (BlockBody? blockBody in Bodies)
+        {
+            if (blockBody == null) continue;
+            foreach (Transaction tx in blockBody.Transactions)
+            {
+                TxDecoder.TxObjectPool.Return(tx);
+            }
+        }
+
         _memoryOwner?.Dispose();
         _memoryOwner = null;
     }

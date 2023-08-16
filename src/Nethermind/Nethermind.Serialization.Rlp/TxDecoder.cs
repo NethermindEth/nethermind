@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -14,6 +15,7 @@ namespace Nethermind.Serialization.Rlp
         public const int MaxDelayedHashTxnSize = 32768;
         public static TxDecoder Instance = new TxDecoder();
         public static TxDecoder InstanceWithoutLazyHash = new TxDecoder(false);
+        public static ObjectPool<Transaction> TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy());
 
         public TxDecoder() : base(true) // Rlp will try to find empty constructor.
         {
@@ -21,6 +23,11 @@ namespace Nethermind.Serialization.Rlp
 
         public TxDecoder(bool lazyHash) : base(lazyHash)
         {
+        }
+
+        protected override Transaction NewTx()
+        {
+            return TxObjectPool.Get();
         }
     }
     public class SystemTxDecoder : TxDecoder<SystemTransaction> { }
@@ -39,6 +46,11 @@ namespace Nethermind.Serialization.Rlp
             _lazyHash = lazyHash;
         }
 
+        protected virtual T NewTx()
+        {
+            return new();
+        }
+
         public T? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
@@ -49,7 +61,7 @@ namespace Nethermind.Serialization.Rlp
 
             Span<byte> transactionSequence = rlpStream.PeekNextItem();
 
-            T transaction = new();
+            T transaction = NewTx();
             if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
             {
                 byte firstByte = rlpStream.PeekByte();
@@ -339,7 +351,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (transaction == null)
             {
-                transaction = new();
+                transaction = NewTx();
             }
             transaction.Type = TxType.Legacy;
 

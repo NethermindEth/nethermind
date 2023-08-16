@@ -6,6 +6,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -197,6 +198,42 @@ namespace Nethermind.Core
         public override string ToString() => ToString(string.Empty);
 
         public bool MayHaveNetworkForm => Type is TxType.Blob;
+
+        public class PoolPolicy : IPooledObjectPolicy<Transaction>
+        {
+            public Transaction Create()
+            {
+                return new Transaction();
+            }
+
+            public bool Return(Transaction obj)
+            {
+                obj.ClearPreHash();
+                obj.Hash = default;
+                obj.ChainId = default;
+                obj.Type = default;
+                obj.Nonce = default;
+                obj.GasPrice = default;
+                obj.GasBottleneck = default;
+                obj.DecodedMaxFeePerGas = default;
+                obj.GasLimit = default;
+                obj.To = default;
+                obj.Value = default;
+                obj.Data = default;
+                obj.SenderAddress = default;
+                obj.Signature = default;
+                obj.Timestamp = default;
+                obj.AccessList = default;
+                obj.MaxFeePerBlobGas = default;
+                obj.BlobVersionedHashes = default;
+                obj.NetworkWrapper = default;
+                obj.IsServiceTransaction = default;
+                obj.PoolIndex = default;
+                obj._size = default;
+
+                return true;
+            }
+        }
     }
 
     /// <summary>

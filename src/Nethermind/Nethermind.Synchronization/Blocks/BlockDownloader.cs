@@ -449,6 +449,7 @@ namespace Nethermind.Synchronization.Blocks
                 await getBodiesRequest.ContinueWith(_ => DownloadFailHandler(getBodiesRequest, "bodies"), cancellation);
 
                 using UnmanagedBlockBodies unmanagedBlockBodies = getBodiesRequest.Result;
+                unmanagedBlockBodies.DisOwn();
                 BlockBody?[] result = unmanagedBlockBodies.Bodies;
 
                 int receivedBodies = 0;
