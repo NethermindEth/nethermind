@@ -2340,7 +2340,8 @@ ReturnFailure:
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false)) return false;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
-        if (!spec.SelfdestructOnlyOnSameTransaction || vmState.CreateList.Contains(executingAccount))
+        bool createInSameTx = vmState.CreateList.Contains(executingAccount);
+        if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
             vmState.DestroyList.Add(executingAccount);
 
         UInt256 result = _state.GetBalance(executingAccount);
@@ -2365,8 +2366,8 @@ ReturnFailure:
             _state.AddToBalance(inheritor, result, spec);
         }
 
-        if (spec.SelfdestructOnlyOnSameTransaction && !vmState.CreateList.Contains(executingAccount) && inheritor.Equals(executingAccount))
-            return true;
+        if (spec.SelfdestructOnlyOnSameTransaction && !createInSameTx && inheritor.Equals(executingAccount))
+            return true; // dont burn eth when contract is not destroyed per EIP clarification
 
         _state.SubtractFromBalance(executingAccount, result, spec);
         return true;
