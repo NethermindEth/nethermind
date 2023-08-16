@@ -342,7 +342,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                 currentState = _stateStack.Pop();
                 currentState.IsContinuation = true;
                 currentState.GasAvailable += previousState.GasAvailable;
-                bool previousStateSucceeded = true;
+                bool previousStateSucceeded = true; 
 
                 if (!callResult.ShouldRevert)
                 {
@@ -2366,7 +2366,8 @@ ReturnFailure:
             _state.AddToBalance(inheritor, result, spec);
         }
 
-        _state.SubtractFromBalance(executingAccount, result, spec);
+        if (spec.SelfdestructOnlyOnSameTransaction && !vmState.CreateList.Contains(executingAccount) && !inheritor.Equals(executingAccount))
+            _state.SubtractFromBalance(executingAccount, result, spec);
         return true;
     }
 
