@@ -47,6 +47,7 @@
     <PackageVersion Include="Nethermind.DotNetty.Transport" Version="1.0.1" />
     <PackageVersion Include="Nethermind.Gmp" Version="1.0.1" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.1.0" />
+    <PackageVersion Include="Nethermind.Verkle" Version="0.1.3-alpha" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageVersion Include="Nito.Collections.Deque" Version="1.1.1" />
     <PackageVersion Include="NLog" Version="5.2.2" />
