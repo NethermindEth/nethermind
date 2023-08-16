@@ -55,7 +55,7 @@ public class BlobTxStorage : ITxStorage
 
     public void Add(Transaction transaction)
     {
-        if (transaction == null || transaction.Hash == null)
+        if (transaction?.Hash is null)
         {
             throw new ArgumentNullException(nameof(transaction));
         }
