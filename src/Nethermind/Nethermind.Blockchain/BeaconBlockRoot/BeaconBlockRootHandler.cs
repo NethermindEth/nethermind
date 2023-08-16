@@ -17,12 +17,9 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 
     public void InitStatefulPrecompiles(Block block, IReleaseSpec spec, IWorldState stateProvider)
     {
-        if (!spec.IsBeaconBlockRootAvailable) return;
-
-        if (block.Header.ParentBeaconBlockRoot is null)
-        {
-            return;
-        }
+        if (!spec.IsBeaconBlockRootAvailable ||
+            block.IsGenesis ||
+            block.Header.ParentBeaconBlockRoot is null) return;
 
         UInt256 timestamp = (UInt256)block.Timestamp;
         Keccak parentBeaconBlockRoot = block.ParentBeaconBlockRoot;
