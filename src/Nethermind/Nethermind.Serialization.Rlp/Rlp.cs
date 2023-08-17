@@ -1048,15 +1048,10 @@ namespace Nethermind.Serialization.Rlp
 
             public Span<byte> PeekNextItem()
             {
-                Span<byte> item = ReadNextItem();
+                int length = PeekNextRlpLength();
+                Span<byte> item = Read(length);
                 Position -= item.Length;
                 return item;
-            }
-
-            public Span<byte> ReadNextItem()
-            {
-                int length = PeekNextRlpLength();
-                return Read(length);
             }
 
             public bool IsNextItemNull()
@@ -1417,6 +1412,10 @@ namespace Nethermind.Serialization.Rlp
                 if (decoder == null)
                 {
                     decoder = GetValueDecoder<T>();
+                    if (decoder == null)
+                    {
+                        throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
+                    }
                 }
                 int positionCheck = ReadSequenceLength() + Position;
                 int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);

@@ -124,7 +124,7 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
-        public void Roundtrip_ValueDecoderContext_WithMemorySlixe((Transaction Tx, string Description) testCase)
+        public void Roundtrip_ValueDecoderContext_WithMemorySlice((Transaction Tx, string Description) testCase)
         {
             RlpStream rlpStream = new(10000);
             _txDecoder.Encode(rlpStream, testCase.Tx);
@@ -136,6 +136,25 @@ namespace Nethermind.Core.Test.Encoding
                 new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.EqualToTransaction(testCase.Tx);
+        }
+
+        [TestCaseSource(nameof(TestCaseSource))]
+        public void ValueDecoderContext_DecodeWithMemorySlice_ShouldUseSameBuffer((Transaction Tx, string Description) testCase)
+        {
+            if (!testCase.Tx.Data.HasValue || testCase.Tx.Data.Value.Length == 0) return;
+
+            RlpStream rlpStream = new(10000);
+            _txDecoder.Encode(rlpStream, testCase.Tx);
+
+            Rlp.ValueDecoderContext decoderContext = new(rlpStream.Data, true);
+            rlpStream.Position = 0;
+            Transaction? decoded = _txDecoder.Decode(ref decoderContext);
+
+            byte[] data1 = decoded.Data.Value.ToArray();
+            data1.AsSpan().Fill(1);
+            rlpStream.Data.AsSpan().Fill(1);
+
+            decoded.Data.Value.ToArray().Should().BeEquivalentTo(data1);
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]

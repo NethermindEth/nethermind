@@ -1353,26 +1353,6 @@ namespace Nethermind.Serialization.Rlp
             SkipBytes(prefix + content);
         }
 
-        public (Memory<byte>, IMemoryOwner<byte>) ReadItem()
-        {
-            (int prefix, int content) = PeekPrefixAndContentLength();
-            int totalLength = prefix + content;
-            IMemoryOwner<byte> memOwner = MemoryPool<byte>.Shared.Rent(totalLength);
-            Memory<byte> theMemory = memOwner.Memory[..totalLength];
-            Read(totalLength).CopyTo(theMemory.Span);
-            return (theMemory, memOwner);
-        }
-
-        public (Memory<byte>, IMemoryOwner<byte>) PeekItem()
-        {
-            (int prefix, int content) = PeekPrefixAndContentLength();
-            int totalLength = prefix + content;
-            IMemoryOwner<byte> memOwner = MemoryPool<byte>.Shared.Rent(totalLength);
-            Memory<byte> theMemory = memOwner.Memory[..totalLength];
-            Peek(totalLength).CopyTo(theMemory.Span);
-            return (theMemory, memOwner);
-        }
-
         public void Reset()
         {
             Position = 0;

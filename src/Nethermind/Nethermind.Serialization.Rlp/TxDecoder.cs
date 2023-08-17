@@ -440,6 +440,7 @@ namespace Nethermind.Serialization.Rlp
                 // Delay hash generation, as may be filtered as having too low gas etc
                 if (decoderContext.ShouldSliceMemory)
                 {
+                    // Do not copy the memory in this case.
                     int currentPosition = decoderContext.Position;
                     decoderContext.Position = txSequenceStart;
                     transaction.SetPreHashMemoryNoLock(decoderContext.ReadMemory(transactionSequence.Length));
@@ -449,7 +450,6 @@ namespace Nethermind.Serialization.Rlp
                 {
                     transaction.SetPreHashNoLock(transactionSequence);
                 }
-                // transaction.SetPreHashNoLock(transactionSequence);
             }
             else
             {

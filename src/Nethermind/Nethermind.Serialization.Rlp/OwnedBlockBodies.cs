@@ -15,17 +15,17 @@ namespace Nethermind.Core;
 /// </summary>
 public class OwnedBlockBodies : IDisposable
 {
-    private BlockBody?[] _rawBodies = null;
+    private BlockBody?[]? _rawBodies = null;
 
     private IMemoryOwner<byte>? _memoryOwner = null;
 
-    public OwnedBlockBodies(BlockBody?[] bodies, IMemoryOwner<byte>? memoryOwner = null)
+    public OwnedBlockBodies(BlockBody?[]? bodies, IMemoryOwner<byte>? memoryOwner = null)
     {
         _rawBodies = bodies;
         _memoryOwner = memoryOwner;
     }
 
-    public BlockBody?[] Bodies => _rawBodies;
+    public BlockBody?[]? Bodies => _rawBodies;
 
     /// <summary>
     /// Disown the `BlockBody`, copying any `Memory<byte>` so that it does not depend on the `_memoryOwner.`

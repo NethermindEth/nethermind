@@ -10,6 +10,7 @@ namespace Nethermind.Core.Buffers;
 /// <summary>
 /// A wrapper around IByteBuffer to expose standard Memory.
 /// Internally, IByteBuffer is already a standard array, so no need for a MemoryManager.
+/// Technically, IByteBuffer may be several IByteBuffer concatenated together, but we never use it like that.
 /// </summary>
 public class NettyBufferMemoryOwner : IMemoryOwner<byte>
 {
@@ -28,19 +29,20 @@ public class NettyBufferMemoryOwner : IMemoryOwner<byte>
 
     public void Dispose()
     {
-        Dispose(false);
+        Dispose(true);
     }
 
     protected virtual void Dispose(bool isDisposing)
     {
         if (!_disposed)
         {
-            _byteBuffer.Release();
             _disposed = true;
+            _byteBuffer.Release();
         }
     }
 
     public Memory<byte> Memory => _byteBuffer
-        .Array.AsMemory()
+        .Array
+        .AsMemory()
         .Slice(_byteBuffer.ArrayOffset + _byteBuffer.ReaderIndex, _byteBuffer.ReadableBytes);
 }

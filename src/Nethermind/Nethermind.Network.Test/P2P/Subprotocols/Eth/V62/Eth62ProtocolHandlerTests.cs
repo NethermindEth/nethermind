@@ -373,7 +373,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
 
             response.Should().NotBeNull();
-            var bodies = response.Bodies.Bodies;
+            BlockBody[]? bodies = response.Bodies.Bodies;
             bodies.Length.Should().Be(expectedResponseSize);
             foreach (BlockBody responseBody in bodies)
             {

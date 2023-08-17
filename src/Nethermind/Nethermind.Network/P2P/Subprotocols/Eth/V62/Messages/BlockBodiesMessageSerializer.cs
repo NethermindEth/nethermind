@@ -29,32 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 }
                 else
                 {
-                    SerializeBody(stream, body);
-                }
-            }
-        }
-
-        private void SerializeBody(NettyRlpStream stream, BlockBody body)
-        {
-            stream.StartSequence(_blockBodyDecoder.GetBodyLength(body));
-            stream.StartSequence(_blockBodyDecoder.GetTxLength(body.Transactions));
-            foreach (Transaction? txn in body.Transactions)
-            {
-                stream.Encode(txn);
-            }
-
-            stream.StartSequence(_blockBodyDecoder.GetUnclesLength(body.Uncles));
-            foreach (BlockHeader? uncle in body.Uncles)
-            {
-                stream.Encode(uncle);
-            }
-
-            if (body.Withdrawals != null)
-            {
-                stream.StartSequence(_blockBodyDecoder.GetWithdrawalsLength(body.Withdrawals));
-                foreach (Withdrawal? withdrawal in body.Withdrawals)
-                {
-                    stream.Encode(withdrawal);
+                    _blockBodyDecoder.Serialize(stream, body);
                 }
             }
         }
@@ -145,6 +120,31 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 }
 
                 return new BlockBody(transactions, uncles, withdrawals);
+            }
+
+            public void Serialize(RlpStream stream, BlockBody body)
+            {
+                stream.StartSequence(GetBodyLength(body));
+                stream.StartSequence(GetTxLength(body.Transactions));
+                foreach (Transaction? txn in body.Transactions)
+                {
+                    stream.Encode(txn);
+                }
+
+                stream.StartSequence(GetUnclesLength(body.Uncles));
+                foreach (BlockHeader? uncle in body.Uncles)
+                {
+                    stream.Encode(uncle);
+                }
+
+                if (body.Withdrawals != null)
+                {
+                    stream.StartSequence(GetWithdrawalsLength(body.Withdrawals));
+                    foreach (Withdrawal? withdrawal in body.Withdrawals)
+                    {
+                        stream.Encode(withdrawal);
+                    }
+                }
             }
         }
     }
