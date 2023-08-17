@@ -241,7 +241,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (header.ParentBeaconBlockRoot is not null)
             {
-                rlpStream.Encode(header.ParentBeaconBlockRoot ?? Keccak.Zero);
+                rlpStream.Encode(header.ParentBeaconBlockRoot);
             }
         }
 

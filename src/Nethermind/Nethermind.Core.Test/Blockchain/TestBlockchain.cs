@@ -310,28 +310,17 @@ public class TestBlockchain : IDisposable
         {
             genesisBlockBuilder.WithAura(0, new byte[65]);
         }
-
-        if (SpecProvider.GenesisSpec.IsBeaconBlockRootAvailable)
-        {
-            genesisBlockBuilder.WithParentBeaconBlockRoot(TestItem.KeccakG);
-        }
-
         if (SpecProvider.GenesisSpec.IsEip4844Enabled)
         {
             genesisBlockBuilder.WithBlobGasUsed(0);
             genesisBlockBuilder.WithExcessBlobGas(0);
         }
 
-
         if (SpecProvider.GenesisSpec.IsBeaconBlockRootAvailable)
         {
-
-            BeaconBlockRootHandler.InitStatefulPrecompiles(genesisBlockBuilder.TestObject, SpecProvider.GenesisSpec, State);
-            State.Commit(SpecProvider.GenesisSpec);
-            State.CommitTree(0);
-
-            State.RecalculateStateRoot();
+            genesisBlockBuilder.WithParentBeaconBlockRoot(Keccak.Zero);
         }
+
         genesisBlockBuilder.WithStateRoot(State.StateRoot);
         return genesisBlockBuilder.TestObject;
     }

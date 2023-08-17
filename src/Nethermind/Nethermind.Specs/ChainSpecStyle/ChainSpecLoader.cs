@@ -392,7 +392,7 @@ public class ChainSpecLoader : IChainSpecLoader
         bool isEip4788Enabled = chainSpecJson.Params.Eip4788TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4788TransitionTimestamp;
         if (isEip4788Enabled)
         {
-            genesisHeader.ParentBeaconBlockRoot = chainSpecJson.Genesis.ParentBeaconBlockRoot;
+            genesisHeader.ParentBeaconBlockRoot = Keccak.Zero;
         }
 
         genesisHeader.AuRaStep = step;
