@@ -23,9 +23,9 @@ public class ExecutionPayloadV3Params : IExecutionPayloadParams
 {
     private readonly ExecutionPayloadV3 _executionPayload;
     private readonly byte[]?[] _blobVersionedHashes;
-    private readonly byte[]? _parentBeaconBlockRoot;
+    private readonly Keccak? _parentBeaconBlockRoot;
 
-    public ExecutionPayloadV3Params(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, byte[]? parentBeaconBlockRoot)
+    public ExecutionPayloadV3Params(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Keccak? parentBeaconBlockRoot)
     {
         _executionPayload = executionPayload;
         _blobVersionedHashes = blobVersionedHashes;
