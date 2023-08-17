@@ -88,10 +88,12 @@ namespace Nethermind.Merge.Plugin.Test
             };
         }
 
-        private static ExecutionPayload CreateBlockRequest(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null)
-            => CreateBlockRequestInternal<ExecutionPayload>(spec, state, parent, miner, withdrawals, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
+        private static ExecutionPayload CreateBlockRequest(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
+                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null)
+            => CreateBlockRequestInternal<ExecutionPayload>(spec, state, parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
 
-        private static ExecutionPayloadV3 CreateBlockRequestV3(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null)
+        private static ExecutionPayloadV3 CreateBlockRequestV3(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
+                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null)
         {
             var blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(spec, state, parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             blockRequestV3.TryGetBlock(out Block? block);
@@ -107,7 +109,8 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequestV3;
         }
 
-        private static T CreateBlockRequestInternal<T>(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null) where T : ExecutionPayload, new()
+        private static T CreateBlockRequestInternal<T>(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
+                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null) where T : ExecutionPayload, new()
         {
             T blockRequest = new()
             {
@@ -121,16 +124,10 @@ namespace Nethermind.Merge.Plugin.Test
                 LogsBloom = Bloom.Empty,
                 Timestamp = parent.Timestamp + 1,
                 Withdrawals = withdrawals,
+                BlobGasUsed = blobGasUsed,
+                ExcessBlobGas = excessBlobGas,
+                ParentBeaconBlockRoot = parentBeaconBlockRoot,
             };
-
-            if (blockRequest is ExecutionPayloadV3 blockRequestV3)
-            {
-                blockRequestV3.ParentBeaconBlockRoot = parentBeaconBlockRoot;
-                blockRequestV3.BlobGasUsed = blobGasUsed;
-                blockRequestV3.ExcessBlobGas = excessBlobGas;
-            }
-
-
 
             blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());
             TryCalculateHash(blockRequest, out Keccak? hash);

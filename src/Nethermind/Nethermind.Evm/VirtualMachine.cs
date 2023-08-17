@@ -343,7 +343,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                 currentState = _stateStack.Pop();
                 currentState.IsContinuation = true;
                 currentState.GasAvailable += previousState.GasAvailable;
-                bool previousStateSucceeded = true; 
+                bool previousStateSucceeded = true;
 
                 if (!callResult.ShouldRevert)
                 {
