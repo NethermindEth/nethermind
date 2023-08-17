@@ -376,15 +376,14 @@ namespace Nethermind.TxPool
             {
                 bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
                 UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
+                TxDistinctSortedPool relevantPool = (tx.SupportsBlobs ? _blobTransactions : _transactions);
 
-                (tx.SupportsBlobs ? _blobTransactions : _transactions).TryGetBucketsWorstValue(tx.SenderAddress!, out Transaction? worstTx);
+                relevantPool.TryGetBucketsWorstValue(tx.SenderAddress!, out Transaction? worstTx);
                 tx.GasBottleneck = (worstTx is null || effectiveGasPrice <= worstTx.GasBottleneck)
                     ? effectiveGasPrice
                     : worstTx.GasBottleneck;
 
-                bool inserted = (tx.SupportsBlobs
-                    ? _blobTransactions.TryInsertBlobTx(tx, out Transaction? removed)
-                    : _transactions.TryInsert(tx.Hash!, tx, out removed));
+                bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
 
                 if (!inserted)
                 {
@@ -403,7 +402,7 @@ namespace Nethermind.TxPool
                     return AcceptTxResult.FeeTooLowToCompete;
                 }
 
-                (tx.SupportsBlobs ? _blobTransactions : _transactions).UpdateGroup(tx.SenderAddress!, state.SenderAccount, UpdateBucketWithAddedTransaction);
+                relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, UpdateBucketWithAddedTransaction);
                 Metrics.PendingTransactionsAdded++;
                 if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
                 if (tx.SupportsBlobs) { Metrics.PendingBlobTransactionsAdded++; }
@@ -603,7 +602,7 @@ namespace Nethermind.TxPool
             lock (_locker)
             {
                 return _transactions.TryGetValue(hash, out transaction)
-                       || _blobTransactions.TryGetBlobTx(hash, out transaction)
+                       || _blobTransactions.TryGetValue(hash, out transaction)
                        || _broadcaster.TryGetPersistentTx(hash, out transaction);
             }
         }
@@ -625,8 +624,9 @@ namespace Nethermind.TxPool
                 return maxPendingNonce;
             }
 
+            TxDistinctSortedPool relevantPool = (hasPendingTxs ? _transactions : _blobTransactions);
             // we are not doing any updating, but lets just use a thread-safe method without any data copying like snapshot
-            (hasPendingTxs ? _transactions : _blobTransactions).UpdateGroup(address, (_, transactions) =>
+            relevantPool.UpdateGroup(address, (_, transactions) =>
             {
                 // This is under the assumption that the addressTransactions are sorted by Nonce.
                 if (transactions.Count > 0)

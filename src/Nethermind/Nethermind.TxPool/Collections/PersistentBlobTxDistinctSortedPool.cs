@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -38,7 +39,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         }
     }
 
-    public override bool TryInsertBlobTx(Transaction fullBlobTx, out Transaction? removed)
+    public override bool TryInsert(ValueKeccak hash, Transaction fullBlobTx, out Transaction? removed)
     {
         if (base.TryInsert(fullBlobTx.Hash, new LightTransaction(fullBlobTx), out removed))
         {
@@ -50,7 +51,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         return false;
     }
 
-    public override bool TryGetBlobTx(ValueKeccak hash, out Transaction? fullBlobTx)
+    public override bool TryGetValue(ValueKeccak hash, [NotNullWhen(true)] out Transaction? fullBlobTx)
     {
         if (base.ContainsValue(hash))
         {

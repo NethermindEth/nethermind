@@ -18,12 +18,6 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
         => comparer.GetBlobReplacementComparer();
 
-    public virtual bool TryInsertBlobTx(Transaction fullBlobTx, out Transaction? removed)
-        => base.TryInsert(fullBlobTx.Hash, fullBlobTx, out removed);
-
-    public virtual bool TryGetBlobTx(ValueKeccak hash, out Transaction? fullBlobTx)
-        => base.TryGetValue(hash, out fullBlobTx);
-
     public virtual IEnumerable<Transaction> GetBlobTransactions()
     {
         int pickedBlobs = 0;
