@@ -38,7 +38,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
 using Nethermind.Config;
-using Nethermind.Consensus.BeaconBlockRoot;
 
 namespace Nethermind.AccountAbstraction.Test
 {

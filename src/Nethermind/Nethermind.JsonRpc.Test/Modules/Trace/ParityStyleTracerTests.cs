@@ -33,7 +33,6 @@ using NUnit.Framework;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
-using Nethermind.Consensus.BeaconBlockRoot;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
