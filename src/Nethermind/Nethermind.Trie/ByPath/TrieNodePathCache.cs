@@ -215,7 +215,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
             _nodesByPath[pathToNode] = nodeVersions;
         }
         Pruning.Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
-        if (_logger.IsDebug) _logger.Debug($"Added node for block {blockNumber} | node version for path {pathToNode.ToHexString()} : {nodeVersions.Count} | Paths cached: {_nodesByPath.Count}");
+        if (_logger.IsTrace) _logger.Trace($"Added node for block {blockNumber} | node version for path {pathToNode.ToHexString()} : {nodeVersions.Count} | Paths cached: {_nodesByPath.Count}");
     }
 
     public void SetRootHashForBlock(long blockNo, Keccak? rootHash)
