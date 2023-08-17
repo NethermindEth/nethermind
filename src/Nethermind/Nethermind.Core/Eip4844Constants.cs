@@ -8,8 +8,8 @@ namespace Nethermind.Core;
 public class Eip4844Constants
 {
     public const int MinBlobsPerTransaction = 1;
-
     public const int MaxBlobsPerBlock = 6;
+
     public const ulong BlobGasPerBlob = 1 << 17;
     public const ulong MaxBlobGasPerBlock = BlobGasPerBlob * MaxBlobsPerBlock;
     public const ulong TargetBlobGasPerBlock = MaxBlobGasPerBlock / 2;
