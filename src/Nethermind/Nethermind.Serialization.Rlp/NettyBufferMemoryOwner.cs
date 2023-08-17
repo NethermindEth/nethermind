@@ -23,7 +23,8 @@ public class NettyBufferMemoryOwner : IMemoryOwner<byte>
         _byteBuffer.Retain();
     }
 
-    ~NettyBufferMemoryOwner() {
+    ~NettyBufferMemoryOwner()
+    {
         Dispose(false);
     }
 
