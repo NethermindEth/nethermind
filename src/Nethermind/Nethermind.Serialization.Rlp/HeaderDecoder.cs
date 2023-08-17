@@ -228,12 +228,12 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(header.BaseFeePerGas);
             }
 
-            if (header.WithdrawalsRoot is not null || header.ExcessBlobGas is not null || header.BlobGasUsed is not null)
+            if (header.WithdrawalsRoot is not null || header.ExcessBlobGas is not null || header.BlobGasUsed is not null || header.ParentBeaconBlockRoot is not null)
             {
                 rlpStream.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
             }
 
-            if (header.BlobGasUsed is not null || header.ExcessBlobGas is not null)
+            if (header.BlobGasUsed is not null || header.ExcessBlobGas is not null || header.ParentBeaconBlockRoot is not null)
             {
                 rlpStream.Encode(header.BlobGasUsed.GetValueOrDefault());
                 rlpStream.Encode(header.ExcessBlobGas.GetValueOrDefault());
