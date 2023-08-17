@@ -109,7 +109,7 @@ namespace Nethermind.TxPool
             _preHashFilters = new IIncomingTxFilter[]
             {
                 new GasLimitTxFilter(_headInfo, txPoolConfig, _logger),
-                new FeeTooLowFilter(_headInfo, _transactions, thereIsPriorityContract, _logger),
+                new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
                 new MalformedTxFilter(_specProvider, validator, _logger)
             };
 
