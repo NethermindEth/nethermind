@@ -188,15 +188,18 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
     public virtual ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
-        int GetVersion() => Withdrawals is null ? 1 : (BlobGasUsed is null && ExcessBlobGas is null && ParentBeaconBlockRoot is null ? 2 : 3);
-
         if (spec.IsEip4844Enabled)
         {
             error = "ExecutionPayloadV3 expected";
             return ValidationResult.Fail;
         }
 
-        int actualVersion = GetVersion();
+        int actualVersion = this switch
+        {
+            { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
+            { Withdrawals: not null } => 2,
+            _ => 1
+        };
 
         error = actualVersion switch
         {
