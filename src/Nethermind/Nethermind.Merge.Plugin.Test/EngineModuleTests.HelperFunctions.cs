@@ -129,8 +129,6 @@ namespace Nethermind.Merge.Plugin.Test
                 blockRequestV3.ExcessBlobGas = excessBlobGas;
             }
 
-
-
             blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());
             TryCalculateHash(blockRequest, out Keccak? hash);
             blockRequest.BlockHash = hash;
