@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -92,6 +93,7 @@ namespace Nethermind.Synchronization.Test
                 blockDownloaderFactory,
                 pivot,
                 syncReport,
+                Substitute.For<IProcessExitSource>(),
                 LimboLogs.Instance);
             _syncServer = new SyncServer(
                 trieStore.AsKeyValueStore(),

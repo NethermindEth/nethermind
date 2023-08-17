@@ -195,7 +195,7 @@ public class JsonRpcService : IJsonRpcService
                     break;
             }
         }
-        catch (TargetParameterCountException e)
+        catch (Exception e) when (e is TargetParameterCountException || e is ArgumentException)
         {
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.ToString(), request.Id, returnAction);
         }

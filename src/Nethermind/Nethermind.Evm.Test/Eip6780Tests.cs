@@ -83,6 +83,40 @@ namespace Nethermind.Evm.Test
                 AssertDestroyed();
         }
 
+        [TestCase(0ul, false)]
+        [TestCase(MainnetSpecProvider.CancunBlockTimestamp, true)]
+        public void self_destruct_not_in_same_transaction_should_not_burn(ulong timestamp, bool onlyOnSameTransaction)
+        {
+            _selfDestructCode = Prepare.EvmCode
+                .SELFDESTRUCT(_contractAddress)
+                .Done;
+            _initCode = Prepare.EvmCode
+                .ForInitOf(_selfDestructCode)
+                .Done;
+            byte[] contractCall = Prepare.EvmCode
+                .Call(_contractAddress, 100000)
+                .Op(Instruction.STOP).Done;
+            Transaction initTx = Build.A.Transaction.WithCode(_initCode).WithValue(99.Ether()).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction tx1 = Build.A.Transaction.WithCode(contractCall).WithGasLimit(_gasLimit).WithNonce(1).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+            Block block = Build.A.Block.WithNumber(BlockNumber)
+                .WithTimestamp(timestamp)
+                .WithTransactions(initTx, tx1).WithGasLimit(2 * _gasLimit).TestObject;
+
+            _processor.Execute(initTx, block.Header, NullTxTracer.Instance);
+            UInt256 contractBalanceAfterInit = TestState.GetBalance(_contractAddress);
+            _processor.Execute(tx1, block.Header, NullTxTracer.Instance);
+
+            contractBalanceAfterInit.Should().Be(99.Ether());
+            if (onlyOnSameTransaction)
+                TestState.GetBalance(_contractAddress).Should().Be(99.Ether()); // not burnt
+            else
+                TestState.GetBalance(_contractAddress).Should().Be(0); // burnt
+            if (onlyOnSameTransaction)
+                AssertNotDestroyed();
+            else
+                AssertDestroyed();
+        }
+
         [Test]
         public void self_destruct_in_same_transaction()
         {

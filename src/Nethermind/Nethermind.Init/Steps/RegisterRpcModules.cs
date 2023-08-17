@@ -90,6 +90,7 @@ public class RegisterRpcModules : IStep
         if (_api.EthSyncingInfo is null) throw new StepDependencyException(nameof(_api.EthSyncingInfo));
         if (_api.ReadOnlyTrieStore is null) throw new StepDependencyException(nameof(_api.ReadOnlyTrieStore));
 
+
         EthModuleFactory ethModuleFactory = new(
             _api.TxPool,
             _api.TxSender,
@@ -104,7 +105,8 @@ public class RegisterRpcModules : IStep
             _api.GasPriceOracle,
             _api.EthSyncingInfo);
 
-        rpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout, rpcConfig.RequestQueueLimit);
+        RpcLimits.Init(rpcConfig.RequestQueueLimit);
+        rpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
 
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
         if (_api.BlockPreprocessor is null) throw new StepDependencyException(nameof(_api.BlockPreprocessor));
@@ -130,6 +132,7 @@ public class RegisterRpcModules : IStep
             _api.ConfigProvider,
             _api.SpecProvider,
             _api.SyncModeSelector,
+            _api.FileSystem,
             _api.LogManager);
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, rpcConfig.Timeout);
 

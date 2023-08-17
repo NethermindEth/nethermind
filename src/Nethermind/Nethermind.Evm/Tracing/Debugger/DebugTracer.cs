@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.Debugger;
+
 public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 {
     public enum DebugPhase { Starting, Blocked, Running, Aborted }
@@ -205,7 +206,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         => InnerTracer.ReportStackPush(stackItem);
 
-    public void SetOperationMemory(List<string> memoryTrace)
+    public void SetOperationMemory(IEnumerable<string> memoryTrace)
         => InnerTracer.SetOperationMemory(memoryTrace);
 
     public void SetOperationMemorySize(ulong newSize)
