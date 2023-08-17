@@ -45,6 +45,9 @@ namespace Nethermind.Specs.Test
         {
             _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip1153Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip4844Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip5656Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip4788Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).Eip4788ContractAddress.Should().NotBeNull();
         }
 
         [Test]
