@@ -50,7 +50,7 @@ public class TestBlockchain : IDisposable
     public ITxPool TxPool { get; set; } = null!;
     public IDb CodeDb => DbProvider.CodeDb;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
-    public IBeaconBlockRootHandler BeaconParentBlockRootHandler { get; set; } = null!;
+    public IBeaconBlockRootHandler BeaconBlockRootHandler { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
     public IBlockPreprocessorStep BlockPreprocessorStep { get; set; } = null!;
@@ -119,9 +119,10 @@ public class TestBlockchain : IDisposable
         TrieStore = new TrieStore(StateDb, LogManager);
         State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
 
+        // Eip4788 precompile state account
         if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
         {
-            State.CreateAccount(SpecProvider?.GenesisSpec?.Eip4788ContractAddress!, 1);
+            State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress, 1);
         }
 
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
@@ -177,7 +178,7 @@ public class TestBlockchain : IDisposable
         BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId, LimboLogs.Instance), SpecProvider);
         LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
-        BeaconParentBlockRootHandler = new BeaconBlockRootHandler();
+        BeaconBlockRootHandler = new BeaconBlockRootHandler();
         BlockProcessor = CreateBlockProcessor();
 
         BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
@@ -309,11 +310,6 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithAura(0, new byte[65]);
         }
 
-        if (SpecProvider.GenesisSpec.IsBeaconBlockRootAvailable)
-        {
-            genesisBlockBuilder.WithParentBeaconBlockRoot(TestItem.KeccakG);
-        }
-
         if (SpecProvider.GenesisSpec.IsEip4844Enabled)
         {
             genesisBlockBuilder.WithBlobGasUsed(0);
@@ -323,13 +319,9 @@ public class TestBlockchain : IDisposable
 
         if (SpecProvider.GenesisSpec.IsBeaconBlockRootAvailable)
         {
-
-            BeaconParentBlockRootHandler.ApplyContractStateChanges(genesisBlockBuilder.TestObject, SpecProvider.GenesisSpec, State);
-            State.Commit(SpecProvider.GenesisSpec);
-            State.CommitTree(0);
-
-            State.RecalculateStateRoot();
+            genesisBlockBuilder.WithParentBeaconBlockRoot(Keccak.Zero);
         }
+
         genesisBlockBuilder.WithStateRoot(State.StateRoot);
         return genesisBlockBuilder.TestObject;
     }

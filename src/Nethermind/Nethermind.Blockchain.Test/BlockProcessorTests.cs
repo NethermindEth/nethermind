@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -26,10 +25,8 @@ using System.Threading;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Consensus.BeaconBlockRoot;
 
 namespace Nethermind.Blockchain.Test
 {
