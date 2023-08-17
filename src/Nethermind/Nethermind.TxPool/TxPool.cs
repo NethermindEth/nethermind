@@ -581,7 +581,7 @@ namespace Nethermind.TxPool
             lock (_locker)
             {
                 hasBeenRemoved = _transactions.TryRemove(hash, out Transaction? transaction)
-                                 ||_blobTransactions.TryRemove(hash, out transaction);
+                                 || _blobTransactions.TryRemove(hash, out transaction);
 
                 if (transaction is null || !hasBeenRemoved)
                     return false;
