@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -16,53 +17,53 @@ namespace Nethermind.TxPool.Test
     [TestFixture]
     public partial class TxPoolTests
     {
-        // blob collection is designed to be infinite, so there is no point in checking if is full and comparing
-        // incoming tx with the worst already pending one (candidate for evicting). There will be no eviction.
         [Test]
-        public void should_reject_tx_with_FeeTooLow_only_if_is_not_blob_type()
+        public void should_reject_tx_with_FeeTooLow_even_if_is_blob_type([Values(true, false)] bool isBlob, [Values(true, false)] bool persistentStorageEnabled)
         {
-            TxPoolConfig txPoolConfig = new() { Size = 10 };
+            const int poolSize = 10;
+            TxPoolConfig txPoolConfig = new()
+            {
+                Size = isBlob ? 0 : poolSize,
+                PersistentBlobStorageEnabled = persistentStorageEnabled,
+                PersistentBlobStorageSize = persistentStorageEnabled ? poolSize : 0,
+                InMemoryBlobPoolSize = persistentStorageEnabled ? 0 : poolSize
+            };
+
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
 
-            for (int i = 0; i < txPoolConfig.Size; i++)
+            for (int i = 0; i < poolSize; i++)
             {
                 Transaction tx = Build.A.Transaction
                     .WithNonce((UInt256)i)
-                    .WithType(TxType.EIP1559)
+                    .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
+                    .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(1.GWei() + (UInt256)(100 - i))
                     .WithMaxPriorityFeePerGas(1.GWei() + (UInt256)(100 - i))
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
                 _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
             }
 
-            _txPool.GetPendingTransactionsCount().Should().Be(txPoolConfig.Size);
+            _txPool.GetPendingTransactionsCount().Should().Be(isBlob ? 0 : poolSize);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(isBlob ? poolSize : 0);
 
-            Transaction feeTooLow1559Tx = Build.A.Transaction
-                .WithType(TxType.EIP1559)
+            Transaction feeTooLowTx = Build.A.Transaction
+                .WithNonce(UInt256.Zero)
+                .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
+                .WithShardBlobTxTypeAndFieldsIfBlobTx()
                 .WithMaxFeePerGas(1.GWei() + UInt256.One)
                 .WithMaxPriorityFeePerGas(1.GWei() + UInt256.One)
-                .WithNonce(UInt256.Zero)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
 
-            Transaction feeTooLowBlobTx = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields()
-                .WithMaxFeePerGas(1.GWei() + UInt256.One)
-                .WithMaxPriorityFeePerGas(1.GWei() + UInt256.One)
-                .WithNonce(UInt256.Zero)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
-
-
-            _txPool.SubmitTx(feeTooLow1559Tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.FeeTooLow);
-            _txPool.SubmitTx(feeTooLowBlobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(feeTooLowTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.FeeTooLow);
         }
 
         [Test]
         public void should_add_blob_tx_and_return_when_requested([Values(true, false)] bool isPersistentStorage)
         {
             TxPoolConfig txPoolConfig = new() { Size = 10, PersistentBlobStorageEnabled = isPersistentStorage };
-            BlobTxStorage blobTxStorage = new(new MemDb());
+            BlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
@@ -92,7 +93,7 @@ namespace Nethermind.TxPool.Test
         public void should_not_throw_when_asking_for_non_existing_tx()
         {
             TxPoolConfig txPoolConfig = new() { Size = 10 };
-            BlobTxStorage blobTxStorage = new(new MemDb());
+            BlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
 
             _txPool.TryGetPendingTransaction(TestItem.KeccakA, out Transaction blobTxReturned).Should().BeFalse();
@@ -175,7 +176,7 @@ namespace Nethermind.TxPool.Test
         public void should_remove_replaced_blob_tx_from_persistent_storage_and_cache()
         {
             TxPoolConfig txPoolConfig = new() { Size = 10, PersistentBlobStorageEnabled = true };
-            BlobTxStorage blobTxStorage = new(new MemDb());
+            BlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 

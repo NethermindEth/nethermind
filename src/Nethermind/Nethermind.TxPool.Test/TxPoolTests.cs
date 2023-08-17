@@ -1661,7 +1661,7 @@ namespace Nethermind.TxPool.Test
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
-            txStorage ??= new BlobTxStorage(new MemDb());
+            txStorage ??= new BlobTxStorage();
 
             _headInfo = chainHeadInfoProvider;
             _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);

@@ -183,24 +183,26 @@ namespace Nethermind.TxPool
             {
                 if (numberOfPersistentTxsToBroadcast > 0)
                 {
-                    if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee)
+                    if (!tx.CanPayBaseFee(_headInfo.CurrentBaseFee))
                     {
-                        if (tx.CanBeBroadcast())
-                        {
-                            persistentTxsToSend ??= new List<Transaction>(numberOfPersistentTxsToBroadcast);
-                            persistentTxsToSend.Add(tx);
-                        }
-                        else
-                        {
-                            if (tx.MaxFeePerBlobGas < _headInfo.CurrentPricePerBlobGas) // for not-blob tx MaxFeePerBlobGas
-                            {                                                           // is null so check will be skipped
-                                continue;
-                            }
-                            persistentHashesToSend ??= new List<Transaction>(numberOfPersistentTxsToBroadcast);
-                            persistentHashesToSend.Add(tx);
-                        }
-                        numberOfPersistentTxsToBroadcast--;
+                        continue;
                     }
+
+                    if (tx.CanBeBroadcast())
+                    {
+                        persistentTxsToSend ??= new List<Transaction>(numberOfPersistentTxsToBroadcast);
+                        persistentTxsToSend.Add(tx);
+                    }
+                    else
+                    {
+                        if (!tx.CanPayForBlobGas(_headInfo.CurrentPricePerBlobGas))
+                        {
+                            continue;
+                        }
+                        persistentHashesToSend ??= new List<Transaction>(numberOfPersistentTxsToBroadcast);
+                        persistentHashesToSend.Add(tx);
+                    }
+                    numberOfPersistentTxsToBroadcast--;
                 }
                 else
                 {

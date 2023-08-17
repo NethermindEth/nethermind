@@ -265,7 +265,7 @@ public class TestBlockchain : IDisposable
     protected virtual TxPool.TxPool CreateTxPool() =>
         new(
             EthereumEcdsa,
-            new BlobTxStorage(new MemDb()),
+            new BlobTxStorage(),
             new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
             new TxPoolConfig(),
             new TxValidator(SpecProvider.ChainId),

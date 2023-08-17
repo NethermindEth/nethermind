@@ -17,24 +17,24 @@ public class CompareReplacedBlobTx : IComparer<Transaction?>
 
     // To replace old blob transaction, new transaction needs to have fee at least 2x higher than current fee.
     // 2x higher must be MaxPriorityFeePerGas, MaxFeePerGas and MaxFeePerDataGas
-    public int Compare(Transaction? x, Transaction? y)
+    public int Compare(Transaction? newTx, Transaction? oldTx)
     {
-        if (ReferenceEquals(x, y)) return 0;
-        if (ReferenceEquals(null, y)) return 1;
-        if (ReferenceEquals(null, x)) return -1;
+        if (ReferenceEquals(newTx, oldTx)) return TxComparisonResult.NotDecided;
+        if (ReferenceEquals(null, oldTx)) return TxComparisonResult.KeepOld;
+        if (ReferenceEquals(null, newTx)) return TxComparisonResult.TakeNew;
 
         // do not allow to replace blob tx by the one with lower number of blobs
-        if (y.BlobVersionedHashes is null || x.BlobVersionedHashes is null) return 1;
-        if (y.BlobVersionedHashes.Length > x.BlobVersionedHashes.Length) return 1;
+        if (oldTx.BlobVersionedHashes is null || newTx.BlobVersionedHashes is null) return TxComparisonResult.KeepOld;
+        if (oldTx.BlobVersionedHashes.Length > newTx.BlobVersionedHashes.Length) return TxComparisonResult.KeepOld;
 
         // always allow replacement of zero fee txs
-        if (y.MaxFeePerGas.IsZero) return -1; //ToDo: do we need it?
+        if (oldTx.MaxFeePerGas.IsZero) return TxComparisonResult.TakeNew; //ToDo: do we need it?
 
-        if (y.MaxFeePerGas * 2 > x.MaxFeePerGas) return 1;
-        if (y.MaxPriorityFeePerGas * 2 > x.MaxPriorityFeePerGas) return 1;
-        if (y.MaxFeePerBlobGas * 2 > x.MaxFeePerBlobGas) return 1;
+        if (oldTx.MaxFeePerGas * 2 > newTx.MaxFeePerGas) return TxComparisonResult.KeepOld;
+        if (oldTx.MaxPriorityFeePerGas * 2 > newTx.MaxPriorityFeePerGas) return TxComparisonResult.KeepOld;
+        if (oldTx.MaxFeePerBlobGas * 2 > newTx.MaxFeePerBlobGas) return TxComparisonResult.KeepOld;
 
         // if we are here, it means that all new fees are at least 2x higher than old ones, so replacement is allowed
-        return -1;
+        return TxComparisonResult.TakeNew;
     }
 }

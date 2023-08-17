@@ -22,8 +22,8 @@ public class TxTypeTxFilter : IIncomingTxFilter
 
     public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if ((tx.SupportsBlobs ? _txs : _blobTxs)
-            .ContainsBucket(tx.SenderAddress!)) // as unknownSenderFilter will run before this one
+        TxDistinctSortedPool otherTxTypePool = (tx.SupportsBlobs ? _txs : _blobTxs);
+        if (otherTxTypePool.ContainsBucket(tx.SenderAddress!)) // as unknownSenderFilter will run before this one
         {
             Metrics.PendingTransactionsConflictingTxType++;
             return AcceptTxResult.PendingTxsOfOtherType;

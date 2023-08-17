@@ -108,7 +108,7 @@ namespace Nethermind.Clique.Test
                     new TransactionComparerProvider(specProvider, blockTree);
 
                 TxPool.TxPool txPool = new(_ethereumEcdsa,
-                    new BlobTxStorage(new MemDb()),
+                    new BlobTxStorage(),
                     new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider),
                     new TxPoolConfig(),
                     new TxValidator(goerliSpecProvider.ChainId),

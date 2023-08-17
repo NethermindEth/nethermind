@@ -15,6 +15,11 @@ public class BlobTxStorage : ITxStorage
 {
     private readonly IDb _database;
 
+    public BlobTxStorage()
+    {
+        _database = new MemDb();
+    }
+
     public BlobTxStorage(IDb database)
     {
         _database = database ?? throw new ArgumentNullException(nameof(database));
@@ -55,7 +60,7 @@ public class BlobTxStorage : ITxStorage
 
     public void Add(Transaction transaction)
     {
-        if (transaction == null || transaction.Hash == null)
+        if (transaction?.Hash is null)
         {
             throw new ArgumentNullException(nameof(transaction));
         }
