@@ -273,7 +273,7 @@ namespace Nethermind.TxPool.Collections
         /// <param name="value">Returned element or null.</param>
         /// <returns>If element retrieval succeeded. True if element was present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGetValue(TKey key, [NotNullWhen(true)] out TValue? value)
+        public virtual bool TryGetValue(TKey key, [NotNullWhen(true)] out TValue? value)
         {
             return _cacheMap.TryGetValue(key, out value) && value != null;
         }
@@ -286,7 +286,7 @@ namespace Nethermind.TxPool.Collections
         /// <param name="removed">Element removed because of exceeding capacity</param>
         /// <returns>If element was inserted. False if element was already present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryInsert(TKey key, TValue value, out TValue? removed)
+        public virtual bool TryInsert(TKey key, TValue value, out TValue? removed)
         {
             if (CanInsert(key, value))
             {

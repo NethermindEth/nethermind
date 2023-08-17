@@ -17,6 +17,12 @@ public class BlobTxStorage : ITxStorage
     private readonly IDb _processedTxsDb;
     private readonly TxDecoder _txDecoder = new();
 
+    public BlobTxStorage()
+    {
+        _pendingTxsDb = new MemDb();
+        _processedTxsDb = new MemDb();
+    }
+
     public BlobTxStorage(IDb pendingTxsDb, IDb processedTxsDb)
     {
         _pendingTxsDb = pendingTxsDb ?? throw new ArgumentNullException(nameof(pendingTxsDb));
@@ -58,7 +64,7 @@ public class BlobTxStorage : ITxStorage
 
     public void Add(Transaction transaction)
     {
-        if (transaction == null || transaction.Hash == null)
+        if (transaction?.Hash is null)
         {
             throw new ArgumentNullException(nameof(transaction));
         }

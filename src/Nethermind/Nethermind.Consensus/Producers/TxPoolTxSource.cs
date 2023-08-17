@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.Producers
 
             foreach (Transaction blobTx in blobTransactions)
             {
-                if (BlobGasCalculator.CalculateBlobGas(blobsCounter) == Eip4844Constants.MaxBlobGasPerBlock)
+                if (blobsCounter == Eip4844Constants.MaxBlobsPerBlock)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, no more blob space. Block already have {blobsCounter} which is max value allowed.");
                     break;

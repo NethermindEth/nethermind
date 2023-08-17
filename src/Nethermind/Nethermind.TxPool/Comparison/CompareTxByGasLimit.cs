@@ -15,14 +15,14 @@ namespace Nethermind.TxPool.Comparison
 
         private CompareTxByGasLimit() { }
 
-        public int Compare(Transaction? x, Transaction? y)
+        public int Compare(Transaction? newTx, Transaction? oldTx)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
+            if (ReferenceEquals(newTx, oldTx)) return TxComparisonResult.NotDecided;
+            if (ReferenceEquals(null, oldTx)) return TxComparisonResult.KeepOld;
+            if (ReferenceEquals(null, newTx)) return TxComparisonResult.TakeNew;
 
             // then by gas limit ascending
-            return x.GasLimit.CompareTo(y.GasLimit);
+            return newTx.GasLimit.CompareTo(oldTx.GasLimit);
         }
     }
 }

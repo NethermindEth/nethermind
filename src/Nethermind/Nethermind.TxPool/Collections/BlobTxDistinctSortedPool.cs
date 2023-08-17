@@ -10,8 +10,6 @@ namespace Nethermind.TxPool.Collections;
 
 public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 {
-    protected const int MaxNumberOfBlobsInBlock = (int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob);
-
     public BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
         : base(capacity, comparer, logManager)
     {
@@ -20,18 +18,12 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
         => comparer.GetBlobReplacementComparer();
 
-    public virtual bool TryInsertBlobTx(Transaction fullBlobTx, out Transaction? removed)
-        => base.TryInsert(fullBlobTx.Hash, fullBlobTx, out removed);
-
-    public virtual bool TryGetBlobTx(ValueKeccak hash, out Transaction? fullBlobTx)
-        => base.TryGetValue(hash, out fullBlobTx);
-
     public virtual IEnumerable<Transaction> GetBlobTransactions()
     {
         int pickedBlobs = 0;
         List<Transaction>? blobTxsToReadd = null;
 
-        while (pickedBlobs < MaxNumberOfBlobsInBlock)
+        while (pickedBlobs < Eip4844Constants.MaxBlobsPerBlock)
         {
             Transaction? bestTx = GetFirsts().Min;
 
@@ -40,7 +32,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
                 break;
             }
 
-            if (pickedBlobs + bestTx.BlobVersionedHashes.Length <= MaxNumberOfBlobsInBlock)
+            if (pickedBlobs + bestTx.BlobVersionedHashes.Length <= Eip4844Constants.MaxBlobsPerBlock)
             {
                 yield return bestTx;
                 pickedBlobs += bestTx.BlobVersionedHashes.Length;
@@ -48,7 +40,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 
             if (TryRemove(bestTx.Hash))
             {
-                blobTxsToReadd ??= new(MaxNumberOfBlobsInBlock);
+                blobTxsToReadd ??= new(Eip4844Constants.MaxBlobsPerBlock);
                 blobTxsToReadd.Add(bestTx!);
             }
         }
