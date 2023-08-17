@@ -194,12 +194,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
             return ValidationResult.Fail;
         }
 
-        if (BlobGasUsed is not null || ExcessBlobGas is not null)
-        {
-            error = "ExecutionPayloadV3 is not expected";
-            return ValidationResult.Fail;
-        }
-
         int actualVersion = this switch
         {
             { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
