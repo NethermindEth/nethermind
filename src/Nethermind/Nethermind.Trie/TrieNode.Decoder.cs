@@ -4,7 +4,9 @@
 using System;
 using System.Buffers;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
@@ -21,7 +23,7 @@ namespace Nethermind.Trie
 
         private class TrieNodeDecoder
         {
-            public byte[] Encode(ITrieNodeResolver tree, TrieNode? item)
+            public CappedArray<byte> Encode(ITrieNodeResolver tree, TrieNode? item)
             {
                 Metrics.TreeNodeRlpEncodings++;
 
@@ -40,7 +42,7 @@ namespace Nethermind.Trie
             }
 
             [SkipLocalsInit]
-            private static byte[] EncodeExtension(ITrieNodeResolver tree, TrieNode item)
+            private static CappedArray<byte> EncodeExtension(ITrieNodeResolver tree, TrieNode item)
             {
                 Debug.Assert(item.NodeType == NodeType.Extension,
                     $"Node passed to {nameof(EncodeExtension)} is {item.NodeType}");
@@ -65,7 +67,7 @@ namespace Nethermind.Trie
 
                 nodeRef.ResolveKey(tree, false);
 
-                int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
+                int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Value.Length : Rlp.LengthOfKeccakRlp);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
                 RlpStream rlpStream = new(totalLength);
                 rlpStream.StartSequence(contentLength);
@@ -82,14 +84,14 @@ namespace Nethermind.Trie
                     // so E - - - - - - - - - - - - - - -
                     // so |
                     // so |
-                    rlpStream.Write(nodeRef.FullRlp);
+                    rlpStream.Write(nodeRef.FullRlp.Value.AsSpan());
                 }
                 else
                 {
                     rlpStream.Encode(nodeRef.Keccak);
                 }
 
-                return rlpStream.Data;
+                return rlpStream.CappedData;
             }
 
             [SkipLocalsInit]
@@ -124,7 +126,7 @@ namespace Nethermind.Trie
                 return rlpStream.Data;
             }
 
-            private static byte[] RlpEncodeBranch(ITrieNodeResolver tree, TrieNode item)
+            private static CappedArray<byte> RlpEncodeBranch(ITrieNodeResolver tree, TrieNode item)
             {
                 int valueRlpLength = AllowBranchValues ? Rlp.LengthOf(item.Value) : 1;
                 int contentLength = valueRlpLength + GetChildrenRlpLength(tree, item);
@@ -172,7 +174,7 @@ namespace Nethermind.Trie
                         {
                             TrieNode childNode = (TrieNode)item._data[i];
                             childNode!.ResolveKey(tree, false);
-                            totalLength += childNode.Keccak is null ? childNode.FullRlp!.Length : Rlp.LengthOfKeccakRlp;
+                            totalLength += childNode.Keccak is null ? childNode.FullRlp!.Value.Length : Rlp.LengthOfKeccakRlp;
                         }
                     }
 
@@ -215,7 +217,7 @@ namespace Nethermind.Trie
                             childNode!.ResolveKey(tree, false);
                             if (childNode.Keccak is null)
                             {
-                                Span<byte> fullRlp = childNode.FullRlp.AsSpan();
+                                Span<byte> fullRlp = childNode.FullRlp!.Value.AsSpan();
                                 fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
                                 position += fullRlp.Length;
                             }

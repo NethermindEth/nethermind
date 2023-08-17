@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -174,6 +175,8 @@ namespace Nethermind.Serialization.Rlp
             Data?.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
 
         public byte[]? Data { get; }
+
+        public CappedArray<byte> CappedData => new CappedArray<byte>(Data!, Length);
 
         public virtual int Position { get; set; }
 

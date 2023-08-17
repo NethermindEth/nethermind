@@ -7,6 +7,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -54,7 +55,7 @@ namespace Nethermind.Trie
 
         public Keccak? Keccak { get; internal set; }
 
-        public byte[]? FullRlp { get; internal set; }
+        public CappedArray<byte>? FullRlp { get; internal set; }
 
         public NodeType NodeType { get; private set; }
 
@@ -181,7 +182,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieNode(NodeType nodeType, byte[] rlp, bool isDirty = false)
+        public TrieNode(NodeType nodeType, CappedArray<byte> rlp, bool isDirty = false)
         {
             NodeType = nodeType;
             FullRlp = rlp;
@@ -191,11 +192,11 @@ namespace Nethermind.Trie
         }
 
         public TrieNode(NodeType nodeType, Keccak keccak, ReadOnlySpan<byte> rlp)
-            : this(nodeType, keccak, rlp.ToArray())
+            : this(nodeType, keccak, new CappedArray<byte>(rlp.ToArray()))
         {
         }
 
-        public TrieNode(NodeType nodeType, Keccak keccak, byte[] rlp)
+        public TrieNode(NodeType nodeType, Keccak keccak, CappedArray<byte> rlp)
             : this(nodeType, rlp)
         {
             Keccak = keccak;
@@ -209,7 +210,7 @@ namespace Nethermind.Trie
         {
 #if DEBUG
             return
-                $"[{NodeType}({FullRlp?.Length}){(FullRlp is not null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
+                $"[{NodeType}({FullRlp?.Length}){(FullRlp is not null && FullRlp?.Length < 32 ? $"{FullRlp.Value.AsSpan().ToHexString()}" : "")}" +
                 $"|{Id}|{Keccak}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #else
             return $"[{NodeType}({FullRlp?.Length})|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
@@ -300,7 +301,7 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    throw new TrieNodeException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp?.ToHexString()})", Keccak ?? Keccak.Zero);
+                    throw new TrieNodeException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp?.AsSpan().ToHexString()})", Keccak ?? Keccak.Zero);
                 }
             }
             catch (RlpException rlpException)
@@ -338,10 +339,10 @@ namespace Nethermind.Trie
             /* nodes that are descendants of other nodes are stored inline
              * if their serialized length is less than Keccak length
              * */
-            if (FullRlp.Length >= 32 || isRoot)
+            if (FullRlp?.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
-                return Keccak.Compute(FullRlp);
+                return Keccak.Compute(FullRlp.Value.AsSpan());
             }
 
             return null;
@@ -370,9 +371,9 @@ namespace Nethermind.Trie
             return false;
         }
 
-        internal byte[] RlpEncode(ITrieNodeResolver tree)
+        internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree)
         {
-            byte[] rlp = _nodeDecoder.Encode(tree, this);
+            CappedArray<byte> rlp = _nodeDecoder.Encode(tree, this);
             // just included here to improve the class reading
             // after some analysis I believe that any non-test Ethereum cases of a trie ever have nodes with RLP shorter than 32 bytes
             // if (rlp.Bytes.Length < 32)
@@ -497,7 +498,7 @@ namespace Nethermind.Trie
                 // we expect this to happen as a Trie traversal error (please see the stack trace above)
                 // we need to investigate this case when it happens again
                 bool isKeccakCalculated = Keccak is not null && FullRlp is not null;
-                bool isKeccakCorrect = isKeccakCalculated && Keccak == Keccak.Compute(FullRlp);
+                bool isKeccakCorrect = isKeccakCalculated && Keccak == Keccak.Compute(FullRlp.Value.AsSpan());
                 throw new TrieException($"Unexpected type found at position {childIndex} of {this} with {nameof(_data)} of length {_data?.Length}. Expected a {nameof(TrieNode)} or {nameof(Keccak)} but found {childOrRef?.GetType()} with a value of {childOrRef}. Keccak calculated? : {isKeccakCalculated}; Keccak correct? : {isKeccakCorrect}");
             }
 
@@ -544,10 +545,10 @@ namespace Nethermind.Trie
                     : MemorySizes.RefSize + Keccak.MemorySize;
             long fullRlpSize =
                 MemorySizes.RefSize +
-                (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Length + MemorySizes.ArrayOverhead));
+                (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Value.AsSpan().Length + MemorySizes.ArrayOverhead));
             long rlpStreamSize =
                 MemorySizes.RefSize + (_rlpStream?.MemorySize ?? 0)
-                - (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Length + MemorySizes.ArrayOverhead));
+                - (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Value.AsSpan().Length + MemorySizes.ArrayOverhead));
             long dataSize =
                 MemorySizes.RefSize +
                 (_data is null
