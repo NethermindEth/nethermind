@@ -9,16 +9,17 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Core;
 
 /// <summary>
-/// A BlockBody[] that must be explicitly disposed or there will be memory leak. May uses netty's buffer directly.
-/// I don't like the name too. Any idea?
+/// A holder for BlockBody[] that must be explicitly disposed or there will be memory leak. May uses netty's buffer directly.
+/// BlockBody may contain `Memory<byte>` that is explicitly managed. Reusing `BlockBody` from this object after Dispose
+/// is likely to cause corrupted `BlockBody`.
 /// </summary>
-public class UnmanagedBlockBodies : IDisposable
+public class OwnedBlockBodies : IDisposable
 {
     private BlockBody?[] _rawBodies = null;
 
     private IMemoryOwner<byte>? _memoryOwner = null;
 
-    public UnmanagedBlockBodies(BlockBody?[] bodies, IMemoryOwner<byte>? memoryOwner = null)
+    public OwnedBlockBodies(BlockBody?[] bodies, IMemoryOwner<byte>? memoryOwner = null)
     {
         _rawBodies = bodies;
         _memoryOwner = memoryOwner;
@@ -26,8 +27,13 @@ public class UnmanagedBlockBodies : IDisposable
 
     public BlockBody?[] Bodies => _rawBodies;
 
-    public void DisOwn()
+    /// <summary>
+    /// Disown the `BlockBody`, copying any `Memory<byte>` so that it does not depend on the `_memoryOwner.`
+    /// </summary>
+    public void Disown()
     {
+        if (_memoryOwner == null) return;
+
         foreach (BlockBody? blockBody in Bodies)
         {
             if (blockBody == null) continue;

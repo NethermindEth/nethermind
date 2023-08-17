@@ -451,7 +451,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public async Task Get_block_bodies_returns_immediately_when_empty_hash_list()
         {
-            UnmanagedBlockBodies bodies =
+            OwnedBlockBodies bodies =
                 await ((ISyncPeer)_handler).GetBlockBodies(new List<Keccak>(), CancellationToken.None);
 
             bodies.Bodies.Should().HaveCount(0);

@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.Test
         {
         }
 
-        public Task<UnmanagedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+        public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
         {
             BlockBody[] result = new BlockBody[blockHashes.Count];
             for (int i = 0; i < blockHashes.Count; i++)
@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.Test
                 result[i] = new BlockBody(block?.Transactions, block?.Uncles);
             }
 
-            return Task.FromResult(new UnmanagedBlockBodies(result));
+            return Task.FromResult(new OwnedBlockBodies(result));
         }
 
         public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
