@@ -580,11 +580,8 @@ namespace Nethermind.TxPool
             bool hasBeenRemoved;
             lock (_locker)
             {
-                hasBeenRemoved = _transactions.TryRemove(hash, out Transaction? transaction);
-                if (!hasBeenRemoved)
-                {
-                    hasBeenRemoved = _blobTransactions.TryRemove(hash, out transaction);
-                }
+                hasBeenRemoved = _transactions.TryRemove(hash, out Transaction? transaction)
+                                 ||_blobTransactions.TryRemove(hash, out transaction);
 
                 if (transaction is null || !hasBeenRemoved)
                     return false;
