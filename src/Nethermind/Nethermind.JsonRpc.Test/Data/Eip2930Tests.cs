@@ -44,7 +44,7 @@ public class Eip2930Tests
             Type = txType,
             AccessList = GetTestAccessList(),
         };
-        TransactionForRpc transactionForRpc =  new(transaction);
+        TransactionForRpc transactionForRpc = new(transaction);
 
         string serialized = _serializer.Serialize(transactionForRpc);
 
@@ -101,7 +101,7 @@ public class Eip2930Tests
     {
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x01"}""";
 
-        TransactionForRpc transactionForRpc =  _serializer.Deserialize<TransactionForRpc>(json);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 
         transactionForRpc.Type.Should().Be(TxType.AccessList);
         transactionForRpc.AccessList.Should().BeNull();
@@ -222,7 +222,7 @@ public class Eip2930Tests
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","maxFeePerGas":"0x10","gas":"0x0","input":null,"type":"0x02","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"}]}""";
         AccessListItemForRpc[] accessList = { new(TestItem.AddressA, null) };
 
-        TransactionForRpc transactionForRpc =  _serializer.Deserialize<TransactionForRpc>(json);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 
         transactionForRpc.Type.Should().Be(TxType.EIP1559);
         transactionForRpc.AccessList!.Length.Should().Be(1);
@@ -234,7 +234,7 @@ public class Eip2930Tests
     {
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null}""";
 
-        TransactionForRpc transactionForRpc =  _serializer.Deserialize<TransactionForRpc>(json);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 
         // if there is not TxType provided, default value should be TxType.Legacy equal 0
         transactionForRpc.Type.Should().Be(0);
@@ -245,7 +245,7 @@ public class Eip2930Tests
     {
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":null}""";
 
-        TransactionForRpc transactionForRpc =  _serializer.Deserialize<TransactionForRpc>(json);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 
         // if there is null TxType provided, still default value should be TxType.Legacy equal 0
         transactionForRpc.Type.Should().Be(0);
