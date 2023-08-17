@@ -45,7 +45,7 @@ public class Eip4788Tests : TestBlockchain
     {
         specProvider = new TestSpecProvider(testCase.Spec);
         TestBlockchain testBlockchain = await base.Build(specProvider, addBlockOnStart: false);
-        GethLikeBlockTracer? tracer = new(GethTraceOptions.Default);
+        GethLikeBlockMemoryTracer? tracer = new(GethTraceOptions.Default);
         Block block = CreateBlock(testBlockchain.State, testCase.Spec);
         _ = testBlockchain.BlockProcessor.Process(
             testBlockchain.State.StateRoot,
