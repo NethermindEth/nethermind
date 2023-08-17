@@ -14,7 +14,7 @@ using Nethermind.State;
 namespace Nethermind.Consensus.AuRa.BeaconBlockRoot;
 internal class NullBeaconBlockRootHandler : IBeaconBlockRootHandler
 {
-    public void InitStatefulPrecompiles(Block block, IReleaseSpec spec, IWorldState state)
+    public void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState state)
     {
     }
 

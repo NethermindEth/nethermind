@@ -32,7 +32,6 @@ using Nethermind.Evm.Tracing.Debugger;
 namespace Nethermind.Evm;
 
 using System.Linq;
-using Nethermind.Evm.Precompiles.Stateful;
 using Int256;
 
 public class VirtualMachine : IVirtualMachine
