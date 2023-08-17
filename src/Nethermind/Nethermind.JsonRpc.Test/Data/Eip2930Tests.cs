@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
@@ -65,16 +66,31 @@ namespace Nethermind.JsonRpc.Test.Data
             deserializedTxForRpc.Should().BeEquivalentTo(_transactionForRpc);
         }
 
-        [TestCase(TxType.AccessList, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x1\"}")]
-        [TestCase(TxType.EIP1559, "{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":null,\"value\":\"0x0\",\"gasPrice\":\"0x0\",\"maxPriorityFeePerGas\":\"0x0\",\"maxFeePerGas\":\"0x0\",\"gas\":\"0x0\",\"input\":null,\"type\":\"0x2\"}")]
-        public void can_serialize_null_accessList(TxType txType, string txJson)
+        [TestCase(TxType.Legacy)]
+        public void can_serialize_null_accessList_to_nothing(TxType txType)
         {
-            _transaction = new Transaction();
-            _transaction.Type = txType;
-            _transactionForRpc = new TransactionForRpc(_transaction);
+            Transaction transaction = new()
+            {
+                Type = txType,
+            };
+            TransactionForRpc rpc = new(transaction);
 
-            string serialized = _serializer.Serialize(_transactionForRpc);
-            txJson.Should().Be(serialized);
+            string serialized = _serializer.Serialize(rpc);
+            JObject.Parse(serialized).GetValue("accessList").Should().BeNull();
+        }
+
+        [TestCase(TxType.AccessList)]
+        [TestCase(TxType.EIP1559)]
+        public void can_serialize_null_accessList_to_empty_array(TxType txType)
+        {
+            Transaction transaction = new()
+            {
+                Type = txType,
+            };
+            TransactionForRpc rpc = new(transaction);
+
+            string serialized = _serializer.Serialize(rpc);
+            JObject.Parse(serialized).GetValue("accessList").Should().BeEquivalentTo(new JArray());
         }
 
         [Test]
