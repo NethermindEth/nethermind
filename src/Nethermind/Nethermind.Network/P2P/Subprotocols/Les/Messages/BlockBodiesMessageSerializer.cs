@@ -34,9 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
             rlpStream.ReadSequenceLength();
             blockBodiesMessage.RequestId = rlpStream.DecodeLong();
             blockBodiesMessage.BufferValue = rlpStream.DecodeInt();
-
-            IByteBuffer remaining = byteBuffer.ReadSlice(byteBuffer.ReadableBytes);
-            blockBodiesMessage.EthMessage = _baseDeserializer.Deserialize(remaining);
+            blockBodiesMessage.EthMessage = _baseDeserializer.Deserialize(byteBuffer);
             return blockBodiesMessage;
         }
     }

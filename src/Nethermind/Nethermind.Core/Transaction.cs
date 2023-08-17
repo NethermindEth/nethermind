@@ -117,6 +117,7 @@ namespace Nethermind.Core
             if (_preHash.Length > 0)
             {
                 _preHashMemoryOwner?.Dispose();
+                _preHashMemoryOwner = null;
                 _preHash = default;
             }
         }

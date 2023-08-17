@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Buffers;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
@@ -34,14 +32,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
         }
 
-        public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
-            BlockBodiesMessage msg = Deserialize(memoryOwner.Memory, memoryOwner);
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + byteBuffer.ReadableBytes);
-            return msg;
-        }
-
         public int GetLength(BlockBodiesMessage message, out int contentLength)
         {
             contentLength = message.Bodies.Bodies.Select(b => b == null
@@ -51,20 +41,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        private BlockBodiesMessage Deserialize(Memory<byte> memory, IMemoryOwner<byte> memoryOwner)
+        public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(memory, true);
-            BlockBodiesMessage message = new();
-            message.Bodies = new(ctx.DecodeArray(_blockBodyDecoder, false), memoryOwner);
+            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
 
-            return message;
+            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            int startingPosition = ctx.Position;
+            BlockBody[]? bodies = ctx.DecodeArray(_blockBodyDecoder, false);
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
+
+            return new() { Bodies = new(bodies, memoryOwner) };
         }
 
         private class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
         {
-            private readonly TxDecoder _txDecoder = new TxDecoder();
-            private readonly HeaderDecoder _headerDecoder = new HeaderDecoder();
-            private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new WithdrawalDecoder();
+            private readonly TxDecoder _txDecoder = new();
+            private readonly HeaderDecoder _headerDecoder = new();
+            private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
 
             public int GetLength(BlockBody item, RlpBehaviors rlpBehaviors)
             {
@@ -82,21 +75,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                        Rlp.LengthOfSequence(GetUnclesLength(b.Uncles));
             }
 
-            public int GetTxLength(Transaction[] transactions)
+            private int GetTxLength(Transaction[] transactions)
             {
-
                 return transactions.Sum(t => _txDecoder.GetLength(t, RlpBehaviors.None));
             }
 
-            public int GetUnclesLength(BlockHeader[] headers)
+            private int GetUnclesLength(BlockHeader[] headers)
             {
-
                 return headers.Sum(t => _headerDecoder.GetLength(t, RlpBehaviors.None));
             }
 
-            public int GetWithdrawalsLength(Withdrawal[] withdrawals)
+            private int GetWithdrawalsLength(Withdrawal[] withdrawals)
             {
-
                 return withdrawals.Sum(t => _withdrawalDecoderDecoder.GetLength(t, RlpBehaviors.None));
             }
 
