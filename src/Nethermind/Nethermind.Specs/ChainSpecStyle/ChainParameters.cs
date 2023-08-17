@@ -116,5 +116,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong? Eip5656TransitionTimestamp { get; set; }
         public ulong? Eip6780TransitionTimestamp { get; set; }
         public ulong? Eip4788TransitionTimestamp { get; set; }
+        public Address Eip4788ContractAddress { get; set; }
     }
 }

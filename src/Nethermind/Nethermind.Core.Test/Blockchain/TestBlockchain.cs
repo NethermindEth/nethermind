@@ -121,7 +121,7 @@ public class TestBlockchain : IDisposable
 
         if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
         {
-            State.CreateAccount(BeaconBlockRootHandler.Address, 1);
+            State.CreateAccount(SpecProvider?.GenesisSpec?.Eip4788ContractAddress!, 1);
         }
 
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
