@@ -310,11 +310,13 @@ public class TestBlockchain : IDisposable
         {
             genesisBlockBuilder.WithAura(0, new byte[65]);
         }
+
         if (SpecProvider.GenesisSpec.IsEip4844Enabled)
         {
             genesisBlockBuilder.WithBlobGasUsed(0);
             genesisBlockBuilder.WithExcessBlobGas(0);
         }
+
 
         if (SpecProvider.GenesisSpec.IsBeaconBlockRootAvailable)
         {

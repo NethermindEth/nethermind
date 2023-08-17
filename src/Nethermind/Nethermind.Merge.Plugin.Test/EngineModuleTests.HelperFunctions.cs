@@ -21,7 +21,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles.Stateful;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Consensus.BeaconBlockRoot;
 
@@ -97,7 +96,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             var blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(spec, state, parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             blockRequestV3.TryGetBlock(out Block? block);
-            _beaconBlockRootHandler.InitStatefulPrecompiles(block!, spec, state);
+            _beaconBlockRootHandler.ApplyContractStateChanges(block!, spec, state);
 
             state.Commit(spec);
             state.CommitTree(blockRequestV3.BlockNumber);

@@ -3,19 +3,17 @@
 
 using Nethermind.Core.Specs;
 using Nethermind.Core;
-using Nethermind.Evm.Precompiles.Stateful;
 using Nethermind.Int256;
 using Nethermind.State;
-using static Nethermind.Evm.Precompiles.Stateful.BeaconBlockRootPrecompile;
 using Nethermind.Core.Crypto;
-using System.Linq;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Consensus.BeaconBlockRoot;
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 {
-    public static Address SystemUser { get; } = new("0xfffffffffffffffffffffffffffffffffffffffe");
+    public static UInt256 HISTORICAL_ROOTS_LENGTH = 98304;
 
-    public void InitStatefulPrecompiles(Block block, IReleaseSpec spec, IWorldState stateProvider)
+    public void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState stateProvider)
     {
         if (!spec.IsBeaconBlockRootAvailable ||
             block.IsGenesis ||
@@ -27,10 +25,10 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
         UInt256.Mod(timestamp, HISTORICAL_ROOTS_LENGTH, out UInt256 timestampReduced);
         UInt256 rootIndex = timestampReduced + HISTORICAL_ROOTS_LENGTH;
 
-        StorageCell tsStorageCell = new(BeaconBlockRootPrecompile.Address, timestampReduced);
-        StorageCell brStorageCell = new(BeaconBlockRootPrecompile.Address, rootIndex);
+        StorageCell tsStorageCell = new(spec.Eip4788ContractAddress, timestampReduced);
+        StorageCell brStorageCell = new(spec.Eip4788ContractAddress, rootIndex);
 
-        stateProvider.Set(tsStorageCell, timestamp.ToBigEndian().SkipWhile(x => x == 0).ToArray());
-        stateProvider.Set(brStorageCell, parentBeaconBlockRoot.Bytes.ToArray().SkipWhile(x => x == 0).ToArray());
+        stateProvider.Set(tsStorageCell, Bytes.WithoutLeadingZeros(timestamp.ToBigEndian()).ToArray());
+        stateProvider.Set(brStorageCell, Bytes.WithoutLeadingZeros(parentBeaconBlockRoot.Bytes).ToArray());
     }
 }
