@@ -95,7 +95,7 @@ namespace Nethermind.Trie
             }
 
             [SkipLocalsInit]
-            private static byte[] EncodeLeaf(TrieNode node)
+            private static CappedArray<byte> EncodeLeaf(TrieNode node)
             {
                 if (node.Key is null)
                 {
@@ -123,7 +123,7 @@ namespace Nethermind.Trie
                     ArrayPool<byte>.Shared.Return(rentedBuffer);
                 }
                 rlpStream.Encode(node.Value);
-                return rlpStream.Data;
+                return rlpStream.Data.ToCappedArray().Value;
             }
 
             private static CappedArray<byte> RlpEncodeBranch(ITrieNodeResolver tree, TrieNode item)
@@ -145,7 +145,7 @@ namespace Nethermind.Trie
                     result[position] = 128;
                 }
 
-                return result;
+                return result.ToCappedArray().Value;
             }
 
             private static int GetChildrenRlpLength(ITrieNodeResolver tree, TrieNode item)

@@ -8,10 +8,12 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -652,7 +654,7 @@ namespace Nethermind.Trie.Pruning
                 // to prevent it from being removed from cache and also want to have it persisted.
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                _currentBatch.Set(currentNode.Keccak.Bytes, currentNode.FullRlp!.Value.ToArray(), writeFlags);
+                _currentBatch.Set(currentNode.Keccak.Bytes, currentNode.FullRlp?.ToArray(), writeFlags);
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
                 PersistedNodesCount++;
@@ -825,7 +827,7 @@ namespace Nethermind.Trie.Pruning
                    && trieNode is not null
                    && trieNode.NodeType != NodeType.Unknown
                    && trieNode.FullRlp is not null
-                ? trieNode.FullRlp
+                ? trieNode.FullRlp.Value.ToArray()
                 : _currentBatch?.Get(key, flags) ?? _keyValueStore.Get(key, flags);
         }
 

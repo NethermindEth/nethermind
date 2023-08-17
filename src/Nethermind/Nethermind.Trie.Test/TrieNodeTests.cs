@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -153,7 +154,7 @@ namespace Nethermind.Trie.Test
                     trieNode.SetChild(j, ctx.TiniestLeaf);
                 }
 
-                byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
+                CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
                 TrieNode restoredNode = new(NodeType.Branch, rlp);
 
                 for (int childIndex = 0; childIndex < 16; childIndex++)
@@ -179,7 +180,7 @@ namespace Nethermind.Trie.Test
             TrieNode trieNode = new(NodeType.Branch);
             trieNode.SetChild(11, ctx.TiniestLeaf);
 
-            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
+            CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
 
             TrieNode decoded = new(NodeType.Unknown, rlp);
             decoded.ResolveNode(NullTrieNodeResolver.Instance);
@@ -197,7 +198,7 @@ namespace Nethermind.Trie.Test
             TrieNode trieNode = new(NodeType.Branch);
             trieNode.SetChild(11, ctx.HeavyLeaf);
 
-            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
+            CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
 
             TrieNode decoded = new(NodeType.Unknown, rlp);
             decoded.ResolveNode(NullTrieNodeResolver.Instance);
@@ -214,7 +215,7 @@ namespace Nethermind.Trie.Test
             trieNode.Key = new byte[] { 5 };
             trieNode.SetChild(0, ctx.TiniestLeaf);
 
-            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
+            CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
 
             TrieNode decoded = new(NodeType.Unknown, rlp);
             decoded.ResolveNode(NullTrieNodeResolver.Instance);
@@ -234,7 +235,7 @@ namespace Nethermind.Trie.Test
             trieNode.Key = new byte[] { 5 };
             trieNode.SetChild(0, ctx.HeavyLeaf);
 
-            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
+            CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
 
             TrieNode decoded = new(NodeType.Unknown, rlp);
             decoded.ResolveNode(NullTrieNodeResolver.Instance);
@@ -262,7 +263,7 @@ namespace Nethermind.Trie.Test
             Context ctx = new();
             TrieNode trieNode = new(NodeType.Branch);
             trieNode[11] = ctx.HeavyLeaf;
-            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
+            CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
             TrieNode decoded = new(NodeType.Branch, rlp);
 
             Keccak getResult = decoded.GetChildHash(11);
@@ -276,7 +277,7 @@ namespace Nethermind.Trie.Test
             TrieNode trieNode = new(NodeType.Branch);
 
             trieNode[11] = ctx.TiniestLeaf;
-            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
+            CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
             TrieNode decoded = new(NodeType.Branch, rlp);
 
             Keccak getResult = decoded.GetChildHash(11);
@@ -290,7 +291,7 @@ namespace Nethermind.Trie.Test
             TrieNode trieNode = new(NodeType.Extension);
             trieNode[0] = ctx.HeavyLeaf;
             trieNode.Key = new byte[] { 5 };
-            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
+            CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
             TrieNode decoded = new(NodeType.Extension, rlp);
 
             Keccak getResult = decoded.GetChildHash(0);
@@ -304,7 +305,7 @@ namespace Nethermind.Trie.Test
             TrieNode trieNode = new(NodeType.Extension);
             trieNode[0] = ctx.TiniestLeaf;
             trieNode.Key = new byte[] { 5 };
-            byte[] rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
+            CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
             TrieNode decoded = new(NodeType.Extension, rlp);
 
             Keccak getResult = decoded.GetChildHash(0);
@@ -516,7 +517,7 @@ namespace Nethermind.Trie.Test
                 node.SetChild(i, randomTrieNode);
             }
 
-            byte[] rlp = node.RlpEncode(NullTrieNodeResolver.Instance);
+            CappedArray<byte> rlp = node.RlpEncode(NullTrieNodeResolver.Instance);
 
             TrieNode restoredNode = new(NodeType.Branch, rlp);
 
@@ -913,7 +914,7 @@ namespace Nethermind.Trie.Test
             trieNode.SetChild(1, leaf1);
             trieNode.SetChild(2, leaf2);
             trieNode.ResolveKey(trieStore, true);
-            byte[] rlp = trieNode.FullRlp;
+            CappedArray<byte>? rlp = trieNode.FullRlp;
 
             TrieNode restoredBranch = new(NodeType.Branch, rlp);
 
@@ -936,7 +937,7 @@ namespace Nethermind.Trie.Test
                 node.SetChild(i, randomTrieNode);
             }
 
-            byte[] rlp = node.RlpEncode(NullTrieNodeResolver.Instance);
+            CappedArray<byte> rlp = node.RlpEncode(NullTrieNodeResolver.Instance);
 
             TrieNode restoredNode = new(NodeType.Branch, rlp);
 

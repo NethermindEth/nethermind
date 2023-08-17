@@ -241,13 +241,13 @@ namespace Nethermind.State.Proofs
                 {
                     foreach (int storageIndex in value.StorageIndices)
                     {
-                        _storageProofItems[storageIndex].Add(node.FullRlp);
+                        _storageProofItems[storageIndex].Add(node.FullRlp?.ToArray());
                     }
                 }
             }
             else
             {
-                _accountProofItems.Add(node.FullRlp);
+                _accountProofItems.Add(node.FullRlp?.ToArray());
             }
         }
 

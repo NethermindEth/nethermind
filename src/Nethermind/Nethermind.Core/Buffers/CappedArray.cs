@@ -24,11 +24,6 @@ public struct CappedArray<T>
     {
     }
 
-    public static implicit operator CappedArray<T>(T[] array)
-    {
-        return new CappedArray<T>(array);
-    }
-
     public int Length => _length;
     public T[] Array => _array;
 
@@ -41,5 +36,18 @@ public struct CappedArray<T>
     {
         if (_length == _array.Length) return _array;
         return AsSpan().ToArray();
+    }
+}
+
+public static class ArrayExtensions {
+    public static CappedArray<byte>? ToCappedArray(this byte[]? array)
+    {
+        if (array == null) return null;
+        return new CappedArray<byte>(array);
+    }
+
+    public static CappedArray<byte> ToCappedArray(this Span<byte> span)
+    {
+        return new CappedArray<byte>(span.ToArray());
     }
 }

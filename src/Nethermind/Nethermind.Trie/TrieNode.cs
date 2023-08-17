@@ -182,13 +182,17 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieNode(NodeType nodeType, CappedArray<byte> rlp, bool isDirty = false)
+        public TrieNode(NodeType nodeType, CappedArray<byte>? rlp, bool isDirty = false)
         {
             NodeType = nodeType;
             FullRlp = rlp;
             IsDirty = isDirty;
 
             _rlpStream = rlp.AsRlpStream();
+        }
+
+        public TrieNode(NodeType nodeType, byte[]? rlp, bool isDirty = false): this(nodeType, rlp.ToCappedArray(), isDirty)
+        {
         }
 
         public TrieNode(NodeType nodeType, Keccak keccak, ReadOnlySpan<byte> rlp)
@@ -246,7 +250,7 @@ namespace Nethermind.Trie
                             throw new TrieException("Unable to resolve node without Keccak");
                         }
 
-                        FullRlp = tree.LoadRlp(Keccak, readFlags);
+                        FullRlp = tree.LoadRlp(Keccak, readFlags).ToCappedArray();
                         IsPersisted = true;
 
                         if (FullRlp is null)
@@ -866,7 +870,7 @@ namespace Nethermind.Trie
                             {
                                 rlpStream.Position--;
                                 Span<byte> fullRlp = rlpStream.PeekNextItem();
-                                TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
+                                TrieNode child = new(NodeType.Unknown, fullRlp.ToCappedArray());
                                 _data![i] = childOrRef = child;
                                 break;
                             }
