@@ -12,6 +12,7 @@ namespace Nethermind.Consensus.BeaconBlockRoot;
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 {
     public static UInt256 HISTORICAL_ROOTS_LENGTH = 98304;
+    private static readonly Address DefaultPbbrContractAddress = Address.FromNumber(0x0b);
 
     public void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState stateProvider)
     {
@@ -25,8 +26,8 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
         UInt256.Mod(timestamp, HISTORICAL_ROOTS_LENGTH, out UInt256 timestampReduced);
         UInt256 rootIndex = timestampReduced + HISTORICAL_ROOTS_LENGTH;
 
-        StorageCell tsStorageCell = new(spec.Eip4788ContractAddress, timestampReduced);
-        StorageCell brStorageCell = new(spec.Eip4788ContractAddress, rootIndex);
+        StorageCell tsStorageCell = new(spec.Eip4788ContractAddress ?? DefaultPbbrContractAddress, timestampReduced);
+        StorageCell brStorageCell = new(spec.Eip4788ContractAddress ?? DefaultPbbrContractAddress, rootIndex);
 
         stateProvider.Set(tsStorageCell, Bytes.WithoutLeadingZeros(timestamp.ToBigEndian()).ToArray());
         stateProvider.Set(brStorageCell, Bytes.WithoutLeadingZeros(parentBeaconBlockRoot.Bytes).ToArray());
