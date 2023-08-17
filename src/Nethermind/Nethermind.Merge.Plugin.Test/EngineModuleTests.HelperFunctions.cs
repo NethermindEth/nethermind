@@ -21,7 +21,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles.Stateful;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Consensus.BeaconBlockRoot;
 

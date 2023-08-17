@@ -541,7 +541,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
 
             [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
-            [BeaconBlockRootPrecompile.Address] = new(BeaconBlockRootPrecompile.Instance),
         };
     }
 

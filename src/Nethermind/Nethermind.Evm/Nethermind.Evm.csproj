@@ -17,4 +17,7 @@
     <PackageReference Include="Nethermind.Crypto.Pairings" />
     <PackageReference Include="Nethermind.Gmp" />
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Precompiles\Stateful\" />
+  </ItemGroup>
 </Project>

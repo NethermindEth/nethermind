@@ -25,7 +25,6 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
-using Nethermind.Evm.Precompiles.Stateful;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -51,7 +50,7 @@ public class TestBlockchain : IDisposable
     public ITxPool TxPool { get; set; } = null!;
     public IDb CodeDb => DbProvider.CodeDb;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
-    public IBeaconBlockRootHandler BeaconBlockRootHandler { get; set; } = null!;
+    public IBeaconBlockRootHandler ParentBeaconBlockRootHandler { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
     public IBlockPreprocessorStep BlockPreprocessorStep { get; set; } = null!;
@@ -123,7 +122,7 @@ public class TestBlockchain : IDisposable
         // Eip4788 precompile state account
         if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
         {
-            State.CreateAccount(BeaconBlockRootPrecompile.Address, 1);
+            State.CreateAccount(BeaconBlockRootHandler.Address, 1);
         }
 
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
@@ -179,7 +178,7 @@ public class TestBlockchain : IDisposable
         BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId, LimboLogs.Instance), SpecProvider);
         LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
-        BeaconBlockRootHandler = new BeaconBlockRootHandler();
+        ParentBeaconBlockRootHandler = new BeaconBlockRootHandler();
         BlockProcessor = CreateBlockProcessor();
 
         BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
@@ -326,7 +325,7 @@ public class TestBlockchain : IDisposable
         if (SpecProvider.GenesisSpec.IsBeaconBlockRootAvailable)
         {
 
-            BeaconBlockRootHandler.UpdateState(genesisBlockBuilder.TestObject, SpecProvider.GenesisSpec, State);
+            ParentBeaconBlockRootHandler.UpdateState(genesisBlockBuilder.TestObject, SpecProvider.GenesisSpec, State);
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);
 

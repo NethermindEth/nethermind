@@ -8,15 +8,15 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Specs;
 using Nethermind.Core;
-using Nethermind.Evm.Precompiles.Stateful;
 using Nethermind.Int256;
 using Nethermind.State;
-using static Nethermind.Evm.Precompiles.Stateful.BeaconBlockRootPrecompile;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 namespace Nethermind.Consensus.BeaconBlockRoot;
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 {
+    public static Address Address { get; } = Address.FromNumber(0x0B);
+    public static UInt256 HISTORICAL_ROOTS_LENGTH = 98304;
     public void UpdateState(Block block, IReleaseSpec spec, IWorldState stateProvider)
     {
         if (!spec.IsBeaconBlockRootAvailable ||
@@ -29,8 +29,8 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
         UInt256.Mod(timestamp, HISTORICAL_ROOTS_LENGTH, out UInt256 timestampReduced);
         UInt256 rootIndex = timestampReduced + HISTORICAL_ROOTS_LENGTH;
 
-        StorageCell tsStorageCell = new(BeaconBlockRootPrecompile.Address, timestampReduced);
-        StorageCell brStorageCell = new(BeaconBlockRootPrecompile.Address, rootIndex);
+        StorageCell tsStorageCell = new(Address, timestampReduced);
+        StorageCell brStorageCell = new(Address, rootIndex);
 
         
 
