@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -24,14 +23,6 @@ public class ExecutionPayloadV3 : ExecutionPayload
         BlobGasUsed = block.BlobGasUsed;
         ExcessBlobGas = block.ExcessBlobGas;
     }
-
-
-    /// <summary>
-    /// Gets or sets <see cref="Block.ParentBeaconBlockRoot"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
-    /// </summary>
-    [JsonIgnore]
-    public Keccak? ParentBeaconBlockRoot { get; set; }
 
     public override bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
     {

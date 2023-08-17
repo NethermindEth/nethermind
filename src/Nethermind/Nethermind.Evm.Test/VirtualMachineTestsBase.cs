@@ -237,21 +237,21 @@ public class VirtualMachineTestsBase
         return BuildBlock(blockNumber, senderRecipientAndMiner, null);
     }
 
-        protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner,
-            Transaction tx, long blockGasLimit = DefaultBlockGasLimit,
-            ulong timestamp = 0)
-        {
-            senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
-            return Build.A.Block.WithNumber(blockNumber)
-                .WithTransactions(tx is null ? new Transaction[0] : new[] { tx })
-                .WithGasLimit(blockGasLimit)
-                .WithBeneficiary(senderRecipientAndMiner.Miner)
-                .WithBlobGasUsed(0)
-                .WithExcessBlobGas(0)
-                .WithTimestamp(timestamp)
-                .WithParentBeaconBlockRoot(TestItem.KeccakG)
-                .TestObject;
-        }
+    protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner,
+        Transaction tx, long blockGasLimit = DefaultBlockGasLimit,
+        ulong timestamp = 0)
+    {
+        senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
+        return Build.A.Block.WithNumber(blockNumber)
+            .WithTransactions(tx is null ? new Transaction[0] : new[] { tx })
+            .WithGasLimit(blockGasLimit)
+            .WithBeneficiary(senderRecipientAndMiner.Miner)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithTimestamp(timestamp)
+            .WithParentBeaconBlockRoot(TestItem.KeccakG)
+            .TestObject;
+    }
 
     protected void AssertGas(TestAllTracerWithOutput receipt, long gas)
     {
