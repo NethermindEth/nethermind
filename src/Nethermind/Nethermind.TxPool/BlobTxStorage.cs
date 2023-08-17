@@ -15,6 +15,11 @@ public class BlobTxStorage : ITxStorage
 {
     private readonly IDb _database;
 
+    public BlobTxStorage()
+    {
+        _database = new MemDb();
+    }
+
     public BlobTxStorage(IDb database)
     {
         _database = database ?? throw new ArgumentNullException(nameof(database));
