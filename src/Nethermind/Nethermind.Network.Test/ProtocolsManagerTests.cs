@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
@@ -112,6 +113,7 @@ namespace Nethermind.Network.Test
                     _peerStorage,
                     forkInfo,
                     _gossipPolicy,
+                    new NetworkConfig(),
                     LimboLogs.Instance);
 
                 _serializer.Register(new HelloMessageSerializer());
