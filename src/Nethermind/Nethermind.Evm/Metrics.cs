@@ -84,11 +84,6 @@ public class Metrics
     [Description("Number of Point Evaluation precompile calls.")]
     public static long PointEvaluationPrecompile { get; set; }
 
-    [CounterMetric]
-    [Description("Number of Parent Beacon Block Root precompile calls.")]
-    public static int BeaconBlockRootPrecompile { get; set; }
-
-
     [Description("Number of calls made to addresses without code.")]
     public static long EmptyCalls { get; set; }
 
