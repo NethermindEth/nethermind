@@ -540,7 +540,7 @@ public class TxBroadcasterTests
     [Test]
     public void should_rebroadcast_all_persistent_transactions_if_PeerNotificationThreshold_is_100([Values(true, false)] bool shouldBroadcastAll)
     {
-        _txPoolConfig = new TxPoolConfig(){ Size = 100, PeerNotificationThreshold = shouldBroadcastAll ? 100 : 5 };
+        _txPoolConfig = new TxPoolConfig() { Size = 100, PeerNotificationThreshold = shouldBroadcastAll ? 100 : 5 };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
         for (int i = 0; i < _txPoolConfig.Size; i++)
