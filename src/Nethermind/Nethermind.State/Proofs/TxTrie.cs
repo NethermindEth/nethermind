@@ -21,6 +21,7 @@ namespace Nethermind.State.Proofs;
 public class TxTrie : PatriciaTree
 {
     private static readonly TxDecoder _txDecoder = new();
+    private List<CappedArray<byte>> _rentedBuffers = new List<CappedArray<byte>>();
 
     /// <param name="list">The collection to build the trie of.</param>
     /// <param name="canBuildProof">
@@ -71,6 +72,7 @@ public class TxTrie : PatriciaTree
         {
             int size = _txDecoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
             CappedArray<byte> buffer = new CappedArray<byte>(ArrayPool<byte>.Shared.Rent(size), size);
+            _rentedBuffers.Add(buffer);
 
             RlpStream stream = buffer.AsRlpStream();
             _txDecoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
@@ -82,6 +84,9 @@ public class TxTrie : PatriciaTree
 
     public void ReturnBuffers()
     {
-
+        foreach (CappedArray<byte> rentedBuffer in _rentedBuffers)
+        {
+            ArrayPool<byte>.Shared.Return(rentedBuffer.Array);
+        }
     }
 }
