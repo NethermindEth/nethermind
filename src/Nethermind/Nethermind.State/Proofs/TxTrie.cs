@@ -49,9 +49,6 @@ public class TxTrie : PatriciaTrie<Transaction>
         int key = 0;
         foreach (Transaction? transaction in transactions)
         {
-            Rlp transactionRlp = _txDecoder.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
-            tree.Set(Rlp.Encode(key++).Bytes, transactionRlp.Bytes);
-
             int size = _txDecoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
             CappedArray<byte> buffer = bufferPool.SafeRentBuffer(size);
 
