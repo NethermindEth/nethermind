@@ -44,14 +44,6 @@ on:
         description: "If checked, node will be started in NonValidator mode (OldBodies and oldReceipts will not be synced)"
         default: true
         type: boolean
-      timeout:
-        description: "Timeout in hours before triggering the deletion of smoke test instances. Maximum time of node lifetime can be 72 hours."
-        default: "24"
-        required: true
-      volume:
-        description: "In case custom volume size needs to be applied, put value in GB here)"
-        required: false
-        default: ""
       additional_nethermind_flags:
         description: "Provide any additional flags to the Nethermind in space-separated format. Example: \"JsonRpc.Enabled=false Sync.SnapSync=false\"."
         default: ""
@@ -60,10 +52,9 @@ on:
         description: "Provide any additional flags to the CL client in space-separated format. Example: \"clflag1=1 clflag2=2\"."
         default: ""
         required: false
-      ssh_keys:
-        description: "SSH Keys to be installed in the smoke test nodes (separated by commas without space in-between commas) for example: key1,key2,key3"
-        default: ""
-        required: false
+      additional_options:
+        description: "A Json property which allows to customize node even more"
+        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":""}'
       
 jobs:
   create_docker_image:
@@ -88,7 +79,7 @@ jobs:
       run: |
         BASE_TAG="${GITHUB_USERNAME:0:1}$(shuf -i 1000-9999 -n 1)"
         echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
-        echo "::set-output name=base_tag::$BASE_TAG"
+        echo "base_tag=$BASE_TAG" >> $GITHUB_OUTPUT
 
     - name: Creating a node with NodeName="DevNode-${{ github.actor }}-${{ env.BASE_TAG }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}"
       run: echo "NodeName='DevNode-${{ github.actor }}-${{ env.BASE_TAG }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}'"
@@ -96,16 +87,25 @@ jobs:
     - name: Set Repo Variable
       run: |
         echo "REPO=$(echo $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-    
+
+    - name: Extract dockerfile from additional_options
+      id: extract_dockerfile
+      run: |
+        echo "dockerfile=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile)" >> $GITHUB_OUTPUT
+        echo "build-config=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile_build_type | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
     - name: Trigger Docker Build Action with Cleaned Ref
       uses: benc-uk/workflow-dispatch@v1
+      env:
+        ADDITIONAL_OPTIONS: ${{ inputs.additional_options }}
       with:
           workflow: publish-docker.yml
           ref: "${{ github.ref }}"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
               "tag": "${{ env.CLEAN_REF }}",
-              "dockerfile": "Dockerfile"
+              "dockerfile": "${{ steps.extract_dockerfile.outputs.dockerfile }}",
+              "build-config": "${{ steps.extract_dockerfile.outputs.build-config }}"
            }'
 
     - name: Set Repo and Org Variables
@@ -142,9 +142,13 @@ jobs:
 
         echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
 
-    - name: Use BASE_TAG
+    - name: Extract Variables
+      id: extract_variables
       run: |
         echo "BASE_TAG=${{ needs.create_docker_image.outputs.base_tag }}" >> $GITHUB_ENV
+        echo "timeout=$(echo ${{ inputs.additional_options }} | jq -r .timeout)" >> $GITHUB_OUTPUT
+        echo "ssh_keys=$(echo ${{ inputs.additional_options }} | jq -r .ssh_keys)" >> $GITHUB_OUTPUT
+        echo "allowed_ips=$(echo ${{ inputs.additional_options }} | jq -r .allowed_ips)" >> $GITHUB_OUTPUT
 
     - name: Trigger Node creation Repo Action
       uses: benc-uk/workflow-dispatch@v1
@@ -160,7 +164,7 @@ jobs:
                      "nethermind_branch": "${{ env.CLEAN_REF }}",
                      "network": "${{ inputs.network }}",
                      "cl_client": "${{ inputs.cl_client }}",
-                     "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ inputs.timeout }}\", \"non_validator_mode\":${{ inputs.non_validator_mode }}, \"volume_size\":\"${{ inputs.volume }}\", \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ inputs.ssh_keys }}\"}"
+                     "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ steps.extract_variables.outputs.timeout }}\", \"non_validator_mode\":${{ inputs.non_validator_mode }}, \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ steps.extract_variables.outputs.ssh_keys }}\", \"allowed_ips\":\"${{ steps.extract_variables.outputs.allowed_ips }}\"}"
                    }'
 
     - name: Wait for creation of node
