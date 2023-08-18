@@ -735,7 +735,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                     accountProof.StorageProofs[j].Key.ToHexString().Should().Be(indexBytes.ToHexString(), $"{i} {j}");
 
                     TrieNode node = new(NodeType.Unknown, accountProof.StorageProofs[j].Proof.Last());
-                    node.ResolveNode(NullTrieStore.Instance);
+                    node.ResolveNode(null);
                     // TestContext.Write($"|[{i},{j}]");
                     if (node.Value?.Length != 1)
                     {

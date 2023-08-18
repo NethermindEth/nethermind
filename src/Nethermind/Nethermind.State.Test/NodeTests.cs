@@ -136,7 +136,7 @@ namespace Nethermind.Store.Test
         private static ITrieNodeResolver BuildATreeFromNode(TrieNode node)
         {
             TrieNode.AllowBranchValues = true;
-            CappedArray<byte> rlp = node.RlpEncode(NullTrieStore.Instance);
+            CappedArray<byte> rlp = node.RlpEncode(null);
             node.ResolveKey(null, true);
 
             MemDb memDb = new();

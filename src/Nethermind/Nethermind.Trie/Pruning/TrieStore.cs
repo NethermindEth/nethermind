@@ -654,7 +654,7 @@ namespace Nethermind.Trie.Pruning
                 // to prevent it from being removed from cache and also want to have it persisted.
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                _currentBatch.Set(currentNode.Keccak.Bytes, currentNode.FullRlp?.ToArray(), writeFlags);
+                _currentBatch.Set(currentNode.Keccak.Bytes, currentNode.FullRlp.ToArrayOrNull(), writeFlags);
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
                 PersistedNodesCount++;
@@ -797,7 +797,7 @@ namespace Nethermind.Trie.Pruning
                     Keccak? hash = n.Keccak;
                     if (hash is not null)
                     {
-                        store[hash.Bytes] = n.FullRlp?.ToArray();
+                        store[hash.Bytes] = n.FullRlp.ToArrayOrNull();
                         int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
                         if (_logger.IsInfo && persistedNodesCount % million == 0)
                         {
@@ -827,7 +827,7 @@ namespace Nethermind.Trie.Pruning
                    && trieNode is not null
                    && trieNode.NodeType != NodeType.Unknown
                    && trieNode.FullRlp is not null
-                ? trieNode.FullRlp.Value.ToArray()
+                ? trieNode.FullRlp.ToArrayOrNull()
                 : _currentBatch?.Get(key, flags) ?? _keyValueStore.Get(key, flags);
         }
 

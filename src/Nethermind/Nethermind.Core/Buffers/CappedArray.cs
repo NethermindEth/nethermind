@@ -8,7 +8,7 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Core.Buffers;
 
 /// <summary>
-/// Basically like ArraySegment, but only contain length, which reduces it size from 24byte to 16byte. Useful for
+/// Basically like ArraySegment, but only contain length, which reduces it size from 16byte to 12byte. Useful for
 /// polling memory where memory pool usually can't return exactly the same size of data
 /// </summary>
 public struct CappedArray<T>
@@ -28,7 +28,7 @@ public struct CappedArray<T>
 
     public static implicit operator ReadOnlySpan<T>(CappedArray<T>? array)
     {
-        return array?.ToArray() ?? default;
+        return array.ToArrayOrNull() ?? default;
     }
 
     public static implicit operator CappedArray<T>?(T[]? array)
@@ -70,7 +70,7 @@ public static class ArrayExtensions {
         return array.Value.AsSpan();
     }
 
-    public static byte[]? ToArrayOrNull(this CappedArray<byte>? array)
+    public static T[]? ToArrayOrNull<T>(this CappedArray<T>? array)
     {
         if (array == null) return null;
         return array.Value.ToArray();

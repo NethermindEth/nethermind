@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 
@@ -65,7 +66,7 @@ namespace Nethermind.State.Proofs
 
         protected virtual void AddProofBits(TrieNode node)
         {
-            _proofBits.Add(node.FullRlp?.ToArray());
+            _proofBits.Add(node.FullRlp.ToArrayOrNull());
         }
 
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value)

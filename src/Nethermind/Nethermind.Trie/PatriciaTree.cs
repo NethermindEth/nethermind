@@ -322,7 +322,7 @@ namespace Nethermind.Trie
                 {
                     Nibbles.BytesToNibbleBytes(rawKey, nibbles);
                     // TODO: return CappedArray maybe?
-                    return Run(nibbles, nibblesCount, new CappedArray<byte>(Array.Empty<byte>()), false, startRootHash: rootHash)?.ToArray();
+                    return Run(nibbles, nibblesCount, new CappedArray<byte>(Array.Empty<byte>()), false, startRootHash: rootHash).ToArrayOrNull();
                 }
                 finally
                 {
