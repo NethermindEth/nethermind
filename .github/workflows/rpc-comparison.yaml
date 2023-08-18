@@ -49,6 +49,7 @@ jobs:
     name: Wait for the node to sync
     runs-on: ubuntu-latest
     needs: extract_rpc_url
+    timeout-minutes: 600
     steps:
     - uses: actions/checkout@v3
     - name: Install WireGuard
