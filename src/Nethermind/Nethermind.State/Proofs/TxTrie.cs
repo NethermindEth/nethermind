@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Trie;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -18,50 +18,16 @@ namespace Nethermind.State.Proofs;
 /// <summary>
 /// Represents a Patricia trie built of a collection of <see cref="Transaction"/>.
 /// </summary>
-public class TxTrie : PatriciaTree
+public class TxTrie : PatriciaTrie<Transaction>
 {
     private static readonly TxDecoder _txDecoder = new();
-    private List<CappedArray<byte>> _rentedBuffers = new List<CappedArray<byte>>();
 
-    /// <param name="list">The collection to build the trie of.</param>
-    /// <param name="canBuildProof">
-    /// <c>true</c> to maintain an in-memory database for proof computation;
-    /// otherwise, <c>false</c>.
-    /// </param>
-    public TxTrie(IEnumerable<Transaction>? list, bool canBuildProof = false)
-        : base(canBuildProof
-            ? new TrieStore(new MemDb(), NullLogManager.Instance)
-            : new PooledBufferTrieNodeResolver(new TrieStore(NullDb.Instance, NullLogManager.Instance))
-        ,EmptyTreeHash, false, false, NullLogManager.Instance)
-    {
-        CanBuildProof = canBuildProof;
+    /// <inheritdoc/>
+    /// <param name="transactions">The transactions to build the trie of.</param>
+    public TxTrie(IEnumerable<Transaction> transactions, bool canBuildProof = false)
+        : base(transactions, canBuildProof) => ArgumentNullException.ThrowIfNull(transactions);
 
-        if (list?.Any() ?? false)
-        {
-            Initialize(list);
-            UpdateRootHash();
-        }
-    }
-
-    /// <summary>
-    /// Computes the proofs for the index specified.
-    /// </summary>
-    /// <param name="index">The node index to compute the proof for.</param>
-    /// <returns>The array of the computed proofs.</returns>
-    /// <exception cref="NotSupportedException"></exception>
-    public virtual byte[][] BuildProof(int index)
-    {
-        if (!CanBuildProof)
-            throw new NotSupportedException("Building proofs not supported");
-
-        var proofCollector = new ProofCollector(Rlp.Encode(index).Bytes);
-
-        Accept(proofCollector, RootHash, new() { ExpectAccounts = false });
-
-        return proofCollector.BuildResult();
-    }
-
-    private void Initialize(IEnumerable<Transaction> list)
+    protected override void Initialize(IEnumerable<Transaction> list)
     {
         int key = 0;
 
@@ -70,23 +36,35 @@ public class TxTrie : PatriciaTree
         // a temporary trie would be a trie that exists to create a state root only and then be disposed of
         foreach (Transaction? transaction in list)
         {
-            int size = _txDecoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
-            CappedArray<byte> buffer = new CappedArray<byte>(ArrayPool<byte>.Shared.Rent(size), size);
-            _rentedBuffers.Add(buffer);
-
-            RlpStream stream = buffer.AsRlpStream();
-            _txDecoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
-            Set(Rlp.Encode(key++).Bytes, buffer);
+            Rlp transactionRlp = _txDecoder.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
+            Set(Rlp.Encode(key++).Bytes, transactionRlp.Bytes);
         }
     }
 
-    protected virtual bool CanBuildProof { get; }
-
-    public void ReturnBuffers()
+    public static Keccak CalculateRoot(IEnumerable<Transaction> transactions)
     {
-        foreach (CappedArray<byte> rentedBuffer in _rentedBuffers)
+        var bufferPool = new TrackedPooledBufferTrieStore(new TrieStore(NullDb.Instance, NullLogManager.Instance));
+        var tree = new PatriciaTree(bufferPool , NullLogManager.Instance);
+
+        int key = 0;
+        foreach (Transaction? transaction in transactions)
         {
-            ArrayPool<byte>.Shared.Return(rentedBuffer.Array);
+            Rlp transactionRlp = _txDecoder.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
+            tree.Set(Rlp.Encode(key++).Bytes, transactionRlp.Bytes);
+
+            int size = _txDecoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
+            CappedArray<byte> buffer = bufferPool.SafeRentBuffer(size);
+
+            RlpStream stream = buffer.AsRlpStream();
+            _txDecoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
+            tree.Set(Rlp.Encode(key++).Bytes, buffer);
         }
+
+        tree.UpdateRootHash();
+
+        Keccak root = tree.RootHash;
+
+        bufferPool.ReturnAll();
+        return root;
     }
 }

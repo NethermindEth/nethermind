@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -10,11 +11,15 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
-public class PooledBufferTrieNodeResolver: ITrieStore
+/// <summary>
+/// Track every rented CappedArray<byte> and return them all at once
+/// </summary>
+public class TrackedPooledBufferTrieStore: ITrieStore
 {
     private ITrieStore _baseImplementation;
+    private List<CappedArray<byte>> _rentedBuffers = new();
 
-    public PooledBufferTrieNodeResolver(ITrieStore baseImplementation)
+    public TrackedPooledBufferTrieStore(ITrieStore baseImplementation)
     {
         _baseImplementation = baseImplementation;
     }
@@ -67,11 +72,20 @@ public class PooledBufferTrieNodeResolver: ITrieStore
 
     public CappedArray<byte> RentBuffer(int size)
     {
-        return new CappedArray<byte>(ArrayPool<byte>.Shared.Rent(size), size);
+        var rented = new CappedArray<byte>(ArrayPool<byte>.Shared.Rent(size), size);
+        _rentedBuffers.Add(rented);
+        return rented;
     }
 
     public void ReturnBuffer(CappedArray<byte> buffer)
     {
-        ArrayPool<byte>.Shared.Return(buffer.Array);
+    }
+
+    public void ReturnAll()
+    {
+        foreach (CappedArray<byte> rentedBuffer in _rentedBuffers)
+        {
+            ArrayPool<byte>.Shared.Return(rentedBuffer.Array);
+        }
     }
 }
