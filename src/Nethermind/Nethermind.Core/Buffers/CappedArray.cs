@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Buffers;
 
@@ -22,6 +24,17 @@ public struct CappedArray<T>
 
     public CappedArray(T[] array):this(array, array.Length)
     {
+    }
+
+    public static implicit operator ReadOnlySpan<T>(CappedArray<T>? array)
+    {
+        return array?.ToArray() ?? default;
+    }
+
+    public static implicit operator CappedArray<T>?(T[]? array)
+    {
+        if (array == null) return null;
+        return new CappedArray<T>(array);
     }
 
     public int Length => _length;
@@ -49,5 +62,17 @@ public static class ArrayExtensions {
     public static CappedArray<byte> ToCappedArray(this Span<byte> span)
     {
         return new CappedArray<byte>(span.ToArray());
+    }
+
+    public static Span<byte> AsSpanOrEmpty(this CappedArray<byte>? array)
+    {
+        if (array == null) return Span<byte>.Empty;
+        return array.Value.AsSpan();
+    }
+
+    public static byte[]? ToArrayOrNull(this CappedArray<byte>? array)
+    {
+        if (array == null) return null;
+        return array.Value.ToArray();
     }
 }

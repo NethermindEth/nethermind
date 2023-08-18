@@ -36,7 +36,7 @@ namespace Nethermind.Trie
                 {
                     NodeType.Branch => RlpEncodeBranch(tree, item),
                     NodeType.Extension => EncodeExtension(tree, item),
-                    NodeType.Leaf => EncodeLeaf(item),
+                    NodeType.Leaf => EncodeLeaf(tree, item),
                     _ => throw new TrieException($"An attempt was made to encode a trie node of type {item.NodeType}")
                 };
             }
@@ -95,7 +95,7 @@ namespace Nethermind.Trie
             }
 
             [SkipLocalsInit]
-            private static CappedArray<byte> EncodeLeaf(TrieNode node)
+            private static CappedArray<byte> EncodeLeaf(ITrieNodeResolver tree, TrieNode node)
             {
                 if (node.Key is null)
                 {
@@ -113,39 +113,41 @@ namespace Nethermind.Trie
                     : rentedBuffer)[..hexLength];
 
                 HexPrefix.CopyToSpan(hexPrefix, isLeaf: true, keyBytes);
-                int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOf(node.Value);
+                int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOf(node.Value.AsSpanOrEmpty());
                 int totalLength = Rlp.LengthOfSequence(contentLength);
-                RlpStream rlpStream = new(totalLength);
+
+                CappedArray<byte> data = tree.SafeRentBuffer(totalLength);
+                RlpStream rlpStream = new(data.Array);
                 rlpStream.StartSequence(contentLength);
                 rlpStream.Encode(keyBytes);
                 if (rentedBuffer is not null)
                 {
                     ArrayPool<byte>.Shared.Return(rentedBuffer);
                 }
-                rlpStream.Encode(node.Value);
-                return rlpStream.Data.ToCappedArray().Value;
+                rlpStream.Encode(node.Value.AsSpanOrEmpty());
+                return data;
             }
 
             private static CappedArray<byte> RlpEncodeBranch(ITrieNodeResolver tree, TrieNode item)
             {
-                int valueRlpLength = AllowBranchValues ? Rlp.LengthOf(item.Value) : 1;
+                int valueRlpLength = AllowBranchValues ? Rlp.LengthOf(item.Value.AsSpanOrEmpty()) : 1;
                 int contentLength = valueRlpLength + GetChildrenRlpLength(tree, item);
                 int sequenceLength = Rlp.LengthOfSequence(contentLength);
-                byte[] result = new byte[sequenceLength];
+                CappedArray<byte> result = tree.SafeRentBuffer(sequenceLength);
                 Span<byte> resultSpan = result.AsSpan();
-                int position = Rlp.StartSequence(result, 0, contentLength);
+                int position = Rlp.StartSequence(resultSpan, 0, contentLength);
                 WriteChildrenRlp(tree, item, resultSpan.Slice(position, contentLength - valueRlpLength));
                 position = sequenceLength - valueRlpLength;
                 if (AllowBranchValues)
                 {
-                    Rlp.Encode(result, position, item.Value);
+                    Rlp.Encode(resultSpan, position, item.Value);
                 }
                 else
                 {
-                    result[position] = 128;
+                    result.AsSpan()[position] = 128;
                 }
 
-                return result.ToCappedArray().Value;
+                return result;
             }
 
             private static int GetChildrenRlpLength(ITrieNodeResolver tree, TrieNode item)

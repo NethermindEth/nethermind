@@ -87,36 +87,37 @@ namespace Nethermind.Trie
         /// <summary>
         /// Highly optimized
         /// </summary>
-        public byte[]? Value
+        public CappedArray<byte>? Value
         {
             get
             {
                 InitData();
                 if (IsLeaf)
                 {
-                    return (byte[])_data![1];
+                    return (CappedArray<byte>?)_data![1];
                 }
 
                 if (!AllowBranchValues)
                 {
                     // branches that we use for state will never have value set as all the keys are equal length
-                    return Array.Empty<byte>();
+                    return new CappedArray<byte>(Array.Empty<byte>());
                 }
 
                 if (_data![BranchesCount] is null)
                 {
                     if (_rlpStream is null)
                     {
-                        _data[BranchesCount] = Array.Empty<byte>();
+                        _data[BranchesCount] = new CappedArray<byte>(Array.Empty<byte>());
                     }
                     else
                     {
                         SeekChild(BranchesCount);
-                        _data![BranchesCount] = _rlpStream!.DecodeByteArray();
+                        // TODO: Can be pooled
+                        _data![BranchesCount] = _rlpStream!.DecodeByteArray().ToCappedArray();
                     }
                 }
 
-                return (byte[])_data[BranchesCount];
+                return (CappedArray<byte>?)_data[BranchesCount];
             }
 
             set
@@ -291,9 +292,13 @@ namespace Nethermind.Trie
 
                     if (isLeaf)
                     {
+                        Span<byte> valueSpan = _rlpStream.DecodeByteArray();
+                        CappedArray<byte> buffer = tree.SafeRentBuffer(valueSpan.Length);
+                        valueSpan.CopyTo(buffer.AsSpan());
+
                         NodeType = NodeType.Leaf;
                         Key = key;
-                        Value = _rlpStream.DecodeByteArray();
+                        Value = buffer;
                     }
                     else
                     {
@@ -336,7 +341,13 @@ namespace Nethermind.Trie
 
             if (FullRlp is null || IsDirty)
             {
+                CappedArray<byte>? oldRlp = FullRlp;
+                if (tree == null) tree = NullTrieNodeResolver.Instance;
                 FullRlp = RlpEncode(tree);
+                if (oldRlp != null)
+                {
+                    tree.ReturnBuffer(oldRlp.Value);
+                }
                 _rlpStream = FullRlp.AsRlpStream();
             }
 
@@ -580,6 +591,11 @@ namespace Nethermind.Trie
                     dataSize += MemorySizes.ArrayOverhead + array.Length;
                 }
 
+                if (_data![i] is CappedArray<byte> cappedArray)
+                {
+                    dataSize += MemorySizes.ArrayOverhead + cappedArray.Length; // I just want it to pass unit test
+                }
+
                 if (recursive)
                 {
                     if (_data![i] is TrieNode node)
@@ -628,17 +644,19 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedValue(byte[]? changedValue)
+        public TrieNode CloneWithChangedValue(CappedArray<byte>? changedValue)
         {
             TrieNode trieNode = Clone();
+            // TODO: pool old value
             trieNode.Value = changedValue;
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(byte[] key, byte[]? changedValue)
+        public TrieNode CloneWithChangedKeyAndValue(byte[] key, CappedArray<byte>? changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
+            // TODO: pool old value
             trieNode.Value = changedValue;
             return trieNode;
         }

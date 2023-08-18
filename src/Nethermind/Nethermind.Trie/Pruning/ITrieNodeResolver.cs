@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
@@ -23,5 +24,26 @@ namespace Nethermind.Trie.Pruning
         /// <param name="hash"></param>
         /// <returns></returns>
         byte[]? LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None);
+
+        CappedArray<byte> RentBuffer(int size) => new CappedArray<byte>(new byte[size]);
+
+        void ReturnBuffer(CappedArray<byte> buffer)
+        {
+        }
+    }
+
+    public static class ITrieNodeResolverExtensions
+    {
+        public static CappedArray<byte> SafeRentBuffer(this ITrieNodeResolver? resolver, int size)
+        {
+            if (resolver == null) return new CappedArray<byte>(new byte[size]);
+            CappedArray<byte> returnedBuffer = resolver.RentBuffer(size);
+            if (returnedBuffer.Array == null)
+            {
+                return new CappedArray<byte>(new byte[size]);
+            }
+
+            return returnedBuffer;
+        }
     }
 }

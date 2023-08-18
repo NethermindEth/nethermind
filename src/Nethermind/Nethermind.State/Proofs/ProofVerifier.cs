@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -46,7 +47,7 @@ namespace Nethermind.State.Proofs
             TrieNode trieNode = new(NodeType.Unknown, proof.Last());
             trieNode.ResolveNode(null);
 
-            return trieNode.Value;
+            return trieNode.Value.ToArrayOrNull();
         }
     }
 }
