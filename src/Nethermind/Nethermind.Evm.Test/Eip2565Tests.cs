@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Test
         public void ModExp_run_should_not_throw_exception(string inputStr)
         {
             Prepare input = Prepare.EvmCode.FromCode(inputStr);
-            Assert.DoesNotThrow(() => ModExpPrecompile.Instance.Run(input.Done.ToArray(), London.Instance, null));
+            Assert.DoesNotThrow(() => ModExpPrecompile.Instance.Run(input.Done.ToArray(), London.Instance));
             long gas = ModExpPrecompile.Instance.DataGasCost(input.Done, London.Instance);
             gas.Should().Be(200);
         }

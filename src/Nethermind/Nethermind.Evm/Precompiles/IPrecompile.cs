@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Precompiles
 
         long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
-        (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState? state = null);
+        (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
     }
 
 

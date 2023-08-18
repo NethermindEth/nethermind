@@ -32,7 +32,7 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
         return 0L;
     }
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState? _ = null)
+    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         const int expectedInputLength = 64;
         if (inputData.Length != expectedInputLength)

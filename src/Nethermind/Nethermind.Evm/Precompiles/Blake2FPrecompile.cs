@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Precompiles
             return rounds;
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, IWorldState? _ = null)
+        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData.Length != RequiredInputLength)
             {

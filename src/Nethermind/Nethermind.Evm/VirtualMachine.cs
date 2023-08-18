@@ -671,7 +671,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         try
         {
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec, _state);
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
             CallResult callResult = new(output.ToArray(), success, !success);
             return callResult;
         }
