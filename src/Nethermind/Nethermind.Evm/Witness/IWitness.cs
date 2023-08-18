@@ -31,4 +31,9 @@ public interface IWitness
     public bool AccessAndChargeForCodeProgramCounter(Address address, int programCounter, bool isWrite, ref long unspentGas);
 
     public bool AccessAndChargeForAbsentAccount(Address address, ref long unspentGas);
+
+    public bool AccessAndChargeForCodeSlice(Address address, int start, int codeSliceLength, bool isWrite,
+        ref long unspentGas);
+
+    public byte[][] GetAccessedKeys();
 }

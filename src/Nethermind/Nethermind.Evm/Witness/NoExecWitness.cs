@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -45,4 +46,11 @@ public class NoExecWitness: IWitness
     {
         return true;
     }
+
+    public bool AccessAndChargeForCodeSlice(Address address, int start, int codeSliceLength, bool isWrite, ref long unspentGas)
+    {
+        return true;
+    }
+
+    public byte[][] GetAccessedKeys() => Array.Empty<byte[]>();
 }

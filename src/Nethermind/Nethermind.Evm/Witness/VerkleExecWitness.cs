@@ -98,4 +98,6 @@ public class VerkleExecWitness: IWitness
         int chunkId = pc / 31;
         return (byte)chunkId;
     }
+
+    public byte[][] GetAccessedKeys() =>  _witness.GetAccessedKeys();
 }
