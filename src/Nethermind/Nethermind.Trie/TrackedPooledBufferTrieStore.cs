@@ -13,7 +13,16 @@ namespace Nethermind.Trie;
 /// </summary>
 public class TrackedPooledBufferTrieStore: IBufferPool
 {
-    private List<CappedArray<byte>> _rentedBuffers = new();
+    private List<CappedArray<byte>> _rentedBuffers;
+
+    public TrackedPooledBufferTrieStore(): this(0)
+    {
+    }
+
+    public TrackedPooledBufferTrieStore(int initialCapacity)
+    {
+        _rentedBuffers = new List<CappedArray<byte>>(initialCapacity);
+    }
 
     public CappedArray<byte> RentBuffer(int size)
     {

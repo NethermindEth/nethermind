@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -43,7 +44,7 @@ public class TxTrie : PatriciaTrie<Transaction>
 
     public static Keccak CalculateRoot(IEnumerable<Transaction> transactions)
     {
-        TrackedPooledBufferTrieStore? bufferPool = new();
+        TrackedPooledBufferTrieStore? bufferPool = new(transactions.Count() * 4);
         PatriciaTree? tree = new(new TrieStore(NullDb.Instance, NullLogManager.Instance), NullLogManager.Instance, bufferPool);
 
         int key = 0;
@@ -54,7 +55,11 @@ public class TxTrie : PatriciaTrie<Transaction>
 
             RlpStream stream = buffer.AsRlpStream();
             _txDecoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
-            tree.Set(Rlp.Encode(key++).Bytes, buffer);
+
+            int theKey = key++;
+            CappedArray<byte> keyBuffer = bufferPool.SafeRentBuffer(Rlp.LengthOf(theKey));
+            keyBuffer.AsRlpStream().Encode(theKey);
+            tree.Set(keyBuffer.AsSpan(), buffer);
         }
 
         tree.UpdateRootHash();

@@ -112,7 +112,6 @@ namespace Nethermind.Trie
                     else
                     {
                         SeekChild(BranchesCount);
-                        // TODO: Can be pooled
                         _data![BranchesCount] = _rlpStream!.DecodeByteArray().ToCappedArray();
                     }
                 }
@@ -201,7 +200,7 @@ namespace Nethermind.Trie
         {
         }
 
-        public TrieNode(NodeType nodeType, Keccak keccak, CappedArray<byte> rlp)
+        public TrieNode(NodeType nodeType, Keccak keccak, CappedArray<byte>? rlp)
             : this(nodeType, rlp)
         {
             Keccak = keccak;
@@ -292,12 +291,12 @@ namespace Nethermind.Trie
 
                     if (isLeaf)
                     {
-                        Span<byte> valueSpan = _rlpStream.DecodeByteArray();
-                        CappedArray<byte> buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
-                        valueSpan.CopyTo(buffer.AsSpan());
-
                         NodeType = NodeType.Leaf;
                         Key = key;
+
+                        ReadOnlySpan<byte> valueSpan = _rlpStream.DecodeByteArraySpan();
+                        CappedArray<byte> buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
+                        valueSpan.CopyTo(buffer.AsSpan());
                         Value = buffer;
                     }
                     else
@@ -558,10 +557,10 @@ namespace Nethermind.Trie
                     : MemorySizes.RefSize + Keccak.MemorySize;
             long fullRlpSize =
                 MemorySizes.RefSize +
-                (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Value.AsSpan().Length + MemorySizes.ArrayOverhead));
+                (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Value.Array.Length + MemorySizes.ArrayOverhead));
             long rlpStreamSize =
                 MemorySizes.RefSize + (_rlpStream?.MemorySize ?? 0)
-                - (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Value.AsSpan().Length + MemorySizes.ArrayOverhead));
+                - (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Value.Array.Length + MemorySizes.ArrayOverhead));
             long dataSize =
                 MemorySizes.RefSize +
                 (_data is null
@@ -591,7 +590,7 @@ namespace Nethermind.Trie
 
                 if (_data![i] is CappedArray<byte> cappedArray)
                 {
-                    dataSize += MemorySizes.ArrayOverhead + cappedArray.Length; // I just want it to pass unit test
+                    dataSize += MemorySizes.ArrayOverhead + cappedArray.Array.Length;
                 }
 
                 if (recursive)
@@ -654,7 +653,6 @@ namespace Nethermind.Trie
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
-            // TODO: pool old value
             trieNode.Value = changedValue;
             return trieNode;
         }

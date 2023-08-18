@@ -518,7 +518,7 @@ namespace Nethermind.Trie
                     }
                     else
                     {
-                        if (node.Value?.Length != 0)
+                        if (node.Value!.Value.Length != 0)
                         {
                             // this only happens when we have branches with values
                             // which is not possible in the Ethereum protocol where keys are of equal lengths
