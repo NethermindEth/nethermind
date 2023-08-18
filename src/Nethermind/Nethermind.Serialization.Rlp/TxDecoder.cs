@@ -15,7 +15,7 @@ namespace Nethermind.Serialization.Rlp
         public const int MaxDelayedHashTxnSize = 32768;
         public static TxDecoder Instance = new TxDecoder();
         public static TxDecoder InstanceWithoutLazyHash = new TxDecoder(false);
-        public static ObjectPool<Transaction> TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy());
+        public static ObjectPool<Transaction> TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
 
         public TxDecoder() : base(true) // Rlp will try to find empty constructor.
         {
