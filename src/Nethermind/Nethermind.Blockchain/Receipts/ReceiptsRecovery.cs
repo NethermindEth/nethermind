@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -67,6 +66,7 @@ namespace Nethermind.Blockchain.Receipts
             if (receipts is null || receipts.Length == 0) return false;
 
             if (recoverSenderOnly) return (forceRecoverSender && receipts[0].Sender is null);
+
             return (receipts[0].BlockHash is null || (forceRecoverSender && receipts[0].Sender is null));
         }
 
@@ -97,12 +97,17 @@ namespace Nethermind.Blockchain.Receipts
 
                 Transaction transaction = _block.GetNextTransaction();
 
+                if (transaction.SenderAddress is null && _forceRecoverSender)
+                {
+                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId);
+                }
+
                 receipt.TxType = transaction.Type;
                 receipt.BlockHash = _block.Hash;
                 receipt.BlockNumber = _block.Number;
                 receipt.TxHash = transaction.Hash;
                 receipt.Index = _transactionIndex;
-                receipt.Sender ??= transaction.SenderAddress ?? (_forceRecoverSender ? _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId) : null);
+                receipt.Sender ??= transaction.SenderAddress;
                 receipt.Recipient = transaction.IsContractCreation ? null : transaction.To;
 
                 // how would it be in CREATE2?

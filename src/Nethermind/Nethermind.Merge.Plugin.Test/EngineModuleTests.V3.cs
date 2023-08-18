@@ -60,6 +60,20 @@ public partial class EngineModuleTests
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.UnsupportedFork));
     }
 
+    [TestCaseSource(nameof(CancunFieldsTestSource))]
+    public async Task<int> NewPayloadV2_should_decline_pre_cancun_with_cancun_fields(ulong? blobGasUsed, ulong? excessBlobGas, Keccak? parentBlockBeaconRoot)
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Shanghai.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        ExecutionPayload executionPayload = CreateBlockRequest(
+            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(),
+                blobGasUsed: blobGasUsed, excessBlobGas: excessBlobGas, parentBeaconBlockRoot: parentBlockBeaconRoot);
+
+        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV2(executionPayload);
+
+        return result.ErrorCode;
+    }
+
     [Test]
     public async Task NewPayloadV3_should_decline_pre_cancun_payloads()
     {
@@ -117,7 +131,7 @@ public partial class EngineModuleTests
         (IEngineRpcModule rpcModule, string payloadId, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, blobTxCount);
         var result = await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId));
         BlobsBundleV1 getPayloadResultBlobsBundle = result.Data!.BlobsBundle!;
-        Assert.That(result.Data.ExecutionPayload.DataGasUsed, Is.EqualTo(DataGasCalculator.CalculateDataGas(blobTxCount)));
+        Assert.That(result.Data.ExecutionPayload.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobTxCount)));
         Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
@@ -169,7 +183,7 @@ public partial class EngineModuleTests
         moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(new SingletonFactory<IEngineRpcModule>(rpcModule), true));
 
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
-          CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), dataGasUsed: 0, excessDataGas: 0);
+          CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), blobGasUsed: 0, excessBlobGas: 0);
 
         return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig), new(RpcEndpoint.Http), new(), executionPayload);
     }
@@ -284,7 +298,7 @@ public partial class EngineModuleTests
                     .WithTo(TestItem.AddressB)
                     .WithValue(1.GWei())
                     .WithGasPrice(1.GWei())
-                    .WithMaxFeePerDataGas(1.GWei())
+                    .WithMaxFeePerBlobGas(1.GWei())
                     .WithChainId(chainId)
                     .WithSenderAddress(TestItem.AddressA)
                     .WithBlobVersionedHashes(txBlobVersionedHashes)
@@ -356,6 +370,48 @@ public partial class EngineModuleTests
             {
                 ExpectedResult = PayloadStatus.Invalid,
                 TestName = "One hash more than expected",
+            };
+        }
+    }
+
+    public static IEnumerable<TestCaseData> CancunFieldsTestSource
+    {
+        get
+        {
+            yield return new TestCaseData(null, null, null)
+            {
+                ExpectedResult = ErrorCodes.None,
+                TestName = "No Cancun fields",
+            };
+            yield return new TestCaseData(0ul, null, null)
+            {
+                ExpectedResult = ErrorCodes.InvalidParams,
+                TestName = $"{nameof(ExecutionPayloadV3.BlobGasUsed)} is set",
+            };
+            yield return new TestCaseData(null, 0ul, null)
+            {
+                ExpectedResult = ErrorCodes.InvalidParams,
+                TestName = $"{nameof(ExecutionPayloadV3.ExcessBlobGas)} is set",
+            };
+            yield return new TestCaseData(null, null, Keccak.Zero)
+            {
+                ExpectedResult = ErrorCodes.InvalidParams,
+                TestName = $"{nameof(ExecutionPayloadV3.ParentBeaconBlockRoot)} is set",
+            };
+            yield return new TestCaseData(1ul, 1ul, null)
+            {
+                ExpectedResult = ErrorCodes.InvalidParams,
+                TestName = $"Multiple fields #1",
+            };
+            yield return new TestCaseData(1ul, 1ul, Keccak.Zero)
+            {
+                ExpectedResult = ErrorCodes.InvalidParams,
+                TestName = $"Multiple fields #2",
+            };
+            yield return new TestCaseData(1ul, null, Keccak.Zero)
+            {
+                ExpectedResult = ErrorCodes.InvalidParams,
+                TestName = $"Multiple fields #3",
             };
         }
     }

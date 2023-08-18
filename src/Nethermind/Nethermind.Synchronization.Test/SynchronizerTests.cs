@@ -11,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Test.Validators;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -379,6 +380,7 @@ namespace Nethermind.Synchronization.Test
                         poSSwitcher,
                         mergeConfig,
                         invalidChainTracker,
+                        Substitute.For<IProcessExitSource>(),
                         _logManager,
                         syncReport);
                 }
@@ -409,11 +411,12 @@ namespace Nethermind.Synchronization.Test
                         blockDownloaderFactory,
                         pivot,
                         syncReport,
+                        Substitute.For<IProcessExitSource>(),
                         _logManager);
                 }
 
                 SyncServer = new SyncServer(
-                    trieStore,
+                    trieStore.AsKeyValueStore(),
                     codeDb,
                     BlockTree,
                     NullReceiptStorage.Instance,

@@ -134,9 +134,9 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithMaxFeePerDataGas(UInt256? maxFeePerDataGas)
+        public TransactionBuilder<T> WithMaxFeePerBlobGas(UInt256? maxFeePerBlobGas)
         {
-            TestObjectInternal.MaxFeePerDataGas = maxFeePerDataGas;
+            TestObjectInternal.MaxFeePerBlobGas = maxFeePerBlobGas;
             return this;
         }
 
@@ -173,7 +173,7 @@ namespace Nethermind.Core.Test.Builders
             }
 
             TestObjectInternal.Type = TxType.Blob;
-            TestObjectInternal.MaxFeePerDataGas ??= 1;
+            TestObjectInternal.MaxFeePerBlobGas ??= 1;
 
             if (isMempoolTx)
             {
@@ -234,6 +234,14 @@ namespace Nethermind.Core.Test.Builders
         {
             ecdsa.Sign(privateKey, TestObjectInternal, isEip155Enabled);
             return this;
+        }
+
+        public TransactionBuilder<T> Signed(PrivateKey? privateKey = null)
+        {
+            privateKey ??= TestItem.IgnoredPrivateKey;
+            EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? TestBlockchainIds.ChainId, LimboLogs.Instance);
+
+            return Signed(ecdsa, privateKey, true);
         }
 
         // TODO: auto create ecdsa here
