@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Stats.Model;
+using Nethermind.TxPool;
 using NUnit.Framework.Constraints;
 
 namespace Nethermind.Synchronization.Test
@@ -91,6 +92,11 @@ namespace Nethermind.Synchronization.Test
         public PublicKey Id => Node.Id;
 
         public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void AnnounceTransactions(IEnumerable<TxAnnouncement> txAnnouncements)
         {
             throw new NotImplementedException();
         }

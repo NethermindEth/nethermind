@@ -25,6 +25,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -315,6 +316,11 @@ namespace Nethermind.Synchronization.Test.FastSync
             public PublicKey Id => Node.Id;
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
+            {
+                throw new NotImplementedException();
+            }
+
+            public void AnnounceTransactions(IEnumerable<TxAnnouncement> txAnnouncements)
             {
                 throw new NotImplementedException();
             }

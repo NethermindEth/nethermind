@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Stats.Model;
+using Nethermind.TxPool;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -164,6 +165,7 @@ namespace Nethermind.Synchronization.Test
         public PublicKey Id => Node.Id;
 
         public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
+        public void AnnounceTransactions(IEnumerable<TxAnnouncement> txAnnouncements) { }
 
         public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
         {

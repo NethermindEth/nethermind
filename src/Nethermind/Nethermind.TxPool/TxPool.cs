@@ -60,7 +60,7 @@ namespace Nethermind.TxPool
         private ulong _txIndex;
 
         private readonly ITimer? _timer;
-        private Transaction[]? _transactionSnapshot;
+        private TxAnnouncement[]? _txAnnouncementsSnapshot;
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
@@ -171,7 +171,7 @@ namespace Nethermind.TxPool
             try
             {
                 // Clear snapshot
-                _transactionSnapshot = null;
+                _txAnnouncementsSnapshot = null;
                 _hashCache.ClearCurrentBlockCache();
                 _headBlocksChannel.Writer.TryWrite(e);
             }
@@ -287,12 +287,24 @@ namespace Nethermind.TxPool
             return removed;
         }
 
+        private IEnumerable<TxAnnouncement> PrepareAnnouncementsSnapshot()
+        {
+            foreach (Transaction tx in _transactions.GetSnapshot())
+            {
+                yield return new TxAnnouncement(tx);
+            }
+
+            foreach (Transaction blobTx in _blobTransactions.GetSnapshot())
+            {
+                yield return new TxAnnouncement(blobTx);
+            }
+        }
+
         public void AddPeer(ITxPoolPeer peer)
         {
             if (_broadcaster.AddPeer(peer))
             {
-                // worth to refactor and prepare tx snapshot in more efficient way
-                _broadcaster.BroadcastOnce(peer, _transactionSnapshot ??= _transactions.GetSnapshot().Concat(_blobTransactions.GetSnapshot()).ToArray());
+                _broadcaster.AnnounceOnce(peer, _txAnnouncementsSnapshot ??= PrepareAnnouncementsSnapshot().ToArray());
 
                 if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer}");
             }
@@ -338,7 +350,7 @@ namespace Nethermind.TxPool
                 if (accepted)
                 {
                     // Clear snapshot
-                    _transactionSnapshot = null;
+                    _txAnnouncementsSnapshot = null;
                 }
             }
 

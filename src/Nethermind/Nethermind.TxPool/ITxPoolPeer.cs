@@ -13,5 +13,6 @@ namespace Nethermind.TxPool
         public string Enode => string.Empty;
         void SendNewTransaction(Transaction tx) => SendNewTransactions(new[] { tx }, true);
         void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx);
+        void AnnounceTransactions(IEnumerable<TxAnnouncement> txAnnouncements);
     }
 }

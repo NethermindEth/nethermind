@@ -225,6 +225,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             SendNewTransactionsCore(TxsToSendAndMarkAsNotified(txs, sendFullTx), sendFullTx);
         }
 
+        public virtual void AnnounceTransactions(IEnumerable<TxAnnouncement> txAnnouncements) { }
+
         private IEnumerable<Transaction> TxsToSendAndMarkAsNotified(IEnumerable<Transaction> txs, bool sendFullTx)
         {
             foreach (Transaction tx in txs)
