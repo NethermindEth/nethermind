@@ -70,6 +70,7 @@ jobs:
         WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
     
     - name: Wait for the node to sync
+      timeout-minutes: 600
       run: |
         while curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' ${{ needs.extract_rpc_url.outputs.rpc_url }} | jq -e '.result'
         do sleep 300; done 
