@@ -27,6 +27,7 @@ public class TrackedPooledBufferTrieStore: IBufferPool
     public CappedArray<byte> RentBuffer(int size)
     {
         var rented = new CappedArray<byte>(ArrayPool<byte>.Shared.Rent(size), size);
+        rented.AsSpan().Fill(0);
         _rentedBuffers.Add(rented);
         return rented;
     }

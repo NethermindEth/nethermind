@@ -9,6 +9,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Trie;
 
@@ -23,8 +24,8 @@ public abstract class PatriciaTrie<T> : PatriciaTree
     /// <c>true</c> to maintain an in-memory database for proof computation;
     /// otherwise, <c>false</c>.
     /// </param>
-    public PatriciaTrie(IEnumerable<T>? list, bool canBuildProof)
-        : base(canBuildProof ? new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance)
+    public PatriciaTrie(IEnumerable<T>? list, bool canBuildProof, IBufferPool? bufferPool = null)
+        : base(canBuildProof ? new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance, bufferPool: bufferPool)
     {
         CanBuildProof = canBuildProof;
 

@@ -37,7 +37,12 @@ public struct CappedArray<T>
         return new CappedArray<T>(array);
     }
 
-    public int Length => _length;
+    public int Length
+    {
+        get => _length;
+        set => _length = value;
+    }
+
     public T[] Array => _array;
 
     public Span<T> AsSpan()

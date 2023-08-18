@@ -95,13 +95,15 @@ namespace Nethermind.Trie
             Keccak rootHash,
             bool parallelBranches,
             bool allowCommits,
-            ILogManager logManager)
+            ILogManager logManager,
+            IBufferPool? bufferPool = null)
             : this(
                 new TrieStore(keyValueStore, logManager),
                 rootHash,
                 parallelBranches,
                 allowCommits,
-                logManager)
+                logManager,
+                bufferPool: bufferPool)
         {
         }
 

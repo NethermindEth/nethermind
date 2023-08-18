@@ -3,12 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Trie;
 using Nethermind.Trie;
@@ -25,8 +22,8 @@ public class TxTrie : PatriciaTrie<Transaction>
 
     /// <inheritdoc/>
     /// <param name="transactions">The transactions to build the trie of.</param>
-    public TxTrie(IEnumerable<Transaction> transactions, bool canBuildProof = false)
-        : base(transactions, canBuildProof) => ArgumentNullException.ThrowIfNull(transactions);
+    public TxTrie(IEnumerable<Transaction> transactions, bool canBuildProof = false, IBufferPool? bufferPool = null)
+        : base(transactions, canBuildProof, bufferPool: bufferPool) => ArgumentNullException.ThrowIfNull(transactions);
 
     protected override void Initialize(IEnumerable<Transaction> list)
     {
@@ -37,36 +34,24 @@ public class TxTrie : PatriciaTrie<Transaction>
         // a temporary trie would be a trie that exists to create a state root only and then be disposed of
         foreach (Transaction? transaction in list)
         {
-            Rlp transactionRlp = _txDecoder.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
-            Set(Rlp.Encode(key++).Bytes, transactionRlp.Bytes);
-        }
-    }
-
-    public static Keccak CalculateRoot(IEnumerable<Transaction> transactions)
-    {
-        TrackedPooledBufferTrieStore? bufferPool = new(transactions.Count() * 4);
-        PatriciaTree? tree = new(new TrieStore(NullDb.Instance, NullLogManager.Instance), NullLogManager.Instance, bufferPool);
-
-        int key = 0;
-        foreach (Transaction? transaction in transactions)
-        {
             int size = _txDecoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
-            CappedArray<byte> buffer = bufferPool.SafeRentBuffer(size);
+            CappedArray<byte> buffer = _bufferPool.SafeRentBuffer(size);
 
             RlpStream stream = buffer.AsRlpStream();
             _txDecoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
 
             int theKey = key++;
-            CappedArray<byte> keyBuffer = bufferPool.SafeRentBuffer(Rlp.LengthOf(theKey));
+            CappedArray<byte> keyBuffer = _bufferPool.SafeRentBuffer(Rlp.LengthOf(theKey));
             keyBuffer.AsRlpStream().Encode(theKey);
-            tree.Set(keyBuffer.AsSpan(), buffer);
+            Set(keyBuffer.AsSpan(), buffer);
         }
+    }
 
-        tree.UpdateRootHash();
-
-        Keccak root = tree.RootHash;
-
-        bufferPool.ReturnAll();
-        return root;
+    public static Keccak CalculateRoot(IList<Transaction> transactions)
+    {
+        TrackedPooledBufferTrieStore buffer = new TrackedPooledBufferTrieStore(transactions.Count * 4);
+        Keccak rootHash = new TxTrie(transactions, false, bufferPool: buffer).RootHash;
+        buffer.ReturnAll();
+        return rootHash;
     }
 }

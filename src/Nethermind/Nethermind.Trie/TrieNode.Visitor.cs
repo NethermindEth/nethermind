@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 
@@ -87,7 +88,7 @@ namespace Nethermind.Trie
 
                 case NodeType.Leaf:
                     {
-                        visitor.VisitLeaf(this, trieVisitContext.ToVisitContext(), Value?.Array);
+                        visitor.VisitLeaf(this, trieVisitContext.ToVisitContext(), Value.ToArrayOrNull());
 
                         if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                         {
@@ -248,7 +249,7 @@ namespace Nethermind.Trie
 
                 case NodeType.Leaf:
                     {
-                        visitor.VisitLeaf(this, trieVisitContext, Value?.Array);
+                        visitor.VisitLeaf(this, trieVisitContext, Value.ToArrayOrNull());
                         trieVisitContext.AddVisited();
                         if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                         {
