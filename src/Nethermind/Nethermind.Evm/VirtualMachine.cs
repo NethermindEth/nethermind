@@ -2610,7 +2610,7 @@ ReturnFailure:
                 Span<byte> originalValue = _state.GetOriginal(in storageCell);
                 bool originalIsZero = originalValue.IsZero();
 
-                bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
+                bool currentSameAsOriginal = originalValue.WithoutLeadingZeros().SequenceEqual(currentValue.WithoutLeadingZeros()) || originalValue.Length == 0 && currentIsZero;
                 if (currentSameAsOriginal)
                 {
                     if (currentIsZero)
