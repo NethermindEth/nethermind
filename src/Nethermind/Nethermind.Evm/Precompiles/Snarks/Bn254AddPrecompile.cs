@@ -5,15 +5,16 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles.Snarks;
 
 /// <summary>
 /// https://github.com/matter-labs/eip1962/blob/master/eip196_header.h
 /// </summary>
-public class Bn254AddPrecompile : IPrecompile
+public class Bn254AddPrecompile : IPrecompile<Bn254AddPrecompile>
 {
-    public static IPrecompile Instance = new Bn254AddPrecompile();
+    public static Bn254AddPrecompile Instance = new Bn254AddPrecompile();
 
     public static Address Address { get; } = Address.FromNumber(6);
 

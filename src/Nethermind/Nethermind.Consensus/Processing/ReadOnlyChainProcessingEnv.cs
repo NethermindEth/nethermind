@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;

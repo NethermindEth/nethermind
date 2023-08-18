@@ -5,15 +5,16 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-2537
 /// </summary>
-public class MapToG2Precompile : IPrecompile
+public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
 {
-    public static IPrecompile Instance = new MapToG2Precompile();
+    public static MapToG2Precompile Instance = new MapToG2Precompile();
 
     private MapToG2Precompile()
     {

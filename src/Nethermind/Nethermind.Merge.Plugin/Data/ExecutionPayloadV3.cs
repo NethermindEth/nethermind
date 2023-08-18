@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Newtonsoft.Json;
@@ -18,6 +19,7 @@ public class ExecutionPayloadV3 : ExecutionPayload
 
     public ExecutionPayloadV3(Block block) : base(block)
     {
+        ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
         BlobGasUsed = block.BlobGasUsed;
         ExcessBlobGas = block.ExcessBlobGas;
     }
@@ -29,8 +31,9 @@ public class ExecutionPayloadV3 : ExecutionPayload
             return false;
         }
 
+        block!.Header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
         block!.Header.BlobGasUsed = BlobGasUsed;
-        block.Header.ExcessBlobGas = ExcessBlobGas;
+        block!.Header.ExcessBlobGas = ExcessBlobGas;
         return true;
     }
 

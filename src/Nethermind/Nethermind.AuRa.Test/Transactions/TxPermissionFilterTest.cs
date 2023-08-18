@@ -30,6 +30,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Consensus.AuRa.BeaconBlockRoot;
 
 namespace Nethermind.AuRa.Test.Transactions;
 

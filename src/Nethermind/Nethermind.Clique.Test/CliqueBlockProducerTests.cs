@@ -37,6 +37,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using Nethermind.Config;
+using Nethermind.Consensus.BeaconBlockRoot;
 
 namespace Nethermind.Clique.Test
 {

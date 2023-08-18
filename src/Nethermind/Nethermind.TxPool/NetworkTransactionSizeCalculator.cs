@@ -17,6 +17,6 @@ public class NetworkTransactionSizeCalculator : ITransactionSizeCalculator
 
     public int GetLength(Transaction tx)
     {
-        return _txDecoder.GetLength(tx, RlpBehaviors.InMempoolForm);
+        return _txDecoder.GetLength(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
     }
 }

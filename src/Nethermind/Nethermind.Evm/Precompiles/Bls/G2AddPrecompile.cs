@@ -5,15 +5,16 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-2537
 /// </summary>
-public class G2AddPrecompile : IPrecompile
+public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
 {
-    public static IPrecompile Instance = new G2AddPrecompile();
+    public static G2AddPrecompile Instance = new G2AddPrecompile();
 
     private G2AddPrecompile()
     {

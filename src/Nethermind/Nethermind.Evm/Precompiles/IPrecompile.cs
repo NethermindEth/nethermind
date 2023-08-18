@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -16,5 +17,11 @@ namespace Nethermind.Evm.Precompiles
         long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
         (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
+    }
+
+
+    public interface IPrecompile<TPrecompileTypeInstance> : IPrecompile
+    {
+        static TPrecompileTypeInstance Instance { get; }
     }
 }

@@ -5,17 +5,18 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles.Snarks;
 
 /// <summary>
 /// https://github.com/herumi/mcl/blob/master/api.md
 /// </summary>
-public class Bn254PairingPrecompile : IPrecompile
+public class Bn254PairingPrecompile : IPrecompile<Bn254PairingPrecompile>
 {
     private const int PairSize = 192;
 
-    public static IPrecompile Instance = new Bn254PairingPrecompile();
+    public static Bn254PairingPrecompile Instance = new Bn254PairingPrecompile();
 
     public static Address Address { get; } = Address.FromNumber(8);
 

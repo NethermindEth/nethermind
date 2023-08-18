@@ -9,15 +9,16 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using MathGmp.Native;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles
 {
     /// <summary>
     ///     https://github.com/ethereum/EIPs/blob/vbuterin-patch-2/EIPS/bigint_modexp.md
     /// </summary>
-    public class ModExpPrecompile : IPrecompile
+    public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     {
-        public static readonly IPrecompile Instance = new ModExpPrecompile();
+        public static readonly ModExpPrecompile Instance = new ModExpPrecompile();
 
         private ModExpPrecompile()
         {

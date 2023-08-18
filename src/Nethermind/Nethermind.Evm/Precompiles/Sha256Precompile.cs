@@ -6,14 +6,15 @@ using System.Security.Cryptography;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class Sha256Precompile : IPrecompile
+    public class Sha256Precompile : IPrecompile<Sha256Precompile>
     {
         private static ThreadLocal<SHA256> _sha256 = new();
 
-        public static readonly IPrecompile Instance = new Sha256Precompile();
+        public static readonly Sha256Precompile Instance = new Sha256Precompile();
 
         private Sha256Precompile()
         {

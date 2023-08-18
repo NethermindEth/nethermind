@@ -7,6 +7,7 @@ using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.BeaconBlockRoot;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Withdrawals;

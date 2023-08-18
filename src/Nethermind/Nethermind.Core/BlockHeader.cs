@@ -26,7 +26,8 @@ public class BlockHeader
         ulong timestamp,
         byte[] extraData,
         ulong? blobGasUsed = null,
-        ulong? excessBlobGas = null)
+        ulong? excessBlobGas = null,
+        Keccak? parentBeaconBlockRoot = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -36,6 +37,7 @@ public class BlockHeader
         GasLimit = gasLimit;
         Timestamp = timestamp;
         ExtraData = extraData;
+        ParentBeaconBlockRoot = parentBeaconBlockRoot;
         BlobGasUsed = blobGasUsed;
         ExcessBlobGas = excessBlobGas;
     }
@@ -67,6 +69,7 @@ public class BlockHeader
     public long? AuRaStep { get; set; }
     public UInt256 BaseFeePerGas { get; set; }
     public Keccak? WithdrawalsRoot { get; set; }
+    public Keccak? ParentBeaconBlockRoot { get; set; }
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
@@ -100,6 +103,10 @@ public class BlockHeader
         if (WithdrawalsRoot is not null)
         {
             builder.AppendLine($"{indent}WithdrawalsRoot: {WithdrawalsRoot}");
+        }
+        if (ParentBeaconBlockRoot is not null)
+        {
+            builder.AppendLine($"{indent}ParentBeaconBlockRoot: {ParentBeaconBlockRoot}");
         }
         if (BlobGasUsed is not null || ExcessBlobGas is not null)
         {
