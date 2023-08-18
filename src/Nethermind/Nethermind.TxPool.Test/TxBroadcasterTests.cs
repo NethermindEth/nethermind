@@ -536,4 +536,21 @@ public class TxBroadcasterTests
 
         session.Received(received).DeliverMessage(Arg.Any<TransactionsMessage>());
     }
+
+    [Test]
+    public void should_rebroadcast_all_persistent_transactions_if_PeerNotificationThreshold_is_100([Values(true, false)] bool shouldBroadcastAll)
+    {
+        _txPoolConfig = new TxPoolConfig(){ Size = 100, PeerNotificationThreshold = shouldBroadcastAll ? 100 : 5 };
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+
+        for (int i = 0; i < _txPoolConfig.Size; i++)
+        {
+            Transaction tx = Build.A.Transaction
+                .WithNonce((UInt256)i)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            _broadcaster.Broadcast(tx, true);
+        }
+
+        _broadcaster.GetPersistentTxsToSend().TransactionsToSend.Count.Should().Be(shouldBroadcastAll ? 100 : 1);
+    }
 }
