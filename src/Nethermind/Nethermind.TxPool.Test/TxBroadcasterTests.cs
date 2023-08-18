@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -551,6 +552,12 @@ public class TxBroadcasterTests
             _broadcaster.Broadcast(tx, true);
         }
 
-        _broadcaster.GetPersistentTxsToSend().TransactionsToSend.Count.Should().Be(shouldBroadcastAll ? 100 : 1);
+        Transaction[] pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend.ToArray();
+        pickedTxs.Length.Should().Be(shouldBroadcastAll ? 100 : 1);
+
+        for (int i = 0; i < pickedTxs.Length; i++)
+        {
+            pickedTxs[i].Nonce.Should().Be((UInt256)i);
+        }
     }
 }
