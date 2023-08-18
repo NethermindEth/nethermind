@@ -5,7 +5,6 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 

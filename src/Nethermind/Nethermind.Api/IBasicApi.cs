@@ -7,7 +7,6 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;

@@ -21,7 +21,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Core.Specs;
-using Nethermind.Synchronization.Blocks;
 using Nethermind.Consensus.BeaconBlockRoot;
 
 namespace Nethermind.Merge.Plugin.Test

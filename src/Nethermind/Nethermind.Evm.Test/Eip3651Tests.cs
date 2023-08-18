@@ -3,11 +3,9 @@
 
 using FluentAssertions;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
-using Nethermind.Core;
 
 namespace Nethermind.Evm.Test
 {

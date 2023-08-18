@@ -12,7 +12,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Stats.Model;
-using NUnit.Framework.Constraints;
 
 namespace Nethermind.Synchronization.Test
 {

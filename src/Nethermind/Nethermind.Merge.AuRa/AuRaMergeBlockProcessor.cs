@@ -3,9 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
-using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;

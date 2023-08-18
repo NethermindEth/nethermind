@@ -4,7 +4,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus.AuRa.Validators;
@@ -14,7 +13,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Db.Blooms;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Validators
