@@ -24,26 +24,34 @@ namespace Nethermind.Trie.Pruning
         /// <param name="hash"></param>
         /// <returns></returns>
         byte[]? LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None);
-
-        CappedArray<byte> RentBuffer(int size) => new CappedArray<byte>(new byte[size]);
-
-        void ReturnBuffer(CappedArray<byte> buffer)
-        {
-        }
     }
 
-    public static class ITrieNodeResolverExtensions
+    public static class IBufferPoolExtensions
     {
-        public static CappedArray<byte> SafeRentBuffer(this ITrieNodeResolver? resolver, int size)
+        public static CappedArray<byte> SafeRentBuffer(this IBufferPool? pool, int size)
         {
-            if (resolver == null) return new CappedArray<byte>(new byte[size]);
-            CappedArray<byte> returnedBuffer = resolver.RentBuffer(size);
+            if (pool == null) return new CappedArray<byte>(new byte[size]);
+            CappedArray<byte> returnedBuffer = pool.RentBuffer(size);
             if (returnedBuffer.Array == null)
             {
                 return new CappedArray<byte>(new byte[size]);
             }
 
             return returnedBuffer;
+        }
+
+        public static void SafeReturnBuffer(this IBufferPool? pool, CappedArray<byte> buffer)
+        {
+            pool?.ReturnBuffer(buffer);
+        }
+    }
+
+    public interface IBufferPool
+    {
+        CappedArray<byte> RentBuffer(int size) => new CappedArray<byte>(new byte[size]);
+
+        void ReturnBuffer(CappedArray<byte> buffer)
+        {
         }
     }
 }

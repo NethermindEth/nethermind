@@ -43,8 +43,8 @@ public class TxTrie : PatriciaTrie<Transaction>
 
     public static Keccak CalculateRoot(IEnumerable<Transaction> transactions)
     {
-        var bufferPool = new TrackedPooledBufferTrieStore(new TrieStore(NullDb.Instance, NullLogManager.Instance));
-        var tree = new PatriciaTree(bufferPool , NullLogManager.Instance);
+        TrackedPooledBufferTrieStore? bufferPool = new();
+        PatriciaTree? tree = new(new TrieStore(NullDb.Instance, NullLogManager.Instance), NullLogManager.Instance, bufferPool);
 
         int key = 0;
         foreach (Transaction? transaction in transactions)

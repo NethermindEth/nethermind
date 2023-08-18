@@ -238,7 +238,7 @@ namespace Nethermind.Trie
         /// <summary>
         /// Highly optimized
         /// </summary>
-        public void ResolveNode(ITrieNodeResolver tree, ReadFlags readFlags = ReadFlags.None)
+        public void ResolveNode(ITrieNodeResolver tree, ReadFlags readFlags = ReadFlags.None, IBufferPool? bufferPool = null)
         {
             try
             {
@@ -293,7 +293,7 @@ namespace Nethermind.Trie
                     if (isLeaf)
                     {
                         Span<byte> valueSpan = _rlpStream.DecodeByteArray();
-                        CappedArray<byte> buffer = tree.SafeRentBuffer(valueSpan.Length);
+                        CappedArray<byte> buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
                         valueSpan.CopyTo(buffer.AsSpan());
 
                         NodeType = NodeType.Leaf;
@@ -319,7 +319,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public void ResolveKey(ITrieNodeResolver tree, bool isRoot)
+        public void ResolveKey(ITrieNodeResolver tree, bool isRoot, IBufferPool? bufferPool = null)
         {
             if (Keccak is not null)
             {
@@ -328,10 +328,10 @@ namespace Nethermind.Trie
                 return;
             }
 
-            Keccak = GenerateKey(tree, isRoot);
+            Keccak = GenerateKey(tree, isRoot, bufferPool);
         }
 
-        public Keccak? GenerateKey(ITrieNodeResolver tree, bool isRoot)
+        public Keccak? GenerateKey(ITrieNodeResolver tree, bool isRoot, IBufferPool? bufferPool = null)
         {
             Keccak? keccak = Keccak;
             if (keccak is not null)
@@ -342,11 +342,9 @@ namespace Nethermind.Trie
             if (FullRlp is null || IsDirty)
             {
                 CappedArray<byte>? oldRlp = FullRlp;
-                if (tree == null) tree = NullTrieNodeResolver.Instance;
-                FullRlp = RlpEncode(tree);
-                if (oldRlp != null)
-                {
-                    tree.ReturnBuffer(oldRlp.Value);
+                FullRlp = RlpEncode(tree, bufferPool);
+                if (oldRlp != null) {
+                    bufferPool.SafeReturnBuffer(oldRlp.Value);
                 }
                 _rlpStream = FullRlp.AsRlpStream();
             }
@@ -386,9 +384,9 @@ namespace Nethermind.Trie
             return false;
         }
 
-        internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree)
+        internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree, IBufferPool? bufferPool = null)
         {
-            CappedArray<byte> rlp = _nodeDecoder.Encode(tree, this);
+            CappedArray<byte> rlp = _nodeDecoder.Encode(tree, this, bufferPool);
             // just included here to improve the class reading
             // after some analysis I believe that any non-test Ethereum cases of a trie ever have nodes with RLP shorter than 32 bytes
             // if (rlp.Bytes.Length < 32)

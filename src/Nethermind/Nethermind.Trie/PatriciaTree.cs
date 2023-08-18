@@ -47,6 +47,7 @@ namespace Nethermind.Trie
         private readonly ConcurrentQueue<NodeCommitInfo>? _currentCommit;
 
         public ITrieStore TrieStore { get; }
+        public IBufferPool? _bufferPool;
 
         private readonly bool _parallelBranches;
 
@@ -84,8 +85,8 @@ namespace Nethermind.Trie
         {
         }
 
-        public PatriciaTree(ITrieStore trieStore, ILogManager logManager)
-            : this(trieStore, EmptyTreeHash, false, true, logManager)
+        public PatriciaTree(ITrieStore trieStore, ILogManager logManager, IBufferPool? bufferPool = null)
+            : this(trieStore, EmptyTreeHash, false, true, logManager, bufferPool: bufferPool)
         {
         }
 
@@ -109,7 +110,8 @@ namespace Nethermind.Trie
             Keccak rootHash,
             bool parallelBranches,
             bool allowCommits,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            IBufferPool? bufferPool = null)
         {
             _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
             TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
@@ -125,6 +127,8 @@ namespace Nethermind.Trie
                 _currentCommit = new ConcurrentQueue<NodeCommitInfo>();
                 _commitExceptions = new ConcurrentQueue<Exception>();
             }
+
+            _bufferPool = bufferPool;
         }
 
         public void Commit(long blockNumber, bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
@@ -150,7 +154,7 @@ namespace Nethermind.Trie
                 }
 
                 // reset objects
-                RootRef!.ResolveKey(TrieStore, true);
+                RootRef!.ResolveKey(TrieStore, true, bufferPool: _bufferPool);
                 SetRootHash(RootRef.Keccak!, true);
             }
 
@@ -266,7 +270,7 @@ namespace Nethermind.Trie
                 }
             }
 
-            node.ResolveKey(TrieStore, nodeCommitInfo.IsRoot);
+            node.ResolveKey(TrieStore, nodeCommitInfo.IsRoot, bufferPool: _bufferPool);
             node.Seal();
 
             if (node.FullRlp?.Length >= 32)
@@ -284,7 +288,7 @@ namespace Nethermind.Trie
 
         public void UpdateRootHash()
         {
-            RootRef?.ResolveKey(TrieStore, true);
+            RootRef?.ResolveKey(TrieStore, true, bufferPool: _bufferPool);
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 
