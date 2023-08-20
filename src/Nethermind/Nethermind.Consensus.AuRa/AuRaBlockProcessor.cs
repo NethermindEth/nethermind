@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly AuRaContractGasLimitOverride? _gasLimitOverride;
-        private readonly ContractRewriter? _contractRewriter;
+        private readonly AuraContractRewriter? _contractRewriter;
         private readonly ITxFilter _txFilter;
         private readonly ILogger _logger;
         private IAuRaValidator? _auRaValidator;
@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.AuRa
             IWithdrawalProcessor withdrawalProcessor,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
-            ContractRewriter? contractRewriter = null)
+            AuraContractRewriter? contractRewriter = null)
             : base(
                 specProvider,
                 blockValidator,

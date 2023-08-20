@@ -122,7 +122,7 @@ namespace Nethermind.AuRa.Test
             };
 
             (AuRaBlockProcessor processor, IWorldState stateProvider) =
-                CreateProcessor(contractRewriter: new ContractRewriter(contractOverrides));
+                CreateProcessor(contractRewriter: new AuraContractRewriter(contractOverrides));
 
             stateProvider.CreateAccount(TestItem.AddressA, UInt256.One);
             stateProvider.CreateAccount(TestItem.AddressB, UInt256.One);
@@ -143,7 +143,7 @@ namespace Nethermind.AuRa.Test
             stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x654"));
         }
 
-        private (AuRaBlockProcessor Processor, IWorldState StateProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
+        private (AuRaBlockProcessor Processor, IWorldState StateProvider) CreateProcessor(ITxFilter? txFilter = null, AuraContractRewriter? contractRewriter = null)
         {
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();

@@ -37,6 +37,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
+    private readonly ContractRewriter _contractRewriter;
 
     private const int MaxUncommittedBlocks = 64;
 
@@ -67,7 +68,7 @@ public partial class BlockProcessor : IBlockProcessor
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
-
+        _contractRewriter = new ContractRewriter();
         _receiptsTracer = new BlockReceiptsTracer();
     }
 
@@ -223,6 +224,8 @@ public partial class BlockProcessor : IBlockProcessor
         ProcessingOptions options)
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+
+        _contractRewriter.RewriteContracts(_stateProvider, spec);
 
         _receiptsTracer.SetOtherTracer(blockTracer);
         _receiptsTracer.StartNewBlockTrace(block);

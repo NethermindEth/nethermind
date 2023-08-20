@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -83,5 +84,6 @@ namespace Nethermind.Specs
         public bool IsEip6780Enabled { get; set; }
         public bool IsEip4788Enabled { get; set; }
         public Address Eip4788ContractAddress { get; set; }
+        public IDictionary<Address, byte[]> RewriteContracts { get; set;}
     }
 }

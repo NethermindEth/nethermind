@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -145,5 +146,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public ulong? Eip6780TransitionTimestamp { get; set; }
         public ulong? Eip4788TransitionTimestamp { get; set; }
         public Address Eip4788ContractAddress { get; set; }
+        public IDictionary<long, IDictionary<Address, byte[]>> RewriteContracts { get; set; }
     }
 }

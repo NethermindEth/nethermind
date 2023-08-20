@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using System.Collections.Generic;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -117,5 +118,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong? Eip6780TransitionTimestamp { get; set; }
         public ulong? Eip4788TransitionTimestamp { get; set; }
         public Address Eip4788ContractAddress { get; set; }
+        public IDictionary<long, IDictionary<Address, byte[]>> RewriteContracts { get; set; }
     }
 }

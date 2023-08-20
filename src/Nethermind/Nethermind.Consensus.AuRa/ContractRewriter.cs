@@ -9,11 +9,11 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa;
 
-public class ContractRewriter
+public class AuraContractRewriter
 {
     private readonly IDictionary<long, IDictionary<Address, byte[]>> _contractOverrides;
 
-    public ContractRewriter(IDictionary<long, IDictionary<Address, byte[]>> contractOverrides)
+    public AuraContractRewriter(IDictionary<long, IDictionary<Address, byte[]>> contractOverrides)
     {
         _contractOverrides = contractOverrides;
     }

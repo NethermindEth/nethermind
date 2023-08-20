@@ -148,7 +148,7 @@ public class StartBlockProducerAuRa
         }
 
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = chainSpecAuRa.RewriteBytecode;
-        ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
+        AuraContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new AuraContractRewriter(rewriteBytecode) : null;
 
         return new AuRaBlockProcessor(
             _api.SpecProvider,

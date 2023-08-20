@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -22,7 +23,7 @@ namespace Nethermind.Core.Specs
         long DifficultyBoundDivisor { get; }
         long? FixedDifficulty { get; }
         int MaximumUncleCount { get; }
-
+        IDictionary<Address, byte[]> RewriteContracts { get; }
         /// <summary>
         /// ---
         /// In chainspec - Ethash.Duration

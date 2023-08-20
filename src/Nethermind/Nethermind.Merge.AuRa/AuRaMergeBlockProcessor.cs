@@ -33,7 +33,7 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
         IWithdrawalProcessor withdrawalProcessor,
         ITxFilter? txFilter = null,
         AuRaContractGasLimitOverride? gasLimitOverride = null,
-        ContractRewriter? contractRewriter = null
+        AuraContractRewriter? contractRewriter = null
     ) : base(
             specProvider,
             blockValidator,
