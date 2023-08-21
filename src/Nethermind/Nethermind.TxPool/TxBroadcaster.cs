@@ -178,7 +178,8 @@ namespace Nethermind.TxPool
             List<Transaction>? persistentTxsToSend = null;
             List<Transaction>? persistentHashesToSend = null;
 
-            IEnumerable<Transaction> txsToPickFrom = _txPoolConfig.PeerNotificationThreshold == 100
+            bool broadcastAllTxs = _txPoolConfig.PeerNotificationThreshold == 100;
+            IEnumerable<Transaction> txsToPickFrom = broadcastAllTxs
                 ? _persistentTxs.GetSnapshot()
                 : _persistentTxs.GetFirsts();
 
