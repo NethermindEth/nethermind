@@ -6,7 +6,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
-using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.Trie;

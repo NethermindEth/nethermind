@@ -40,6 +40,7 @@ public partial class EngineModuleTests
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         ExecutionPayload executionPayload = CreateBlockRequest(
+            chain.SpecProvider.GenesisSpec, chain.State,
             CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>());
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV1(executionPayload);
@@ -53,6 +54,7 @@ public partial class EngineModuleTests
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         ExecutionPayload executionPayload = CreateBlockRequest(
+            chain.SpecProvider.GenesisSpec, chain.State,
             CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>());
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV2(executionPayload);
@@ -66,6 +68,7 @@ public partial class EngineModuleTests
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Shanghai.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         ExecutionPayload executionPayload = CreateBlockRequest(
+            chain.SpecProvider.GenesisSpec, chain.State,
             CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(),
                 blobGasUsed: blobGasUsed, excessBlobGas: excessBlobGas, parentBeaconBlockRoot: parentBlockBeaconRoot);
 
@@ -80,9 +83,10 @@ public partial class EngineModuleTests
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Shanghai.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
+            chain.SpecProvider.GenesisSpec, chain.State,
             CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>());
 
-        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(executionPayload, new byte[0][]);
+        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(executionPayload, new byte[0][], executionPayload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.UnsupportedFork));
     }
@@ -150,7 +154,7 @@ public partial class EngineModuleTests
         payload.Transactions = transactions.Select(tx => rlpEncoder.Encode(tx, rlpBehaviors).Bytes).ToArray();
         byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
 
-        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes);
+        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
         result.Data.Status.Should().Be(expectedPayloadStatus);
@@ -183,7 +187,8 @@ public partial class EngineModuleTests
         moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(new SingletonFactory<IEngineRpcModule>(rpcModule), true));
 
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
-          CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), blobGasUsed: 0, excessBlobGas: 0);
+            chain.SpecProvider.GenesisSpec, chain.State,
+            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), blobGasUsed: 0, excessBlobGas: 0, parentBeaconBlockRoot: TestItem.KeccakA);
 
         return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig), new(RpcEndpoint.Http), new(), executionPayload);
     }
@@ -196,11 +201,12 @@ public partial class EngineModuleTests
 
         string executionPayloadString = serializer.Serialize(executionPayload);
         string blobsString = serializer.Serialize(Array.Empty<byte[]>());
+        string parentBeaconBlockRootString = serializer.Serialize(TestItem.KeccakA.BytesToArray());
 
         {
             JObject executionPayloadAsJObject = serializer.Deserialize<JObject>(executionPayloadString);
             JsonRpcRequest request = RpcTest.GetJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3),
-                serializer.Serialize(executionPayloadAsJObject), blobsString);
+                serializer.Serialize(executionPayloadAsJObject), blobsString, parentBeaconBlockRootString);
             JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
             Assert.That(response is JsonRpcSuccessResponse);
         }
@@ -314,8 +320,9 @@ public partial class EngineModuleTests
         (byte[][] blobVersionedHashes, Transaction[] transactions) = BuildTransactionsAndBlobVersionedHashesList(hashesFirstBytes, transactionsAndFirstBytesOfTheirHashes, blockchain.SpecProvider.ChainId);
 
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
-            CreateParentBlockRequestOnHead(blockchain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), 0, 0, transactions: transactions);
-        ResultWrapper<PayloadStatusV1> result = await engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes);
+            blockchain.SpecProvider.GenesisSpec, blockchain.State,
+            CreateParentBlockRequestOnHead(blockchain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), 0, 0, transactions: transactions, parentBeaconBlockRoot: Keccak.Zero);
+        ResultWrapper<PayloadStatusV1> result = await engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, Keccak.Zero);
 
         return result.Data.Status;
     }
@@ -419,8 +426,9 @@ public partial class EngineModuleTests
     private async Task<ExecutionPayload> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, IList<Withdrawal>? withdrawals)
     {
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
-            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0, 0);
-        ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>());
+            chain.SpecProvider.GenesisSpec, chain.State,
+            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0, 0, parentBeaconBlockRoot: TestItem.KeccakE);
+        ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>(), executionPayload.ParentBeaconBlockRoot);
 
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
 
@@ -454,12 +462,14 @@ public partial class EngineModuleTests
             Timestamp = chain.BlockTree.Head!.Timestamp + 1,
             PrevRandao = TestItem.KeccakH,
             SuggestedFeeRecipient = TestItem.AddressF,
-            Withdrawals = new List<Withdrawal> { TestItem.WithdrawalA_1Eth }
+            Withdrawals = new List<Withdrawal> { TestItem.WithdrawalA_1Eth },
+            ParentBeaconBlockRoot = spec.IsBeaconBlockRootAvailable ? TestItem.KeccakE : null
         };
         Keccak currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
-        string payloadId = rpcModule.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes).Result.Data
-            .PayloadId!;
+        string payloadId = spec.IsBeaconBlockRootAvailable
+            ? rpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result.Data.PayloadId!
+            : rpcModule.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes).Result.Data.PayloadId!;
         return (rpcModule, payloadId, txs);
     }
 }

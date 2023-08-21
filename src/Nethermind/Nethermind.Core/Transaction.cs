@@ -4,7 +4,6 @@
 using System.Buffers;
 using System;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;

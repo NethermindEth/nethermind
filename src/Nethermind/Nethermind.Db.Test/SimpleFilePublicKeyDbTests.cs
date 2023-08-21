@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO;
 
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using NUnit.Framework;

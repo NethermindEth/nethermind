@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
-using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 

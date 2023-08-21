@@ -25,6 +25,7 @@ public class PayloadAttributes
 
     public IList<Withdrawal>? Withdrawals { get; set; }
 
+    public Keccak? ParentBeaconBlockRoot { get; set; }
     /// <summary>Gets or sets the gas limit.</summary>
     /// <remarks>Used for MEV-Boost only.</remarks>
     public long? GasLimit { get; set; }
@@ -43,6 +44,11 @@ public class PayloadAttributes
             sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Count}");
         }
 
+        if (ParentBeaconBlockRoot is not null)
+        {
+            sb.Append($", {nameof(ParentBeaconBlockRoot)} : {ParentBeaconBlockRoot}");
+        }
+
         sb.Append('}');
 
         return sb.ToString();
@@ -54,12 +60,15 @@ public static class PayloadAttributesExtensions
     public static string ComputePayloadId(this PayloadAttributes payloadAttributes, BlockHeader parentHeader)
     {
         bool hasWithdrawals = payloadAttributes.Withdrawals is not null;
-        Span<byte> inputSpan = stackalloc byte[32 + 32 + 32 + 20 + (hasWithdrawals ? 32 : 0)];
+        bool hasParentBeaconBlockRoot = payloadAttributes.ParentBeaconBlockRoot is not null;
 
-        parentHeader.Hash!.Bytes.CopyTo(inputSpan[..32]);
-        BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(56, 8), payloadAttributes.Timestamp);
-        payloadAttributes.PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, 32));
-        payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
+        const int preambleLength = Keccak.Size + Keccak.Size + Keccak.Size + Address.ByteLength;
+        Span<byte> inputSpan = stackalloc byte[preambleLength + (hasWithdrawals ? Keccak.Size : 0) + (hasParentBeaconBlockRoot ? Keccak.Size : 0)];
+
+        parentHeader.Hash!.Bytes.CopyTo(inputSpan[..Keccak.Size]);
+        BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(56, sizeof(UInt64)), payloadAttributes.Timestamp);
+        payloadAttributes.PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, Keccak.Size));
+        payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, Address.ByteLength));
 
         if (hasWithdrawals)
         {
@@ -67,7 +76,12 @@ public static class PayloadAttributesExtensions
                 ? PatriciaTree.EmptyTreeHash
                 : new WithdrawalTrie(payloadAttributes.Withdrawals).RootHash;
 
-            withdrawalsRootHash.Bytes.CopyTo(inputSpan[116..]);
+            withdrawalsRootHash.Bytes.CopyTo(inputSpan[preambleLength..]);
+        }
+
+        if (hasParentBeaconBlockRoot)
+        {
+            payloadAttributes.ParentBeaconBlockRoot.Bytes.CopyTo(inputSpan[(preambleLength + (hasWithdrawals ? Keccak.Size : 0))..]);
         }
 
         ValueKeccak inputHash = ValueKeccak.Compute(inputSpan);
@@ -76,7 +90,20 @@ public static class PayloadAttributesExtensions
     }
 
     public static int GetVersion(this PayloadAttributes executionPayload) =>
-        executionPayload.Withdrawals is null ? 1 : 2;
+        executionPayload switch
+        {
+            { ParentBeaconBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
+            { Withdrawals: not null } => EngineApiVersions.Shanghai,
+            _ => EngineApiVersions.Paris
+        };
+
+    public static int ExpectedEngineSpecVersion(this IReleaseSpec spec) =>
+        spec switch
+        {
+            { WithdrawalsEnabled: true, IsEip4844Enabled: true } => EngineApiVersions.Cancun,
+            { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
+            _ => EngineApiVersions.Paris
+        };
 
     public static bool Validate(
         this PayloadAttributes payloadAttributes,
@@ -85,14 +112,17 @@ public static class PayloadAttributesExtensions
         [NotNullWhen(false)] out string? error)
     {
         int actualVersion = payloadAttributes.GetVersion();
+        int expectedVersion = spec.ExpectedEngineSpecVersion();
 
-        error = actualVersion switch
+        error = null;
+        if (actualVersion != expectedVersion)
         {
-            1 when spec.WithdrawalsEnabled => "PayloadAttributesV2 expected",
-            > 1 when !spec.WithdrawalsEnabled => "PayloadAttributesV1 expected",
-            _ => actualVersion > version ? $"PayloadAttributesV{version} expected" : null
-        };
-
+            error = $"PayloadAttributesV{expectedVersion} expected";
+        }
+        else if (actualVersion > version)
+        {
+            error = $"PayloadAttributesV{version} expected";
+        }
         return error is null;
     }
 
