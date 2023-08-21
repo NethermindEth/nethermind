@@ -94,7 +94,23 @@ jobs:
         echo "dockerfile=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile)" >> $GITHUB_OUTPUT
         echo "build-config=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile_build_type | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
+    - name: Set Repo and Org Variables
+      run: |
+        echo "ORG_NAME=$(echo $GITHUB_REPOSITORY | cut -d / -f 1)" >> $GITHUB_ENV
+        echo "REPO_NAME=$(echo $GITHUB_REPOSITORY | cut -d / -f 2)" >> $GITHUB_ENV
+        
+    - name: Check if master branch and default additional_options
+      id: check_conditions
+      run: |
+        DEFAULT_OPTIONS='{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":""}'
+        if [[ "${{ github.ref }}" == "refs/heads/master" && "${{ github.event.inputs.additional_options }}" == "$DEFAULT_OPTIONS" ]]; then
+          echo "skip=true" >> $GITHUB_OUTPUT
+        else
+          echo "skip=false" >> $GITHUB_OUTPUT
+        fi
+
     - name: Trigger Docker Build Action with Cleaned Ref
+      if: steps.check_conditions.outputs.skip != 'true'
       uses: benc-uk/workflow-dispatch@v1
       env:
         ADDITIONAL_OPTIONS: ${{ inputs.additional_options }}
@@ -107,12 +123,9 @@ jobs:
               "dockerfile": "${{ steps.extract_dockerfile.outputs.dockerfile }}",
               "build-config": "${{ steps.extract_dockerfile.outputs.build-config }}"
            }'
-
-    - name: Set Repo and Org Variables
-      run: |
-        echo "ORG_NAME=$(echo $GITHUB_REPOSITORY | cut -d / -f 1)" >> $GITHUB_ENV
-        echo "REPO_NAME=$(echo $GITHUB_REPOSITORY | cut -d / -f 2)" >> $GITHUB_ENV
+        
     - name: Wait for Docker Build Action to complete
+      if: steps.check_conditions.outputs.skip != 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         WORKFLOW_ID: 'publish-docker.yml'
