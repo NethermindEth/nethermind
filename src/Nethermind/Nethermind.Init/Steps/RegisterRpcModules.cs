@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
@@ -47,6 +48,7 @@ public class RegisterRpcModules : IStep
         if (_api.ReceiptFinder is null) throw new StepDependencyException(nameof(_api.ReceiptFinder));
         if (_api.BloomStorage is null) throw new StepDependencyException(nameof(_api.BloomStorage));
         if (_api.LogManager is null) throw new StepDependencyException(nameof(_api.LogManager));
+        if (_api.ReadOnlyTrieStore is null && _api.ReadOnlyVerkleTrieStore is null) throw new StepDependencyException(nameof(_api.ReadOnlyTrieStore));
 
         IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
         if (!jsonRpcConfig.Enabled)
@@ -116,10 +118,19 @@ public class RegisterRpcModules : IStep
         if (_api.PeerPool is null) throw new StepDependencyException(nameof(_api.PeerPool));
         if (_api.WitnessRepository is null) throw new StepDependencyException(nameof(_api.WitnessRepository));
 
-        ProofModuleFactory proofModuleFactory = new(_api.DbProvider, _api.BlockTree, _api.ReadOnlyTrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+        ReadOnlyTxProcessingEnvFactory txnEnvFactory = _api.SpecProvider.GenesisSpec.IsVerkleTreeEipEnabled switch
+        {
+            true => new ReadOnlyTxProcessingEnvFactory(_api.DbProvider, _api.ReadOnlyVerkleTrieStore!, _api.BlockTree, _api.SpecProvider, _api.LogManager),
+            false => new ReadOnlyTxProcessingEnvFactory(_api.DbProvider, _api.ReadOnlyTrieStore!, _api.BlockTree, _api.SpecProvider, _api.LogManager),
+        };
+
+        ProofModuleFactory proofModuleFactory = new(txnEnvFactory, _api.DbProvider, _api.BlockTree,
+            _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+
         rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, rpcConfig.Timeout);
 
         DebugModuleFactory debugModuleFactory = new(
+            txnEnvFactory,
             _api.DbProvider,
             _api.BlockTree,
             rpcConfig,
@@ -128,7 +139,6 @@ public class RegisterRpcModules : IStep
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
             new ReceiptMigration(_api),
-            _api.ReadOnlyTrieStore,
             _api.ConfigProvider,
             _api.SpecProvider,
             _api.SyncModeSelector,
@@ -137,9 +147,9 @@ public class RegisterRpcModules : IStep
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, rpcConfig.Timeout);
 
         TraceModuleFactory traceModuleFactory = new(
+            txnEnvFactory,
             _api.DbProvider,
             _api.BlockTree,
-            _api.ReadOnlyTrieStore,
             rpcConfig,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,

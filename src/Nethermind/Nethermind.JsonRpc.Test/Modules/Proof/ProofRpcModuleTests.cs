@@ -59,10 +59,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _blockTree = Build.A.BlockTree(_specProvider).WithTransactions(receiptStorage).OfChainLength(10).TestObject;
             _dbProvider = await TestMemDbProvider.InitAsync();
 
+            ReadOnlyTxProcessingEnvFactory txnEnvFactory = new ReadOnlyTxProcessingEnvFactory(_dbProvider,
+                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(), _blockTree, _specProvider,
+                LimboLogs.Instance);
+
             ProofModuleFactory moduleFactory = new(
+                txnEnvFactory,
                 _dbProvider,
                 _blockTree,
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 receiptStorage,
                 _specProvider,
@@ -204,10 +208,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _receiptFinder.Get(Arg.Any<Keccak>()).Returns(receipts);
             _receiptFinder.FindBlockHash(Arg.Any<Keccak>()).Returns(_blockTree.FindBlock(1).Hash);
 
+            ReadOnlyTxProcessingEnvFactory txnEnvFactory = new ReadOnlyTxProcessingEnvFactory(_dbProvider,
+                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(), _blockTree, _specProvider,
+                LimboLogs.Instance);
+
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
+                txnEnvFactory,
                 _dbProvider,
                 _blockTree,
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 _receiptFinder,
                 _specProvider,

@@ -33,18 +33,36 @@ namespace Nethermind.Init.Steps
 
         protected virtual async Task<IBlockProducer> BuildProducer()
         {
-            _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(_api.DbProvider!,
-                _api.BlockTree!,
-                _api.ReadOnlyTrieStore!,
-                _api.SpecProvider!,
-                _api.BlockValidator!,
-                _api.RewardCalculatorSource!,
-                _api.ReceiptStorage!,
-                _api.BlockPreprocessor,
-                _api.TxPool!,
-                _api.TransactionComparerProvider!,
-                _api.Config<IBlocksConfig>(),
-                _api.LogManager);
+            if (_api.SpecProvider != null && _api.SpecProvider.GenesisSpec.IsVerkleTreeEipEnabled)
+            {
+                _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(_api.DbProvider!,
+                    _api.BlockTree!,
+                    _api.ReadOnlyVerkleTrieStore!,
+                    _api.SpecProvider!,
+                    _api.BlockValidator!,
+                    _api.RewardCalculatorSource!,
+                    _api.ReceiptStorage!,
+                    _api.BlockPreprocessor,
+                    _api.TxPool!,
+                    _api.TransactionComparerProvider!,
+                    _api.Config<IBlocksConfig>(),
+                    _api.LogManager);
+            }
+            else
+            {
+                _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(_api.DbProvider!,
+                    _api.BlockTree!,
+                    _api.ReadOnlyTrieStore!,
+                    _api.SpecProvider!,
+                    _api.BlockValidator!,
+                    _api.RewardCalculatorSource!,
+                    _api.ReceiptStorage!,
+                    _api.BlockPreprocessor,
+                    _api.TxPool!,
+                    _api.TransactionComparerProvider!,
+                    _api.Config<IBlocksConfig>(),
+                    _api.LogManager);
+            }
 
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();

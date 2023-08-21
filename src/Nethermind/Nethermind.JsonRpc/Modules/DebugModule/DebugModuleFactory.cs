@@ -15,8 +15,10 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
+using Nethermind.Verkle.Tree;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
@@ -28,7 +30,6 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly IRewardCalculatorSource _rewardCalculatorSource;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IReceiptsMigration _receiptsMigration;
-    private readonly IReadOnlyTrieStore _trieStore;
     private readonly IConfigProvider _configProvider;
     private readonly ISpecProvider _specProvider;
     private readonly ILogManager _logManager;
@@ -38,8 +39,11 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly IFileSystem _fileSystem;
     private ILogger _logger;
+    private readonly ReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
+
 
     public DebugModuleFactory(
+        ReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
         IDbProvider dbProvider,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
@@ -48,13 +52,13 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IRewardCalculatorSource rewardCalculator,
         IReceiptStorage receiptStorage,
         IReceiptsMigration receiptsMigration,
-        IReadOnlyTrieStore trieStore,
         IConfigProvider configProvider,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
         IFileSystem fileSystem,
         ILogManager logManager)
     {
+        _txProcessingEnvFactory = txProcessingEnvFactory;
         _dbProvider = dbProvider.AsReadOnly(false);
         _blockTree = blockTree.AsReadOnly();
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
@@ -63,7 +67,6 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         _rewardCalculatorSource = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
-        _trieStore = (trieStore ?? throw new ArgumentNullException(nameof(trieStore)));
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -74,12 +77,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 
     public override IDebugRpcModule Create()
     {
-        ReadOnlyTxProcessingEnv txEnv = new(
-            _dbProvider,
-            _trieStore,
-            _blockTree,
-            _specProvider,
-            _logManager);
+        ReadOnlyTxProcessingEnv txEnv = _txProcessingEnvFactory.Create();
 
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(txEnv.TransactionProcessor);
         BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, txEnv.StateProvider);

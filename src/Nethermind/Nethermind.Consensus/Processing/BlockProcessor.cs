@@ -13,6 +13,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Verkle;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -20,6 +21,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Verkle.Curve;
 using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
@@ -27,14 +29,20 @@ namespace Nethermind.Consensus.Processing;
 public partial class BlockProcessor : IBlockProcessor
 {
     private readonly ILogger _logger;
-    private readonly ISpecProvider _specProvider;
+    protected readonly ISpecProvider _specProvider;
     protected readonly IWorldState _stateProvider;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IWitnessCollector _witnessCollector;
-    private readonly IWithdrawalProcessor _withdrawalProcessor;
+    protected readonly IWithdrawalProcessor _withdrawalProcessor;
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
-    private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
+    protected readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
+
+    // TODO: will be removed in future
+    public IBlockProcessor.IBlockTransactionsExecutor StatelessBlockTransactionsExecutor;
+    public bool ShouldVerifyIncomingWitness { get; set; } = false;
+    public bool ShouldDoStatelessStuff { get; set; } = false;
+    public bool ShouldGenerateWitness { get; set; } = false;
 
     private const int MaxUncommittedBlocks = 64;
 
@@ -42,7 +50,7 @@ public partial class BlockProcessor : IBlockProcessor
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
     /// to any block-specific tracers.
     /// </summary>
-    private readonly BlockReceiptsTracer _receiptsTracer;
+    protected readonly BlockReceiptsTracer _receiptsTracer;
 
     public BlockProcessor(
         ISpecProvider? specProvider,
@@ -65,8 +73,7 @@ public partial class BlockProcessor : IBlockProcessor
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
 
-
-        _receiptsTracer = new BlockReceiptsTracer(true, false);
+        _receiptsTracer = new BlockReceiptsTracer(true, true);
     }
 
     public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
@@ -147,7 +154,7 @@ public partial class BlockProcessor : IBlockProcessor
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
     // TODO: move to branch processor
-    private void InitBranch(Keccak branchStateRoot, bool incrementReorgMetric = true)
+    protected virtual void InitBranch(Keccak branchStateRoot, bool incrementReorgMetric = true)
     {
         /* Please note that we do not reset the state if branch state root is null.
            That said, I do not remember in what cases we receive null here.*/
@@ -191,6 +198,7 @@ public partial class BlockProcessor : IBlockProcessor
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
+        // TODO: here we assume (and its a good assumption) that DAO is before stateless execution starts
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
@@ -214,6 +222,29 @@ public partial class BlockProcessor : IBlockProcessor
         }
     }
 
+    // TODO: remove
+    private (IBlockProcessor.IBlockTransactionsExecutor, IWorldState) GetOrCreateExecutorAndState(Block block, ExecutionWitness witness)
+    {
+        IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor;
+        IWorldState worldState;
+        if (block.IsGenesis)
+        {
+            blockTransactionsExecutor = StatelessBlockTransactionsExecutor;
+            worldState = _stateProvider;
+
+        }
+        else
+        {
+            block.Header.MaybeParent!.TryGetTarget(out BlockHeader maybeParent);
+            Banderwagon stateRoot = Banderwagon.FromBytes(maybeParent!.StateRoot!.Bytes.ToArray())!.Value;
+            worldState = new VerkleWorldState(witness, stateRoot, LimboLogs.Instance);
+            blockTransactionsExecutor = StatelessBlockTransactionsExecutor.WithNewStateProvider(worldState);
+        }
+
+        return (blockTransactionsExecutor, worldState);
+    }
+    // TODO: remove
+
     // TODO: block processor pipeline
     protected virtual TxReceipt[] ProcessBlock(
         Block block,
@@ -221,6 +252,24 @@ public partial class BlockProcessor : IBlockProcessor
         ProcessingOptions options)
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+
+        if (ShouldVerifyIncomingWitness)
+        {
+            if (!block.IsGenesis)
+            {
+                block.Header.MaybeParent!.TryGetTarget(out BlockHeader maybeParent);
+                Banderwagon stateRoot = Banderwagon.FromBytes(maybeParent!.StateRoot!.Bytes.ToArray())!.Value;
+                try
+                {
+                    VerkleWorldState? incomingWorldState = new (block.ExecutionWitness, stateRoot, LimboLogs.Instance);
+                    _logger.Info($"Incoming Witness - VerkleWorldState StateRoot:{incomingWorldState.StateRoot}");
+                }
+                catch (Exception e)
+                {
+                    _logger.Error("Verkle proof verification failed for incoming witness.", e);
+                }
+            }
+        }
 
         _receiptsTracer.SetOtherTracer(blockTracer);
         _receiptsTracer.StartNewBlockTrace(block);
@@ -237,11 +286,47 @@ public partial class BlockProcessor : IBlockProcessor
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
         _receiptsTracer.EndBlockTrace();
 
+        ExecutionWitness? witness = null;
+        if (ShouldGenerateWitness)
+        {
+            byte[][] witnessKeys = _receiptsTracer.WitnessKeys.ToArray();
+            VerkleWorldState? verkleWorldState = _stateProvider as VerkleWorldState;
+            witness = witnessKeys.Length == 0 ? null : verkleWorldState?.GenerateExecutionWitness(witnessKeys, out _);
+            // IJsonSerializer ser = new EthereumJsonSerializer();
+            // _logger.Info($"BLOCK PROCESSOR WITNESS: {spec.IsVerkleTreeEipEnabled} {!block.IsGenesis} {options} {ser.Serialize(witness)}");
+            if (options.ContainsFlag(ProcessingOptions.ProducingBlock) && spec.IsVerkleTreeEipEnabled &&
+                !block.IsGenesis) block.Body.ExecutionWitness = witness;
+        }
+
         _stateProvider.Commit(spec);
         _stateProvider.RecalculateStateRoot();
 
         block.Header.StateRoot = _stateProvider.StateRoot;
         block.Header.Hash = block.Header.CalculateHash();
+
+        if (ShouldGenerateWitness && ShouldDoStatelessStuff)
+        {
+            try
+            {
+                (IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor, IWorldState worldState) =
+                    GetOrCreateExecutorAndState(block, witness!);
+                _receiptsTracer.StartNewBlockTrace(block);
+                TxReceipt[] receiptsSl = blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
+
+                block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
+                ApplyMinerRewards(block, blockTracer, spec);
+                _withdrawalProcessor.ProcessWithdrawals(block, spec);
+                _receiptsTracer.EndBlockTrace();
+
+                worldState.Commit(spec);
+                worldState.RecalculateStateRoot();
+            }
+            catch (Exception e)
+            {
+                _logger.Error($"Failed while doing stateless stuff", e);
+                return receipts;
+            }
+        }
 
         return receipts;
     }
@@ -284,12 +369,17 @@ public partial class BlockProcessor : IBlockProcessor
             WithdrawalsRoot = bh.WithdrawalsRoot,
             IsPostMerge = bh.IsPostMerge,
         };
+        if (bh.MaybeParent is not null)
+        {
+            bh.MaybeParent.TryGetTarget(out BlockHeader maybeParent);
+            headerForProcessing.MaybeParent = new WeakReference<BlockHeader>(maybeParent);
+        }
 
         return suggestedBlock.CreateCopy(headerForProcessing);
     }
 
     // TODO: block processor pipeline
-    private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)
+    protected void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)
     {
         if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
         BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);

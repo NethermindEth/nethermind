@@ -21,6 +21,7 @@ namespace Nethermind.Config
         public bool RandomizedBlocks { get; set; }
 
         public ulong SecondsPerSlot { get; set; } = 12;
+        public bool StatelessProcessing { get; set; } = false;
 
 
         public string ExtraData

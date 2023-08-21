@@ -14,7 +14,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
+using Nethermind.Verkle.Tree;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Proof
@@ -27,30 +29,30 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private readonly ILogManager _logManager;
         private readonly IReadOnlyBlockTree _blockTree;
         private readonly ReadOnlyDbProvider _dbProvider;
-        private readonly IReadOnlyTrieStore _trieStore;
+        private readonly ReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
+
 
         public ProofModuleFactory(
+            ReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
             IDbProvider dbProvider,
             IBlockTree blockTree,
-            IReadOnlyTrieStore trieStore,
             IBlockPreprocessorStep recoveryStep,
             IReceiptFinder receiptFinder,
             ISpecProvider specProvider,
             ILogManager logManager)
         {
+            _txProcessingEnvFactory = txProcessingEnvFactory;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _dbProvider = dbProvider.AsReadOnly(false);
             _blockTree = blockTree.AsReadOnly();
-            _trieStore = trieStore;
         }
 
         public override IProofRpcModule Create()
         {
-            ReadOnlyTxProcessingEnv txProcessingEnv = new(
-                _dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
+            ReadOnlyTxProcessingEnv txProcessingEnv = _txProcessingEnvFactory.Create();
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _dbProvider, _specProvider, _logManager);

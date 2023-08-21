@@ -51,7 +51,10 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         MarkAsProcessed = 128,
 
-        All = 255,
+        /// <summary>
+        /// Process block using execution witnesses
+        /// </summary>
+        StatelessProcessing = 256,
 
         /// <summary>
         /// Combination of switches for block producers when they preprocess block for state root calculation.

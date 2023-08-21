@@ -12,6 +12,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
+using Nethermind.Verkle.Tree;
 
 // ReSharper disable MemberCanBePrivate.Global
 // ReSharper disable UnusedAutoPropertyAccessor.Global
@@ -38,6 +39,16 @@ namespace Nethermind.Consensus.Processing
         }
 
         public ReadOnlyTxProcessingEnv(
+            IDbProvider? dbProvider,
+            ReadOnlyVerkleStateStore? trieStore,
+            IBlockTree? blockTree,
+            ISpecProvider? specProvider,
+            ILogManager? logManager)
+            : this(dbProvider?.AsReadOnly(false), trieStore, blockTree?.AsReadOnly(), specProvider, logManager)
+        {
+        }
+
+        public ReadOnlyTxProcessingEnv(
             IReadOnlyDbProvider? readOnlyDbProvider,
             IReadOnlyTrieStore? readOnlyTrieStore,
             IReadOnlyBlockTree? readOnlyBlockTree,
@@ -51,6 +62,28 @@ namespace Nethermind.Consensus.Processing
 
             StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);
             StateProvider = new WorldState(readOnlyTrieStore, codeDb, logManager);
+
+            BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
+            BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
+
+            Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
+            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, logManager);
+        }
+
+        public ReadOnlyTxProcessingEnv(
+            IReadOnlyDbProvider? readOnlyDbProvider,
+            ReadOnlyVerkleStateStore? readOnlyTrieStore,
+            IReadOnlyBlockTree? readOnlyBlockTree,
+            ISpecProvider? specProvider,
+            ILogManager? logManager)
+        {
+            if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
+
+            DbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
+            ReadOnlyDb codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
+
+            StateReader = new VerkleStateReader(new VerkleStateTree(readOnlyTrieStore, logManager), codeDb, logManager);
+            StateProvider = new VerkleWorldState(new VerkleStateTree(readOnlyTrieStore, logManager), codeDb, logManager);
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -12,10 +13,13 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
+using Nethermind.Verkle;
+using Nethermind.Verkle.Tree;
 
 namespace Nethermind.Consensus.Producers
 {
@@ -24,6 +28,7 @@ namespace Nethermind.Consensus.Producers
         protected readonly IDbProvider _dbProvider;
         protected readonly IBlockTree _blockTree;
         protected readonly IReadOnlyTrieStore _readOnlyTrieStore;
+        protected readonly ReadOnlyVerkleStateStore _readOnlyVerkleTrieStore;
         protected readonly ISpecProvider _specProvider;
         protected readonly IBlockValidator _blockValidator;
         protected readonly IRewardCalculatorSource _rewardCalculatorSource;
@@ -33,6 +38,7 @@ namespace Nethermind.Consensus.Producers
         protected readonly ITransactionComparerProvider _transactionComparerProvider;
         protected readonly IBlocksConfig _blocksConfig;
         protected readonly ILogManager _logManager;
+        protected readonly StateType _stateType;
 
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
 
@@ -62,6 +68,38 @@ namespace Nethermind.Consensus.Producers
             _transactionComparerProvider = transactionComparerProvider;
             _blocksConfig = blocksConfig;
             _logManager = logManager;
+            _stateType = StateType.Merkle;
+
+            TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
+        }
+
+        public BlockProducerEnvFactory(
+            IDbProvider dbProvider,
+            IBlockTree blockTree,
+            ReadOnlyVerkleStateStore readOnlyTrieStore,
+            ISpecProvider specProvider,
+            IBlockValidator blockValidator,
+            IRewardCalculatorSource rewardCalculatorSource,
+            IReceiptStorage receiptStorage,
+            IBlockPreprocessorStep blockPreprocessorStep,
+            ITxPool txPool,
+            ITransactionComparerProvider transactionComparerProvider,
+            IBlocksConfig blocksConfig,
+            ILogManager logManager)
+        {
+            _dbProvider = dbProvider;
+            _blockTree = blockTree;
+            _readOnlyVerkleTrieStore = readOnlyTrieStore;
+            _specProvider = specProvider;
+            _blockValidator = blockValidator;
+            _rewardCalculatorSource = rewardCalculatorSource;
+            _receiptStorage = receiptStorage;
+            _blockPreprocessorStep = blockPreprocessorStep;
+            _txPool = txPool;
+            _transactionComparerProvider = transactionComparerProvider;
+            _blocksConfig = blocksConfig;
+            _logManager = logManager;
+            _stateType = StateType.Verkle;
 
             TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
         }
@@ -106,8 +144,15 @@ namespace Nethermind.Consensus.Producers
             };
         }
 
-        protected virtual ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider readOnlyDbProvider, ReadOnlyBlockTree readOnlyBlockTree) =>
-            new(readOnlyDbProvider, _readOnlyTrieStore, readOnlyBlockTree, _specProvider, _logManager);
+        protected virtual ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider readOnlyDbProvider, ReadOnlyBlockTree readOnlyBlockTree)
+        {
+            return _stateType switch
+            {
+                StateType.Merkle => new ReadOnlyTxProcessingEnv(readOnlyDbProvider, _readOnlyTrieStore, readOnlyBlockTree, _specProvider, _logManager),
+                StateType.Verkle => new ReadOnlyTxProcessingEnv(readOnlyDbProvider, _readOnlyVerkleTrieStore, readOnlyBlockTree, _specProvider, _logManager),
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
 
         protected virtual ITxSource CreateTxSourceForProducer(
             ITxSource? additionalTxSource,

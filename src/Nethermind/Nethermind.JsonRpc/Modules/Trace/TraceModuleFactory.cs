@@ -13,7 +13,9 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
+using Nethermind.Verkle.Tree;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
@@ -22,7 +24,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
     {
         private readonly ReadOnlyDbProvider _dbProvider;
         private readonly IReadOnlyBlockTree _blockTree;
-        private readonly IReadOnlyTrieStore _trieNodeResolver;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
@@ -30,11 +31,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly IPoSSwitcher _poSSwitcher;
+        private readonly ReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
 
         public TraceModuleFactory(
+            ReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
             IDbProvider dbProvider,
             IBlockTree blockTree,
-            IReadOnlyTrieStore trieNodeResolver,
             IJsonRpcConfig jsonRpcConfig,
             IBlockPreprocessorStep recoveryStep,
             IRewardCalculatorSource rewardCalculatorSource,
@@ -43,9 +45,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IPoSSwitcher poSSwitcher,
             ILogManager logManager)
         {
+            _txProcessingEnvFactory = txProcessingEnvFactory;
             _dbProvider = dbProvider.AsReadOnly(false);
             _blockTree = blockTree.AsReadOnly();
-            _trieNodeResolver = trieNodeResolver;
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
@@ -58,8 +60,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public override ITraceRpcModule Create()
         {
-            ReadOnlyTxProcessingEnv txProcessingEnv =
-                new(_dbProvider, _trieNodeResolver, _blockTree, _specProvider, _logManager);
+            ReadOnlyTxProcessingEnv txProcessingEnv = _txProcessingEnvFactory.Create();
 
             IRewardCalculator rewardCalculator =
                 new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor),

@@ -177,9 +177,11 @@ namespace Nethermind.Consensus.Producers
         {
             if (TrySetState(parent.StateRoot))
             {
+                // prepare the block - set deterministic fields and get the transactions we want to include in the block
                 Block block = PrepareBlock(parent, payloadAttributes);
                 if (PreparedBlockCanBeMined(block))
                 {
+                    // execute the transactions and then get the stateRoot, txRoot, receipts, witnesses, etc.
                     Block? processedBlock = ProcessPreparedBlock(block, blockTracer);
                     if (processedBlock is null)
                     {
