@@ -36,9 +36,7 @@ public class TxTrie : PatriciaTrie<Transaction>
         {
             int size = _txDecoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
             CappedArray<byte> buffer = _bufferPool.SafeRentBuffer(size);
-
-            RlpStream stream = buffer.AsRlpStream();
-            _txDecoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
+            _txDecoder.Encode(buffer.AsRlpStream(), transaction, RlpBehaviors.SkipTypedWrapping);
 
             int theKey = key++;
             CappedArray<byte> keyBuffer = _bufferPool.SafeRentBuffer(Rlp.LengthOf(theKey));

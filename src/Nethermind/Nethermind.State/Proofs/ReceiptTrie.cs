@@ -48,8 +48,7 @@ public class ReceiptTrie : PatriciaTrie<TxReceipt>
         {
             int size = _decoder.GetLength(receipt, behavior);
             CappedArray<byte> buffer = _bufferPool.SafeRentBuffer(size);
-            RlpStream stream = buffer.AsRlpStream();
-            _decoder.Encode(stream, receipt, behavior);
+            _decoder.Encode(buffer.AsRlpStream(), receipt, behavior);
 
             int theKey = key++;
             CappedArray<byte> keyBuffer = _bufferPool.SafeRentBuffer(Rlp.LengthOf(theKey));
