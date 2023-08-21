@@ -24,7 +24,7 @@ public abstract class PatriciaTrie<T> : PatriciaTree
     /// <c>true</c> to maintain an in-memory database for proof computation;
     /// otherwise, <c>false</c>.
     /// </param>
-    public PatriciaTrie(IEnumerable<T>? list, bool canBuildProof, IBufferPool? bufferPool = null)
+    public PatriciaTrie(IEnumerable<T>? list, bool canBuildProof, ICappedArrayPool? bufferPool = null)
         : base(canBuildProof ? new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance, bufferPool: bufferPool)
     {
         CanBuildProof = canBuildProof;

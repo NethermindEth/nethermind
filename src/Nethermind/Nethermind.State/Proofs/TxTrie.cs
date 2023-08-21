@@ -22,7 +22,7 @@ public class TxTrie : PatriciaTrie<Transaction>
 
     /// <inheritdoc/>
     /// <param name="transactions">The transactions to build the trie of.</param>
-    public TxTrie(IEnumerable<Transaction> transactions, bool canBuildProof = false, IBufferPool? bufferPool = null)
+    public TxTrie(IEnumerable<Transaction> transactions, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
         : base(transactions, canBuildProof, bufferPool: bufferPool) => ArgumentNullException.ThrowIfNull(transactions);
 
     protected override void Initialize(IEnumerable<Transaction> list)
@@ -47,9 +47,9 @@ public class TxTrie : PatriciaTrie<Transaction>
 
     public static Keccak CalculateRoot(IList<Transaction> transactions)
     {
-        TrackedPooledBufferTrieStore buffer = new TrackedPooledBufferTrieStore(transactions.Count * 4);
-        Keccak rootHash = new TxTrie(transactions, false, bufferPool: buffer).RootHash;
-        buffer.ReturnAll();
+        TrackedPooledCappedArrayPool cappedArray = new TrackedPooledCappedArrayPool(transactions.Count * 4);
+        Keccak rootHash = new TxTrie(transactions, false, bufferPool: cappedArray).RootHash;
+        cappedArray.ReturnAll();
         return rootHash;
     }
 }

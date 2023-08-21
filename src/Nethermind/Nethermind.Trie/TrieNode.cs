@@ -251,7 +251,7 @@ namespace Nethermind.Trie
         /// <summary>
         /// Highly optimized
         /// </summary>
-        public void ResolveNode(ITrieNodeResolver tree, ReadFlags readFlags = ReadFlags.None, IBufferPool? bufferPool = null)
+        public void ResolveNode(ITrieNodeResolver tree, ReadFlags readFlags = ReadFlags.None, ICappedArrayPool? bufferPool = null)
         {
             try
             {
@@ -332,7 +332,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public void ResolveKey(ITrieNodeResolver tree, bool isRoot, IBufferPool? bufferPool = null)
+        public void ResolveKey(ITrieNodeResolver tree, bool isRoot, ICappedArrayPool? bufferPool = null)
         {
             if (Keccak is not null)
             {
@@ -344,7 +344,7 @@ namespace Nethermind.Trie
             Keccak = GenerateKey(tree, isRoot, bufferPool);
         }
 
-        public Keccak? GenerateKey(ITrieNodeResolver tree, bool isRoot, IBufferPool? bufferPool = null)
+        public Keccak? GenerateKey(ITrieNodeResolver tree, bool isRoot, ICappedArrayPool? bufferPool = null)
         {
             Keccak? keccak = Keccak;
             if (keccak is not null)
@@ -397,7 +397,7 @@ namespace Nethermind.Trie
             return false;
         }
 
-        internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree, IBufferPool? bufferPool = null)
+        internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree, ICappedArrayPool? bufferPool = null)
         {
             CappedArray<byte> rlp = _nodeDecoder.Encode(tree, this, bufferPool);
             // just included here to improve the class reading
@@ -658,7 +658,6 @@ namespace Nethermind.Trie
         public TrieNode CloneWithChangedValue(CappedArray<byte>? changedValue)
         {
             TrieNode trieNode = Clone();
-            // TODO: pool old value
             trieNode.Value = changedValue;
             return trieNode;
         }
@@ -876,32 +875,32 @@ namespace Nethermind.Trie
                     {
                         case 0:
                         case 128:
-                        {
-                            _data![i] = childOrRef = _nullNode;
-                            break;
-                        }
-                        case 160:
-                        {
-                            rlpStream.Position--;
-                            Keccak keccak = rlpStream.DecodeKeccak();
-                            TrieNode child = tree.FindCachedOrUnknown(keccak);
-                            _data![i] = childOrRef = child;
-
-                            if (IsPersisted && !child.IsPersisted)
                             {
-                                child.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
+                                _data![i] = childOrRef = _nullNode;
+                                break;
                             }
+                        case 160:
+                            {
+                                rlpStream.Position--;
+                                Keccak keccak = rlpStream.DecodeKeccak();
+                                TrieNode child = tree.FindCachedOrUnknown(keccak);
+                                _data![i] = childOrRef = child;
 
-                            break;
-                        }
+                                if (IsPersisted && !child.IsPersisted)
+                                {
+                                    child.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
+                                }
+
+                                break;
+                            }
                         default:
-                        {
-                            rlpStream.Position--;
-                            Span<byte> fullRlp = rlpStream.PeekNextItem();
-                            TrieNode child = new(NodeType.Unknown, fullRlp.ToCappedArray());
-                            _data![i] = childOrRef = child;
-                            break;
-                        }
+                            {
+                                rlpStream.Position--;
+                                Span<byte> fullRlp = rlpStream.PeekNextItem();
+                                TrieNode child = new(NodeType.Unknown, fullRlp.ToCappedArray());
+                                _data![i] = childOrRef = child;
+                                break;
+                            }
                     }
                 }
                 else

@@ -25,7 +25,7 @@ public class ReceiptTrie : PatriciaTrie<TxReceipt>
 
     /// <inheritdoc/>
     /// <param name="receipts">The transaction receipts to build the trie of.</param>
-    public ReceiptTrie(IReceiptSpec spec, IEnumerable<TxReceipt> receipts, bool canBuildProof = false, IBufferPool? bufferPool = null)
+    public ReceiptTrie(IReceiptSpec spec, IEnumerable<TxReceipt> receipts, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
         : base(null, canBuildProof, bufferPool: bufferPool)
     {
         ArgumentNullException.ThrowIfNull(spec);
@@ -61,9 +61,9 @@ public class ReceiptTrie : PatriciaTrie<TxReceipt>
 
     public static Keccak CalculateRoot(IReceiptSpec receiptSpec, IList<TxReceipt> txReceipts)
     {
-        TrackedPooledBufferTrieStore bufferPool = new(txReceipts.Count * 4);
-        Keccak receiptsRoot = new ReceiptTrie(receiptSpec, txReceipts, bufferPool: bufferPool).RootHash;
-        bufferPool.ReturnAll();
+        TrackedPooledCappedArrayPool cappedArrayPool = new(txReceipts.Count * 4);
+        Keccak receiptsRoot = new ReceiptTrie(receiptSpec, txReceipts, bufferPool: cappedArrayPool).RootHash;
+        cappedArrayPool.ReturnAll();
         return receiptsRoot;
     }
 }

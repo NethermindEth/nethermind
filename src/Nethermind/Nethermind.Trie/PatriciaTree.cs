@@ -47,7 +47,7 @@ namespace Nethermind.Trie
         private readonly ConcurrentQueue<NodeCommitInfo>? _currentCommit;
 
         public ITrieStore TrieStore { get; }
-        public IBufferPool? _bufferPool;
+        public ICappedArrayPool? _bufferPool;
 
         private readonly bool _parallelBranches;
 
@@ -85,7 +85,7 @@ namespace Nethermind.Trie
         {
         }
 
-        public PatriciaTree(ITrieStore trieStore, ILogManager logManager, IBufferPool? bufferPool = null)
+        public PatriciaTree(ITrieStore trieStore, ILogManager logManager, ICappedArrayPool? bufferPool = null)
             : this(trieStore, EmptyTreeHash, false, true, logManager, bufferPool: bufferPool)
         {
         }
@@ -96,7 +96,7 @@ namespace Nethermind.Trie
             bool parallelBranches,
             bool allowCommits,
             ILogManager logManager,
-            IBufferPool? bufferPool = null)
+            ICappedArrayPool? bufferPool = null)
             : this(
                 new TrieStore(keyValueStore, logManager),
                 rootHash,
@@ -113,7 +113,7 @@ namespace Nethermind.Trie
             bool parallelBranches,
             bool allowCommits,
             ILogManager? logManager,
-            IBufferPool? bufferPool = null)
+            ICappedArrayPool? bufferPool = null)
         {
             _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
             TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
@@ -323,7 +323,6 @@ namespace Nethermind.Trie
                 try
                 {
                     Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                    // TODO: return CappedArray maybe?
                     return Run(nibbles, nibblesCount, new CappedArray<byte>(Array.Empty<byte>()), false, startRootHash: rootHash).ToArrayOrNull();
                 }
                 finally
