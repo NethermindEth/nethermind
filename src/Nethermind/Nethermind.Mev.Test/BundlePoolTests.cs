@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Antlr4.Runtime.Atn;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Validators;

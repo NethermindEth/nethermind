@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Specs;
@@ -16,7 +15,6 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
-using Metrics = Nethermind.Trie.Pruning.Metrics;
 
 namespace Nethermind.Store.Test
 {
