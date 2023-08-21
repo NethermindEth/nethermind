@@ -14,19 +14,21 @@ namespace Nethermind.Trie;
 public class TrackedPooledCappedArrayPool: ICappedArrayPool
 {
     private List<CappedArray<byte>> _rentedBuffers;
+    private ArrayPool<byte> _arrayPool;
 
     public TrackedPooledCappedArrayPool(): this(0)
     {
     }
 
-    public TrackedPooledCappedArrayPool(int initialCapacity)
+    public TrackedPooledCappedArrayPool(int initialCapacity, ArrayPool<byte> arrayPool = null)
     {
         _rentedBuffers = new List<CappedArray<byte>>(initialCapacity);
+        _arrayPool = arrayPool ?? ArrayPool<byte>.Shared;
     }
 
     public CappedArray<byte> Rent(int size)
     {
-        var rented = new CappedArray<byte>(ArrayPool<byte>.Shared.Rent(size), size);
+        var rented = new CappedArray<byte>(_arrayPool.Rent(size), size);
         rented.AsSpan().Fill(0);
         _rentedBuffers.Add(rented);
         return rented;
@@ -40,7 +42,7 @@ public class TrackedPooledCappedArrayPool: ICappedArrayPool
     {
         foreach (CappedArray<byte> rentedBuffer in _rentedBuffers)
         {
-            ArrayPool<byte>.Shared.Return(rentedBuffer.Array);
+            _arrayPool.Return(rentedBuffer.Array);
         }
     }
 }
