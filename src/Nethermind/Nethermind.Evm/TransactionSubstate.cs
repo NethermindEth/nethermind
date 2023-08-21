@@ -38,7 +38,7 @@ public class TransactionSubstate
         ShouldRevert = false;
     }
 
-    public unsafe TransactionSubstate(
+    public TransactionSubstate(
         ReadOnlyMemory<byte> output,
         long refund,
         IReadOnlyCollection<Address> destroyList,
@@ -67,27 +67,47 @@ public class TransactionSubstate
             return;
 
         ReadOnlySpan<byte> span = Output.Span;
-        if (span.Length >= sizeof(UInt256) * 2 + RevertPrefix)
+        Error = TryGetErrorMessage(span)
+                ?? DefaultErrorMessage(span);
+    }
+
+    private string DefaultErrorMessage(ReadOnlySpan<byte> span)
+    {
+        return string.Concat(RevertedErrorMessagePrefix, span.ToHexString(true));
+    }
+
+    private unsafe string? TryGetErrorMessage(ReadOnlySpan<byte> span)
+    {
+        if (span.Length < RevertPrefix + sizeof(UInt256) * 2)
         {
-            try
-            {
-                int start = (int)new UInt256(span.Slice(RevertPrefix, sizeof(UInt256)), isBigEndian: true);
-                if (start + RevertPrefix + sizeof(UInt256) <= span.Length)
-                {
-                    int length = (int)new UInt256(span.Slice(start + RevertPrefix, sizeof(UInt256)), isBigEndian: true);
-                    if (checked(start + RevertPrefix + sizeof(UInt256) + length) <= span.Length)
-                    {
-                        Error = string.Concat(RevertedErrorMessagePrefix, span.Slice(start + sizeof(UInt256) + RevertPrefix, length).ToHexString(true));
-                        return;
-                    }
-                }
-            }
-            catch
-            {
-                // ignore
-            }
+            return null;
         }
 
-        Error = string.Concat(RevertedErrorMessagePrefix, span.ToHexString(true));
+        if (!span.Slice(0, RevertPrefix).IsZero())
+        {
+            // Fail if the prefix is not '0x00000000'
+            return null;
+        }
+
+        try
+        {
+            int start = (int)new UInt256(span.Slice(RevertPrefix, sizeof(UInt256)), isBigEndian: true);
+            if (checked(RevertPrefix + start + sizeof(UInt256)) > span.Length)
+            {
+                return null;
+            }
+
+            int length = (int)new UInt256(span.Slice(RevertPrefix + start, sizeof(UInt256)), isBigEndian: true);
+            if (checked(RevertPrefix + start + sizeof(UInt256) + length) > span.Length)
+            {
+                return null;
+            }
+
+            return string.Concat(RevertedErrorMessagePrefix, span.Slice(RevertPrefix + start + sizeof(UInt256), length).ToHexString(true));
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
     }
 }
