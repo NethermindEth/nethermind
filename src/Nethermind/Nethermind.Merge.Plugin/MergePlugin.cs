@@ -323,7 +323,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _invalidChainTracker,
                     _beaconSync,
                     _api.LogManager,
-                    TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout)),
+                    processStateless: _api.Config<IBlocksConfig>().StatelessProcessing),
                 new ForkchoiceUpdatedHandler(
                     _api.BlockTree,
                     _blockFinalizationManager,

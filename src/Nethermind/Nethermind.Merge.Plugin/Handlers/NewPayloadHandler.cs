@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Serialization.Json;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -45,6 +46,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly LruCache<ValueKeccak, bool>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
+    private bool _processStateless { get; set; }
 
     public NewPayloadHandler(
         IBlockValidator blockValidator,
@@ -59,6 +61,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         IInvalidChainTracker invalidChainTracker,
         IMergeSyncController mergeSyncController,
         ILogManager logManager,
+        bool processStateless,
         TimeSpan? timeout = null,
         int cacheSize = 50)
     {
@@ -74,9 +77,10 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _mergeSyncController = mergeSyncController;
         _logger = logManager.GetClassLogger();
         _defaultProcessingOptions = initConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
-        _timeout = timeout ?? TimeSpan.FromSeconds(7);
+        _timeout = TimeSpan.FromSeconds(20);
         if (cacheSize > 0)
             _latestBlocks = new(cacheSize, 0, "LatestBlocks");
+        _processStateless = processStateless;
     }
 
     /// <summary>
@@ -138,6 +142,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
             return NewPayloadV1Result.Syncing;
         }
+
+        // parent is not null - here we can start processing blocks stateless
+        if (_processStateless) block.Header.MaybeParent = new WeakReference<BlockHeader>(parentHeader);
 
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
         if (_blockTree.IsOnMainChainBehindOrEqualHead(block))
@@ -335,9 +342,10 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         try
         {
             Task timeoutTask = Task.Delay(_timeout);
-
+            BlockTreeSuggestOptions suggestion = BlockTreeSuggestOptions.ForceDontSetAsMain;
+            if (_processStateless) suggestion |= BlockTreeSuggestOptions.ShouldProcessStateless | BlockTreeSuggestOptions.ShouldProcess;
             AddBlockResult addResult = await _blockTree
-                .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
+                .SuggestBlockAsync(block, suggestion)
                 .AsTask().TimeoutOn(timeoutTask);
 
             result = addResult switch

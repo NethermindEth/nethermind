@@ -103,6 +103,7 @@ public partial class EngineModuleTests
                 invalidChainTracker,
                 chain.BeaconSync,
                 chain.LogManager,
+                false,
                 newPayloadTimeout,
                 newPayloadCacheSize),
             new ForkchoiceUpdatedHandler(
