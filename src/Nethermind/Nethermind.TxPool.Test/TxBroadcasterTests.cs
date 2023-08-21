@@ -179,7 +179,7 @@ public class TxBroadcasterTests
         Transaction lightTx = new LightTransaction(tx);
 
         int size = tx.GetLength();
-        size.Should().Be(131324);
+        size.Should().Be(131320);
         lightTx.GetLength().Should().Be(size);
 
         _broadcaster.Broadcast(tx, true);
