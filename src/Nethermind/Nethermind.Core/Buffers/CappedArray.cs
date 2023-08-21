@@ -44,6 +44,7 @@ public struct CappedArray<T>
     }
 
     public T[] Array => _array;
+    public bool IsUncapped => _length == _array.Length;
 
     public Span<T> AsSpan()
     {

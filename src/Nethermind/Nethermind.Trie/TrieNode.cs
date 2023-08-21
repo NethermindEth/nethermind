@@ -94,6 +94,10 @@ namespace Nethermind.Trie
                 InitData();
                 if (IsLeaf)
                 {
+                    if (_data![1] is byte[] asBytes)
+                    {
+                        return new CappedArray<byte>(asBytes);
+                    }
                     return (CappedArray<byte>?)_data![1];
                 }
 
@@ -107,15 +111,19 @@ namespace Nethermind.Trie
                 {
                     if (_rlpStream is null)
                     {
-                        _data[BranchesCount] = new CappedArray<byte>(Array.Empty<byte>());
+                        _data[BranchesCount] = Array.Empty<byte>();
                     }
                     else
                     {
                         SeekChild(BranchesCount);
-                        _data![BranchesCount] = _rlpStream!.DecodeByteArray().ToCappedArray();
+                        _data![BranchesCount] = _rlpStream!.DecodeByteArray();
                     }
                 }
 
+                if (_data![BranchesCount] is byte[] asBytes2)
+                {
+                    return new CappedArray<byte>(asBytes2);
+                }
                 return (CappedArray<byte>?)_data[BranchesCount];
             }
 
@@ -133,6 +141,13 @@ namespace Nethermind.Trie
                     // in Ethereum all paths are of equal length, hence branches will never have values
                     // so we decided to save 1/17th of the array size in memory
                     throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
+                }
+
+                if (value.HasValue && value.Value.IsUncapped)
+                {
+                    // Store array directly if possible to reduce memory
+                    _data![IsLeaf ? 1 : BranchesCount] = value.Value.Array;
+                    return;
                 }
 
                 _data![IsLeaf ? 1 : BranchesCount] = value;
@@ -590,7 +605,7 @@ namespace Nethermind.Trie
 
                 if (_data![i] is CappedArray<byte> cappedArray)
                 {
-                    dataSize += MemorySizes.ArrayOverhead + cappedArray.Array.Length;
+                    dataSize += MemorySizes.ArrayOverhead + cappedArray.Array.Length + MemorySizes.SmallObjectOverhead;
                 }
 
                 if (recursive)
@@ -862,32 +877,32 @@ namespace Nethermind.Trie
                     {
                         case 0:
                         case 128:
-                            {
-                                _data![i] = childOrRef = _nullNode;
-                                break;
-                            }
+                        {
+                            _data![i] = childOrRef = _nullNode;
+                            break;
+                        }
                         case 160:
+                        {
+                            rlpStream.Position--;
+                            Keccak keccak = rlpStream.DecodeKeccak();
+                            TrieNode child = tree.FindCachedOrUnknown(keccak);
+                            _data![i] = childOrRef = child;
+
+                            if (IsPersisted && !child.IsPersisted)
                             {
-                                rlpStream.Position--;
-                                Keccak keccak = rlpStream.DecodeKeccak();
-                                TrieNode child = tree.FindCachedOrUnknown(keccak);
-                                _data![i] = childOrRef = child;
-
-                                if (IsPersisted && !child.IsPersisted)
-                                {
-                                    child.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
-                                }
-
-                                break;
+                                child.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
                             }
+
+                            break;
+                        }
                         default:
-                            {
-                                rlpStream.Position--;
-                                Span<byte> fullRlp = rlpStream.PeekNextItem();
-                                TrieNode child = new(NodeType.Unknown, fullRlp.ToCappedArray());
-                                _data![i] = childOrRef = child;
-                                break;
-                            }
+                        {
+                            rlpStream.Position--;
+                            Span<byte> fullRlp = rlpStream.PeekNextItem();
+                            TrieNode child = new(NodeType.Unknown, fullRlp.ToCappedArray());
+                            _data![i] = childOrRef = child;
+                            break;
+                        }
                     }
                 }
                 else
