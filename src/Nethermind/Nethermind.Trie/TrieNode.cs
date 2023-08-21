@@ -205,7 +205,7 @@ namespace Nethermind.Trie
             _rlpStream = rlp.AsRlpStream();
         }
 
-        public TrieNode(NodeType nodeType, byte[]? rlp, bool isDirty = false): this(nodeType, rlp.ToCappedArray(), isDirty)
+        public TrieNode(NodeType nodeType, byte[]? rlp, bool isDirty = false) : this(nodeType, rlp.ToCappedArray(), isDirty)
         {
         }
 
@@ -356,7 +356,8 @@ namespace Nethermind.Trie
             {
                 CappedArray<byte>? oldRlp = FullRlp;
                 FullRlp = RlpEncode(tree, bufferPool);
-                if (oldRlp != null) {
+                if (oldRlp != null)
+                {
                     bufferPool.SafeReturnBuffer(oldRlp.Value);
                 }
                 _rlpStream = FullRlp.AsRlpStream();

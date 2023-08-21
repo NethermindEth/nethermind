@@ -22,7 +22,7 @@ public struct CappedArray<T>
         _length = length;
     }
 
-    public CappedArray(T[] array):this(array, array.Length)
+    public CappedArray(T[] array) : this(array, array.Length)
     {
     }
 
@@ -58,7 +58,8 @@ public struct CappedArray<T>
     }
 }
 
-public static class ArrayExtensions {
+public static class ArrayExtensions
+{
     public static CappedArray<byte>? ToCappedArray(this byte[]? array)
     {
         if (array == null) return null;
