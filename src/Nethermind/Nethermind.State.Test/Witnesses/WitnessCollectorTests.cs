@@ -9,7 +9,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Witnesses;
-using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test.Witnesses

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -1651,12 +1650,12 @@ namespace Nethermind.TxPool.Test
         }
 
         [TestCase(0, 97)]
-        [TestCase(1, 131324)]
-        [TestCase(2, 262534)]
-        [TestCase(3, 393741)]
-        [TestCase(4, 524948)]
-        [TestCase(5, 656156)]
-        [TestCase(6, 787365)]
+        [TestCase(1, 131320)]
+        [TestCase(2, 262530)]
+        [TestCase(3, 393737)]
+        [TestCase(4, 524944)]
+        [TestCase(5, 656152)]
+        [TestCase(6, 787361)]
         public void should_calculate_size_of_blob_tx_correctly(int numberOfBlobs, int expectedLength)
         {
             Transaction blobTx = Build.A.Transaction

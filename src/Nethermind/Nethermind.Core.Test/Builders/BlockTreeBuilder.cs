@@ -11,7 +11,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -19,7 +18,6 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Test.Builders
 {

@@ -3,9 +3,6 @@
 
 using System.Collections.Generic;
 using System.IO;
-using System.Threading.Tasks;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc
 {

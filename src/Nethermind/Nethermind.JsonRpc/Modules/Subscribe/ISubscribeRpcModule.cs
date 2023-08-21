@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.JsonRpc.Modules.Eth;
-
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     [RpcModule(ModuleType.Subscribe)]
