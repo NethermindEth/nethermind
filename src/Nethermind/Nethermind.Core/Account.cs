@@ -126,7 +126,7 @@ namespace Nethermind.Core
 
         public Account WithChangedCodeHash(Keccak newCodeHash, byte[]? code = null)
         {
-            return new(newCodeHash, this) { Code = code };
+            return new(newCodeHash, this) { Code = code, CodeSize = new UInt256((ulong)(code?.Length ?? 0)) };
         }
     }
 }
