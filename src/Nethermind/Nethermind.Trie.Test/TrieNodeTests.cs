@@ -913,7 +913,7 @@ namespace Nethermind.Trie.Test
             trieNode.SetChild(1, leaf1);
             trieNode.SetChild(2, leaf2);
             trieNode.ResolveKey(trieStore, true);
-            CappedArray<byte>? rlp = trieNode.FullRlp;
+            CappedArray<byte> rlp = trieNode.FullRlp;
 
             TrieNode restoredBranch = new(NodeType.Branch, rlp);
 
