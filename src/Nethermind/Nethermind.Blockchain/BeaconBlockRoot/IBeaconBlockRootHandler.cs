@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Consensus.BeaconBlockRoot;
+namespace Nethermind.Blockchain.BeaconBlockRoot;
 public interface IBeaconBlockRootHandler
 {
     void ScheduleSystemCall(Block block, IReleaseSpec spec);

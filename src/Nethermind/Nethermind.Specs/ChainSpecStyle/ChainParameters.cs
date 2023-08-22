@@ -9,7 +9,6 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     public class ChainParameters
     {
-        //public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode { get; set; }
         public long? MaxCodeSize { get; set; }
         public long? MaxCodeSizeTransition { get; set; }
         public ulong? MaxCodeSizeTransitionTimestamp { get; set; }

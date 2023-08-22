@@ -271,7 +271,7 @@ namespace Nethermind.Core.Specs
         /// Parent Beacon Block precompile
         /// </summary>
         bool IsEip4788Enabled { get; }
-        Address Eip4788ContractAddress { get; }
+        Address? Eip4788ContractAddress { get; }
 
         /// <summary>
         /// SELFDESTRUCT only in same transaction
@@ -288,7 +288,7 @@ namespace Nethermind.Core.Specs
 
         public ulong Eip4844TransitionTimestamp { get; }
 
-        // STATE related 
+        // STATE related
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
 
         // VM

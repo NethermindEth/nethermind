@@ -5,8 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -67,7 +67,7 @@ public partial class BlockProcessor : IBlockProcessor
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
-        _beaconBlockRootHandler = new BeaconBlockRootHandler(transactionProcessor);
+        _beaconBlockRootHandler = new BeaconBlockRootHandler(transactionProcessor, logManager);
         _receiptsTracer = new BlockReceiptsTracer();
     }
 

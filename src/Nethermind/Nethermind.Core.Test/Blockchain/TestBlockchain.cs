@@ -6,11 +6,11 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -161,7 +161,7 @@ public class TestBlockchain : IDisposable
         TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, LogManager);
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
-        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor);
+        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, LogManager);
         new ReceiptCanonicalityMonitor(BlockTree, ReceiptStorage, LogManager);
 
         BlockValidator = new BlockValidator(
@@ -178,7 +178,7 @@ public class TestBlockchain : IDisposable
         BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId, LimboLogs.Instance), SpecProvider);
         LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
-        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor);
+        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, LogManager);
         BlockProcessor = CreateBlockProcessor();
 
         BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
