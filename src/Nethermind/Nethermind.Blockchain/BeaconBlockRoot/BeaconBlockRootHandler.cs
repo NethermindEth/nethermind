@@ -8,7 +8,7 @@ namespace Nethermind.Consensus.BeaconBlockRoot;
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 {
     IBeaconRootContract _beaconRootContract { get; set; }
-    Address _address = new Address("0x0b");
+    Address _address = Address.FromNumber(0x0b); // ToDo Address should be configurable
     public BeaconBlockRootHandler(ITransactionProcessor processor)
     {
         _beaconRootContract = new BeaconRootContract(processor, _address);

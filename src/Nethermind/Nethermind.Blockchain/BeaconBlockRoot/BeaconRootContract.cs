@@ -2,31 +2,40 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 public interface IBeaconRootContract
 {
-    byte[] Invoke(BlockHeader blockHeader);
+    void Invoke(BlockHeader blockHeader);
 }
-
-public sealed class BeaconRootContract : CallableContract, IBeaconRootContract
+public sealed class BeaconRootContract : IBeaconRootContract
 {
+    private readonly ITransactionProcessor _transactionProcessor;
     public BeaconRootContract(ITransactionProcessor transactionProcessor, Address contractAddress)
-        : base(transactionProcessor, null, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
     {
+        _transactionProcessor = transactionProcessor;
     }
 
-    public byte[] Invoke(BlockHeader blockHeader)
+    public void Invoke(BlockHeader blockHeader)
     {
-        var result = Call(blockHeader, Address.SystemUser, UnlimitedGas);
-        return result;
+        // ToDo skip genesis & skip when 4788 not activated
+        var transaction = new Transaction()
+        {
+            Value = UInt256.Zero,
+            Data = blockHeader.ParentBeaconBlockRoot.Bytes.ToArray(),
+            To = Address.FromNumber(0x0b),
+            SenderAddress = Address.SystemUser,
+            GasLimit = long.MaxValue, // ToDO Unlimited gas will be probably changed to 30mln
+            GasPrice = UInt256.Zero,
+        };
+
+        transaction.Hash = transaction.CalculateHash();
+
+        _transactionProcessor.Execute(transaction, blockHeader, NullTxTracer.Instance);
     }
 }

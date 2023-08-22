@@ -19,8 +19,8 @@ namespace Nethermind.Blockchain.Contracts
     /// Base class for contracts that will be interacted by the node engine.
     /// </summary>
     /// <remarks>
-    /// This class is intended to be inherited and concrete contract class should provide contract specific methods to be able for the node to use the contract. 
-    /// 
+    /// This class is intended to be inherited and concrete contract class should provide contract specific methods to be able for the node to use the contract.
+    ///
     /// There are 3 main ways a node can interact with contract:
     /// 1. It can <see cref="GenerateTransaction{T}(string,Nethermind.Core.Address,object[])"/> that will be added to a block.
     /// 2. It can <see cref="CallableContract.Call(Nethermind.Core.BlockHeader,string,Nethermind.Core.Address,object[])"/> contract and modify current state of execution.
@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Contracts
     public abstract partial class Contract
     {
         /// <summary>
-        /// Default gas limit of transactions generated from contract. 
+        /// Default gas limit of transactions generated from contract.
         /// </summary>
         public const long DefaultContractGasLimit = 1_600_000L;
 
