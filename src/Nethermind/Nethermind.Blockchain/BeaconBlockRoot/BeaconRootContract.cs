@@ -12,7 +12,7 @@ using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
-public interface IBeaconRootContract 
+public interface IBeaconRootContract
 {
     byte[] Invoke(BlockHeader blockHeader);
 }
