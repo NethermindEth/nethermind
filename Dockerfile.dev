@@ -36,7 +36,9 @@ RUN dotnet tool install --tool-path /dotnetcore-tools dotnet-trace && \
     dotnet tool install --tool-path /dotnetcore-tools dotnet-dump && \
     dotnet tool install --tool-path /dotnetcore-tools dotnet-gcdump
 
-RUN mkdir -p /dotnet && wget -qO- https://github.com/grafana/pyroscope-dotnet/releases/download/v0.8.8-pyroscope/pyroscope.0.8.8-glibc-x86_64.tar.gz | tar xvz -C /dotnet
+RUN apt-get update && apt-get install -y wget && \
+    mkdir -p /dotnet && \
+    wget -qO- https://github.com/grafana/pyroscope-dotnet/releases/download/v0.8.8-pyroscope/pyroscope.0.8.8-glibc-x86_64.tar.gz | tar xvz -C /dotnet
 
 ENV CORECLR_ENABLE_PROFILING=$ENABLE_PYROSCOPE
 ENV CORECLR_PROFILER={BD1A650D-AC5D-4896-B64F-D6FA25D6B26A}

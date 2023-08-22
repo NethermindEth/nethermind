@@ -156,18 +156,19 @@ jobs:
         run: |
           sanitized_current_branch=$(echo ${{ matrix.branch }} | tr '/:' '-')
           branch_name=$(echo "${{ matrix.branch }}" | tr '[:upper:]' '[:lower:]')
-          docker buildx build --platform=linux/amd64 -t $branch_name -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --build-arg ENABLE_PYROSCOPE=true --build-arg PYROSCOPE_SERVER_URL=${PYROSCOPE_SERVER_URL} --build-arg PYROSCOPE_USER=${PYROSCOPE_USER} --build-arg PYROSCOPE_PASSWORD=${PYROSCOPE_PASSWORD} --build-arg PYROSCOPE_APP_NAME=Core_BlockProcessingBenchmark_$sanitized_current_branch --load .
+          docker buildx build --platform=linux/amd64 -t $branch_name -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --build-arg ENABLE_PYROSCOPE=1 --build-arg PYROSCOPE_SERVER_URL=${PYROSCOPE_SERVER_URL} --build-arg PYROSCOPE_USER=${PYROSCOPE_USER} --build-arg PYROSCOPE_PASSWORD=${PYROSCOPE_PASSWORD} --build-arg PYROSCOPE_APP_NAME=Core_BlockProcessingBenchmark_$sanitized_current_branch --load .
 
       - name: Build Kute
         if: matrix.artifactExists == false
         run: dotnet build ./nethermind_master/tools/Nethermind.Tools.Kute -c Release
       
-      - name: Download Sedge
-        if: matrix.artifactExists == false
-        run: |
-          curl -LO https://github.com/NethermindEth/sedge/releases/download/v1.2.1/sedge-v1.2.1-linux-amd64
-          chmod +x sedge-v1.2.1-linux-amd64
-          mv sedge-v1.2.1-linux-amd64 sedge
+      - name: Download Sedge for Linux AMD64
+        id: download-sedge
+        uses: robinraju/release-downloader@v1.8
+        with:
+          repository: NethermindEth/sedge
+          latest: true
+          fileName: "*linux-amd64"
       
       - name: Configure Sedge
         if: matrix.artifactExists == false
@@ -175,8 +176,12 @@ jobs:
           SEQ_API_KEY: ${{ secrets.SEQ_API_KEY }}
           GRAFANA_CONNECTION_STRING: ${{ secrets.GRAFANA_CONNECTION_STRING }}
         run: |
+          mv ${{ fromJson(steps.download-sedge.outputs.downloaded_files)[0] }} sedge
+          chmod +x sedge
+
           sanitized_current_branch=$(echo ${{ matrix.branch }} | tr '/:' '-')
           branch_name=$(echo "${{ matrix.branch }}" | tr '[:upper:]' '[:lower:]')
+
           echo 'Generating sedge...'
           ./sedge deps install
           ./sedge generate \
@@ -200,7 +205,6 @@ jobs:
           --el-extra-flag Merge.CollectionsPerDecommit=-1 \
           --el-extra-flag Merge.CompactMemory=No \
           --el-extra-flag Merge.SweepMemory=-1
-          echo 'Running sedge...'
 
       - name: Run Benchmark
         if: matrix.artifactExists == false
