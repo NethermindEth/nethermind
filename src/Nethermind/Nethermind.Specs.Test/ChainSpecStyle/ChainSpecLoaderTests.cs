@@ -320,7 +320,7 @@ public class ChainSpecLoaderTests
     [Test]
     public void Can_load_cancun_Eip4788_Address()
     {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/cancun.json");
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/Test_Eip4788_chainspec_load.json");
         ChainSpec chainSpec = LoadChainSpec(path);
         chainSpec.Parameters.Eip4788ContractAddress.Should().Be(Address.FromNumber(0x0b));
     }
