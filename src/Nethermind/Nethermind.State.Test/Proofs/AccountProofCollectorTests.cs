@@ -657,7 +657,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             {
                 TrieNode node = new(NodeType.Unknown, accountProof.StorageProofs[j].Proof.Last());
                 node.ResolveNode(new TrieStore(memDb, NullLogManager.Instance));
-                if (node.Value?.Length != 1)
+                if (node.Value.Length != 1)
                 {
                     TestContext.WriteLine($"{j}");
                     // throw new InvalidDataException($"{j}");
@@ -736,7 +736,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                     TrieNode node = new(NodeType.Unknown, accountProof.StorageProofs[j].Proof.Last());
                     node.ResolveNode(null);
                     // TestContext.Write($"|[{i},{j}]");
-                    if (node.Value?.Length != 1)
+                    if (node.Value.Length != 1)
                     {
                         TestContext.WriteLine();
                         TestContext.WriteLine(addressesWithStorage[i].Address);
@@ -747,7 +747,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                         }
                     }
 
-                    node.Value.ToArrayOrNull().Should().BeEquivalentTo(new byte[] { 1 });
+                    node.Value.ToArray().Should().BeEquivalentTo(new byte[] { 1 });
                 }
             }
         }

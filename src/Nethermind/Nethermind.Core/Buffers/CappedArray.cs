@@ -9,7 +9,9 @@ namespace Nethermind.Core.Buffers;
 
 /// <summary>
 /// Basically like ArraySegment, but only contain length, which reduces it size from 16byte to 12byte. Useful for
-/// polling memory where memory pool usually can't return exactly the same size of data
+/// polling memory where memory pool usually can't return exactly the same size of data. To conserve space, The
+/// underlying array can be null and this struct is meant to be non nullable, checking the `IsNull` property to check
+/// if it represent null.
 /// </summary>
 public struct CappedArray<T>
 {
@@ -36,9 +38,9 @@ public struct CappedArray<T>
         return array.ToArrayOrNull() ?? default;
     }
 
-    public static implicit operator CappedArray<T>?(T[]? array)
+    public static implicit operator CappedArray<T>(T[]? array)
     {
-        if (array == null) return null;
+        if (array == null) return new CappedArray<T>(null);
         return new CappedArray<T>(array);
     }
 
@@ -50,6 +52,8 @@ public struct CappedArray<T>
 
     public T[]? Array => _array;
     public bool IsUncapped => _length == _array?.Length;
+    public bool IsNull => _array is null;
+    public bool IsNotNull => _array is not null;
 
     public Span<T> AsSpan()
     {
@@ -69,17 +73,6 @@ public static class ArrayExtensions
     public static CappedArray<byte> ToCappedArray(this byte[]? array)
     {
         return new CappedArray<byte>(array);
-    }
-
-    public static CappedArray<byte> ToCappedArray(this Span<byte> span)
-    {
-        return new CappedArray<byte>(span.ToArray());
-    }
-
-    public static Span<byte> AsSpanOrEmpty(this CappedArray<byte>? array)
-    {
-        if (array == null) return Span<byte>.Empty;
-        return array.Value.AsSpan();
     }
 
     public static T[]? ToArrayOrNull<T>(this CappedArray<T>? array)

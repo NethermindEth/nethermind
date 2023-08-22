@@ -397,7 +397,7 @@ namespace Nethermind.Trie
         private CappedArray<byte>? Run(
             Span<byte> updatePath,
             int nibblesCount,
-            CappedArray<byte>? updateValue,
+            CappedArray<byte> updateValue,
             bool isUpdate,
             bool ignoreMissingDelete = true,
             Keccak? startRootHash = null)
@@ -436,7 +436,7 @@ namespace Nethermind.Trie
                 bool trieIsEmpty = RootRef is null;
                 if (trieIsEmpty)
                 {
-                    if (traverseContext.UpdateValue is not null)
+                    if (traverseContext.UpdateValue.IsNotNull)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Setting new leaf node with value {traverseContext.UpdateValue}");
                         byte[] key = updatePath[..nibblesCount].ToArray();
@@ -519,7 +519,7 @@ namespace Nethermind.Trie
                     }
                     else
                     {
-                        if (node.Value!.Value.Length != 0)
+                        if (node.Value!.Length != 0)
                         {
                             // this only happens when we have branches with values
                             // which is not possible in the Ethereum protocol where keys are of equal lengths
@@ -722,7 +722,7 @@ namespace Nethermind.Trie
 
                 if (traverseContext.IsDelete)
                 {
-                    if (node.Value is null)
+                    if (node.Value.IsNull)
                     {
                         return null;
                     }
@@ -801,8 +801,8 @@ namespace Nethermind.Trie
                 longerPath = remaining;
             }
 
-            CappedArray<byte>? shorterPathValue;
-            CappedArray<byte>? longerPathValue;
+            CappedArray<byte> shorterPathValue;
+            CappedArray<byte> longerPathValue;
 
             if (Bytes.AreEqual(shorterPath, node.Key))
             {
@@ -992,11 +992,11 @@ namespace Nethermind.Trie
 
         private readonly ref struct TraverseContext
         {
-            public CappedArray<byte>? UpdateValue { get; }
+            public CappedArray<byte> UpdateValue { get; }
             public ReadOnlySpan<byte> UpdatePath { get; }
             public bool IsUpdate { get; }
             public bool IsRead => !IsUpdate;
-            public bool IsDelete => IsUpdate && UpdateValue is null;
+            public bool IsDelete => IsUpdate && UpdateValue.IsNull;
             public bool IgnoreMissingDelete { get; }
             public int CurrentIndex { get; }
             public int RemainingUpdatePathLength => UpdatePath.Length - CurrentIndex;
@@ -1019,14 +1019,14 @@ namespace Nethermind.Trie
 
             public TraverseContext(
                 Span<byte> updatePath,
-                CappedArray<byte>? updateValue,
+                CappedArray<byte> updateValue,
                 bool isUpdate,
                 bool ignoreMissingDelete = true)
             {
                 UpdatePath = updatePath;
-                if (updateValue is not null && updateValue.Value.Length == 0)
+                if (updateValue.IsNotNull && updateValue.Array?.Length == 0)
                 {
-                    updateValue = null;
+                    updateValue = new CappedArray<byte>(null);
                 }
 
                 UpdateValue = updateValue;

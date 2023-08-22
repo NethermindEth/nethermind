@@ -18,7 +18,7 @@ public static class BufferPoolExtensions
     {
         if (pool == null) return new CappedArray<byte>(new byte[size]);
         CappedArray<byte> returnedBuffer = pool.Rent(size);
-        if (returnedBuffer.Array == null)
+        if (returnedBuffer.IsNull)
         {
             // Used in unit testing where pool is an nsubstitute
             return new CappedArray<byte>(new byte[size]);

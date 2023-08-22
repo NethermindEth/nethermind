@@ -19,8 +19,8 @@ namespace Nethermind.State
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]
-        public StateTree()
-            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance)
+        public StateTree(ICappedArrayPool? bufferPool = null)
+            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool: bufferPool)
         {
             TrieType = TrieType.State;
         }

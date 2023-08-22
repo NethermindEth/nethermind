@@ -45,7 +45,7 @@ namespace Nethermind.State.Proofs
             TrieNode trieNode = new(NodeType.Unknown, proof.Last());
             trieNode.ResolveNode(null);
 
-            return trieNode.Value.ToArrayOrNull();
+            return trieNode.Value.ToArray();
         }
     }
 }

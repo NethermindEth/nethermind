@@ -63,7 +63,7 @@ namespace Nethermind.Trie.Pruning
                 // ReSharper disable once ConditionIsAlwaysTrueOrFalse
                 if (_objectsCache.TryGetValue(hash, out TrieNode? trieNode))
                 {
-                    if (trieNode!.FullRlp.Array is null)
+                    if (trieNode!.FullRlp.IsNull)
                     {
                         // // this happens in SyncProgressResolver
                         // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
@@ -661,7 +661,7 @@ namespace Nethermind.Trie.Pruning
             }
             else
             {
-                Debug.Assert(currentNode.FullRlp.Array is not null && currentNode.FullRlp.Length < 32,
+                Debug.Assert(currentNode.FullRlp.IsNotNull && currentNode.FullRlp.Length < 32,
                     "We only expect persistence call without Keccak for the nodes that are kept inside the parent RLP (less than 32 bytes).");
             }
         }
@@ -826,7 +826,7 @@ namespace Nethermind.Trie.Pruning
                    && _dirtyNodes.AllNodes.TryGetValue(new ValueKeccak(key), out TrieNode? trieNode)
                    && trieNode is not null
                    && trieNode.NodeType != NodeType.Unknown
-                   && trieNode.FullRlp.Array is not null
+                   && trieNode.FullRlp.IsNotNull
                 ? trieNode.FullRlp.ToArray()
                 : _currentBatch?.Get(key, flags) ?? _keyValueStore.Get(key, flags);
         }

@@ -186,7 +186,7 @@ namespace Nethermind.Trie.Test
             TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, 11);
             decodedTiniest.ResolveNode(NullTrieNodeResolver.Instance);
 
-            Assert.That(decodedTiniest.Value.ToArrayOrNull(), Is.EqualTo(ctx.TiniestLeaf.Value.ToArrayOrNull()), "value");
+            Assert.That(decodedTiniest.Value.ToArray(), Is.EqualTo(ctx.TiniestLeaf.Value.ToArray()), "value");
             Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)), "key");
         }
 
@@ -221,7 +221,7 @@ namespace Nethermind.Trie.Test
             TrieNode? decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, 0);
             decodedTiniest?.ResolveNode(NullTrieNodeResolver.Instance);
 
-            Assert.That(decodedTiniest.Value.ToArrayOrNull(), Is.EqualTo(ctx.TiniestLeaf.Value.ToArrayOrNull()), "value");
+            Assert.That(decodedTiniest.Value.ToArray(), Is.EqualTo(ctx.TiniestLeaf.Value.ToArray()), "value");
             Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)),
                 "key");
         }
@@ -347,7 +347,7 @@ namespace Nethermind.Trie.Test
 
             node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
-            visitor.Received().VisitLeaf(node, context, node.Value.ToArrayOrNull());
+            visitor.Received().VisitLeaf(node, context, node.Value.ToArray());
         }
 
         [Test]
@@ -361,7 +361,7 @@ namespace Nethermind.Trie.Test
 
             node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
-            visitor.Received().VisitLeaf(node, context, node.Value.ToArrayOrNull());
+            visitor.Received().VisitLeaf(node, context, node.Value.ToArray());
         }
 
         [Test]
@@ -377,7 +377,7 @@ namespace Nethermind.Trie.Test
 
             node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
-            visitor.Received().VisitLeaf(node, context, node.Value.ToArrayOrNull());
+            visitor.Received().VisitLeaf(node, context, node.Value.ToArray());
         }
 
         [Test]
@@ -393,7 +393,7 @@ namespace Nethermind.Trie.Test
 
             node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
-            visitor.Received().VisitLeaf(node, context, node.Value.ToArrayOrNull());
+            visitor.Received().VisitLeaf(node, context, node.Value.ToArray());
         }
 
         [Test]
@@ -409,7 +409,7 @@ namespace Nethermind.Trie.Test
             node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitExtension(node, context);
-            visitor.Received().VisitLeaf(ctx.AccountLeaf, context, ctx.AccountLeaf.Value.ToArrayOrNull());
+            visitor.Received().VisitLeaf(ctx.AccountLeaf, context, ctx.AccountLeaf.Value.ToArray());
         }
 
         [Test]
@@ -429,7 +429,7 @@ namespace Nethermind.Trie.Test
             node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitBranch(node, context);
-            visitor.Received(16).VisitLeaf(ctx.AccountLeaf, context, ctx.AccountLeaf.Value.ToArrayOrNull());
+            visitor.Received(16).VisitLeaf(ctx.AccountLeaf, context, ctx.AccountLeaf.Value.ToArray());
         }
 
         [Test]
@@ -921,7 +921,7 @@ namespace Nethermind.Trie.Test
             var restoredLeaf1 = clone.GetChild(trieStore, 1);
             restoredLeaf1.Should().NotBeNull();
             restoredLeaf1.ResolveNode(trieStore);
-            restoredLeaf1.Value.ToArrayOrNull().Should().BeEquivalentTo(leaf1.Value.ToArrayOrNull());
+            restoredLeaf1.Value.ToArray().Should().BeEquivalentTo(leaf1.Value.ToArray());
         }
 
         [Test]

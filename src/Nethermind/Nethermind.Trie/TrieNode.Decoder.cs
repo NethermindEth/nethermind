@@ -115,7 +115,7 @@ namespace Nethermind.Trie
                     : rentedBuffer)[..hexLength];
 
                 HexPrefix.CopyToSpan(hexPrefix, isLeaf: true, keyBytes);
-                int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOf(node.Value.AsSpanOrEmpty());
+                int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOf(node.Value.AsSpan());
                 int totalLength = Rlp.LengthOfSequence(contentLength);
 
                 CappedArray<byte> data = pool.SafeRentBuffer(totalLength);
@@ -126,13 +126,13 @@ namespace Nethermind.Trie
                 {
                     ArrayPool<byte>.Shared.Return(rentedBuffer);
                 }
-                rlpStream.Encode(node.Value.AsSpanOrEmpty());
+                rlpStream.Encode(node.Value.AsSpan());
                 return data;
             }
 
             private static CappedArray<byte> RlpEncodeBranch(ITrieNodeResolver tree, TrieNode item, ICappedArrayPool? pool)
             {
-                int valueRlpLength = AllowBranchValues ? Rlp.LengthOf(item.Value.AsSpanOrEmpty()) : 1;
+                int valueRlpLength = AllowBranchValues ? Rlp.LengthOf(item.Value.AsSpan()) : 1;
                 int contentLength = valueRlpLength + GetChildrenRlpLength(tree, item, pool);
                 int sequenceLength = Rlp.LengthOfSequence(contentLength);
                 CappedArray<byte> result = pool.SafeRentBuffer(sequenceLength);

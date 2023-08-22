@@ -283,13 +283,13 @@ namespace Nethermind.State.Proofs
                     bool isPathMatched = IsPathMatched(node, thisStoragePath);
                     if (isPathMatched)
                     {
-                        _accountProof.StorageProofs[storageIndex].Value = new RlpStream(node.Value.ToArrayOrNull()).DecodeByteArray();
+                        _accountProof.StorageProofs[storageIndex].Value = new RlpStream(node.Value.ToArray()).DecodeByteArray();
                     }
                 }
             }
             else
             {
-                Account account = _accountDecoder.Decode(new RlpStream(node.Value.ToArrayOrNull()));
+                Account account = _accountDecoder.Decode(new RlpStream(node.Value.ToArray()));
                 bool isPathMatched = IsPathMatched(node, _fullAccountPath);
                 if (isPathMatched)
                 {

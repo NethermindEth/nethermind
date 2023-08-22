@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core.Buffers;
@@ -28,7 +29,12 @@ public class TrackedPooledCappedArrayPool : ICappedArrayPool
 
     public CappedArray<byte> Rent(int size)
     {
-        var rented = new CappedArray<byte>(_arrayPool.Rent(size), size);
+        if (size == 0)
+        {
+            return new CappedArray<byte>(Array.Empty<byte>());
+        }
+
+        CappedArray<byte> rented = new CappedArray<byte>(_arrayPool.Rent(size), size);
         rented.AsSpan().Fill(0);
         _rentedBuffers.Add(rented);
         return rented;
@@ -42,7 +48,9 @@ public class TrackedPooledCappedArrayPool : ICappedArrayPool
     {
         foreach (CappedArray<byte> rentedBuffer in _rentedBuffers)
         {
-            _arrayPool.Return(rentedBuffer.Array);
+            if (rentedBuffer.IsNotNull && rentedBuffer.Array.Length != 0)
+                _arrayPool.Return(rentedBuffer.Array);
         }
+        _rentedBuffers.Clear();
     }
 }
