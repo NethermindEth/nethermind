@@ -97,18 +97,18 @@ jobs:
           ref: feature/replay_rpc
           path: nethermind_master
           
-      #- name: Cleanup Docker
-      #  if: matrix.artifactExists == false
-      #  run: |
-      #    containers=$(docker ps -aq)
-      #    if [[ -n "$containers" ]]; then
-      #      docker stop $containers
-      #      docker system prune -a -f --volumes
-      #      docker ps -a && docker images -a && docker network ls && docker volume ls
-      #      echo "Docker system pruned."
-      #    else
-      #      echo "No Docker containers to remove."
-      #    fi      
+      - name: Cleanup Docker
+        if: matrix.artifactExists == false
+        run: |
+          containers=$(docker ps -aq)
+          if [[ -n "$containers" ]]; then
+            docker stop $containers
+            docker system prune -a -f --volumes
+            docker ps -a && docker images -a && docker network ls && docker volume ls
+            echo "Docker system pruned."
+          else
+            echo "No Docker containers to remove."
+          fi      
       
       - name: Setup .NET
         if: matrix.artifactExists == false
@@ -147,16 +147,16 @@ jobs:
         if: matrix.artifactExists == false
         uses: docker/setup-buildx-action@v2
 
-      #- name: Build docker image
-      #  if: matrix.artifactExists == false
-      #  env:
-      #    PYROSCOPE_SERVER_URL: ${{ secrets.PYROSCOPE_SERVER_URL }}
-      #    PYROSCOPE_USER: ${{ secrets.PYROSCOPE_USER }}
-      #    PYROSCOPE_PASSWORD: ${{ secrets.PYROSCOPE_PASSWORD }}
-      #  run: |
-      #    sanitized_current_branch=$(echo ${{ matrix.branch }} | tr '/:' '-')
-      #    branch_name=$(echo "${{ matrix.branch }}" | tr '[:upper:]' '[:lower:]')
-      #    docker buildx build --platform=linux/amd64 -t $branch_name -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --build-arg ENABLE_PYROSCOPE=true --build-arg PYROSCOPE_SERVER_URL=${PYROSCOPE_SERVER_URL} --build-arg PYROSCOPE_USER=${PYROSCOPE_USER} --build-arg PYROSCOPE_PASSWORD=${PYROSCOPE_PASSWORD} --build-arg PYROSCOPE_APP_NAME=Core_BlockProcessingBenchmark_$sanitized_current_branch --load .
+      - name: Build docker image
+        if: matrix.artifactExists == false
+        env:
+          PYROSCOPE_SERVER_URL: ${{ secrets.PYROSCOPE_SERVER_URL }}
+          PYROSCOPE_USER: ${{ secrets.PYROSCOPE_USER }}
+          PYROSCOPE_PASSWORD: ${{ secrets.PYROSCOPE_PASSWORD }}
+        run: |
+          sanitized_current_branch=$(echo ${{ matrix.branch }} | tr '/:' '-')
+          branch_name=$(echo "${{ matrix.branch }}" | tr '[:upper:]' '[:lower:]')
+          docker buildx build --platform=linux/amd64 -t $branch_name -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --build-arg ENABLE_PYROSCOPE=true --build-arg PYROSCOPE_SERVER_URL=${PYROSCOPE_SERVER_URL} --build-arg PYROSCOPE_USER=${PYROSCOPE_USER} --build-arg PYROSCOPE_PASSWORD=${PYROSCOPE_PASSWORD} --build-arg PYROSCOPE_APP_NAME=Core_BlockProcessingBenchmark_$sanitized_current_branch --load .
 
       - name: Build Kute
         if: matrix.artifactExists == false
