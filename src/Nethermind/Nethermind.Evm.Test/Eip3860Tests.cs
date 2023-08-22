@@ -6,8 +6,6 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using System;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test

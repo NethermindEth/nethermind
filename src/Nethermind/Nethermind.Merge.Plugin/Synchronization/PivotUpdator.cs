@@ -33,6 +33,7 @@ public class PivotUpdator
 
     private readonly CancellationTokenSource _cancellation = new();
 
+    private static int _maxAttempts;
     private int _attemptsLeft;
     private int _updateInProgress;
     private Keccak _alreadyAnnouncedNewPivotHash = Keccak.Zero;
@@ -55,6 +56,7 @@ public class PivotUpdator
         _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
         _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
+        _maxAttempts = syncConfig.MaxAttemptsToUpdatePivot;
         _attemptsLeft = syncConfig.MaxAttemptsToUpdatePivot;
 
         if (!TryUpdateSyncConfigUsingDataFromDb())
@@ -141,7 +143,7 @@ public class PivotUpdator
 
         if (finalizedBlockHash is null || finalizedBlockHash == Keccak.Zero)
         {
-            if (_logger.IsInfo && _attemptsLeft % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block. {_attemptsLeft} attempts left");
+            if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{_maxAttempts - _attemptsLeft}s]");
 
             return null;
         }
@@ -217,7 +219,7 @@ public class PivotUpdator
             }
         }
 
-        if (_logger.IsInfo && _attemptsLeft % 10 == 0) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}. Waiting for pivot block header. {_attemptsLeft} attempts left");
+        if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}. Waiting for pivot block header [{_maxAttempts - _attemptsLeft}s]");
         return null;
     }
 

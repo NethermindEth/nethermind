@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -81,5 +80,7 @@ namespace Nethermind.Specs
         public bool IsEip4844Enabled { get; set; }
         public bool IsEip5656Enabled { get; set; }
         public bool IsEip6780Enabled { get; set; }
+        public bool IsEip4788Enabled { get; set; }
+        public Address Eip4788ContractAddress { get; set; }
     }
 }

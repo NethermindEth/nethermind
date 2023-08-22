@@ -4,7 +4,7 @@
 
 set -e
 
-app_name=Nethermind.Launcher
+app_name=nethermind-launcher
 output_path=$GITHUB_WORKSPACE/$PUB_DIR
 
 echo "Building Nethermind Launcher"

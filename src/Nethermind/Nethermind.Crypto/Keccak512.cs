@@ -5,7 +5,6 @@ using System;
 using System.Buffers.Binary;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Crypto
 {

@@ -6,7 +6,7 @@ sudo chown -R $(whoami) /usr/share/nethermind
 opts=$@
 if [ ${#opts} -gt 0 ]
 then
-  echo 'Executing Nethermind Runner'
+  echo 'Executing Nethermind'
   sudo /usr/share/nethermind/Nethermind.Runner $@
 else
   echo 'Executing Nethermind Launcher'
