@@ -873,13 +873,13 @@ namespace Nethermind.Serialization.Rlp
 
         protected virtual void SkipBytes(int length)
         {
-            Position += length;
+            _position += length;
         }
 
         public virtual Span<byte> Read(int length)
         {
             Span<byte> data = Data.AsSpan(_position, length);
-            Position += length;
+            _position += length;
             return data;
         }
 
