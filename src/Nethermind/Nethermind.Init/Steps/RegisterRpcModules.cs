@@ -90,7 +90,7 @@ public class RegisterRpcModules : IStep
         if (_api.ReceiptStorage is null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
         if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
         if (_api.EthSyncingInfo is null) throw new StepDependencyException(nameof(_api.EthSyncingInfo));
-        if (_api.ReadOnlyTrieStore is null) throw new StepDependencyException(nameof(_api.ReadOnlyTrieStore));
+        if (_api.ReadOnlyTrieStore is null && _api.ReadOnlyVerkleTrieStore is null) throw new StepDependencyException(nameof(_api.ReadOnlyTrieStore));
 
 
         EthModuleFactory ethModuleFactory = new(
