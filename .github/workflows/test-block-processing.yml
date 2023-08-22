@@ -41,7 +41,7 @@ jobs:
           #  branches+=",${{ github.event.inputs.branches_to_compare }}"
           #fi
           
-          branches="master"
+          branches="kch/block_processing_benchmark"
           
           IFS=',' read -ra branch_array <<< "$branches"
           
