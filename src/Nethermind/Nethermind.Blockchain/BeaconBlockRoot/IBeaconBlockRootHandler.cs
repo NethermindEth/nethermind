@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.BeaconBlockRoot;
 public interface IBeaconBlockRootHandler
 {
-    void ScheduleSystemCall(Block block);
+    void ScheduleSystemCall(Block block, IReleaseSpec spec);
 }

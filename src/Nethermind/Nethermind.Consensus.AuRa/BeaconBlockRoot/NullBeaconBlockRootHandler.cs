@@ -3,13 +3,13 @@
 
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.AuRa.BeaconBlockRoot;
 internal class NullBeaconBlockRootHandler : IBeaconBlockRootHandler
 {
-    public void ScheduleSystemCall(Block block)
+    public static IBeaconBlockRootHandler Instance { get; } = new NullBeaconBlockRootHandler();
+    public void ScheduleSystemCall(Block block, IReleaseSpec spec)
     {
     }
-
-    public static IBeaconBlockRootHandler Instance { get; } = new NullBeaconBlockRootHandler();
 }

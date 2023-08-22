@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -11,7 +12,7 @@ using Nethermind.Int256;
 
 public interface IBeaconRootContract
 {
-    void Invoke(BlockHeader blockHeader);
+    void Invoke(BlockHeader blockHeader, IReleaseSpec spec);
 }
 public sealed class BeaconRootContract : IBeaconRootContract
 {
@@ -21,9 +22,12 @@ public sealed class BeaconRootContract : IBeaconRootContract
         _transactionProcessor = transactionProcessor;
     }
 
-    public void Invoke(BlockHeader blockHeader)
+    public void Invoke(BlockHeader blockHeader, IReleaseSpec spec)
     {
-        // ToDo skip genesis & skip when 4788 not activated
+        if (!spec.IsBeaconBlockRootAvailable ||
+            blockHeader.IsGenesis ||
+            blockHeader.ParentBeaconBlockRoot is null) return;
+
         var transaction = new Transaction()
         {
             Value = UInt256.Zero,

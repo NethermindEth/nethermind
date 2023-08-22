@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.BeaconBlockRoot;
@@ -13,8 +14,8 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
     {
         _beaconRootContract = new BeaconRootContract(processor, _address);
     }
-    public void ScheduleSystemCall(Block block)
+    public void ScheduleSystemCall(Block block, IReleaseSpec spec)
     {
-        _beaconRootContract.Invoke(block.Header);
+        _beaconRootContract.Invoke(block.Header, spec);
     }
 }
