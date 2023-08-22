@@ -66,7 +66,7 @@ namespace Nethermind.Trie.Pruning
             return Array.Empty<byte>();
         }
 
-        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false) { }
+        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
 
         public void ClearCache() { }
 

@@ -64,7 +64,7 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
-        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore, bool withDelete = false)
+        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
         {
             throw new NotImplementedException();
         }

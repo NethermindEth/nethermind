@@ -66,7 +66,7 @@ namespace Nethermind.Trie.Pruning
             return _trieStore.LoadRlp(nodePath, rootHash);
         }
 
-        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false) { }
+        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
         public void ClearCache() => _trieStore.ClearCache();
 
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles) => _trieStore.ExistsInDB(hash, nodePathNibbles);

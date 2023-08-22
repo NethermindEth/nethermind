@@ -127,7 +127,7 @@ namespace Nethermind.Trie.Pruning
                 node.LastSeen = Math.Max(blockNumber, node.LastSeen ?? 0);
 
                 if (_committedNodes[StateColumns.State].MaxNumberOfBlocks == 0)
-                    Persist(node, blockNumber);
+                    Persist(node, blockNumber, writeFlags);
 
                 CommittedNodesCount++;
             }
@@ -386,7 +386,7 @@ namespace Nethermind.Trie.Pruning
             PruneCurrentSet();
         }
 
-        private void Persist(TrieNode currentNode, long blockNumber)
+        private void Persist(TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None)
         {
             StateColumns column = GetProperColumn(currentNode);
             _currentBatches[column] ??= _stateDb.GetColumnDb(column).StartBatch();
@@ -394,20 +394,20 @@ namespace Nethermind.Trie.Pruning
             {
                 throw new ArgumentNullException(nameof(currentNode));
             }
-                Debug.Assert(blockNumber == TrieNode.LastSeenNotSet || currentNode.LastSeen != TrieNode.LastSeenNotSet, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
-                // Note that the LastSeen value here can be 'in the future' (greater than block number
-                // if we replaced a newly added node with an older copy and updated the LastSeen value.
-                // Here we reach it from the old root so it appears to be out of place but it is correct as we need
-                // to prevent it from being removed from cache and also want to have it persisted.
+            Debug.Assert(blockNumber == TrieNode.LastSeenNotSet || currentNode.LastSeen != TrieNode.LastSeenNotSet, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
+            // Note that the LastSeen value here can be 'in the future' (greater than block number
+            // if we replaced a newly added node with an older copy and updated the LastSeen value.
+            // Here we reach it from the old root so it appears to be out of place but it is correct as we need
+            // to prevent it from being removed from cache and also want to have it persisted.
 
-                if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
+            if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
 
-                SaveNodeDirectly(blockNumber, currentNode, _currentBatches[column]);
+            SaveNodeDirectly(blockNumber, currentNode, _currentBatches[column]);
 
-                currentNode.IsPersisted = true;
-                currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
+            currentNode.IsPersisted = true;
+            currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
 
-                PersistedNodesCount++;
+            PersistedNodesCount++;
         }
 
         private bool IsNoLongerNeeded(TrieNode node)
@@ -505,7 +505,7 @@ namespace Nethermind.Trie.Pruning
 
         #endregion
 
-        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false)
+        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
         {
             keyValueStore ??= GetProperColumnDb(trieNode.FullPath.Length);
 
@@ -520,11 +520,11 @@ namespace Nethermind.Trie.Pruning
                 trieNode.PathToNode.CopyTo(pathToNodeSlice);
                 byte[] pathToNodeBytes = Nibbles.NibblesToByteStorage(pathToNodeNibbles);
 
-                if (_logger.IsDebug) _logger.Debug($"Saving node {trieNode.NodeType} path to nibbles {pathToNodeNibbles.ToHexString()}, bytes: {pathToNodeBytes.ToHexString()}, full: {pathBytes.ToHexString()}");
+                if (_logger.IsDebug) _logger.Trace($"Saving node {trieNode.NodeType} path to nibbles {pathToNodeNibbles.ToHexString()}, bytes: {pathToNodeBytes.ToHexString()}, full: {pathBytes.ToHexString()}");
 
                 if (trieNode.FullRlp == null)
                 {
-                    keyValueStore[pathToNodeBytes] = null;
+                    keyValueStore.Set(pathToNodeBytes, null, writeFlags);
                 }
                 else
                 {
@@ -533,7 +533,7 @@ namespace Nethermind.Trie.Pruning
                         byte[] newPath = new byte[pathBytes.Length + 1];
                         Array.Copy(pathBytes, 0, newPath, 1, pathBytes.Length);
                         newPath[0] = PathMarker;
-                        keyValueStore[pathToNodeBytes] = newPath;
+                        keyValueStore.Set(pathToNodeBytes, newPath, writeFlags);
 
                         if (withDelete)
                             RequestDeletionForLeaf(pathToNodeNibbles, trieNode.FullPath);
@@ -542,7 +542,7 @@ namespace Nethermind.Trie.Pruning
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug($"Saving node {trieNode.NodeType} full nibbles {fullPath.ToHexString()} full: {pathBytes.ToHexString()}");
+                if (_logger.IsDebug) _logger.Trace($"Saving node {trieNode.NodeType} full nibbles {fullPath.ToHexString()} full: {pathBytes.ToHexString()}");
             }
             if (withDelete)
             {
@@ -556,7 +556,7 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            keyValueStore[pathBytes] = trieNode.FullRlp;
+            keyValueStore.Set(pathBytes, trieNode.FullRlp, writeFlags);
         }
 
         public bool ExistsInDB(Keccak hash, byte[] pathNibbles)
