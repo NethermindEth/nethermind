@@ -83,12 +83,6 @@ public class TransactionSubstate
             return null;
         }
 
-        if (!span.Slice(0, RevertPrefix).IsZero())
-        {
-            // Fail if the prefix is not '0x00000000'
-            return null;
-        }
-
         try
         {
             int start = (int)new UInt256(span.Slice(RevertPrefix, sizeof(UInt256)), isBigEndian: true);
@@ -98,7 +92,7 @@ public class TransactionSubstate
             }
 
             int length = (int)new UInt256(span.Slice(RevertPrefix + start, sizeof(UInt256)), isBigEndian: true);
-            if (checked(RevertPrefix + start + sizeof(UInt256) + length) > span.Length)
+            if (checked(RevertPrefix + start + sizeof(UInt256) + length) != span.Length)
             {
                 return null;
             }
