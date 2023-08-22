@@ -233,13 +233,22 @@ public class TrieNodePathCache : IPathTrieNodeCache
     public void PersistUntilBlock(long blockNumber, IBatch? batch = null)
     {
         List<byte[]> removedPaths = new();
+        List<TrieNode> toPersist = new();
         foreach (KeyValuePair<byte[], NodeVersions> nodeVersion in _nodesByPath)
         {
             TrieNode node = nodeVersion.Value.GetLatestUntil(blockNumber, true);
             if (nodeVersion.Value.Count == 0)
                 removedPaths.Add(nodeVersion.Key);
 
-            if (node == null || node.IsPersisted)
+            if (node is null)
+                continue;
+
+            if (node.FullRlp is null) toPersist.Insert(0, node); else toPersist.Add(node);
+        }
+
+        foreach (TrieNode node in toPersist)
+        {
+            if (node.IsPersisted)
                 continue;
             _trieStore.SaveNodeDirectly(blockNumber, node, batch);
             node.IsPersisted = true;
