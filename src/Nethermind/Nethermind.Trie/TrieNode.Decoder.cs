@@ -67,7 +67,7 @@ namespace Nethermind.Trie
 
                 nodeRef.ResolveKey(tree, false, bufferPool: bufferPool);
 
-                int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Value.Length : Rlp.LengthOfKeccakRlp);
+                int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
 
                 CappedArray<byte> data = bufferPool.SafeRentBuffer(totalLength);
@@ -86,7 +86,7 @@ namespace Nethermind.Trie
                     // so E - - - - - - - - - - - - - - -
                     // so |
                     // so |
-                    rlpStream.Write(nodeRef.FullRlp.Value.AsSpan());
+                    rlpStream.Write(nodeRef.FullRlp.AsSpan());
                 }
                 else
                 {
@@ -178,7 +178,7 @@ namespace Nethermind.Trie
                         {
                             TrieNode childNode = (TrieNode)item._data[i];
                             childNode!.ResolveKey(tree, false, bufferPool: bufferPool);
-                            totalLength += childNode.Keccak is null ? childNode.FullRlp!.Value.Length : Rlp.LengthOfKeccakRlp;
+                            totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                         }
                     }
 
@@ -221,7 +221,7 @@ namespace Nethermind.Trie
                             childNode!.ResolveKey(tree, false, bufferPool: bufferPool);
                             if (childNode.Keccak is null)
                             {
-                                Span<byte> fullRlp = childNode.FullRlp!.Value.AsSpan();
+                                Span<byte> fullRlp = childNode.FullRlp!.AsSpan();
                                 fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
                                 position += fullRlp.Length;
                             }

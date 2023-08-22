@@ -13,17 +13,22 @@ namespace Nethermind.Core.Buffers;
 /// </summary>
 public struct CappedArray<T>
 {
-    private T[] _array;
-    private int _length;
+    private T[]? _array = null;
+    private int _length = 0;
 
-    public CappedArray(T[] array, int length)
+    public CappedArray(T[]? array, int length)
     {
         _array = array;
         _length = length;
     }
 
-    public CappedArray(T[] array) : this(array, array.Length)
+    public CappedArray(T[]? array)
     {
+        if (array != null)
+        {
+            _array = array;
+            _length = array.Length;
+        }
     }
 
     public static implicit operator ReadOnlySpan<T>(CappedArray<T>? array)
@@ -43,26 +48,26 @@ public struct CappedArray<T>
         set => _length = value;
     }
 
-    public T[] Array => _array;
-    public bool IsUncapped => _length == _array.Length;
+    public T[]? Array => _array;
+    public bool IsUncapped => _length == _array?.Length;
 
     public Span<T> AsSpan()
     {
         return _array.AsSpan()[..Length];
     }
 
-    public T[] ToArray()
+    public T[]? ToArray()
     {
-        if (_length == _array.Length) return _array;
+        if (_array is null) return null;
+        if (_length == _array?.Length) return _array;
         return AsSpan().ToArray();
     }
 }
 
 public static class ArrayExtensions
 {
-    public static CappedArray<byte>? ToCappedArray(this byte[]? array)
+    public static CappedArray<byte> ToCappedArray(this byte[]? array)
     {
-        if (array == null) return null;
         return new CappedArray<byte>(array);
     }
 

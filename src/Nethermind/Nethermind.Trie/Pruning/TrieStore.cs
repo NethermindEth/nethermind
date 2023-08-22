@@ -63,7 +63,7 @@ namespace Nethermind.Trie.Pruning
                 // ReSharper disable once ConditionIsAlwaysTrueOrFalse
                 if (_objectsCache.TryGetValue(hash, out TrieNode? trieNode))
                 {
-                    if (trieNode!.FullRlp is null)
+                    if (trieNode!.FullRlp.Array is null)
                     {
                         // // this happens in SyncProgressResolver
                         // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
@@ -654,14 +654,14 @@ namespace Nethermind.Trie.Pruning
                 // to prevent it from being removed from cache and also want to have it persisted.
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                _currentBatch.Set(currentNode.Keccak.Bytes, currentNode.FullRlp.ToArrayOrNull(), writeFlags);
+                _currentBatch.Set(currentNode.Keccak.Bytes, currentNode.FullRlp.ToArray(), writeFlags);
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
                 PersistedNodesCount++;
             }
             else
             {
-                Debug.Assert(currentNode.FullRlp is not null && currentNode.FullRlp?.Length < 32,
+                Debug.Assert(currentNode.FullRlp.Array is not null && currentNode.FullRlp.Length < 32,
                     "We only expect persistence call without Keccak for the nodes that are kept inside the parent RLP (less than 32 bytes).");
             }
         }
@@ -797,7 +797,7 @@ namespace Nethermind.Trie.Pruning
                     Keccak? hash = n.Keccak;
                     if (hash is not null)
                     {
-                        store[hash.Bytes] = n.FullRlp.ToArrayOrNull();
+                        store[hash.Bytes] = n.FullRlp.ToArray();
                         int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
                         if (_logger.IsInfo && persistedNodesCount % million == 0)
                         {
@@ -826,8 +826,8 @@ namespace Nethermind.Trie.Pruning
                    && _dirtyNodes.AllNodes.TryGetValue(new ValueKeccak(key), out TrieNode? trieNode)
                    && trieNode is not null
                    && trieNode.NodeType != NodeType.Unknown
-                   && trieNode.FullRlp is not null
-                ? trieNode.FullRlp.ToArrayOrNull()
+                   && trieNode.FullRlp.Array is not null
+                ? trieNode.FullRlp.ToArray()
                 : _currentBatch?.Get(key, flags) ?? _keyValueStore.Get(key, flags);
         }
 

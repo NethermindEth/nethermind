@@ -275,7 +275,7 @@ namespace Nethermind.Trie
             node.ResolveKey(TrieStore, nodeCommitInfo.IsRoot, bufferPool: _bufferPool);
             node.Seal();
 
-            if (node.FullRlp?.Length >= 32)
+            if (node.FullRlp.Length >= 32)
             {
                 if (!skipSelf)
                 {

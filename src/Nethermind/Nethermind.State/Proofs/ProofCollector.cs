@@ -66,7 +66,7 @@ namespace Nethermind.State.Proofs
 
         protected virtual void AddProofBits(TrieNode node)
         {
-            _proofBits.Add(node.FullRlp.ToArrayOrNull());
+            _proofBits.Add(node.FullRlp.ToArray());
         }
 
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value)
