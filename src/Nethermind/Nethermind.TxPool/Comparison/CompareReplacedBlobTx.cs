@@ -27,9 +27,6 @@ public class CompareReplacedBlobTx : IComparer<Transaction?>
         if (oldTx.BlobVersionedHashes is null || newTx.BlobVersionedHashes is null) return TxComparisonResult.KeepOld;
         if (oldTx.BlobVersionedHashes.Length > newTx.BlobVersionedHashes.Length) return TxComparisonResult.KeepOld;
 
-        // always allow replacement of zero fee txs
-        if (oldTx.MaxFeePerGas.IsZero) return TxComparisonResult.TakeNew; //ToDo: do we need it?
-
         if (oldTx.MaxFeePerGas * 2 > newTx.MaxFeePerGas) return TxComparisonResult.KeepOld;
         if (oldTx.MaxPriorityFeePerGas * 2 > newTx.MaxPriorityFeePerGas) return TxComparisonResult.KeepOld;
         if (oldTx.MaxFeePerBlobGas * 2 > newTx.MaxFeePerBlobGas) return TxComparisonResult.KeepOld;
