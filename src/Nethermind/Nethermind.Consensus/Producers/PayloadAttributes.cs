@@ -120,7 +120,7 @@ public static class PayloadAttributesExtensions
         {
             error = $"PayloadAttributesV{expectedVersion} expected";
         }
-        else if (actualVersion > version && actualVersion < EngineApiVersions.Cancun)
+        else if (actualVersion > version || (version >= EngineApiVersions.Cancun && version != actualVersion))
         {
             error = $"PayloadAttributesV{version} expected";
         }
@@ -132,22 +132,17 @@ public static class PayloadAttributesExtensions
         int version,
         [NotNullWhen(false)] out string? error)
     {
-        error = null;
-
         int expectedVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp))
             .ExpectedEngineSpecVersion();
 
-        if(version >= EngineApiVersions.Cancun)
+        error = version switch
         {
-            if(version != expectedVersion)
-            {
-                error = $"PayloadAttributesV{expectedVersion} expected";
-            }
+            >= EngineApiVersions.Cancun => version != expectedVersion,
+            EngineApiVersions.Shanghai => expectedVersion >= EngineApiVersions.Cancun,
+            _ => true,
         }
-        else if(expectedVersion >= EngineApiVersions.Cancun)
-        {
-            error = $"PayloadAttributesV{expectedVersion} expected";
-        }
+            ? $"PayloadAttributesV{expectedVersion} expected"
+            : null;
 
         return error is null;
     }
