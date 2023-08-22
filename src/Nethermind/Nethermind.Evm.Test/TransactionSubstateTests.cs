@@ -50,9 +50,9 @@ namespace Nethermind.Evm.Test
         {
             // See: https://github.com/NethermindEth/nethermind/issues/6024
 
-            string input =
+            string hex =
                 "0x220266b600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000001741413231206469646e2774207061792070726566756e64000000000000000000";
-            byte[] data = Bytes.FromHexString(input);
+            byte[] data = Bytes.FromHexString(hex);
             ReadOnlyMemory<byte> readOnlyMemory = new(data);
             TransactionSubstate transactionSubstate = new(
                 readOnlyMemory,
@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Test
                 new LogEntry[] { },
                 true,
                 true);
-            transactionSubstate.Error.Should().Be($"Reverted {input}");
+            transactionSubstate.Error.Should().Be($"Reverted {hex}");
         }
 
         [Test]
