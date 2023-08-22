@@ -122,7 +122,7 @@ public class Eip2930Tests
     [TestCase(TxType.EIP1559, """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","maxPriorityFeePerGas":"0x0","maxFeePerGas":"0x0","gas":"0x0","input":null,"type":"0x2","accessList":[]}""")]
     public void can_serialize_empty_accessList(TxType txType, string txJson)
     {
-        Dictionary<Address,IReadOnlySet<UInt256>> data = new();
+        Dictionary<Address, IReadOnlySet<UInt256>> data = new();
         Transaction transaction = new()
         {
             Type = txType,
@@ -150,7 +150,7 @@ public class Eip2930Tests
     [TestCase(TxType.EIP1559, """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","maxPriorityFeePerGas":"0x0","maxFeePerGas":"0x0","gas":"0x0","input":null,"type":"0x2","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":[]}]}""")]
     public void can_serialize_accessList_with_empty_storageKeys(TxType txType, string txJson)
     {
-        Dictionary<Address,IReadOnlySet<UInt256>> data = new()
+        Dictionary<Address, IReadOnlySet<UInt256>> data = new()
         {
             {
                 TestItem.AddressA, new HashSet<UInt256>()
