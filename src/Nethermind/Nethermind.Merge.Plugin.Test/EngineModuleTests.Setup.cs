@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -214,6 +215,7 @@ public partial class EngineModuleTests
 
         protected override IBlockProcessor CreateBlockProcessor()
         {
+            BeaconBlockRootHandler beaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, LogManager);
             BlockValidator = CreateBlockValidator();
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,

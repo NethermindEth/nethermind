@@ -46,7 +46,8 @@ public partial class BlockProcessor : IBlockProcessor
     /// </summary>
     private readonly BlockReceiptsTracer _receiptsTracer;
 
-    public BlockProcessor(ISpecProvider? specProvider,
+    public BlockProcessor(
+        ISpecProvider? specProvider,
         IBlockValidator? blockValidator,
         IRewardCalculator? rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,

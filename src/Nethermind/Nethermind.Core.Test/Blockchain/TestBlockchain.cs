@@ -33,6 +33,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
+using Nethermind.Synchronization;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -50,7 +51,6 @@ public class TestBlockchain : IDisposable
     public ITxPool TxPool { get; set; } = null!;
     public IDb CodeDb => DbProvider.CodeDb;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
-    public IBeaconBlockRootHandler BeaconBlockRootHandler { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
     public IBlockPreprocessorStep BlockPreprocessorStep { get; set; } = null!;
@@ -99,6 +99,8 @@ public class TestBlockchain : IDisposable
     public IHeaderValidator HeaderValidator { get; set; } = null!;
 
     public IBlockValidator BlockValidator { get; set; } = null!;
+
+    public IBeaconBlockRootHandler BeaconBlockRootHandler { get; set; } = null!;
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
     public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; } = null!;
