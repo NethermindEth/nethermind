@@ -84,28 +84,5 @@ namespace Nethermind.Evm.Test
                 true);
             transactionSubstate.Error.Should().Be("Reverted 0x41413231206469646e2774207061792070726566756e64");
         }
-
-        [Test]
-        [Ignore("Badly implemented in several clients (geth, erigon, Nethermind)")]
-        public void should_return_proper_revert_error_eip_140_test_case()
-        {
-            // See: https://eips.ethereum.org/EIPS/eip-140
-
-            byte[] data = {
-                0x6c, 0x72, 0x65, 0x76, 0x65, 0x72, 0x74, 0x65, 0x64, 0x20, 0x64, 0x61, 0x74, 0x61, // "lreverted data'
-                0x60, 0x00, 0x55, 0x7f,
-                0x72, 0x65, 0x76, 0x65, 0x72, 0x74, 0x20, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, // "revert message"
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x60, 0x00, 0x52, 0x60, 0x0e, 0x60, 0x00, 0xfd,
-            };
-            ReadOnlyMemory<byte> readOnlyMemory = new(data);
-            TransactionSubstate transactionSubstate = new(
-                readOnlyMemory,
-                0,
-                new ArraySegment<Address>(),
-                new LogEntry[] { },
-                true,
-                true);
-            transactionSubstate.Error.Should().Be("Reverted 0x726576657274206d657373616765");
-        }
     }
 }
