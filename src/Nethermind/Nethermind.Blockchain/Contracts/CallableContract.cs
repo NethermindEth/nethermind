@@ -60,12 +60,6 @@ namespace Nethermind.Blockchain.Contracts
             return objects;
         }
 
-        protected byte[] Call(BlockHeader header, Transaction transaction)
-        {
-            var result = CallCore(_transactionProcessor, header, string.Empty, transaction);
-            return result;
-        }
-
         private bool TryCall(BlockHeader header, Transaction transaction, out byte[] result)
         {
             CallOutputTracer tracer = new();
