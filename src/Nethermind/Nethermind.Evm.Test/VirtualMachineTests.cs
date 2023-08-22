@@ -547,7 +547,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Revert() {
+    public void Revert()
+    {
         // See: https://eips.ethereum.org/EIPS/eip-140
 
         byte[] code = Bytes.FromHexString("0x6c726576657274656420646174616000557f726576657274206d657373616765000000000000000000000000000000000000600052600e6000fd");
