@@ -692,7 +692,7 @@ namespace Nethermind.Serialization.Rlp
         public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
         {
             (int prefixLength, int contentLength) result;
-            int prefix = ReadByte();
+            int prefix = PeekByte();
             if (prefix <= 128)
             {
                 result = (0, 1);
