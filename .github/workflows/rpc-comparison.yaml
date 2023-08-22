@@ -55,7 +55,7 @@ jobs:
   wait_for_node_to_sync:
     name: Wait for the node to sync
     runs-on: ubuntu-latest
-    needs: sleep
+    needs: [sleep, extract_rpc_url]
     timeout-minutes: 600
     steps:
     - uses: actions/checkout@v3
