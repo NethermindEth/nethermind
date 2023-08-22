@@ -146,21 +146,23 @@ namespace Ethereum.Test.Base
                 specProvider,
                 _logManager);
 
+            TransactionProcessor? txProcessor = new(
+                specProvider,
+                stateProvider,
+                virtualMachine,
+                _logManager);
+
             IBlockProcessor blockProcessor = new BlockProcessor(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockValidationTransactionsExecutor(
-                    new TransactionProcessor(
-                        specProvider,
-                        stateProvider,
-                        virtualMachine,
-                        _logManager),
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor,
                     stateProvider),
                 stateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                _logManager);
+                _logManager,
+                txProcessor);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockTree,
