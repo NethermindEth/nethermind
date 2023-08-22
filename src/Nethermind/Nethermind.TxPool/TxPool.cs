@@ -497,21 +497,10 @@ namespace Nethermind.TxPool
         {
             lock (_locker)
             {
-                // ensure the capacity of the pool
-                if (_transactions.Count > _txPoolConfig.Size)
-                    if (_logger.IsWarn) _logger.Warn($"TxPool exceeds the config size {_transactions.Count}/{_txPoolConfig.Size}");
+                _transactions.EnsureCapacity();
                 _transactions.UpdatePool(_accounts, _updateBucket);
 
-                // ensure the capacity of the blob pool
-                if (_blobTransactions.Count > (_txPoolConfig.PersistentBlobStorageEnabled
-                        ? _txPoolConfig.PersistentBlobStorageSize
-                        : _txPoolConfig.InMemoryBlobPoolSize))
-                    if (_logger.IsWarn) _logger.Warn($"Blob TxPool exceeds the config size {_blobTransactions.Count}/{_txPoolConfig.PersistentBlobStorageSize}");
-
-                if (_txPoolConfig.PersistentBlobStorageEnabled
-                    && _blobTransactions.Count == _txPoolConfig.PersistentBlobStorageSize)
-                    if (_logger.IsDebug) _logger.Debug($"Blob persistent storage has reached max size of {_txPoolConfig.PersistentBlobStorageSize}, blob txs can be evicted now");
-
+                _blobTransactions.EnsureCapacity();
                 _blobTransactions.UpdatePool(_accounts, _updateBucket);
             }
         }

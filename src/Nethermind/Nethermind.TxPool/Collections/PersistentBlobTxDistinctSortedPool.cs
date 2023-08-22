@@ -22,7 +22,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
     {
         _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
         _blobTxCache = new(txPoolConfig.BlobCacheSize, txPoolConfig.BlobCacheSize, "blob txs cache");
-        _logger = logManager.GetClassLogger();
+        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         RecreateLightTxCollectionAndCache(blobTxStorage);
     }
@@ -115,5 +115,13 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         _blobTxCache.Delete(hash);
         _blobTxStorage.Delete(hash);
         return base.Remove(hash, tx);
+    }
+
+    public override void EnsureCapacity()
+    {
+        base.EnsureCapacity();
+
+        if (_logger.IsDebug && Count == _poolCapacity)
+            _logger.Debug($"Blob persistent storage has reached max size of {_poolCapacity}, blob txs can be evicted now");
     }
 }

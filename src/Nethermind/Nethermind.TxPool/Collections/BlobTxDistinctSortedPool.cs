@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -10,9 +11,12 @@ namespace Nethermind.TxPool.Collections;
 
 public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 {
+    private readonly ILogger _logger;
+
     public BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
         : base(capacity, comparer, logManager)
     {
+        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
@@ -52,6 +56,14 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
                 TryInsert(blobTx.Hash, blobTx!, out Transaction? removed);
             }
         }
+    }
+
+    public override void EnsureCapacity()
+    {
+        base.EnsureCapacity();
+
+        if (Count > _poolCapacity && _logger.IsWarn)
+            _logger.Warn($"Blob TxPool exceeds the config size {Count}/{_poolCapacity}");
     }
 
     /// <summary>
