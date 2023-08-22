@@ -100,38 +100,55 @@ public static class PayloadAttributesExtensions
     public static int ExpectedEngineSpecVersion(this IReleaseSpec spec) =>
         spec switch
         {
-            { WithdrawalsEnabled: true, IsEip4844Enabled: true } => EngineApiVersions.Cancun,
+            { IsEip4844Enabled: true } => EngineApiVersions.Cancun,
             { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris
         };
 
-    public static bool Validate(
+    public static bool ValidateParams(
         this PayloadAttributes payloadAttributes,
-        IReleaseSpec spec,
+        ISpecProvider specProvider,
         int version,
         [NotNullWhen(false)] out string? error)
     {
         int actualVersion = payloadAttributes.GetVersion();
-        int expectedVersion = spec.ExpectedEngineSpecVersion();
+        int expectedVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp))
+            .ExpectedEngineSpecVersion();
 
         error = null;
         if (actualVersion != expectedVersion)
         {
             error = $"PayloadAttributesV{expectedVersion} expected";
         }
-        else if (actualVersion > version)
+        else if (actualVersion > version && actualVersion < EngineApiVersions.Cancun)
         {
             error = $"PayloadAttributesV{version} expected";
         }
         return error is null;
     }
 
-    public static bool Validate(this PayloadAttributes payloadAttributes,
+    public static bool ValidateFork(this PayloadAttributes payloadAttributes,
         ISpecProvider specProvider,
         int version,
-        [NotNullWhen(false)] out string? error) =>
-        payloadAttributes.Validate(
-            specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp)),
-            version,
-            out error);
+        [NotNullWhen(false)] out string? error)
+    {
+        error = null;
+
+        int expectedVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp))
+            .ExpectedEngineSpecVersion();
+
+        if(version >= EngineApiVersions.Cancun)
+        {
+            if(version != expectedVersion)
+            {
+                error = $"PayloadAttributesV{expectedVersion} expected";
+            }
+        }
+        else if(expectedVersion >= EngineApiVersions.Cancun)
+        {
+            error = $"PayloadAttributesV{expectedVersion} expected";
+        }
+
+        return error is null;
+    }
 }

@@ -133,7 +133,7 @@ public partial class EngineModuleTests
     public async Task GetPayloadV3_should_return_all_the_blobs(int blobTxCount)
     {
         (IEngineRpcModule rpcModule, string payloadId, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, blobTxCount);
-        var result = await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId));
+        ResultWrapper<GetPayloadV3Result?> result = await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId));
         BlobsBundleV1 getPayloadResultBlobsBundle = result.Data!.BlobsBundle!;
         Assert.That(result.Data.ExecutionPayload.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobTxCount)));
         Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
@@ -238,6 +238,50 @@ public partial class EngineModuleTests
             Assert.That(response.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
         }
     }
+
+    [Test]
+    public async Task ForkChoiceUpdatedV2_should_decline_post_cancun()
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        ExecutionPayload executionPayload = CreateBlockRequest(
+            chain.SpecProvider.GenesisSpec, chain.State,
+            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>());
+        ForkchoiceStateV1 fcuState = new(Keccak.Zero, Keccak.Zero, Keccak.Zero);
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chain.BlockTree.Head!.Timestamp,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = new List<Withdrawal>(),
+            ParentBeaconBlockRoot = Keccak.Zero,
+        };
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV2(fcuState, payloadAttributes);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.UnsupportedFork));
+    }
+
+    [Test]
+    public async Task ForkChoiceUpdatedV3_should_decline_pre_cancun()
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Shanghai.Instance);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        ExecutionPayload executionPayload = CreateBlockRequest(
+            chain.SpecProvider.GenesisSpec, chain.State,
+            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>());
+        ForkchoiceStateV1 fcuState = new(Keccak.Zero, Keccak.Zero, Keccak.Zero);
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chain.BlockTree.Head!.Timestamp,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = new List<Withdrawal>(),
+        };
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV3(fcuState, payloadAttributes);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.UnsupportedFork));
+    }
+
 
     private const string FurtherValidationStatus = "FurtherValidation";
 
