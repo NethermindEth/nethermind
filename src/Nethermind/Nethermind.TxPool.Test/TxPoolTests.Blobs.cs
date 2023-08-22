@@ -18,6 +18,35 @@ namespace Nethermind.TxPool.Test
     public partial class TxPoolTests
     {
         [Test]
+        public void blob_pool_size_should_be_correct([Values(true, false)] bool persistentStorageEnabled)
+        {
+            const int poolSize = 10;
+            TxPoolConfig txPoolConfig = new()
+            {
+                PersistentBlobStorageEnabled = persistentStorageEnabled,
+                PersistentBlobStorageSize = persistentStorageEnabled ? poolSize : 0,
+                InMemoryBlobPoolSize = persistentStorageEnabled ? 0 : poolSize
+            };
+
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            for (int i = 0; i < poolSize; i++)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce((UInt256)i)
+                    .WithShardBlobTxTypeAndFields()
+                    .WithMaxFeePerGas(1.GWei() + (UInt256)(100 - i))
+                    .WithMaxPriorityFeePerGas(1.GWei() + (UInt256)(100 - i))
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            }
+
+            _txPool.GetPendingTransactionsCount().Should().Be(0);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(poolSize);
+        }
+
+        [Test]
         public void should_reject_tx_with_FeeTooLow_even_if_is_blob_type([Values(true, false)] bool isBlob, [Values(true, false)] bool persistentStorageEnabled)
         {
             const int poolSize = 10;
