@@ -331,36 +331,36 @@ public class TxValidatorTests
             .WithTimestamp(ulong.MaxValue)
             .WithTo(null)
             .WithMaxFeePerGas(1)
-            .WithMaxFeePerDataGas(1)
+            .WithMaxFeePerBlobGas(1)
             .WithBlobVersionedHashes(1)
             .WithChainId(TestBlockchainIds.ChainId)
             .SignedAndResolved().TestObject;
 
-        Transaction txtxWithTo = Build.A.Transaction
+        Transaction txWithTo = Build.A.Transaction
             .WithType(TxType.Blob)
             .WithTimestamp(ulong.MaxValue)
             .WithTo(TestItem.AddressA)
             .WithMaxFeePerGas(1)
-            .WithMaxFeePerDataGas(1)
+            .WithMaxFeePerBlobGas(1)
             .WithBlobVersionedHashes(1)
             .WithChainId(TestBlockchainIds.ChainId)
             .SignedAndResolved().TestObject;
 
         Assert.That(txValidator.IsWellFormed(txWithoutTo, Cancun.Instance), Is.False);
-        Assert.That(txValidator.IsWellFormed(txtxWithTo, Cancun.Instance));
+        Assert.That(txValidator.IsWellFormed(txWithTo, Cancun.Instance));
     }
 
     [Timeout(Timeout.MaxTestTime)]
     [TestCase(TxType.EIP1559, false, ExpectedResult = true)]
     [TestCase(TxType.EIP1559, true, ExpectedResult = false)]
     [TestCase(TxType.Blob, true, ExpectedResult = true)]
-    public bool MaxFeePerDataGas_should_be_set_for_blob_tx_only(TxType txType, bool isMaxFeePerDataGasSet)
+    public bool MaxFeePerBlobGas_should_be_set_for_blob_tx_only(TxType txType, bool isMaxFeePerBlobGasSet)
     {
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
             .WithType(txType)
             .WithTimestamp(ulong.MaxValue)
             .WithMaxFeePerGas(1)
-            .WithMaxFeePerDataGas(isMaxFeePerDataGasSet ? 1 : null)
+            .WithMaxFeePerBlobGas(isMaxFeePerBlobGasSet ? 1 : null)
             .WithBlobVersionedHashes(txType == TxType.Blob ? Eip4844Constants.MinBlobsPerTransaction : null)
             .WithChainId(TestBlockchainIds.ChainId)
             .SignedAndResolved();
@@ -371,7 +371,6 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, Cancun.Instance);
     }
 
-
     [TestCaseSource(nameof(BlobVersionedHashInvalidTestCases))]
     [TestCaseSource(nameof(BlobVersionedHashValidTestCases))]
     public bool BlobVersionedHash_should_be_correct(byte[] hash)
@@ -380,7 +379,7 @@ public class TxValidatorTests
             .WithType(TxType.Blob)
             .WithTimestamp(ulong.MaxValue)
             .WithMaxFeePerGas(1)
-            .WithMaxFeePerDataGas(1)
+            .WithMaxFeePerBlobGas(1)
             .WithBlobVersionedHashes(new[] { hash })
             .WithChainId(TestBlockchainIds.ChainId)
             .SignedAndResolved().TestObject;
@@ -407,35 +406,40 @@ public class TxValidatorTests
         {
             yield return new TestCaseData(null) { TestName = "Null hash", ExpectedResult = false };
             yield return new TestCaseData(MakeArray(0)) { TestName = "Empty hash", ExpectedResult = false };
-            yield return new TestCaseData(MakeArray(1, 1, 0))
+            yield return new TestCaseData(MakeArray(1, 1))
             {
                 TestName = "Correct version, incorrect length",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeArray(31, 1, 0))
+            yield return new TestCaseData(MakeArray(31, 1))
             {
                 TestName = "Correct version, incorrect length",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeArray(33, 1, 0))
+            yield return new TestCaseData(MakeArray(33, 1))
             {
                 TestName = "Correct version, incorrect length",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeArray(32, 0, 0))
+            yield return new TestCaseData(MakeArray(32, 0))
             {
                 TestName = "Incorrect version, correct length",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 - 1, 0))
+            yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 - 1))
             {
                 TestName = "Incorrect version, correct length",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 + 1, 0))
+            yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 + 1))
             {
                 TestName = "Incorrect version, correct length",
                 ExpectedResult = false
+            };
+            yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1))
+            {
+                TestName = "Correct version, correct length",
+                ExpectedResult = true
             };
         }
     }
@@ -461,7 +465,7 @@ public class TxValidatorTests
                 .WithChainId(TestBlockchainIds.ChainId)
                 .WithTimestamp(ulong.MaxValue)
                 .WithMaxFeePerGas(1)
-                .WithMaxFeePerDataGas(1)
+                .WithMaxFeePerBlobGas(1)
                 .WithShardBlobTxTypeAndFields(blobCount);
 
             yield return new TestCaseData(MakeTestObject().SignedAndResolved().TestObject)
@@ -494,19 +498,19 @@ public class TxValidatorTests
                 TestName = "More than minimum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxBlobsPerTransaction - 1)
+            yield return new TestCaseData(MakeTestObject((int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob - 1))
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Less than maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxBlobsPerTransaction)
+            yield return new TestCaseData(MakeTestObject((int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob))
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxBlobsPerTransaction + 1)
+            yield return new TestCaseData(MakeTestObject((int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob + 1))
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Too many BlobVersionedHashes",

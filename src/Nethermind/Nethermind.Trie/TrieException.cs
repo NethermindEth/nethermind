@@ -12,11 +12,7 @@ namespace Nethermind.Trie
         {
         }
 
-        public TrieException(string message) : base(message)
-        {
-        }
-
-        public TrieException(string message, Exception inner) : base(message, inner)
+        public TrieException(string message, Exception? inner = null) : base(message, inner)
         {
         }
     }

@@ -119,65 +119,6 @@ public class ChainSpecLoaderTests
     }
 
     [Test]
-    public void Can_load_ropsten()
-    {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/ropsten.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
-
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(3), $"{nameof(chainSpec.NetworkId)}");
-        Assert.That(chainSpec.Name, Is.EqualTo("Ropsten Testnet"), $"{nameof(chainSpec.Name)}");
-        Assert.NotNull(chainSpec.Genesis, $"{nameof(ChainSpec.Genesis)}");
-
-        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
-        Assert.That(chainSpec.Genesis.Header.Nonce, Is.EqualTo(0x0000000000000042UL), $"genesis {nameof(BlockHeader.Nonce)}");
-        Assert.That(chainSpec.Genesis.Header.MixHash, Is.EqualTo(Keccak.Zero), $"genesis {nameof(BlockHeader.MixHash)}");
-        Assert.That((long)chainSpec.Genesis.Header.Difficulty, Is.EqualTo(0x100000L), $"genesis {nameof(BlockHeader.Difficulty)}");
-        Assert.That(chainSpec.Genesis.Header.Beneficiary, Is.EqualTo(Address.Zero), $"genesis {nameof(BlockHeader.Beneficiary)}");
-        Assert.That((long)chainSpec.Genesis.Header.Timestamp, Is.EqualTo(0x00L), $"genesis {nameof(BlockHeader.Timestamp)}");
-        Assert.That(chainSpec.Genesis.Header.ParentHash, Is.EqualTo(Keccak.Zero), $"genesis {nameof(BlockHeader.ParentHash)}");
-        Assert.That(
-            chainSpec.Genesis.Header.ExtraData, Is.EqualTo(Bytes.FromHexString("0x3535353535353535353535353535353535353535353535353535353535353535")),
-            $"genesis {nameof(BlockHeader.ExtraData)}");
-        Assert.That(chainSpec.Genesis.Header.GasLimit, Is.EqualTo(0x1000000L), $"genesis {nameof(BlockHeader.GasLimit)}");
-
-        Assert.NotNull(chainSpec.Allocations, $"{nameof(ChainSpec.Allocations)}");
-        Assert.That(chainSpec.Allocations.Count, Is.EqualTo(257), $"allocations count");
-        Assert.That(
-            chainSpec.Allocations[new Address("0000000000000000000000000000000000000018")].Balance, Is.EqualTo(UInt256.Zero),
-            "account 0000000000000000000000000000000000000018");
-        Assert.That(
-            chainSpec.Allocations[new Address("0000000000000000000000000000000000000001")].Balance, Is.EqualTo(UInt256.One),
-            "account 0000000000000000000000000000000000000001");
-
-        Assert.That(
-            chainSpec.Allocations[new Address("874b54a8bd152966d63f706bae1ffeb0411921e5")].Balance, Is.EqualTo(UInt256.Parse("1000000000000000000000000000000")),
-            "account 874b54a8bd152966d63f706bae1ffeb0411921e5");
-
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
-
-        Assert.That(chainSpec.HomesteadBlockNumber, Is.EqualTo((long?)0), "homestead no");
-        Assert.That(chainSpec.DaoForkBlockNumber, Is.EqualTo(null), "dao no");
-        Assert.That(chainSpec.TangerineWhistleBlockNumber, Is.EqualTo((long?)0), "tw no");
-        Assert.That(chainSpec.SpuriousDragonBlockNumber, Is.EqualTo((long?)10), "sd no");
-        Assert.That(chainSpec.ByzantiumBlockNumber, Is.EqualTo((long?)1700000), "byzantium no");
-        Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo((long?)4230000), "constantinople no");
-        Assert.That(chainSpec.ConstantinopleFixBlockNumber, Is.EqualTo((long?)0x4b5e82), "constantinople fix no");
-        Assert.That(chainSpec.IstanbulBlockNumber, Is.EqualTo((long?)0x62F756), "istanbul no");
-
-        chainSpec.HomesteadBlockNumber.Should().Be(0L);
-        chainSpec.DaoForkBlockNumber.Should().Be(null);
-        chainSpec.TangerineWhistleBlockNumber.Should().Be(0L);
-        chainSpec.SpuriousDragonBlockNumber.Should().Be(RopstenSpecProvider.SpuriousDragonBlockNumber);
-        chainSpec.ByzantiumBlockNumber.Should().Be(RopstenSpecProvider.ByzantiumBlockNumber);
-        chainSpec.ConstantinopleBlockNumber.Should().Be(RopstenSpecProvider.ConstantinopleBlockNumber);
-        chainSpec.ConstantinopleFixBlockNumber.Should().Be(RopstenSpecProvider.ConstantinopleFixBlockNumber);
-        chainSpec.IstanbulBlockNumber.Should().Be(RopstenSpecProvider.IstanbulBlockNumber);
-        chainSpec.MuirGlacierNumber.Should().Be(RopstenSpecProvider.MuirGlacierBlockNumber);
-        chainSpec.BerlinBlockNumber.Should().Be(RopstenSpecProvider.BerlinBlockNumber);
-        chainSpec.LondonBlockNumber.Should().Be(RopstenSpecProvider.LondonBlockNumber);
-    }
-
-    [Test]
     public void Can_load_goerli()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/goerli.json");

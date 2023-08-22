@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
+using System;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -56,9 +56,15 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithExcessDataGas(UInt256 excessDataGas)
+        public BlockBuilder WithBlobGasUsed(ulong? blobGasUsed)
         {
-            TestObjectInternal.Header.ExcessDataGas = excessDataGas;
+            TestObjectInternal.Header.BlobGasUsed = blobGasUsed;
+            return this;
+        }
+
+        public BlockBuilder WithExcessBlobGas(ulong? excessBlobGas)
+        {
+            TestObjectInternal.Header.ExcessBlobGas = excessBlobGas;
             return this;
         }
 
@@ -159,6 +165,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.Number = blockHeader?.Number + 1 ?? 0;
             TestObjectInternal.Header.Timestamp = blockHeader?.Timestamp + 1 ?? 0;
             TestObjectInternal.Header.ParentHash = blockHeader is null ? Keccak.Zero : blockHeader.Hash;
+            TestObjectInternal.Header.MaybeParent = blockHeader is null ? null : new WeakReference<BlockHeader>(blockHeader);
             return this;
         }
 
@@ -267,6 +274,12 @@ namespace Nethermind.Core.Test.Builders
                 ? null
                 : new WithdrawalTrie(withdrawals).RootHash;
 
+            return this;
+        }
+
+        public BlockBuilder WithParentBeaconBlockRoot(Keccak? parentBeaconBlockRoot)
+        {
+            TestObjectInternal.Header.ParentBeaconBlockRoot = parentBeaconBlockRoot;
             return this;
         }
     }

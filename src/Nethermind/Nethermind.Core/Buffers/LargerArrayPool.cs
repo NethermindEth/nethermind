@@ -11,7 +11,7 @@ namespace Nethermind.Core.Buffers
     {
         static readonly LargerArrayPool s_instance = new();
 
-        public static new ArrayPool<byte> Shared => s_instance;
+        public static new LargerArrayPool Shared => s_instance;
 
         public const int LargeBufferSize = 8 * 1024 * 1024;
         const int ArrayPoolLimit = 1024 * 1024;
@@ -44,7 +44,7 @@ namespace Nethermind.Core.Buffers
                 }
             }
 
-            return new byte[_largeBufferSize];
+            return GC.AllocateUninitializedArray<byte>(_largeBufferSize);
         }
 
         void ReturnLarge(byte[] array, bool clearArray)
@@ -78,7 +78,7 @@ namespace Nethermind.Core.Buffers
             }
 
             // too big to pool, just allocate
-            return new byte[minimumLength];
+            return GC.AllocateUninitializedArray<byte>(minimumLength);
         }
 
         public override void Return(byte[] array, bool clearArray = false)

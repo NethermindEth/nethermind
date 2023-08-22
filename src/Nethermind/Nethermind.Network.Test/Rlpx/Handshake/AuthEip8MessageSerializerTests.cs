@@ -53,7 +53,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         }
 
         [TestCase(BlockchainIds.Mainnet)]
-        [TestCase(BlockchainIds.Ropsten)]
+        [TestCase(BlockchainIds.Sepolia)]
         [TestCase(BlockchainIds.Kovan)]
         public void Encode_decode_with_eip155(int chainId)
         {

@@ -99,7 +99,7 @@ namespace Nethermind.Synchronization.Peers
                     {
                         _stringBuilder.Append(',');
                     }
-                    _stringBuilder.Append($" {peerGroup.Key} ({peerGroup.Count() / sum,6:P2})");
+                    _stringBuilder.Append($" {peerGroup.Key} ({peerGroup.Count() / sum,3:P0})");
                 }
                 _stringBuilder.Append(" |");
 
@@ -128,7 +128,7 @@ namespace Nethermind.Synchronization.Peers
                     {
                         _stringBuilder.Append(',');
                     }
-                    _stringBuilder.Append($" {peerGroup.Key} ({peerGroup.Count() / sum,6:P2})");
+                    _stringBuilder.Append($" {peerGroup.Key} ({peerGroup.Count() / sum,3:P0})");
                 }
 
                 string result = _stringBuilder.ToString();

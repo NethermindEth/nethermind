@@ -11,11 +11,11 @@ namespace Nethermind.Evm.Precompiles.Snarks;
 /// <summary>
 /// https://github.com/herumi/mcl/blob/master/api.md
 /// </summary>
-public class Bn254MulPrecompile : IPrecompile
+public class Bn254MulPrecompile : IPrecompile<Bn254MulPrecompile>
 {
-    public static IPrecompile Instance = new Bn254MulPrecompile();
+    public static Bn254MulPrecompile Instance = new Bn254MulPrecompile();
 
-    public Address Address { get; } = Address.FromNumber(7);
+    public static Address Address { get; } = Address.FromNumber(7);
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {

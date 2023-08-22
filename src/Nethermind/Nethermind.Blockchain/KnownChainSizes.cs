@@ -69,12 +69,12 @@ namespace Nethermind.Blockchain
             return chainId switch
             {
                 BlockchainIds.Goerli => new ChainEstimations(
-                    new LinearExtrapolation(8490.MB(), 15.MB(), new DateTime(2021, 12, 7)),
+                    new LinearExtrapolation(50.GB(), 15.MB(), new DateTime(2023, 07, 14)),
                     new LinearExtrapolation(
                         49311060515, new(2023, 05, 20, 1, 31, 00),
                         52341479114, new(2023, 06, 07, 20, 12, 00))),
                 BlockchainIds.Mainnet => new ChainEstimations(
-                    new LinearExtrapolation(90000.MB(), 70.MB(), new DateTime(2022, 04, 7)),
+                    new LinearExtrapolation(167.GB(), 70.MB(), new DateTime(2023, 07, 14)),
                     new LinearExtrapolation(
                         172553555637, new DateTime(2023, 05, 18, 18, 12, 0),
                         177439054863, new DateTime(2023, 06, 8, 02, 36, 0))),

@@ -4,6 +4,7 @@
     <TargetFramework>net7.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>annotations</Nullable>
+    <AssemblyName>nethermind</AssemblyName>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
     <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
@@ -11,6 +12,7 @@
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <TieredPGO>true</TieredPGO>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -31,6 +33,7 @@
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
     <PackageReference Include="NLog.Targets.Seq" />
     <PackageReference Include="NLog" />
+    <PackageReference Include="Pyroscope" />
     <PackageReference Include="Seq.Api" />
     <PackageReference Include="System.Linq.Async" />
     <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" />

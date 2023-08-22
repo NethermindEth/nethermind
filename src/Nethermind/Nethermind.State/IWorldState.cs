@@ -80,13 +80,14 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void DeleteAccount(Address address);
 
-    void CreateAccount(Address address, in UInt256 balance);
-
-    void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce);
+    void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
+    void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default);
 
     void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
 
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+
+    void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 

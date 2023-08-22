@@ -48,7 +48,7 @@ namespace Nethermind.Network.P2P
         /// <summary>
         /// Starts local disconnect (triggers disconnect on each protocolHandler, down to tcp disconnect)
         /// </summary>
-        void InitiateDisconnect(InitiateDisconnectReason disconnectReason, string details);
+        void InitiateDisconnect(DisconnectReason disconnectReason, string details);
 
         /// <summary>
         ///  Drop tcp connection after a delay

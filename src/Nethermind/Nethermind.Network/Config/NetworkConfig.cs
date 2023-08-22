@@ -35,7 +35,9 @@ namespace Nethermind.Network.Config
         public int P2PPort { get; set; } = 30303;
         public long SimulateSendLatencyMs { get; set; } = 0;
         public int NumConcurrentOutgoingConnects { get; set; } = 0;
+        public int MaxOutgoingConnectPerSec { get; set; } = 20;
         public int ConnectTimeoutMs { get; set; } = 2000;
         public int ProcessingThreadCount { get; set; } = 1;
+        public string? ClientIdMatcher { get; set; } = null;
     }
 }

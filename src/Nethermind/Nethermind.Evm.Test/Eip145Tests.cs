@@ -4,7 +4,8 @@
 using System;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -12,9 +13,10 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip145Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
+        protected override long BlockNumber => 1;
 
-        protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
+        protected override ISpecProvider SpecProvider => new CustomSpecProvider(
+            ((ForkActivation)0, Byzantium.Instance), ((ForkActivation)1, Constantinople.Instance));
 
         private void AssertEip145(TestAllTracerWithOutput receipt, string result)
         {

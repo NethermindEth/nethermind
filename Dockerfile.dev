@@ -7,6 +7,7 @@ ARG TARGETPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
 ARG BUILDPLATFORM
+ARG BUILD_CONFIG=release
 ARG BUILD_TIMESTAMP
 ARG COMMIT_HASH
 
@@ -17,13 +18,13 @@ RUN if [ "$TARGETARCH" = "amd64" ]; \
       dotnet tool install JetBrains.dotTrace.GlobalTools --version 2022.3.3 --tool-path /tmp/ && \
       dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.$TARGETOS-x64 \
         --version 2022.3.3 --package-directory /tmp/ && \
-      dotnet publish src/Nethermind/Nethermind.Runner -c release -r $TARGETOS-x64 -o out \
+      dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -r $TARGETOS-x64 -o out --sc false \
         -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH ; \
     else \
       dotnet tool install JetBrains.dotTrace.GlobalTools --version 2022.3.3 --tool-path /tmp/ && \
       dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.$TARGETOS-$TARGETARCH \
         --version 2022.3.3 --package-directory /tmp/ && \
-      dotnet publish src/Nethermind/Nethermind.Runner -c release -r $TARGETOS-$TARGETARCH -o out \
+      dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -r $TARGETOS-$TARGETARCH -o out --sc false \
         -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH ; \
     fi
 
@@ -33,7 +34,7 @@ RUN dotnet tool install --tool-path /dotnetcore-tools dotnet-trace && \
 
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:7.0
 
-RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 procps && \
+RUN apt-get update && apt-get -y install libsnappy-dev procps && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /nethermind
@@ -54,4 +55,4 @@ VOLUME /nethermind/nethermind_db
 VOLUME /nethermind/logs
 VOLUME /nethermind/keystore
 
-ENTRYPOINT ["./Nethermind.Runner"]
+ENTRYPOINT ["./nethermind"]

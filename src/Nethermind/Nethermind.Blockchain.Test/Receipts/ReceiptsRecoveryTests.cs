@@ -19,7 +19,7 @@ public class ReceiptsRecoveryTests
     [SetUp]
     public void Setup()
     {
-        RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
+        MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
         EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
 
         _receiptsRecovery = new ReceiptsRecovery(ethereumEcdsa, specProvider);
@@ -50,5 +50,21 @@ public class ReceiptsRecoveryTests
         }
 
         _receiptsRecovery.TryRecover(block, receipts, forceRecoverSender).Should().Be(expected);
+    }
+
+    [Test]
+    public void TryRecover_should_recover_contract_address()
+    {
+        Transaction tx = Build.A.Transaction.WithSenderAddress(null).WithTo(null).Signed().TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).TestObject;
+
+        tx.SenderAddress.Should().BeNull();
+        receipt.ContractAddress.Should().BeNull();
+
+        ReceiptsRecoveryResult result = _receiptsRecovery.TryRecover(block, new[] { receipt });
+
+        result.Should().Be(ReceiptsRecoveryResult.NeedReinsert);
+        receipt.ContractAddress.Should().Be(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b"));
     }
 }

@@ -17,7 +17,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -37,7 +36,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
-using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Config;
 
 namespace Nethermind.Clique.Test
@@ -123,7 +121,9 @@ namespace Nethermind.Clique.Test
                 _genesis.Header.Hash = _genesis.Header.CalculateHash();
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
-                TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider, new VirtualMachine(blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
+                TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
+                    new VirtualMachine(blockhashProvider, specProvider, nodeLogManager),
+                    nodeLogManager);
                 BlockProcessor blockProcessor = new(
                     goerliSpecProvider,
                     Always.Valid,

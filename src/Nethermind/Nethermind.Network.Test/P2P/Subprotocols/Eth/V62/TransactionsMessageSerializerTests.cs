@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -113,7 +112,7 @@ public class TransactionsMessageSerializerTests
         {
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
                 .TestObject
         };
 
@@ -122,36 +121,36 @@ public class TransactionsMessageSerializerTests
             Build.A.Transaction
                 .WithType(TxType.Legacy)
                 .WithTo(TestItem.AddressA)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(1)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithType(TxType.AccessList)
                 .WithTo(TestItem.AddressA)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(2)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithTo(TestItem.AddressA)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(3)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithType(TxType.EIP1559)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
                 .TestObject,
         };
 
@@ -161,12 +160,12 @@ public class TransactionsMessageSerializerTests
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(1)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(2)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
                 .TestObject
         };
     }

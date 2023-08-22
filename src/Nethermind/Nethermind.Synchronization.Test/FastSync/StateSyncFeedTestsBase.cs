@@ -282,12 +282,12 @@ namespace Nethermind.Synchronization.Test.FastSync
             public byte ProtocolVersion { get; }
             public string ProtocolCode { get; }
 
-            public void Disconnect(InitiateDisconnectReason reason, string details)
+            public void Disconnect(DisconnectReason reason, string details)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }

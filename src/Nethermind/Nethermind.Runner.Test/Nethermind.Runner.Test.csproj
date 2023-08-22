@@ -50,9 +50,6 @@
     <Content Include="..\Chains\rinkeby.json" CopyToOutputDirectory="PreserveNewest">
       <Link>Chains\rinkeby.json</Link>
     </Content>
-    <Content Include="..\Chains\ropsten.json" CopyToOutputDirectory="PreserveNewest">
-      <Link>Chains\ropsten.json</Link>
-    </Content>
     <Content Include="..\Chains\spaceneth.json" CopyToOutputDirectory="PreserveNewest">
       <Link>Chains\spaceneth.json</Link>
     </Content>
