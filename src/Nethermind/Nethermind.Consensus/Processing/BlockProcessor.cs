@@ -46,16 +46,15 @@ public partial class BlockProcessor : IBlockProcessor
     /// </summary>
     private readonly BlockReceiptsTracer _receiptsTracer;
 
-    public BlockProcessor(
-        ISpecProvider? specProvider,
+    public BlockProcessor(ISpecProvider? specProvider,
         IBlockValidator? blockValidator,
         IRewardCalculator? rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
-        ILogManager? logManager,
         ITransactionProcessor transactionProcessor,
+        ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));

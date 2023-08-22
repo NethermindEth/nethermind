@@ -109,9 +109,8 @@ namespace Nethermind.Consensus.Clique
                 producerEnv.StateProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                getFromApi.LogManager,
                 getFromApi.TransactionProcessor,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(producerEnv.StateProvider, getFromApi.LogManager)));
+                getFromApi.LogManager, new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(producerEnv.StateProvider, getFromApi.LogManager)));
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
                 readOnlyBlockTree,

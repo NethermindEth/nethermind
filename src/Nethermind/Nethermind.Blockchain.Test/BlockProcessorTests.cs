@@ -49,8 +49,7 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                LimboLogs.Instance,
-                transactionProcessor);
+                transactionProcessor, LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -81,8 +80,7 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 NullReceiptStorage.Instance,
                 witnessCollector,
-                LimboLogs.Instance,
-                transactionProcessor);
+                transactionProcessor, LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -111,8 +109,7 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                LimboLogs.Instance,
-                transactionProcessor);
+                transactionProcessor, LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
