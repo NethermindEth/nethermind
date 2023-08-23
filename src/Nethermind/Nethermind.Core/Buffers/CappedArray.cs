@@ -33,9 +33,9 @@ public struct CappedArray<T>
         }
     }
 
-    public static implicit operator ReadOnlySpan<T>(CappedArray<T>? array)
+    public static implicit operator ReadOnlySpan<T>(CappedArray<T> array)
     {
-        return array.ToArrayOrNull() ?? default;
+        return array.AsSpan();
     }
 
     public static implicit operator CappedArray<T>(T[]? array)
@@ -65,19 +65,5 @@ public struct CappedArray<T>
         if (_array is null) return null;
         if (_length == _array?.Length) return _array;
         return AsSpan().ToArray();
-    }
-}
-
-public static class ArrayExtensions
-{
-    public static CappedArray<byte> ToCappedArray(this byte[]? array)
-    {
-        return new CappedArray<byte>(array);
-    }
-
-    public static T[]? ToArrayOrNull<T>(this CappedArray<T>? array)
-    {
-        if (array == null) return null;
-        return array.Value.ToArray();
     }
 }

@@ -323,7 +323,7 @@ namespace Nethermind.Trie
                 try
                 {
                     Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                    return Run(nibbles, nibblesCount, new CappedArray<byte>(Array.Empty<byte>()), false, startRootHash: rootHash).ToArrayOrNull();
+                    return Run(nibbles, nibblesCount, new CappedArray<byte>(Array.Empty<byte>()), false, startRootHash: rootHash).ToArray();
                 }
                 finally
                 {
@@ -394,7 +394,7 @@ namespace Nethermind.Trie
             Set(rawKey, value is null ? Array.Empty<byte>() : value.Bytes);
         }
 
-        private CappedArray<byte>? Run(
+        private CappedArray<byte> Run(
             Span<byte> updatePath,
             int nibblesCount,
             CappedArray<byte> updateValue,
@@ -423,7 +423,7 @@ namespace Nethermind.Trie
                 _nodeStack.Clear();
             }
 
-            CappedArray<byte>? result;
+            CappedArray<byte> result;
             if (startRootHash is not null)
             {
                 if (_logger.IsTrace) _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
@@ -469,7 +469,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private CappedArray<byte>? TraverseNode(TrieNode node, in TraverseContext traverseContext)
+        private CappedArray<byte> TraverseNode(TrieNode node, in TraverseContext traverseContext)
         {
             if (_logger.IsTrace)
                 _logger.Trace(
@@ -708,7 +708,7 @@ namespace Nethermind.Trie
             RootRef = nextNode;
         }
 
-        private CappedArray<byte>? TraverseBranch(TrieNode node, in TraverseContext traverseContext)
+        private CappedArray<byte> TraverseBranch(TrieNode node, in TraverseContext traverseContext)
         {
             if (traverseContext.RemainingUpdatePathLength == 0)
             {
@@ -780,7 +780,7 @@ namespace Nethermind.Trie
             return TraverseNext(in traverseContext, 1, nextNode);
         }
 
-        private CappedArray<byte>? TraverseLeaf(TrieNode node, in TraverseContext traverseContext)
+        private CappedArray<byte> TraverseLeaf(TrieNode node, in TraverseContext traverseContext)
         {
             if (node.Key is null)
             {
@@ -883,7 +883,7 @@ namespace Nethermind.Trie
             return traverseContext.UpdateValue;
         }
 
-        private CappedArray<byte>? TraverseExtension(TrieNode node, in TraverseContext traverseContext)
+        private CappedArray<byte> TraverseExtension(TrieNode node, in TraverseContext traverseContext)
         {
             if (node.Key is null)
             {
@@ -970,7 +970,7 @@ namespace Nethermind.Trie
             return traverseContext.UpdateValue;
         }
 
-        private CappedArray<byte>? TraverseNext(in TraverseContext traverseContext, int extensionLength, TrieNode next)
+        private CappedArray<byte> TraverseNext(in TraverseContext traverseContext, int extensionLength, TrieNode next)
         {
             // Move large struct creation out of flow so doesn't force additional stack space
             // in calling method even if not used

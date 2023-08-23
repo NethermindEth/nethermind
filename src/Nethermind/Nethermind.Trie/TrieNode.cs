@@ -225,7 +225,7 @@ namespace Nethermind.Trie
             _rlpStream = rlp.AsRlpStream();
         }
 
-        public TrieNode(NodeType nodeType, byte[]? rlp, bool isDirty = false) : this(nodeType, rlp.ToCappedArray(), isDirty)
+        public TrieNode(NodeType nodeType, byte[]? rlp, bool isDirty = false) : this(nodeType, new CappedArray<byte>(rlp), isDirty)
         {
         }
 
@@ -284,7 +284,7 @@ namespace Nethermind.Trie
                             throw new TrieException("Unable to resolve node without Keccak");
                         }
 
-                        FullRlp = tree.LoadRlp(Keccak, readFlags).ToCappedArray();
+                        FullRlp = tree.LoadRlp(Keccak, readFlags);
                         IsPersisted = true;
 
                         if (FullRlp.IsNull)
@@ -374,11 +374,11 @@ namespace Nethermind.Trie
 
             if (FullRlp.IsNull || IsDirty)
             {
-                CappedArray<byte>? oldRlp = FullRlp;
+                CappedArray<byte> oldRlp = FullRlp;
                 FullRlp = RlpEncode(tree, bufferPool);
-                if (oldRlp != null)
+                if (oldRlp.IsNotNull)
                 {
-                    bufferPool.SafeReturnBuffer(oldRlp.Value);
+                    bufferPool.SafeReturnBuffer(oldRlp);
                 }
                 _rlpStream = FullRlp.AsRlpStream();
             }
