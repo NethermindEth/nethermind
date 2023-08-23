@@ -1024,7 +1024,7 @@ namespace Nethermind.Trie
                 bool ignoreMissingDelete = true)
             {
                 UpdatePath = updatePath;
-                if (updateValue.IsNotNull && updateValue.Array?.Length == 0)
+                if (updateValue.IsNotNull && updateValue.Length == 0)
                 {
                     updateValue = new CappedArray<byte>(null);
                 }
