@@ -41,6 +41,7 @@
     "eip4895TransitionTimestamp": "0x65047260",
     "eip4844TransitionTimestamp": "0x77359400",
     "eip4788TransitionTimestamp": "0x77359400",
+    "eip4788ContractAddress": "0x000000000000000000000000000000000000000b",
     "eip1153TransitionTimestamp": "0x77359400",
     "eip5656TransitionTimestamp": "0x77359400",
     "eip6780TransitionTimestamp": "0x77359400",

@@ -289,6 +289,31 @@ public class ChainSpecLoaderTests
     }
 
     [Test]
+    public void Can_load_holesky()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/holesky.json");
+        ChainSpec chainSpec = LoadChainSpec(path);
+
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(17000), $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.Name, Is.EqualTo("Holesky Testnet"), $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.DataDir, Is.EqualTo("holesky"), $"{nameof(chainSpec.DataDir)}");
+        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
+
+        chainSpec.DaoForkBlockNumber.Should().Be(null);
+        chainSpec.TangerineWhistleBlockNumber.Should().Be(0);
+        chainSpec.SpuriousDragonBlockNumber.Should().Be(0);
+        chainSpec.ByzantiumBlockNumber.Should().Be(0);
+        chainSpec.ConstantinopleBlockNumber.Should().Be(0);
+        chainSpec.ConstantinopleFixBlockNumber.Should().Be(0);
+        chainSpec.IstanbulBlockNumber.Should().Be(0);
+        chainSpec.BerlinBlockNumber.Should().Be(0);
+        chainSpec.LondonBlockNumber.Should().Be(0);
+        chainSpec.ShanghaiTimestamp.Should().Be(HoleskySpecProvider.ShanghaiTimestamp);
+        chainSpec.ShanghaiTimestamp.Should().Be(HoleskySpecProvider.Instance.TimestampFork);
+        chainSpec.CancunTimestamp.Should().Be(HoleskySpecProvider.CancunTimestamp);
+    }
+
+    [Test]
     public void Can_load_posdao_with_openethereum_pricing_transitions()
     {
         // TODO: modexp 2565
