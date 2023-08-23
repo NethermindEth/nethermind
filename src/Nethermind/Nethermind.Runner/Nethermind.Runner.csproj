@@ -92,10 +92,6 @@
     <None Remove="keystore\**" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Remove="configs\holesky.cfg" />
-  </ItemGroup>
-
   <Target Name="CollectPlugins" AfterTargets="AfterBuild;AfterPublish">
     <ItemGroup>
       <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.AuRa.*;$(OutputPath)\Nethermind.Merge.Plugin.*;$(OutputPath)\Nethermind.Consensus.AuRa.*;$(OutputPath)\Nethermind.Init.*;$(OutputPath)\Nethermind.Mev.*;$(OutputPath)\Nethermind.HealthChecks.*;$(OutputPath)\Nethermind.Api.*;$(OutputPath)\Nethermind.AccountAbstraction.*;$(OutputPath)\Nethermind.EthStats.*;$(OutputPath)\Nethermind.JsonRpc.TraceStore.*" />
