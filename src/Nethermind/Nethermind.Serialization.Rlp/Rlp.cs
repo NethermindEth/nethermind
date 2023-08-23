@@ -479,7 +479,7 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(result);
         }
 
-        public static int StartSequence(byte[] buffer, int position, int sequenceLength)
+        public static int StartSequence(Span<byte> buffer, int position, int sequenceLength)
         {
             byte prefix;
             int beforeLength = position + 1;
