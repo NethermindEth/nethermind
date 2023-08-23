@@ -91,18 +91,23 @@ namespace Nethermind.Trie
             get
             {
                 InitData();
+                object? obj;
+
                 if (IsLeaf)
                 {
-                    if (_data![1] is byte[] asBytes)
+                    obj = _data![1];
+
+                    if (obj is null)
+                    {
+                        return new CappedArray<byte>(null);
+                    }
+
+                    if (obj is byte[] asBytes)
                     {
                         return new CappedArray<byte>(asBytes);
                     }
 
-                    if (_data![1] is null)
-                    {
-                        return new CappedArray<byte>(null);
-                    }
-                    return (CappedArray<byte>)_data![1];
+                    return (CappedArray<byte>)obj;
                 }
 
                 if (!AllowBranchValues)
@@ -111,28 +116,28 @@ namespace Nethermind.Trie
                     return new CappedArray<byte>(Array.Empty<byte>());
                 }
 
-                if (_data![BranchesCount] is null)
+                obj = _data![BranchesCount];
+                if (obj is null)
                 {
                     if (_rlpStream is null)
                     {
                         _data[BranchesCount] = Array.Empty<byte>();
+                        return new CappedArray<byte>(Array.Empty<byte>());
                     }
                     else
                     {
                         SeekChild(BranchesCount);
-                        _data![BranchesCount] = _rlpStream!.DecodeByteArray();
+                        byte[]? bArr = _rlpStream!.DecodeByteArray();
+                        _data![BranchesCount] = bArr;
+                        return new CappedArray<byte>(bArr);
                     }
                 }
 
-                if (_data![BranchesCount] is byte[] asBytes2)
+                if (obj is byte[] asBytes2)
                 {
                     return new CappedArray<byte>(asBytes2);
                 }
-                if (_data![BranchesCount] is null)
-                {
-                    return new CappedArray<byte>(null);
-                }
-                return (CappedArray<byte>)_data[BranchesCount];
+                return (CappedArray<byte>)obj;
             }
 
             set
