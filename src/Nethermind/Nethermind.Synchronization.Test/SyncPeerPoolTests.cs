@@ -74,9 +74,9 @@ namespace Nethermind.Synchronization.Test
                 DisconnectRequested = true;
             }
 
-            public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
             {
-                return Task.FromResult(Array.Empty<BlockBody>());
+                return Task.FromResult(new OwnedBlockBodies(Array.Empty<BlockBody>()));
             }
 
             public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)

@@ -153,6 +153,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             finally
             {
+                batch.Response?.Dispose();
                 batch?.MarkHandlingEnd();
             }
         }
@@ -179,13 +180,14 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
+            BlockBody[]? responses = batch.Response?.Bodies ?? Array.Empty<BlockBody>();
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {
                 BlockInfo? blockInfo = batch.Infos[i];
-                BlockBody? body = (batch.Response?.Length ?? 0) <= i
+                BlockBody? body = responses.Length <= i
                     ? null
-                    : batch.Response![i];
+                    : responses[i];
 
                 // last batch
                 if (blockInfo is null)
