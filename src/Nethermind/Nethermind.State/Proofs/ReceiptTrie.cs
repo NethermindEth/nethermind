@@ -46,13 +46,8 @@ public class ReceiptTrie : PatriciaTrie<TxReceipt>
 
         foreach (TxReceipt? receipt in receipts)
         {
-            int size = _decoder.GetLength(receipt, behavior);
-            CappedArray<byte> buffer = _bufferPool.SafeRentBuffer(size);
-            _decoder.Encode(buffer.AsRlpStream(), receipt, behavior);
-
-            int theKey = key++;
-            CappedArray<byte> keyBuffer = _bufferPool.SafeRentBuffer(Rlp.LengthOf(theKey));
-            keyBuffer.AsRlpStream().Encode(theKey);
+            CappedArray<byte> buffer = _decoder.EncodeToCappedArray(receipt, behavior, bufferPool: _bufferPool);
+            CappedArray<byte> keyBuffer = (key++).EncodeToCappedArray(bufferPool: _bufferPool);
             Set(keyBuffer.AsSpan(), buffer);
         }
     }
@@ -61,7 +56,7 @@ public class ReceiptTrie : PatriciaTrie<TxReceipt>
 
     public static Keccak CalculateRoot(IReceiptSpec receiptSpec, IList<TxReceipt> txReceipts)
     {
-        TrackedPooledCappedArrayPool cappedArrayPool = new(txReceipts.Count * 4);
+        TrackingCappedArrayPool cappedArrayPool = new(txReceipts.Count * 4);
         Keccak receiptsRoot = new ReceiptTrie(receiptSpec, txReceipts, bufferPool: cappedArrayPool).RootHash;
         cappedArrayPool.ReturnAll();
         return receiptsRoot;

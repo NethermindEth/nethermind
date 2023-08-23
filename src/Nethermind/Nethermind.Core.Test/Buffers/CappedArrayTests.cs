@@ -27,7 +27,7 @@ public class CappedArrayTests
     }
 
     [Test]
-    public void WhenGivenArray_AndLengthIsSame_AsArray_ShouldReturnSameArray()
+    public void WhenGivenArray_AndLengthIsSame_ToArray_ShouldReturnSameArray()
     {
         int[] baseArray = Enumerable.Range(0, 10).ToArray();
         CappedArray<int> array = new(baseArray);
@@ -39,7 +39,7 @@ public class CappedArrayTests
     }
 
     [Test]
-    public void WhenGivenArray_AndLengthIsLess_AsArray_ShouldBeCapped()
+    public void WhenGivenArray_AndLengthIsLess_ToArray_ShouldBeCapped()
     {
         int[] baseArray = Enumerable.Range(0, 10).ToArray();
         CappedArray<int> array = new(baseArray, 5);

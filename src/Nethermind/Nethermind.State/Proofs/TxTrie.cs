@@ -34,20 +34,16 @@ public class TxTrie : PatriciaTrie<Transaction>
         // a temporary trie would be a trie that exists to create a state root only and then be disposed of
         foreach (Transaction? transaction in list)
         {
-            int size = _txDecoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
-            CappedArray<byte> buffer = _bufferPool.SafeRentBuffer(size);
-            _txDecoder.Encode(buffer.AsRlpStream(), transaction, RlpBehaviors.SkipTypedWrapping);
-
-            int theKey = key++;
-            CappedArray<byte> keyBuffer = _bufferPool.SafeRentBuffer(Rlp.LengthOf(theKey));
-            keyBuffer.AsRlpStream().Encode(theKey);
+            CappedArray<byte> buffer = _txDecoder.EncodeToCappedArray(transaction, RlpBehaviors.SkipTypedWrapping,
+                bufferPool: _bufferPool);
+            CappedArray<byte> keyBuffer = (key++).EncodeToCappedArray(bufferPool: _bufferPool);
             Set(keyBuffer.AsSpan(), buffer);
         }
     }
 
     public static Keccak CalculateRoot(IList<Transaction> transactions)
     {
-        TrackedPooledCappedArrayPool cappedArray = new TrackedPooledCappedArrayPool(transactions.Count * 4);
+        TrackingCappedArrayPool cappedArray = new TrackingCappedArrayPool(transactions.Count * 4);
         Keccak rootHash = new TxTrie(transactions, false, bufferPool: cappedArray).RootHash;
         cappedArray.ReturnAll();
         return rootHash;
