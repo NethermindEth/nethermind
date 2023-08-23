@@ -55,6 +55,8 @@ public class PayloadAttributes
     }
 }
 
+public enum PayloadAttributesValidationResult : byte { Success, InvalidParams, UnsupportedFork };
+
 public static class PayloadAttributesExtensions
 {
     public static string ComputePayloadId(this PayloadAttributes payloadAttributes, BlockHeader parentHeader)
@@ -105,45 +107,64 @@ public static class PayloadAttributesExtensions
             _ => EngineApiVersions.Paris
         };
 
-    public static bool ValidateParams(
-        this PayloadAttributes payloadAttributes,
-        ISpecProvider specProvider,
-        int version,
+    public static PayloadAttributesValidationResult Validate(
+       this PayloadAttributes payloadAttributes,
+       ISpecProvider specProvider,
+       int apiVersion,
+       [NotNullWhen(false)] out string? error) =>
+        Validate(
+            apiVersion: apiVersion,
+            actualVersion: payloadAttributes.GetVersion(),
+            expectedVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp))
+                                         .ExpectedEngineSpecVersion(),
+            "PayloadAttributesV",
+            out error);
+
+    public static PayloadAttributesValidationResult Validate(
+        int apiVersion,
+        int actualVersion,
+        int expectedVersion,
+        string methodName,
         [NotNullWhen(false)] out string? error)
     {
-        int actualVersion = payloadAttributes.GetVersion();
-        int expectedVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp))
-            .ExpectedEngineSpecVersion();
-
-        error = null;
-        if (actualVersion != expectedVersion)
+        if (apiVersion >= EngineApiVersions.Cancun)
         {
-            error = $"PayloadAttributesV{expectedVersion} expected";
+            if (actualVersion == apiVersion && expectedVersion != apiVersion)
+            {
+                error = $"{methodName}{expectedVersion} expected";
+                return PayloadAttributesValidationResult.UnsupportedFork;
+            }
         }
-        else if (actualVersion > version || (version >= EngineApiVersions.Cancun && version != actualVersion))
+        else if (apiVersion == EngineApiVersions.Shanghai)
         {
-            error = $"PayloadAttributesV{version} expected";
+            if (actualVersion == apiVersion && expectedVersion >= EngineApiVersions.Cancun)
+            {
+                error = $"{methodName}{expectedVersion} expected";
+                return PayloadAttributesValidationResult.UnsupportedFork;
+            }
         }
-        return error is null;
-    }
 
-    public static bool ValidateFork(this PayloadAttributes payloadAttributes,
-        ISpecProvider specProvider,
-        int version,
-        [NotNullWhen(false)] out string? error)
-    {
-        int expectedVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp))
-            .ExpectedEngineSpecVersion();
-
-        error = version switch
+        if (actualVersion == expectedVersion)
         {
-            >= EngineApiVersions.Cancun => version != expectedVersion,
-            EngineApiVersions.Shanghai => expectedVersion >= EngineApiVersions.Cancun,
-            _ => true,
+            if (apiVersion >= EngineApiVersions.Cancun)
+            {
+                if (actualVersion == apiVersion)
+                {
+                    error = null;
+                    return PayloadAttributesValidationResult.Success;
+                }
+            }
+            else
+            {
+                if (apiVersion >= actualVersion)
+                {
+                    error = null;
+                    return PayloadAttributesValidationResult.Success;
+                }
+            }
         }
-            ? $"PayloadAttributesV{expectedVersion} expected"
-            : null;
 
-        return error is null;
+        error = $"{methodName}{expectedVersion} expected";
+        return PayloadAttributesValidationResult.InvalidParams;
     }
 }

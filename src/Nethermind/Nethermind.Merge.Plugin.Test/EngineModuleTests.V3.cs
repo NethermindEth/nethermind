@@ -163,7 +163,6 @@ public partial class EngineModuleTests
     [Test]
     public async Task NewPayloadV3_should_decline_null_blobversionedhashes()
     {
-
         (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload)
             = await PreparePayloadRequestEnv();
 
@@ -239,14 +238,13 @@ public partial class EngineModuleTests
         }
     }
 
-    [Test]
-    public async Task ForkChoiceUpdatedV2_should_decline_post_cancun()
+    [TestCaseSource(nameof(ForkchoiceUpdatedV3DeclinedTestCaseSource))]
+    [TestCaseSource(nameof(ForkchoiceUpdatedV3AcceptedTestCaseSource))]
+
+    public async Task<int> ForkChoiceUpdated_should_return_proper_error_code(IReleaseSpec releaseSpec, string method, bool isBeaconRootSet)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: releaseSpec);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
-        ExecutionPayload executionPayload = CreateBlockRequest(
-            chain.SpecProvider.GenesisSpec, chain.State,
-            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>());
         ForkchoiceStateV1 fcuState = new(Keccak.Zero, Keccak.Zero, Keccak.Zero);
         PayloadAttributes payloadAttributes = new()
         {
@@ -254,34 +252,16 @@ public partial class EngineModuleTests
             PrevRandao = Keccak.Zero,
             SuggestedFeeRecipient = Address.Zero,
             Withdrawals = new List<Withdrawal>(),
-            ParentBeaconBlockRoot = Keccak.Zero,
+            ParentBeaconBlockRoot = isBeaconRootSet ? Keccak.Zero : null,
         };
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV2(fcuState, payloadAttributes);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.UnsupportedFork));
+        string response = await RpcTest.TestSerializedRequest(rpcModule, method,
+            chain.JsonSerializer.Serialize(fcuState),
+            chain.JsonSerializer.Serialize(payloadAttributes));
+        JsonRpcErrorResponse errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
+
+        return errorResponse.Error?.Code ?? ErrorCodes.None;
     }
-
-    [Test]
-    public async Task ForkChoiceUpdatedV3_should_decline_pre_cancun()
-    {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Shanghai.Instance);
-        IEngineRpcModule rpcModule = CreateEngineModule(chain);
-        ExecutionPayload executionPayload = CreateBlockRequest(
-            chain.SpecProvider.GenesisSpec, chain.State,
-            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>());
-        ForkchoiceStateV1 fcuState = new(Keccak.Zero, Keccak.Zero, Keccak.Zero);
-        PayloadAttributes payloadAttributes = new()
-        {
-            Timestamp = chain.BlockTree.Head!.Timestamp,
-            PrevRandao = Keccak.Zero,
-            SuggestedFeeRecipient = Address.Zero,
-            Withdrawals = new List<Withdrawal>(),
-        };
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV3(fcuState, payloadAttributes);
-
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.UnsupportedFork));
-    }
-
 
     private const string FurtherValidationStatus = "FurtherValidation";
 
@@ -369,6 +349,61 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> result = await engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, Keccak.Zero);
 
         return result.Data.Status;
+    }
+
+    public static IEnumerable<TestCaseData> ForkchoiceUpdatedV3DeclinedTestCaseSource
+    {
+        get
+        {
+            yield return new TestCaseData(Shanghai.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), false)
+            {
+                TestName = "ForkchoiceUpdatedV3 To Request Shanghai Payload, Nil Beacon Root",
+                ExpectedResult = ErrorCodes.InvalidParams,
+            };
+            yield return new TestCaseData(Shanghai.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), true)
+            {
+                TestName = "ForkchoiceUpdatedV3 To Request Shanghai Payload, Zero Beacon Root",
+                ExpectedResult = ErrorCodes.UnsupportedFork,
+            };
+            yield return new TestCaseData(Shanghai.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), true)
+            {
+                TestName = "ForkchoiceUpdatedV2 To Request Shanghai Payload, Zero Beacon Root",
+                ExpectedResult = ErrorCodes.InvalidParams,
+            };
+
+            yield return new TestCaseData(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), true)
+            {
+                TestName = "ForkchoiceUpdatedV2 To Request Cancun Payload, Zero Beacon Root",
+                ExpectedResult = ErrorCodes.InvalidParams,
+            };
+            yield return new TestCaseData(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), false)
+            {
+                TestName = "ForkchoiceUpdatedV2 To Request Cancun Payload, Nil Beacon Root",
+                ExpectedResult = ErrorCodes.UnsupportedFork,
+            };
+            yield return new TestCaseData(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), false)
+            {
+                TestName = "ForkchoiceUpdatedV3 To Request Cancun Payload, Nil Beacon Root",
+                ExpectedResult = ErrorCodes.InvalidParams,
+            };
+        }
+    }
+
+    public static IEnumerable<TestCaseData> ForkchoiceUpdatedV3AcceptedTestCaseSource
+    {
+        get
+        {
+            yield return new TestCaseData(Shanghai.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), false)
+            {
+                TestName = "ForkchoiceUpdatedV2 To Request Shanghai Payload, Nil Beacon Root",
+                ExpectedResult = ErrorCodes.None,
+            };
+            yield return new TestCaseData(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), true)
+            {
+                TestName = "ForkchoiceUpdatedV3 To Request Cancun Payload, Zero Beacon Root",
+                ExpectedResult = ErrorCodes.None,
+            };
+        }
     }
 
     public static IEnumerable<TestCaseData> BlobVersionedHashesMatchTestSource
