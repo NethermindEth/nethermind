@@ -29,15 +29,15 @@ namespace Nethermind.Blockchain.Test.Proofs
         public void Can_calculate_root()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new(block.Transactions);
+            Keccak rootHash = TxTrie.CalculateRoot(block.Transactions);
 
             if (_releaseSpec == Berlin.Instance)
             {
-                Assert.That(txTrie.RootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
+                Assert.That(rootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
             }
             else
             {
-                Assert.That(txTrie.RootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
+                Assert.That(rootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
             }
         }
 
