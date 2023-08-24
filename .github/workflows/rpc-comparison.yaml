@@ -50,13 +50,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: extract_rpc_url
     steps: 
-    - run: sleep 5h 30m
+      - run: sleep 5h 30m
   sleep2:
     name: Sleep since syncing lasts longer than 6 hours (time limit for a job)
     runs-on: ubuntu-latest
     needs: sleep
     steps: 
-    - run: sleep 5h 30m
+      - run: sleep 5h 30m
 
   wait_for_node_to_sync:
     name: Wait for the node to sync
@@ -64,29 +64,29 @@ jobs:
     needs: [sleep2, extract_rpc_url]
     timeout-minutes: 600
     steps:
-    - uses: actions/checkout@v3
-    - name: Install WireGuard
-      run: |
-        sudo apt update
-        sudo apt install -y wireguard resolvconf
-        sudo mkdir -p /etc/wireguard
-        envsubst < scripts/wireguard.conf.template > wg0.conf
-        sudo wg-quick up ./wg0.conf
-      env:
-        WIREGUARD_PRIVKEY: '${{ secrets.WIREGUARD_PRIVKEY }}'
-        WIREGUARD_ADDRESS: '${{ secrets.WIREGUARD_ADDRESS }}'
-        WIREGUARD_DNS: '${{ secrets.WIREGUARD_DNS }}'
-        WIREGUARD_PUBKEY: '${{ secrets.WIREGUARD_PUBKEY }}'
-        WIREGUARD_PRESHAREDKEY: '${{ secrets.WIREGUARD_PRESHAREDKEY }}'
-        WIREGUARD_ALLOWED_IPS: '${{ secrets.WIREGUARD_ALLOWED_IPS }}'
-        WIREGUARD_SERVER_IP: '${{ secrets.WIREGUARD_SERVER_IP }}'
-        WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
-    
-    - name: Wait for the node to sync
-      timeout-minutes: 600
-      run: |
-        while curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' ${{ needs.extract_rpc_url.outputs.rpc_url }} | jq -e '.result'
-        do sleep 300; done 
+      - uses: actions/checkout@v3
+      - name: Install WireGuard
+        run: |
+          sudo apt update
+          sudo apt install -y wireguard resolvconf
+          sudo mkdir -p /etc/wireguard
+          envsubst < scripts/wireguard.conf.template > wg0.conf
+          sudo wg-quick up ./wg0.conf
+        env:
+          WIREGUARD_PRIVKEY: '${{ secrets.WIREGUARD_PRIVKEY }}'
+          WIREGUARD_ADDRESS: '${{ secrets.WIREGUARD_ADDRESS }}'
+          WIREGUARD_DNS: '${{ secrets.WIREGUARD_DNS }}'
+          WIREGUARD_PUBKEY: '${{ secrets.WIREGUARD_PUBKEY }}'
+          WIREGUARD_PRESHAREDKEY: '${{ secrets.WIREGUARD_PRESHAREDKEY }}'
+          WIREGUARD_ALLOWED_IPS: '${{ secrets.WIREGUARD_ALLOWED_IPS }}'
+          WIREGUARD_SERVER_IP: '${{ secrets.WIREGUARD_SERVER_IP }}'
+          WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
+      
+      - name: Wait for the node to sync
+        timeout-minutes: 600
+        run: |
+          while curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' ${{ needs.extract_rpc_url.outputs.rpc_url }} | jq -e '.result'
+          do sleep 300; done 
 
   compare:
     name: Compare JSON-RPC responses between clients and versions
@@ -96,26 +96,26 @@ jobs:
       matrix:
         rpc_to_compare: [INFURA_ENDPOINT, NETHERMIND_ARCHIVE_ENDPOINT]
     steps:
-    - uses: actions/checkout@v3
-    - name: Install flood
-      run: pip install git+https://github.com/piwonskp/flood.git
-
-    - name: Install WireGuard
-      run: |
-        sudo apt update
-        sudo apt install -y wireguard resolvconf
-        sudo mkdir -p /etc/wireguard
-        envsubst < scripts/wireguard.conf.template > wg0.conf
-        sudo wg-quick up ./wg0.conf
-      env:
-        WIREGUARD_PRIVKEY: '${{ secrets.WIREGUARD_PRIVKEY }}'
-        WIREGUARD_ADDRESS: '${{ secrets.WIREGUARD_ADDRESS }}'
-        WIREGUARD_DNS: '${{ secrets.WIREGUARD_DNS }}'
-        WIREGUARD_PUBKEY: '${{ secrets.WIREGUARD_PUBKEY }}'
-        WIREGUARD_PRESHAREDKEY: '${{ secrets.WIREGUARD_PRESHAREDKEY }}'
-        WIREGUARD_ALLOWED_IPS: '${{ secrets.WIREGUARD_ALLOWED_IPS }}'
-        WIREGUARD_SERVER_IP: '${{ secrets.WIREGUARD_SERVER_IP }}'
-        WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
-
-    - name: Test equality of responses
-      run: flood all nethermind_current=${{ needs.extract_rpc_url.outputs.rpc_url }} ${{ matrix.rpc_to_compare }}=${{ secrets[matrix.rpc_to_compare] }} --equality
+      - uses: actions/checkout@v3
+      - name: Install flood
+        run: pip install git+https://github.com/piwonskp/flood.git
+  
+      - name: Install WireGuard
+        run: |
+          sudo apt update
+          sudo apt install -y wireguard resolvconf
+          sudo mkdir -p /etc/wireguard
+          envsubst < scripts/wireguard.conf.template > wg0.conf
+          sudo wg-quick up ./wg0.conf
+        env:
+          WIREGUARD_PRIVKEY: '${{ secrets.WIREGUARD_PRIVKEY }}'
+          WIREGUARD_ADDRESS: '${{ secrets.WIREGUARD_ADDRESS }}'
+          WIREGUARD_DNS: '${{ secrets.WIREGUARD_DNS }}'
+          WIREGUARD_PUBKEY: '${{ secrets.WIREGUARD_PUBKEY }}'
+          WIREGUARD_PRESHAREDKEY: '${{ secrets.WIREGUARD_PRESHAREDKEY }}'
+          WIREGUARD_ALLOWED_IPS: '${{ secrets.WIREGUARD_ALLOWED_IPS }}'
+          WIREGUARD_SERVER_IP: '${{ secrets.WIREGUARD_SERVER_IP }}'
+          WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
+  
+      - name: Test equality of responses
+        run: flood all nethermind_current=${{ needs.extract_rpc_url.outputs.rpc_url }} ${{ matrix.rpc_to_compare }}=${{ secrets[matrix.rpc_to_compare] }} --equality
