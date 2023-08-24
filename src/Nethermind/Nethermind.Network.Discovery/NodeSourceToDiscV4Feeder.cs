@@ -3,20 +3,25 @@
 
 namespace Nethermind.Network.Discovery;
 
-public class EnrToDiscv4Feeder: IDisposable
+public class NodeSourceToDiscV4Feeder : IDisposable
 {
     private readonly INodeSource _nodeSource;
     private readonly IDiscoveryApp _discoveryApp;
+    private readonly int _maxNodes;
+    private int _addedNodes = 0;
 
-    public EnrToDiscv4Feeder(INodeSource nodeSource, IDiscoveryApp discoveryApp)
+    public NodeSourceToDiscV4Feeder(INodeSource nodeSource, IDiscoveryApp discoveryApp, int maxNodes)
     {
         nodeSource.NodeAdded += AddToDiscoveryApp;
         _nodeSource = nodeSource;
         _discoveryApp = discoveryApp;
+        _maxNodes = maxNodes;
     }
 
     private void AddToDiscoveryApp(object? sender, NodeEventArgs e)
     {
+        if (_addedNodes >= _maxNodes) return;
+        _addedNodes++;
         _discoveryApp.AddNodeToDiscovery(e.Node);
     }
 
