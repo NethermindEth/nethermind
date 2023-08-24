@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -22,6 +23,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
         => comparer.GetBlobReplacementComparer();
 
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public virtual IEnumerable<Transaction> GetBlobTransactions()
     {
         int pickedBlobs = 0;
