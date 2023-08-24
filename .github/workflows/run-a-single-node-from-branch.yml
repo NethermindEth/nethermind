@@ -109,7 +109,7 @@ jobs:
         fi
 
     - name: Trigger Docker Build Action with Cleaned Ref
-      if: steps.check_conditions.outputs.skip != true
+      if: steps.check_conditions.outputs.skip != 'true'
       uses: benc-uk/workflow-dispatch@v1
       env:
         ADDITIONAL_OPTIONS: ${{ inputs.additional_options }}
@@ -124,7 +124,7 @@ jobs:
            }'
         
     - name: Wait for Docker Build Action to complete
-      if: steps.check_conditions.outputs.skip != true
+      if: steps.check_conditions.outputs.skip != 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         WORKFLOW_ID: 'publish-docker.yml'
