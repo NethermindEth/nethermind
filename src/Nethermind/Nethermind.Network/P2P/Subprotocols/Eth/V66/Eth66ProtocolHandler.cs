@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     public class Eth66ProtocolHandler : Eth65ProtocolHandler
     {
         private readonly MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, BlockHeader[]> _headersRequests66;
-        private readonly MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, (BlockBody[], long)> _bodiesRequests66;
+        private readonly MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
         private readonly MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]> _nodeDataRequests66;
         private readonly MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, (TxReceipt[][], long)> _receiptsRequests66;
         private readonly IPooledTxsRequestor _pooledTxsRequestor;
@@ -48,7 +48,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
         {
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, BlockHeader[]>(Send);
-            _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, (BlockBody[], long)>(Send);
+            _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
             _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, (TxReceipt[][], long)>(Send);
             _pooledTxsRequestor = pooledTxsRequestor;
@@ -235,7 +235,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 token);
         }
 
-        protected override async Task<(BlockBody[], long)> SendRequest(V62.Messages.GetBlockBodiesMessage message, CancellationToken token)
+        protected override async Task<(OwnedBlockBodies, long)> SendRequest(V62.Messages.GetBlockBodiesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
