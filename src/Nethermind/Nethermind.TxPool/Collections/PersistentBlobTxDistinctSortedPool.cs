@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -71,7 +72,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         return false;
     }
 
-    // ToDo: add synchronized?
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public override IEnumerable<Transaction> GetBlobTransactions()
     {
         int pickedBlobs = 0;
@@ -94,7 +95,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
 
             if (TryRemove(bestTxLight.Hash))
             {
-                blobTxsToReadd ??= new(Eip4844Constants.MaxBlobsPerBlock);
+                blobTxsToReadd ??= new();
                 blobTxsToReadd.Add(fullBlobTx!);
             }
         }
