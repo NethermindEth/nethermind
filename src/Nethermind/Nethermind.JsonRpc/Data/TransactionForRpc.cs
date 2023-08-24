@@ -36,7 +36,14 @@ public class TransactionForRpc
             MaxFeePerGas = transaction.MaxFeePerGas;
             MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
         }
-        ChainId = transaction.ChainId;
+        if (transaction.Type > TxType.Legacy)
+        {
+            ChainId = transaction.ChainId ?? BlockchainIds.Mainnet;
+        }
+        else
+        {
+            ChainId = transaction.ChainId;
+        }
         Type = transaction.Type;
         if (transaction.SupportsAccessList)
         {
