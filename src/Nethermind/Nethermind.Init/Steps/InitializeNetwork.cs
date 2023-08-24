@@ -39,7 +39,6 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Synchronization.StateSync;
 using Nethermind.Synchronization.Trie;
 
 namespace Nethermind.Init.Steps;
@@ -178,6 +177,7 @@ public class InitializeNetwork : IStep
                 _api.BlockDownloaderFactory,
                 _api.Pivot,
                 syncReport,
+                _api.ProcessExit!,
                 _api.LogManager);
         }
 

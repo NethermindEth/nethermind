@@ -15,16 +15,16 @@ namespace Nethermind.TxPool.Comparison
 
         private ByHashTxComparer() { }
 
-        public int Compare(Transaction? x, Transaction? y)
+        public int Compare(Transaction? newTx, Transaction? oldTx)
         {
-            if (ReferenceEquals(x?.Hash, y?.Hash)) return 0;
-            if (ReferenceEquals(null, y?.Hash)) return 1;
-            if (ReferenceEquals(null, x?.Hash)) return -1;
+            if (ReferenceEquals(newTx?.Hash, oldTx?.Hash)) return TxComparisonResult.NotDecided;
+            if (ReferenceEquals(null, oldTx?.Hash)) return TxComparisonResult.KeepOld;
+            if (ReferenceEquals(null, newTx?.Hash)) return TxComparisonResult.TakeNew;
 
-            return x.Hash!.CompareTo(y.Hash);
+            return newTx.Hash!.CompareTo(oldTx.Hash);
         }
 
-        public bool Equals(Transaction? x, Transaction? y) => Compare(x, y) == 0;
+        public bool Equals(Transaction? x, Transaction? y) => Compare(x, y) == TxComparisonResult.NotDecided;
 
         public int GetHashCode(Transaction obj) => obj.Hash?.GetHashCode() ?? 0;
     }

@@ -8,7 +8,6 @@ using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 

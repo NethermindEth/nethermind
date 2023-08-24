@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -71,18 +71,24 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             }
 
-            int itemsRemaining = decoderContext.PeekNumberOfItemsRemaining(null, 3);
+            int itemsRemaining = decoderContext.PeekNumberOfItemsRemaining(null, 4);
             if (itemsRemaining > 0 &&
                 decoderContext.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
 
-                if (itemsRemaining == 3 && decoderContext.Position != headerCheck)
+                if (itemsRemaining >= 3 && decoderContext.Position != headerCheck)
                 {
                     blockHeader.BlobGasUsed = decoderContext.DecodeULong(allowLeadingZeroBytes: false);
                     blockHeader.ExcessBlobGas = decoderContext.DecodeULong(allowLeadingZeroBytes: false);
                 }
+
+                if (itemsRemaining == 4 && decoderContext.Position != headerCheck)
+                {
+                    blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccak();
+                }
             }
+
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
@@ -152,16 +158,21 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
             }
 
-            int itemsRemaining = rlpStream.PeekNumberOfItemsRemaining(null, 3);
+            int itemsRemaining = rlpStream.PeekNumberOfItemsRemaining(null, 4);
             if (itemsRemaining > 0 &&
                 rlpStream.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.WithdrawalsRoot = rlpStream.DecodeKeccak();
 
-                if (itemsRemaining == 3 && rlpStream.Position != headerCheck)
+                if (itemsRemaining >= 3 && rlpStream.Position != headerCheck)
                 {
                     blockHeader.BlobGasUsed = rlpStream.DecodeUlong(allowLeadingZeroBytes: false);
                     blockHeader.ExcessBlobGas = rlpStream.DecodeUlong(allowLeadingZeroBytes: false);
+                }
+
+                if (itemsRemaining == 4 && rlpStream.Position != headerCheck)
+                {
+                    blockHeader.ParentBeaconBlockRoot = rlpStream.DecodeKeccak();
                 }
             }
 
@@ -217,15 +228,20 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(header.BaseFeePerGas);
             }
 
-            if (header.WithdrawalsRoot is not null || header.ExcessBlobGas is not null || header.BlobGasUsed is not null)
+            if (header.WithdrawalsRoot is not null || header.ExcessBlobGas is not null || header.BlobGasUsed is not null || header.ParentBeaconBlockRoot is not null)
             {
                 rlpStream.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
             }
 
-            if (header.BlobGasUsed is not null || header.ExcessBlobGas is not null)
+            if (header.BlobGasUsed is not null || header.ExcessBlobGas is not null || header.ParentBeaconBlockRoot is not null)
             {
                 rlpStream.Encode(header.BlobGasUsed.GetValueOrDefault());
                 rlpStream.Encode(header.ExcessBlobGas.GetValueOrDefault());
+            }
+
+            if (header.ParentBeaconBlockRoot is not null)
+            {
+                rlpStream.Encode(header.ParentBeaconBlockRoot);
             }
         }
 
@@ -266,6 +282,7 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.ExtraData)
                                 + (item.BaseFeePerGas.IsZero ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
                                 + (item.WithdrawalsRoot is null && item.BlobGasUsed is null && item.ExcessBlobGas is null ? 0 : Rlp.LengthOfKeccakRlp)
+                                + (item.ParentBeaconBlockRoot is null ? 0 : Rlp.LengthOfKeccakRlp)
                                 + (item.BlobGasUsed is null ? 0 : Rlp.LengthOf(item.BlobGasUsed.Value))
                                 + (item.ExcessBlobGas is null ? 0 : Rlp.LengthOf(item.ExcessBlobGas.Value));
 

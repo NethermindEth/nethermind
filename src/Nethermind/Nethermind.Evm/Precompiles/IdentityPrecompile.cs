@@ -7,9 +7,9 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class IdentityPrecompile : IPrecompile
+    public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
     {
-        public static readonly IPrecompile Instance = new IdentityPrecompile();
+        public static readonly IdentityPrecompile Instance = new IdentityPrecompile();
 
         private IdentityPrecompile()
         {

@@ -53,6 +53,7 @@ public static class Program
     private static readonly ProcessExitSource _processExitSource = new();
     private static readonly TaskCompletionSource<object?> _cancelKeySource = new();
     private static readonly TaskCompletionSource<object?> _processExit = new();
+    private static readonly TaskCompletionSource<object?> _exitSourceExit = new();
     private static readonly ManualResetEventSlim _appClosed = new(true);
 
     public static void Main(string[] args)
@@ -198,7 +199,7 @@ public static class Program
             {
                 await ethereumRunner.Start(_processExitSource.Token);
 
-                _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
+                _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task, _processExitSource.ExitTask);
             }
             catch (TaskCanceledException)
             {
@@ -279,8 +280,8 @@ public static class Program
             }
 
             foreach (PropertyInfo propertyInfo in configType
-                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .OrderBy(p => p.Name))
+                         .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                         .OrderBy(p => p.Name))
             {
                 ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
                 if (!(configItemAttribute?.DisabledForCli ?? false))
@@ -543,9 +544,9 @@ public static class Program
             .Append("Commit: ").AppendLine(ProductInfo.Commit)
             .Append("Build Date: ").AppendLine(ProductInfo.BuildTimestamp.ToString("u"))
             .Append("OS: ")
-                .Append(ProductInfo.OS)
-                .Append(' ')
-                .AppendLine(ProductInfo.OSArchitecture)
+            .Append(ProductInfo.OS)
+            .Append(' ')
+            .AppendLine(ProductInfo.OSArchitecture)
             .Append("Runtime: ").AppendLine(ProductInfo.Runtime);
 
         return info.ToString();
