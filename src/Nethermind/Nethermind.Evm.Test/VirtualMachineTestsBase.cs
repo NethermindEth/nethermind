@@ -249,6 +249,7 @@ public class VirtualMachineTestsBase
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
             .WithTimestamp(timestamp)
+            .WithParentBeaconBlockRoot(TestItem.KeccakG)
             .TestObject;
     }
 

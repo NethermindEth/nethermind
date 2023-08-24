@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
-using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 

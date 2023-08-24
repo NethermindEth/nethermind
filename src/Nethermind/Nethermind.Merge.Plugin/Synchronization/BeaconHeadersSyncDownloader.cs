@@ -3,8 +3,6 @@
 
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastBlocks;
-using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 

@@ -3,7 +3,6 @@
 
 using FluentAssertions;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
