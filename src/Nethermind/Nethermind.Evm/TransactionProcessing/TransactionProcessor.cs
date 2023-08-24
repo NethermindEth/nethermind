@@ -477,7 +477,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // Fixes eth_estimateGas.
             // If sender is SystemUser subtracting value will cause InsufficientBalanceException
-            if (validate || !tx.IsSystem())
+            if (validate && !tx.IsSystem())
                 _worldState.SubtractFromBalance(tx.SenderAddress, tx.Value, spec);
 
             try

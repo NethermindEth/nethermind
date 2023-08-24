@@ -3,12 +3,15 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.BeaconBlockRoot;
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
@@ -23,7 +26,7 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
         _processor = processor;
         _logger = logManager.GetClassLogger();
     }
-    public void ScheduleSystemCall(Block block, IReleaseSpec spec)
+    public void ScheduleSystemCall(Block block, IReleaseSpec spec, IWorldState stateProvider)
     {
         BlockHeader? header = block.Header;
         if (!spec.IsBeaconBlockRootAvailable ||
@@ -49,5 +52,6 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
         {
             if (_logger.IsError) _logger.Error("Error during calling BeaconBlockRoot contract", e);
         }
+
     }
 }

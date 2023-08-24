@@ -93,7 +93,7 @@ namespace Nethermind.Merge.Plugin.Test
             var state = chain.State;
             var blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, beaconParentBlockRoot: parentBeaconBlockRoot);
             blockRequestV3.TryGetBlock(out Block? block);
-            chain.BeaconBlockRootHandler.ScheduleSystemCall(block, spec);
+            chain.BeaconBlockRootHandler.ScheduleSystemCall(block, spec, null);
 
             state.Commit(spec);
             state.CommitTree(blockRequestV3.BlockNumber);
