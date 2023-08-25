@@ -157,7 +157,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 _worldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
 
             // declare the execution witness to collect witness and also charge gas
-            IWitness executionWitness = spec.IsVerkleTreeEipEnabled ? new VerkleExecWitness() : new NoExecWitness();
+            IWitness executionWitness = spec.IsVerkleTreeEipEnabled ? new VerkleExecWitness(_logManager) : new NoExecWitness();
             ExecutionEnvironment env = BuildExecutionEnvironmnet(tx, header, spec, tracer, opts, executionWitness, effectiveGasPrice);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
@@ -604,10 +604,10 @@ namespace Nethermind.Evm.TransactionProcessing
                     statusCode = StatusCode.Success;
                 }
 
-                if (!env.Witness.AccessAndChargeForGasBeneficiary(header.GasBeneficiary!, ref unspentGas))
-                {
-                    throw new OutOfGasException();
-                }
+                // if (!env.Witness.AccessAndChargeForGasBeneficiary(header.GasBeneficiary!, ref unspentGas))
+                // {
+                //     throw new OutOfGasException();
+                // }
                 spentGas = Refund(tx.GasLimit, unspentGas, substate, tx.SenderAddress, env.TxExecutionContext.GasPrice, opts, spec);
             }
             catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
