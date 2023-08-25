@@ -21,10 +21,10 @@ namespace Nethermind.TxPool
         IDictionary<Address, Transaction[]> GetPendingTransactionsBySender();
 
         /// <summary>
-        /// Lazy enumerate blob txs starting from the best one
+        /// Blob txs light equivalences grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
         /// <returns></returns>
-        IEnumerable<Transaction> GetPendingBlobTransactions();
+        IDictionary<Address, Transaction[]> GetPendingBlobTransactionsEquivalencesBySender();
 
         /// <summary>
         /// from a specific sender, sorted by nonce and later tx pool sorting
@@ -37,6 +37,7 @@ namespace Nethermind.TxPool
         bool RemoveTransaction(Keccak? hash);
         bool IsKnown(Keccak hash);
         bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction);
+        bool TryGetPendingBlobTransaction(Keccak hash, out Transaction? blobTransaction);
         UInt256 GetLatestPendingNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;

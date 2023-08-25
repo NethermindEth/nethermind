@@ -23,6 +23,7 @@ using Nethermind.TxPool.Comparison;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -237,13 +238,27 @@ namespace Nethermind.Blockchain.Test
                 .ToDictionary(
                     g => g.Key!,
                     g => g.OrderBy(t => t, comparer).ToArray());
-            Transaction[] blobTransactions = testCase.Transactions
+            Dictionary<Address, Transaction[]> blobTransactions = testCase.Transactions
                 .Where(t => t?.SenderAddress is not null)
                 .Where(t => t.SupportsBlobs)
-                .OrderBy(t => t, comparer)
-                .ToArray();
+                .GroupBy(t => t.SenderAddress)
+                .ToDictionary(
+                    g => g.Key!,
+                    g => g.OrderBy(t => t, comparer).ToArray());
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
-            transactionPool.GetPendingBlobTransactions().Returns(blobTransactions);
+            transactionPool.GetPendingBlobTransactionsEquivalencesBySender().Returns(blobTransactions);
+            foreach (KeyValuePair<Address,Transaction[]> keyValuePair in blobTransactions)
+            {
+                foreach (Transaction blobTx in keyValuePair.Value)
+                {
+                    transactionPool.TryGetPendingBlobTransaction(Arg.Is<Keccak>(h => h == blobTx.Hash),
+                        out Arg.Any<Transaction?>()).Returns(x =>
+                    {
+                        x[1] = blobTx;
+                        return true;
+                    });
+                }
+            }
             BlocksConfig blocksConfig = new() { MinGasPrice = testCase.MinGasPriceForMining };
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
                 .WithMinGasPriceFilter(blocksConfig, specProvider)

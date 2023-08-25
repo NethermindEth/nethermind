@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -22,43 +21,6 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
         => comparer.GetBlobReplacementComparer();
-
-    [MethodImpl(MethodImplOptions.Synchronized)]
-    public virtual IEnumerable<Transaction> GetBlobTransactions()
-    {
-        int pickedBlobs = 0;
-        List<Transaction>? blobTxsToReadd = null;
-
-        while (pickedBlobs < Eip4844Constants.MaxBlobsPerBlock)
-        {
-            Transaction? bestTx = GetFirsts().Min;
-
-            if (bestTx?.Hash is null || bestTx.BlobVersionedHashes is null)
-            {
-                break;
-            }
-
-            if (pickedBlobs + bestTx.BlobVersionedHashes.Length <= Eip4844Constants.MaxBlobsPerBlock)
-            {
-                yield return bestTx;
-                pickedBlobs += bestTx.BlobVersionedHashes.Length;
-            }
-
-            if (TryRemove(bestTx.Hash))
-            {
-                blobTxsToReadd ??= new(Eip4844Constants.MaxBlobsPerBlock);
-                blobTxsToReadd.Add(bestTx!);
-            }
-        }
-
-        if (blobTxsToReadd is not null)
-        {
-            foreach (Transaction blobTx in blobTxsToReadd)
-            {
-                TryInsert(blobTx.Hash, blobTx!, out Transaction? removed);
-            }
-        }
-    }
 
     public override void EnsureCapacity()
     {
