@@ -76,7 +76,6 @@ namespace Nethermind.TxPool
         /// <param name="transactionsGossipPolicy"></param>
         /// <param name="incomingTxFilter"></param>
         /// <param name="thereIsPriorityContract"></param>
-        /// <param name="txStorage">Tx storage used to reject known transactions.</param>
         public TxPool(IEthereumEcdsa ecdsa,
             ITxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
