@@ -206,15 +206,20 @@ namespace Nethermind.Network
         private async Task RunPeerUpdateLoop()
         {
             Channel<Peer> taskChannel = Channel.CreateBounded<Peer>(1);
-            List<Task>? tasks = Enumerable.Range(0, _outgoingConnectParallelism).Select((idx) =>
+            List<Task>? tasks = Enumerable.Range(0, _outgoingConnectParallelism).Select(async (idx) =>
             {
-                return Task.Run(async () =>
+                await foreach (Peer peer in taskChannel.Reader.ReadAllAsync(_cancellationTokenSource.Token))
                 {
-                    await foreach (Peer peer in taskChannel.Reader.ReadAllAsync(_cancellationTokenSource.Token))
+                    try
                     {
                         await SetupOutgoingPeerConnection(peer);
                     }
-                });
+                    catch (Exception e)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Error setting up connection to {peer}, {e}");
+                    }
+                }
+                if (_logger.IsDebug) _logger.Debug($"Connect worker {idx} completed");
             }).ToList();
 
             int loopCount = 0;
@@ -268,6 +273,7 @@ namespace Nethermind.Network
 
                     if (_cancellationTokenSource.IsCancellationRequested)
                     {
+                        if (_logger.IsInfo) _logger.Info("Peer update loop canceled");
                         break;
                     }
 
@@ -335,6 +341,7 @@ namespace Nethermind.Network
                     ++failCount;
                     if (failCount >= 10)
                     {
+                        if (_logger.IsError) _logger.Error("Too much failure in peer update loop", e);
                         break;
                     }
                     else
