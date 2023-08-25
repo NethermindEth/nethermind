@@ -84,14 +84,14 @@ public class StatelessBlockProcessor: BlockProcessor
 
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        _receiptsTracer.SetOtherTracer(blockTracer);
-        _receiptsTracer.StartNewBlockTrace(block);
-        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
+        _executionTracer.SetOtherTracer(blockTracer);
+        _executionTracer.StartNewBlockTrace(block);
+        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, _executionTracer, spec);
 
         block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
-        _receiptsTracer.EndBlockTrace();
+        _executionTracer.EndBlockTrace();
 
         // if we are producing blocks - then calculate and add the witness to the block
         // but we need to remember that the witness needs to be generate for the parent block state (for pre state)

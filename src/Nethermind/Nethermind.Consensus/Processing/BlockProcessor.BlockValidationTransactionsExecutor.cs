@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.Processing
                 return new BlockValidationTransactionsExecutor(_transactionProcessor, worldState);
             }
 
-            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockExecutionTracer receiptsTracer, IReleaseSpec spec)
             {
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.Processing
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
-            private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+            private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockExecutionTracer receiptsTracer, ProcessingOptions processingOptions)
             {
                 _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
                 TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));

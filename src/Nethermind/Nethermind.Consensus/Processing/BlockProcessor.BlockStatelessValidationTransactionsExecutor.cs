@@ -50,7 +50,7 @@ public partial class BlockProcessor
             return new BlockStatelessValidationTransactionsExecutor(_transactionProcessor, worldState);
         }
 
-        public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+        public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockExecutionTracer receiptsTracer, IReleaseSpec spec)
         {
             // var ecdsa = new EthereumEcdsa(69420, LimboLogs.Instance);
             if (!block.IsGenesis)
@@ -68,7 +68,7 @@ public partial class BlockProcessor
             return receiptsTracer.TxReceipts.ToArray();
         }
 
-        private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, IWorldState worldState, ProcessingOptions processingOptions)
+        private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockExecutionTracer receiptsTracer, IWorldState worldState, ProcessingOptions processingOptions)
         {
             _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, worldState);
             TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));

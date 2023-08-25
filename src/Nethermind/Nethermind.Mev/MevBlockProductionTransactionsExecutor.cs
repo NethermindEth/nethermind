@@ -47,7 +47,7 @@ namespace Nethermind.Mev
             _stateProvider = stateProvider;
         }
 
-        public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+        public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockExecutionTracer receiptsTracer, IReleaseSpec spec)
         {
             IEnumerable<Transaction> transactions = GetTransactions(block);
             LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
@@ -126,7 +126,7 @@ namespace Nethermind.Mev
         private TxAction ProcessBundle(Block block,
             List<BundleTransaction> bundleTransactions,
             LinkedHashSet<Transaction> transactionsInBlock,
-            BlockReceiptsTracer receiptsTracer,
+            BlockExecutionTracer receiptsTracer,
             ProcessingOptions processingOptions)
         {
 
@@ -188,7 +188,7 @@ namespace Nethermind.Mev
             Block block,
             BundleTransaction currentTx,
             int index,
-            BlockReceiptsTracer receiptsTracer,
+            BlockExecutionTracer receiptsTracer,
             ProcessingOptions processingOptions,
             LinkedHashSet<Transaction> transactionsInBlock)
         {

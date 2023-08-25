@@ -19,7 +19,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
 
-            BlockReceiptsTracer tracer = new(true, false);
+            BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.WithChainId(TestBlockchainIds.ChainId).WithType(TxType.AccessList).TestObject).TestObject;
 
-            BlockReceiptsTracer tracer = new(true, false);
+            BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
 
-            BlockReceiptsTracer tracer = new(true, false);
+            BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
@@ -62,7 +62,7 @@ namespace Nethermind.Evm.Test.Tracing
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
 
             IBlockTracer otherTracer = Substitute.For<IBlockTracer, ITxTracer>();
-            BlockReceiptsTracer tracer = new(true, false);
+            BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(otherTracer);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
@@ -77,7 +77,7 @@ namespace Nethermind.Evm.Test.Tracing
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
 
             IBlockTracer otherTracer = Substitute.For<IBlockTracer, ITxTracer>();
-            BlockReceiptsTracer tracer = new(true, false);
+            BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(otherTracer);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);

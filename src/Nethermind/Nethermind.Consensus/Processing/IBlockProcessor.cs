@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.Processing
 
         public interface IBlockTransactionsExecutor
         {
-            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec);
+            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockExecutionTracer receiptsTracer, IReleaseSpec spec);
             event EventHandler<TxProcessedEventArgs> TransactionProcessed;
             IBlockTransactionsExecutor WithNewStateProvider(IWorldState worldState);
         }

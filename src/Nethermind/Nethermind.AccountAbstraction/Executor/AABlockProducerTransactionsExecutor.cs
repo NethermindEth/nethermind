@@ -43,7 +43,7 @@ namespace Nethermind.AccountAbstraction.Executor
         public override TxReceipt[] ProcessTransactions(
             Block block,
             ProcessingOptions processingOptions,
-            BlockReceiptsTracer receiptsTracer,
+            BlockExecutionTracer receiptsTracer,
             IReleaseSpec spec)
         {
             IEnumerable<Transaction> transactions = GetTransactions(block);
@@ -81,7 +81,7 @@ namespace Nethermind.AccountAbstraction.Executor
             Block block,
             Transaction currentTx,
             int index,
-            BlockReceiptsTracer receiptsTracer,
+            BlockExecutionTracer receiptsTracer,
             ProcessingOptions processingOptions,
             LinkedHashSet<Transaction> transactionsInBlock)
         {

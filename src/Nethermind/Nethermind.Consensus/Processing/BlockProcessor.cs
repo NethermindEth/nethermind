@@ -50,7 +50,7 @@ public partial class BlockProcessor : IBlockProcessor
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
     /// to any block-specific tracers.
     /// </summary>
-    protected readonly BlockReceiptsTracer _receiptsTracer;
+    protected readonly BlockExecutionTracer _executionTracer;
 
     public BlockProcessor(
         ISpecProvider? specProvider,
@@ -72,8 +72,7 @@ public partial class BlockProcessor : IBlockProcessor
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
-
-        _receiptsTracer = new BlockReceiptsTracer(true, true);
+        _executionTracer = new BlockExecutionTracer(true, true);
     }
 
     public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
@@ -271,10 +270,10 @@ public partial class BlockProcessor : IBlockProcessor
             }
         }
 
-        _receiptsTracer.SetOtherTracer(blockTracer);
-        _receiptsTracer.StartNewBlockTrace(block);
+        _executionTracer.SetOtherTracer(blockTracer);
+        _executionTracer.StartNewBlockTrace(block);
 
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
+        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _executionTracer, spec);
 
         if (spec.IsEip4844Enabled)
         {
@@ -284,12 +283,12 @@ public partial class BlockProcessor : IBlockProcessor
         block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
-        _receiptsTracer.EndBlockTrace();
+        _executionTracer.EndBlockTrace();
 
         ExecutionWitness? witness = null;
         if (ShouldGenerateWitness)
         {
-            byte[][] witnessKeys = _receiptsTracer.WitnessKeys.ToArray();
+            byte[][] witnessKeys = _executionTracer.WitnessKeys.ToArray();
             VerkleWorldState? verkleWorldState = _stateProvider as VerkleWorldState;
             witness = witnessKeys.Length == 0 ? null : verkleWorldState?.GenerateExecutionWitness(witnessKeys, out _);
             // IJsonSerializer ser = new EthereumJsonSerializer();
@@ -310,13 +309,13 @@ public partial class BlockProcessor : IBlockProcessor
             {
                 (IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor, IWorldState worldState) =
                     GetOrCreateExecutorAndState(block, witness!);
-                _receiptsTracer.StartNewBlockTrace(block);
-                TxReceipt[] receiptsSl = blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
+                _executionTracer.StartNewBlockTrace(block);
+                TxReceipt[] receiptsSl = blockTransactionsExecutor.ProcessTransactions(block, options, _executionTracer, spec);
 
                 block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
                 ApplyMinerRewards(block, blockTracer, spec);
                 _withdrawalProcessor.ProcessWithdrawals(block, spec);
-                _receiptsTracer.EndBlockTrace();
+                _executionTracer.EndBlockTrace();
 
                 worldState.Commit(spec);
                 worldState.RecalculateStateRoot();

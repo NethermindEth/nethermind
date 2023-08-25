@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.Processing
         public static void ProcessTransaction(this ITransactionProcessorAdapter transactionProcessor,
             Block block,
             Transaction currentTx,
-            BlockReceiptsTracer receiptsTracer,
+            BlockExecutionTracer receiptsTracer,
             ProcessingOptions processingOptions,
             IWorldState stateProvider)
         {

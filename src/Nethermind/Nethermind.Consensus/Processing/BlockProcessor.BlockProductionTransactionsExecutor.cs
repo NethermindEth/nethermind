@@ -82,7 +82,7 @@ namespace Nethermind.Consensus.Processing
                 remove => _blockProductionTransactionPicker.AddingTransaction -= value;
             }
 
-            public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+            public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockExecutionTracer receiptsTracer, IReleaseSpec spec)
             {
                 IEnumerable<Transaction> transactions = GetTransactions(block);
 
@@ -104,7 +104,7 @@ namespace Nethermind.Consensus.Processing
                 Block block,
                 Transaction currentTx,
                 int index,
-                BlockReceiptsTracer receiptsTracer,
+                BlockExecutionTracer receiptsTracer,
                 ProcessingOptions processingOptions,
                 LinkedHashSet<Transaction> transactionsInBlock,
                 bool addToBlock = true)

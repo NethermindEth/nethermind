@@ -166,7 +166,7 @@ public class TransactionProcessorFeeTests
 
         CancellationBlockTracer cancellationBlockTracer = new(feesTracer, token);
 
-        BlockReceiptsTracer blockTracer = new(true, false);
+        BlockReceiptsTracer blockTracer = new();
         blockTracer.SetOtherTracer(cancellationBlockTracer);
 
         blockTracer.StartNewBlockTrace(block);
@@ -229,7 +229,7 @@ public class TransactionProcessorFeeTests
 
     private void ExecuteAndTrace(Block block, IBlockTracer otherTracer)
     {
-        BlockReceiptsTracer tracer = new(true, false);
+        BlockReceiptsTracer tracer = new();
         tracer.SetOtherTracer(otherTracer);
 
         tracer.StartNewBlockTrace(block);
