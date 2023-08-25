@@ -180,7 +180,9 @@ public class DiscoveryApp : IDiscoveryApp
         if (_logger.IsDebug) _logger.Debug("Activated discovery channel.");
 
         //Make sure this is non blocking code, otherwise netty will not process messages
-        Task.Run(() => OnChannelActivated(_appShutdownSource.Token)).ContinueWith
+        Task.Factory
+            .StartNew(() => OnChannelActivated(_appShutdownSource.Token), _appShutdownSource.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default)
+            .ContinueWith
         (
             t =>
             {
