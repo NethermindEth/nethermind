@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -76,7 +77,6 @@ namespace Nethermind.TxPool
         /// <param name="transactionsGossipPolicy"></param>
         /// <param name="incomingTxFilter"></param>
         /// <param name="thereIsPriorityContract"></param>
-        /// <param name="txStorage">Tx storage used to reject known transactions.</param>
         public TxPool(IEthereumEcdsa ecdsa,
             ITxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
@@ -597,7 +597,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool TryGetPendingBlobTransaction(Keccak hash, out Transaction? blobTransaction)
+        public bool TryGetPendingBlobTransaction(Keccak hash, [NotNullWhen(true)] out Transaction? blobTransaction)
         {
             lock (_locker)
             {

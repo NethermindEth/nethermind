@@ -77,8 +77,6 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                // Transaction blobTx = blobTxEquivalent;
-
                 i++;
 
                 bool success = _txFilterPipeline.Execute(blobTx, parent);

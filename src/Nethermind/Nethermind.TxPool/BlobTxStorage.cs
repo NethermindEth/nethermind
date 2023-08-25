@@ -32,15 +32,8 @@ public class BlobTxStorage : ITxStorage
     {
         if (txBytes is not null)
         {
-            try
-            {
-                transaction = Rlp.Decode<Transaction>(new Rlp(txBytes), RlpBehaviors.InMempoolForm);
-                return true;
-            }
-            catch (Exception)
-            {
-                // ignored
-            }
+            transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm);
+            return true;
         }
 
         transaction = default;
