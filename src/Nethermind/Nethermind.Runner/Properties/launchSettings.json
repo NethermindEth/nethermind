@@ -63,6 +63,20 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Holesky": {
+      "commandName": "Project",
+      "commandLineArgs": "-c holesky -dd %NETHERMIND_DATA_DIR%",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Holesky (archive)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c holesky_archive -dd %NETHERMIND_DATA_DIR%",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Kovan": {
       "commandName": "Project",
       "commandLineArgs": "-c kovan -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",

@@ -39,6 +39,7 @@ namespace Nethermind.Core
         public const int Chiado = 10200;
         public const int Volta = 73799;
         public const int Sepolia = 11155111;
+        public const int Holesky = 17000;
 
         public static string GetBlockchainName(ulong networkId)
         {
