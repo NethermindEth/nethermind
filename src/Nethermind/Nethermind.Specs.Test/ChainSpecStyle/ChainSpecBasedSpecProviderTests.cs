@@ -144,6 +144,34 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [Test]
+    public void Holesky_loads_properly()
+    {
+        ChainSpec chainSpec = LoadChainSpecFromChainFolder("holesky");
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ISpecProvider hardCodedSpec = HoleskySpecProvider.Instance;
+
+        List<ForkActivation> forkActivationsToTest = new()
+        {
+            new ForkActivation(0, HoleskySpecProvider.GenesisTimestamp),
+            new ForkActivation(1, HoleskySpecProvider.ShanghaiTimestamp),
+            new ForkActivation(3, HoleskySpecProvider.ShanghaiTimestamp + 24),
+            new ForkActivation(4, HoleskySpecProvider.CancunTimestamp),
+            new ForkActivation(5, HoleskySpecProvider.CancunTimestamp + 12),
+        };
+
+        CompareSpecProviders(hardCodedSpec, provider, forkActivationsToTest);
+        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(hardCodedSpec.TerminalTotalDifficulty));
+        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(0));
+        Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(0));
+        Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Holesky));
+        Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Holesky));
+
+        // Still commented since Cancun timestamp is set to be very far but not a 256 slot multiple
+        //GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+        //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
+    }
+
+    [Test]
     public void Rinkeby_loads_properly()
     {
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
