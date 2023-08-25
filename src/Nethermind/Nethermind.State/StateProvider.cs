@@ -203,6 +203,11 @@ namespace Nethermind.State
                 Account result = GetThroughCache(address);
                 if (result is null)
                 {
+                    if (address == Address.SystemUser)
+                    {
+                        return Account.TotallyEmpty;
+                    }
+
                     if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
                     throw new InvalidOperationException("Updating balance of a non-existing account");
                 }
