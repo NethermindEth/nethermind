@@ -3,10 +3,10 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
+using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -49,7 +49,7 @@ public class Eip2930Tests
 
         string serialized = _serializer.Serialize(transactionForRpc);
 
-        JObject.Parse(serialized).Should().BeEquivalentTo(JObject.Parse(txJson), opt => opt.Using(JToken.EqualityComparer));
+        JToken.Parse(serialized).Should().BeEquivalentTo(JToken.Parse(txJson));
     }
 
     [TestCase(TxType.AccessList, """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x01","chainId":"0x01","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x1","0x2","0x3","0x5","0x8"]},{"address":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","storageKeys":["0x2a"]}]}""")]
@@ -79,7 +79,7 @@ public class Eip2930Tests
 
         string serialized = _serializer.Serialize(rpc);
 
-        JObject.Parse(serialized).GetValue("accessList").Should().BeNull();
+        JObject.Parse(serialized).Should().NotHaveElement("accessList");
     }
 
     [TestCase(TxType.AccessList)]
@@ -94,7 +94,7 @@ public class Eip2930Tests
 
         string serialized = _serializer.Serialize(rpc);
 
-        JObject.Parse(serialized).GetValue("accessList").Should().BeEquivalentTo(new JArray(), opt => opt.Using(JToken.EqualityComparer));
+        JObject.Parse(serialized).GetValue("accessList").Should().BeEquivalentTo(new JArray());
     }
 
     [Test]
@@ -133,7 +133,7 @@ public class Eip2930Tests
 
         string serialized = _serializer.Serialize(transactionForRpc);
 
-        JObject.Parse(serialized).Should().BeEquivalentTo(JObject.Parse(txJson), opt => opt.Using(JToken.EqualityComparer));
+        JToken.Parse(serialized).Should().BeEquivalentTo(JToken.Parse(txJson));
     }
 
     [Test]
@@ -166,7 +166,7 @@ public class Eip2930Tests
 
         string serialized = _serializer.Serialize(transactionForRpc);
 
-        JObject.Parse(serialized).Should().BeEquivalentTo(JObject.Parse(txJson), opt => opt.Using(JToken.EqualityComparer));
+        JToken.Parse(serialized).Should().BeEquivalentTo(JToken.Parse(txJson));
     }
 
     [Test]
@@ -201,7 +201,7 @@ public class Eip2930Tests
 
         string serialized = _serializer.Serialize(transactionForRpc);
 
-        JObject.Parse(serialized).Should().BeEquivalentTo(JObject.Parse(txJson), opt => opt.Using(JToken.EqualityComparer));
+        JToken.Parse(serialized).Should().BeEquivalentTo(JToken.Parse(txJson));
     }
 
     [Test]
