@@ -11,7 +11,7 @@ namespace Nethermind.Specs;
 public class HoleskySpecProvider : ISpecProvider
 {
     public const ulong GenesisTimestamp = 0x65046360;
-    public const ulong ShanghaiTimestamp = 0x65047260;
+    public const ulong ShanghaiTimestamp = 0x6505e360;
     public const ulong CancunTimestamp = 0x77359400;
 
     private HoleskySpecProvider() { }
