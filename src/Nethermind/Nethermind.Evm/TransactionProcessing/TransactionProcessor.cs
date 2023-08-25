@@ -98,7 +98,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual void Execute(Transaction tx, BlockHeader header, ITxTracer tracer, ExecutionOptions opts)
         {
             IReleaseSpec spec = _specProvider.GetSpec(header);
-            if (tx.IsSystem() && spec.IsEip4788Enabled) // ToDo add comment
+            if (tx.IsSystem() && !spec.IsEip4788Enabled) // ToDo add comment
                 spec = new SystemTransactionReleaseSpec(spec);
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
