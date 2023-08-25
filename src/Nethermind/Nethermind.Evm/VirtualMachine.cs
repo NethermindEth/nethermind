@@ -1776,7 +1776,7 @@ OutOfGas:
                             stack.PushByte(code[programCounterInt]);
                             if (programCounterInt % 31 == 0)
                             {
-                                if (!env.Witness.AccessAndChargeForCodeProgramCounter(vmState.To, programCounterInt + 1,
+                                if (!env.Witness.AccessAndChargeForCodeProgramCounter(vmState.To,programCounterInt + 1,
                                         false, ref gasAvailable)) goto OutOfGas;
                             }
                         }
@@ -1822,7 +1822,10 @@ OutOfGas:
                         int usedFromCode = Math.Min(code.Length - programCounter, length);
                         stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
 
-                        if(!env.Witness.AccessAndChargeForCodeSlice(vmState.To, programCounter, usedFromCode, false, ref gasAvailable)) goto OutOfGas;
+                        // TODO: fix this possibly
+                        int endOffset = programCounter + length > code.Length ? code.Length : programCounter + length;
+                        int codeSliceLength = endOffset - programCounter - 1;
+                        if(!env.Witness.AccessAndChargeForCodeSlice(vmState.To, programCounter, codeSliceLength, false, ref gasAvailable)) goto OutOfGas;
 
                         programCounter += length;
                         break;
