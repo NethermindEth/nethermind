@@ -203,10 +203,10 @@ namespace Nethermind.State
                 Account result = GetThroughCache(address);
                 if (result is null)
                 {
-                    if (address == Address.SystemUser) // ToDo add comment
-                    {
-                        return Account.TotallyEmpty;
-                    }
+                    // if (address == Address.SystemUser) // ToDo add comment alternative solution
+                    // {
+                    //     return Account.TotallyEmpty;
+                    // }
 
                     if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
                     throw new InvalidOperationException("Updating balance of a non-existing account");
@@ -247,12 +247,18 @@ namespace Nethermind.State
 
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
+            if (balanceChange == UInt256.Zero) // ToDo Add comment
+                return;
+
             _needsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, true);
         }
 
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
+            if (balanceChange == UInt256.Zero) // ToDo add comment
+                return;
+
             _needsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, false);
         }
