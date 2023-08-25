@@ -189,7 +189,7 @@ namespace Nethermind.State
                 if (_logger.IsTrace) _logger.Trace($"  Touch {address} (code hash)");
                 if (account.IsEmpty)
                 {
-                    PushTouch(address, account, spec, account.Balance.IsZero);
+                    PushTouch(address, account);
                 }
             }
         }
@@ -198,18 +198,18 @@ namespace Nethermind.State
         {
             _needsStateRootUpdate = true;
 
-            Account GetThroughCacheCheckExists()
+            void ThrowNotExistingAccount()
+            {
+                if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
+                throw new InvalidOperationException("Updating balance of a non-existing account");
+            }
+
+            Account? GetThroughCacheCheckExists()
             {
                 Account result = GetThroughCache(address);
                 if (result is null)
                 {
-                    // if (address == Address.SystemUser) // ToDo add comment alternative solution
-                    // {
-                    //     return Account.TotallyEmpty;
-                    // }
-
-                    if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
-                    throw new InvalidOperationException("Updating balance of a non-existing account");
+                    ThrowNotExistingAccount();
                 }
 
                 return result;
@@ -218,13 +218,21 @@ namespace Nethermind.State
             bool isZero = balanceChange.IsZero;
             if (isZero)
             {
-                if (releaseSpec.IsEip158Enabled && address != Address.SystemUser) // ToDo comment
+                if (releaseSpec.IsEip158Enabled)
                 {
-                    Account touched = GetThroughCacheCheckExists();
-                    if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
-                    if (touched.IsEmpty)
+                    Account touched = GetThroughCache(address);
+                    bool accountExists = true;
+                    if (touched is null)
                     {
-                        PushTouch(address, touched, releaseSpec, true);
+                        accountExists = false;
+                        if (address != Address.SystemUser)  // ToDo comment
+                            ThrowNotExistingAccount();
+                    }
+
+                    if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
+                    if (accountExists && touched.IsEmpty)
+                    {
+                        PushTouch(address, touched);
                     }
                 }
 
@@ -243,6 +251,18 @@ namespace Nethermind.State
             Account changedAccount = account.WithChangedBalance(newBalance);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} B {account.Balance} -> {newBalance} ({(isSubtracting ? "-" : "+")}{balanceChange})");
             PushUpdate(address, changedAccount);
+        }
+
+        // ToDo comment
+        private void HandleSystemUserAccount()
+        {
+            Account account = GetThroughCache(Address.SystemUser);
+            if (account == null)
+            {
+                return;
+            }
+
+            Push(ChangeType.Touch, Address.SystemUser, account);
         }
 
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
@@ -725,9 +745,8 @@ namespace Nethermind.State
             Push(ChangeType.Update, address, account);
         }
 
-        private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
+        private void PushTouch(Address address, Account account)
         {
-            if (isZero && releaseSpec.IsEip158IgnoredAccount(address)) return;
             Push(ChangeType.Touch, address, account);
         }
 

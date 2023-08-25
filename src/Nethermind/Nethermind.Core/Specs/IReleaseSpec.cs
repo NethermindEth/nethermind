@@ -202,14 +202,6 @@ namespace Nethermind.Core.Specs
         bool IsEip2930Enabled { get; }
 
         /// <summary>
-        /// Should EIP158 be ignored for this account.
-        /// </summary>
-        /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>
-        /// <param name="address"></param>
-        /// <returns></returns>
-        bool IsEip158IgnoredAccount(Address address);
-
-        /// <summary>
         /// BaseFee opcode
         /// </summary>
         bool IsEip3198Enabled { get; }
