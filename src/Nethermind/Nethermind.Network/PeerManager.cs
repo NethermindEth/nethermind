@@ -214,6 +214,11 @@ namespace Nethermind.Network
                     {
                         await SetupOutgoingPeerConnection(peer);
                     }
+                    catch (TaskCanceledException)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Connect worker {idx} cancelled");
+                        break;
+                    }
                     catch (Exception e)
                     {
                         // This is strictly speaking not related to the connection, but something outside of it.
