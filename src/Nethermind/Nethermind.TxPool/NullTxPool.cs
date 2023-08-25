@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -45,7 +46,7 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool TryGetPendingBlobTransaction(Keccak hash, out Transaction? blobTransaction)
+        public bool TryGetPendingBlobTransaction(Keccak hash, [NotNullWhen(true)] out Transaction? blobTransaction)
         {
             blobTransaction = null;
             return false;

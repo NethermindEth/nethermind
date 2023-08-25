@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -596,7 +597,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool TryGetPendingBlobTransaction(Keccak hash, out Transaction? blobTransaction)
+        public bool TryGetPendingBlobTransaction(Keccak hash, [NotNullWhen(true)] out Transaction? blobTransaction)
         {
             lock (_locker)
             {
