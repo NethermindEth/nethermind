@@ -216,7 +216,8 @@ namespace Nethermind.Network
                     }
                     catch (Exception e)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Error setting up connection to {peer}, {e}");
+                        // This is strictly speaking not related to the connection, but something outside of it.
+                        if (_logger.IsError) _logger.Error($"Error setting up connection to {peer}, {e}");
                     }
                 }
                 if (_logger.IsDebug) _logger.Debug($"Connect worker {idx} completed");
