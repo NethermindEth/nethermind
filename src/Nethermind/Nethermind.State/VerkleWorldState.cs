@@ -457,7 +457,7 @@ public class VerkleWorldState : IWorldState
         headerTreeKey.SuffixByte = AccountHeader.CodeSize;
         UInt256 codeSize = new ((_tree.Get(headerTreeKey) ?? Array.Empty<byte>()).ToArray());
 
-        return new Account(balance, nonce, codeSize, version, Keccak.EmptyTreeHash, new Keccak(codeHash));
+        return new Account(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, new Keccak(codeHash));
     }
 
     private void SetState(Address address, Account? account)
