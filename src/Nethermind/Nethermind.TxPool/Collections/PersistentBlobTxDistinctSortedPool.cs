@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -70,45 +69,6 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
 
         fullBlobTx = default;
         return false;
-    }
-
-    [MethodImpl(MethodImplOptions.Synchronized)]
-    public override IEnumerable<Transaction> GetBlobTransactions()
-    {
-        int pickedBlobs = 0;
-        List<Transaction>? blobTxsToReadd = null;
-
-        while (pickedBlobs < Eip4844Constants.MaxBlobsPerBlock)
-        {
-            Transaction? bestTxLight = GetFirsts().Min;
-
-            if (bestTxLight?.Hash is null)
-            {
-                break;
-            }
-
-            if (TryGetValue(bestTxLight.Hash, out Transaction? fullBlobTx) && pickedBlobs + fullBlobTx.BlobVersionedHashes!.Length <= Eip4844Constants.MaxBlobsPerBlock)
-            {
-                yield return fullBlobTx!;
-                pickedBlobs += fullBlobTx.BlobVersionedHashes.Length;
-            }
-
-            if (TryRemove(bestTxLight.Hash))
-            {
-                blobTxsToReadd ??= new();
-                blobTxsToReadd.Add(fullBlobTx!);
-            }
-        }
-
-
-        if (blobTxsToReadd is not null)
-        {
-            foreach (Transaction fullBlobTx in blobTxsToReadd)
-            {
-                TryInsert(fullBlobTx.Hash, fullBlobTx!, out Transaction? removed);
-            }
-        }
-
     }
 
     protected override bool Remove(ValueKeccak hash, Transaction tx)

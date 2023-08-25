@@ -49,26 +49,35 @@ namespace Nethermind.Consensus.Producers
             IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(blockNumber);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, specFor1559);
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
+            IDictionary<Address, Transaction[]> pendingBlobTransactionsEquivalences = _transactionPool.GetPendingBlobTransactionsEquivalencesBySender();
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
             IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer);
-            IEnumerable<Transaction> blobTransactions = _transactionPool.GetPendingBlobTransactions();
+            IEnumerable<Transaction> blobTransactionsEquivalents = GetOrderedTransactions(pendingBlobTransactionsEquivalences, comparer);
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int selectedTransactions = 0;
             int i = 0;
             int blobsCounter = 0;
             UInt256 blobGasPrice = UInt256.Zero;
-            List<Transaction>? selectedBlobTxs = null;
+            using ArrayPoolList<Transaction> selectedBlobTxs = new(Eip4844Constants.MaxBlobsPerBlock);
 
-            foreach (Transaction blobTx in blobTransactions)
+            foreach (Transaction blobTxEquivalent in blobTransactionsEquivalents)
             {
                 if (blobsCounter == Eip4844Constants.MaxBlobsPerBlock)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, no more blob space. Block already have {blobsCounter} which is max value allowed.");
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTxEquivalent.ToShortString()}, no more blob space. Block already have {blobsCounter} which is max value allowed.");
                     break;
                 }
+
+                if (blobTxEquivalent.Hash is null
+                    || !_transactionPool.TryGetPendingBlobTransaction(blobTxEquivalent.Hash, out Transaction blobTx))
+                {
+                    continue;
+                }
+
+                // Transaction blobTx = blobTxEquivalent;
 
                 i++;
 
@@ -109,7 +118,6 @@ namespace Nethermind.Consensus.Producers
                 if (_logger.IsTrace) _logger.Trace($"Selected shard blob tx {blobTx.ToShortString()} to be potentially included in block, total blobs included: {blobsCounter}.");
 
                 selectedTransactions++;
-                selectedBlobTxs ??= new List<Transaction>((int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob));
                 selectedBlobTxs.Add(blobTx);
             }
 
@@ -127,19 +135,30 @@ namespace Nethermind.Consensus.Producers
                 bool success = _txFilterPipeline.Execute(tx, parent);
                 if (!success) continue;
 
-                if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be potentially included in block.");
-
-                if (selectedBlobTxs?.Count > 0)
+                if (selectedBlobTxs.Count > 0)
                 {
-                    foreach (Transaction blobTx in new List<Transaction>(selectedBlobTxs))
+                    using ArrayPoolList<Transaction> txsToRemove = new(selectedBlobTxs.Count);
+
+                    foreach (Transaction blobTx in selectedBlobTxs)
                     {
                         if (comparer.Compare(blobTx, tx) > 0)
                         {
                             yield return blobTx;
-                            selectedBlobTxs.Remove(blobTx);
+                            txsToRemove.Add(blobTx);
+                        }
+                        else
+                        {
+                            break;
                         }
                     }
+
+                    foreach (Transaction txToRemove in txsToRemove)
+                    {
+                        selectedBlobTxs.Remove(txToRemove);
+                    }
                 }
+
+                if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be potentially included in block.");
 
                 selectedTransactions++;
                 yield return tx;

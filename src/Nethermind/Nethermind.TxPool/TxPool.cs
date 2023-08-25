@@ -156,13 +156,14 @@ namespace Nethermind.TxPool
         public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() =>
             _transactions.GetBucketSnapshot();
 
+        public IDictionary<Address, Transaction[]> GetPendingBlobTransactionsEquivalencesBySender() =>
+            _blobTransactions.GetBucketSnapshot();
+
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
             _transactions.GetBucketSnapshot(address);
 
         // only for testing reasons
         internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
-
-        public IEnumerable<Transaction> GetPendingBlobTransactions() => _blobTransactions.GetBlobTransactions();
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
@@ -593,6 +594,14 @@ namespace Nethermind.TxPool
                 return _transactions.TryGetValue(hash, out transaction)
                        || _blobTransactions.TryGetValue(hash, out transaction)
                        || _broadcaster.TryGetPersistentTx(hash, out transaction);
+            }
+        }
+
+        public bool TryGetPendingBlobTransaction(Keccak hash, out Transaction? blobTransaction)
+        {
+            lock (_locker)
+            {
+                return _blobTransactions.TryGetValue(hash, out blobTransaction);
             }
         }
 
