@@ -203,7 +203,7 @@ namespace Nethermind.State
                 Account result = GetThroughCache(address);
                 if (result is null)
                 {
-                    if (address == Address.SystemUser)
+                    if (address == Address.SystemUser) // ToDo add comment
                     {
                         return Account.TotallyEmpty;
                     }
