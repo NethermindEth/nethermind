@@ -38,9 +38,6 @@ jobs:
           name: "${{ github.actor }}-${{ needs.create_node.outputs.base_tag }}-smoketests"
           repo: NethermindEth/post-merge-smoke-tests
 
-      - run: echo "${{ github.actor }}-${{ needs.create_node.outputs.base_tag }}-smoketests"
-      - run: echo "${{ github.actor }}-${{ needs.create_node.outputs.rpc_url }}-smoketests"
-
       - name: Get RPC url to the newly created node
         id: extract_rpc_url
         run: echo "rpc_url=$(cat ./terraform.tfstate | jq '.outputs.nodes_data.value[0].rpc_url')" >> $GITHUB_OUTPUT
