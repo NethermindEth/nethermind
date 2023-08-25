@@ -560,7 +560,7 @@ public class InitializeNetwork : IStep
         EnrRecordParser enrRecordParser = new(nodeRecordSigner);
         EnrDiscovery enrDiscovery = new(enrRecordParser, _api.LogManager); // initialize with a proper network
 
-        if (_networkConfig.DisableDiscV4DnsFeeder)
+        if (!_networkConfig.DisableDiscV4DnsFeeder)
         {
             // Feed some nodes into discoveryApp in case all bootnodes is faulty.
             _api.DisposeStack.Push(new NodeSourceToDiscV4Feeder(enrDiscovery, _api.DiscoveryApp, 50));
