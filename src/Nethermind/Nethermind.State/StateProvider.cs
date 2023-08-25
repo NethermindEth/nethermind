@@ -218,7 +218,7 @@ namespace Nethermind.State
             bool isZero = balanceChange.IsZero;
             if (isZero)
             {
-                if (releaseSpec.IsEip158Enabled)
+                if (releaseSpec.IsEip158Enabled && address != Address.SystemUser) // ToDo comment
                 {
                     Account touched = GetThroughCacheCheckExists();
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
@@ -247,18 +247,12 @@ namespace Nethermind.State
 
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
-            if (balanceChange == UInt256.Zero) // ToDo Add comment
-                return;
-
             _needsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, true);
         }
 
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
-            if (balanceChange == UInt256.Zero) // ToDo add comment
-                return;
-
             _needsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, false);
         }
