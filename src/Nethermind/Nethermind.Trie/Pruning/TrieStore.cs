@@ -8,12 +8,10 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -127,7 +125,7 @@ namespace Nethermind.Trie.Pruning
 
         private int _isFirst;
 
-        private IBatch? _currentBatch = null;
+        private IKeccakBatch? _currentBatch = null;
 
         private readonly DirtyNodesCache _dirtyNodes;
 
@@ -327,7 +325,7 @@ namespace Nethermind.Trie.Pruning
         public byte[] LoadRlp(Keccak keccak, IKeyValueStore? keyValueStore, ReadFlags readFlags = ReadFlags.None)
         {
             keyValueStore ??= _keyValueStore;
-            byte[]? rlp = _currentBatch?.Get(keccak.Bytes, readFlags) ?? keyValueStore.Get(keccak.Bytes, readFlags);
+            byte[]? rlp = _currentBatch?.Get(keccak, readFlags) ?? keyValueStore.Get(keccak.Bytes, readFlags);
 
             if (rlp is null)
             {
@@ -343,7 +341,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsPersisted(in ValueKeccak keccak)
         {
-            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
+            byte[]? rlp = _currentBatch?[keccak] ?? _keyValueStore[keccak.Bytes];
 
             if (rlp is null)
             {
@@ -614,7 +612,7 @@ namespace Nethermind.Trie.Pruning
 
             try
             {
-                _currentBatch ??= _keyValueStore.StartBatch();
+                _currentBatch ??= _keyValueStore.StartBatch().ToKeccakBatch();
                 if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
@@ -639,7 +637,7 @@ namespace Nethermind.Trie.Pruning
 
         private void Persist(TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None)
         {
-            _currentBatch ??= _keyValueStore.StartBatch();
+            _currentBatch ??= _keyValueStore.StartBatch().ToKeccakBatch();
             if (currentNode is null)
             {
                 throw new ArgumentNullException(nameof(currentNode));
@@ -654,7 +652,7 @@ namespace Nethermind.Trie.Pruning
                 // to prevent it from being removed from cache and also want to have it persisted.
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                _currentBatch.Set(currentNode.Keccak.Bytes, currentNode.FullRlp.ToArray(), writeFlags);
+                _currentBatch.Set(currentNode.Keccak, currentNode.FullRlp.ToArray(), writeFlags);
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
                 PersistedNodesCount++;
@@ -828,7 +826,7 @@ namespace Nethermind.Trie.Pruning
                    && trieNode.NodeType != NodeType.Unknown
                    && trieNode.FullRlp.IsNotNull
                 ? trieNode.FullRlp.ToArray()
-                : _currentBatch?.Get(key, flags) ?? _keyValueStore.Get(key, flags);
+                : _currentBatch?.Get(new ValueKeccak(key), flags) ?? _keyValueStore.Get(key, flags);
         }
 
         public IKeyValueStore AsKeyValueStore() => _publicStore;

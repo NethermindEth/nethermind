@@ -342,7 +342,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public void EnsureCanonical(Block block)
         {
-            using IBatch batch = _transactionDb.StartBatch();
+            using IKeccakBatch batch = _transactionDb.StartBatch().ToKeccakBatch();
 
             long headNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
 
@@ -352,14 +352,14 @@ namespace Nethermind.Blockchain.Receipts
             {
                 foreach (Transaction tx in block.Transactions)
                 {
-                    batch[tx.Hash.Bytes] = Rlp.Encode(block.Number).Bytes;
+                    batch[tx.Hash] = Rlp.Encode(block.Number).Bytes;
                 }
             }
             else
             {
                 foreach (Transaction tx in block.Transactions)
                 {
-                    batch[tx.Hash.Bytes] = block.Hash.BytesToArray();
+                    batch[tx.Hash] = block.Hash.BytesToArray();
                 }
             }
         }
