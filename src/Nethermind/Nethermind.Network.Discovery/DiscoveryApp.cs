@@ -179,7 +179,9 @@ public class DiscoveryApp : IDiscoveryApp
     {
         if (_logger.IsDebug) _logger.Debug("Activated discovery channel.");
 
-        //Make sure this is non blocking code, otherwise netty will not process messages
+        // Make sure this is non blocking code, otherwise netty will not process messages
+        // Explicitly use TaskScheduler.Default, otherwise it will use dotnetty's task scheduler which have a habit of
+        // not working sometimes.
         Task.Factory
             .StartNew(() => OnChannelActivated(_appShutdownSource.Token), _appShutdownSource.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default)
             .ContinueWith
