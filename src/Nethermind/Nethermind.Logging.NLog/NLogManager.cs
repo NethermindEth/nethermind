@@ -17,6 +17,7 @@ namespace Nethermind.Logging.NLog;
 public class NLogManager : ILogManager
 {
     private const string DefaultFileTargetName = "file-async_wrapped";
+    private const string DefaultFolder = "logs";
 
     public NLogManager(string logFileName, string logDirectory = null, string logRules = null)
     {
@@ -46,7 +47,7 @@ public class NLogManager : ILogManager
 
     private static string SetupLogDirectory(string logDirectory)
     {
-        logDirectory = (string.IsNullOrEmpty(logDirectory) ? "logs" : logDirectory).GetApplicationResourcePath();
+        logDirectory = (string.IsNullOrEmpty(logDirectory) ? DefaultFolder : logDirectory).GetApplicationResourcePath();
         if (!Directory.Exists(logDirectory))
         {
             Directory.CreateDirectory(logDirectory);
