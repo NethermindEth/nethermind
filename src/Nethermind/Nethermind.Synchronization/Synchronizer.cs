@@ -126,7 +126,7 @@ namespace Nethermind.Synchronization
 
             if (_syncConfig.ExitOnSynced)
             {
-                _exitSource.WatchForExit(_syncMode, _logManager);
+                _exitSource.WatchForExit(_syncMode, _logManager, TimeSpan.FromSeconds(_syncConfig.ExitOnSyncedWaitTimeSec));
             }
         }
 
