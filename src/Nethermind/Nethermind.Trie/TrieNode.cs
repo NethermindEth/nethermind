@@ -1072,6 +1072,7 @@ namespace Nethermind.Trie
                                 rlpStream.Position--;
                                 Span<byte> fullRlp = rlpStream.PeekNextItem();
                                 TrieNode child = new(NodeType.Unknown, path.ToArray(), null, fullRlp.ToArray());
+                                child.StoreNibblePathPrefix = StoreNibblePathPrefix;
                                 _data![i] = childOrRef = child;
                                 break;
                             }
@@ -1168,6 +1169,7 @@ namespace Nethermind.Trie
                                         Span<byte> childPath = stackalloc byte[GetChildPathLength()];
                                         GetChildPath(i, childPath);
                                         child = new(NodeType.Unknown, childPath.ToArray(), null, fullRlp.ToArray());
+                                        child.StoreNibblePathPrefix = StoreNibblePathPrefix;
                                         break;
                                     default:
                                         throw new ArgumentOutOfRangeException($"tree capability cannot be {tree.Capability}");
