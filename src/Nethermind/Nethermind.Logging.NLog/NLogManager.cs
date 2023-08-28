@@ -20,6 +20,13 @@ namespace Nethermind.Logging.NLog
 
         public NLogManager(string logFileName, string logDirectory = null, string logRules = null)
         {
+            Setup(logFileName, logDirectory, logRules);
+            // Required since 'NLog.config' could change during runtime, we need to re-apply the configuration
+            LogManager.ConfigurationChanged += (sender, args) => Setup(logFileName, logDirectory, logRules);
+        }
+
+        private void Setup(string logFileName, string logDirectory = null, string logRules = null)
+        {
             logDirectory = SetupLogDirectory(logDirectory);
             SetupLogFile(logFileName, logDirectory);
             SetupLogRules(logRules);
