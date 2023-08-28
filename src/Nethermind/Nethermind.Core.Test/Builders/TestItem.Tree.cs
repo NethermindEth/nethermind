@@ -71,6 +71,17 @@ namespace Nethermind.Core.Test.Builders
                 return stateTree;
             }
 
+            public static VerkleStateTree GetVerkleStateTreeForSync(IVerkleTrieStore? store)
+            {
+                store ??= new VerkleStateStore(VerkleDbFactory.InitDatabase(DbMode.MemDb, null), LimboLogs.Instance);
+
+                var stateTree = new VerkleStateTree(store, LimboLogs.Instance);
+
+                FillStateTreeWithTestAccounts(stateTree);
+
+                return stateTree;
+            }
+
             public static void FillStateTreeWithTestAccounts(StateTree stateTree)
             {
                 stateTree.Set(AccountsWithPaths[0].Path, AccountsWithPaths[0].Account);

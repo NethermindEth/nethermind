@@ -43,6 +43,7 @@ using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Config;
+using Nethermind.Synchronization.VerkleSync;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -342,11 +343,13 @@ namespace Nethermind.Synchronization.Test
                 new BlocksConfig(),
                 logManager);
 
-            ProgressTracker progressTracker = new(tree, dbProvider.StateDb, LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            SnapProgressTracker snapProgressTracker = new(tree, dbProvider.StateDb, LimboLogs.Instance);
+            SnapProvider snapProvider = new(snapProgressTracker, dbProvider, LimboLogs.Instance);
+            VerkleProgressTracker verkleProgressTracker = new VerkleProgressTracker(tree, dbProvider.StateDb, LimboLogs.Instance);
+            VerkleSyncProvider verkleProvider = new(verkleProgressTracker, dbProvider, LimboLogs.Instance);
 
             SyncProgressResolver resolver = new(
-                tree, receiptStorage, trieStore, progressTracker, syncConfig, logManager);
+                tree, receiptStorage, trieStore, snapProgressTracker, syncConfig, logManager);
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, logManager);
             Pivot pivot = new(syncConfig);
@@ -371,6 +374,7 @@ namespace Nethermind.Synchronization.Test
                 StaticSelector.Full,
                 syncConfig,
                 snapProvider,
+                verkleProvider,
                 blockDownloaderFactory,
                 pivot,
                 syncReport,
@@ -405,7 +409,7 @@ namespace Nethermind.Synchronization.Test
             processor.Start();
             tree.SuggestBlock(_genesis);
 
-            if (!waitEvent.Wait(10000))
+            if (!waitEvent.Wait(1000))
             {
                 throw new Exception("No genesis");
             }

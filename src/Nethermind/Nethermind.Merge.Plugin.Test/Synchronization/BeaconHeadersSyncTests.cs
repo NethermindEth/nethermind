@@ -101,12 +101,12 @@ public class BeaconHeadersSyncTests
                 if (_selector is null)
                 {
                     MemDb stateDb = new();
-                    ProgressTracker progressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
+                    SnapProgressTracker snapProgressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
                     SyncProgressResolver syncProgressResolver = new(
                         BlockTree,
                         NullReceiptStorage.Instance,
                         new TrieStore(stateDb, LimboLogs.Instance),
-                        progressTracker,
+                        snapProgressTracker,
                         SyncConfig,
                         LimboLogs.Instance);
                     TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);

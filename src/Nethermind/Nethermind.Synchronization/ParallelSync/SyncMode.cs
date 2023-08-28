@@ -62,9 +62,13 @@ namespace Nethermind.Synchronization.ParallelSync
         /// Waiting for Forkchoice message from Consensus Layer to update pivot block
         /// </summary>
         UpdatingPivot = 8192,
+        /// <summary>
+        /// Reverse download of headers from beacon pivot to genesis
+        /// </summary>
+        VerkleSync = 16384,
 
         All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad |
-              FastHeaders | FastBodies | FastReceipts | SnapSync | BeaconHeaders | UpdatingPivot
+              FastHeaders | FastBodies | FastReceipts | SnapSync | BeaconHeaders | UpdatingPivot | VerkleSync
     }
 
     public static class SyncModeExtensions

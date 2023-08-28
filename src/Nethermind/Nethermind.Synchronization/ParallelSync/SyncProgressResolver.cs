@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Synchronization.RangeSync;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -26,7 +27,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISyncTrieStore _trieNodeResolver;
-        private readonly ProgressTracker _progressTracker;
+        private readonly IRangeFinishTracker _rangeProgressTracker;
         private readonly ISyncConfig _syncConfig;
 
         // ReSharper disable once NotAccessedField.Local
@@ -38,7 +39,7 @@ namespace Nethermind.Synchronization.ParallelSync
         public SyncProgressResolver(IBlockTree blockTree,
             IReceiptStorage receiptStorage,
             ISyncTrieStore trieNodeResolver,
-            ProgressTracker progressTracker,
+            IRangeFinishTracker rangeProgressTracker,
             ISyncConfig syncConfig,
             ILogManager logManager)
         {
@@ -46,7 +47,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _trieNodeResolver = trieNodeResolver ?? throw new ArgumentNullException(nameof(trieNodeResolver));
-            _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
+            _rangeProgressTracker = rangeProgressTracker ?? throw new ArgumentNullException(nameof(rangeProgressTracker));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
             _bodiesBarrier = _syncConfig.AncientBodiesBarrierCalc;
@@ -149,7 +150,7 @@ namespace Nethermind.Synchronization.ParallelSync
                                                                                .LowestInsertedReceiptBlockNumber ??
                                                                            long.MaxValue) <= _receiptsBarrier);
 
-        public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
+        public bool IsGetRangesFinished() => _rangeProgressTracker.IsGetRangesFinished();
 
         public void RecalculateProgressPointers() => _blockTree.RecalculateTreeLevels();
 

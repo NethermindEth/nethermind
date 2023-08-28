@@ -369,6 +369,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
             if (_api.PeerDifficultyRefreshPool is null) throw new ArgumentNullException(nameof(_api.PeerDifficultyRefreshPool));
             if (_api.SnapProvider is null) throw new ArgumentNullException(nameof(_api.SnapProvider));
+            if (_api.VerkleProvider is null) throw new ArgumentNullException(nameof(_api.VerkleProvider));
 
             // ToDo strange place for validators initialization
             PeerRefresher peerRefresher = new(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
@@ -448,6 +449,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.SyncModeSelector,
                 _syncConfig,
                 _api.SnapProvider,
+                _api.VerkleProvider,
                 _api.BlockDownloaderFactory,
                 _api.Pivot,
                 _poSSwitcher,

@@ -26,6 +26,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Synchronization.VerkleSync;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -54,15 +55,18 @@ namespace Nethermind.Synchronization.Test
             NodeStatsManager stats = new(timerFactory, LimboLogs.Instance);
             _pool = new SyncPeerPool(_blockTree, stats, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
             SyncConfig syncConfig = new();
-            ProgressTracker progressTracker = new(_blockTree, dbProvider.StateDb, LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            SnapProgressTracker snapProgressTracker = new(_blockTree, dbProvider.StateDb, LimboLogs.Instance);
+            SnapProvider snapProvider = new(snapProgressTracker, dbProvider, LimboLogs.Instance);
+
+            VerkleProgressTracker verkleProgressTracker = new(_blockTree, dbProvider.StateDb, LimboLogs.Instance);
+            VerkleSyncProvider verkleProvider = new(verkleProgressTracker, dbProvider, LimboLogs.Instance);
 
             TrieStore trieStore = new(_stateDb, LimboLogs.Instance);
             SyncProgressResolver resolver = new(
                 _blockTree,
                 _receiptStorage,
                 trieStore,
-                progressTracker,
+                snapProgressTracker,
                 syncConfig,
                 LimboLogs.Instance);
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
@@ -89,6 +93,7 @@ namespace Nethermind.Synchronization.Test
                 syncModeSelector,
                 syncConfig,
                 snapProvider,
+                verkleProvider,
                 blockDownloaderFactory,
                 pivot,
                 syncReport,

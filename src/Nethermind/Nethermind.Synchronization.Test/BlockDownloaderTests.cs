@@ -935,9 +935,9 @@ namespace Nethermind.Synchronization.Test
             public ResponseBuilder ResponseBuilder =>
                 _responseBuilder ??= new ResponseBuilder(BlockTree, TestHeaderMapping);
 
-            private ProgressTracker? _progressTracker;
+            private SnapProgressTracker? _progressTracker;
 
-            private ProgressTracker ProgressTracker => _progressTracker ??=
+            private SnapProgressTracker SnapProgressTracker => _progressTracker ??=
                 new(BlockTree, _stateDb, LimboLogs.Instance);
 
             private ISyncProgressResolver? _syncProgressResolver;
@@ -947,7 +947,7 @@ namespace Nethermind.Synchronization.Test
                     BlockTree,
                     ReceiptStorage,
                     new TrieStore(_stateDb, LimboLogs.Instance),
-                    ProgressTracker,
+                    SnapProgressTracker,
                     syncConfig,
                     LimboLogs.Instance);
 

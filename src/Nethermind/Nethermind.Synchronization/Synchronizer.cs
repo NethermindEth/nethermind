@@ -23,6 +23,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
+using Nethermind.Synchronization.VerkleSync;
 
 namespace Nethermind.Synchronization
 {
@@ -39,6 +40,7 @@ namespace Nethermind.Synchronization
         protected readonly IBlockTree _blockTree;
         protected readonly ISyncConfig _syncConfig;
         protected readonly ISnapProvider _snapProvider;
+        protected readonly IVerkleSyncProvider _verkleSyncProvider;
         protected readonly ISyncPeerPool _syncPeerPool;
         protected readonly ILogManager _logManager;
         protected readonly ISyncReport _syncReport;
@@ -54,6 +56,7 @@ namespace Nethermind.Synchronization
         private FastSyncFeed? _fastSyncFeed;
         private StateSyncFeed? _stateSyncFeed;
         private SnapSyncFeed? _snapSyncFeed;
+        private VerkleSyncFeed? _verkleSyncFeed;
         private FullSyncFeed? _fullSyncFeed;
         private HeadersSyncFeed? _headersFeed;
         private BodiesSyncFeed? _bodiesFeed;
@@ -70,6 +73,7 @@ namespace Nethermind.Synchronization
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
             ISnapProvider snapProvider,
+            IVerkleSyncProvider verkleSyncProvider,
             IBlockDownloaderFactory blockDownloaderFactory,
             IPivot pivot,
             ISyncReport syncReport,
@@ -84,6 +88,7 @@ namespace Nethermind.Synchronization
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _snapProvider = snapProvider ?? throw new ArgumentNullException(nameof(snapProvider));
+            _verkleSyncProvider = verkleSyncProvider ?? throw new ArgumentNullException(nameof(verkleSyncProvider));
             _blockDownloaderFactory = blockDownloaderFactory ?? throw new ArgumentNullException(nameof(blockDownloaderFactory));
             _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
@@ -116,6 +121,11 @@ namespace Nethermind.Synchronization
                     StartSnapSyncComponents();
                 }
 
+                if (_syncConfig.VerkleSync)
+                {
+                    StartVerkleSyncComponents();
+                }
+
                 StartStateSyncComponents();
             }
 
@@ -132,7 +142,7 @@ namespace Nethermind.Synchronization
 
         private void SetupDbOptimizer()
         {
-            new SyncDbTuner(_syncConfig, _snapSyncFeed, _bodiesFeed, _receiptsFeed, _dbProvider.StateDb, _dbProvider.CodeDb,
+            SyncDbTuner syncDbTuner = new SyncDbTuner(_syncConfig, _snapSyncFeed, _verkleSyncFeed, _bodiesFeed, _receiptsFeed, _dbProvider.StateDb, _dbProvider.CodeDb,
                 _dbProvider.BlocksDb, _dbProvider.ReceiptsDb);
         }
 
@@ -227,6 +237,29 @@ namespace Nethermind.Synchronization
                 else
                 {
                     if (_logger.IsInfo) _logger.Info("State sync task completed.");
+                }
+            });
+        }
+
+        private void StartVerkleSyncComponents()
+        {
+            _verkleSyncFeed = new VerkleSyncFeed(_syncMode, _verkleSyncProvider, _logManager);
+
+            SyncDispatcher<VerkleSyncBatch> dispatcher = CreateDispatcher(
+                _verkleSyncFeed,
+                new VerkleSyncDownloader(_logManager),
+                new VerkleSyncAllocationStrategyFactory()
+            );
+
+            Task _ = dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error("Verkle sync failed", t.Exception);
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info("Verkle sync task completed.");
                 }
             });
         }
@@ -343,6 +376,7 @@ namespace Nethermind.Synchronization
                     _fastSyncFeed?.FeedTask ?? Task.CompletedTask,
                     _stateSyncFeed?.FeedTask ?? Task.CompletedTask,
                     _snapSyncFeed?.FeedTask ?? Task.CompletedTask,
+                    _verkleSyncFeed?.FeedTask ?? Task.CompletedTask,
                     _fullSyncFeed?.FeedTask ?? Task.CompletedTask,
                     _headersFeed?.FeedTask ?? Task.CompletedTask,
                     _bodiesFeed?.FeedTask ?? Task.CompletedTask,
@@ -356,6 +390,7 @@ namespace Nethermind.Synchronization
             _fastSyncFeed?.Dispose();
             _stateSyncFeed?.Dispose();
             _snapSyncFeed?.Dispose();
+            _verkleSyncFeed?.Dispose();
             _fullSyncFeed?.Dispose();
             _headersFeed?.Dispose();
             _bodiesFeed?.Dispose();

@@ -400,7 +400,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestProcessedBlock().Returns(0);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
-                            SyncProgressResolver.IsSnapGetRangesFinished().Returns(snapRangesFinished);
+                            SyncProgressResolver.IsGetRangesFinished().Returns(snapRangesFinished);
                             return "just after fast blocks and fast sync";
                         }
                     );

@@ -13,10 +13,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
+using Nethermind.Synchronization.RangeSync;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class ProgressTracker
+    public class SnapProgressTracker: IRangeProgressTracker<SnapSyncBatch>
     {
         private const string NO_REQUEST = "Skipped Request";
 
@@ -53,14 +54,14 @@ namespace Nethermind.Synchronization.SnapSync
         private ConcurrentQueue<AccountWithStorageStartingHash> AccountsToRefresh { get; set; } = new();
 
 
-        private readonly Pivot _pivot;
+        private readonly RangeSync.Pivot _pivot;
 
-        public ProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager, int accountRangePartitionCount = 8)
+        public SnapProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager, int accountRangePartitionCount = 8)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _db = db ?? throw new ArgumentNullException(nameof(db));
 
-            _pivot = new Pivot(blockTree, logManager);
+            _pivot = new RangeSync.Pivot(blockTree, logManager);
 
             if (accountRangePartitionCount < 1 || accountRangePartitionCount > 256)
                 throw new ArgumentException("Account range partition must be between 1 to 256.");
@@ -177,7 +178,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return DequeCodeRequest(request);
             }
 
-            bool rangePhaseFinished = IsSnapGetRangesFinished();
+            bool rangePhaseFinished = IsGetRangesFinished();
             if (rangePhaseFinished)
             {
                 _logger.Info($"Snap - State Ranges (Phase 1) finished.");
@@ -186,7 +187,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             LogRequest(NO_REQUEST);
 
-            return (null, IsSnapGetRangesFinished());
+            return (null, IsGetRangesFinished());
         }
 
         private (SnapSyncBatch request, bool finished) DequeCodeRequest(SnapSyncBatch request)
@@ -376,7 +377,7 @@ namespace Nethermind.Synchronization.SnapSync
             partition.MoreAccountsToRight = moreChildrenToRight && nextPath < hashLimit;
         }
 
-        public bool IsSnapGetRangesFinished()
+        public bool IsGetRangesFinished()
         {
             return AccountRangeReadyForRequest.IsEmpty
                 && StoragesToRetrieve.IsEmpty

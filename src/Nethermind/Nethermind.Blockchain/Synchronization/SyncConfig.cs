@@ -65,6 +65,9 @@ namespace Nethermind.Blockchain.Synchronization
         public int MaxProcessingThreads { get; set; }
         public bool ExitOnSynced { get; set; } = false;
 
+        public bool VerkleSync { get; set; } = false;
+        public int VerkleSyncAccountRangePartitionCount { get; set; } = 8;
+
         public override string ToString()
         {
             return
