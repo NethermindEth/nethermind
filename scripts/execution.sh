@@ -7,9 +7,9 @@ opts=$@
 if [ ${#opts} -gt 0 ]
 then
   echo 'Executing Nethermind'
-  sudo /usr/share/nethermind/nethermind $@
+  sudo /usr/share/nethermind/Nethermind.Runner $@
 else
-  echo 'Executing Nethermind launcher'
+  echo 'Executing Nethermind Launcher'
   cd /usr/share/nethermind
-  sudo /usr/share/nethermind/nethermind-launcher
+  sudo /usr/share/nethermind/Nethermind.Launcher
 fi
