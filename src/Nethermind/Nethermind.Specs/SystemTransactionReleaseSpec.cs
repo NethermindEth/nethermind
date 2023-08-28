@@ -112,9 +112,7 @@ namespace Nethermind.Specs
 
         public long Eip1559TransitionBlock => _spec.Eip1559TransitionBlock;
         public ulong WithdrawalTimestamp => _spec.WithdrawalTimestamp;
-
         public ulong Eip4844TransitionTimestamp => _spec.Eip4844TransitionTimestamp;
-
         public Address Eip1559FeeCollector => _spec.Eip1559FeeCollector;
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;

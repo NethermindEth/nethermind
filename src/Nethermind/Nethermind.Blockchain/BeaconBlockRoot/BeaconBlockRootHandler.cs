@@ -19,6 +19,9 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
     private readonly ITransactionProcessor _processor;
     private static Address Default4788Address = Address.FromNumber(0x0b); // ToDo this address can change in next version of the spec
     private readonly ILogger _logger;
+
+    public static UInt256 HISTORICAL_ROOTS_LENGTH = 98304;
+    private static readonly Address DefaultPbbrContractAddress = Address.FromNumber(0x0b);
     public BeaconBlockRootHandler(
         ITransactionProcessor processor,
         ILogManager logManager)
@@ -52,6 +55,5 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
         {
             if (_logger.IsError) _logger.Error("Error during calling BeaconBlockRoot contract", e);
         }
-
     }
 }

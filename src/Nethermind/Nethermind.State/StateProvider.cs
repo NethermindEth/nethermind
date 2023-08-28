@@ -220,17 +220,12 @@ namespace Nethermind.State
             {
                 if (releaseSpec.IsEip158Enabled)
                 {
-                    Account touched = GetThroughCache(address);
-                    bool accountExists = true;
-                    if (touched is null)
-                    {
-                        accountExists = false;
-                        if (address != Address.SystemUser)  // ToDo comment
-                            ThrowNotExistingAccount();
-                    }
+                    if (address == Address.SystemUser) // ToDo add comment
+                        return;
 
+                    Account touched = GetThroughCacheCheckExists();
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
-                    if (accountExists && touched.IsEmpty)
+                    if (touched!.IsEmpty)
                     {
                         PushTouch(address, touched);
                     }
@@ -241,7 +236,7 @@ namespace Nethermind.State
 
             Account account = GetThroughCacheCheckExists();
 
-            if (isSubtracting && account.Balance < balanceChange)
+            if (isSubtracting && account!.Balance < balanceChange)
             {
                 throw new InsufficientBalanceException(address);
             }

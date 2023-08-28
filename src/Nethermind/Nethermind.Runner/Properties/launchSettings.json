@@ -28,7 +28,7 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Gnosis": {
+      "Gnosis": {
       "commandName": "Project",
       "commandLineArgs": "-c gnosis -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {

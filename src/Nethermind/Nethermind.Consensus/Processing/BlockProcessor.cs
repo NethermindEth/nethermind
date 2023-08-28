@@ -111,6 +111,7 @@ public partial class BlockProcessor : IBlockProcessor
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
+
                 if (notReadOnly)
                 {
                     _witnessCollector.Persist(processedBlock.Hash!);
