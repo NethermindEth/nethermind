@@ -188,8 +188,11 @@ namespace Nethermind.Trie
 
             // TODO: stcg
             //process deletions - it can happend that a root is set too empty hash due to deletions - needs to be outside of root ref condition
-            while (_deleteNodes != null && _deleteNodes.TryDequeue(out TrieNode delNode))
-                _currentCommit.Enqueue(new NodeCommitInfo(delNode));
+            if (TrieStore.Capability == TrieNodeResolverCapability.Path)
+            {
+                while (_deleteNodes != null && _deleteNodes.TryDequeue(out TrieNode delNode))
+                    _currentCommit.Enqueue(new NodeCommitInfo(delNode));
+            }
 
             bool processCommits = RootRef?.IsDirty == true;
             if (processCommits)
@@ -672,6 +675,7 @@ namespace Nethermind.Trie
                                     TrieNodeResolverCapability.Path => childNode.CloneWithChangedKey(newKey, 1),
                                     _ => throw new ArgumentOutOfRangeException()
                                 };
+                                _deleteNodes.Enqueue(childNode.CloneNodeForDeletion());
 
                                 if (_logger.IsTrace)
                                     _logger.Trace(
@@ -696,6 +700,8 @@ namespace Nethermind.Trie
                                 {
                                     if (_logger.IsTrace) _logger.Trace($"Decrementing ref on a branch replaced by a leaf {node}");
                                 }
+
+                                _deleteNodes.Enqueue(childNode.CloneNodeForDeletion());
 
                                 nextNode = extendedLeaf;
                             }
@@ -725,6 +731,8 @@ namespace Nethermind.Trie
                         };
                         if (_logger.IsTrace)
                             _logger.Trace($"Combining {node} and {nextNode} into {extendedLeaf}");
+
+                        _deleteNodes.Enqueue(nextNode.CloneNodeForDeletion());
 
                         nextNode = extendedLeaf;
                     }
@@ -764,6 +772,8 @@ namespace Nethermind.Trie
                         };
                         if (_logger.IsTrace)
                             _logger.Trace($"Combining {node} and {nextNode} into {extendedExtension}");
+
+                        _deleteNodes.Enqueue(nextNode.CloneNodeForDeletion());
 
                         nextNode = extendedExtension;
                     }
