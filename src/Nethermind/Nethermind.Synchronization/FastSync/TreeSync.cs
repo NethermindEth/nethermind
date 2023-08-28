@@ -694,26 +694,8 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
 
-
-                _stateDbLock.EnterWriteLock();
-                try
-                {
-                    _stateDb.Flush();
-                }
-                finally
-                {
-                    _stateDbLock.ExitWriteLock();
-                }
-
-                _codeDbLock.EnterWriteLock();
-                try
-                {
-                    _codeDb.Flush();
-                }
-                finally
-                {
-                    _codeDbLock.ExitWriteLock();
-                }
+                _stateDb.Flush();
+                _codeDb.Flush();
 
                 Interlocked.Exchange(ref _rootSaved, 1);
             }
