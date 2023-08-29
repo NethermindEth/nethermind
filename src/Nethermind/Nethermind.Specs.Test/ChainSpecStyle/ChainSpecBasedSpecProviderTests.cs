@@ -155,8 +155,8 @@ public class ChainSpecBasedSpecProviderTests
             new ForkActivation(0, HoleskySpecProvider.GenesisTimestamp),
             new ForkActivation(1, HoleskySpecProvider.ShanghaiTimestamp),
             new ForkActivation(3, HoleskySpecProvider.ShanghaiTimestamp + 24),
-            new ForkActivation(4, HoleskySpecProvider.CancunTimestamp),
-            new ForkActivation(5, HoleskySpecProvider.CancunTimestamp + 12),
+            //new ForkActivation(4, HoleskySpecProvider.CancunTimestamp),
+            //new ForkActivation(5, HoleskySpecProvider.CancunTimestamp + 12),
         };
 
         CompareSpecProviders(hardCodedSpec, provider, forkActivationsToTest);
@@ -166,9 +166,8 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Holesky));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Holesky));
 
-        // Still commented since Cancun timestamp is set to be very far but not a 256 slot multiple
-        //GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-        //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
+        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+            t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
     }
 
     [Test]
