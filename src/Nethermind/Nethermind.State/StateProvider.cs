@@ -248,18 +248,6 @@ namespace Nethermind.State
             PushUpdate(address, changedAccount);
         }
 
-        // ToDo comment
-        private void HandleSystemUserAccount()
-        {
-            Account account = GetThroughCache(Address.SystemUser);
-            if (account == null)
-            {
-                return;
-            }
-
-            Push(ChangeType.Touch, Address.SystemUser, account);
-        }
-
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
             _needsStateRootUpdate = true;

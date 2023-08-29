@@ -17,11 +17,9 @@ namespace Nethermind.Blockchain.BeaconBlockRoot;
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 {
     private readonly ITransactionProcessor _processor;
-    private static Address Default4788Address = Address.FromNumber(0x0b); // ToDo this address can change in next version of the spec
+    private static Address Default4788Address = Address.FromNumber(0x0b);
     private readonly ILogger _logger;
-
-    public static UInt256 HISTORICAL_ROOTS_LENGTH = 98304;
-    private static readonly Address DefaultPbbrContractAddress = Address.FromNumber(0x0b);
+    private const long GasLimit = 30_000_000L;
     public BeaconBlockRootHandler(
         ITransactionProcessor processor,
         ILogManager logManager)
@@ -42,7 +40,7 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
             Data = header.ParentBeaconBlockRoot.Bytes.ToArray(),
             To = spec.Eip4788ContractAddress ?? Default4788Address,
             SenderAddress = Address.SystemUser,
-            GasLimit = long.MaxValue, // ToDO Unlimited gas will be probably changed to 30mln
+            GasLimit = GasLimit,
             GasPrice = UInt256.Zero,
         };
         transaction.Hash = transaction.CalculateHash();
