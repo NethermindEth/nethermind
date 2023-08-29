@@ -228,7 +228,7 @@ public partial class BlockProcessor : IBlockProcessor
         _receiptsTracer.SetOtherTracer(blockTracer);
         _receiptsTracer.StartNewBlockTrace(block);
 
-        _beaconBlockRootHandler.ScheduleSystemCall(block,spec, _stateProvider);
+        _beaconBlockRootHandler.ScheduleSystemCall(block, spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
 
