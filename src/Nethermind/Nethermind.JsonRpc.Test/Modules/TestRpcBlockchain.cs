@@ -145,6 +145,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 RpcConfig,
                 Bridge,
                 BlockFinder,
+                ReceiptFinder,
                 StateReader,
                 TxPool,
                 TxSender,

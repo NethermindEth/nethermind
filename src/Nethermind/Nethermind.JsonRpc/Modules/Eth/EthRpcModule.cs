@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -44,6 +45,7 @@ public partial class EthRpcModule : IEthRpcModule
     private readonly IJsonRpcConfig _rpcConfig;
     private readonly IBlockchainBridge _blockchainBridge;
     private readonly IBlockFinder _blockFinder;
+    private readonly IReceiptFinder _receiptFinder;
     private readonly IStateReader _stateReader;
     private readonly ITxPool _txPoolBridge;
     private readonly ITxSender _txSender;
@@ -65,6 +67,7 @@ public partial class EthRpcModule : IEthRpcModule
         IJsonRpcConfig rpcConfig,
         IBlockchainBridge blockchainBridge,
         IBlockFinder blockFinder,
+        IReceiptFinder receiptFinder,
         IStateReader stateReader,
         ITxPool txPool,
         ITxSender txSender,
@@ -79,6 +82,7 @@ public partial class EthRpcModule : IEthRpcModule
         _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
         _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
         _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+        _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
         _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
         _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
@@ -471,6 +475,26 @@ public partial class EthRpcModule : IEthRpcModule
             _logger.Debug(
                 $"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {transactionModel.Hash}");
         return ResultWrapper<TransactionForRpc>.Success(transactionModel);
+    }
+
+    public ResultWrapper<ReceiptForRpc[]> eth_getBlockReceipts(BlockParameter blockParameter)
+    {
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+        if (searchResult.IsError)
+        {
+            return ResultWrapper<ReceiptForRpc[]>.Fail(searchResult);
+        }
+
+        Block block = searchResult.Object;
+        TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
+        bool isEip1559Enabled = _specProvider.GetSpec(block.Header).IsEip1559Enabled;
+        IEnumerable<ReceiptForRpc> result = receipts
+            .Zip(block.Transactions, (r, t) =>
+            {
+                return new ReceiptForRpc(t.Hash, r, t.GetGasInfo(isEip1559Enabled, block.Header), receipts.GetBlockLogFirstIndex(r.Index));
+            });
+        ReceiptForRpc[] resultAsArray = result.ToArray();
+        return ResultWrapper<ReceiptForRpc[]>.Success(resultAsArray);
     }
 
     public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)

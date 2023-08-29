@@ -205,6 +205,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
+        public ResultWrapper<ReceiptForRpc[]> eth_getBlockReceipts(BlockParameter blockParameter)
+        {
+            throw new NotSupportedException();
+        }
+
         public async Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHashData)
         {
             RpcResult<ReceiptModel> result = await _proxy.eth_getTransactionReceipt(txHashData);

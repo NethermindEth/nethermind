@@ -68,6 +68,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _rpcConfig,
                 _blockchainBridgeFactory.CreateBlockchainBridge(),
                 _blockTree,
+                _receiptStorage,
                 _stateReader,
                 _txPool,
                 _txSender,

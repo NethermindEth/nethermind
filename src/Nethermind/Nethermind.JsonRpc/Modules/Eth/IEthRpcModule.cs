@@ -206,6 +206,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(
         [JsonRpcParameter(ExampleValue = "[\"5111256\",\"0x8\"]")] BlockParameter blockParameter, UInt256 positionIndex);
 
+        [JsonRpcMethod(Description = "Get receipts from all transactions from a particular block",
+            IsImplemented = true,
+            ExampleResponse = "{\"transactionHash\":\"0x5bea2e9354f63960beaf02942e7c791e61ae47ce6952115afcb3d7fbd5b8043b\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x31fda0834473452ad7df17e351bb540294fe9cf9752472468851f6b3a2c5f5aa\",\"blockNumber\":\"0x88de36\",\"cumulativeGasUsed\":\"0x50e46\",\"gasUsed\":\"0x5208\",\"from\":\"0xdd078bc60e500d379eaf30fc8658661ea0f2608a\",\"to\":\"0x5aab44fdc254f247dcb7ad89f248e7da346081d5\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x1\",\"type\":\"0x0\"}, (...)")]
+        ResultWrapper<ReceiptForRpc[]> eth_getBlockReceipts(
+        [JsonRpcParameter(ExampleValue = "[\"5111256\"]")] BlockParameter blockParameter);
+
         [JsonRpcMethod(IsImplemented = true,
             Description = "Retrieves a transaction receipt by tx hash",
             IsSharable = true,
