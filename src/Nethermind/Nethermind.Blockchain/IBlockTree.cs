@@ -158,8 +158,6 @@ namespace Nethermind.Blockchain
 
         void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash);
 
-        void LoadLowestInsertedBeaconHeader();
-
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
 
