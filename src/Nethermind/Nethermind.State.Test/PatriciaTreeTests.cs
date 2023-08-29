@@ -97,7 +97,7 @@ namespace Nethermind.Store.Test
 
             ITrieStore storagerTrieStore = _resolverCapability.CreateTrieStore(db, LimboLogs.Instance);
 
-            IStateTree stateTree = _resolverCapability.CreateStateStore(trieStore, storagerTrieStore, LimboLogs.Instance);
+            IStateTree stateTree = _resolverCapability.CreateStateStore(trieStore, LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
             stateTree.UpdateRootHash();
             Keccak stateRoot = stateTree.RootHash;

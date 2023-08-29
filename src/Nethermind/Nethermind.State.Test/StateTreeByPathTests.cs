@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -481,7 +484,7 @@ namespace Nethermind.Store.Test
             var b = Nibbles.ToEncodedStorageBytes(new byte[] { 5, 3, 8 });
             var c = Nibbles.ToEncodedStorageBytes(new byte[] { 5, 3, 0 });
             var d = Nibbles.ToEncodedStorageBytes(new byte[] { 5, 3, 0, 12 });
-            var e = Nibbles.ToEncodedStorageBytes(new byte[] { 5, 3, 0, 12, 7});
+            var e = Nibbles.ToEncodedStorageBytes(new byte[] { 5, 3, 0, 12, 7 });
 
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
@@ -631,6 +634,50 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
+        public void Fill_and_empty_tree()
+        {
+            ILogManager logManager = new NUnitLogManager(LogLevel.Warn);
+            ILogger logger = logManager.GetLogger("");
+
+            MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
+            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance, 0), LimboLogs.Instance);
+
+            int numberOfAccounts = 10000;
+
+            int seed = Environment.TickCount;
+            //int seed = 367667468;
+            logger.Warn($"Seed: {seed}");
+            Random r = new Random(seed);
+
+            Keccak[] allPaths = new Keccak[numberOfAccounts];
+
+            for (int i = 0; i < numberOfAccounts; i++)
+            {
+                byte[] key = new byte[32];
+                r.NextBytes(key);
+                Keccak keccak = new(key);
+                allPaths[i] = keccak;
+
+                tree.Set(keccak, TestItem.GenerateRandomAccount());
+            }
+            tree.Commit(0);
+
+            Keccak root0 = tree.RootHash;
+
+            for (int i = 0; i < numberOfAccounts; i++)
+            {
+                tree.Set(allPaths[i], null);
+            }
+            tree.Commit(1);
+
+            Keccak rootEnd = tree.RootHash;
+
+            MemDb stateDb = (MemDb)db.GetColumnDb(StateColumns.State);
+            Assert.That(stateDb.GetAllValues().All(b => b is null), Is.True);
+            //Assert.That(rootEnd, Is.EqualTo(Keccak.EmptyTreeHash));
+        }
+
+        [Test]
         public void CopyStateTest()
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
@@ -646,6 +693,96 @@ namespace Nethermind.Store.Test
             tree.Get(TestItem.AddressB).Balance.Should().BeEquivalentTo(_account1.Balance);
             tree.Get(TestItem.AddressC).Balance.Should().BeEquivalentTo(_account1.Balance);
             tree.Get(TestItem.AddressD).Balance.Should().BeEquivalentTo(_account1.Balance);
+        }
+
+        [Test]
+        public void Process_block_by_block_and_compare_tries_on_different_storage()
+        {
+            ILogManager logManager = new NUnitLogManager(LogLevel.Warn);
+            ILogger logger = logManager.GetLogger("");
+
+            MemColumnsDb<StateColumns> pathDb = new MemColumnsDb<StateColumns>();
+            StateTreeByPath tree = new(new TrieStoreByPath(pathDb, LimboLogs.Instance, 0), LimboLogs.Instance);
+
+            MemDb db = new MemDb();
+            StateTree hashStateTree = new(new TrieStore(db, logManager), logManager);
+
+            int numberOfAccounts = 10000;
+            int numberOfBlocks = 100;
+            int numberOfUpdates = numberOfAccounts / 100;
+
+            int seed = Environment.TickCount;
+            //int seed = 367667468;
+            logger.Warn($"Seed: {seed}");
+            Random r = new Random(seed);
+
+            Keccak[] allPaths = new Keccak[numberOfAccounts];
+
+            for (int i = 0; i < numberOfAccounts; i++)
+            {
+                byte[] key = new byte[32];
+                r.NextBytes(key);
+                Keccak keccak = new(key);
+                allPaths[i] = keccak;
+
+                Account newAccount = TestItem.GenerateRandomAccount();
+                tree.Set(keccak, newAccount);
+                hashStateTree.Set(keccak, newAccount);
+            }
+            tree.Commit(0);
+            hashStateTree.Commit(0);
+
+            Assert.That(tree.RootHash, Is.EqualTo(hashStateTree.RootHash));
+            CompareTrees(hashStateTree, tree);
+
+
+            for (int i = 1; i <= numberOfBlocks; i++)
+            {
+                for (int accountIndex = 0; accountIndex < numberOfUpdates; accountIndex++)
+                {
+                    Account account = TestItem.GenerateRandomAccount();
+                    Keccak path = allPaths[TestItem.Random.Next(numberOfAccounts - 1)];
+
+                    if (hashStateTree.Get(path) is not null)
+                    {
+                        if (TestItem.Random.NextSingle() > 0.25)
+                        {
+                            tree.Set(path, account);
+                            hashStateTree.Set(path, account);
+                        }
+                        else
+                        {
+                            tree.Set(path, null);
+                            hashStateTree.Set(path, null);
+                        }
+                    }
+                    else
+                    {
+                        tree.Set(path, account);
+                        hashStateTree.Set(path, account);
+                    }
+                }
+
+                tree.Commit(i);
+                hashStateTree.Commit(i);
+
+                Assert.That(tree.RootHash, Is.EqualTo(hashStateTree.RootHash));
+                CompareTrees(hashStateTree, tree);
+            }
+        }
+
+        private void CompareTrees(StateTree keccakTree, StateTreeByPath pathTree)
+        {
+            TreeDumper dumper = new TreeDumper();
+            keccakTree.Accept(dumper, keccakTree.RootHash);
+            string remote = dumper.ToString();
+
+            dumper.Reset();
+
+            pathTree.Accept(dumper, pathTree.RootHash);
+            string local = dumper.ToString();
+
+            Assert.That(local, Is.EqualTo(remote), $"{remote}{Environment.NewLine}{local}");
         }
     }
 }

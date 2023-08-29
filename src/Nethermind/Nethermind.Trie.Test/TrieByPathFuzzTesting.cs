@@ -200,10 +200,11 @@ public class TrieByPathFuzzTesting
 
         MemColumnsDb<StateColumns> memDb = new();
 
+        using TrieStoreByPath pathTrieStore = new(memDb, _logManager, lookupLimit);
+        WorldState pathStateProvider = new(pathTrieStore, new MemDb(), _logManager);
+
         using TrieStoreByPath trieStore = new(memDb, _logManager, lookupLimit);
         WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
-        //StateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, new MemDb(), _logManager);
-        //StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
 
         Account[] accounts = new Account[accountsCount];
         Address[] addresses = new Address[accountsCount];
@@ -253,20 +254,26 @@ public class TrieByPathFuzzTesting
                             {
                                 stateProvider.AddToBalance(
                                     address, account.Balance - existing.Balance, MuirGlacier.Instance);
+                                pathStateProvider.AddToBalance(
+                                    address, account.Balance - existing.Balance, MuirGlacier.Instance);
                             }
                             else
                             {
                                 stateProvider.SubtractFromBalance(
                                     address, existing.Balance - account.Balance, MuirGlacier.Instance);
+                                pathStateProvider.SubtractFromBalance(
+                                    address, existing.Balance - account.Balance, MuirGlacier.Instance);
                             }
 
                             stateProvider.IncrementNonce(address);
+                            pathStateProvider.IncrementNonce(address);
                         }
                     }
                     else if (!account.IsTotallyEmpty)
                     {
                         insertStorage = true;
                         stateProvider.CreateAccount(address, account.Balance);
+                        pathStateProvider.CreateAccount(address, account.Balance);
                     }
 
                     if (insertStorage)
@@ -280,12 +287,19 @@ public class TrieByPathFuzzTesting
                             _random.NextBytes(storage);
                             streamWriter.WriteLine($"{index} {storage.ToHexString()}");
                             stateProvider.Set(new StorageCell(address, (UInt256)index), storage);
+                            pathStateProvider.Set(new StorageCell(address, (UInt256)index), storage);
                         }
                     }
                 }
             }
             stateProvider.Commit(MuirGlacier.Instance);
             stateProvider.CommitTree(blockNumber);
+
+            pathStateProvider.Commit(MuirGlacier.Instance);
+            pathStateProvider.CommitTree(blockNumber);
+
+            Assert.That(pathStateProvider.StateRoot, Is.EqualTo(stateProvider.StateRoot));
+
             rootQueue.Enqueue(stateProvider.StateRoot);
             streamWriter.WriteLine("#");
         }
@@ -303,13 +317,16 @@ public class TrieByPathFuzzTesting
             try
             {
                 stateProvider.StateRoot = currentRoot;
+                pathStateProvider.StateRoot = currentRoot;
                 for (int i = 0; i < addresses.Length; i++)
                 {
                     if (stateProvider.AccountExists(addresses[i]))
                     {
                         for (int j = 0; j < 256; j++)
                         {
-                            stateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
+                            byte[] value = stateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
+                            byte[] pathValue = pathStateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
+                            Assert.That(pathValue, Is.EqualTo(value).Using(Bytes.EqualityComparer));
                         }
                     }
                 }
