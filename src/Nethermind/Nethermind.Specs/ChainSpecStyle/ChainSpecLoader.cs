@@ -358,6 +358,9 @@ public class ChainSpecLoader : IChainSpecLoader
                 ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
                 : UInt256.Zero;
 
+        Keccak stateRoot = chainSpecJson.Genesis.StateRoot ?? Keccak.EmptyTreeHash;
+        chainSpec.GenesisStateUnavailable = chainSpecJson.Genesis.StateUnavailable;
+
         BlockHeader genesisHeader = new(
             parentHash,
             Keccak.OfAnEmptySequenceRlp,
@@ -374,7 +377,7 @@ public class ChainSpecLoader : IChainSpecLoader
         genesisHeader.MixHash = mixHash;
         genesisHeader.Nonce = (ulong)nonce;
         genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-        genesisHeader.StateRoot = Keccak.EmptyTreeHash;
+        genesisHeader.StateRoot = stateRoot;
         genesisHeader.TxRoot = Keccak.EmptyTreeHash;
         genesisHeader.BaseFeePerGas = baseFee;
         bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;

@@ -11,7 +11,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     /// <summary>
     /// https://github.com/ethereum/wiki/wiki/Ethereum-Chain-Spec-Format
-    /// https://wiki.parity.io/Chain-specification 
+    /// https://wiki.parity.io/Chain-specification
     /// </summary>
     [DebuggerDisplay("{Name}, ChainId = {ChainId}")]
     public class ChainSpec
@@ -29,6 +29,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public NetworkNode[] Bootnodes { get; set; }
 
+        public bool GenesisStateUnavailable { get; set; }
         public Block Genesis { get; set; }
 
         public string SealEngineType { get; set; }

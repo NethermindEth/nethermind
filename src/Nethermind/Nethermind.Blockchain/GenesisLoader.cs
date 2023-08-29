@@ -45,11 +45,15 @@ namespace Nethermind.Blockchain
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
             _chainSpec.Allocations = null;
 
-            _stateProvider.Commit(_specProvider.GenesisSpec, true);
+            if (!_chainSpec.GenesisStateUnavailable)
+            {
+                _stateProvider.Commit(_specProvider.GenesisSpec, true);
 
-            _stateProvider.CommitTree(0);
+                _stateProvider.CommitTree(0);
 
-            genesis.Header.StateRoot = _stateProvider.StateRoot;
+                genesis.Header.StateRoot = _stateProvider.StateRoot;
+            }
+
             genesis.Header.Hash = genesis.Header.CalculateHash();
 
             return genesis;

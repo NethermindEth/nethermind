@@ -241,6 +241,13 @@ public partial class BlockProcessor : IBlockProcessor
         _stateProvider.RecalculateStateRoot();
 
         block.Header.StateRoot = _stateProvider.StateRoot;
+
+        // TODO: optimism
+        if (block.IsGenesis && _specProvider.ChainId == 1056)
+        {
+            block.Header.StateRoot = new Keccak("0x9e6b478a1cd331a979c39e4bddf42c676bcf5a63382f898dc441fe3fe5eb0837");
+        }
+
         block.Header.Hash = block.Header.CalculateHash();
 
         return receipts;
