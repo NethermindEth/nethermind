@@ -13,6 +13,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -20,6 +21,8 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -45,6 +48,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly LruCache<ValueKeccak, bool>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
+    private readonly EthereumJsonSerializer _jsonSerializer;
 
     public NewPayloadHandler(
         IBlockValidator blockValidator,
@@ -77,6 +81,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _timeout = timeout ?? TimeSpan.FromSeconds(7);
         if (cacheSize > 0)
             _latestBlocks = new(cacheSize, 0, "LatestBlocks");
+        _jsonSerializer = new EthereumJsonSerializer();
     }
 
     /// <summary>
@@ -99,7 +104,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         if (!HeaderValidator.ValidateHash(block!.Header))
         {
             if (_logger.IsWarn) _logger.Warn($"InvalidBlockHash. Result of {requestStr}.");
-            return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash}");
+
+            if (_logger.IsWarn) _logger.Warn($"Invalid block hash {request.BlockHash}, expected: {block.Header.CalculateHash()}. JSON: {_jsonSerializer.Serialize(block.Header)}, RLP: {new HeaderDecoder().Encode(block.Header).Bytes.ToHexString()}");
+            return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash}.");
         }
 
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
