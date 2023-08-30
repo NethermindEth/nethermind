@@ -27,7 +27,8 @@ public partial class BlockTree
     {
         if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader is not null)
         {
-            ChainLevelInfo chainLevelInfo = LoadLevel(BestSuggestedHeader.Number);
+            long blockNumber = BestPersistedState ?? BestSuggestedHeader.Number;
+            ChainLevelInfo chainLevelInfo = LoadLevel(blockNumber);
             BlockInfo? canonicalBlock = chainLevelInfo?.MainChainBlock;
             if (canonicalBlock is not null && canonicalBlock.WasProcessed)
             {
