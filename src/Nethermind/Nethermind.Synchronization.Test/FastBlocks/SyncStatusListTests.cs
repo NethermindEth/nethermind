@@ -46,7 +46,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         }
 
         [Test]
-        public void Can_will_not_go_below_ancient_barrier()
+        public void Will_not_go_below_ancient_barrier()
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(new BlockInfo(TestItem.KeccakA, 0));
