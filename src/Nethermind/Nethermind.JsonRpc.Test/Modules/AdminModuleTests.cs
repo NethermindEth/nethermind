@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
@@ -59,9 +59,9 @@ public class AdminModuleTests
     }
 
     [Test]
-    public void Test_node_info()
+    public async Task Test_node_info()
     {
-        string serialized = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_nodeInfo");
+        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_nodeInfo");
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         JsonSerializerSettings settings = new();
         settings.Converters = EthereumJsonSerializer.CommonConverters.ToList();
@@ -83,26 +83,26 @@ public class AdminModuleTests
     }
 
     [Test]
-    public void Test_data_dir()
+    public async Task Test_data_dir()
     {
-        string serialized = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_dataDir");
+        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_dataDir");
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         response.Result.Should().Be(_exampleDataDir);
     }
 
     [Test]
-    public void Smoke_solc()
+    public async Task Smoke_solc()
     {
-        string unused = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_setSolc");
+        string unused = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_setSolc");
     }
 
     [Test]
-    public void Smoke_test_peers()
+    public async Task Smoke_test_peers()
     {
-        string unused0 = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", _enodeString);
-        string unused1 = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", _enodeString);
-        string unused2 = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", _enodeString, "true");
-        string unused3 = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", _enodeString, "true");
-        string unused4 = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
+        string unused0 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", _enodeString);
+        string unused1 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", _enodeString);
+        string unused2 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", _enodeString, "true");
+        string unused3 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", _enodeString, "true");
+        string unused4 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
     }
 }

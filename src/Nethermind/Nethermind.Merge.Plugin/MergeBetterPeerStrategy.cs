@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
-using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;

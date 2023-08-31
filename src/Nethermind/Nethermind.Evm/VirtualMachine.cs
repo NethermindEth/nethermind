@@ -5,7 +5,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -23,17 +22,17 @@ using System.Diagnostics;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
-using static System.Runtime.InteropServices.MemoryMarshal;
 
 #if DEBUG
-using Nethermind.Evm.Tracing.DebugTrace;
+using Nethermind.Evm.Tracing.Debugger;
 #endif
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
 namespace Nethermind.Evm;
 
-using Nethermind.Int256;
+using System.Linq;
+using Int256;
 
 public class VirtualMachine : IVirtualMachine
 {
@@ -183,7 +182,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         where TTracingActions : struct, IIsTracing
     {
         _txTracer = txTracer;
-
         _state = worldState;
         _worldState = worldState;
 
@@ -192,6 +190,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         byte[] previousCallResult = null;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
         UInt256 previousCallOutputDestination = UInt256.Zero;
+        bool isTracing = _txTracer.IsTracing;
+
         while (true)
         {
             if (!currentState.IsContinuation)
@@ -260,7 +260,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                         if (currentState.IsTopLevel)
                         {
-                            return new TransactionSubstate(callResult.ExceptionType, _txTracer.IsTracing);
+                            return new TransactionSubstate(callResult.ExceptionType, isTracing);
                         }
 
                         previousCallResult = StatusCode.FailureBytes;
@@ -334,7 +334,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         (IReadOnlyCollection<Address>)currentState.DestroyList,
                         (IReadOnlyCollection<LogEntry>)currentState.Logs,
                         callResult.ShouldRevert,
-                        isTracerConnected: _txTracer.IsTracing);
+                        isTracerConnected: isTracing);
                 }
 
                 Address callCodeOwner = currentState.Env.ExecutingAccount;
@@ -360,7 +360,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         {
                             _state.InsertCode(callCodeOwner, callResult.Output, spec);
                             currentState.GasAvailable -= codeDepositGasCost;
-                            currentState.CreateList.Add(callCodeOwner);
 
                             if (typeof(TTracingActions) == typeof(IsTracing))
                             {
@@ -452,7 +451,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                 if (currentState.IsTopLevel)
                 {
-                    return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, _txTracer.IsTracing);
+                    return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, isTracing);
                 }
 
                 previousCallResult = StatusCode.FailureBytes;
@@ -519,29 +518,29 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     {
         _precompiles = new Dictionary<Address, CodeInfo>
         {
-            [EcRecoverPrecompile.Instance.Address] = new(EcRecoverPrecompile.Instance),
-            [Sha256Precompile.Instance.Address] = new(Sha256Precompile.Instance),
-            [Ripemd160Precompile.Instance.Address] = new(Ripemd160Precompile.Instance),
-            [IdentityPrecompile.Instance.Address] = new(IdentityPrecompile.Instance),
+            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
+            [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
+            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
+            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
 
-            [Bn254AddPrecompile.Instance.Address] = new(Bn254AddPrecompile.Instance),
-            [Bn254MulPrecompile.Instance.Address] = new(Bn254MulPrecompile.Instance),
-            [Bn254PairingPrecompile.Instance.Address] = new(Bn254PairingPrecompile.Instance),
-            [ModExpPrecompile.Instance.Address] = new(ModExpPrecompile.Instance),
+            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
+            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
+            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
+            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
 
-            [Blake2FPrecompile.Instance.Address] = new(Blake2FPrecompile.Instance),
+            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
 
-            [G1AddPrecompile.Instance.Address] = new(G1AddPrecompile.Instance),
-            [G1MulPrecompile.Instance.Address] = new(G1MulPrecompile.Instance),
-            [G1MultiExpPrecompile.Instance.Address] = new(G1MultiExpPrecompile.Instance),
-            [G2AddPrecompile.Instance.Address] = new(G2AddPrecompile.Instance),
-            [G2MulPrecompile.Instance.Address] = new(G2MulPrecompile.Instance),
-            [G2MultiExpPrecompile.Instance.Address] = new(G2MultiExpPrecompile.Instance),
-            [PairingPrecompile.Instance.Address] = new(PairingPrecompile.Instance),
-            [MapToG1Precompile.Instance.Address] = new(MapToG1Precompile.Instance),
-            [MapToG2Precompile.Instance.Address] = new(MapToG2Precompile.Instance),
+            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
+            [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
+            [G1MultiExpPrecompile.Address] = new(G1MultiExpPrecompile.Instance),
+            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
+            [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance),
+            [G2MultiExpPrecompile.Address] = new(G2MultiExpPrecompile.Instance),
+            [PairingPrecompile.Address] = new(PairingPrecompile.Instance),
+            [MapToG1Precompile.Address] = new(MapToG1Precompile.Instance),
+            [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
 
-            [PointEvaluationPrecompile.Instance.Address] = new(PointEvaluationPrecompile.Instance),
+            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
         };
     }
 
@@ -633,7 +632,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         IPrecompile precompile = state.Env.CodeInfo.Precompile;
         long baseGasCost = precompile.BaseGasCost(spec);
-        long dataGasCost = precompile.DataGasCost(callData, spec);
+        long blobGasCost = precompile.DataGasCost(callData, spec);
 
         bool wasCreated = false;
         if (!_state.AccountExists(state.Env.ExecutingAccount))
@@ -662,7 +661,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        if (!UpdateGas(checked(baseGasCost + dataGasCost), ref gasAvailable))
+        if (!UpdateGas(checked(baseGasCost + blobGasCost), ref gasAvailable))
         {
             Metrics.EvmExceptions++;
             throw new OutOfGasException();
@@ -1184,7 +1183,7 @@ OutOfGas:
 
                         break;
                     }
-                case Instruction.SHA3:
+                case Instruction.KECCAK256:
                     {
                         stack.PopUInt256(out a);
                         stack.PopUInt256(out b);
@@ -2340,8 +2339,9 @@ ReturnFailure:
         Address inheritor = stack.PopAddress();
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false)) return false;
 
-        var executingAccount = vmState.Env.ExecutingAccount;
-        if (!spec.SelfdestructOnlyOnSameTransaction || vmState.CreateList.Contains(executingAccount))
+        Address executingAccount = vmState.Env.ExecutingAccount;
+        bool createInSameTx = vmState.CreateList.Contains(executingAccount);
+        if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
             vmState.DestroyList.Add(executingAccount);
 
         UInt256 result = _state.GetBalance(executingAccount);
@@ -2365,6 +2365,9 @@ ReturnFailure:
         {
             _state.AddToBalance(inheritor, result, spec);
         }
+
+        if (spec.SelfdestructOnlyOnSameTransaction && !createInSameTx && inheritor.Equals(executingAccount))
+            return true; // dont burn eth when contract is not destroyed per EIP clarification
 
         _state.SubtractFromBalance(executingAccount, result, spec);
         return true;
@@ -2771,7 +2774,8 @@ ReturnFailure:
         _txTracer.StartOperation(vmState.Env.CallDepth + 1, gasAvailable, instruction, programCounter, vmState.Env.TxExecutionContext.Header.IsPostMerge);
         if (_txTracer.IsTracingMemory)
         {
-            _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? new List<string>());
+            _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? Enumerable.Empty<string>());
+            _txTracer.SetOperationMemorySize(vmState.Memory?.Size ?? 0);
         }
 
         if (_txTracer.IsTracingStack)
@@ -2783,11 +2787,6 @@ ReturnFailure:
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void EndInstructionTrace(long gasAvailable, ulong memorySize)
     {
-        if (_txTracer.IsTracingMemory)
-        {
-            _txTracer.SetOperationMemorySize(memorySize);
-        }
-
         _txTracer.ReportOperationRemainingGas(gasAvailable);
     }
 

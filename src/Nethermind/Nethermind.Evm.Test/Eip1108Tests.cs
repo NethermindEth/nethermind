@@ -24,7 +24,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
     {
         _blockNumberAdjustment = -1;
         byte[] code = Prepare.EvmCode
-            .CallWithInput(Bn254AddPrecompile.Instance.Address, 1000L, new byte[128])
+            .CallWithInput(Bn254AddPrecompile.Address, 1000L, new byte[128])
             .Done;
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
@@ -35,7 +35,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
     public void Test_add_after_istanbul()
     {
         byte[] code = Prepare.EvmCode
-            .CallWithInput(Bn254AddPrecompile.Instance.Address, 1000L, new byte[128])
+            .CallWithInput(Bn254AddPrecompile.Address, 1000L, new byte[128])
             .Done;
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
@@ -47,7 +47,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
     {
         _blockNumberAdjustment = -1;
         byte[] code = Prepare.EvmCode
-            .CallWithInput(Bn254MulPrecompile.Instance.Address, 50000L, new byte[128])
+            .CallWithInput(Bn254MulPrecompile.Address, 50000L, new byte[128])
             .Done;
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
@@ -58,7 +58,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
     public void Test_mul_after_istanbul()
     {
         byte[] code = Prepare.EvmCode
-            .CallWithInput(Bn254MulPrecompile.Instance.Address, 10000L, new byte[128])
+            .CallWithInput(Bn254MulPrecompile.Address, 10000L, new byte[128])
             .Done;
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
@@ -70,7 +70,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
     {
         _blockNumberAdjustment = -1;
         byte[] code = Prepare.EvmCode
-            .CallWithInput(Bn254PairingPrecompile.Instance.Address, 200000L, new byte[192])
+            .CallWithInput(Bn254PairingPrecompile.Address, 200000L, new byte[192])
             .Done;
         TestAllTracerWithOutput result = Execute(BlockNumber, 1000000L, code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
@@ -81,7 +81,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
     public void Test_pairing_after_istanbul()
     {
         byte[] code = Prepare.EvmCode
-            .CallWithInput(Bn254PairingPrecompile.Instance.Address, 200000L, new byte[192])
+            .CallWithInput(Bn254PairingPrecompile.Address, 200000L, new byte[192])
             .Done;
         TestAllTracerWithOutput result = Execute(BlockNumber, 1000000L, code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));

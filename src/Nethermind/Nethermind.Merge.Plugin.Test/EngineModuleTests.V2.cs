@@ -68,7 +68,7 @@ public partial class EngineModuleTests
         };
         string expectedPayloadId = payloadId;
 
-        string response = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV2", @params!);
+        string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV2", @params!);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
@@ -114,7 +114,7 @@ public partial class EngineModuleTests
         );
         GetPayloadV2Result expectedPayload = new(block, UInt256.Zero);
 
-        response = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV2", expectedPayloadId);
+        response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV2", expectedPayloadId);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
@@ -124,7 +124,7 @@ public partial class EngineModuleTests
             Result = expectedPayload
         }));
 
-        response = RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV2",
+        response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV2",
             chain.JsonSerializer.Serialize(new ExecutionPayload(block)));
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
@@ -148,7 +148,7 @@ public partial class EngineModuleTests
         };
         @params = new[] { chain.JsonSerializer.Serialize(fcuState), null };
 
-        response = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV2", @params!);
+        response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV2", @params!);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
@@ -191,7 +191,7 @@ public partial class EngineModuleTests
             chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)
         };
 
-        string response = RpcTest.TestSerializedRequest(rpcModule, "engine_forkchoiceUpdatedV1", @params);
+        string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_forkchoiceUpdatedV1", @params);
         JsonRpcErrorResponse? errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
 
         errorResponse.Should().NotBeNull();
@@ -228,7 +228,7 @@ public partial class EngineModuleTests
             chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)
         };
 
-        string response = RpcTest.TestSerializedRequest(rpcModule, "engine_forkchoiceUpdatedV2", @params);
+        string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_forkchoiceUpdatedV2", @params);
         JsonRpcErrorResponse? errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
 
         errorResponse.Should().NotBeNull();
@@ -557,7 +557,7 @@ public partial class EngineModuleTests
             Withdrawals = Enumerable.Empty<Withdrawal>()
         };
 
-        string response = RpcTest.TestSerializedRequest(rpcModule, "engine_newPayloadV1",
+        string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_newPayloadV1",
             chain.JsonSerializer.Serialize(expectedPayload));
         JsonRpcErrorResponse? errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
 
@@ -601,7 +601,7 @@ public partial class EngineModuleTests
             Withdrawals = input.Withdrawals
         };
 
-        string response = RpcTest.TestSerializedRequest(rpcModule, "engine_newPayloadV2",
+        string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_newPayloadV2",
             chain.JsonSerializer.Serialize(expectedPayload));
         JsonRpcErrorResponse? errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
 
@@ -638,7 +638,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(input.ReleaseSpec);
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree),
+        ExecutionPayload executionPayload = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressD, input.Withdrawals);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
 
@@ -707,7 +707,7 @@ public partial class EngineModuleTests
 
         // Block without withdrawals, Timestamp = 2
         ExecutionPayload executionPayload =
-            CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+            CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
 
@@ -873,7 +873,7 @@ public partial class EngineModuleTests
     private async Task<ExecutionPayload> SendNewBlockV2(IEngineRpcModule rpc, MergeTestBlockchain chain,
         IList<Withdrawal>? withdrawals)
     {
-        ExecutionPayload executionPayload = CreateBlockRequest(
+        ExecutionPayload executionPayload = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State,
             CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV2(executionPayload);
 

@@ -11,16 +11,16 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Precompiles;
 
-public class PointEvaluationPrecompile : IPrecompile
+public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
 {
-    public static readonly IPrecompile Instance = new PointEvaluationPrecompile();
+    public static readonly PointEvaluationPrecompile Instance = new PointEvaluationPrecompile();
 
     private static readonly ReadOnlyMemory<byte> PointEvaluationSuccessfulResponse =
         ((UInt256)Ckzg.Ckzg.FieldElementsPerBlob).ToBigEndian()
         .Concat(KzgPolynomialCommitments.BlsModulus.ToBigEndian())
         .ToArray();
 
-    public Address Address { get; } = Address.FromNumber(0x0a);
+    public static Address Address { get; } = Address.FromNumber(0x0a);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 50000L;
 

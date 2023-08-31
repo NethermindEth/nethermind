@@ -70,6 +70,12 @@ namespace Nethermind.Serialization.Rlp
             return span;
         }
 
+        public override Span<byte> Peek(int offset, int length)
+        {
+            Span<byte> span = _buffer.Array.AsSpan(_buffer.ArrayOffset + _buffer.ReaderIndex + offset, length);
+            return span;
+        }
+
         public override byte PeekByte()
         {
             byte result = _buffer.ReadByte();

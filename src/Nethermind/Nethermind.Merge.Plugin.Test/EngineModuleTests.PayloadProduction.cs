@@ -223,7 +223,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(null, null, payloadPreparationService);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        string result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", payload.ToHexString(true));
+        string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", payload.ToHexString(true));
         Assert.That(chain.JsonSerializer.Serialize(new
         {
             jsonrpc = "2.0",
@@ -264,7 +264,7 @@ public partial class EngineModuleTests
         byte[] payloadId = Bytes.FromHexString("0x1111111111111111");
 
         string parameters = payloadId.ToHexString(true);
-        string result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", parameters);
+        string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", parameters);
         result.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-38001,\"message\":\"unknown payload\"},\"id\":67}");
     }
 

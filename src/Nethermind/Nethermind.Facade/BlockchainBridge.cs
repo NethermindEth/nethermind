@@ -179,7 +179,7 @@ namespace Nethermind.Facade
 
             GasEstimator gasEstimator = new(readOnlyTransactionProcessor, _processingEnv.StateProvider,
                 _specProvider, _blocksConfig);
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer);
+            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, cancellationToken);
 
             return new CallOutput
             {
@@ -251,7 +251,7 @@ namespace Nethermind.Facade
                     UInt256.Zero,
                     blockHeader.Number + 1,
                     blockHeader.GasLimit,
-                    Math.Max(blockHeader.Timestamp + 1, _timestamper.UnixTime.Seconds),
+                    Math.Max(blockHeader.Timestamp + _blocksConfig.SecondsPerSlot, _timestamper.UnixTime.Seconds),
                     Array.Empty<byte>())
                 : new(
                     blockHeader.ParentHash!,
@@ -270,10 +270,10 @@ namespace Nethermind.Facade
 
             if (releaseSpec.IsEip4844Enabled)
             {
-                callHeader.DataGasUsed = DataGasCalculator.CalculateDataGas(transaction);
-                callHeader.ExcessDataGas = treatBlockHeaderAsParentBlock
-                    ? DataGasCalculator.CalculateExcessDataGas(blockHeader, releaseSpec)
-                    : blockHeader.ExcessDataGas;
+                callHeader.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(transaction);
+                callHeader.ExcessBlobGas = treatBlockHeaderAsParentBlock
+                    ? BlobGasCalculator.CalculateExcessBlobGas(blockHeader, releaseSpec)
+                    : blockHeader.ExcessBlobGas;
             }
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;

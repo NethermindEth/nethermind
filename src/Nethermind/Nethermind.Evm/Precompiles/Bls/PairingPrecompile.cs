@@ -11,15 +11,15 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-2537
 /// </summary>
-public class PairingPrecompile : IPrecompile
+public class PairingPrecompile : IPrecompile<PairingPrecompile>
 {
     private const int PairSize = 384;
 
     private PairingPrecompile() { }
 
-    public Address Address { get; } = Address.FromNumber(0x12);
+    public static Address Address { get; } = Address.FromNumber(0x12);
 
-    public static IPrecompile Instance = new PairingPrecompile();
+    public static PairingPrecompile Instance = new PairingPrecompile();
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 115000L;
 

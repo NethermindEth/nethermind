@@ -7,10 +7,12 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
@@ -157,10 +159,10 @@ namespace Nethermind.Synchronization.Test.FastSync
             {
                 _logger = logger;
                 RemoteDb = new MemDb();
-                LocalDb = new MemDb();
+                LocalDb = new TestMemDb();
                 RemoteStateDb = RemoteDb;
                 LocalStateDb = LocalDb;
-                LocalCodeDb = new MemDb();
+                LocalCodeDb = new TestMemDb();
                 RemoteCodeDb = new MemDb();
                 RemoteTrieStore = new TrieStore(RemoteStateDb, logManager);
 
@@ -168,10 +170,10 @@ namespace Nethermind.Synchronization.Test.FastSync
                 LocalStateTree = new StateTree(new TrieStore(LocalStateDb, logManager), logManager);
             }
 
-            public IDb RemoteCodeDb { get; }
-            public IDb LocalCodeDb { get; }
+            public MemDb RemoteCodeDb { get; }
+            public TestMemDb LocalCodeDb { get; }
             public MemDb RemoteDb { get; }
-            public MemDb LocalDb { get; }
+            public TestMemDb LocalDb { get; }
             public ITrieStore RemoteTrieStore { get; }
             public IDb RemoteStateDb { get; }
             public IDb LocalStateDb { get; }
@@ -217,6 +219,12 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 //            Assert.AreEqual(dbContext._remoteDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
                 //            Assert.AreEqual(dbContext._remoteDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
+            }
+
+            public void AssertFlushed()
+            {
+                LocalDb.WasFlushed.Should().BeTrue();
+                LocalCodeDb.WasFlushed.Should().BeTrue();
             }
         }
 
@@ -287,7 +295,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }

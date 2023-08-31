@@ -11,15 +11,15 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-2537
 /// </summary>
-public class G2MulPrecompile : IPrecompile
+public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
 {
-    public static IPrecompile Instance = new G2MulPrecompile();
+    public static G2MulPrecompile Instance = new G2MulPrecompile();
 
     private G2MulPrecompile()
     {
     }
 
-    public Address Address { get; } = Address.FromNumber(0x10);
+    public static Address Address { get; } = Address.FromNumber(0x10);
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {

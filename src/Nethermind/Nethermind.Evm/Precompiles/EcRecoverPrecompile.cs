@@ -11,15 +11,15 @@ using Nethermind.Logging;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class EcRecoverPrecompile : IPrecompile
+    public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
     {
-        public static readonly IPrecompile Instance = new EcRecoverPrecompile();
+        public static readonly EcRecoverPrecompile Instance = new EcRecoverPrecompile();
 
         private EcRecoverPrecompile()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(1);
+        public static Address Address { get; } = Address.FromNumber(1);
 
         public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {

@@ -1,21 +1,15 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 

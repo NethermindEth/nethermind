@@ -16,7 +16,6 @@ using Nethermind.Crypto;
 using Nethermind.JsonRpc;
 using NUnit.Framework;
 using FluentAssertions;
-using Nethermind.Core.Eip2930;
 using Nethermind.Evm;
 using Nethermind.Mev.Data;
 using Nethermind.Specs.Forks;
@@ -143,7 +142,7 @@ namespace Nethermind.Mev.Test
             Transaction getTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeGet)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             Transaction setTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeSet)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             string parameters = $"{{\"txs\":[\"{EncodeTx(setTx).Bytes.ToHexString()}\",\"{EncodeTx(getTx).Bytes.ToHexString()}\"]}}";
-            string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
+            string result = await chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{setTx.Hash!}\":{{\"value\":\"0x\"}},\"{getTx.Hash!}\":{{\"value\":\"0x000000000000000000000000000000000000000000000000000000000000000f\"}}}},\"id\":67}}");
         }
 
@@ -156,7 +155,7 @@ namespace Nethermind.Mev.Test
             Transaction setTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeSet)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             string parameters = $"{{\"txs\":[\"{EncodeTx(setTx).Bytes.ToHexString()}\",\"{EncodeTx(getTx).Bytes.ToHexString()}\"],\"blockNumber\":0x1}}";
             long headNumber = chain.BlockTree.Head!.Number;
-            chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
+            await chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
             chain.BlockTree.Head!.Number.Should().Be(headNumber);
         }
 
@@ -167,7 +166,7 @@ namespace Nethermind.Mev.Test
             Address reverterContractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
             Transaction failedTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(reverterContractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
             string parameters = $"{{\"txs\":[\"{EncodeTx(failedTx).Bytes.ToHexString()}\"]}}";
-            string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
+            string result = await chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{failedTx.Hash!}\":{{\"error\":\"0x\"}}}},\"id\":67}}");
         }
 
@@ -181,7 +180,7 @@ namespace Nethermind.Mev.Test
             Transaction getTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeGet)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             Transaction setTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeSet)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             string parameters = $"{{\"txs\":[\"{EncodeTx(setTx).Bytes.ToHexString()}\",\"{EncodeTx(getTx).Bytes.ToHexString()}\"],\"blockNumber\":\"0x4\"}}";
-            string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_sendBundle", parameters);
+            string result = await chain.TestSerializedRequest(chain.MevRpcModule, "eth_sendBundle", parameters);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}}");
         }
 
@@ -209,7 +208,7 @@ namespace Nethermind.Mev.Test
 
             string parameters = $"{{\"txs\":[\"{EncodeTx(setTx).Bytes.ToHexString()}\",\"{EncodeTx(getTx).Bytes.ToHexString()}\"]," +
                                 $"\"blockNumber\":\"0x4\",\"relaySignature\":\"{relaySignature}\"}}";
-            string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_sendMegabundle", parameters);
+            string result = await chain.TestSerializedRequest(chain.MevRpcModule, "eth_sendMegabundle", parameters);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}}");
         }
 

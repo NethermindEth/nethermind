@@ -24,6 +24,10 @@ do
 
   cp -r configs $output_path/$rid
   mkdir $output_path/$rid/keystore
+
+  # A temporary symlink for Linux and macOS to support existing scripts if any
+  # To be removed after a few months
+  [[ $rid != win* ]] && ln -s -r $output_path/$rid/nethermind $output_path/$rid/Nethermind.Runner
 done
 
 cd ..

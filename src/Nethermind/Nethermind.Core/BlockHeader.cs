@@ -25,8 +25,9 @@ public class BlockHeader
         long gasLimit,
         ulong timestamp,
         byte[] extraData,
-        ulong? dataGasUsed = null,
-        ulong? excessDataGas = null)
+        ulong? blobGasUsed = null,
+        ulong? excessBlobGas = null,
+        Keccak? parentBeaconBlockRoot = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -36,8 +37,9 @@ public class BlockHeader
         GasLimit = gasLimit;
         Timestamp = timestamp;
         ExtraData = extraData;
-        DataGasUsed = dataGasUsed;
-        ExcessDataGas = excessDataGas;
+        ParentBeaconBlockRoot = parentBeaconBlockRoot;
+        BlobGasUsed = blobGasUsed;
+        ExcessBlobGas = excessBlobGas;
     }
 
     public WeakReference<BlockHeader>? MaybeParent { get; set; }
@@ -67,8 +69,9 @@ public class BlockHeader
     public long? AuRaStep { get; set; }
     public UInt256 BaseFeePerGas { get; set; }
     public Keccak? WithdrawalsRoot { get; set; }
-    public ulong? DataGasUsed { get; set; }
-    public ulong? ExcessDataGas { get; set; }
+    public Keccak? ParentBeaconBlockRoot { get; set; }
+    public ulong? BlobGasUsed { get; set; }
+    public ulong? ExcessBlobGas { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
@@ -101,10 +104,14 @@ public class BlockHeader
         {
             builder.AppendLine($"{indent}WithdrawalsRoot: {WithdrawalsRoot}");
         }
-        if (DataGasUsed is not null || ExcessDataGas is not null)
+        if (ParentBeaconBlockRoot is not null)
         {
-            builder.AppendLine($"{indent}DataGasUsed: {DataGasUsed}");
-            builder.AppendLine($"{indent}ExcessDataGas: {ExcessDataGas}");
+            builder.AppendLine($"{indent}ParentBeaconBlockRoot: {ParentBeaconBlockRoot}");
+        }
+        if (BlobGasUsed is not null || ExcessBlobGas is not null)
+        {
+            builder.AppendLine($"{indent}BlobGasUsed: {BlobGasUsed}");
+            builder.AppendLine($"{indent}ExcessBlobGas: {ExcessBlobGas}");
         }
         builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
         builder.AppendLine($"{indent}TotalDifficulty: {TotalDifficulty}");
