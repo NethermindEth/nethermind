@@ -84,6 +84,7 @@ namespace Nethermind.JsonRpc.Modules
             Net,
             Eth,
             Subscribe,
+            Engine,
             Web3
         };
     }
