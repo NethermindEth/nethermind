@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -18,9 +19,9 @@ namespace Nethermind.Db
             return new(db, createInMemoryWriteStore);
         }
 
-        public static void Set(this IDb db, Keccak key, byte[] value)
+        public static void Set(this IDb db, Keccak key, byte[] value, WriteFlags writeFlags = WriteFlags.None)
         {
-            db[key.Bytes] = value;
+            db.Set(key.Bytes, value, writeFlags);
         }
 
         public static byte[]? Get(this IDb db, Keccak key)

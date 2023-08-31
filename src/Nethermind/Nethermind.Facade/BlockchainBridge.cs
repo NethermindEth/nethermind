@@ -251,7 +251,7 @@ namespace Nethermind.Facade
                     UInt256.Zero,
                     blockHeader.Number + 1,
                     blockHeader.GasLimit,
-                    Math.Max(blockHeader.Timestamp + 1, _timestamper.UnixTime.Seconds),
+                    Math.Max(blockHeader.Timestamp + _blocksConfig.SecondsPerSlot, _timestamper.UnixTime.Seconds),
                     Array.Empty<byte>())
                 : new(
                     blockHeader.ParentHash!,
