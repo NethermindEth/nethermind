@@ -26,6 +26,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public ulong? BlobGasUsed { get; set; }
         public ulong? ExcessBlobGas { get; set; }
         public Keccak ParentBeaconBlockRoot { get; set; }
-		public Address ConstructorSender { get; set; }
+        public Address ConstructorSender { get; set; }
     }
 }
