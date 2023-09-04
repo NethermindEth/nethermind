@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
-using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -26,7 +25,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             ReceiptsMessage deserializedMessage = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(deserializedMessage);
 
-            Assert.AreEqual(bytes, serialized);
+            Assert.That(serialized, Is.EqualTo(bytes));
             Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage ethMessage = deserializedMessage.EthMessage;
 
             TxReceipt txReceipt = ethMessage.TxReceipts[0][0];

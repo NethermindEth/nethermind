@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -56,9 +57,17 @@ namespace Nethermind.State.Proofs
         /// <summary>
         /// Only for testing
         /// </summary>
-        public AccountProofCollector(byte[] hashedAddress, Keccak[] keccakStorageKeys)
+        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, Keccak[] keccakStorageKeys)
+            : this(hashedAddress, keccakStorageKeys.Select((keccak) => (ValueKeccak)keccak).ToArray())
         {
-            keccakStorageKeys ??= Array.Empty<Keccak>();
+        }
+
+        /// <summary>
+        /// Only for testing too
+        /// </summary>
+        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, ValueKeccak[] keccakStorageKeys)
+        {
+            keccakStorageKeys ??= Array.Empty<ValueKeccak>();
 
             _fullAccountPath = Nibbles.FromBytes(hashedAddress);
 
@@ -84,7 +93,7 @@ namespace Nethermind.State.Proofs
             }
         }
 
-        public AccountProofCollector(byte[] hashedAddress, params byte[][] storageKeys)
+        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, params byte[][] storageKeys)
         {
             storageKeys ??= Array.Empty<byte[]>();
             _fullAccountPath = Nibbles.FromBytes(hashedAddress);
@@ -233,13 +242,13 @@ namespace Nethermind.State.Proofs
                 {
                     foreach (int storageIndex in value.StorageIndices)
                     {
-                        _storageProofItems[storageIndex].Add(node.FullRlp);
+                        _storageProofItems[storageIndex].Add(node.FullRlp.ToArray());
                     }
                 }
             }
             else
             {
-                _accountProofItems.Add(node.FullRlp);
+                _accountProofItems.Add(node.FullRlp.ToArray());
             }
         }
 
@@ -274,13 +283,13 @@ namespace Nethermind.State.Proofs
                     bool isPathMatched = IsPathMatched(node, thisStoragePath);
                     if (isPathMatched)
                     {
-                        _accountProof.StorageProofs[storageIndex].Value = new RlpStream(node.Value).DecodeByteArray();
+                        _accountProof.StorageProofs[storageIndex].Value = new RlpStream(node.Value.ToArray()).DecodeByteArray();
                     }
                 }
             }
             else
             {
-                Account account = _accountDecoder.Decode(new RlpStream(node.Value));
+                Account account = _accountDecoder.Decode(new RlpStream(node.Value.ToArray()));
                 bool isPathMatched = IsPathMatched(node, _fullAccountPath);
                 if (isPathMatched)
                 {

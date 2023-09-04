@@ -12,16 +12,13 @@ using Nethermind.Consensus.Clique;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Db.Blooms;
 using Nethermind.Trie;
-using Nethermind.Wallet;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
@@ -189,7 +186,7 @@ namespace Nethermind.Clique.Test
 
             Address expectedBlockSealer = new("0xb279182d99e65703f0076e4812653aab85fca0f0");
             Address blockSealer = _snapshotManager.GetBlockSealer(header);
-            Assert.AreEqual(expectedBlockSealer, blockSealer);
+            Assert.That(blockSealer, Is.EqualTo(expectedBlockSealer));
         }
 
         private static BlockHeader BuildCliqueBlock()

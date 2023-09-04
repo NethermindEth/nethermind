@@ -3,26 +3,13 @@
 
 using FluentAssertions;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using Nethermind.Core;
-using System.Collections;
 using System.Collections.Generic;
-using Nethermind.Evm;
-using System.Runtime.ConstrainedExecution;
-using Nethermind.Core.Test;
-using FluentAssertions.Execution;
 using System.Reflection;
 using System.Linq;
-using System.Reflection.Emit;
 using Nethermind.Int256;
-using System.Reflection.Metadata;
-using FastEnumUtility;
-using System;
-using System.Text.RegularExpressions;
-using Microsoft.VisualStudio.TestPlatform.CommunicationUtilities;
 
 namespace Nethermind.Evm.Test
 {
@@ -249,11 +236,10 @@ namespace Nethermind.Evm.Test
                         Instruction.AND,
                         Instruction.OR,
                         Instruction.XOR,
-                        Instruction.SHA3,
+                        Instruction.KECCAK256,
                         Instruction.SHL,
                         Instruction.SHR,
                         Instruction.SAR,
-                        Instruction.SHA3,
                         Instruction.RETURN,
                         Instruction.REVERT,
 

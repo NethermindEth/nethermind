@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 
@@ -21,7 +19,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Address contractAddress,
             long activation,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            LruCache<KeccakKey, UInt256> cache,
+            LruCache<ValueKeccak, UInt256> cache,
             ILogManager logManager,
             ISpecProvider specProvider)
             : base(

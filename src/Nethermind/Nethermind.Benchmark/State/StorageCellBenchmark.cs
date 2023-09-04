@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.State;
+using Nethermind.State.Tracing;
 
 namespace Nethermind.Benchmarks.State
 {

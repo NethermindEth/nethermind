@@ -1,25 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#nullable disable 
+#nullable disable
 
-using System;
-using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -45,7 +36,7 @@ namespace Nethermind.Store.Test
         {
             Keccak rootHash = _inputStorageTree!.RootHash;   // "..."
 
-            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[5].Path });
+            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueKeccak[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[5].Path });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
@@ -56,7 +47,7 @@ namespace Nethermind.Store.Test
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             var result = snapProvider.AddStorageRange(1, null, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            Assert.AreEqual(AddRangeResult.OK, result);
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
 
         [Test]
@@ -64,7 +55,7 @@ namespace Nethermind.Store.Test
         {
             Keccak rootHash = _inputStorageTree!.RootHash;   // "..."
 
-            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { TestItem.Tree.SlotsWithPaths[0].Path, TestItem.Tree.SlotsWithPaths[5].Path });
+            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueKeccak[] { TestItem.Tree.SlotsWithPaths[0].Path, TestItem.Tree.SlotsWithPaths[5].Path });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
@@ -75,7 +66,7 @@ namespace Nethermind.Store.Test
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             var result = snapProvider.AddStorageRange(1, null, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            Assert.AreEqual(AddRangeResult.OK, result);
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
 
         [Test]
@@ -90,7 +81,7 @@ namespace Nethermind.Store.Test
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             var result = snapProvider.AddStorageRange(1, null, rootHash, TestItem.Tree.SlotsWithPaths[0].Path, TestItem.Tree.SlotsWithPaths);
 
-            Assert.AreEqual(AddRangeResult.OK, result);
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
 
         [Test]
@@ -105,27 +96,27 @@ namespace Nethermind.Store.Test
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
-            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
+            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueKeccak[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
             var result1 = snapProvider.AddStorageRange(1, null, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths[0..2], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { TestItem.Tree.SlotsWithPaths[2].Path, TestItem.Tree.SlotsWithPaths[3].Path });
+            accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueKeccak[] { TestItem.Tree.SlotsWithPaths[2].Path, TestItem.Tree.SlotsWithPaths[3].Path });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
             var result2 = snapProvider.AddStorageRange(1, null, rootHash, TestItem.Tree.SlotsWithPaths[2].Path, TestItem.Tree.SlotsWithPaths[2..4], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { TestItem.Tree.SlotsWithPaths[4].Path, TestItem.Tree.SlotsWithPaths[5].Path });
+            accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueKeccak[] { TestItem.Tree.SlotsWithPaths[4].Path, TestItem.Tree.SlotsWithPaths[5].Path });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
             var result3 = snapProvider.AddStorageRange(1, null, rootHash, TestItem.Tree.SlotsWithPaths[4].Path, TestItem.Tree.SlotsWithPaths[4..6], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            Assert.AreEqual(AddRangeResult.OK, result1);
-            Assert.AreEqual(AddRangeResult.OK, result2);
-            Assert.AreEqual(AddRangeResult.OK, result3);
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
         }
 
         [Test]
@@ -140,27 +131,27 @@ namespace Nethermind.Store.Test
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
-            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
+            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueKeccak[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
             var result1 = snapProvider.AddStorageRange(1, null, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths[0..2], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { TestItem.Tree.SlotsWithPaths[2].Path, TestItem.Tree.SlotsWithPaths[3].Path });
+            accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueKeccak[] { TestItem.Tree.SlotsWithPaths[2].Path, TestItem.Tree.SlotsWithPaths[3].Path });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
             var result2 = snapProvider.AddStorageRange(1, null, rootHash, TestItem.Tree.SlotsWithPaths[2].Path, TestItem.Tree.SlotsWithPaths[3..4], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { TestItem.Tree.SlotsWithPaths[4].Path, TestItem.Tree.SlotsWithPaths[5].Path });
+            accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueKeccak[] { TestItem.Tree.SlotsWithPaths[4].Path, TestItem.Tree.SlotsWithPaths[5].Path });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
             var result3 = snapProvider.AddStorageRange(1, null, rootHash, TestItem.Tree.SlotsWithPaths[4].Path, TestItem.Tree.SlotsWithPaths[4..6], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            Assert.AreEqual(AddRangeResult.OK, result1);
-            Assert.AreEqual(AddRangeResult.DifferentRootHash, result2);
-            Assert.AreEqual(AddRangeResult.OK, result3);
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.DifferentRootHash));
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
         }
     }
 }

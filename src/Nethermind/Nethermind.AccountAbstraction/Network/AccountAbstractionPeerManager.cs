@@ -53,7 +53,7 @@ namespace Nethermind.AccountAbstraction.Network
                 {
                     entryPoints[counter] = kv.Key;
                     userOperations[counter] = kv.Value.GetUserOperations().ToArray();
-                    totalLength = totalLength + userOperations[counter].Length;
+                    totalLength += userOperations[counter].Length;
                     counter++;
                 }
                 UserOperationWithEntryPoint[] userOperationsWithEntryPoints = new UserOperationWithEntryPoint[totalLength];

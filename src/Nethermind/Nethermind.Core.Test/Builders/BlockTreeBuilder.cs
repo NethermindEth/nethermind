@@ -11,7 +11,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -19,7 +18,6 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -72,6 +70,14 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
+        public BlockTreeBuilder WithPostMergeRules()
+        {
+            PostMergeBlockTree = true;
+            return this;
+        }
+
+        public bool PostMergeBlockTree { get; set; }
+
 
         public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
@@ -104,7 +110,7 @@ namespace Nethermind.Core.Test.Builders
                     if (!(current.IsGenesis && skipGenesis))
                     {
                         AddBlockResult result = TestObjectInternal.SuggestBlock(current);
-                        Assert.AreEqual(AddBlockResult.Added, result, $"Adding {current.ToString(Block.Format.Short)} at split variant {splitVariant}");
+                        Assert.That(result, Is.EqualTo(AddBlockResult.Added), $"Adding {current.ToString(Block.Format.Short)} at split variant {splitVariant}");
 
                         TestObjectInternal.UpdateMainChain(current);
                     }
@@ -121,6 +127,18 @@ namespace Nethermind.Core.Test.Builders
         private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent, bool withWithdrawals, Address beneficiary)
         {
             Block currentBlock;
+            BlockBuilder currentBlockBuilder = Build.A.Block
+                .WithNumber(blockIndex + 1)
+                .WithParent(parent)
+                .WithWithdrawals(withWithdrawals ? new[] { TestItem.WithdrawalA_1Eth } : null)
+                .WithBeneficiary(beneficiary);
+
+            if (PostMergeBlockTree)
+                currentBlockBuilder.WithPostMergeRules();
+            else
+                currentBlockBuilder.WithDifficulty(BlockHeaderBuilder.DefaultDifficulty -
+                                                                      (splitFrom > parent.Number ? 0 : (ulong)splitVariant));
+
             if (_receiptStorage is not null && blockIndex % 3 == 0)
             {
                 Transaction[] transactions = new[]
@@ -129,20 +147,15 @@ namespace Nethermind.Core.Test.Builders
                     Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject
                 };
 
-                currentBlock = Build.A.Block
-                    .WithNumber(blockIndex + 1)
-                    .WithParent(parent)
-                    .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong)splitVariant))
+                currentBlock = currentBlockBuilder
                     .WithTransactions(transactions)
                     .WithBloom(new Bloom())
-                    .WithWithdrawals(withWithdrawals ? new[] { TestItem.WithdrawalA_1Eth } : null)
-                    .WithBeneficiary(beneficiary)
                     .TestObject;
 
                 List<TxReceipt> receipts = new();
-                foreach (var transaction in currentBlock.Transactions)
+                foreach (Transaction transaction in currentBlock.Transactions)
                 {
-                    var logEntries = _logCreationFunction?.Invoke(currentBlock, transaction).ToArray() ?? Array.Empty<LogEntry>();
+                    LogEntry[] logEntries = _logCreationFunction?.Invoke(currentBlock, transaction).ToArray() ?? Array.Empty<LogEntry>();
                     TxReceipt receipt = new()
                     {
                         Logs = logEntries,
@@ -169,16 +182,11 @@ namespace Nethermind.Core.Test.Builders
             }
             else
             {
-                currentBlock = Build.A.Block.WithNumber(blockIndex + 1)
-                    .WithParent(parent)
-                    .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong)splitVariant))
-                    .WithBeneficiary(beneficiary)
-                    .WithWithdrawals(withWithdrawals ? new[] { TestItem.WithdrawalA_1Eth } : null)
+                currentBlock = currentBlockBuilder
                     .TestObject;
             }
 
             currentBlock.Header.AuRaStep = blockIndex;
-            currentBlock.Header.IsPostMerge = currentBlock.Header.IsPostTTD(_specProvider ?? MainnetSpecProvider.Instance);
 
             return currentBlock;
         }

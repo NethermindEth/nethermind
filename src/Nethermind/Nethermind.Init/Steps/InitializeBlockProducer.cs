@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -25,7 +24,7 @@ namespace Nethermind.Init.Steps
 
         public async Task Execute(CancellationToken _)
         {
-            if (_api.BlockProductionPolicy.ShouldStartBlockProduction())
+            if (_api.BlockProductionPolicy!.ShouldStartBlockProduction())
             {
                 _api.BlockProducer = await BuildProducer();
             }

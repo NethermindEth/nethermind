@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -16,9 +15,9 @@ namespace Nethermind.Benchmarks.Core
 
         private byte[][] _scenarios = new byte[][]
         {
-            Keccak.Zero.Bytes,
-            Keccak.EmptyTreeHash.Bytes,
-            Keccak.OfAnEmptyString.Bytes,
+            Keccak.Zero.BytesToArray(),
+            Keccak.EmptyTreeHash.BytesToArray(),
+            Keccak.OfAnEmptyString.BytesToArray(),
             TestItem.AddressA.Bytes,
             Address.Zero.Bytes,
         };

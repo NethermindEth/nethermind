@@ -6,9 +6,7 @@ using FluentAssertions;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Network;
 using Nethermind.Core;
-using Nethermind.Network;
 using Nethermind.Network.Test.P2P;
-using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -113,13 +111,13 @@ namespace Nethermind.AccountAbstraction.Test.Network
                 // Abi is similar in deserialized and message, but for assertion there is some difference and an error. Line below excludes Abi from assertion
                 deserialized.Should().BeEquivalentTo(message, options => options.Excluding(o => o.Path.EndsWith("Abi")));
 
-                Assert.AreEqual(0, buffer.ReadableBytes, "readable bytes");
+                Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");
 
                 serializer.Serialize(buffer2, deserialized);
 
                 buffer.SetReaderIndex(0);
                 string allHex = buffer.ReadAllHex();
-                Assert.AreEqual(allHex, buffer2.ReadAllHex(), "test zero");
+                Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
 
                 allHex.Should().BeEquivalentTo(expectedData);
             }

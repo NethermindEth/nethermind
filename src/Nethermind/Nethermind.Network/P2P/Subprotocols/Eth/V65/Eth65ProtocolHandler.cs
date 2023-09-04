@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -35,8 +34,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             IPooledTxsRequestor pooledTxsRequestor,
             IGossipPolicy gossipPolicy,
             ForkInfo forkInfo,
-            ILogManager logManager)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, forkInfo, logManager)
+            ILogManager logManager,
+            ITxGossipPolicy? transactionsGossipPolicy = null)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
         {
             _pooledTxsRequestor = pooledTxsRequestor;
         }
@@ -53,11 +53,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             switch (message.PacketType)
             {
                 case Eth65MessageCode.PooledTransactions:
-                    PooledTransactionsMessage pooledTxMsg
-                        = Deserialize<PooledTransactionsMessage>(message.Content);
-                    Metrics.Eth65PooledTransactionsReceived++;
-                    ReportIn(pooledTxMsg, size);
-                    Handle(pooledTxMsg);
+                    if (CanReceiveTransactions)
+                    {
+                        PooledTransactionsMessage pooledTxMsg
+                            = Deserialize<PooledTransactionsMessage>(message.Content);
+                        Metrics.Eth65PooledTransactionsReceived++;
+                        ReportIn(pooledTxMsg, size);
+                        Handle(pooledTxMsg);
+                    }
+                    else
+                    {
+                        const string ignored = $"{nameof(PooledTransactionsMessage)} ignored, syncing";
+                        ReportIn(ignored, size);
+                    }
+
                     break;
                 case Eth65MessageCode.GetPooledTransactions:
                     GetPooledTransactionsMessage getPooledTxMsg
@@ -66,10 +75,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     Handle(getPooledTxMsg);
                     break;
                 case Eth65MessageCode.NewPooledTransactionHashes:
-                    NewPooledTransactionHashesMessage newPooledTxMsg =
-                        Deserialize<NewPooledTransactionHashesMessage>(message.Content);
-                    ReportIn(newPooledTxMsg, size);
-                    Handle(newPooledTxMsg);
+                    if (CanReceiveTransactions)
+                    {
+                        NewPooledTransactionHashesMessage newPooledTxMsg =
+                            Deserialize<NewPooledTransactionHashesMessage>(message.Content);
+                        ReportIn(newPooledTxMsg, size);
+                        Handle(newPooledTxMsg);
+                    }
+                    else
+                    {
+                        const string ignored = $"{nameof(NewPooledTransactionHashesMessage)} ignored, syncing";
+                        ReportIn(ignored, size);
+                    }
+
                     break;
             }
         }
@@ -119,7 +137,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             {
                 if (_txPool.TryGetPendingTransaction(msg.Hashes[i], out Transaction tx))
                 {
-                    int txSize = tx.GetLength(_txDecoder);
+                    int txSize = tx.GetLength();
 
                     if (txSize > packetSizeLeft && txsToSend.Count > 0)
                     {

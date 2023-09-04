@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -13,7 +12,7 @@ namespace Nethermind.Blockchain.Receipts
         void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical);
         long? LowestInsertedReceiptBlockNumber { get; set; }
         long MigratedBlockNumber { get; set; }
-        bool HasBlock(Keccak hash);
+        bool HasBlock(long blockNumber, Keccak hash);
         void EnsureCanonical(Block block);
     }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -12,7 +11,6 @@ using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -357,12 +355,9 @@ namespace Nethermind.Evm.Test
             //TestState.CommitTree(0);
 
             TestState.CreateAccount(deploymentAddress, UInt256.One);
-            Keccak codeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(deploymentAddress, codeHash, MuirGlacier.Instance);
+            TestState.InsertCode(deploymentAddress, contractCode, MuirGlacier.Instance);
 
-            Storage.Set(new StorageCell(deploymentAddress, 7), new byte[] { 7 });
-            Storage.Commit();
-            Storage.CommitTrees(0);
+            TestState.Set(new StorageCell(deploymentAddress, 7), new byte[] { 7 });
             TestState.Commit(MuirGlacier.Instance);
             TestState.CommitTree(0);
 

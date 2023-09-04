@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test;
-using Nethermind.Db;
 using Nethermind.Trie;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test
@@ -31,6 +28,15 @@ namespace Nethermind.Store.Test
             _ = ctx.Database[Key1];
             _ = ctx.Database[Key1];
             ctx.Wrapped.KeyWasRead(Key1);
+        }
+
+        [Test]
+        public void When_reading_values_with_flags_forward_the_flags()
+        {
+            Context ctx = new(2);
+            ctx.Wrapped.ReadFunc = (key) => Value1;
+            _ = ctx.Database.Get(Key1, ReadFlags.HintReadAhead);
+            ctx.Wrapped.KeyWasReadWithFlags(Key1, ReadFlags.HintReadAhead);
         }
 
         [Test]

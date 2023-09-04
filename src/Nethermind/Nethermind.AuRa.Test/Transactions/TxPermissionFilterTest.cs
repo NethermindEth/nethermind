@@ -248,7 +248,7 @@ public class TxPermissionFilterTest
         VersionedTransactionPermissionContract transactionPermissionContract = new(AbiEncoder.Instance,
             TestItem.AddressA,
             5,
-            Substitute.For<IReadOnlyTxProcessorSource>(), new LruCache<KeccakKey, UInt256>(100, "TestCache"),
+            Substitute.For<IReadOnlyTxProcessorSource>(), new LruCache<ValueKeccak, UInt256>(100, "TestCache"),
             LimboLogs.Instance,
             Substitute.For<ISpecProvider>());
 
@@ -261,7 +261,7 @@ public class TxPermissionFilterTest
         public PermissionBasedTxFilter PermissionBasedTxFilter { get; private set; }
         public PermissionBasedTxFilter.Cache TxPermissionFilterCache { get; private set; }
 
-        public LruCache<KeccakKey, UInt256> TransactionPermissionContractVersions { get; private set; }
+        public LruCache<ValueKeccak, UInt256> TransactionPermissionContractVersions { get; private set; }
 
         protected override BlockProcessor CreateBlockProcessor()
         {
@@ -272,7 +272,7 @@ public class TxPermissionFilterTest
             };
 
             TransactionPermissionContractVersions =
-                new LruCache<KeccakKey, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
+                new LruCache<ValueKeccak, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
 
             IReadOnlyTrieStore trieStore = new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
             IReadOnlyTxProcessorSource txProcessorSource = new ReadOnlyTxProcessingEnv(
@@ -294,7 +294,6 @@ public class TxPermissionFilterTest
                 new RewardCalculator(SpecProvider),
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
-                Storage,
                 ReceiptStorage,
                 LimboLogs.Instance,
                 BlockTree,

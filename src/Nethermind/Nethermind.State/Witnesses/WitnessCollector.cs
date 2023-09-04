@@ -4,13 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
-using Nethermind.Trie;
 
 namespace Nethermind.State.Witnesses
 {
@@ -22,7 +20,7 @@ namespace Nethermind.State.Witnesses
         [ThreadStatic]
         private static bool _collectWitness;
 
-        private readonly LruCache<KeccakKey, Keccak[]> _witnessCache = new(256, "Witnesses");
+        private readonly LruCache<ValueKeccak, Keccak[]> _witnessCache = new(256, "Witnesses");
 
         public IReadOnlyCollection<Keccak> Collected => _collected;
 
@@ -61,7 +59,7 @@ namespace Nethermind.State.Witnesses
                 for (var index = 0; index < collected.Length; index++)
                 {
                     Keccak keccak = collected[index];
-                    keccak.Bytes.AsSpan().CopyTo(witnessSpan.Slice(i * Keccak.Size, Keccak.Size));
+                    keccak.Bytes.CopyTo(witnessSpan.Slice(i * Keccak.Size, Keccak.Size));
                     i++;
                 }
 

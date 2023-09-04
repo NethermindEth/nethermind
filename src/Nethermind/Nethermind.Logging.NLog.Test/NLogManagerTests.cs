@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using NLog;
 using NLog.Config;
-using NLog.Targets;
 using NUnit.Framework;
 
 namespace Nethermind.Logging.NLog.Test
@@ -20,7 +18,7 @@ namespace Nethermind.Logging.NLog.Test
         {
             NLogManager manager = new NLogManager("test", null);
             NLogLogger logger = (NLogLogger)manager.GetClassLogger();
-            Assert.AreEqual(GetType().FullName.Replace("Nethermind.", string.Empty), logger.Name);
+            Assert.That(logger.Name, Is.EqualTo(GetType().FullName.Replace("Nethermind.", string.Empty)));
         }
 
         [Test]

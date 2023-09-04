@@ -19,9 +19,9 @@ namespace Nethermind.Db
             return new(db, createInMemoryWriteStore);
         }
 
-        public static void Set(this IDb db, Keccak key, byte[] value)
+        public static void Set(this IDb db, Keccak key, byte[] value, WriteFlags writeFlags = WriteFlags.None)
         {
-            db[key.Bytes] = value;
+            db.Set(key.Bytes, value, writeFlags);
         }
 
         public static byte[]? Get(this IDb db, Keccak key)
@@ -48,9 +48,33 @@ namespace Nethermind.Db
             }
         }
 
-        public static KeyValuePair<byte[], byte[]>[] MultiGet(this IDb db, IEnumerable<KeccakKey> keys)
+        public static void Set(this IDb db, in ValueKeccak key, Span<byte> value)
         {
-            var k = keys.Select(k => k.Bytes).ToArray();
+            if (db is IDbWithSpan dbWithSpan)
+            {
+                dbWithSpan.PutSpan(key.Bytes, value);
+            }
+            else
+            {
+                db[key.Bytes] = value.ToArray();
+            }
+        }
+
+        public static void Set(this IDb db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        {
+            if (db is IDbWithSpan dbWithSpan)
+            {
+                dbWithSpan.PutSpan(key, value);
+            }
+            else
+            {
+                db[key] = value.ToArray();
+            }
+        }
+
+        public static KeyValuePair<byte[], byte[]>[] MultiGet(this IDb db, IEnumerable<ValueKeccak> keys)
+        {
+            var k = keys.Select(k => k.Bytes.ToArray()).ToArray();
             return db[k];
         }
 
@@ -123,7 +147,7 @@ namespace Nethermind.Db
             db.Remove(key.ToBigEndianByteArrayWithoutLeadingZeros());
         }
 
-        public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, LruCache<KeccakKey, TItem> cache = null, bool shouldCache = true) where TItem : class
+        public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, LruCache<ValueKeccak, TItem> cache = null, bool shouldCache = true) where TItem : class
         {
             TItem item = cache?.Get(key);
             if (item is null)

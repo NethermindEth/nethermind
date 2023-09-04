@@ -12,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -19,7 +20,6 @@ using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats.Model;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
-using Timer = System.Timers.Timer;
 
 namespace Nethermind.Network.Discovery;
 
@@ -37,8 +37,7 @@ public class DiscoveryApp : IDiscoveryApp
     private readonly INetworkStorage _discoveryStorage;
     private readonly INetworkConfig _networkConfig;
 
-    private Timer? _discoveryTimer;
-    private Timer? _discoveryPersistenceTimer;
+    private Task? _discoveryTimerTask;
 
     private IChannel? _channel;
     private MultithreadEventLoopGroup? _group;
@@ -100,15 +99,16 @@ public class DiscoveryApp : IDiscoveryApp
 
     public async Task StopAsync()
     {
+        if (_logger.IsDebug) _logger.Debug("Stopping discovery timer");
+        if (_logger.IsDebug) _logger.Debug("Stopping discovery persistence timer");
+
         _appShutdownSource.Cancel();
-        StopDiscoveryTimer();
-        StopDiscoveryPersistenceTimer();
 
         if (_storageCommitTask is not null)
         {
             await _storageCommitTask.ContinueWith(x =>
             {
-                if (x.IsFaulted)
+                if (x.IsFailedButNotCanceled())
                 {
                     if (_logger.IsError) _logger.Error("Error during discovery persistence stop.", x.Exception);
                 }
@@ -179,8 +179,12 @@ public class DiscoveryApp : IDiscoveryApp
     {
         if (_logger.IsDebug) _logger.Debug("Activated discovery channel.");
 
-        //Make sure this is non blocking code, otherwise netty will not process messages
-        Task.Run(() => OnChannelActivated(_appShutdownSource.Token)).ContinueWith
+        // Make sure this is non blocking code, otherwise netty will not process messages
+        // Explicitly use TaskScheduler.Default, otherwise it will use dotnetty's task scheduler which have a habit of
+        // not working sometimes.
+        Task.Factory
+            .StartNew(() => OnChannelActivated(_appShutdownSource.Token), _appShutdownSource.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default)
+            .ContinueWith
         (
             t =>
             {
@@ -292,85 +296,13 @@ public class DiscoveryApp : IDiscoveryApp
     private void InitializeDiscoveryTimer()
     {
         if (_logger.IsDebug) _logger.Debug("Starting discovery timer");
-        _discoveryTimer = new Timer(10) { AutoReset = false };
-        _discoveryTimer.Elapsed += (_, _) =>
-        {
-            try
-            {
-                if (_logger.IsDebug) _logger.Debug($"Running discovery with interval {_discoveryTimer.Interval}");
-                _discoveryTimer.Enabled = false;
-                RunDiscoveryProcess();
-                int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
-                _discoveryTimer.Interval =
-                    nodesCountAfterDiscovery < 16
-                        ? 10
-                        : nodesCountAfterDiscovery < 128
-                            ? 100
-                            : nodesCountAfterDiscovery < 256
-                                ? 1000
-                                : _discoveryConfig.DiscoveryInterval;
-            }
-            catch (Exception exception)
-            {
-                if (_logger.IsDebug) _logger.Error("Discovery timer failed", exception);
-            }
-            finally
-            {
-                _discoveryTimer.Enabled = true;
-            }
-        };
-        _discoveryTimer.Start();
-    }
-
-    private void StopDiscoveryTimer()
-    {
-        try
-        {
-            if (_logger.IsDebug) _logger.Debug("Stopping discovery timer");
-            _discoveryTimer?.Stop();
-            _discoveryTimer?.Dispose();
-        }
-        catch (Exception e)
-        {
-            _logger.Error("Error during discovery timer stop", e);
-        }
+        _discoveryTimerTask = RunDiscoveryProcess();
     }
 
     private void InitializeDiscoveryPersistenceTimer()
     {
         if (_logger.IsDebug) _logger.Debug("Starting discovery persistence timer");
-        _discoveryPersistenceTimer = new Timer(_discoveryConfig.DiscoveryPersistenceInterval) { AutoReset = false };
-        _discoveryPersistenceTimer.Elapsed += (_, _) =>
-        {
-            try
-            {
-                _discoveryPersistenceTimer.Enabled = false;
-                RunDiscoveryCommit();
-            }
-            catch (Exception exception)
-            {
-                if (_logger.IsDebug) _logger.Error("Discovery persistence timer failed", exception);
-            }
-            finally
-            {
-                _discoveryPersistenceTimer.Enabled = true;
-            }
-        };
-        _discoveryPersistenceTimer.Start();
-    }
-
-    private void StopDiscoveryPersistenceTimer()
-    {
-        try
-        {
-            if (_logger.IsDebug) _logger.Debug("Stopping discovery persistence timer");
-            _discoveryPersistenceTimer?.Stop();
-            _discoveryPersistenceTimer?.Dispose();
-        }
-        catch (Exception e)
-        {
-            _logger.Error("Error during discovery persistence timer stop", e);
-        }
+        _storageCommitTask = RunDiscoveryPersistenceCommit();
     }
 
     private async Task StopUdpChannelAsync()
@@ -500,77 +432,93 @@ public class DiscoveryApp : IDiscoveryApp
         return reachedNodeCounter > 0;
     }
 
-    private void RunDiscoveryProcess()
+    private async Task RunDiscoveryProcess()
     {
-        Task disc = RunDiscoveryAsync(_appShutdownSource.Token).ContinueWith(t =>
+        byte[] randomId = new byte[64];
+        CancellationToken cancellationToken = _appShutdownSource.Token;
+        PeriodicTimer timer = new(TimeSpan.FromMilliseconds(10));
+
+        long lastTickMs = Environment.TickCount64;
+        long waitTimeTimeMs = 10;
+        while (!cancellationToken.IsCancellationRequested
+            && await timer.WaitForNextTickAsync(cancellationToken))
         {
-            if (t.IsFaulted)
+            long currentTickMs = Environment.TickCount64;
+            long elapsedMs = currentTickMs - lastTickMs;
+            if (elapsedMs < waitTimeTimeMs)
             {
-                _logger.Error($"Error during discovery process: {t.Exception}");
+                // TODO: Change timer time in .NET 8.0 to avoid this https://github.com/dotnet/runtime/pull/82560
+                // Wait for the remaining time
+                await Task.Delay((int)(waitTimeTimeMs - elapsedMs), cancellationToken);
             }
-        });
 
-        disc.Wait();
-
-        Task refresh = RunRefreshAsync(_appShutdownSource.Token).ContinueWith(t =>
-        {
-            if (t.IsFaulted)
+            try
             {
-                _logger.Error($"Error during discovery refresh process: {t.Exception}");
+                if (_logger.IsTrace) _logger.Trace("Running discovery process.");
+
+                await _nodesLocator.LocateNodesAsync(cancellationToken);
             }
-        });
+            catch (Exception e)
+            {
+                _logger.Error($"Error during discovery process: {e}");
+            }
 
-        refresh.Wait();
-    }
+            try
+            {
+                if (_logger.IsTrace) _logger.Trace("Running refresh process.");
 
-    private async Task RunDiscoveryAsync(CancellationToken cancellationToken)
-    {
-        if (_logger.IsTrace) _logger.Trace("Running discovery process.");
-        await _nodesLocator.LocateNodesAsync(cancellationToken);
-    }
+                _cryptoRandom.GenerateRandomBytes(randomId);
+                await _nodesLocator.LocateNodesAsync(randomId, cancellationToken);
+            }
+            catch (Exception e)
+            {
+                _logger.Error($"Error during discovery refresh process: {e}");
+            }
 
-    private async Task RunRefreshAsync(CancellationToken cancellationToken)
-    {
-        if (_logger.IsTrace) _logger.Trace("Running refresh process.");
-        byte[] randomId = _cryptoRandom.GenerateRandomBytes(64);
-        await _nodesLocator.LocateNodesAsync(randomId, cancellationToken);
+            int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
+            waitTimeTimeMs =
+                nodesCountAfterDiscovery < 16
+                    ? 10
+                    : nodesCountAfterDiscovery < 128
+                        ? 100
+                        : nodesCountAfterDiscovery < 256
+                            ? 1000
+                            : _discoveryConfig.DiscoveryInterval;
+
+            lastTickMs = Environment.TickCount64;
+        }
     }
 
     [Todo(Improve.Allocations, "Remove ToArray here - address as a part of the network DB rewrite")]
-    private void RunDiscoveryCommit()
+    private async Task RunDiscoveryPersistenceCommit()
     {
-        try
+        CancellationToken cancellationToken = _appShutdownSource.Token;
+        PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_discoveryConfig.DiscoveryPersistenceInterval));
+
+        while (!cancellationToken.IsCancellationRequested
+            && await timer.WaitForNextTickAsync(cancellationToken))
         {
-            IReadOnlyCollection<INodeLifecycleManager> managers = _discoveryManager.GetNodeLifecycleManagers();
-            //we need to update all notes to update reputation
-            _discoveryStorage.UpdateNodes(managers.Select(x => new NetworkNode(x.ManagedNode.Id, x.ManagedNode.Host,
-                x.ManagedNode.Port, x.NodeStats.NewPersistedNodeReputation)).ToArray());
-
-            if (!_discoveryStorage.AnyPendingChange())
+            try
             {
-                if (_logger.IsTrace) _logger.Trace("No changes in discovery storage, skipping commit.");
-                return;
-            }
+                IReadOnlyCollection<INodeLifecycleManager> managers = _discoveryManager.GetNodeLifecycleManagers();
+                DateTime utcNow = DateTime.UtcNow;
+                //we need to update all notes to update reputation
+                _discoveryStorage.UpdateNodes(managers.Select(x => new NetworkNode(x.ManagedNode.Id, x.ManagedNode.Host,
+                    x.ManagedNode.Port, x.NodeStats.NewPersistedNodeReputation(utcNow))).ToArray());
 
-            _storageCommitTask = Task.Run(() =>
-            {
+                if (!_discoveryStorage.AnyPendingChange())
+                {
+                    if (_logger.IsTrace) _logger.Trace("No changes in discovery storage, skipping commit.");
+                    continue;
+                }
+
                 _discoveryStorage.Commit();
                 _discoveryStorage.StartBatch();
-            });
-
-            Task task = _storageCommitTask.ContinueWith(x =>
+            }
+            catch (Exception ex)
             {
-                if (x.IsFaulted && _logger.IsError)
-                {
-                    _logger.Error($"Error during discovery commit: {x.Exception}");
-                }
-            });
-            task.Wait();
-            _storageCommitTask = null;
-        }
-        catch (Exception ex)
-        {
-            _logger.Error($"Error during discovery commit: {ex}");
+                _logger.Error($"Error during discovery commit: {ex}");
+            }
         }
     }
 

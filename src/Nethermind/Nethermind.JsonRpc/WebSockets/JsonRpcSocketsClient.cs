@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -71,12 +70,12 @@ namespace Nethermind.JsonRpc.WebSockets
                 if (result.IsCollection)
                 {
                     long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                    _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, singleResponseSize);
+                    _ = _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, singleResponseSize);
                 }
                 else
                 {
                     long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                    _jsonRpcLocalStats.ReportCall(result.Report!.Value, handlingTimeMicroseconds, singleResponseSize);
+                    _ = _jsonRpcLocalStats.ReportCall(result.Report!.Value, handlingTimeMicroseconds, singleResponseSize);
                 }
                 stopwatch.Restart();
             }
@@ -133,7 +132,7 @@ namespace Nethermind.JsonRpc.WebSockets
 
                             isFirst = false;
                             singleResponseSize += await SendJsonRpcResultEntry(entry, false);
-                            _jsonRpcLocalStats.ReportCall(entry.Report);
+                            _ = _jsonRpcLocalStats.ReportCall(entry.Report);
 
                             // We reached the limit and don't want to responded to more request in the batch
                             if (!_jsonRpcContext.IsAuthenticated && singleResponseSize > _maxBatchResponseBodySize)
@@ -161,10 +160,13 @@ namespace Nethermind.JsonRpc.WebSockets
 
         private async Task<int> SendJsonRpcResultEntry(JsonRpcResult.Entry result, bool endOfMessage = true)
         {
-            void SerializeTimeoutException(MemoryStream stream)
+            void SerializeTimeoutException(MemoryStream stream, JsonRpcResult.Entry result)
             {
-                JsonRpcErrorResponse error = _jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                _jsonSerializer.Serialize(stream, error);
+                _jsonSerializer.Serialize(stream, _jsonRpcService.GetErrorResponse(
+                    ErrorCodes.Timeout,
+                    "Request was canceled due to enabled timeout.",
+                    result.Response.Id,
+                    result.Response.MethodName));
             }
 
             using (result)
@@ -173,15 +175,15 @@ namespace Nethermind.JsonRpc.WebSockets
 
                 try
                 {
-                    _jsonSerializer.Serialize(resultData, result.Response);
+                    _jsonSerializer.SerializeWaitForEnumeration(resultData, result.Response);
                 }
                 catch (Exception e) when (e.InnerException is OperationCanceledException)
                 {
-                    SerializeTimeoutException(resultData);
+                    SerializeTimeoutException(resultData, result);
                 }
                 catch (OperationCanceledException)
                 {
-                    SerializeTimeoutException(resultData);
+                    SerializeTimeoutException(resultData, result);
                 }
 
                 if (resultData.TryGetBuffer(out ArraySegment<byte> data))

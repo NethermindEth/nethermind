@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -27,13 +25,11 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            Keccak codeHash = TestState.UpdateCode(contractCode);
-
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            TestState.UpdateCodeHash(TestItem.AddressC, codeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, contractCode, Spec);
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            TestState.UpdateCodeHash(TestItem.AddressD, codeHash, Spec);
+            TestState.InsertCode(TestItem.AddressD, contractCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
@@ -44,7 +40,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
             AssertGas(result, 21000 + 2 * GasCostOf.CallEip150 + 24 + 21 + GasCostOf.VeryLow + 3 * GasCostOf.SelfBalance + 3 * GasCostOf.SSet);
             UInt256 balanceB = TestState.GetBalance(TestItem.AddressB);
             UInt256 balanceC = TestState.GetBalance(TestItem.AddressC);

@@ -18,7 +18,6 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -52,7 +51,7 @@ namespace Nethermind.Synchronization
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
-        private readonly LruCache<KeccakKey, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
+        private readonly LruCache<ValueKeccak, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
 
         private readonly long _pivotNumber;
         private readonly Keccak _pivotHash;

@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -118,6 +117,12 @@ namespace Nethermind.Core.Test.Builders
         public ReceiptBuilder WithStatusCode(byte statusCode)
         {
             TestObjectInternal.StatusCode = statusCode;
+            return this;
+        }
+
+        public ReceiptBuilder WithCalculatedBloom()
+        {
+            TestObjectInternal.Bloom = new Bloom(TestObjectInternal.Logs);
             return this;
         }
     }

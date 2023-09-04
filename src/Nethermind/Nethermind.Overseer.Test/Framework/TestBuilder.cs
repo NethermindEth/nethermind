@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Overseer.Test.Framework.Steps;
@@ -271,9 +270,15 @@ namespace Nethermind.Overseer.Test.Framework
             return this;
         }
 
+#if DEBUG
+        const string buildConfiguration = "Debug";
+#else
+        const string buildConfiguration = "Release";
+#endif
+
         private void CopyRunnerFiles(string targetDirectory)
         {
-            string sourceDirectory = Path.Combine(Directory.GetCurrentDirectory(), "../../../../Nethermind.Runner/bin/Debug/net6.0/");
+            string sourceDirectory = Path.Combine(Directory.GetCurrentDirectory(), $"../../../../Nethermind.Runner/bin/{buildConfiguration}/net7.0/");
             if (!Directory.Exists(sourceDirectory))
             {
                 throw new IOException($"Runner not found at {sourceDirectory}");

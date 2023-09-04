@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Wallet;
 
 [assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
 
@@ -71,7 +70,7 @@ namespace Nethermind.Consensus.Clique
             Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - Clique.ExtraSealLength, signatureBytes.Length);
             // Copy signature's recovery id (V)
             byte recoveryId = signature.RecoveryId;
-            header.ExtraData[header.ExtraData.Length - 1] = recoveryId;
+            header.ExtraData[^1] = recoveryId;
 
             return block;
         }

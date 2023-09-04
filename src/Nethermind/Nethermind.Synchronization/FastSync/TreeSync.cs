@@ -6,11 +6,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -694,6 +694,9 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
 
+                _stateDb.Flush();
+                _codeDb.Flush();
+
                 Interlocked.Exchange(ref _rootSaved, 1);
             }
 
@@ -781,7 +784,7 @@ namespace Nethermind.Synchronization.FastSync
                     HashSet<Keccak?> alreadyProcessedChildHashes = new();
 
                     Span<byte> branchChildPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + 1];
-                    currentStateSyncItem.PathNibbles.CopyTo(branchChildPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
+                    currentStateSyncItem.PathNibbles.CopyTo(branchChildPath[..currentStateSyncItem.PathNibbles.Length]);
 
                     for (int childIndex = 15; childIndex >= 0; childIndex--)
                     {
@@ -838,8 +841,8 @@ namespace Nethermind.Synchronization.FastSync
 
                         // Add nibbles to StateSyncItem.PathNibbles
                         Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Key!.Length];
-                        currentStateSyncItem.PathNibbles.CopyTo(childPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
-                        trieNode.Key!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
+                        currentStateSyncItem.PathNibbles.CopyTo(childPath[..currentStateSyncItem.PathNibbles.Length]);
+                        trieNode.Key!.CopyTo(childPath[currentStateSyncItem.PathNibbles.Length..]);
 
                         AddNodeResult addResult = AddNodeToPending(
                             new StateSyncItem(
@@ -871,7 +874,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
-                        (Keccak codeHash, Keccak storageRoot) = AccountDecoder.DecodeHashesOnly(new RlpStream(trieNode.Value));
+                        (Keccak codeHash, Keccak storageRoot) = AccountDecoder.DecodeHashesOnly(new RlpStream(trieNode.Value.ToArray()));
                         if (codeHash != Keccak.OfAnEmptyString)
                         {
                             // prepare a branch without the code DB
@@ -901,8 +904,8 @@ namespace Nethermind.Synchronization.FastSync
                             // it's a leaf with a storage, so we need to copy the current path (full 64 nibbles) to StateSyncItem.AccountPathNibbles
                             // and StateSyncItem.PathNibbles will start from null (storage root)
                             Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Key!.Length];
-                            currentStateSyncItem.PathNibbles.CopyTo(childPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
-                            trieNode.Key!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
+                            currentStateSyncItem.PathNibbles.CopyTo(childPath[..currentStateSyncItem.PathNibbles.Length]);
+                            trieNode.Key!.CopyTo(childPath[currentStateSyncItem.PathNibbles.Length..]);
 
                             AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, childPath.ToArray(), null, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult != AddNodeResult.AlreadySaved)

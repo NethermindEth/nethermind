@@ -7,19 +7,20 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Precompiles;
 
-public class PointEvaluationPrecompile : IPrecompile
+public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
 {
-    public static readonly IPrecompile Instance = new PointEvaluationPrecompile();
+    public static readonly PointEvaluationPrecompile Instance = new PointEvaluationPrecompile();
 
     private static readonly ReadOnlyMemory<byte> PointEvaluationSuccessfulResponse =
-                                                    BitConverter.GetBytes((long)KzgPolynomialCommitments.FieldElementsPerBlob)
-                                            .Concat(KzgPolynomialCommitments.BlsModulus.ToLittleEndian())
-                                            .ToArray();
+        ((UInt256)Ckzg.Ckzg.FieldElementsPerBlob).ToBigEndian()
+        .Concat(KzgPolynomialCommitments.BlsModulus.ToBigEndian())
+        .ToArray();
 
-    public Address Address { get; } = Address.FromNumber(0x14);
+    public static Address Address { get; } = Address.FromNumber(0x0a);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 50000L;
 
@@ -27,6 +28,7 @@ public class PointEvaluationPrecompile : IPrecompile
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static bool IsValid(in ReadOnlyMemory<byte> inputData)
         {
@@ -43,7 +45,7 @@ public class PointEvaluationPrecompile : IPrecompile
             ReadOnlySpan<byte> proof = inputDataSpan[144..192];
             Span<byte> hash = stackalloc byte[32];
 
-            return KzgPolynomialCommitments.TryComputeCommitmentV1(commitment, hash)
+            return KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, hash)
                    && hash.SequenceEqual(versionedHash)
                    && KzgPolynomialCommitments.VerifyProof(commitment, z, y, proof);
         }

@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
+using FluentAssertions;
+using MathNet.Numerics.Random;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -108,6 +110,87 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [Test]
+        public async Task handling_findnode_msg_will_limit_result_to_12()
+        {
+            IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
+            discoveryConfig.PongTimeout = 50;
+            discoveryConfig.BucketSize = 32;
+            discoveryConfig.BucketsCount = 1;
+
+            _nodeTable = new NodeTable(new NodeDistanceCalculator(discoveryConfig), discoveryConfig, _networkConfig, LimboLogs.Instance);
+            _nodeTable.Initialize(TestItem.PublicKeyA);
+
+            Node node = new(TestItem.PublicKeyB, _host, _port);
+            NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock, _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
+
+            await BondWithSelf(nodeManager, node);
+
+            for (int i = 0; i < 32; i++)
+            {
+                _nodeTable.AddNode(
+                    new Node(
+                        new PublicKey(Random.Shared.NextBytes(64)),
+                        "127.0.0.1",
+                        i
+                    ));
+            }
+
+            NeighborsMsg? sentMsg = null;
+            _discoveryManagerMock.SendMessage(Arg.Do<NeighborsMsg>(msg =>
+            {
+                sentMsg = msg;
+            }));
+
+            nodeManager.ProcessFindNodeMsg(new FindNodeMsg(TestItem.PublicKeyA, 1, new byte[] { 0 }));
+
+            Assert.IsNotNull(sentMsg);
+            _nodeTable.Buckets[0].BondedItemsCount.Should().Be(32);
+            sentMsg!.Nodes.Length.Should().Be(12);
+        }
+
+        [Test]
+        public async Task processNeighboursMessage_willCombineTwoSubsequentMessage()
+        {
+            IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
+            discoveryConfig.PongTimeout = 50;
+            discoveryConfig.BucketSize = 32;
+            discoveryConfig.BucketsCount = 1;
+
+            _nodeTable = new NodeTable(new NodeDistanceCalculator(discoveryConfig), discoveryConfig, _networkConfig, LimboLogs.Instance);
+            _nodeTable.Initialize(TestItem.PublicKeyA);
+
+            Node node = new(TestItem.PublicKeyB, _host, _port);
+            NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock, _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
+
+            await BondWithSelf(nodeManager, node);
+
+            _discoveryManagerMock
+                .Received(0)
+                .GetNodeLifecycleManager(Arg.Any<Node>(), Arg.Any<bool>());
+
+            nodeManager.SendFindNode(Array.Empty<byte>());
+
+            Node[] firstNodes = TestItem.PublicKeys
+                .Take(12)
+                .Select(pubkey => new Node(pubkey, "127.0.0.2", 0))
+                .ToArray();
+            NeighborsMsg firstNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, firstNodes);
+            Node[] secondNodes = TestItem.PublicKeys
+                .Skip(12)
+                .Take(4)
+                .Select(pubkey => new Node(pubkey, "127.0.0.2", 0))
+                .ToArray();
+            NeighborsMsg secondNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, secondNodes);
+
+            nodeManager.ProcessNeighborsMsg(firstNodeMsg);
+            nodeManager.ProcessNeighborsMsg(secondNodeMsg);
+
+            _discoveryManagerMock
+                .Received(16)
+                .GetNodeLifecycleManager(Arg.Any<Node>(), Arg.Any<bool>());
+        }
+
+        [Test]
         public async Task sending_ping_receiving_incorrect_pong_does_not_bond()
         {
             Node node = new(TestItem.PublicKeyB, _host, _port);
@@ -125,13 +208,13 @@ namespace Nethermind.Network.Discovery.Test
         {
             Node node = new(TestItem.PublicKeyB, _host, _port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            Assert.AreEqual(NodeLifecycleState.New, manager?.State);
+            Assert.That(manager?.State, Is.EqualTo(NodeLifecycleState.New));
 
             PongMsg msgI = new(_nodeIds[0], GetExpirationTime(), new byte[32]);
             msgI.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
             _discoveryManager.OnIncomingMsg(msgI);
 
-            Assert.AreEqual(NodeLifecycleState.New, manager?.State);
+            Assert.That(manager?.State, Is.EqualTo(NodeLifecycleState.New));
         }
 
         [Test]
@@ -140,7 +223,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             Node node = new(TestItem.PublicKeyB, _host, _port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            Assert.AreEqual(NodeLifecycleState.New, manager?.State);
+            Assert.That(manager?.State, Is.EqualTo(NodeLifecycleState.New));
 
             await Task.Delay(500);
 
@@ -164,12 +247,12 @@ namespace Nethermind.Network.Discovery.Test
                 }
 
                 managers.Add(manager);
-                Assert.AreEqual(NodeLifecycleState.New, manager.State);
+                Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.New));
 
                 PongMsg msgI = new(_nodeIds[i], GetExpirationTime(), new byte[32]);
                 msgI.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
                 _discoveryManager.OnIncomingMsg(msgI);
-                Assert.AreEqual(NodeLifecycleState.New, manager.State);
+                Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.New));
             }
 
             //table should contain 3 active nodes
@@ -182,13 +265,13 @@ namespace Nethermind.Network.Discovery.Test
             Node candidateNode = new(_nodeIds[3], _host, _port);
             INodeLifecycleManager? candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
 
-            Assert.AreEqual(NodeLifecycleState.New, candidateManager?.State);
+            Assert.That(candidateManager?.State, Is.EqualTo(NodeLifecycleState.New));
 
             PongMsg pongMsg = new(_nodeIds[3], GetExpirationTime(), new byte[32]);
             pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
             _discoveryManager.OnIncomingMsg(pongMsg);
 
-            Assert.AreEqual(NodeLifecycleState.New, candidateManager?.State);
+            Assert.That(candidateManager?.State, Is.EqualTo(NodeLifecycleState.New));
             INodeLifecycleManager evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
 
             //receiving pong for eviction candidate - should survive
@@ -235,13 +318,13 @@ namespace Nethermind.Network.Discovery.Test
                 }
 
                 managers.Add(manager);
-                Assert.AreEqual(NodeLifecycleState.New, manager.State);
+                Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.New));
 
                 PongMsg msg = new(_nodeIds[i], GetExpirationTime(), new byte[32]);
                 msg.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
                 _discoveryManager.OnIncomingMsg(msg);
 
-                Assert.AreEqual(NodeLifecycleState.Active, manager.State);
+                Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.Active));
             }
 
             //table should contain 3 active nodes
@@ -255,7 +338,7 @@ namespace Nethermind.Network.Discovery.Test
             Node candidateNode = new(_nodeIds[3], _host, _port);
 
             INodeLifecycleManager? candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
-            Assert.AreEqual(NodeLifecycleState.New, candidateManager?.State);
+            Assert.That(candidateManager?.State, Is.EqualTo(NodeLifecycleState.New));
 
             PongMsg pongMsg = new(_nodeIds[3], GetExpirationTime(), new byte[32]);
             pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
@@ -300,5 +383,19 @@ namespace Nethermind.Network.Discovery.Test
                 _nodeIds[i] = new PublicKey(nodeIdBytes);
             }
         }
+
+        private async Task BondWithSelf(NodeLifecycleManager nodeManager, Node node)
+        {
+            byte[] mdc = new byte[32];
+            PingMsg? sentPing = null;
+            _discoveryManagerMock.SendMessage(Arg.Do<PingMsg>(msg =>
+            {
+                msg.Mdc = mdc;
+                sentPing = msg;
+            }));
+            await nodeManager.SendPingAsync();
+            nodeManager.ProcessPongMsg(new PongMsg(node.Address, GetExpirationTime(), sentPing!.Mdc!));
+        }
+
     }
 }

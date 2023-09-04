@@ -4,15 +4,12 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Force.Crc32;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 
@@ -31,7 +28,7 @@ namespace Nethermind.Network
             DictForks = new();
             Forks = new (ForkActivation Activation, ForkId Id)[transitionActivations.Length + 1];
             byte[] blockNumberBytes = new byte[8];
-            uint crc = Crc32Algorithm.Append(0, genesisHash.Bytes);
+            uint crc = Crc32Algorithm.Append(0, genesisHash.ThreadStaticBytes());
             // genesis fork activation
             SetFork(0, crc, ((0, null), new ForkId(crc, transitionActivations.Length > 0 ? transitionActivations[0].Activation : 0)));
             for (int index = 0; index < transitionActivations.Length; index++)

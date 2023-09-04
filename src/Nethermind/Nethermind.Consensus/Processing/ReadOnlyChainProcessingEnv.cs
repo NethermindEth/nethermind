@@ -5,7 +5,6 @@ using System;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -24,7 +23,7 @@ namespace Nethermind.Consensus.Processing
         public IBlockProcessor BlockProcessor { get; }
         public IBlockchainProcessor ChainProcessor { get; }
         public IBlockProcessingQueue BlockProcessingQueue { get; }
-        public IStateProvider StateProvider => _txEnv.StateProvider;
+        public IWorldState StateProvider => _txEnv.StateProvider;
 
         public ReadOnlyChainProcessingEnv(
             ReadOnlyTxProcessingEnv txEnv,
@@ -48,7 +47,6 @@ namespace Nethermind.Consensus.Processing
                 rewardCalculator,
                 transactionsExecutor,
                 StateProvider,
-                _txEnv.StorageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);

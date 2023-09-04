@@ -20,7 +20,7 @@ namespace Nethermind.Serialization.Rlp
             _initialPosition = buffer.ReaderIndex;
         }
 
-        public override void Write(Span<byte> bytesToWrite)
+        public override void Write(ReadOnlySpan<byte> bytesToWrite)
         {
             _buffer.EnsureWritable(bytesToWrite.Length, true);
 
@@ -67,6 +67,12 @@ namespace Nethermind.Serialization.Rlp
         {
             Span<byte> span = _buffer.Array.AsSpan(_buffer.ArrayOffset + _buffer.ReaderIndex, length);
             _buffer.SkipBytes(span.Length);
+            return span;
+        }
+
+        public override Span<byte> Peek(int offset, int length)
+        {
+            Span<byte> span = _buffer.Array.AsSpan(_buffer.ArrayOffset + _buffer.ReaderIndex + offset, length);
             return span;
         }
 

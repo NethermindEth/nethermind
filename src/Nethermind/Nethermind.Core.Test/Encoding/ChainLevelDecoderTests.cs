@@ -32,8 +32,8 @@ namespace Nethermind.Core.Test.Encoding
             Assert.True(decoded.HasBlockOnMainChain, "has block on the main chain");
             Assert.True(decoded.BlockInfos[0].WasProcessed, "0 processed");
             Assert.False(decoded.BlockInfos[1].WasProcessed, "1 not processed");
-            Assert.AreEqual(TestItem.KeccakA, decoded.BlockInfos[0].BlockHash, "block hash");
-            Assert.AreEqual(UInt256.One, decoded.BlockInfos[0].TotalDifficulty, "difficulty");
+            Assert.That(decoded.BlockInfos[0].BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
+            Assert.That(decoded.BlockInfos[0].TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
         }
 
         [Test]

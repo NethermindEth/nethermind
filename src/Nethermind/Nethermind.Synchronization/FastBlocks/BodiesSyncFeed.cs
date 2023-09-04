@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
@@ -29,7 +30,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISpecProvider _specProvider;
         private readonly ISyncPeerPool _syncPeerPool;
 
-        private readonly long _pivotNumber;
+        private long _pivotNumber;
         private readonly long _barrier;
 
         private SyncStatusList _syncStatusList;
@@ -63,12 +64,25 @@ namespace Nethermind.Synchronization.FastBlocks
             ResetSyncStatusList();
         }
 
+        public override void InitializeFeed()
+        {
+            if (_pivotNumber < _syncConfig.PivotNumberParsed)
+            {
+                _pivotNumber = _syncConfig.PivotNumberParsed;
+                if (_logger.IsInfo) _logger.Info($"Changed pivot in bodies sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
+                ResetSyncStatusList();
+            }
+
+            base.InitializeFeed();
+        }
+
         private void ResetSyncStatusList()
         {
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
-                _blockTree.LowestInsertedBodyNumber);
+                _blockTree.LowestInsertedBodyNumber,
+                _syncConfig.AncientBodiesBarrier);
         }
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
@@ -140,6 +154,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             finally
             {
+                batch.Response?.Dispose();
                 batch?.MarkHandlingEnd();
             }
         }
@@ -147,7 +162,8 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, out Block? block)
         {
             BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash);
-            bool txRootIsValid = new TxTrie(blockBody.Transactions).RootHash == header.TxRoot;
+            Keccak rootHash = TxTrie.CalculateRoot(blockBody.Transactions);
+            bool txRootIsValid = rootHash == header.TxRoot;
             bool unclesHashIsValid = UnclesHash.Calculate(blockBody.Uncles) == header.UnclesHash;
             if (txRootIsValid && unclesHashIsValid)
             {
@@ -165,13 +181,14 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
+            BlockBody[]? responses = batch.Response?.Bodies ?? Array.Empty<BlockBody>();
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {
                 BlockInfo? blockInfo = batch.Infos[i];
-                BlockBody? body = (batch.Response?.Length ?? 0) <= i
+                BlockBody? body = responses.Length <= i
                     ? null
-                    : batch.Response![i];
+                    : responses[i];
 
                 // last batch
                 if (blockInfo is null)
@@ -195,15 +212,15 @@ namespace Nethermind.Synchronization.FastBlocks
 
                         if (batch.ResponseSourcePeer is not null)
                         {
-                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, InitiateDisconnectReason.InvalidTxOrUncle, "invalid tx or uncles root");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, DisconnectReason.InvalidTxOrUncle, "invalid tx or uncles root");
                         }
 
-                        _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                        _syncStatusList.MarkPending(blockInfo);
                     }
                 }
                 else
                 {
-                    _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                    _syncStatusList.MarkPending(blockInfo);
                 }
             }
 

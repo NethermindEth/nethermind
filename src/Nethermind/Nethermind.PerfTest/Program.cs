@@ -254,7 +254,7 @@ namespace Nethermind.PerfTest
 
             /* load spec */
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "ropsten.json"));
+            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "goerli.json"));
             _logger.Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
             _logger.Info($"ChainSpec loaded");
@@ -331,8 +331,7 @@ namespace Nethermind.PerfTest
                 stateProvider.CreateAccount(address, allocation.Balance);
                 if (allocation.Code != null)
                 {
-                    Keccak codeHash = stateProvider.UpdateCode(allocation.Code);
-                    stateProvider.UpdateCodeHash(address, codeHash, specProvider.GenesisSpec);
+                    stateProvider.InsertCode(address, allocation.Code, specProvider.GenesisSpec);
                 }
 
                 if (allocation.Constructor != null)

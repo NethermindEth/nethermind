@@ -3,7 +3,6 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -25,8 +24,7 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
         IBlockValidator blockValidator,
         IRewardCalculator rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
-        IStateProvider stateProvider,
-        IStorageProvider storageProvider,
+        IWorldState stateProvider,
         IReceiptStorage receiptStorage,
         ILogManager logManager,
         IBlockTree blockTree,
@@ -40,7 +38,6 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
             rewardCalculator,
             blockTransactionsExecutor,
             stateProvider,
-            storageProvider,
             receiptStorage,
             logManager,
             blockTree,

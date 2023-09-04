@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -79,7 +78,6 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
             TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
             readOnlyTxProcessingEnv.StateProvider,
-            readOnlyTxProcessingEnv.StorageProvider,
             receiptStorage,
             logManager,
             _blockTree,
@@ -88,8 +86,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
                     withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
                     logManager
                     )
-                )
-            );
+                ));
     }
 
     protected override TxPoolTxSource CreateTxPoolTxSource(

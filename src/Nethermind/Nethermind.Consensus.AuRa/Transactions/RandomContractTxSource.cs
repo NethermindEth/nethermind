@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Transactions;
@@ -13,9 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.State;
 using Org.BouncyCastle.Crypto;
 
 namespace Nethermind.Consensus.AuRa.Transactions
@@ -94,7 +91,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                                 {
                                     using (privateKey)
                                     {
-                                        bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
+                                        bytes = _eciesCipher.Decrypt(privateKey, cipher).PlainText;
                                     }
                                 }
                                 else
@@ -108,7 +105,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                                 // But we need to fallback to node key here when we upgrade version.
                                 // This is temporary code after all validators are upgraded we can remove it.
                                 using PrivateKey privateKey = _previousCryptoKey.Unprotect();
-                                bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
+                                bytes = _eciesCipher.Decrypt(privateKey, cipher).PlainText;
                             }
 
                             if (bytes?.Length != 32)

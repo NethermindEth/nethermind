@@ -9,15 +9,15 @@ using Nethermind.Crypto.Blake2;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class Blake2FPrecompile : IPrecompile
+    public class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
     {
         private const int RequiredInputLength = 213;
 
         private Blake2Compression _blake = new();
 
-        public static readonly IPrecompile Instance = new Blake2FPrecompile();
+        public static readonly Blake2FPrecompile Instance = new Blake2FPrecompile();
 
-        public Address Address { get; } = Address.FromNumber(9);
+        public static Address Address { get; } = Address.FromNumber(9);
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
 
@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Precompiles
                 return 0;
             }
 
-            uint rounds = inputData.Slice(0, 4).Span.ReadEthUInt32();
+            uint rounds = inputData[..4].Span.ReadEthUInt32();
 
             return rounds;
         }

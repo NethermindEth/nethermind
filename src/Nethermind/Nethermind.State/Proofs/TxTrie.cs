@@ -4,8 +4,12 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Trie;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Proofs;
 
@@ -18,21 +22,30 @@ public class TxTrie : PatriciaTrie<Transaction>
 
     /// <inheritdoc/>
     /// <param name="transactions">The transactions to build the trie of.</param>
-    public TxTrie(IEnumerable<Transaction> transactions, bool canBuildProof = false)
-        : base(transactions, canBuildProof) => ArgumentNullException.ThrowIfNull(transactions);
+    public TxTrie(IEnumerable<Transaction> transactions, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
+        : base(transactions, canBuildProof, bufferPool: bufferPool) => ArgumentNullException.ThrowIfNull(transactions);
 
     protected override void Initialize(IEnumerable<Transaction> list)
     {
-        var key = 0;
+        int key = 0;
 
         // 3% allocations (2GB) on a Goerli 3M blocks fast sync due to calling transaction encoder here
         // Avoiding it would require pooling byte arrays and passing them as Spans to temporary trees
         // a temporary trie would be a trie that exists to create a state root only and then be disposed of
-        foreach (var transaction in list)
+        foreach (Transaction? transaction in list)
         {
-            Rlp transactionRlp = _txDecoder.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
-
-            Set(Rlp.Encode(key++).Bytes, transactionRlp.Bytes);
+            CappedArray<byte> buffer = _txDecoder.EncodeToCappedArray(transaction, RlpBehaviors.SkipTypedWrapping,
+                bufferPool: _bufferPool);
+            CappedArray<byte> keyBuffer = (key++).EncodeToCappedArray(bufferPool: _bufferPool);
+            Set(keyBuffer.AsSpan(), buffer);
         }
+    }
+
+    public static Keccak CalculateRoot(IList<Transaction> transactions)
+    {
+        TrackingCappedArrayPool cappedArray = new TrackingCappedArrayPool(transactions.Count * 4);
+        Keccak rootHash = new TxTrie(transactions, false, bufferPool: cappedArray).RootHash;
+        cappedArray.ReturnAll();
+        return rootHash;
     }
 }

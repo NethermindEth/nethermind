@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Logging
@@ -54,7 +53,7 @@ namespace Nethermind.Logging
 
         private void Log(string text)
         {
-            _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} [{Thread.CurrentThread.ManagedThreadId}] {_prefix}{text}");
+            _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} [{Environment.CurrentManagedThreadId}] {_prefix}{text}");
         }
 
         public void Info(string text)

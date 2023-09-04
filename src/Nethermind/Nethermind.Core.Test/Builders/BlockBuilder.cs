@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
+using System;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -56,6 +56,18 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithBlobGasUsed(ulong? blobGasUsed)
+        {
+            TestObjectInternal.Header.BlobGasUsed = blobGasUsed;
+            return this;
+        }
+
+        public BlockBuilder WithExcessBlobGas(ulong? excessBlobGas)
+        {
+            TestObjectInternal.Header.ExcessBlobGas = excessBlobGas;
+            return this;
+        }
+
         public BlockBuilder WithTransactions(int txCount, IReleaseSpec releaseSpec)
         {
             Transaction[] txs = new Transaction[txCount];
@@ -73,6 +85,7 @@ namespace Nethermind.Core.Test.Builders
             for (int i = 0; i < txCount; i++)
             {
                 txs[i] = new Transaction();
+                txs[i].Hash = txs[i].CalculateHash();
             }
 
             TxReceipt[] receipts = new TxReceipt[txCount];
@@ -152,12 +165,22 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.Number = blockHeader?.Number + 1 ?? 0;
             TestObjectInternal.Header.Timestamp = blockHeader?.Timestamp + 1 ?? 0;
             TestObjectInternal.Header.ParentHash = blockHeader is null ? Keccak.Zero : blockHeader.Hash;
+            TestObjectInternal.Header.MaybeParent = blockHeader is null ? null : new WeakReference<BlockHeader>(blockHeader);
             return this;
         }
 
         public BlockBuilder WithParent(Block block)
         {
             return WithParent(block.Header);
+        }
+
+        public BlockBuilder WithPostMergeRules()
+        {
+            TestObjectInternal.Header.Difficulty = 0;
+            TestObjectInternal.Header.UnclesHash = Keccak.OfAnEmptySequenceRlp;
+            TestObjectInternal.Header.Nonce = 0;
+            TestObjectInternal.Header.IsPostMerge = true;
+            return this;
         }
 
         public BlockBuilder WithUncles(params Block[] uncles)
@@ -242,7 +265,7 @@ namespace Nethermind.Core.Test.Builders
             return WithWithdrawals(withdrawals);
         }
 
-        public BlockBuilder WithWithdrawals(Withdrawal[]? withdrawals)
+        public BlockBuilder WithWithdrawals(params Withdrawal[]? withdrawals)
         {
             TestObjectInternal = TestObjectInternal
                 .WithReplacedBody(TestObjectInternal.Body.WithChangedWithdrawals(withdrawals));
@@ -251,6 +274,12 @@ namespace Nethermind.Core.Test.Builders
                 ? null
                 : new WithdrawalTrie(withdrawals).RootHash;
 
+            return this;
+        }
+
+        public BlockBuilder WithParentBeaconBlockRoot(Keccak? parentBeaconBlockRoot)
+        {
+            TestObjectInternal.Header.ParentBeaconBlockRoot = parentBeaconBlockRoot;
             return this;
         }
     }

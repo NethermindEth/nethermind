@@ -9,12 +9,10 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -978,8 +976,7 @@ namespace Nethermind.Trie.Test
             MemDb memDb = new();
 
             using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.IfBlockOlderThan(lookupLimit), _logManager);
-            StateProvider stateProvider = new(trieStore, new MemDb(), _logManager);
-            StorageProvider storageProvider = new(trieStore, stateProvider, _logManager);
+            WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
 
             Account[] accounts = new Account[accountsCount];
             Address[] addresses = new Address[accountsCount];
@@ -1033,7 +1030,7 @@ namespace Nethermind.Trie.Test
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            storageProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), storage);
                         }
                         else if (!account.IsTotallyEmpty)
                         {
@@ -1041,7 +1038,7 @@ namespace Nethermind.Trie.Test
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            storageProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), storage);
                         }
                     }
                 }
@@ -1049,10 +1046,8 @@ namespace Nethermind.Trie.Test
                 streamWriter.WriteLine(
                     $"Commit block {blockNumber} | empty: {isEmptyBlock}");
 
-                storageProvider.Commit();
                 stateProvider.Commit(MuirGlacier.Instance);
 
-                storageProvider.CommitTrees(blockNumber);
                 stateProvider.CommitTree(blockNumber);
                 rootQueue.Enqueue(stateProvider.StateRoot);
             }
@@ -1076,7 +1071,7 @@ namespace Nethermind.Trie.Test
                         {
                             for (int j = 0; j < 256; j++)
                             {
-                                storageProvider.Get(new StorageCell(addresses[i], (UInt256)j));
+                                stateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
                             }
                         }
                     }

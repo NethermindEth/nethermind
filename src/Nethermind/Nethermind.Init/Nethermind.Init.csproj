@@ -14,10 +14,10 @@
     <ProjectReference Include="..\Nethermind.Network.Dns\Nethermind.Network.Dns.csproj" />
     <ProjectReference Include="..\Nethermind.Network.Enr\Nethermind.Network.Enr.csproj" />
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
-  </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="HardwareInformation" />
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Nethermind.Runner.Test</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>

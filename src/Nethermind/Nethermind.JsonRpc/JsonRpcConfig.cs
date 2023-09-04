@@ -15,6 +15,7 @@ namespace Nethermind.JsonRpc
         public bool Enabled { get; set; }
         public string Host { get; set; } = "127.0.0.1";
         public int Timeout { get; set; } = 20000;
+        public int RequestQueueLimit { get; set; } = 500;
         public string RpcRecorderBaseFilePath { get; set; } = "logs/rpc.{counter}.txt";
 
         public RpcRecorderState RpcRecorderState { get; set; } = RpcRecorderState.None;
@@ -44,6 +45,7 @@ namespace Nethermind.JsonRpc
         {
             "engine_newPayloadV1",
             "engine_newPayloadV2",
+            "engine_newPayloadV3",
             "engine_forkchoiceUpdatedV1",
             "engine_forkchoiceUpdatedV2"
         };

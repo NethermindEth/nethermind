@@ -3,7 +3,6 @@
 
 using System.IO;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
@@ -44,13 +43,13 @@ public class GenesisLoaderTests
     public void Can_load_withdrawals_with_empty_root()
     {
         Block block = GetGenesisBlock("Specs/shanghai_from_genesis.json");
-        Assert.AreEqual("0x3c8aeea1d582ff43787ac297e08a25c58ee9609ab49139e64e0f7a8a56ba3a46", block.Hash!.ToString());
+        Assert.That(block.Hash!.ToString(), Is.EqualTo("0x1326aad1114b1f1c6a345b69ba4ba6f8ab6ce027d988aacd275ab596a047a547"));
     }
 
     private void AssertBlockHash(string expectedHash, string chainspecFilePath)
     {
         Block block = GetGenesisBlock(chainspecFilePath);
-        Assert.AreEqual(expectedHash, block.Hash!.ToString());
+        Assert.That(block.Hash!.ToString(), Is.EqualTo(expectedHash));
     }
 
     private Block GetGenesisBlock(string chainspecPath)
@@ -60,14 +59,12 @@ public class GenesisLoaderTests
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Berlin.Instance);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);
-        StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        GenesisLoader genesisLoader = new(chainSpec, specProvider, stateProvider, storageProvider,
-            transactionProcessor);
+        GenesisLoader genesisLoader = new(chainSpec, specProvider, stateProvider, transactionProcessor);
         return genesisLoader.Load();
     }
 

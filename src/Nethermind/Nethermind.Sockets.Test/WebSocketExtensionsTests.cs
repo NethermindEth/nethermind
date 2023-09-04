@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.WebSockets;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
@@ -17,7 +16,6 @@ using Nethermind.Serialization.Json;
 using NSubstitute;
 using NSubstitute.Extensions;
 using NUnit.Framework;
-using NUnit.Framework.Constraints;
 
 namespace Nethermind.Sockets.Test
 {
@@ -151,10 +149,10 @@ namespace Nethermind.Sockets.Test
 
             await webSocketsClient.ReceiveAsync();
 
-            Assert.AreEqual(1024, Metrics.JsonRpcBytesReceivedWebSockets);
-            Assert.AreEqual(400, Metrics.JsonRpcBytesSentWebSockets);
-            localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 100);
-            localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 300);
+            Assert.That(Metrics.JsonRpcBytesReceivedWebSockets, Is.EqualTo(1024));
+            Assert.That(Metrics.JsonRpcBytesSentWebSockets, Is.EqualTo(400));
+            await localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 100);
+            await localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 300);
         }
 
         [Test]

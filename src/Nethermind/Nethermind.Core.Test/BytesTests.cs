@@ -28,7 +28,7 @@ namespace Nethermind.Core.Test
             IComparer<byte[]> comparer = Bytes.Comparer;
             byte[]? x = hexString1 is null ? null : Bytes.FromHexString(hexString1);
             byte[]? y = hexString2 is null ? null : Bytes.FromHexString(hexString2);
-            Assert.AreEqual(expectedResult, comparer.Compare(x, y));
+            Assert.That(comparer.Compare(x, y), Is.EqualTo(expectedResult));
         }
 
         [TestCase("0x1", 1)]
@@ -44,9 +44,9 @@ namespace Nethermind.Core.Test
         {
             byte[] bytes = Bytes.FromHexString(hexString);
             if (hexString == "")
-                Assert.AreEqual(bytes.Length, expectedResult, "Bytes array should be empty but is not");
+                Assert.That(expectedResult, Is.EqualTo(bytes.Length), "Bytes array should be empty but is not");
             else
-                Assert.AreEqual(bytes[0], expectedResult, "new");
+                Assert.That(expectedResult, Is.EqualTo(bytes[0]), "new");
         }
 
         [TestCase(null)]
@@ -88,15 +88,14 @@ namespace Nethermind.Core.Test
             byte[] bytes = Bytes.FromHexString(input);
             if (!noLeadingZeros)
             {
-                Assert.AreEqual(expectedResult.ToLower(), Bytes.ByteArrayToHexViaLookup32Safe(bytes, with0x));
+                Assert.That(Bytes.ByteArrayToHexViaLookup32Safe(bytes, with0x), Is.EqualTo(expectedResult.ToLower()));
             }
-            Assert.AreEqual(expectedResult.ToLower(), bytes.ToHexString(with0x, noLeadingZeros));
-            Assert.AreEqual(expectedResult.ToLower(), bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: false));
-            Assert.AreEqual(expectedResult.ToLower(), new ReadOnlySpan<byte>(bytes).ToHexString(with0x, noLeadingZeros));
+            Assert.That(bytes.ToHexString(with0x, noLeadingZeros), Is.EqualTo(expectedResult.ToLower()));
+            Assert.That(bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: false), Is.EqualTo(expectedResult.ToLower()));
+            Assert.That(new ReadOnlySpan<byte>(bytes).ToHexString(with0x, noLeadingZeros), Is.EqualTo(expectedResult.ToLower()));
 
-            Assert.AreEqual(expectedResult, bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true));
-            Assert.AreEqual(bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true),
-                bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: true));
+            Assert.That(bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true), Is.EqualTo(expectedResult));
+            Assert.That(bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: true), Is.EqualTo(bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true)));
         }
 
         [TestCase("0x", "0x", true)]
@@ -112,7 +111,7 @@ namespace Nethermind.Core.Test
             IEqualityComparer<byte[]> comparer = Bytes.EqualityComparer;
             byte[]? x = hexString1 is null ? null : Bytes.FromHexString(hexString1);
             byte[]? y = hexString2 is null ? null : Bytes.FromHexString(hexString2);
-            Assert.AreEqual(expectedResult, comparer.Equals(x, y));
+            Assert.That(comparer.Equals(x, y), Is.EqualTo(expectedResult));
         }
 
         [Test]
@@ -135,7 +134,7 @@ namespace Nethermind.Core.Test
                     ms.Position = 0;
 
                     string result = sr.ReadToEnd();
-                    Assert.AreEqual("0f10ff", result);
+                    Assert.That(result, Is.EqualTo("0f10ff"));
                 }
             }
             finally
@@ -152,12 +151,12 @@ namespace Nethermind.Core.Test
             {
                 byte[] bytes = Bytes.FromHexString("0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
                 byte[] before = (byte[])bytes.Clone();
-                Assert.AreEqual(32, bytes.Length);
+                Assert.That(bytes.Length, Is.EqualTo(32));
 
                 Bytes.Avx2Reverse256InPlace(bytes);
                 for (int i = 0; i < 32; i++)
                 {
-                    Assert.AreEqual(before[i], bytes[32 - 1 - i]);
+                    Assert.That(bytes[32 - 1 - i], Is.EqualTo(before[i]));
                 }
 
                 TestContext.WriteLine(before.ToHexString());
@@ -178,7 +177,7 @@ namespace Nethermind.Core.Test
         public void ToUInt32(string hexString, uint expectedResult)
         {
             byte[] bytes = Bytes.FromHexString(hexString);
-            Assert.AreEqual(expectedResult, bytes.AsSpan().ReadEthUInt32());
+            Assert.That(bytes.AsSpan().ReadEthUInt32(), Is.EqualTo(expectedResult));
         }
 
         [TestCase("0x00000000", 0)]
@@ -194,7 +193,7 @@ namespace Nethermind.Core.Test
         public void ToInt32(string hexString, int expectedResult)
         {
             byte[] bytes = Bytes.FromHexString(hexString);
-            Assert.AreEqual(expectedResult, bytes.AsSpan().ReadEthInt32());
+            Assert.That(bytes.AsSpan().ReadEthInt32(), Is.EqualTo(expectedResult));
         }
 
         [TestCase("0x00000000", 0U)]
@@ -210,7 +209,7 @@ namespace Nethermind.Core.Test
         public void ToUInt64(string hexString, uint expectedResult)
         {
             byte[] bytes = Bytes.FromHexString(hexString);
-            Assert.AreEqual(expectedResult, bytes.AsSpan().ReadEthUInt32());
+            Assert.That(bytes.AsSpan().ReadEthUInt32(), Is.EqualTo(expectedResult));
         }
 
         [TestCase("0x0000000000000000", 0UL)]
@@ -234,7 +233,7 @@ namespace Nethermind.Core.Test
         public void ToInt64(string hexString, ulong expectedResult)
         {
             byte[] bytes = Bytes.FromHexString(hexString);
-            Assert.AreEqual(expectedResult, bytes.AsSpan().ReadEthUInt64());
+            Assert.That(bytes.AsSpan().ReadEthUInt64(), Is.EqualTo(expectedResult));
         }
 
         [TestCase(0, 0)]
@@ -250,7 +249,7 @@ namespace Nethermind.Core.Test
         [TestCase(79, 7)]
         public void Can_get_highest_bit_set(byte value, int expectedResult)
         {
-            Assert.AreEqual(expectedResult, value.GetHighestSetBitIndex());
+            Assert.That(value.GetHighestSetBitIndex(), Is.EqualTo(expectedResult));
         }
 
         [TestCase(255, 0, true)]
@@ -271,7 +270,7 @@ namespace Nethermind.Core.Test
         [TestCase(0, 7, false)]
         public void Get_bit_works(byte value, int position, bool expectedResult)
         {
-            Assert.AreEqual(expectedResult, value.GetBit(position));
+            Assert.That(value.GetBit(position), Is.EqualTo(expectedResult));
         }
 
         [TestCase("0x", 0)]
@@ -287,7 +286,7 @@ namespace Nethermind.Core.Test
         [TestCase("0x000100", 1)]
         public void Trailing_zeros_count_works(string hex, int expectedResult)
         {
-            Assert.AreEqual(expectedResult, Bytes.FromHexString(hex).TrailingZerosCount());
+            Assert.That(Bytes.FromHexString(hex).TrailingZerosCount(), Is.EqualTo(expectedResult));
         }
 
         [TestCase("0x", 0, "0")]
@@ -297,7 +296,7 @@ namespace Nethermind.Core.Test
         [TestCase("0x000100", 32, "256")]
         public void To_signed_big_int(string hex, int length, string expectedResult)
         {
-            Assert.AreEqual(BigInteger.Parse(expectedResult), Bytes.FromHexString(hex).ToSignedBigInteger(length));
+            Assert.That(Bytes.FromHexString(hex).ToSignedBigInteger(length), Is.EqualTo(BigInteger.Parse(expectedResult)));
         }
 
         [TestCase("0x0123456789abcdef0123456789abcdef", "0xefcdab8967452301efcdab8967452301")]
@@ -322,7 +321,7 @@ namespace Nethermind.Core.Test
         {
             byte[] input = Bytes.FromHexString(hex);
             Bytes.ReverseInPlace(input);
-            Assert.AreEqual(input, Bytes.FromHexString(expectedResult));
+            Assert.That(Bytes.FromHexString(expectedResult), Is.EqualTo(input));
         }
 
         public static IEnumerable OrTests
@@ -359,6 +358,12 @@ namespace Nethermind.Core.Test
         {
             first.AsSpan().Or(second);
             first.Should().Equal(expected);
+        }
+
+        [Test]
+        public void NullableComparision()
+        {
+            Bytes.NullableEqualityComparer.Equals(null, null).Should().BeTrue();
         }
     }
 }

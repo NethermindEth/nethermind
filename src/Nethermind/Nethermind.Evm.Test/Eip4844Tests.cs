@@ -4,7 +4,6 @@
 using FluentAssertions;
 using Nethermind.Specs;
 using NUnit.Framework;
-using System;
 using Nethermind.Int256;
 using System.Linq;
 
@@ -21,25 +20,25 @@ public class Eip4844Tests : VirtualMachineTestsBase
     [TestCase(2, 1, Description = "Should return 0 when way out of range")]
     [TestCase(0, 1, Description = "Should return hash, when exists")]
     [TestCase(1, 3, Description = "Should return hash, when exists")]
-    public void Test_datahash_index_in_range(int index, int datahashesCount)
+    public void Test_blobhash_index_in_range(int index, int blobhashesCount)
     {
-        byte[][] hashes = new byte[datahashesCount][];
-        for (int i = 0; i < datahashesCount; i++)
+        byte[][] hashes = new byte[blobhashesCount][];
+        for (int i = 0; i < blobhashesCount; i++)
         {
             hashes[i] = new byte[32];
-            for (int n = 0; n < datahashesCount; n++)
+            for (int n = 0; n < blobhashesCount; n++)
             {
                 hashes[i][n] = (byte)((i * 3 + 10 * 7) % 256);
             }
         }
-        byte[] expectedOutput = datahashesCount > index ? hashes[index] : new byte[32];
+        byte[] expectedOutput = blobhashesCount > index ? hashes[index] : new byte[32];
 
         // Cost of transaction call + PUSH1 x4 + MSTORE (entry cost + 1 memory cell used)
         const long GasCostOfCallingWrapper = GasCostOf.Transaction + GasCostOf.VeryLow * 5 + GasCostOf.Memory;
 
         byte[] code = Prepare.EvmCode
             .PushData(new UInt256((ulong)index))
-            .DATAHASH()
+            .BLOBHASH()
             .MSTORE(0)
             .Return(32, 0)
             .Done;
@@ -48,7 +47,7 @@ public class Eip4844Tests : VirtualMachineTestsBase
 
         result.StatusCode.Should().Be(StatusCode.Success);
         result.ReturnValue.SequenceEqual(expectedOutput);
-        AssertGas(result, GasCostOfCallingWrapper + GasCostOf.DataHash);
+        AssertGas(result, GasCostOfCallingWrapper + GasCostOf.BlobHash);
     }
 
     protected override TestAllTracerWithOutput CreateTracer()

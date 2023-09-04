@@ -13,28 +13,30 @@ namespace Nethermind.Consensus.Tracing
 {
     public class Tracer : ITracer
     {
-        private readonly IStateProvider _stateProvider;
-        private readonly IBlockchainProcessor _blockProcessor;
+        private readonly IWorldState _stateProvider;
+        private readonly IBlockchainProcessor _traceProcessor;
+        private readonly IBlockchainProcessor _executeProcessor;
         private readonly ProcessingOptions _processingOptions;
 
-        public Tracer(IStateProvider stateProvider, IBlockchainProcessor blockProcessor, ProcessingOptions processingOptions = ProcessingOptions.Trace)
+        public Tracer(IWorldState stateProvider, IBlockchainProcessor traceProcessor, IBlockchainProcessor executeProcessor,
+            ProcessingOptions processingOptions = ProcessingOptions.Trace)
         {
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
+            _traceProcessor = traceProcessor;
+            _executeProcessor = executeProcessor;
+            _stateProvider = stateProvider;
             _processingOptions = processingOptions;
         }
 
-        public Block? Trace(Block block, IBlockTracer blockTracer)
+        private void Process(Block block, IBlockTracer blockTracer, IBlockchainProcessor processor)
         {
             /* We force process since we want to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
 
             blockTracer.StartNewBlockTrace(block);
 
-            Block? processedBlock = null;
             try
             {
-                processedBlock = _blockProcessor.Process(block, _processingOptions, blockTracer);
+                processor.Process(block, _processingOptions, blockTracer);
             }
             catch (Exception)
             {
@@ -43,9 +45,11 @@ namespace Nethermind.Consensus.Tracing
             }
 
             blockTracer.EndBlockTrace();
-
-            return processedBlock;
         }
+
+        public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, _traceProcessor);
+
+        public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, _executeProcessor);
 
         public void Accept(ITreeVisitor visitor, Keccak stateRoot)
         {

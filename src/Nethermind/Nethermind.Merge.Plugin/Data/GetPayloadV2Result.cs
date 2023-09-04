@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class GetPayloadV2Result
+public class GetPayloadV2Result : IForkValidator
 {
     public GetPayloadV2Result(Block block, UInt256 blockFees)
     {
@@ -16,7 +18,9 @@ public class GetPayloadV2Result
 
     public UInt256 BlockValue { get; }
 
-    public ExecutionPayload ExecutionPayload { get; }
+    public virtual ExecutionPayload ExecutionPayload { get; }
+
+    public bool ValidateFork(ISpecProvider specProvider) => ExecutionPayload.ValidateFork(specProvider);
 
     public override string ToString() => $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}}}";
 }

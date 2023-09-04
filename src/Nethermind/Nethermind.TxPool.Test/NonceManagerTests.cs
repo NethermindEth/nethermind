@@ -24,7 +24,7 @@ namespace Nethermind.TxPool.Test;
 public class NonceManagerTests
 {
     private ISpecProvider _specProvider;
-    private IStateProvider _stateProvider;
+    private IWorldState _stateProvider;
     private IBlockTree _blockTree;
     private ChainHeadInfoProvider _headInfo;
     private INonceManager _nonceManager;
@@ -33,10 +33,10 @@ public class NonceManagerTests
     public void Setup()
     {
         ILogManager logManager = LimboLogs.Instance;
-        _specProvider = RopstenSpecProvider.Instance;
+        _specProvider = MainnetSpecProvider.Instance;
         var trieStore = new TrieStore(new MemDb(), logManager);
         var codeDb = new MemDb();
-        _stateProvider = new StateProvider(trieStore, codeDb, logManager);
+        _stateProvider = new WorldState(trieStore, codeDb, logManager);
         _blockTree = Substitute.For<IBlockTree>();
         Block block = Build.A.Block.WithNumber(0).TestObject;
         _blockTree.Head.Returns(block);

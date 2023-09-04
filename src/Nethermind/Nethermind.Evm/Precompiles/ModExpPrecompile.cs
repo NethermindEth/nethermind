@@ -15,15 +15,15 @@ namespace Nethermind.Evm.Precompiles
     /// <summary>
     ///     https://github.com/ethereum/EIPs/blob/vbuterin-patch-2/EIPS/bigint_modexp.md
     /// </summary>
-    public class ModExpPrecompile : IPrecompile
+    public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     {
-        public static readonly IPrecompile Instance = new ModExpPrecompile();
+        public static readonly ModExpPrecompile Instance = new ModExpPrecompile();
 
         private ModExpPrecompile()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(5);
+        public static Address Address { get; } = Address.FromNumber(5);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
@@ -52,10 +52,10 @@ namespace Nethermind.Evm.Precompiles
             try
             {
                 Span<byte> extendedInput = stackalloc byte[96];
-                inputData.Slice(0, Math.Min(96, inputData.Length)).Span
-                    .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
+                inputData[..Math.Min(96, inputData.Length)].Span
+                    .CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
 
-                UInt256 baseLength = new(extendedInput.Slice(0, 32), true);
+                UInt256 baseLength = new(extendedInput[..32], true);
                 UInt256 expLength = new(extendedInput.Slice(32, 32), true);
                 UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
 
@@ -91,10 +91,10 @@ namespace Nethermind.Evm.Precompiles
         private static (int, int, int) GetInputLengths(in ReadOnlyMemory<byte> inputData)
         {
             Span<byte> extendedInput = stackalloc byte[96];
-            inputData.Slice(0, Math.Min(96, inputData.Length)).Span
-                .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
+            inputData[..Math.Min(96, inputData.Length)].Span
+                .CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
 
-            int baseLength = (int)new UInt256(extendedInput.Slice(0, 32), true);
+            int baseLength = (int)new UInt256(extendedInput[..32], true);
             UInt256 expLengthUint256 = new(extendedInput.Slice(32, 32), true);
             int expLength = expLengthUint256 > Array.MaxLength ? Array.MaxLength : (int)expLengthUint256;
             int modulusLength = (int)new UInt256(extendedInput.Slice(64, 32), true);

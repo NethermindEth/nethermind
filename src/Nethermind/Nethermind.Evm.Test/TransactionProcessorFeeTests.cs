@@ -26,7 +26,7 @@ public class TransactionProcessorFeeTests
     private TestSpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
     private TransactionProcessor _transactionProcessor;
-    private IStateProvider _stateProvider;
+    private IWorldState _stateProvider;
     private OverridableReleaseSpec _spec;
 
     [SetUp]
@@ -37,15 +37,13 @@ public class TransactionProcessorFeeTests
 
         TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
 
-        _stateProvider = new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
+        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        StorageProvider storageProvider = new(trieStore, _stateProvider, LimboLogs.Instance);
         VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine,
-            LimboLogs.Instance);
+        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
     }
 

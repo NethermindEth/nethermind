@@ -24,6 +24,19 @@ namespace Nethermind.JsonRpc
         int Timeout { get; set; }
 
         [ConfigItem(
+            Description = "The queued request limit for calls above the max concurrency amount for (" +
+                          nameof(IEthRpcModule.eth_call) + ", " +
+                          nameof(IEthRpcModule.eth_estimateGas) + ", " +
+                          nameof(IEthRpcModule.eth_getLogs) + ", " +
+                          nameof(IEthRpcModule.eth_newFilter) + ", " +
+                          nameof(IEthRpcModule.eth_newBlockFilter) + ", " +
+                          nameof(IEthRpcModule.eth_newPendingTransactionFilter) + ", " +
+                          nameof(IEthRpcModule.eth_uninstallFilter) + "). " +
+                          " If value is set to 0 limit won't be applied.",
+            DefaultValue = "500")]
+        int RequestQueueLimit { get; set; }
+
+        [ConfigItem(
             Description = "Base file path for diagnostic JSON RPC recorder.",
             DefaultValue = "\"logs/rpc.{counter}.txt\"")]
         string RpcRecorderBaseFilePath { get; set; }
@@ -108,7 +121,7 @@ namespace Nethermind.JsonRpc
 
         [ConfigItem(
             Description = "Defines method names of Json RPC service requests to NOT log. Example: {\"eth_blockNumber\"} will not log \"eth_blockNumber\" requests.",
-            DefaultValue = "[engine_newPayloadV1, engine_newPayloadV2, engine_forkchoiceUpdatedV1, engine_forkchoiceUpdatedV2]")]
+            DefaultValue = "[engine_newPayloadV1, engine_newPayloadV2, engine_newPayloadV3, engine_forkchoiceUpdatedV1, engine_forkchoiceUpdatedV2]")]
         public string[]? MethodsLoggingFiltering { get; set; }
 
         [ConfigItem(

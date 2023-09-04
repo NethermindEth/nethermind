@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization.Test.FastSync
     [TestFixture(1, 100)]
     [TestFixture(4, 0)]
     [TestFixture(4, 100)]
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.Children)]
     public class StateSyncFeedTests : StateSyncFeedTestsBase
     {
         // Useful for set and forget run. But this test is taking a long time to have it set to other than 1.
@@ -98,9 +98,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             await ActivateAndWait(ctx, dbContext, 1024);
 
-
             dbContext.CompareTrees("END");
             dbContext.CompareCodeDbs();
+            dbContext.AssertFlushed();
         }
 
         [Test]

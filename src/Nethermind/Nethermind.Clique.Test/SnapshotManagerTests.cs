@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
 using Nethermind.Consensus.Clique;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -62,7 +60,7 @@ namespace Nethermind.Clique.Test
             SnapshotManager snapshotManager = new(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
             Block genesis = CliqueTests.GetRinkebyGenesis();
             Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
-            Assert.AreEqual(genesis.Hash, snapshot.Hash);
+            Assert.That(snapshot.Hash, Is.EqualTo(genesis.Hash));
         }
 
         [Test]
@@ -72,8 +70,8 @@ namespace Nethermind.Clique.Test
             Block genesis = CliqueTests.GetRinkebyGenesis();
             Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
             Assert.NotNull(snapshot);
-            Assert.AreEqual(genesis.Hash, snapshot.Hash);
-            Assert.AreEqual(genesis.Number, snapshot.Number);
+            Assert.That(snapshot.Hash, Is.EqualTo(genesis.Hash));
+            Assert.That(snapshot.Number, Is.EqualTo(genesis.Number));
             // Check signers
             Assert.IsTrue(snapshot.Signers.ContainsKey(_signer1));
             Assert.IsTrue(snapshot.Signers.ContainsKey(_signer2));
@@ -87,7 +85,7 @@ namespace Nethermind.Clique.Test
 
             Keccak expectedHeaderHash = new("0x7b27b6add9e8d0184c722dde86a2a3f626630264bae3d62ffeea1585ce6e3cdd");
             Keccak headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
-            Assert.AreEqual(expectedHeaderHash, headerHash);
+            Assert.That(headerHash, Is.EqualTo(expectedHeaderHash));
         }
 
         [Test]

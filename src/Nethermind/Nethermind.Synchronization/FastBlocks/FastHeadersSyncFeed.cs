@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -395,7 +394,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _resetLock.EnterReadLock();
             try
             {
-                if (!_sent.Contains(batch))
+                if (!_sent.TryRemove(batch))
                 {
                     if (_logger.IsDebug) _logger.Debug("Ignoring batch not in sent record");
                     return SyncResponseHandlingResult.Ignored;
@@ -427,7 +426,6 @@ namespace Nethermind.Synchronization.FastBlocks
                 finally
                 {
                     batch.MarkHandlingEnd();
-                    _sent.TryRemove(batch);
                 }
             }
             finally
@@ -482,7 +480,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     _syncPeerPool.ReportBreachOfProtocol(
                         batch.ResponseSourcePeer,
-                        InitiateDisconnectReason.HeaderResponseTooLong,
+                        DisconnectReason.HeaderResponseTooLong,
                         $"response too long ({batch.Response.Length})");
                 }
 
@@ -508,7 +506,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         _syncPeerPool.ReportBreachOfProtocol(
                             batch.ResponseSourcePeer,
-                            InitiateDisconnectReason.InconsistentHeaderBatch,
+                            DisconnectReason.InconsistentHeaderBatch,
                             "inconsistent headers batch");
                     }
 
@@ -527,7 +525,7 @@ namespace Nethermind.Synchronization.FastBlocks
                             if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID hash");
                             _syncPeerPool.ReportBreachOfProtocol(
                                 batch.ResponseSourcePeer,
-                                InitiateDisconnectReason.UnexpectedHeaderHash,
+                                DisconnectReason.UnexpectedHeaderHash,
                                 "first hash inconsistent with request");
                         }
 
@@ -548,7 +546,7 @@ namespace Nethermind.Synchronization.FastBlocks
                             {
                                 _syncPeerPool.ReportBreachOfProtocol(
                                     batch.ResponseSourcePeer,
-                                    InitiateDisconnectReason.HeaderBatchOnDifferentBranch,
+                                    DisconnectReason.HeaderBatchOnDifferentBranch,
                                     "headers - different branch");
                             }
 
@@ -562,7 +560,7 @@ namespace Nethermind.Synchronization.FastBlocks
                             {
                                 _syncPeerPool.ReportBreachOfProtocol(
                                     batch.ResponseSourcePeer,
-                                    InitiateDisconnectReason.HeaderBatchOnDifferentBranch,
+                                    DisconnectReason.HeaderBatchOnDifferentBranch,
                                     "headers - different branch");
                             }
 
@@ -605,7 +603,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         if (batch.ResponseSourcePeer is not null)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID inconsistent");
-                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, InitiateDisconnectReason.UnexpectedParentHeader, "headers - response not matching request");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, DisconnectReason.UnexpectedParentHeader, "headers - response not matching request");
                         }
 
                         break;
@@ -619,7 +617,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (batch.ResponseSourcePeer is not null)
                     {
                         if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID bad block");
-                        _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, InitiateDisconnectReason.InvalidHeader, $"invalid header {header.ToString(BlockHeader.Format.Short)}");
+                        _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, DisconnectReason.InvalidHeader, $"invalid header {header.ToString(BlockHeader.Format.Short)}");
                     }
 
                     break;
@@ -715,9 +713,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected void SetExpectedNextHeaderToParent(BlockHeader header)
         {
-            ulong nextHeaderDiff = 0;
             _nextHeaderHash = header.ParentHash!;
-            if (_expectedDifficultyOverride?.TryGetValue(header.Number, out nextHeaderDiff) == true)
+            if (_expectedDifficultyOverride?.TryGetValue(header.Number, out ulong nextHeaderDiff) == true)
             {
                 _nextHeaderDiff = nextHeaderDiff;
             }

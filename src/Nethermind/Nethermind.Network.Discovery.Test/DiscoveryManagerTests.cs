@@ -95,12 +95,12 @@ namespace Nethermind.Network.Discovery.Test
 
             //expecting to activate node as valid peer
             IEnumerable<Node> nodes = _nodeTable.GetClosestNodes().ToArray();
-            Assert.AreEqual(1, nodes.Count());
+            Assert.That(nodes.Count(), Is.EqualTo(1));
             Node node = nodes.First();
-            Assert.AreEqual(Host, node.Host);
-            Assert.AreEqual(Port, node.Port);
+            Assert.That(node.Host, Is.EqualTo(Host));
+            Assert.That(node.Port, Is.EqualTo(Port));
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            Assert.AreEqual(NodeLifecycleState.Active, manager?.State);
+            Assert.That(manager?.State, Is.EqualTo(NodeLifecycleState.Active));
         }
 
         [Test, Ignore("Add bonding"), Retry(3)]
@@ -111,12 +111,12 @@ namespace Nethermind.Network.Discovery.Test
 
             //expecting to activate node as valid peer
             IEnumerable<Node> nodes = _nodeTable.GetClosestNodes().ToArray();
-            Assert.AreEqual(1, nodes.Count());
+            Assert.That(nodes.Count(), Is.EqualTo(1));
             Node node = nodes.First();
-            Assert.AreEqual(Host, node.Host);
-            Assert.AreEqual(Port, node.Port);
+            Assert.That(node.Host, Is.EqualTo(Host));
+            Assert.That(node.Port, Is.EqualTo(Port));
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            Assert.AreEqual(NodeLifecycleState.Active, manager?.State);
+            Assert.That(manager?.State, Is.EqualTo(NodeLifecycleState.Active));
 
             //receiving findNode
             FindNodeMsg msg = new(_publicKey, GetExpirationTime(), Build.A.PrivateKey.TestObject.PublicKey.Bytes);
@@ -155,12 +155,12 @@ namespace Nethermind.Network.Discovery.Test
 
             //expecting to activate node as valid peer
             IEnumerable<Node> nodes = _nodeTable.GetClosestNodes().ToArray();
-            Assert.AreEqual(1, nodes.Count());
+            Assert.That(nodes.Count(), Is.EqualTo(1));
             Node node = nodes.First();
-            Assert.AreEqual(Host, node.Host);
-            Assert.AreEqual(Port, node.Port);
+            Assert.That(node.Host, Is.EqualTo(Host));
+            Assert.That(node.Port, Is.EqualTo(Port));
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            Assert.AreEqual(NodeLifecycleState.Active, manager?.State);
+            Assert.That(manager?.State, Is.EqualTo(NodeLifecycleState.Active));
 
             //sending FindNode to expect Neighbors
             manager?.SendFindNode(_nodeTable.MasterNode!.Id.Bytes);

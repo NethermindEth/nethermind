@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Drawing;
 using Nethermind.EthStats.Clients;
 using Nethermind.Logging;
 using NSubstitute;
@@ -21,7 +20,7 @@ namespace Nethermind.EthStats.Test
         public void Build_url_should_return_expected_results(string configUrl, string expectedUrl)
         {
             EthStatsClient ethClient = new(configUrl, 5000, Substitute.For<IMessageSender>(), LimboLogs.Instance);
-            Assert.AreEqual(expectedUrl, ethClient.BuildUrl());
+            Assert.That(ethClient.BuildUrl(), Is.EqualTo(expectedUrl));
         }
 
         [TestCase("http://test:://")]

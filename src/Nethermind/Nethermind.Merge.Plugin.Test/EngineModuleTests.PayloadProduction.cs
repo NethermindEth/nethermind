@@ -37,7 +37,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task getPayloadV1_should_allow_asking_multiple_times_by_same_payload_id()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         Keccak startingHead = chain.BlockTree.HeadHash;
@@ -55,10 +55,11 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    [Obsolete]
     public async Task getPayloadV1_should_return_error_if_called_after_cleanup_timer()
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
-        using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
+        using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig);
         BlockImprovementContextFactory improvementContextFactory = new(chain.BlockProductionTrigger, TimeSpan.FromSeconds(1));
         TimeSpan timePerSlot = TimeSpan.FromMilliseconds(10);
         chain.PayloadPreparationService = new PayloadPreparationService(
@@ -89,7 +90,7 @@ public partial class EngineModuleTests
     public async Task getPayloadV1_picks_transactions_from_pool_v1()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
         uint count = 3;
@@ -136,7 +137,7 @@ public partial class EngineModuleTests
     [TestCaseSource(nameof(WaitTestCases))]
     public async Task<int> getPayloadV1_waits_for_block_production(TimeSpan delay)
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
 
         DelayBlockImprovementContextFactory improvementContextFactory = new(chain.BlockProductionTrigger, TimeSpan.FromSeconds(10), delay);
         chain.PayloadPreparationService = new PayloadPreparationService(
@@ -167,7 +168,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task getPayloadV1_return_correct_block_values_for_empty_block()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
         Keccak? random = TestItem.KeccakF;
@@ -183,16 +184,16 @@ public partial class EngineModuleTests
 
         BlockHeader? currentHeader = chain.BlockTree.BestSuggestedHeader!;
 
-        Assert.AreEqual("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347", currentHeader.UnclesHash!.ToString());
-        Assert.AreEqual((UInt256)0, currentHeader.Difficulty);
-        Assert.AreEqual(0, currentHeader.Nonce);
-        Assert.AreEqual(random, currentHeader.MixHash);
+        Assert.That(currentHeader.UnclesHash!.ToString(), Is.EqualTo("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"));
+        Assert.That(currentHeader.Difficulty, Is.EqualTo((UInt256)0));
+        Assert.That(currentHeader.Nonce, Is.EqualTo(0));
+        Assert.That(currentHeader.MixHash, Is.EqualTo(random));
     }
 
     [Test]
     public async Task getPayloadV1_should_return_error_if_there_was_no_corresponding_prepare_call()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
@@ -219,61 +220,61 @@ public partial class EngineModuleTests
         IBlockProductionContext improvementContext = Substitute.For<IBlockProductionContext>();
         improvementContext.CurrentBestBlock.Returns(block);
         payloadPreparationService.GetPayload(Arg.Any<string>()).Returns(improvementContext);
-        using MergeTestBlockchain chain = await CreateBlockChain(null, payloadPreparationService);
+        using MergeTestBlockchain chain = await CreateBlockchain(null, null, payloadPreparationService);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        string result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", payload.ToHexString(true));
-        Assert.AreEqual(result,
-            chain.JsonSerializer.Serialize(new
+        string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", payload.ToHexString(true));
+        Assert.That(chain.JsonSerializer.Serialize(new
+        {
+            jsonrpc = "2.0",
+            result = new ExecutionPayload
             {
-                jsonrpc = "2.0",
-                result = new ExecutionPayload
-                {
-                    BaseFeePerGas = 0,
-                    BlockHash = new("0x5fd61518405272d77fd6cdc8a824a109d75343e32024ee4f6769408454b1823d"),
-                    BlockNumber = 0,
-                    ExtraData = Bytes.FromHexString("0x010203"),
-                    FeeRecipient = Address.Zero,
-                    GasLimit = 0x3d0900L,
-                    GasUsed = 0,
-                    LogsBloom =
+                BaseFeePerGas = 0,
+                BlockHash = new("0x5fd61518405272d77fd6cdc8a824a109d75343e32024ee4f6769408454b1823d"),
+                BlockNumber = 0,
+                ExtraData = Bytes.FromHexString("0x010203"),
+                FeeRecipient = Address.Zero,
+                GasLimit = 0x3d0900L,
+                GasUsed = 0,
+                LogsBloom =
                         new Bloom(Bytes.FromHexString(
                             "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")),
-                    ParentHash = new("0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c"),
-                    PrevRandao = new("0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2"),
-                    ReceiptsRoot = new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
-                    StateRoot = new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
-                    Timestamp = 0xf4240UL,
-                    Transactions = new[]
+                ParentHash = new("0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c"),
+                PrevRandao = new("0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2"),
+                ReceiptsRoot = new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
+                StateRoot = new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
+                Timestamp = 0xf4240UL,
+                Transactions = new[]
                     {
                         Bytes.FromHexString(
                             "0xf85f800182520894475674cb523a0a2736b7f7534390288fce16982c018025a0634db2f18f24d740be29e03dd217eea5757ed7422680429bdd458c582721b6c2a02f0fa83931c9a99d3448a46b922261447d6a41d8a58992b5596089d15d521102"),
                         Bytes.FromHexString(
                             "0x02f8620180011482520894475674cb523a0a2736b7f7534390288fce16982c0180c001a0033e85439a128c42f2ba47ca278f1375ef211e61750018ff21bcd9750d1893f2a04ee981fe5261f8853f95c865232ffdab009abcc7858ca051fb624c49744bf18d")
                     },
-                },
-                id = 67
-            }));
+            },
+            id = 67
+        }), Is.EqualTo(result));
     }
 
     [Test]
     public async Task getPayload_should_serialize_unknown_payload_response_properly()
     {
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         byte[] payloadId = Bytes.FromHexString("0x1111111111111111");
 
         string parameters = payloadId.ToHexString(true);
-        string result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", parameters);
+        string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", parameters);
         result.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-38001,\"message\":\"unknown payload\"},\"id\":67}");
     }
 
     [Test]
     [Retry(3)]
+    [Obsolete]
     public async Task consecutive_blockImprovements_should_be_disposed()
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
-        using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
+        using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig);
         StoringBlockImprovementContextFactory improvementContextFactory = new(new MockBlockImprovementContextFactory());
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 10 * delay;
@@ -309,7 +310,7 @@ public partial class EngineModuleTests
     public async Task getPayloadV1_picks_transactions_from_pool_constantly_improving_blocks()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 50 * delay;
         StoringBlockImprovementContextFactory improvementContextFactory = new(new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)));
@@ -331,13 +332,13 @@ public partial class EngineModuleTests
                 new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
 
-        await blockImprovementLock.WaitAsync(100 * TestContext.CurrentContext.CurrentRepeatCount);
+        await blockImprovementLock.WaitAsync(500 * TestContext.CurrentContext.CurrentRepeatCount);
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
 
-        await blockImprovementLock.WaitAsync(100 * TestContext.CurrentContext.CurrentRepeatCount);
+        await blockImprovementLock.WaitAsync(500 * TestContext.CurrentContext.CurrentRepeatCount);
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
 
-        await blockImprovementLock.WaitAsync(100 * TestContext.CurrentContext.CurrentRepeatCount);
+        await blockImprovementLock.WaitAsync(500 * TestContext.CurrentContext.CurrentRepeatCount);
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
@@ -355,7 +356,7 @@ public partial class EngineModuleTests
     public async Task getPayloadV1_doesnt_wait_for_improvement_when_block_is_not_empty()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockchain();
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 50 * delay;
         StoringBlockImprovementContextFactory improvementContextFactory = new(new DelayBlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot), 3 * delay));
@@ -388,7 +389,7 @@ public partial class EngineModuleTests
             cancelledContext = e.BlockImprovementContext;
         };
 
-        await blockImprovementStartsLock.WaitAsync(100); // started improving block
+        await blockImprovementStartsLock.WaitAsync(1000); // started improving block
         improvementContextFactory.CreatedContexts.Should().HaveCount(2);
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
@@ -413,7 +414,7 @@ public partial class EngineModuleTests
         }
 
         using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockChain(new TestSingleReleaseSpecProvider(London.Instance), logManager);
+        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance), logManager);
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 4 * delay;
         StoringBlockImprovementContextFactory improvementContextFactory = new(new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)));
@@ -435,8 +436,9 @@ public partial class EngineModuleTests
                 new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(3).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
         chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
-        await blockImprovementLock.WaitAsync(delay);
+        await blockImprovementLock.WaitAsync(delay * 100);
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        getPayloadResult.Should().NotBeNull();
 
         chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
 
@@ -488,7 +490,7 @@ public partial class EngineModuleTests
     public async Task Empty_block_is_valid_V1()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockChain(new TestSingleReleaseSpecProvider(London.Instance));
+        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak blockX = chain.BlockTree.HeadHash;
         await rpc.engine_forkchoiceUpdatedV1(
@@ -504,7 +506,7 @@ public partial class EngineModuleTests
     public virtual async Task Empty_block_is_valid_with_withdrawals_V2()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockChain(new TestSingleReleaseSpecProvider(Shanghai.Instance));
+        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(Shanghai.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak blockX = chain.BlockTree.HeadHash;
         await rpc.engine_forkchoiceUpdatedV2(

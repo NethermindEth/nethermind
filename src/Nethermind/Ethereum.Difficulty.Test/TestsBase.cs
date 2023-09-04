@@ -7,7 +7,6 @@ using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using Ethereum.Test.Base;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -87,7 +86,7 @@ namespace Ethereum.Difficulty.Test
                 test.CurrentBlockNumber,
                 test.ParentHasUncles);
 
-            Assert.AreEqual(test.CurrentDifficulty, difficulty, test.Name);
+            Assert.That(difficulty, Is.EqualTo(test.CurrentDifficulty), test.Name);
         }
     }
 }

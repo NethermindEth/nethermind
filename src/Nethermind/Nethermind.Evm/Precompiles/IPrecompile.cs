@@ -9,12 +9,18 @@ namespace Nethermind.Evm.Precompiles
 {
     public interface IPrecompile
     {
-        Address Address { get; }
+        static Address Address { get; }
 
         long BaseGasCost(IReleaseSpec releaseSpec);
 
         long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
         (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
+    }
+
+
+    public interface IPrecompile<TPrecompileTypeInstance> : IPrecompile
+    {
+        static TPrecompileTypeInstance Instance { get; }
     }
 }

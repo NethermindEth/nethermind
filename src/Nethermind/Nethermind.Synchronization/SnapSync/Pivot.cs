@@ -2,10 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -55,7 +51,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void LogPivotChanged(string msg)
         {
-            _logger.Info($"SNAP - {msg} - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
+            _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
         }
 
         public void UpdateHeaderForcefully()

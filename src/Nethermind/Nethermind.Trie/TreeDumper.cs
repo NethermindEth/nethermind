@@ -29,7 +29,7 @@ namespace Nethermind.Trie
         {
             if (rootHash == Keccak.EmptyTreeHash)
             {
-                _builder.AppendLine("EMPTY TREEE");
+                _builder.AppendLine("EMPTY TREE");
             }
             else
             {
@@ -49,12 +49,12 @@ namespace Nethermind.Trie
 
         public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}BRANCH | -> {(node.Keccak?.Bytes ?? node.FullRlp)?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(trieVisitContext)}BRANCH | -> {KeccakOrRlpStringOfNode(node)}");
         }
 
         public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {(node.Keccak?.Bytes ?? node.FullRlp)?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(trieVisitContext)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
         }
 
         private AccountDecoder decoder = new();
@@ -62,7 +62,7 @@ namespace Nethermind.Trie
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
         {
             string leafDescription = trieVisitContext.IsStorage ? "LEAF " : "ACCOUNT ";
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {(node.Keccak?.Bytes ?? node.FullRlp)?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(trieVisitContext)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
             if (!trieVisitContext.IsStorage)
             {
                 Account account = decoder.Decode(new RlpStream(value));
@@ -84,6 +84,11 @@ namespace Nethermind.Trie
         public override string ToString()
         {
             return _builder.ToString();
+        }
+
+        private string? KeccakOrRlpStringOfNode(TrieNode node)
+        {
+            return node.Keccak != null ? node.Keccak!.Bytes.ToHexString() : node.FullRlp.AsSpan().ToHexString();
         }
     }
 }

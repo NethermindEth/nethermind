@@ -97,9 +97,9 @@ namespace Nethermind.Specs.ChainSpecStyle
             _transitions = CreateTransitions(_chainSpec, transitionBlockNumbers, transitionTimestamps);
             _firstTimestampActivation = TransitionActivations.FirstOrDefault(t => t.Timestamp is not null);
 
-            if (_chainSpec.Parameters.TerminalPowBlockNumber is not null)
+            if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
-                MergeBlockNumber = (ForkActivation)(_chainSpec.Parameters.TerminalPowBlockNumber + 1);
+                MergeBlockNumber = (ForkActivation)(_chainSpec.Parameters.TerminalPoWBlockNumber + 1);
             }
 
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
@@ -237,6 +237,10 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsEip4844Enabled = (chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip4844TransitionTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue;
+            releaseSpec.IsEip5656Enabled = (chainSpec.Parameters.Eip5656TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip6780Enabled = (chainSpec.Parameters.Eip6780TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip4788Enabled = (chainSpec.Parameters.Eip4788TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.Eip4788ContractAddress = chainSpec.Parameters.Eip4788ContractAddress;
 
             return releaseSpec;
         }

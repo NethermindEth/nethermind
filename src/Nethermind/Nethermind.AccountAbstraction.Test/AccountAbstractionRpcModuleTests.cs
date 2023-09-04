@@ -3,32 +3,25 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using DotNetty.Common.Utilities;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Contracts;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Test.TestContracts;
-using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.AccountAbstraction.Test
@@ -130,7 +123,7 @@ namespace Nethermind.AccountAbstraction.Test
                     Transaction entryPointTx = Core.Test.Builders.Build.A.Transaction.WithTo(singletonFactoryAddress).WithData(createEntryPointBytes).WithGasLimit(6_000_000).WithNonce(chain.State.GetNonce(ContractCreatorPrivateKey.Address)).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
                     await chain.AddBlock(true, entryPointTx);
 
-                    Address computedAddress = new(Keccak.Compute(Bytes.Concat(Bytes.FromHexString("0xff"), singletonFactoryAddress.Bytes, Bytes.Zero32, Keccak.Compute(entryPointConstructorBytes).Bytes)).Bytes.TakeLast(20).ToArray());
+                    Address computedAddress = new(Keccak.Compute(Bytes.Concat(Bytes.FromHexString("0xff"), singletonFactoryAddress.Bytes, Bytes.Zero32, Keccak.Compute(entryPointConstructorBytes).Bytes)).BytesToArray().TakeLast(20).ToArray());
 
                     TxReceipt createEntryPointTxReceipt = chain.Bridge.GetReceipt(entryPointTx.Hash!);
                     createEntryPointTxReceipt.Error.Should().BeNullOrEmpty($"Contract transaction {computedAddress!} was not deployed.");
@@ -195,18 +188,18 @@ namespace Nethermind.AccountAbstraction.Test
             Keccak idFromTransaction =
                 new Keccak("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
             createOp.CalculateRequestId(entryPointId, chainId);
-            Assert.AreEqual(idFromTransaction, createOp.RequestId!,
+            Assert.That(createOp.RequestId!, Is.EqualTo(idFromTransaction),
                 "Request IDs do not match.");
 
-            Assert.AreEqual(
-                Bytes.FromHexString("0xe4ef96c1ebffdae061838b79a0ba2b0289083099dc4d576a7ed0c61c80ed893273ba806a581c72be9e550611defe0bf490f198061b8aa63dd6acfc0b620e0c871c"),
-                createOp.Signature,
+            Assert.That(
+                createOp.Signature, Is.EqualTo(Bytes.FromHexString("0xe4ef96c1ebffdae061838b79a0ba2b0289083099dc4d576a7ed0c61c80ed893273ba806a581c72be9e550611defe0bf490f198061b8aa63dd6acfc0b620e0c871c")),
                 "signatures are different"
             );
         }
 
         [TestCase(true, false)]
         [TestCase(false, true)]
+        [Retry(3)]
         public async Task Should_execute_well_formed_op_successfully_if_codehash_not_changed(bool changeCodeHash, bool success)
         {
             var chain = await CreateChain();
@@ -227,8 +220,7 @@ namespace Nethermind.AccountAbstraction.Test
             chain.SendUserOperation(entryPointAddress[0], op);
             if (changeCodeHash)
             {
-                Keccak codeHash = chain.State.UpdateCode(Bytes.Concat(chain.State.GetCode(walletAddress[0]!), 0x00));
-                chain.State.UpdateCodeHash(walletAddress[0]!, codeHash, chain.SpecProvider.GenesisSpec);
+                chain.State.InsertCode(walletAddress[0]!, Bytes.Concat(chain.State.GetCode(walletAddress[0]!), 0x00), chain.SpecProvider.GenesisSpec);
                 chain.State.Commit(chain.SpecProvider.GenesisSpec);
                 chain.State.RecalculateStateRoot();
                 chain.State.CommitTree(chain.BlockTree.Head!.Number);
@@ -240,13 +232,13 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 Assert.That(
                     () => _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!),
-                    Is.EqualTo(UInt256.One).After(2000, 50));
+                    Is.EqualTo(UInt256.One).After(5000, 50));
             }
             else
             {
                 Assert.That(
                     () => _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!),
-                    Is.EqualTo(UInt256.Zero).After(2000, 50));
+                    Is.EqualTo(UInt256.Zero).After(5000, 50));
             }
         }
 

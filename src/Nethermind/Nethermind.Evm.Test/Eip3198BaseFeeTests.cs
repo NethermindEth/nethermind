@@ -3,14 +3,10 @@
 
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -30,7 +26,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, 0, false)]
         public void Base_fee_opcode_should_return_expected_results(bool eip3198Enabled, int baseFee, bool send1559Tx)
         {
-            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, LimboLogs.Instance);
             byte[] code = Prepare.EvmCode
                 .Op(Instruction.BASEFEE)
                 .PushData(0)

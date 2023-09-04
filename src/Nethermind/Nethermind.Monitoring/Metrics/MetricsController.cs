@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics.Metrics;
@@ -10,7 +11,9 @@ using System.Reflection;
 using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Monitoring.Config;
 using Prometheus;
 
@@ -21,11 +24,22 @@ namespace Nethermind.Monitoring.Metrics
         private readonly int _intervalSeconds;
         private Timer _timer;
         private readonly Dictionary<Type, (MemberInfo, string, Func<double>)[]> _membersCache = new();
-        private readonly Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicPropCache = new();
+        private readonly Dictionary<Type, DictionaryMetricInfo[]> _dictionaryCache = new();
         private readonly HashSet<Type> _metricTypes = new();
 
         public readonly Dictionary<string, Gauge> _gauges = new();
         private readonly bool _useCounters;
+
+        private readonly List<Action> _callbacks = new();
+
+        class DictionaryMetricInfo
+        {
+            internal MemberInfo MemberInfo;
+            internal string DictionaryName;
+            internal string LabelName;
+            internal string GaugeName;
+            internal IDictionary Dictionary;
+        }
 
         public void RegisterMetrics(Type type)
         {
@@ -46,21 +60,43 @@ namespace Nethermind.Monitoring.Metrics
 
                 _gauges[gaugeName] = CreateMemberInfoMetricsGauge(member);
             }
+
+            foreach (DictionaryMetricInfo info in _dictionaryCache[type])
+            {
+                if (info.LabelName is null) continue; // Old behaviour creates new metric as it is created
+                _gauges[info.GaugeName] = CreateMemberInfoMetricsGauge(info.MemberInfo, info.LabelName);
+            }
         }
 
-        private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member)
+        private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member, params string[] labels)
         {
-            Dictionary<string, string> staticLabels = member
-                .GetCustomAttributes<MetricsStaticDescriptionTagAttribute>()
-                .ToDictionary(
-                    attribute => attribute.Label,
-                    attribute => GetStaticMemberInfo(attribute.Informer, attribute.Label));
-
-            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
             string name = BuildGaugeName(member);
+            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
 
-            return CreateGauge(name, description, staticLabels);
+            bool haveTagAttributes = member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().Any();
+            if (!haveTagAttributes)
+            {
+                return CreateGauge(name, description, _commonStaticTags, labels);
+            }
+
+            Dictionary<string, string> tags = new(_commonStaticTags);
+            member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().ForEach(attribute =>
+                tags.Add(attribute.Label, GetStaticMemberInfo(attribute.Informer, attribute.Label)));
+            return CreateGauge(name, description, tags, labels);
         }
+
+        // Tags that all metrics share
+        private static readonly Dictionary<string, string> _commonStaticTags = new()
+        {
+            { nameof(ProductInfo.Instance), ProductInfo.Instance },
+            { nameof(ProductInfo.Network), ProductInfo.Network },
+            { nameof(ProductInfo.SyncType), ProductInfo.SyncType },
+            { nameof(ProductInfo.PruningMode), ProductInfo.PruningMode },
+            { nameof(ProductInfo.Version), ProductInfo.Version },
+            { nameof(ProductInfo.Commit), ProductInfo.Commit },
+            { nameof(ProductInfo.Runtime), ProductInfo.Runtime },
+            { nameof(ProductInfo.BuildTimestamp), ProductInfo.BuildTimestamp.ToUnixTimeSeconds().ToString() },
+        };
 
         private static ObservableInstrument<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberInfo member, Func<double> observer)
         {
@@ -118,13 +154,24 @@ namespace Nethermind.Monitoring.Metrics
                     .ToArray();
             }
 
-            if (!_dynamicPropCache.ContainsKey(type))
+            if (!_dictionaryCache.ContainsKey(type))
             {
-                var p = type.GetProperties().FirstOrDefault(p => p.PropertyType.IsAssignableTo(typeof(IDictionary<string, long>)));
-                if (p != null)
-                {
-                    _dynamicPropCache[type] = (p.Name, (IDictionary<string, long>)p.GetValue(null));
-                }
+                _dictionaryCache[type] = type.GetProperties()
+                    .Where(p =>
+                        p.PropertyType.IsGenericType &&
+                        (
+                            p.PropertyType.GetGenericTypeDefinition().IsAssignableTo(typeof(IDictionary))
+                            || p.PropertyType.GetGenericTypeDefinition().IsAssignableTo(typeof(IDictionary<,>))
+                        ))
+                    .Select(p => new DictionaryMetricInfo()
+                    {
+                        MemberInfo = p,
+                        DictionaryName = p.Name,
+                        LabelName = p.GetCustomAttribute<KeyIsLabelAttribute>()?.LabelName,
+                        GaugeName = GetGaugeNameKey(type.Name, p.Name),
+                        Dictionary = (IDictionary)p.GetValue(null)
+                    })
+                    .ToArray();
             }
         }
 
@@ -134,9 +181,9 @@ namespace Nethermind.Monitoring.Metrics
         private static string BuildGaugeName(string propertyName) =>
             $"nethermind_{GetGaugeNameRegex().Replace(propertyName, "$1_$2").ToLowerInvariant()}";
 
-        private static Gauge CreateGauge(string name, string help = null, IDictionary<string, string> labels = null) => labels is null
-            ? Prometheus.Metrics.CreateGauge(name, help ?? string.Empty)
-            : Prometheus.Metrics.WithLabels(labels).CreateGauge(name, help ?? string.Empty);
+        private static Gauge CreateGauge(string name, string help = null, IDictionary<string, string> staticLabels = null, params string[] labels) => staticLabels is null
+            ? Prometheus.Metrics.CreateGauge(name, help ?? string.Empty, labels)
+            : Prometheus.Metrics.WithLabels(staticLabels).CreateGauge(name, help ?? string.Empty, labels);
 
         public MetricsController(IMetricsConfig metricsConfig)
         {
@@ -150,10 +197,20 @@ namespace Nethermind.Monitoring.Metrics
 
         public void UpdateMetrics(object state)
         {
+            foreach (Action callback in _callbacks)
+            {
+                callback();
+            }
+
             foreach (Type metricType in _metricTypes)
             {
                 UpdateMetrics(metricType);
             }
+        }
+
+        public void AddMetricsUpdateAction(Action callback)
+        {
+            _callbacks.Add(callback);
         }
 
         private void UpdateMetrics(Type type)
@@ -165,28 +222,55 @@ namespace Nethermind.Monitoring.Metrics
                 ReplaceValueIfChanged(accessor(), gaugeName);
             }
 
-            if (_dynamicPropCache.TryGetValue(type, out var dict))
+            foreach (DictionaryMetricInfo info in _dictionaryCache[type])
             {
-                foreach (var kvp in dict.Dict)
+                if (info.LabelName is null)
                 {
-                    double value = Convert.ToDouble(kvp.Value);
-                    var gaugeName = GetGaugeNameKey(dict.DictName, kvp.Key);
-
-                    if (ReplaceValueIfChanged(value, gaugeName) is null)
+                    IDictionary dict = info.Dictionary;
+                    // Its fine that the key here need to call `ToString()`. Better here then in the metrics, where it might
+                    // impact the performance of whatever is updating the metrics.
+                    foreach (object keyObj in dict.Keys) // Different dictionary seems to iterate to different KV type. So need to use `Keys` here.
                     {
-                        Gauge gauge = CreateGauge(BuildGaugeName(kvp.Key));
-                        _gauges[gaugeName] = gauge;
-                        gauge.Set(value);
+                        string keyStr = keyObj.ToString();
+                        double value = Convert.ToDouble(dict[keyObj]);
+                        string gaugeName = GetGaugeNameKey(info.DictionaryName, keyStr);
+
+                        if (ReplaceValueIfChanged(value, gaugeName) is null)
+                        {
+                            // Don't know why it does not prefix with dictionary name or class name. Not gonna change behaviour now.
+                            Gauge gauge = CreateGauge(BuildGaugeName(keyStr));
+                            _gauges[gaugeName] = gauge;
+                            gauge.Set(value);
+                        }
+                    }
+                }
+                else
+                {
+                    IDictionary dict = info.Dictionary;
+                    string gaugeName = info.GaugeName;
+                    foreach (object key in dict.Keys)
+                    {
+                        double value = Convert.ToDouble(dict[key]);
+                        ReplaceValueIfChanged(value, gaugeName, key.ToString());
                     }
                 }
             }
 
-            Gauge ReplaceValueIfChanged(double value, string gaugeName)
+            Gauge ReplaceValueIfChanged(double value, string gaugeName, params string[] labels)
             {
                 if (_gauges.TryGetValue(gaugeName, out Gauge gauge))
                 {
-                    if (Math.Abs(gauge.Value - value) > double.Epsilon)
-                        gauge.Set(value);
+                    if (labels.Length > 0)
+                    {
+                        Gauge.Child ch = gauge.WithLabels(labels);
+                        if (Math.Abs(ch.Value - value) > double.Epsilon)
+                            ch.Set(value);
+                    }
+                    else
+                    {
+                        if (Math.Abs(gauge.Value - value) > double.Epsilon)
+                            gauge.Set(value);
+                    }
                 }
 
                 return gauge;

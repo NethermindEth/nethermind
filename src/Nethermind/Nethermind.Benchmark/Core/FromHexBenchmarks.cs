@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Benchmarks.Core
@@ -32,7 +31,7 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark(Baseline = true)]
         public byte[] Current()
         {
-            return Bytes.FromHexStringOld(hex);
+            return Bytes.FromHexString(hex);
         }
 
         [Benchmark]

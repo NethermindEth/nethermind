@@ -24,95 +24,90 @@ public class ChainSpecLoaderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/hive.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.AreEqual("Foundation", chainSpec.Name, $"{nameof(chainSpec.Name)}");
-        Assert.AreEqual("ethereum", chainSpec.DataDir, $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.Name, Is.EqualTo("Foundation"), $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.DataDir, Is.EqualTo("ethereum"), $"{nameof(chainSpec.Name)}");
 
-        Assert.AreEqual((UInt256)0x020000, chainSpec.Ethash.MinimumDifficulty, $"{nameof(chainSpec.Ethash.MinimumDifficulty)}");
-        Assert.AreEqual((long)0x0800, chainSpec.Ethash.DifficultyBoundDivisor, $"{nameof(chainSpec.Ethash.DifficultyBoundDivisor)}");
-        Assert.AreEqual(0xdL, chainSpec.Ethash.DurationLimit, $"{nameof(chainSpec.Ethash.DurationLimit)}");
+        Assert.That(chainSpec.Ethash.MinimumDifficulty, Is.EqualTo((UInt256)0x020000), $"{nameof(chainSpec.Ethash.MinimumDifficulty)}");
+        Assert.That(chainSpec.Ethash.DifficultyBoundDivisor, Is.EqualTo((long)0x0800), $"{nameof(chainSpec.Ethash.DifficultyBoundDivisor)}");
+        Assert.That(chainSpec.Ethash.DurationLimit, Is.EqualTo(0xdL), $"{nameof(chainSpec.Ethash.DurationLimit)}");
 
-        Assert.AreEqual(3, chainSpec.Ethash.BlockRewards.Count, $"{nameof(chainSpec.Ethash.BlockRewards.Count)}");
-        Assert.AreEqual((UInt256)5000000000000000000, chainSpec.Ethash.BlockRewards[0L]);
-        Assert.AreEqual((UInt256)3000000000000000000, chainSpec.Ethash.BlockRewards[4370000L]);
-        Assert.AreEqual((UInt256)2000000000000000000, chainSpec.Ethash.BlockRewards[7080000L]);
+        Assert.That(chainSpec.Ethash.BlockRewards.Count, Is.EqualTo(3), $"{nameof(chainSpec.Ethash.BlockRewards.Count)}");
+        Assert.That(chainSpec.Ethash.BlockRewards[0L], Is.EqualTo((UInt256)5000000000000000000));
+        Assert.That(chainSpec.Ethash.BlockRewards[4370000L], Is.EqualTo((UInt256)3000000000000000000));
+        Assert.That(chainSpec.Ethash.BlockRewards[7080000L], Is.EqualTo((UInt256)2000000000000000000));
 
-        Assert.AreEqual(2, chainSpec.Ethash.DifficultyBombDelays.Count, $"{nameof(chainSpec.Ethash.DifficultyBombDelays.Count)}");
-        Assert.AreEqual(3000000L, chainSpec.Ethash.DifficultyBombDelays[4370000]);
-        Assert.AreEqual(2000000L, chainSpec.Ethash.DifficultyBombDelays[7080000L]);
+        Assert.That(chainSpec.Ethash.DifficultyBombDelays.Count, Is.EqualTo(2), $"{nameof(chainSpec.Ethash.DifficultyBombDelays.Count)}");
+        Assert.That(chainSpec.Ethash.DifficultyBombDelays[4370000], Is.EqualTo(3000000L));
+        Assert.That(chainSpec.Ethash.DifficultyBombDelays[7080000L], Is.EqualTo(2000000L));
 
-        Assert.AreEqual(0L, chainSpec.Ethash.HomesteadTransition);
-        Assert.AreEqual(1920000L, chainSpec.Ethash.DaoHardforkTransition);
-        Assert.AreEqual(new Address("0xbf4ed7b27f1d666546e30d74d50d173d20bca754"), chainSpec.Ethash.DaoHardforkBeneficiary);
-        Assert.AreEqual(0, chainSpec.Ethash.DaoHardforkAccounts.Length);
-        Assert.AreEqual(0L, chainSpec.Ethash.Eip100bTransition);
+        Assert.That(chainSpec.Ethash.HomesteadTransition, Is.EqualTo(0L));
+        Assert.That(chainSpec.Ethash.DaoHardforkTransition, Is.EqualTo(1920000L));
+        Assert.That(chainSpec.Ethash.DaoHardforkBeneficiary, Is.EqualTo(new Address("0xbf4ed7b27f1d666546e30d74d50d173d20bca754")));
+        Assert.That(chainSpec.Ethash.DaoHardforkAccounts.Length, Is.EqualTo(0));
+        Assert.That(chainSpec.Ethash.Eip100bTransition, Is.EqualTo(0L));
 
-        Assert.AreEqual(1, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
-        Assert.AreEqual(1, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.ChainId, Is.EqualTo(1), $"{nameof(chainSpec.ChainId)}");
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(1), $"{nameof(chainSpec.NetworkId)}");
         Assert.NotNull(chainSpec.Genesis, $"{nameof(ChainSpec.Genesis)}");
 
-        Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"initial base fee value");
-        Assert.AreEqual((long)1, chainSpec.Parameters.Eip1559ElasticityMultiplier, $"elasticity multiplier");
-        Assert.AreEqual((UInt256)7, chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator, $"base fee max change denominator");
-        Assert.AreEqual((UInt256)11, chainSpec.Genesis.BaseFeePerGas, $"genesis base fee");
+        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"initial base fee value");
+        Assert.That(chainSpec.Parameters.Eip1559ElasticityMultiplier, Is.EqualTo((long)1), $"elasticity multiplier");
+        Assert.That(chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)7), $"base fee max change denominator");
+        Assert.That(chainSpec.Genesis.BaseFeePerGas, Is.EqualTo((UInt256)11), $"genesis base fee");
 
-        Assert.AreEqual(0xdeadbeefdeadbeef, chainSpec.Genesis.Header.Nonce, $"genesis {nameof(BlockHeader.Nonce)}");
-        Assert.AreEqual(Keccak.Zero, chainSpec.Genesis.Header.MixHash, $"genesis {nameof(BlockHeader.MixHash)}");
-        Assert.AreEqual(0x10, (long)chainSpec.Genesis.Header.Difficulty, $"genesis {nameof(BlockHeader.Difficulty)}");
-        Assert.AreEqual(Address.Zero, chainSpec.Genesis.Header.Beneficiary, $"genesis {nameof(BlockHeader.Beneficiary)}");
-        Assert.AreEqual(0x00L, (long)chainSpec.Genesis.Header.Timestamp, $"genesis {nameof(BlockHeader.Timestamp)}");
-        Assert.AreEqual(Keccak.Zero, chainSpec.Genesis.Header.ParentHash, $"genesis {nameof(BlockHeader.ParentHash)}");
-        Assert.AreEqual(
-            Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000"),
-            chainSpec.Genesis.Header.ExtraData,
+        Assert.That(chainSpec.Genesis.Header.Nonce, Is.EqualTo(0xdeadbeefdeadbeef), $"genesis {nameof(BlockHeader.Nonce)}");
+        Assert.That(chainSpec.Genesis.Header.MixHash, Is.EqualTo(Keccak.Zero), $"genesis {nameof(BlockHeader.MixHash)}");
+        Assert.That((long)chainSpec.Genesis.Header.Difficulty, Is.EqualTo(0x10), $"genesis {nameof(BlockHeader.Difficulty)}");
+        Assert.That(chainSpec.Genesis.Header.Beneficiary, Is.EqualTo(Address.Zero), $"genesis {nameof(BlockHeader.Beneficiary)}");
+        Assert.That((long)chainSpec.Genesis.Header.Timestamp, Is.EqualTo(0x00L), $"genesis {nameof(BlockHeader.Timestamp)}");
+        Assert.That(chainSpec.Genesis.Header.ParentHash, Is.EqualTo(Keccak.Zero), $"genesis {nameof(BlockHeader.ParentHash)}");
+        Assert.That(
+            chainSpec.Genesis.Header.ExtraData, Is.EqualTo(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000")),
             $"genesis {nameof(BlockHeader.ExtraData)}");
-        Assert.AreEqual(0x8000000L, chainSpec.Genesis.Header.GasLimit, $"genesis {nameof(BlockHeader.GasLimit)}");
+        Assert.That(chainSpec.Genesis.Header.GasLimit, Is.EqualTo(0x8000000L), $"genesis {nameof(BlockHeader.GasLimit)}");
 
         Assert.NotNull(chainSpec.Allocations, $"{nameof(ChainSpec.Allocations)}");
-        Assert.AreEqual(1, chainSpec.Allocations.Count, $"allocations count");
-        Assert.AreEqual(
-            new UInt256(0xf4240),
-            chainSpec.Allocations[new Address("0x71562b71999873db5b286df957af199ec94617f7")].Balance,
+        Assert.That(chainSpec.Allocations.Count, Is.EqualTo(1), $"allocations count");
+        Assert.That(
+            chainSpec.Allocations[new Address("0x71562b71999873db5b286df957af199ec94617f7")].Balance, Is.EqualTo(new UInt256(0xf4240)),
             "account 0x71562b71999873db5b286df957af199ec94617f7 - balance");
 
-        Assert.AreEqual(
-            Bytes.FromHexString("0xabcd"),
-            chainSpec.Allocations[new Address("0x71562b71999873db5b286df957af199ec94617f7")].Code,
+        Assert.That(
+            chainSpec.Allocations[new Address("0x71562b71999873db5b286df957af199ec94617f7")].Code, Is.EqualTo(Bytes.FromHexString("0xabcd")),
             "account 0x71562b71999873db5b286df957af199ec94617f7 - code");
 
-        Assert.AreEqual(SealEngineType.Ethash, chainSpec.SealEngineType, "engine");
+        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
-        Assert.AreEqual((long?)0, chainSpec.HomesteadBlockNumber, "homestead transition");
-        Assert.AreEqual((long?)0, chainSpec.TangerineWhistleBlockNumber, "tangerine whistle transition");
-        Assert.AreEqual((long?)0, chainSpec.SpuriousDragonBlockNumber, "spurious dragon transition");
-        Assert.AreEqual((long?)0, chainSpec.ByzantiumBlockNumber, "byzantium transition");
-        Assert.AreEqual((long?)1920000, chainSpec.DaoForkBlockNumber, "dao transition");
-        Assert.AreEqual((long?)7080000, chainSpec.ConstantinopleFixBlockNumber, "constantinople transition");
+        Assert.That(chainSpec.HomesteadBlockNumber, Is.EqualTo((long?)0), "homestead transition");
+        Assert.That(chainSpec.TangerineWhistleBlockNumber, Is.EqualTo((long?)0), "tangerine whistle transition");
+        Assert.That(chainSpec.SpuriousDragonBlockNumber, Is.EqualTo((long?)0), "spurious dragon transition");
+        Assert.That(chainSpec.ByzantiumBlockNumber, Is.EqualTo((long?)0), "byzantium transition");
+        Assert.That(chainSpec.DaoForkBlockNumber, Is.EqualTo((long?)1920000), "dao transition");
+        Assert.That(chainSpec.ConstantinopleFixBlockNumber, Is.EqualTo((long?)7080000), "constantinople transition");
 
-        Assert.AreEqual((long?)24576L, chainSpec.Parameters.MaxCodeSize, "max code size");
-        Assert.AreEqual((long?)0L, chainSpec.Parameters.MaxCodeSizeTransition, "max code size transition");
-        Assert.AreEqual((long?)0x1388L, chainSpec.Parameters.MinGasLimit, "min gas limit");
-        Assert.AreEqual(new Address("0xe3389675d0338462dC76C6f9A3e432550c36A142"), chainSpec.Parameters.Registrar, "registrar");
-        Assert.AreEqual((long?)0x1d4c00L, chainSpec.Parameters.ForkBlock, "fork block");
-        Assert.AreEqual(new Keccak("0x4985f5ca3d2afbec36529aa96f74de3cc10a2a4a6c44f2157a57d2c6059a11bb"), chainSpec.Parameters.ForkCanonHash, "fork block");
+        Assert.That(chainSpec.Parameters.MaxCodeSize, Is.EqualTo((long?)24576L), "max code size");
+        Assert.That(chainSpec.Parameters.MaxCodeSizeTransition, Is.EqualTo((long?)0L), "max code size transition");
+        Assert.That(chainSpec.Parameters.MinGasLimit, Is.EqualTo((long?)0x1388L), "min gas limit");
+        Assert.That(chainSpec.Parameters.Registrar, Is.EqualTo(new Address("0xe3389675d0338462dC76C6f9A3e432550c36A142")), "registrar");
+        Assert.That(chainSpec.Parameters.ForkBlock, Is.EqualTo((long?)0x1d4c00L), "fork block");
+        Assert.That(chainSpec.Parameters.ForkCanonHash, Is.EqualTo(new Keccak("0x4985f5ca3d2afbec36529aa96f74de3cc10a2a4a6c44f2157a57d2c6059a11bb")), "fork block");
 
-        Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip150Transition, "eip150");
-        Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip160Transition, "eip160");
-        Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip161abcTransition, "eip161abc");
-        Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip161dTransition, "eip161d");
-        Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip155Transition, "eip155");
-        Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip140Transition, "eip140");
-        Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip211Transition, "eip211");
-        Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip214Transition, "eip214");
-        Assert.AreEqual((long?)0L, chainSpec.Parameters.Eip658Transition, "eip658");
-        Assert.AreEqual((long?)7080000L, chainSpec.Parameters.Eip145Transition, "eip145");
-        Assert.AreEqual((long?)7080000L, chainSpec.Parameters.Eip1014Transition, "eip1014");
-        Assert.AreEqual((long?)7080000L, chainSpec.Parameters.Eip1052Transition, "eip1052");
-        Assert.AreEqual((long?)7080000L, chainSpec.Parameters.Eip1283Transition, "eip1283");
+        Assert.That(chainSpec.Parameters.Eip150Transition, Is.EqualTo((long?)0L), "eip150");
+        Assert.That(chainSpec.Parameters.Eip160Transition, Is.EqualTo((long?)0L), "eip160");
+        Assert.That(chainSpec.Parameters.Eip161abcTransition, Is.EqualTo((long?)0L), "eip161abc");
+        Assert.That(chainSpec.Parameters.Eip161dTransition, Is.EqualTo((long?)0L), "eip161d");
+        Assert.That(chainSpec.Parameters.Eip155Transition, Is.EqualTo((long?)0L), "eip155");
+        Assert.That(chainSpec.Parameters.Eip140Transition, Is.EqualTo((long?)0L), "eip140");
+        Assert.That(chainSpec.Parameters.Eip211Transition, Is.EqualTo((long?)0L), "eip211");
+        Assert.That(chainSpec.Parameters.Eip214Transition, Is.EqualTo((long?)0L), "eip214");
+        Assert.That(chainSpec.Parameters.Eip658Transition, Is.EqualTo((long?)0L), "eip658");
+        Assert.That(chainSpec.Parameters.Eip145Transition, Is.EqualTo((long?)7080000L), "eip145");
+        Assert.That(chainSpec.Parameters.Eip1014Transition, Is.EqualTo((long?)7080000L), "eip1014");
+        Assert.That(chainSpec.Parameters.Eip1052Transition, Is.EqualTo((long?)7080000L), "eip1052");
+        Assert.That(chainSpec.Parameters.Eip1283Transition, Is.EqualTo((long?)7080000L), "eip1283");
 
-        Assert.AreEqual((long)32, chainSpec.Parameters.MaximumExtraDataSize, "extra data");
-        Assert.AreEqual((long)0x0400, chainSpec.Parameters.GasLimitBoundDivisor, "gas limit bound divisor");
-        Assert.AreEqual((UInt256)0x0, chainSpec.Parameters.AccountStartNonce, "account start nonce");
-
+        Assert.That(chainSpec.Parameters.MaximumExtraDataSize, Is.EqualTo((long)32), "extra data");
+        Assert.That(chainSpec.Parameters.GasLimitBoundDivisor, Is.EqualTo((long)0x0400), "gas limit bound divisor");
     }
 
     private static ChainSpec LoadChainSpec(string path)
@@ -124,83 +119,20 @@ public class ChainSpecLoaderTests
     }
 
     [Test]
-    public void Can_load_ropsten()
-    {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/ropsten.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
-
-        Assert.AreEqual(3, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
-        Assert.AreEqual("Ropsten Testnet", chainSpec.Name, $"{nameof(chainSpec.Name)}");
-        Assert.NotNull(chainSpec.Genesis, $"{nameof(ChainSpec.Genesis)}");
-
-        Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
-        Assert.AreEqual(0x0000000000000042UL, chainSpec.Genesis.Header.Nonce, $"genesis {nameof(BlockHeader.Nonce)}");
-        Assert.AreEqual(Keccak.Zero, chainSpec.Genesis.Header.MixHash, $"genesis {nameof(BlockHeader.MixHash)}");
-        Assert.AreEqual(0x100000L, (long)chainSpec.Genesis.Header.Difficulty, $"genesis {nameof(BlockHeader.Difficulty)}");
-        Assert.AreEqual(Address.Zero, chainSpec.Genesis.Header.Beneficiary, $"genesis {nameof(BlockHeader.Beneficiary)}");
-        Assert.AreEqual(0x00L, (long)chainSpec.Genesis.Header.Timestamp, $"genesis {nameof(BlockHeader.Timestamp)}");
-        Assert.AreEqual(Keccak.Zero, chainSpec.Genesis.Header.ParentHash, $"genesis {nameof(BlockHeader.ParentHash)}");
-        Assert.AreEqual(
-            Bytes.FromHexString("0x3535353535353535353535353535353535353535353535353535353535353535"),
-            chainSpec.Genesis.Header.ExtraData,
-            $"genesis {nameof(BlockHeader.ExtraData)}");
-        Assert.AreEqual(0x1000000L, chainSpec.Genesis.Header.GasLimit, $"genesis {nameof(BlockHeader.GasLimit)}");
-
-        Assert.NotNull(chainSpec.Allocations, $"{nameof(ChainSpec.Allocations)}");
-        Assert.AreEqual(257, chainSpec.Allocations.Count, $"allocations count");
-        Assert.AreEqual(
-            UInt256.Zero,
-            chainSpec.Allocations[new Address("0000000000000000000000000000000000000018")].Balance,
-            "account 0000000000000000000000000000000000000018");
-        Assert.AreEqual(
-            UInt256.One,
-            chainSpec.Allocations[new Address("0000000000000000000000000000000000000001")].Balance,
-            "account 0000000000000000000000000000000000000001");
-
-        Assert.AreEqual(
-            UInt256.Parse("1000000000000000000000000000000"),
-            chainSpec.Allocations[new Address("874b54a8bd152966d63f706bae1ffeb0411921e5")].Balance,
-            "account 874b54a8bd152966d63f706bae1ffeb0411921e5");
-
-        Assert.AreEqual(SealEngineType.Ethash, chainSpec.SealEngineType, "engine");
-
-        Assert.AreEqual((long?)0, chainSpec.HomesteadBlockNumber, "homestead no");
-        Assert.AreEqual(null, chainSpec.DaoForkBlockNumber, "dao no");
-        Assert.AreEqual((long?)0, chainSpec.TangerineWhistleBlockNumber, "tw no");
-        Assert.AreEqual((long?)10, chainSpec.SpuriousDragonBlockNumber, "sd no");
-        Assert.AreEqual((long?)1700000, chainSpec.ByzantiumBlockNumber, "byzantium no");
-        Assert.AreEqual((long?)4230000, chainSpec.ConstantinopleBlockNumber, "constantinople no");
-        Assert.AreEqual((long?)0x4b5e82, chainSpec.ConstantinopleFixBlockNumber, "constantinople fix no");
-        Assert.AreEqual((long?)0x62F756, chainSpec.IstanbulBlockNumber, "istanbul no");
-
-        chainSpec.HomesteadBlockNumber.Should().Be(0L);
-        chainSpec.DaoForkBlockNumber.Should().Be(null);
-        chainSpec.TangerineWhistleBlockNumber.Should().Be(0L);
-        chainSpec.SpuriousDragonBlockNumber.Should().Be(RopstenSpecProvider.SpuriousDragonBlockNumber);
-        chainSpec.ByzantiumBlockNumber.Should().Be(RopstenSpecProvider.ByzantiumBlockNumber);
-        chainSpec.ConstantinopleBlockNumber.Should().Be(RopstenSpecProvider.ConstantinopleBlockNumber);
-        chainSpec.ConstantinopleFixBlockNumber.Should().Be(RopstenSpecProvider.ConstantinopleFixBlockNumber);
-        chainSpec.IstanbulBlockNumber.Should().Be(RopstenSpecProvider.IstanbulBlockNumber);
-        chainSpec.MuirGlacierNumber.Should().Be(RopstenSpecProvider.MuirGlacierBlockNumber);
-        chainSpec.BerlinBlockNumber.Should().Be(RopstenSpecProvider.BerlinBlockNumber);
-        chainSpec.LondonBlockNumber.Should().Be(RopstenSpecProvider.LondonBlockNumber);
-    }
-
-    [Test]
     public void Can_load_goerli()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/goerli.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
-        Assert.AreEqual(5, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
-        Assert.AreEqual("Görli Testnet", chainSpec.Name, $"{nameof(chainSpec.Name)}");
-        Assert.AreEqual("goerli", chainSpec.DataDir, $"{nameof(chainSpec.DataDir)}");
-        Assert.AreEqual(SealEngineType.Clique, chainSpec.SealEngineType, "engine");
+        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(5), $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.Name, Is.EqualTo("Görli Testnet"), $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.DataDir, Is.EqualTo("goerli"), $"{nameof(chainSpec.DataDir)}");
+        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Clique), "engine");
 
-        Assert.AreEqual(15UL, chainSpec.Clique.Period);
-        Assert.AreEqual(30000UL, chainSpec.Clique.Epoch);
-        Assert.AreEqual(UInt256.Zero, chainSpec.Clique.Reward);
+        Assert.That(chainSpec.Clique.Period, Is.EqualTo(15UL));
+        Assert.That(chainSpec.Clique.Epoch, Is.EqualTo(30000UL));
+        Assert.That(chainSpec.Clique.Reward, Is.EqualTo(UInt256.Zero));
 
         chainSpec.HomesteadBlockNumber.Should().Be(0);
         chainSpec.DaoForkBlockNumber.Should().Be(null);
@@ -214,6 +146,7 @@ public class ChainSpecLoaderTests
         chainSpec.BerlinBlockNumber.Should().Be(GoerliSpecProvider.BerlinBlockNumber);
         chainSpec.LondonBlockNumber.Should().Be(GoerliSpecProvider.LondonBlockNumber);
         chainSpec.ShanghaiTimestamp.Should().Be(GoerliSpecProvider.ShanghaiTimestamp);
+        chainSpec.ShanghaiTimestamp.Should().Be(GoerliSpecProvider.Instance.TimestampFork);
     }
 
     [Test]
@@ -222,10 +155,10 @@ public class ChainSpecLoaderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/gnosis.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
-        Assert.AreEqual(100, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
-        Assert.AreEqual("GnosisChain", chainSpec.Name, $"{nameof(chainSpec.Name)}");
-        Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
+        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(100), $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.Name, Is.EqualTo("GnosisChain"), $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");
 
         int berlinGnosisBlockNumber = 16101500;
         chainSpec.Parameters.Eip2565Transition.Should().Be(berlinGnosisBlockNumber);
@@ -245,16 +178,20 @@ public class ChainSpecLoaderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/chiado.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
-        Assert.AreEqual(10200, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
-        Assert.AreEqual("chiado", chainSpec.Name, $"{nameof(chainSpec.Name)}");
-        Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
+        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(10200), $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.Name, Is.EqualTo("chiado"), $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");
 
         chainSpec.Parameters.TerminalTotalDifficulty.ToString()
             .Should().Be("231707791542740786049188744689299064356246512");
 
         chainSpec.AuRa.WithdrawalContractAddress.ToString(true)
             .Should().Be("0xb97036A26259B7147018913bD58a774cf91acf25");
+
+        chainSpec.ShanghaiTimestamp.Should().Be(ChiadoSpecProvider.ShanghaiTimestamp);
+        chainSpec.ShanghaiTimestamp.Should().Be(ChiadoSpecProvider.Instance.TimestampFork);
+
     }
 
     [Test]
@@ -263,11 +200,11 @@ public class ChainSpecLoaderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/rinkeby.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
-        Assert.AreEqual(4, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
-        Assert.AreEqual("Rinkeby", chainSpec.Name, $"{nameof(chainSpec.Name)}");
-        Assert.AreEqual(SealEngineType.Clique, chainSpec.SealEngineType, "engine");
-        Assert.AreEqual((long?)5435345, chainSpec.IstanbulBlockNumber, "istanbul no");
+        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(4), $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.Name, Is.EqualTo("Rinkeby"), $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Clique), "engine");
+        Assert.That(chainSpec.IstanbulBlockNumber, Is.EqualTo((long?)5435345), "istanbul no");
 
         // chainSpec.HomesteadBlockNumber.Should().Be(RinkebySpecProvider.HomesteadBlockNumber);
         chainSpec.DaoForkBlockNumber.Should().Be(null);
@@ -287,11 +224,11 @@ public class ChainSpecLoaderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
-        Assert.AreEqual(1, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
-        Assert.AreEqual("Ethereum", chainSpec.Name, $"{nameof(chainSpec.Name)}");
-        Assert.AreEqual("ethereum", chainSpec.DataDir, $"{nameof(chainSpec.Name)}");
-        Assert.AreEqual(SealEngineType.Ethash, chainSpec.SealEngineType, "engine");
+        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(1), $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.DataDir, Is.EqualTo("ethereum"), $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
         chainSpec.HomesteadBlockNumber.Should().Be(MainnetSpecProvider.HomesteadBlockNumber);
         chainSpec.DaoForkBlockNumber.Should().Be(1920000);
@@ -307,6 +244,7 @@ public class ChainSpecLoaderTests
         chainSpec.ArrowGlacierBlockNumber.Should().Be(MainnetSpecProvider.ArrowGlacierBlockNumber);
         chainSpec.GrayGlacierBlockNumber.Should().Be(MainnetSpecProvider.GrayGlacierBlockNumber);
         chainSpec.ShanghaiTimestamp.Should().Be(MainnetSpecProvider.ShanghaiBlockTimestamp);
+        chainSpec.ShanghaiTimestamp.Should().Be(MainnetSpecProvider.Instance.TimestampFork);
     }
 
     [Test]
@@ -315,10 +253,10 @@ public class ChainSpecLoaderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/spaceneth.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.AreEqual(99, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
-        Assert.AreEqual("Spaceneth", chainSpec.Name, $"{nameof(chainSpec.Name)}");
-        Assert.AreEqual("spaceneth", chainSpec.DataDir, $"{nameof(chainSpec.Name)}");
-        Assert.AreEqual(SealEngineType.NethDev, chainSpec.SealEngineType, "engine");
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(99), $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.Name, Is.EqualTo("Spaceneth"), $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.DataDir, Is.EqualTo("spaceneth"), $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.NethDev), "engine");
 
         chainSpec.HomesteadBlockNumber.Should().Be(0L);
         chainSpec.DaoForkBlockNumber.Should().Be(null);
@@ -341,13 +279,38 @@ public class ChainSpecLoaderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/sepolia.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.AreEqual(11155111, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
-        Assert.AreEqual("Sepolia Testnet", chainSpec.Name, $"{nameof(chainSpec.Name)}");
-        Assert.AreEqual("sepolia", chainSpec.DataDir, $"{nameof(chainSpec.Name)}");
-        Assert.AreEqual("Ethash", chainSpec.SealEngineType, "engine");
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(11155111), $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.DataDir, Is.EqualTo("sepolia"), $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.SealEngineType, Is.EqualTo("Ethash"), "engine");
 
         chainSpec.LondonBlockNumber.Should().Be(0L);
         chainSpec.ShanghaiTimestamp.Should().Be(1677557088);
+    }
+
+    [Test]
+    public void Can_load_holesky()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/holesky.json");
+        ChainSpec chainSpec = LoadChainSpec(path);
+
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(17000), $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.Name, Is.EqualTo("Holesky Testnet"), $"{nameof(chainSpec.Name)}");
+        Assert.That(chainSpec.DataDir, Is.EqualTo("holesky"), $"{nameof(chainSpec.DataDir)}");
+        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
+
+        chainSpec.DaoForkBlockNumber.Should().Be(null);
+        chainSpec.TangerineWhistleBlockNumber.Should().Be(0);
+        chainSpec.SpuriousDragonBlockNumber.Should().Be(0);
+        chainSpec.ByzantiumBlockNumber.Should().Be(0);
+        chainSpec.ConstantinopleBlockNumber.Should().Be(0);
+        chainSpec.ConstantinopleFixBlockNumber.Should().Be(0);
+        chainSpec.IstanbulBlockNumber.Should().Be(0);
+        chainSpec.BerlinBlockNumber.Should().Be(0);
+        chainSpec.LondonBlockNumber.Should().Be(0);
+        chainSpec.ShanghaiTimestamp.Should().Be(HoleskySpecProvider.ShanghaiTimestamp);
+        chainSpec.ShanghaiTimestamp.Should().Be(HoleskySpecProvider.Instance.TimestampFork);
+        // chainSpec.CancunTimestamp.Should().Be(HoleskySpecProvider.CancunTimestamp);
     }
 
     [Test]

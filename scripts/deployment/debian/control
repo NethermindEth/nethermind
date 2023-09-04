@@ -7,7 +7,7 @@ Standards-Version: 4.5.0
 Homepage: https://nethermind.io
 
 Package: nethermind
-Architecture: amd64
+Architecture: amd64 arm64
 Multi-Arch: foreign
 Depends: libsnappy-dev, libc6-dev, libc6, unzip, jq, curl, wget
 Description: An Ethereum client built on .NET

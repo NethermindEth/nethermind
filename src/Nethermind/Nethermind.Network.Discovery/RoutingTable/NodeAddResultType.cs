@@ -6,5 +6,6 @@ namespace Nethermind.Network.Discovery.RoutingTable;
 public enum NodeAddResultType
 {
     Added,
-    Full
+    Full,
+    Dropped
 }

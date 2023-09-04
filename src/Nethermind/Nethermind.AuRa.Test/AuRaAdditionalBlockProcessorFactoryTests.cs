@@ -13,7 +13,6 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -34,7 +33,7 @@ namespace Nethermind.AuRa.Test
         public void returns_correct_validator_type(AuRaParameters.ValidatorType validatorType, Type expectedType)
         {
             AuRaValidatorFactory factory = new(Substitute.For<IAbiEncoder>(),
-                Substitute.For<IStateProvider>(),
+                Substitute.For<IWorldState>(),
                 Substitute.For<ITransactionProcessor>(),
                 Substitute.For<IBlockTree>(),
                 Substitute.For<IReadOnlyTxProcessorSource>(),

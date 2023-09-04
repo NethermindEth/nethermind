@@ -56,6 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             Tracer tracer = new(
                 txProcessingEnv.StateProvider,
+                chainProcessingEnv.ChainProcessor,
                 chainProcessingEnv.ChainProcessor);
 
             return new ProofRpcModule(tracer, _blockTree, _receiptFinder, _specProvider, _logManager);

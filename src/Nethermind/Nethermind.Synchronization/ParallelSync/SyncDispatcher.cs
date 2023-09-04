@@ -5,39 +5,53 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public abstract class SyncDispatcher<T>
+    public class SyncDispatcher<T>
     {
         private readonly object _feedStateManipulation = new();
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
 
         private IPeerAllocationStrategyFactory<T> PeerAllocationStrategyFactory { get; }
 
-        protected ILogger Logger { get; }
-        protected ISyncFeed<T> Feed { get; }
-        protected ISyncPeerPool SyncPeerPool { get; }
+        private ILogger Logger { get; }
+        private ISyncFeed<T> Feed { get; }
+        private ISyncDownloader<T> Downloader { get; }
+        private ISyncPeerPool SyncPeerPool { get; }
 
-        protected SyncDispatcher(
+        private readonly SemaphoreSlim _concurrentProcessingSemaphore;
+
+        public SyncDispatcher(
+            int maxNumberOfProcessingThread,
             ISyncFeed<T>? syncFeed,
+            ISyncDownloader<T>? downloader,
             ISyncPeerPool? syncPeerPool,
             IPeerAllocationStrategyFactory<T>? peerAllocationStrategy,
             ILogManager? logManager)
         {
             Logger = logManager?.GetClassLogger<SyncDispatcher<T>>() ?? throw new ArgumentNullException(nameof(logManager));
             Feed = syncFeed ?? throw new ArgumentNullException(nameof(syncFeed));
+            Downloader = downloader ?? throw new ArgumentNullException(nameof(downloader));
             SyncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             PeerAllocationStrategyFactory = peerAllocationStrategy ?? throw new ArgumentNullException(nameof(peerAllocationStrategy));
+
+            if (maxNumberOfProcessingThread == 0)
+            {
+                _concurrentProcessingSemaphore = new SemaphoreSlim(Environment.ProcessorCount, Environment.ProcessorCount);
+            }
+            else
+            {
+                _concurrentProcessingSemaphore = new SemaphoreSlim(maxNumberOfProcessingThread, maxNumberOfProcessingThread);
+            }
 
             syncFeed.StateChanged += SyncFeedOnStateChanged;
         }
 
         private TaskCompletionSource<object?>? _dormantStateTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        protected abstract Task Dispatch(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
 
         public async Task Start(CancellationToken cancellationToken)
         {
@@ -56,14 +70,14 @@ namespace Nethermind.Synchronization.ParallelSync
 
                     if (currentStateLocal == SyncFeedState.Dormant)
                     {
-                        if (Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
+                        if (Logger.IsDebug) Logger.Debug($"{GetType().NameWithGenerics()} is going to sleep.");
                         if (dormantTaskLocal is null)
                         {
                             if (Logger.IsWarn) Logger.Warn("Dormant task is NULL when trying to await it");
                         }
 
                         await (dormantTaskLocal?.Task ?? Task.CompletedTask).WaitAsync(cancellationToken);
-                        if (Logger.IsDebug) Logger.Debug($"{GetType().Name} got activated.");
+                        if (Logger.IsDebug) Logger.Debug($"{GetType().NameWithGenerics()} got activated.");
                     }
                     else if (currentStateLocal == SyncFeedState.Active)
                     {
@@ -73,7 +87,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         {
                             if (!Feed.IsMultiFeed)
                             {
-                                if (Logger.IsTrace) Logger.Trace($"{Feed.GetType().Name} enqueued a null request.");
+                                if (Logger.IsTrace) Logger.Trace($"{Feed.GetType().NameWithGenerics()} enqueued a null request.");
                             }
 
                             await Task.Delay(10, cancellationToken);
@@ -93,20 +107,20 @@ namespace Nethermind.Synchronization.ParallelSync
 
                             if (!Feed.IsMultiFeed)
                             {
-                                if (Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer}");
+                                if (Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().NameWithGenerics()} with allocated {allocatedPeer}");
                                 await task;
-                                if (Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer} has been processed");
+                                if (Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().NameWithGenerics()} with allocated {allocatedPeer} has been processed");
                             }
                         }
                         else
                         {
-                            Logger.Debug($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
+                            Logger.Debug($"DISPATCHER - {GetType().NameWithGenerics()}: peer NOT allocated");
                             DoHandleResponse(request);
                         }
                     }
                     else if (currentStateLocal == SyncFeedState.Finished)
                     {
-                        if (Logger.IsInfo) Logger.Info($"{GetType().Name} has finished work.");
+                        if (Logger.IsInfo) Logger.Info($"{GetType().NameWithGenerics()} has finished work.");
                         break;
                     }
                 }
@@ -122,7 +136,7 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             try
             {
-                await Dispatch(allocatedPeer, request, cancellationToken);
+                await Downloader.Dispatch(allocatedPeer, request, cancellationToken);
             }
             catch (ConcurrencyLimitReachedException)
             {
@@ -137,6 +151,15 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (Logger.IsWarn) Logger.Warn($"Failure when executing request {e}");
             }
 
+            if (Feed.IsMultiFeed)
+            {
+                // Limit multithreaded feed concurrency. Note, this also blocks freeing the allocation, which is deliberate.
+                // otherwise, we will keep spawning requests without processing it fast enough, which consume memory.
+                await _concurrentProcessingSemaphore.WaitAsync(cancellationToken);
+            }
+
+            Free(allocation);
+
             try
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -149,7 +172,10 @@ namespace Nethermind.Synchronization.ParallelSync
             }
             finally
             {
-                Free(allocation);
+                if (Feed.IsMultiFeed)
+                {
+                    _concurrentProcessingSemaphore.Release();
+                }
             }
         }
 
@@ -172,14 +198,16 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        protected virtual void Free(SyncPeerAllocation allocation)
+        private void Free(SyncPeerAllocation allocation)
         {
+            Downloader.BeforeFree(allocation);
             SyncPeerPool.Free(allocation);
         }
 
-        protected virtual async Task<SyncPeerAllocation> Allocate(T request)
+        protected async Task<SyncPeerAllocation> Allocate(T request)
         {
             SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, 1000);
+            Downloader.OnAllocate(allocation);
             return allocation;
         }
 

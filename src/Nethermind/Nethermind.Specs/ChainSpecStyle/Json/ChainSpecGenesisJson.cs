@@ -18,8 +18,14 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public Keccak ParentHash { get; set; }
         public byte[] ExtraData { get; set; }
         public UInt256 GasLimit { get; set; }
+
         public UInt256? BaseFeePerGas { get; set; }
+
         public Keccak StateRoot { get; set; }
-        public Address ConstructorSender { get; set; }
+
+        public ulong? BlobGasUsed { get; set; }
+        public ulong? ExcessBlobGas { get; set; }
+        public Keccak ParentBeaconBlockRoot { get; set; }
+		public Address ConstructorSender { get; set; }
     }
 }

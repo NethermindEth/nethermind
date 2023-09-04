@@ -16,7 +16,6 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -223,7 +222,7 @@ namespace Nethermind.Blockchain.Test.Validators
             _block.Header.Hash = _block.CalculateHash();
 
             bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-            Assert.AreEqual(expectedResult, result);
+            Assert.That(result, Is.EqualTo(expectedResult));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -310,7 +309,7 @@ namespace Nethermind.Blockchain.Test.Validators
 
             HeaderValidator validator = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(_testLogger));
             bool result = validator.Validate(_block.Header);
-            Assert.AreEqual(expectedResult, result);
+            Assert.That(result, Is.EqualTo(expectedResult));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]

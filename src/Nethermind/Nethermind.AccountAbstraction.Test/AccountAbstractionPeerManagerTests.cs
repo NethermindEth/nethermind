@@ -2,21 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Antlr4.Runtime.Misc;
-using FluentAssertions;
 using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Network;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,9 +18,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.AccountAbstraction.Test
@@ -41,7 +31,7 @@ namespace Nethermind.AccountAbstraction.Test
         private IBlockTree _blockTree = Substitute.For<IBlockTree>();
         private ILogger _logger = Substitute.For<ILogger>();
         private ILogFinder _logFinder = Substitute.For<ILogFinder>();
-        private IStateProvider _stateProvider = Substitute.For<IStateProvider>();
+        private IWorldState _stateProvider = Substitute.For<IWorldState>();
         private ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
         private readonly ISigner _signer = Substitute.For<ISigner>();
         private readonly string[] _entryPointContractAddress = { "0x8595dd9e0438640b5e1254f9df579ac12a86865f", "0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e" };

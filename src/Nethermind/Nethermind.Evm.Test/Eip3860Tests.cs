@@ -6,8 +6,6 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using System;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test
@@ -35,14 +33,13 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(byteCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, byteCode, Spec);
 
             byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, 100000).Done;
 
             var tracer = Execute(BlockNumber, eip3860Enabled ? Timestamp : Timestamp - 1, callCode);
-            Assert.AreEqual(StatusCode.Success, tracer.StatusCode);
-            Assert.AreEqual(expectedGasUsage, tracer.GasSpent - _transactionCallCost);
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.GasSpent - _transactionCallCost, Is.EqualTo(expectedGasUsage));
         }
 
         [TestCase("60006000F0")]
@@ -58,18 +55,17 @@ namespace Nethermind.Evm.Test
                 : Prepare.EvmCode.FromCode(dataPush.ToString("X") + dataLenghtHex + createCode).Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(evmCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, evmCode, Spec);
 
             const int contractCreationGasLimit = 50000;
             byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, contractCreationGasLimit).Done;
 
             var tracer = Execute(callCode);
-            Assert.AreEqual(StatusCode.Success, tracer.StatusCode);
-            Assert.AreEqual(1, tracer.ReportedActionErrors.Count);
-            Assert.AreEqual(EvmExceptionType.OutOfGas, tracer.ReportedActionErrors[0]);
-            Assert.AreEqual((UInt256)0, TestState.GetAccount(TestItem.AddressC).Nonce);
-            Assert.AreEqual(_transactionCallCost + contractCreationGasLimit, tracer.GasSpent);
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.ReportedActionErrors.Count, Is.EqualTo(1));
+            Assert.That(tracer.ReportedActionErrors[0], Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(TestState.GetAccount(TestItem.AddressC).Nonce, Is.EqualTo((UInt256)0));
+            Assert.That(tracer.GasSpent, Is.EqualTo(_transactionCallCost + contractCreationGasLimit));
         }
 
         [Test]
@@ -77,7 +73,7 @@ namespace Nethermind.Evm.Test
         {
             var tracer = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp - 1, Spec.MaxInitCodeSize + 1);
 
-            Assert.AreEqual(StatusCode.Success, tracer.StatusCode);
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         }
 
         [Test]
@@ -85,8 +81,8 @@ namespace Nethermind.Evm.Test
         {
             var tracer = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp, Spec.MaxInitCodeSize + 1);
 
-            Assert.AreEqual(StatusCode.Failure, tracer.StatusCode);
-            Assert.AreEqual(tracer.Error, "EIP-3860 - transaction size over max init code size");
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.Error, Is.EqualTo("EIP-3860 - transaction size over max init code size"));
         }
 
         [Test]
@@ -95,7 +91,7 @@ namespace Nethermind.Evm.Test
             //7680 is the size of create instructions - Prepare.EvmCode.Create
             var tracer = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp, Spec.MaxInitCodeSize - 7680);
 
-            Assert.AreEqual(StatusCode.Success, tracer.StatusCode);
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         }
 
         protected TestAllTracerWithOutput PrepExecuteCreateTransaction(ulong timestamp, long byteCodeSize)

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
@@ -15,13 +14,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
 using Nethermind.Stats;
@@ -113,6 +113,7 @@ namespace Nethermind.Network.Test
                     _peerStorage,
                     forkInfo,
                     _gossipPolicy,
+                    new NetworkConfig(),
                     LimboLogs.Instance);
 
                 _serializer.Register(new HelloMessageSerializer());
@@ -165,13 +166,13 @@ namespace Nethermind.Network.Test
 
             public Context VerifyDisconnected()
             {
-                Assert.AreEqual(SessionState.Disconnected, _currentSession.State);
+                Assert.That(_currentSession.State, Is.EqualTo(SessionState.Disconnected));
                 return this;
             }
 
             public Context ReceiveDisconnect()
             {
-                DisconnectMessage message = new(DisconnectReason.Other);
+                DisconnectMessage message = new(EthDisconnectReason.Other);
                 IByteBuffer disconnectPacket = _serializer.ZeroSerialize(message);
 
                 // to account for AdaptivePacketType byte
@@ -188,13 +189,13 @@ namespace Nethermind.Network.Test
 
             public Context VerifyInitialized()
             {
-                Assert.AreEqual(SessionState.Initialized, _currentSession.State);
+                Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
                 return this;
             }
 
             public Context VerifyCompatibilityValidationType(CompatibilityValidationType expectedType)
             {
-                Assert.AreEqual(expectedType, _nodeStatsManager.GetOrAdd(_currentSession.Node).FailedCompatibilityValidation);
+                Assert.That(_nodeStatsManager.GetOrAdd(_currentSession.Node).FailedCompatibilityValidation, Is.EqualTo(expectedType));
                 return this;
             }
 
@@ -229,10 +230,10 @@ namespace Nethermind.Network.Test
             public Context VerifyEthInitialized()
             {
                 INodeStats stats = _nodeStatsManager.GetOrAdd(_currentSession.Node);
-                Assert.AreEqual(TestBlockchainIds.NetworkId, stats.EthNodeDetails.NetworkId);
-                Assert.AreEqual(_blockTree.Genesis.Hash, stats.EthNodeDetails.GenesisHash);
-                Assert.AreEqual(66, stats.EthNodeDetails.ProtocolVersion);
-                Assert.AreEqual(BigInteger.One, stats.EthNodeDetails.TotalDifficulty);
+                Assert.That(stats.EthNodeDetails.NetworkId, Is.EqualTo(TestBlockchainIds.NetworkId));
+                Assert.That(stats.EthNodeDetails.GenesisHash, Is.EqualTo(_blockTree.Genesis.Hash));
+                Assert.That(stats.EthNodeDetails.ProtocolVersion, Is.EqualTo(66));
+                Assert.That(stats.EthNodeDetails.TotalDifficulty, Is.EqualTo(BigInteger.One));
                 return this;
             }
 

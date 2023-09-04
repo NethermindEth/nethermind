@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -14,9 +12,9 @@ namespace Nethermind.Consensus.Withdrawals;
 public class WithdrawalProcessor : IWithdrawalProcessor
 {
     private readonly ILogger _logger;
-    private readonly IStateProvider _stateProvider;
+    private readonly IWorldState _stateProvider;
 
-    public WithdrawalProcessor(IStateProvider stateProvider, ILogManager logManager)
+    public WithdrawalProcessor(IWorldState stateProvider, ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(logManager);
 

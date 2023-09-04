@@ -6,12 +6,9 @@ using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Data;
 using Nethermind.KeyStore;
-using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Personal
@@ -81,7 +78,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
 
         private static byte[] ToEthSignedMessage(byte[] message)
         {
-            string messageString = $"\\x19Ethereum Signed Message:\\n{message.Length}{UTF8Encoding.UTF8.GetString(message)}";
+            string messageString = $"\u0019Ethereum Signed Message:\n{message.Length}{UTF8Encoding.UTF8.GetString(message)}";
             message = UTF8Encoding.UTF8.GetBytes(messageString);
             return message;
         }

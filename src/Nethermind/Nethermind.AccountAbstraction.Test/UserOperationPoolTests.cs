@@ -2,20 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Antlr4.Runtime.Misc;
 using FluentAssertions;
-using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -28,11 +24,9 @@ using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
-using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -44,7 +38,7 @@ namespace Nethermind.AccountAbstraction.Test
         private IBlockTree _blockTree = Substitute.For<IBlockTree>();
         private IReceiptFinder _receiptFinder = Substitute.For<IReceiptFinder>();
         private ILogFinder _logFinder = Substitute.For<ILogFinder>();
-        private IStateProvider _stateProvider = Substitute.For<IStateProvider>();
+        private IWorldState _stateProvider = Substitute.For<IWorldState>();
         private ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
         private readonly ISigner _signer = Substitute.For<ISigner>();
         private readonly Keccak _userOperationEventTopic = new("0x33fd4d1f25a5461bea901784a6571de6debc16cd0831932c22c6969cd73ba994");

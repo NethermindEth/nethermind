@@ -6,14 +6,11 @@ using System.Security;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -125,7 +122,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     };
 
                     var (_, result) = await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
-                    Assert.AreEqual(AcceptTxResult.Accepted, result);
+                    Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
                     return this;
                 }
 
@@ -158,12 +155,12 @@ namespace Nethermind.Blockchain.Test.Producers
                     await ExecuteAntecedentIfNeeded();
                     IBlockTree blockTree = _testRpcBlockchain.BlockTree;
                     Block startingBlock = blockTree.Head;
-                    Assert.AreEqual(UInt256.Zero, startingBlock!.Header.BaseFeePerGas);
+                    Assert.That(startingBlock!.Header.BaseFeePerGas, Is.EqualTo(UInt256.Zero));
                     for (long i = startingBlock.Number; i < _eip1559TransitionBlock - 1; ++i)
                     {
                         await _testRpcBlockchain.AddBlock();
                         Block currentBlock = blockTree.Head;
-                        Assert.AreEqual(UInt256.Zero, currentBlock!.Header.BaseFeePerGas);
+                        Assert.That(currentBlock!.Header.BaseFeePerGas, Is.EqualTo(UInt256.Zero));
                     }
 
                     return this;
@@ -176,7 +173,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     await _testRpcBlockchain.AddBlock(transactions);
                     IBlockTree blockTree = _testRpcBlockchain.BlockTree;
                     Block headBlock = blockTree.Head;
-                    Assert.AreEqual(expectedBaseFee, headBlock!.Header.BaseFeePerGas);
+                    Assert.That(headBlock!.Header.BaseFeePerGas, Is.EqualTo(expectedBaseFee));
 
                     return this;
                 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -76,7 +75,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public ReceiptsMessage Deserialize(RlpStream rlpStream)
         {
             TxReceipt[][] data = rlpStream.DecodeArray(itemContext =>
-                itemContext.DecodeArray(nestedContext => _decoder.Decode(nestedContext)) ?? new TxReceipt[0], true);
+                itemContext.DecodeArray(nestedContext => _decoder.Decode(nestedContext)) ?? Array.Empty<TxReceipt>(), true);
             ReceiptsMessage message = new(data);
 
             return message;

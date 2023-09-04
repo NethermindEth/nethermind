@@ -2,14 +2,14 @@
   "profiles": {
     "Chiado": {
       "commandName": "Project",
-      "commandLineArgs": "-c chiado -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
+      "commandLineArgs": "-c chiado -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "Chiado (archive)": {
       "commandName": "Project",
-      "commandLineArgs": "-c chiado_archive -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
+      "commandLineArgs": "-c chiado_archive -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -30,35 +30,49 @@
     },
     "Gnosis": {
       "commandName": "Project",
-      "commandLineArgs": "-c gnosis -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "commandLineArgs": "-c gnosis -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "Gnosis (archive)": {
       "commandName": "Project",
-      "commandLineArgs": "-c gnosis_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "commandLineArgs": "-c gnosis_archive -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "-c goerli -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "commandLineArgs": "-c goerli -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "Goerli (archive)": {
       "commandName": "Project",
-      "commandLineArgs": "-c goerli_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "commandLineArgs": "-c goerli_archive -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "Hive": {
       "commandName": "Project",
-      "commandLineArgs": "-c hive -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
+      "commandLineArgs": "-c hive -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Holesky": {
+      "commandName": "Project",
+      "commandLineArgs": "-c holesky -dd %NETHERMIND_DATA_DIR%",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Holesky (archive)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c holesky_archive -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -72,14 +86,14 @@
     },
     "Mainnet": {
       "commandName": "Project",
-      "commandLineArgs": "-c mainnet -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "commandLineArgs": "-c mainnet -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "Mainnet (archive)": {
       "commandName": "Project",
-      "commandLineArgs": "-c mainnet_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "commandLineArgs": "-c mainnet_archive -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -93,21 +107,21 @@
     },
     "Sepolia": {
       "commandName": "Project",
-      "commandLineArgs": "-c sepolia -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
+      "commandLineArgs": "-c sepolia -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "Sepolia (archive)": {
       "commandName": "Project",
-      "commandLineArgs": "-c sepolia_archive -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
+      "commandLineArgs": "-c sepolia_archive -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "Spaceneth": {
       "commandName": "Project",
-      "commandLineArgs": "-c spaceneth -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "commandLineArgs": "-c spaceneth -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -119,23 +133,9 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Zhejiang": {
-      "commandName": "Project",
-      "commandLineArgs": "-c zhejiang -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.JwtSecretFile %NETHERMIND_DATA_DIR%\\jwtsecret",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Zhejiang (archive)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c zhejiang_archive -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.JwtSecretFile %NETHERMIND_DATA_DIR%\\jwtsecret",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Docker": {
       "commandName": "Docker",
-      "commandLineArgs": "-c goerli -dd /data --JsonRpc.EngineHost 0.0.0.0 --JsonRpc.EnginePort 8551 --JsonRpc.Host 0.0.0.0"
+      "commandLineArgs": "-c sepolia -dd /data --JsonRpc.EngineHost 0.0.0.0 --JsonRpc.EnginePort 8551 --JsonRpc.Host 0.0.0.0"
     },
     "Bellecour": {
       "commandName": "Project",

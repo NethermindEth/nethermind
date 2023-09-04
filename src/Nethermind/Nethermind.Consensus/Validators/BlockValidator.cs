@@ -6,6 +6,8 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
@@ -53,17 +55,13 @@ public class BlockValidator : IBlockValidator
     /// </returns>
     public bool ValidateSuggestedBlock(Block block)
     {
-        Transaction[] txs = block.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        for (int i = 0; i < txs.Length; i++)
-        {
-            if (!_txValidator.IsWellFormed(txs[i], spec))
-            {
-                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction {txs[i].Hash}");
-                return false;
-            }
-        }
+        if (!ValidateTransactions(block, spec))
+            return false;
+
+        if (!ValidateEip4844Fields(block, spec))
+            return false;
 
         if (spec.MaximumUncleCount < block.Uncles.Length)
         {
@@ -138,6 +136,21 @@ public class BlockValidator : IBlockValidator
                 if (_logger.IsError) _logger.Error($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
             }
 
+            if (processedBlock.Header.BlobGasUsed != suggestedBlock.Header.BlobGasUsed)
+            {
+                if (_logger.IsError) _logger.Error($"- blob gas used: expected {suggestedBlock.Header.BlobGasUsed}, got {processedBlock.Header.BlobGasUsed}");
+            }
+
+            if (processedBlock.Header.ExcessBlobGas != suggestedBlock.Header.ExcessBlobGas)
+            {
+                if (_logger.IsError) _logger.Error($"- excess blob gas: expected {suggestedBlock.Header.ExcessBlobGas}, got {processedBlock.Header.ExcessBlobGas}");
+            }
+
+            if (processedBlock.Header.ParentBeaconBlockRoot != suggestedBlock.Header.ParentBeaconBlockRoot)
+            {
+                if (_logger.IsError) _logger.Error($"- parent beacon block root : expected {suggestedBlock.Header.ParentBeaconBlockRoot}, got {processedBlock.Header.ParentBeaconBlockRoot}");
+            }
+
             for (int i = 0; i < processedBlock.Transactions.Length; i++)
             {
                 if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
@@ -185,6 +198,79 @@ public class BlockValidator : IBlockValidator
         }
 
         error = null;
+
+        return true;
+    }
+
+    private bool ValidateTransactions(Block block, IReleaseSpec spec)
+    {
+        Transaction[] transactions = block.Transactions;
+
+        for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
+        {
+            Transaction transaction = transactions[txIndex];
+
+            if (!_txValidator.IsWellFormed(transaction, spec))
+            {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction {transaction.Hash}");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool ValidateEip4844Fields(Block block, IReleaseSpec spec)
+    {
+        if (!spec.IsEip4844Enabled)
+        {
+            return true;
+        }
+
+        int blobsInBlock = 0;
+        UInt256 blobGasPrice = UInt256.Zero;
+        Transaction[] transactions = block.Transactions;
+
+        for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
+        {
+            Transaction transaction = transactions[txIndex];
+
+            if (!transaction.SupportsBlobs)
+            {
+                continue;
+            }
+
+            if (blobGasPrice.IsZero)
+            {
+                if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block.Header, out blobGasPrice))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {nameof(blobGasPrice)} overflow.");
+                    return false;
+                }
+            }
+
+            if (transaction.MaxFeePerBlobGas < blobGasPrice)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} A transaction has unsufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {blobGasPrice}.");
+                return false;
+            }
+
+            blobsInBlock += transaction.BlobVersionedHashes!.Length;
+        }
+
+        ulong blobGasUsed = BlobGasCalculator.CalculateBlobGas(blobsInBlock);
+
+        if (blobGasUsed > Eip4844Constants.MaxBlobGasPerBlock)
+        {
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} A block cannot have more than {Eip4844Constants.MaxBlobGasPerBlock} blob gas.");
+            return false;
+        }
+
+        if (blobGasUsed != block.Header.BlobGasUsed)
+        {
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {nameof(BlockHeader.BlobGasUsed)} declared in the block header does not match actual blob gas used: {block.Header.BlobGasUsed} != {blobGasUsed}.");
+            return false;
+        }
 
         return true;
     }

@@ -10,7 +10,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -53,12 +52,11 @@ namespace Nethermind.Blockchain.Test.Producers
                 NoPruning.Instance,
                 Archive.Instance,
                 LimboLogs.Instance);
-            StateProvider stateProvider = new(
+            WorldState stateProvider = new(
                 trieStore,
                 dbProvider.RegisteredDbs[DbNames.Code],
                 LimboLogs.Instance);
             StateReader stateReader = new(trieStore, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
             BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
@@ -67,7 +65,6 @@ namespace Nethermind.Blockchain.Test.Producers
             TransactionProcessor txProcessor = new(
                 specProvider,
                 stateProvider,
-                storageProvider,
                 virtualMachine,
                 LimboLogs.Instance);
             BlockProcessor blockProcessor = new(
@@ -76,7 +73,6 @@ namespace Nethermind.Blockchain.Test.Producers
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
-                storageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);

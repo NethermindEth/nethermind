@@ -14,8 +14,6 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -38,8 +36,7 @@ namespace Nethermind.Consensus.AuRa
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
-            IStateProvider stateProvider,
-            IStorageProvider storageProvider,
+            IWorldState stateProvider,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
             IBlockTree blockTree,
@@ -53,7 +50,6 @@ namespace Nethermind.Consensus.AuRa
                 rewardCalculator,
                 blockTransactionsExecutor,
                 stateProvider,
-                storageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager,
@@ -110,8 +106,7 @@ namespace Nethermind.Consensus.AuRa
         private void ValidateGasLimit(Block block)
         {
             BlockHeader parentHeader = GetParentHeader(block);
-            long? expectedGasLimit = null;
-            if (_gasLimitOverride?.IsGasLimitValid(parentHeader, block.GasLimit, out expectedGasLimit) == false)
+            if (_gasLimitOverride?.IsGasLimitValid(parentHeader, block.GasLimit, out long? expectedGasLimit) == false)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid gas limit for block {block.Number}, hash {block.Hash}, expected value from contract {expectedGasLimit}, but found {block.GasLimit}.");
                 throw new InvalidBlockException(block);

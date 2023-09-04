@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -35,53 +36,45 @@ namespace Nethermind.Consensus.Validators
                    transaction.GasLimit >= IntrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
                    /* if it is a call or a transfer then we require the 'To' field to have a value
                       while for an init it will be empty */
-                   ValidateSignature(transaction.Signature, releaseSpec) &&
+                   ValidateSignature(transaction, releaseSpec) &&
                    ValidateChainId(transaction) &&
                    Validate1559GasFields(transaction, releaseSpec) &&
                    Validate3860Rules(transaction, releaseSpec) &&
                    Validate4844Fields(transaction);
         }
 
-        private bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) => !transaction.IsAboveInitCode(releaseSpec);
+        private static bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) =>
+            !transaction.IsAboveInitCode(releaseSpec);
 
-        private bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec)
-        {
-            switch (transaction.Type)
+        private static bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec) =>
+            transaction.Type switch
             {
-                case TxType.Legacy:
-                    return true;
-                case TxType.AccessList:
-                    return releaseSpec.UseTxAccessLists;
-                case TxType.EIP1559:
-                    return releaseSpec.IsEip1559Enabled;
-                case TxType.Blob:
-                    return releaseSpec.IsEip4844Enabled;
-                default:
-                    return false;
-            }
-        }
+                TxType.Legacy => true,
+                TxType.AccessList => releaseSpec.UseTxAccessLists,
+                TxType.EIP1559 => releaseSpec.IsEip1559Enabled,
+                TxType.Blob => releaseSpec.IsEip4844Enabled,
+                _ => false
+            };
 
-        private bool Validate1559GasFields(Transaction transaction, IReleaseSpec releaseSpec)
+        private static bool Validate1559GasFields(Transaction transaction, IReleaseSpec releaseSpec)
         {
-            if (!releaseSpec.IsEip1559Enabled || !transaction.IsEip1559)
+            if (!releaseSpec.IsEip1559Enabled || !transaction.Supports1559)
                 return true;
 
             return transaction.MaxFeePerGas >= transaction.MaxPriorityFeePerGas;
         }
 
-        private bool ValidateChainId(Transaction transaction)
-        {
-            switch (transaction.Type)
+        private bool ValidateChainId(Transaction transaction) =>
+            transaction.Type switch
             {
-                case TxType.Legacy:
-                    return true;
-                default:
-                    return transaction.ChainId == _chainIdValue;
-            }
-        }
+                TxType.Legacy => true,
+                _ => transaction.ChainId == _chainIdValue
+            };
 
-        private bool ValidateSignature(Signature? signature, IReleaseSpec spec)
+        private bool ValidateSignature(Transaction tx, IReleaseSpec spec)
         {
+            Signature? signature = tx.Signature;
+
             if (signature is null)
             {
                 return false;
@@ -100,18 +93,87 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            if (spec.IsEip155Enabled)
+            if (signature.V is 27 or 28)
             {
-                return (signature.ChainId ?? _chainIdValue) == _chainIdValue;
+                return true;
             }
 
-            return !spec.ValidateChainId || (signature.V == 27 || signature.V == 28);
+            if (tx.Type == TxType.Legacy && spec.IsEip155Enabled && (signature.V == _chainIdValue * 2 + 35ul || signature.V == _chainIdValue * 2 + 36ul))
+            {
+                return true;
+            }
+
+            return !spec.ValidateChainId;
         }
 
-        private bool Validate4844Fields(Transaction transaction)
+        private static bool Validate4844Fields(Transaction transaction)
         {
-            // TODO: Add blobs validation
-            return transaction.Type == TxType.Blob ^ transaction.MaxFeePerDataGas is null;
+            // Execution-payload version verification
+            if (!transaction.SupportsBlobs)
+            {
+                return transaction.MaxFeePerBlobGas is null &&
+                       transaction.BlobVersionedHashes is null &&
+                       transaction is not { NetworkWrapper: ShardBlobNetworkWrapper };
+            }
+
+            if (transaction.To is null ||
+                transaction.MaxFeePerBlobGas is null ||
+                transaction.BlobVersionedHashes is null ||
+                BlobGasCalculator.CalculateBlobGas(transaction.BlobVersionedHashes!.Length) > Eip4844Constants.MaxBlobGasPerTransaction ||
+                transaction.BlobVersionedHashes!.Length < Eip4844Constants.MinBlobsPerTransaction)
+            {
+                return false;
+            }
+
+            int blobCount = transaction.BlobVersionedHashes.Length;
+
+            for (int i = 0; i < blobCount; i++)
+            {
+                if (transaction.BlobVersionedHashes[i] is null ||
+                    transaction.BlobVersionedHashes![i].Length !=
+                    KzgPolynomialCommitments.BytesPerBlobVersionedHash ||
+                    transaction.BlobVersionedHashes![i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+                {
+                    return false;
+                }
+            }
+
+            // Mempool version verification if presents
+            if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+            {
+                if (wrapper.Blobs.Length != blobCount ||
+                    wrapper.Commitments.Length != blobCount ||
+                    wrapper.Proofs.Length != blobCount)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < blobCount; i++)
+                {
+                    if (wrapper.Blobs[i].Length != Ckzg.Ckzg.BytesPerBlob ||
+                        wrapper.Commitments[i].Length != Ckzg.Ckzg.BytesPerCommitment ||
+                        wrapper.Proofs[i].Length != Ckzg.Ckzg.BytesPerProof)
+                    {
+                        return false;
+                    }
+                }
+
+                Span<byte> hash = stackalloc byte[32];
+                for (int i = 0; i < blobCount; i++)
+                {
+                    if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(
+                            wrapper.Commitments[i].AsSpan(), hash) ||
+                        !hash.SequenceEqual(transaction.BlobVersionedHashes[i]))
+                    {
+                        return false;
+                    }
+                }
+
+                return KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs,
+                    wrapper.Commitments, wrapper.Proofs);
+            }
+
+            return true;
         }
     }
 }

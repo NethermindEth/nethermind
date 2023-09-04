@@ -8,9 +8,9 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -27,7 +27,7 @@ namespace Nethermind.AuRa.Test.Contract
         private readonly Address _contractAddress = Address.FromNumber(long.MaxValue);
         private IReadOnlyTransactionProcessor _transactionProcessor;
         private IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
-        private IStateProvider _stateProvider;
+        private IWorldState _stateProvider;
 
         [SetUp]
         public void SetUp()
@@ -36,7 +36,7 @@ namespace Nethermind.AuRa.Test.Contract
             _transactionProcessor = Substitute.For<IReadOnlyTransactionProcessor>();
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
             _readOnlyTxProcessorSource.Build(TestItem.KeccakA).Returns(_transactionProcessor);
-            _stateProvider = Substitute.For<IStateProvider>();
+            _stateProvider = Substitute.For<IWorldState>();
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         }
 
@@ -84,11 +84,11 @@ namespace Nethermind.AuRa.Test.Contract
                 Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), _block.Header, Arg.Any<ITxTracer>());
         }
 
-        private static bool IsEquivalentTo(object expected, object item)
+        private static bool IsEquivalentTo(Transaction expected, Transaction item)
         {
             try
             {
-                item.Should().BeEquivalentTo(expected);
+                item.EqualToTransaction(expected);
                 return true;
             }
             catch

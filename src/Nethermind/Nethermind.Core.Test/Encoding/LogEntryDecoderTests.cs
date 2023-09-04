@@ -22,9 +22,9 @@ namespace Nethermind.Core.Test.Encoding
             Rlp rlp = Rlp.Encode(logEntry);
             LogEntry decoded = valueDecode ? Rlp.Decode<LogEntry>(rlp.Bytes.AsSpan()) : Rlp.Decode<LogEntry>(rlp);
 
-            Assert.AreEqual(logEntry.Data, decoded.Data, "data");
-            Assert.AreEqual(logEntry.LoggersAddress, decoded.LoggersAddress, "address");
-            Assert.AreEqual(logEntry.Topics, decoded.Topics, "topics");
+            Assert.That(decoded.Data, Is.EqualTo(logEntry.Data), "data");
+            Assert.That(decoded.LoggersAddress, Is.EqualTo(logEntry.LoggersAddress), "address");
+            Assert.That(decoded.Topics, Is.EqualTo(logEntry.Topics), "topics");
         }
 
         [Test]
@@ -38,7 +38,8 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
             Assert.That(logEntry.LoggersAddress == decoded.LoggersAddress, "address");
 
-            KeccaksIterator iterator = new(decoded.TopicsRlp);
+            Span<byte> buffer = stackalloc byte[32];
+            KeccaksIterator iterator = new(decoded.TopicsRlp, buffer);
             for (int i = 0; i < logEntry.Topics.Length; i++)
             {
                 iterator.TryGetNext(out KeccakStructRef keccak);
@@ -63,9 +64,9 @@ namespace Nethermind.Core.Test.Encoding
             Rlp encoded = decoder.Encode(logEntry);
             LogEntry deserialized = decoder.Decode(new RlpStream(encoded.Bytes))!;
 
-            Assert.AreEqual(logEntry.Data, deserialized.Data, "data");
-            Assert.AreEqual(logEntry.LoggersAddress, deserialized.LoggersAddress, "address");
-            Assert.AreEqual(logEntry.Topics, deserialized.Topics, "topics");
+            Assert.That(deserialized.Data, Is.EqualTo(logEntry.Data), "data");
+            Assert.That(deserialized.LoggersAddress, Is.EqualTo(logEntry.LoggersAddress), "address");
+            Assert.That(deserialized.Topics, Is.EqualTo(logEntry.Topics), "topics");
         }
 
         [Test]
@@ -77,7 +78,7 @@ namespace Nethermind.Core.Test.Encoding
             Rlp rlpStreamResult = decoder.Encode(logEntry);
 
             Rlp rlp = decoder.Encode(logEntry);
-            Assert.AreEqual(rlp.Bytes.ToHexString(), rlpStreamResult.Bytes.ToHexString());
+            Assert.That(rlpStreamResult.Bytes.ToHexString(), Is.EqualTo(rlp.Bytes.ToHexString()));
         }
     }
 }

@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
@@ -23,14 +22,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip()
         {
-            byte[][] data = { TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes };
+            byte[][] data = { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
             Test(data);
         }
 
         [Test]
         public void Zero_roundtrip()
         {
-            byte[][] data = { TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes };
+            byte[][] data = { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
             Test(data);
         }
 
@@ -43,7 +42,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip_with_nulls()
         {
-            byte[][] data = { TestItem.KeccakA.Bytes, Array.Empty<byte>(), TestItem.KeccakC.Bytes };
+            byte[][] data = { TestItem.KeccakA.BytesToArray(), Array.Empty<byte>(), TestItem.KeccakC.BytesToArray() };
             Test(data);
         }
     }

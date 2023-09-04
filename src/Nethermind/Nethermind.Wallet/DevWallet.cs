@@ -10,7 +10,6 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Secp256k1;
 
 namespace Nethermind.Wallet
 {
@@ -118,7 +117,7 @@ namespace Nethermind.Wallet
 
         public Signature Sign(Keccak message, Address address)
         {
-            var rs = Proxy.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
+            var rs = SpanSecP256k1.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
             return new Signature(rs, v);
         }
     }

@@ -3,12 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Data;
-using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -17,7 +15,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
@@ -25,7 +22,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.AccountAbstraction.Executor
 {
@@ -124,9 +120,7 @@ namespace Nethermind.AccountAbstraction.Executor
             ITransactionProcessor transactionProcessor)
         {
             bool paymasterWhitelisted = _whitelistedPaymasters.Contains(userOperation.Paymaster);
-            UserOperationTxTracer txTracer = new(
-                transaction,
-                paymasterWhitelisted,
+            UserOperationTxTracer txTracer = new(paymasterWhitelisted,
                 userOperation.InitCode != Bytes.Empty, userOperation.Sender,
                 userOperation.Paymaster,
                 _entryPointContractAddress,
@@ -205,7 +199,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 estimateGasTracer.WithCancellation(cancellationToken));
 
             GasEstimator gasEstimator = new(transactionProcessor, _stateProvider, _specProvider, _blocksConfig);
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer);
+            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, cancellationToken);
 
             return new BlockchainBridge.CallOutput
             {
@@ -242,10 +236,7 @@ namespace Nethermind.AccountAbstraction.Executor
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
         {
-            if (transaction.SenderAddress is null)
-            {
-                transaction.SenderAddress = Address.SystemUser;
-            }
+            transaction.SenderAddress ??= Address.SystemUser;
 
             if (transaction.Nonce == 0)
             {

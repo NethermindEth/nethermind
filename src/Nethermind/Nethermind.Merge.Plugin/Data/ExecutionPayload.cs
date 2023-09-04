@@ -3,13 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Newtonsoft.Json;
@@ -19,7 +18,7 @@ namespace Nethermind.Merge.Plugin.Data;
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayload</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayload
+public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 {
     public ExecutionPayload() { } // Needed for tests
 
@@ -39,7 +38,6 @@ public class ExecutionPayload
         Timestamp = block.Timestamp;
         BaseFeePerGas = block.BaseFeePerGas;
         Withdrawals = block.Withdrawals;
-        ExcessDataGas = block.ExcessDataGas;
 
         SetTransactions(block.Transactions);
     }
@@ -70,12 +68,22 @@ public class ExecutionPayload
 
     public ulong Timestamp { get; set; }
 
+    private byte[][] _encodedTransactions = Array.Empty<byte[]>();
+
     /// <summary>
     /// Gets or sets an array of RLP-encoded transaction where each item is a byte list (data)
     /// representing <c>TransactionType || TransactionPayload</c> or <c>LegacyTransaction</c> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-2718">EIP-2718</see>.
     /// </summary>
-    public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();
+    public byte[][] Transactions
+    {
+        get { return _encodedTransactions; }
+        set
+        {
+            _encodedTransactions = value;
+            _transactions = null;
+        }
+    }
 
     /// <summary>
     /// Gets or sets a collection of <see cref="Withdrawal"/> as defined in
@@ -83,15 +91,32 @@ public class ExecutionPayload
     /// </summary>
     public IEnumerable<Withdrawal>? Withdrawals { get; set; }
 
-    [JsonConverter(typeof(NullableUInt256Converter))]
-    public UInt256? ExcessDataGas { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
+    /// </summary>
+    public ulong? BlobGasUsed { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.ExcessBlobGas"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
+    /// </summary>
+    public ulong? ExcessBlobGas { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.ParentBeaconBlockRoot"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
+    /// </summary>
+    [JsonIgnore]
+    public Keccak? ParentBeaconBlockRoot { get; set; }
 
     /// <summary>
     /// Creates the execution block from payload.
     /// </summary>
     /// <param name="block">When this method returns, contains the execution block.</param>
     /// <param name="totalDifficulty">A total difficulty of the block.</param>
-    /// <returns><c>true</c> if block created successfully; otherise, <c>false</c>.</returns>
+    /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
     public virtual bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
     {
         try
@@ -120,7 +145,6 @@ public class ExecutionPayload
                 TotalDifficulty = totalDifficulty,
                 TxRoot = new TxTrie(transactions).RootHash,
                 WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
-                ExcessDataGas = ExcessDataGas,
             };
 
             block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals);
@@ -135,11 +159,14 @@ public class ExecutionPayload
         }
     }
 
+
+    private Transaction[]? _transactions = null;
+
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
-    public Transaction[] GetTransactions() => Transactions
+    public Transaction[] GetTransactions() => _transactions ??= Transactions
         .Select(t => Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping))
         .ToArray();
 
@@ -147,25 +174,32 @@ public class ExecutionPayload
     /// RLP-encodes and sets the transactions specified to <see cref="Transactions"/>.
     /// </summary>
     /// <param name="transactions">An array of transactions to encode.</param>
-    public void SetTransactions(params Transaction[] transactions) => Transactions = transactions
-        .Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
-        .ToArray();
-
-    public override string ToString() => $"{BlockNumber} ({BlockHash})";
-}
-
-public static class ExecutionPayloadExtensions
-{
-    public static int GetVersion(this ExecutionPayload executionPayload) =>
-        executionPayload.Withdrawals is null ? 1 : 2;
-
-    public static bool Validate(
-        this ExecutionPayload executionPayload,
-        IReleaseSpec spec,
-        int version,
-        [NotNullWhen(false)] out string? error)
+    public void SetTransactions(params Transaction[] transactions)
     {
-        int actualVersion = executionPayload.GetVersion();
+        Transactions = transactions
+            .Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
+            .ToArray();
+        _transactions = transactions;
+    }
+
+    public override string ToString() => $"{BlockNumber} ({BlockHash.ToShortString()})";
+
+    ExecutionPayload IExecutionPayloadParams.ExecutionPayload => this;
+
+    public virtual ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
+    {
+        if (spec.IsEip4844Enabled)
+        {
+            error = "ExecutionPayloadV3 expected";
+            return ValidationResult.Fail;
+        }
+
+        int actualVersion = this switch
+        {
+            { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
+            { Withdrawals: not null } => 2,
+            _ => 1
+        };
 
         error = actualVersion switch
         {
@@ -174,15 +208,9 @@ public static class ExecutionPayloadExtensions
             _ => actualVersion > version ? $"ExecutionPayloadV{version} expected" : null
         };
 
-        return error is null;
+        return error is null ? ValidationResult.Success : ValidationResult.Fail;
     }
 
-    public static bool Validate(this ExecutionPayload executionPayload,
-        ISpecProvider specProvider,
-        int version,
-        [NotNullWhen(false)] out string? error) =>
-        executionPayload.Validate(
-            specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp),
-            version,
-            out error);
+    public virtual bool ValidateFork(ISpecProvider specProvider) =>
+        !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 }

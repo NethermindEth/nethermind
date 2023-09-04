@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
-using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
@@ -31,7 +30,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new(10, 10);
             memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
             memDb.Get(TestItem.KeccakA);
-            KeyValuePair<byte[], byte[]>[] some = memDb[new[] { TestItem.KeccakA.Bytes }];
+            KeyValuePair<byte[], byte[]>[] some = memDb[new[] { TestItem.KeccakA.BytesToArray() }];
         }
 
         [Test]
@@ -107,7 +106,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
-            KeyValuePair<byte[], byte[]>[] result = memDb[new[] { TestItem.KeccakB.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes }];
+            KeyValuePair<byte[], byte[]>[] result = memDb[new[] { TestItem.KeccakB.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() }];
             result.Should().HaveCount(3);
             result[0].Value.Should().NotBeNull();
             result[1].Value.Should().NotBeNull();

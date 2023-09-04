@@ -5,7 +5,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Synchronization.DbTuner;
 using Nethermind.Synchronization.FastBlocks;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
@@ -16,6 +15,7 @@ namespace Nethermind.Synchronization.Test.DbTuner;
 public class SyncDbTunerTests
 {
     private ITunableDb.TuneType _tuneType = ITunableDb.TuneType.HeavyWrite;
+    private ITunableDb.TuneType _blocksTuneType = ITunableDb.TuneType.AggressiveHeavyWrite;
     private SyncConfig _syncConfig = null!;
     private ISyncFeed<SnapSyncBatch>? _snapSyncFeed;
     private ISyncFeed<BodiesSyncBatch>? _bodiesSyncFeed;
@@ -32,7 +32,8 @@ public class SyncDbTunerTests
         _tuneType = ITunableDb.TuneType.HeavyWrite;
         _syncConfig = new SyncConfig()
         {
-            TuneDbMode = _tuneType
+            TuneDbMode = _tuneType,
+            BlocksDbTuneDbMode = _blocksTuneType,
         };
         _snapSyncFeed = Substitute.For<ISyncFeed<SnapSyncBatch>?>();
         _bodiesSyncFeed = Substitute.For<ISyncFeed<BodiesSyncBatch>?>();
@@ -68,20 +69,20 @@ public class SyncDbTunerTests
     [Test]
     public void WhenBodiesIsOn_TriggerBlocksDbTune()
     {
-        TestFeedAndDbTune(_bodiesSyncFeed, _blockDb);
+        TestFeedAndDbTune(_bodiesSyncFeed, _blockDb, _blocksTuneType);
     }
 
     [Test]
     public void WhenReceiptsIsOn_TriggerReceiptsDbTune()
     {
-        TestFeedAndDbTune(_bodiesSyncFeed, _blockDb);
+        TestFeedAndDbTune(_receiptSyncFeed, _receiptDb);
     }
 
-    public void TestFeedAndDbTune<T>(ISyncFeed<T> feed, ITunableDb db)
+    public void TestFeedAndDbTune<T>(ISyncFeed<T> feed, ITunableDb db, ITunableDb.TuneType? tuneType = null)
     {
         feed.StateChanged += Raise.EventWith(new SyncFeedStateEventArgs(SyncFeedState.Active));
 
-        db.Received().Tune(_tuneType);
+        db.Received().Tune(tuneType ?? _tuneType);
 
         feed.StateChanged += Raise.EventWith(new SyncFeedStateEventArgs(SyncFeedState.Finished));
 

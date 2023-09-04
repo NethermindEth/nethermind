@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -19,8 +20,8 @@ namespace Nethermind.State
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]
-        public StateTree()
-            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance)
+        public StateTree(ICappedArrayPool? bufferPool = null)
+            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool: bufferPool)
         {
             TrieType = TrieType.State;
         }
@@ -36,24 +37,14 @@ namespace Nethermind.State
         public Account? Get(Address address, Keccak? rootHash = null)
         {
             byte[]? bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
-            if (bytes is null)
-            {
-                return null;
-            }
-
-            return _decoder.Decode(bytes.AsRlpStream());
+            return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 
         [DebuggerStepThrough]
         internal Account? Get(Keccak keccak) // for testing
         {
             byte[]? bytes = Get(keccak.Bytes);
-            if (bytes is null)
-            {
-                return null;
-            }
-
-            return _decoder.Decode(bytes.AsRlpStream());
+            return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 
         public void Set(Address address, Account? account)
@@ -64,6 +55,14 @@ namespace Nethermind.State
 
         [DebuggerStepThrough]
         public Rlp? Set(Keccak keccak, Account? account)
+        {
+            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
+
+            Set(keccak.Bytes, rlp);
+            return rlp;
+        }
+
+        public Rlp? Set(in ValueKeccak keccak, Account? account)
         {
             Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
 

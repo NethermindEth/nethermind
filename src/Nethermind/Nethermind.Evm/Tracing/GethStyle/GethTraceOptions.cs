@@ -1,27 +1,35 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using Nethermind.Core.Crypto;
 using Newtonsoft.Json;
 
-namespace Nethermind.Evm.Tracing.GethStyle
+namespace Nethermind.Evm.Tracing.GethStyle;
+
+public record GethTraceOptions
 {
-    public class GethTraceOptions
-    {
-        [JsonProperty("disableStorage")]
-        public bool DisableStorage { get; set; }
+    [JsonProperty("disableMemory")]
+    [Obsolete("Use EnableMemory instead.")]
+    public bool DisableMemory { get => !EnableMemory; init => EnableMemory = !value; }
 
-        [JsonProperty("disableMemory")]
-        public bool DisableMemory { get; set; }
+    [JsonProperty("disableStack")]
+    public bool DisableStack { get; init; }
 
-        [JsonProperty("disableStack")]
-        public bool DisableStack { get; set; }
+    [JsonProperty("disableStorage")]
+    public bool DisableStorage { get; init; }
 
-        [JsonProperty("tracer")]
-        public string Tracer { get; set; }
+    [JsonProperty("enableMemory")]
+    public bool EnableMemory { get; init; }
 
-        [JsonProperty("timeout")]
-        public string Timeout { get; set; }
+    [JsonProperty("timeout")]
+    public string Timeout { get; init; }
 
-        public static GethTraceOptions Default = new();
-    }
+    [JsonProperty("tracer")]
+    public string Tracer { get; init; }
+
+    [JsonProperty("txHash")]
+    public Keccak? TxHash { get; init; }
+
+    public static GethTraceOptions Default { get; } = new();
 }

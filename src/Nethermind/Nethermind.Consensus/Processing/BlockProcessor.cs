@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -13,11 +14,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -25,12 +28,12 @@ public partial class BlockProcessor : IBlockProcessor
 {
     private readonly ILogger _logger;
     private readonly ISpecProvider _specProvider;
-    protected readonly IStateProvider _stateProvider;
+    protected readonly IWorldState _stateProvider;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IWitnessCollector _witnessCollector;
     private readonly IWithdrawalProcessor _withdrawalProcessor;
+    private readonly IBeaconBlockRootHandler _beaconBlockRootHandler;
     private readonly IBlockValidator _blockValidator;
-    private readonly IStorageProvider _storageProvider;
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
 
@@ -47,8 +50,7 @@ public partial class BlockProcessor : IBlockProcessor
         IBlockValidator? blockValidator,
         IRewardCalculator? rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-        IStateProvider? stateProvider,
-        IStorageProvider? storageProvider,
+        IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
         ILogManager? logManager,
@@ -58,12 +60,13 @@ public partial class BlockProcessor : IBlockProcessor
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-        _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
+        _beaconBlockRootHandler = new BeaconBlockRootHandler();
+
         _receiptsTracer = new BlockReceiptsTracer();
     }
 
@@ -157,7 +160,6 @@ public partial class BlockProcessor : IBlockProcessor
 
             if (incrementReorgMetric)
                 Metrics.Reorganizations++;
-            _storageProvider.Reset();
             _stateProvider.Reset();
             _stateProvider.StateRoot = branchStateRoot;
         }
@@ -173,7 +175,6 @@ public partial class BlockProcessor : IBlockProcessor
     private void PreCommitBlock(Keccak newBranchStateRoot, long blockNumber)
     {
         if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot}");
-        _storageProvider.CommitTrees(blockNumber);
         _stateProvider.CommitTree(blockNumber);
     }
 
@@ -181,7 +182,6 @@ public partial class BlockProcessor : IBlockProcessor
     private void RestoreBranch(Keccak branchingPointStateRoot)
     {
         if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
-        _storageProvider.Reset();
         _stateProvider.Reset();
         _stateProvider.StateRoot = branchingPointStateRoot;
         if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
@@ -225,7 +225,16 @@ public partial class BlockProcessor : IBlockProcessor
 
         _receiptsTracer.SetOtherTracer(blockTracer);
         _receiptsTracer.StartNewBlockTrace(block);
+
+        _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
+        _stateProvider.Commit(spec);
+
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
+
+        if (spec.IsEip4844Enabled)
+        {
+            block.Header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
+        }
 
         block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
@@ -262,7 +271,8 @@ public partial class BlockProcessor : IBlockProcessor
             bh.GasLimit,
             bh.Timestamp,
             bh.ExtraData,
-            bh.ExcessDataGas)
+            bh.BlobGasUsed,
+            bh.ExcessBlobGas)
         {
             Bloom = Bloom.Empty,
             Author = bh.Author,
@@ -277,6 +287,7 @@ public partial class BlockProcessor : IBlockProcessor
             BaseFeePerGas = bh.BaseFeePerGas,
             WithdrawalsRoot = bh.WithdrawalsRoot,
             IsPostMerge = bh.IsPostMerge,
+            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
         };
 
         return suggestedBlock.CreateCopy(headerForProcessing);

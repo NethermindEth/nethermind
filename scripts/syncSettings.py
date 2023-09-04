@@ -34,11 +34,6 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
-    "xdai": {
-        "url": "https://rpc.gnosischain.com",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
     "chiado": {
         "url": "https://rpc.chiadochain.net",
         "blockReduced": 8192,
@@ -73,34 +68,7 @@ configs = {
         "url": "https://bellecour.iex.ec/",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
-    },        
-    # mev section
-    "mainnet_mev": {
-        "url": "api.etherscan.io",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
-    },
-    "goerli_mev": {
-        "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    # aa section
-    "mainnet_aa": {
-        "url": "api.etherscan.io",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
-    },
-    "goerli_aa": {
-        "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    "xdai_aa": {
-        "url": "https://rpc.gnosischain.com",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    }
+    }	
 }
 
 def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequirement):

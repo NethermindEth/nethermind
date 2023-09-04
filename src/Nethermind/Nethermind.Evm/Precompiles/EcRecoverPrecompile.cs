@@ -11,15 +11,15 @@ using Nethermind.Logging;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class EcRecoverPrecompile : IPrecompile
+    public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
     {
-        public static readonly IPrecompile Instance = new EcRecoverPrecompile();
+        public static readonly EcRecoverPrecompile Instance = new EcRecoverPrecompile();
 
         private EcRecoverPrecompile()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(1);
+        public static Address Address { get; } = Address.FromNumber(1);
 
         public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
@@ -40,17 +40,17 @@ namespace Nethermind.Evm.Precompiles
             Metrics.EcRecoverPrecompile++;
 
             Span<byte> inputDataSpan = stackalloc byte[128];
-            inputData.Span.Slice(0, Math.Min(128, inputData.Length))
-                .CopyTo(inputDataSpan.Slice(0, Math.Min(128, inputData.Length)));
+            inputData.Span[..Math.Min(128, inputData.Length)]
+                .CopyTo(inputDataSpan[..Math.Min(128, inputData.Length)]);
 
-            Keccak hash = new(inputDataSpan.Slice(0, 32).ToArray());
+            Keccak hash = new(inputDataSpan[..32]);
             Span<byte> vBytes = inputDataSpan.Slice(32, 32);
             Span<byte> r = inputDataSpan.Slice(64, 32);
             Span<byte> s = inputDataSpan.Slice(96, 32);
 
             // TEST: CALLCODEEcrecoverV_prefixedf0_d0g0v0
             // TEST: CALLCODEEcrecoverV_prefixedf0_d1g0v0
-            if (!Bytes.AreEqual(_zero31, vBytes.Slice(0, 31)))
+            if (!Bytes.AreEqual(_zero31, vBytes[..31]))
             {
                 return (Array.Empty<byte>(), true);
             }

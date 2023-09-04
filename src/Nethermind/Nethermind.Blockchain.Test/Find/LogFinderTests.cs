@@ -14,7 +14,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -240,7 +239,7 @@ namespace Nethermind.Blockchain.Test.Find
             var logs = _logFinder.FindLogs(logFilter).ToArray();
 
             var blockNumbers = logs.Select((log) => log.BlockNumber).ToArray();
-            Assert.AreEqual(blockNumbers, expectedBlockNumbers);
+            Assert.That(expectedBlockNumbers, Is.EqualTo(blockNumbers));
         }
 
         public static IEnumerable FilterByBlocksTestsData

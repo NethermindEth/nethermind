@@ -4,12 +4,10 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
@@ -48,18 +46,32 @@ namespace Nethermind.Synchronization.Blocks
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-
         }
 
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
-            return new(syncFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport,
-                _receiptStorage, _specProvider, new BlocksSyncPeerAllocationStrategyFactory(), _betterPeerStrategy, _logManager);
+            return new(
+                syncFeed,
+                _syncPeerPool,
+                _blockTree,
+                _blockValidator,
+                 _sealValidator,
+                _syncReport,
+                _receiptStorage,
+                _specProvider,
+                _betterPeerStrategy,
+                _logManager);
+        }
+
+        public IPeerAllocationStrategyFactory<BlocksRequest> CreateAllocationStrategyFactory()
+        {
+            return new BlocksSyncPeerAllocationStrategyFactory();
         }
     }
 
     public interface IBlockDownloaderFactory
     {
         BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed);
+        IPeerAllocationStrategyFactory<BlocksRequest> CreateAllocationStrategyFactory();
     }
 }

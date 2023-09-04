@@ -20,6 +20,8 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Core.Specs;
+using Nethermind.Consensus.BeaconBlockRoot;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -27,14 +29,14 @@ namespace Nethermind.Merge.Plugin.Test
     public partial class EngineModuleTests
     {
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
+        private static readonly IBeaconBlockRootHandler _beaconBlockRootHandler = new BeaconBlockRootHandler();
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
-
         private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Keccak headBlockHash, Keccak finalizedBlockHash,
              Keccak safeBlockHash)
         {
-            Assert.AreEqual(headBlockHash, blockFinder.HeadHash);
-            Assert.AreEqual(finalizedBlockHash, blockFinder.FinalizedHash);
-            Assert.AreEqual(safeBlockHash, blockFinder.SafeHash);
+            Assert.That(blockFinder.HeadHash, Is.EqualTo(headBlockHash));
+            Assert.That(blockFinder.FinalizedHash, Is.EqualTo(finalizedBlockHash));
+            Assert.That(blockFinder.SafeHash, Is.EqualTo(safeBlockHash));
         }
 
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,
@@ -47,7 +49,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Keccak parentHash, PrivateKey from,
-            Address to, uint count, int value, out Account accountFrom, out BlockHeader parentHeader)
+            Address to, uint count, int value, out Account accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0)
         {
             Transaction BuildTransaction(uint index, Account senderAccount) =>
                 Build.A.Transaction.WithNonce(senderAccount.Nonce + index)
@@ -57,8 +59,9 @@ namespace Nethermind.Merge.Plugin.Test
                     .WithGasPrice(1.GWei())
                     .WithChainId(chain.SpecProvider.ChainId)
                     .WithSenderAddress(from.Address)
-                    .SignedAndResolved(from)
-                    .TestObject;
+                    .WithShardBlobTxTypeAndFields(blobCountPerTx)
+                    .WithMaxFeePerGasIfSupports1559(1.GWei())
+                    .SignedAndResolved(from).TestObject;
 
             parentHeader = chain.BlockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
             Account account = chain.StateReader.GetAccount(parentHeader.StateRoot!, from.Address)!;
@@ -78,13 +81,36 @@ namespace Nethermind.Merge.Plugin.Test
                 StateRoot = head.StateRoot!,
                 ReceiptsRoot = head.ReceiptsRoot!,
                 GasLimit = head.GasLimit,
-                Timestamp = head.Timestamp
+                Timestamp = head.Timestamp,
+                BaseFeePerGas = head.BaseFeePerGas,
             };
         }
 
-        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null)
+        private static ExecutionPayload CreateBlockRequest(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
+                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null)
+            => CreateBlockRequestInternal<ExecutionPayload>(spec, state, parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
+
+        private static ExecutionPayloadV3 CreateBlockRequestV3(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
+                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null)
         {
-            ExecutionPayload blockRequest = new()
+            var blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(spec, state, parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
+            blockRequestV3.TryGetBlock(out Block? block);
+            _beaconBlockRootHandler.ApplyContractStateChanges(block!, spec, state);
+
+            state.Commit(spec);
+            state.CommitTree(blockRequestV3.BlockNumber);
+
+            state.RecalculateStateRoot();
+            blockRequestV3.StateRoot = state.StateRoot;
+            TryCalculateHash(blockRequestV3, out Keccak? hash);
+            blockRequestV3.BlockHash = hash;
+            return blockRequestV3;
+        }
+
+        private static T CreateBlockRequestInternal<T>(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
+                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null) where T : ExecutionPayload, new()
+        {
+            T blockRequest = new()
             {
                 ParentHash = parent.BlockHash,
                 FeeRecipient = miner,
@@ -95,22 +121,25 @@ namespace Nethermind.Merge.Plugin.Test
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 LogsBloom = Bloom.Empty,
                 Timestamp = parent.Timestamp + 1,
-                Withdrawals = withdrawals
+                Withdrawals = withdrawals,
+                BlobGasUsed = blobGasUsed,
+                ExcessBlobGas = excessBlobGas,
+                ParentBeaconBlockRoot = parentBeaconBlockRoot,
             };
 
-            blockRequest.SetTransactions(Array.Empty<Transaction>());
+            blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());
             TryCalculateHash(blockRequest, out Keccak? hash);
             blockRequest.BlockHash = hash;
             return blockRequest;
         }
 
-        private static ExecutionPayload[] CreateBlockRequestBranch(ExecutionPayload parent, Address miner, int count)
+        private static ExecutionPayload[] CreateBlockRequestBranch(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, int count)
         {
             ExecutionPayload currentBlock = parent;
             ExecutionPayload[] blockRequests = new ExecutionPayload[count];
             for (int i = 0; i < count; i++)
             {
-                currentBlock = CreateBlockRequest(currentBlock, miner);
+                currentBlock = CreateBlockRequest(spec, state, currentBlock, miner);
                 blockRequests[i] = currentBlock;
             }
 

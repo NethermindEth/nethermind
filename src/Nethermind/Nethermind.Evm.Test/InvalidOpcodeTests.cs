@@ -24,7 +24,7 @@ namespace Nethermind.Evm.Test
             Instruction.MOD, Instruction.SMOD, Instruction.ADDMOD, Instruction.MULMOD, Instruction.EXP,
             Instruction.SIGNEXTEND, Instruction.LT, Instruction.GT, Instruction.SLT, Instruction.SGT,
             Instruction.EQ, Instruction.ISZERO, Instruction.AND, Instruction.OR, Instruction.XOR, Instruction.NOT,
-            Instruction.BYTE, Instruction.SHA3, Instruction.ADDRESS, Instruction.BALANCE, Instruction.ORIGIN,
+            Instruction.BYTE, Instruction.KECCAK256, Instruction.ADDRESS, Instruction.BALANCE, Instruction.ORIGIN,
             Instruction.CALLER, Instruction.CALLVALUE, Instruction.CALLDATALOAD, Instruction.CALLDATASIZE,
             Instruction.CALLDATACOPY, Instruction.CODESIZE, Instruction.CODECOPY, Instruction.GASPRICE,
             Instruction.EXTCODESIZE, Instruction.EXTCODECOPY, Instruction.BLOCKHASH, Instruction.COINBASE,
@@ -106,7 +106,8 @@ namespace Nethermind.Evm.Test
                 {
                     Instruction.TSTORE,
                     Instruction.TLOAD,
-                    Instruction.DATAHASH,
+                    Instruction.MCOPY,
+                    Instruction.BLOBHASH,
                 }
             ).ToArray();
 

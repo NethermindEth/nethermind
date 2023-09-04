@@ -37,6 +37,8 @@ public class NodeLifecycleManager : INodeLifecycleManager
     // private bool _sentPong;
     private bool _receivedPong;
 
+    private int _lastNeighbourSize = 0;
+
     public NodeLifecycleManager(Node node,
         IDiscoveryManager discoveryManager,
         INodeTable nodeTable,
@@ -118,7 +120,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         }
         else
         {
-            if (_logger.IsDebug) _logger.Warn("Attempt to request ENR before bonding");
+            if (_logger.IsDebug) _logger.Debug("Attempt to request ENR before bonding");
         }
     }
 
@@ -166,25 +168,38 @@ public class NodeLifecycleManager : INodeLifecycleManager
             return;
         }
 
-        if (_isNeighborsExpected)
+        if (_lastNeighbourSize + msg.Nodes.Length == 16)
         {
-            NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
-            RefreshNodeContactTime();
-
-            foreach (Node node in msg.Nodes)
-            {
-                if (node.Address.Address.ToString().Contains("127.0.0.1"))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Received localhost as node address from: {msg.FarPublicKey}, node: {node}");
-                    continue;
-                }
-
-                //If node is new it will create a new nodeLifecycleManager and will update state to New, which will trigger Ping
-                _discoveryManager.GetNodeLifecycleManager(node);
-            }
+            // Turns out, other client will split the neighbour msg to two msg, whose size sum up to 16.
+            // Happens about 70% of the time.
+            ProcessNodes(msg);
+        }
+        else if (_isNeighborsExpected)
+        {
+            ProcessNodes(msg);
         }
 
+        _lastNeighbourSize = msg.Nodes.Length;
         _isNeighborsExpected = false;
+    }
+
+    private void ProcessNodes(NeighborsMsg msg)
+    {
+        NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
+        RefreshNodeContactTime();
+
+        foreach (Node node in msg.Nodes)
+        {
+            if (node.Address.Address.ToString().Contains("127.0.0.1"))
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Received localhost as node address from: {msg.FarPublicKey}, node: {node}");
+                continue;
+            }
+
+            //If node is new it will create a new nodeLifecycleManager and will update state to New, which will trigger Ping
+            _discoveryManager.GetNodeLifecycleManager(node);
+        }
     }
 
     public void ProcessFindNodeMsg(FindNodeMsg msg)
@@ -197,7 +212,10 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeIn);
         RefreshNodeContactTime();
 
-        Node[] nodes = _nodeTable.GetClosestNodes(msg.SearchedNodeId).ToArray();
+        Node[] nodes = _nodeTable
+            .GetClosestNodes(msg.SearchedNodeId)
+            .Take(12) // Otherwise the payload may become too big, which is out of spec.
+            .ToArray();
         SendNeighbors(nodes);
     }
 

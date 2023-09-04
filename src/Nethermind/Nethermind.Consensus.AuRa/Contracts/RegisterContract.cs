@@ -6,7 +6,6 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
@@ -57,6 +56,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public Address GetAddress(BlockHeader header, string key) =>
             // 2 arguments: name and key (category)
             Constant.Call<Address>(
-                new CallInfo(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).Bytes, DnsAddressRecord) { MissingContractResult = MissingGetAddressResult });
+                new CallInfo(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).BytesToArray(), DnsAddressRecord) { MissingContractResult = MissingGetAddressResult });
     }
 }

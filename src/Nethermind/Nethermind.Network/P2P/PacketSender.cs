@@ -2,13 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
-using DotNetty.Common;
-using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
@@ -41,9 +36,7 @@ namespace Nethermind.Network.P2P
             int length = buffer.ReadableBytes;
 
             // Running in background
-#pragma warning disable CS4014
-            SendBuffer(buffer);
-#pragma warning restore CS4014
+            _ = SendBuffer(buffer);
 
             return length;
         }

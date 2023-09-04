@@ -10,10 +10,10 @@ using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -213,7 +213,7 @@ namespace Nethermind.AuRa.Test.Reward
         private bool CheckTransaction(Transaction t, ICollection<Address> addresses, byte[] transactionData) =>
             t.SenderAddress == Address.SystemUser
             && (t.To == _auraParameters.BlockRewardContractAddress || addresses.Contains(t.To))
-            && t.Data == transactionData;
+            && t.Data.AsArray() == transactionData;
 
         private byte[] SetupAbiAddresses(params BlockReward[] rewards)
         {

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using static System.Numerics.BitOperations;
 
@@ -388,7 +387,7 @@ namespace Nethermind.Core.Crypto
             return output;
         }
 
-        public static uint[] ComputeBytesToUint(byte[] input, int size)
+        public static uint[] ComputeBytesToUint(ReadOnlySpan<byte> input, int size)
         {
             uint[] output = new uint[size / sizeof(uint)];
             ComputeHash(input, MemoryMarshal.Cast<uint, byte>(output));
@@ -441,7 +440,7 @@ namespace Nethermind.Core.Crypto
             MemoryMarshal.AsBytes(state[..(size / sizeof(ulong))]).CopyTo(output);
         }
 
-        public void Update(Span<byte> input)
+        public void Update(ReadOnlySpan<byte> input)
         {
             if (_hash is not null)
             {
@@ -465,7 +464,7 @@ namespace Nethermind.Core.Crypto
             if (_remainderLength != 0)
             {
                 // Copy data to our remainder
-                Span<byte> remainderAdditive = input[..Math.Min(input.Length, _roundSize - _remainderLength)];
+                ReadOnlySpan<byte> remainderAdditive = input[..Math.Min(input.Length, _roundSize - _remainderLength)];
                 remainderAdditive.CopyTo(_remainderBuffer.AsSpan(_remainderLength));
 
                 // Increment the length
@@ -501,7 +500,7 @@ namespace Nethermind.Core.Crypto
             while (input.Length >= _roundSize)
             {
                 // Cast our input to ulongs.
-                Span<ulong> input64 = MemoryMarshal.Cast<byte, ulong>(input[.._roundSize]);
+                ReadOnlySpan<ulong> input64 = MemoryMarshal.Cast<byte, ulong>(input[.._roundSize]);
 
                 // Eliminate bounds check for state for the loop
                 _ = state[input64.Length];

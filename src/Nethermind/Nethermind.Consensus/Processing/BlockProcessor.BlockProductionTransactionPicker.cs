@@ -7,8 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing
@@ -26,7 +24,7 @@ namespace Nethermind.Consensus.Processing
 
             public event EventHandler<AddingTxEventArgs>? AddingTransaction;
 
-            public AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IStateProvider stateProvider)
+            public AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IWorldState stateProvider)
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
@@ -92,12 +90,24 @@ namespace Nethermind.Consensus.Processing
                     return false;
                 }
 
-                if (eip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + transaction.Value)
+                if (!transaction.IsServiceTransaction && eip1559Enabled)
                 {
-                    e.Set(TxAction.Skip, $"MaxFeePerGas ({transaction.MaxFeePerGas}) times GasLimit {transaction.GasLimit} is higher than sender balance ({senderBalance})");
-                    return false;
-                }
+                    UInt256 maxFee = (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + transaction.Value;
 
+                    if (senderBalance < maxFee)
+                    {
+                        e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}");
+                        return false;
+                    }
+
+                    if (transaction.SupportsBlobs && (
+                        !BlobGasCalculator.TryCalculateBlobGasPrice(block.Header, transaction, out UInt256 blobGasPrice) ||
+                        senderBalance < (maxFee += blobGasPrice)))
+                    {
+                        e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}, BlobGasPrice: {blobGasPrice}");
+                        return false;
+                    }
+                }
                 return true;
             }
         }

@@ -3,10 +3,8 @@
 
 using System;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Text;
-using Microsoft.Extensions.Primitives;
 using Nethermind.Config;
 using Nethermind.Logging;
 
@@ -82,10 +80,8 @@ public static class ChainSpecLoaderExtensions
             {
                 // do nothing - the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
             }
-            finally
-            {
-                throw new FileNotFoundException(missingChainspecFileMessage.ToString());
-            }
+
+            throw new FileNotFoundException(missingChainspecFileMessage.ToString());
         }
         if (logger.IsInfo) logger.Info($"Loading chainspec from file: {filePath}");
         return chainSpecLoader.Load(File.ReadAllText(filePath));

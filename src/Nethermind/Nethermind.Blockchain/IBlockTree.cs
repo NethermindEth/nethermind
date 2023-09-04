@@ -9,7 +9,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {
@@ -79,8 +78,6 @@ namespace Nethermind.Blockchain
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
         AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None);
-
-        void Insert(IEnumerable<Block> blocks);
 
         void UpdateHeadBlock(Keccak blockHash);
 
@@ -161,8 +158,6 @@ namespace Nethermind.Blockchain
 
         void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash);
 
-        void LoadLowestInsertedBeaconHeader();
-
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
 
@@ -187,5 +182,7 @@ namespace Nethermind.Blockchain
         bool IsBetterThanHead(BlockHeader? header);
 
         void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
+
+        void RecalculateTreeLevels();
     }
 }

@@ -12,7 +12,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Stats.Model;
-using NUnit.Framework.Constraints;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -22,6 +21,7 @@ namespace Nethermind.Synchronization.Test
     /// </summary>
     public class LatencySyncPeerMock : ISyncPeer
     {
+        public string Name => "Latency";
         public IBlockTree Tree { get; }
         public bool IsReported { get; set; } = false;
         public long? BusyUntil { get; set; }
@@ -57,12 +57,12 @@ namespace Nethermind.Synchronization.Test
         public byte ProtocolVersion { get; }
         public string ProtocolCode { get; }
 
-        public void Disconnect(InitiateDisconnectReason reason, string details)
+        public void Disconnect(DisconnectReason reason, string details)
         {
             throw new NotImplementedException();
         }
 
-        public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+        public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
         {
             throw new NotImplementedException();
         }
@@ -94,7 +94,7 @@ namespace Nethermind.Synchronization.Test
             throw new NotImplementedException();
         }
 
-        public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+        public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
         {
             throw new NotImplementedException();
         }

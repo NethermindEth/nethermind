@@ -4,9 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.Versioning;
 using Nethermind.Abi;
-using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -20,10 +18,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private readonly IDictionary<UInt256, T> _versions;
 
         private readonly IVersionedContract _versionSelectorContract;
-        private readonly LruCache<KeccakKey, UInt256> _versionsCache;
+        private readonly LruCache<ValueKeccak, UInt256> _versionsCache;
         private readonly ILogger _logger;
 
-        protected VersionedContract(IDictionary<UInt256, T> versions, LruCache<KeccakKey, UInt256> cache, long activation, ILogManager logManager)
+        protected VersionedContract(IDictionary<UInt256, T> versions, LruCache<ValueKeccak, UInt256> cache, long activation, ILogManager logManager)
         {
             _versions = versions ?? throw new ArgumentNullException(nameof(versions));
             _versionSelectorContract = versions.Values.Last();

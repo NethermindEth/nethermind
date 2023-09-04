@@ -17,6 +17,7 @@ public class SyncDbTuner
     private readonly IDb _receiptDb;
 
     private ITunableDb.TuneType _tuneType;
+    private ITunableDb.TuneType _blocksDbTuneType;
 
     public SyncDbTuner(
         ISyncConfig syncConfig,
@@ -53,6 +54,7 @@ public class SyncDbTuner
         _receiptDb = receiptDb;
 
         _tuneType = syncConfig.TuneDbMode;
+        _blocksDbTuneType = syncConfig.BlocksDbTuneDbMode;
     }
 
     private void SnapStateChanged(object? sender, SyncFeedStateEventArgs e)
@@ -87,7 +89,7 @@ public class SyncDbTuner
         {
             if (_blockDb is ITunableDb blockDb)
             {
-                blockDb.Tune(_tuneType);
+                blockDb.Tune(_blocksDbTuneType);
             }
         }
         else if (e.NewState == SyncFeedState.Finished)
