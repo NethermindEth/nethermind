@@ -172,6 +172,17 @@ namespace Nethermind.JsonRpc.WebSockets
             using (result)
             {
                 await using MemoryStream resultData = new();
+                /*
+                 * Do not use a 'MemoryStream' (a byte array) and then copy ('_handler.SendRawAsync')
+                 * See: https://learn.microsoft.com/en-us/answers/questions/1166554/max-size-of-system-io-memorystream
+                 *
+                 * Instead, use directly the target stream:
+                 *
+                 * - Use 'WebSocketStream' for WebSocketHandler
+                 * - Use 'NetworkStream' for IpcSocketsHandler
+                 *
+                 * NOTE: Consider using 'BufferedStream' to not send smalls chunks
+                 */
 
                 try
                 {
