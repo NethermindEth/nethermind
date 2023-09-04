@@ -12,10 +12,12 @@ namespace Nethermind.Sockets;
 public class WebSocketStream : Stream
 {
     private WebSocket? _socket;
+    private readonly WebSocketMessageType _messageType;
 
-    public WebSocketStream(WebSocket socket)
+    public WebSocketStream(WebSocket socket, WebSocketMessageType messageType)
     {
         _socket = socket;
+        _messageType = messageType;
     }
 
     public override bool CanRead => true;
@@ -58,22 +60,7 @@ public class WebSocketStream : Stream
         if (_socket.State != WebSocketState.Open) { throw new IOException($"WebSocket not open ({_socket.State})"); }
 
         ArraySegment<byte> segment = new(buffer, offset, count);
-        await _socket.SendAsync(segment, WebSocketMessageType.Binary, true, cancellationToken);
-    }
-
-    public Task CloseAsync()
-    {
-        return CloseAsync(CancellationToken.None);
-    }
-
-    public Task CloseAsync(CancellationToken cancellationToken)
-    {
-        ThrowIfDisposed();
-        _ = _socket ?? throw new ArgumentNullException(nameof(_socket));
-
-        return _socket.State == WebSocketState.Closed
-            ? Task.CompletedTask
-            : _socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Local close", cancellationToken);
+        await _socket.SendAsync(segment, _messageType, false, cancellationToken);
     }
 
     public override void Flush() { }
@@ -102,7 +89,10 @@ public class WebSocketStream : Stream
     {
         try
         {
-            if (disposing && _socket != null) { _socket.Dispose(); }
+            if (disposing)
+            {
+                _socket?.SendAsync(ReadOnlyMemory<byte>.Empty, WebSocketMessageType.Text, true, CancellationToken.None);
+            }
         }
         finally
         {
