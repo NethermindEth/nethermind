@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using FluentAssertions;
 using Nethermind.Config;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -333,6 +334,49 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task Will_not_stop_trying_on_rlpx_connection_failure()
+        {
+            await using Context ctx = new();
+            ctx.SetupPersistedPeers(0);
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+            ctx.RlpxPeer.MakeItFail();
+
+            for (int i = 0; i < 10; i++)
+            {
+                ctx.DiscoverNew(25);
+                await Task.Delay(_travisDelay);
+                Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(25 * (i + 1)).After(1000, 10));
+            }
+        }
+
+        [Test]
+        public async Task Will_not_stop_trying_on_any_failure()
+        {
+            await using Context ctx = new(maxActivePeers: 110);
+
+            ctx.Stats = Substitute.For<INodeStatsManager>();
+            ctx.Stats
+                .When(it => it.ReportEvent(Arg.Any<Node>(), NodeStatsEventType.ConnectionFailed))
+                .Throw(new Exception("test exception"));
+
+            Enumerable.Range(0, 110).ForEach((idx) =>
+            {
+                PublicKey key = new PrivateKeyGenerator().Generate().PublicKey;
+                ctx.PeerPool.GetOrAdd(new Node(key, "1.2.3.4", idx));
+            });
+
+            ctx.CreatePeerManager();
+            ctx.SetupPersistedPeers(0);
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+            ctx.RlpxPeer.MakeItFail();
+
+            Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.GreaterThan(100).After(10000, 10));
+            await ctx.PeerManager.StopAsync();
+        }
+
+        [Test]
         public async Task IfPeerAdded_with_invalid_chain_then_do_not_connect()
         {
             await using Context ctx = new();
@@ -558,16 +602,16 @@ namespace Nethermind.Network.Test
         {
             public RlpxMock RlpxPeer { get; }
             public IDiscoveryApp DiscoveryApp { get; }
-            public INodeStatsManager Stats { get; }
+            public INodeStatsManager Stats { get; set; }
             public INetworkStorage Storage { get; }
             public NodesLoader NodesLoader { get; }
-            public PeerManager PeerManager { get; }
+            public PeerManager PeerManager { get; set; }
             public IPeerPool PeerPool { get; }
             public INetworkConfig NetworkConfig { get; }
             public IStaticNodesManager StaticNodesManager { get; }
             public List<Session> Sessions { get; } = new();
 
-            public Context(int parallelism = 0)
+            public Context(int parallelism = 0, int maxActivePeers = 25)
             {
                 RlpxPeer = new RlpxMock(Sessions);
                 DiscoveryApp = Substitute.For<IDiscoveryApp>();
@@ -577,7 +621,7 @@ namespace Nethermind.Network.Test
                 Storage = new InMemoryStorage();
                 NodesLoader = new NodesLoader(new NetworkConfig(), Stats, Storage, RlpxPeer, LimboLogs.Instance);
                 NetworkConfig = new NetworkConfig();
-                NetworkConfig.MaxActivePeers = 25;
+                NetworkConfig.MaxActivePeers = maxActivePeers;
                 NetworkConfig.PeersPersistenceInterval = 50;
                 NetworkConfig.NumConcurrentOutgoingConnects = parallelism;
                 NetworkConfig.MaxOutgoingConnectPerSec = 1000000; // no limit in unit test
@@ -585,6 +629,11 @@ namespace Nethermind.Network.Test
                 StaticNodesManager.LoadInitialList().Returns(new List<Node>());
                 CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp, StaticNodesManager);
                 PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, LimboLogs.Instance);
+                CreatePeerManager();
+            }
+
+            public void CreatePeerManager()
+            {
                 PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, LimboLogs.Instance);
             }
 
@@ -695,14 +744,14 @@ namespace Nethermind.Network.Test
 
             public Task ConnectAsync(Node node)
             {
-                if (_isFailing)
-                {
-                    throw new InvalidOperationException("making it fail");
-                }
-
                 lock (this)
                 {
                     ConnectAsyncCallsCount++;
+                }
+
+                if (_isFailing)
+                {
+                    throw new InvalidOperationException("making it fail");
                 }
 
                 var session = new Session(30313, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,

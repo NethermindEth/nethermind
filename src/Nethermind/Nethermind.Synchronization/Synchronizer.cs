@@ -119,14 +119,14 @@ namespace Nethermind.Synchronization
                 StartStateSyncComponents();
             }
 
-            if (_syncConfig.TuneDbMode != ITunableDb.TuneType.Default)
+            if (_syncConfig.TuneDbMode != ITunableDb.TuneType.Default || _syncConfig.BlocksDbTuneDbMode != ITunableDb.TuneType.Default)
             {
                 SetupDbOptimizer();
             }
 
             if (_syncConfig.ExitOnSynced)
             {
-                _exitSource.WatchForExit(_syncMode, _logManager);
+                _exitSource.WatchForExit(_syncMode, _logManager, TimeSpan.FromSeconds(_syncConfig.ExitOnSyncedWaitTimeSec));
             }
         }
 
