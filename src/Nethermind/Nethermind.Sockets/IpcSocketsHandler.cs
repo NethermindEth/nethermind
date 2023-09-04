@@ -52,7 +52,7 @@ namespace Nethermind.Sockets
 
         public void Dispose()
         {
-            _socket?.Dispose();
+            _socket.Dispose();
         }
     }
 }

@@ -19,7 +19,7 @@ namespace Nethermind.Sockets
         public WebSocketHandler(WebSocket webSocket, ILogManager logManager)
         {
             _webSocket = webSocket;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public Task SendRawAsync(ArraySegment<byte> data, bool endOfMessage = true) =>
@@ -116,7 +116,7 @@ namespace Nethermind.Sockets
 
         public void Dispose()
         {
-            _webSocket?.Dispose();
+            _webSocket.Dispose();
         }
     }
 }
