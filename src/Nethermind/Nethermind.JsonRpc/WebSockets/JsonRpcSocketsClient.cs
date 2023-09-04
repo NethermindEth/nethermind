@@ -160,51 +160,32 @@ namespace Nethermind.JsonRpc.WebSockets
 
         private async Task<int> SendJsonRpcResultEntry(JsonRpcResult.Entry result, bool endOfMessage = true)
         {
-            void SerializeTimeoutException(MemoryStream stream, JsonRpcResult.Entry result)
+            using JsonRpcResult.Entry entry = result;
+
+            await using Stream stream = _handler.SendUsingStream();
+            await using Stream buffered = new BufferedStream(stream);
+            await using CounterStream resultData = new CounterStream(buffered);
+
+            try
             {
-                _jsonSerializer.Serialize(stream, _jsonRpcService.GetErrorResponse(
-                    ErrorCodes.Timeout,
-                    "Request was canceled due to enabled timeout.",
-                    result.Response.Id,
-                    result.Response.MethodName));
+                _jsonSerializer.SerializeWaitForEnumeration(resultData, result.Response);
+            }
+            catch (Exception e) when (e is OperationCanceledException || e.InnerException is OperationCanceledException)
+            {
+                _jsonSerializer.Serialize(
+                    resultData,
+                    _jsonRpcService.GetErrorResponse(
+                        ErrorCodes.Timeout,
+                        "Request was canceled due to enabled timeout.",
+                        result.Response.Id,
+                        result.Response.MethodName
+                    )
+                );
             }
 
-            using (result)
-            {
-                await using MemoryStream resultData = new();
-                /*
-                 * Do not use a 'MemoryStream' (a byte array) and then copy ('_handler.SendRawAsync')
-                 * See: https://learn.microsoft.com/en-us/answers/questions/1166554/max-size-of-system-io-memorystream
-                 *
-                 * Instead, use directly the target stream:
-                 *
-                 * - Use 'WebSocketStream' for WebSocketHandler
-                 * - Use 'NetworkStream' for IpcSocketsHandler
-                 *
-                 * NOTE: Consider using 'BufferedStream' to not send smalls chunks
-                 */
-
-                try
-                {
-                    _jsonSerializer.SerializeWaitForEnumeration(resultData, result.Response);
-                }
-                catch (Exception e) when (e.InnerException is OperationCanceledException)
-                {
-                    SerializeTimeoutException(resultData, result);
-                }
-                catch (OperationCanceledException)
-                {
-                    SerializeTimeoutException(resultData, result);
-                }
-
-                if (resultData.TryGetBuffer(out ArraySegment<byte> data))
-                {
-                    await _handler.SendRawAsync(data, endOfMessage);
-                    return data.Count;
-                }
-
-                return (int)resultData.Length;
-            }
+            // ? What if we write more than int.MaxValue.
+            // Result could be negative
+            return (int)resultData.WrittenBytes;
         }
     }
 }
