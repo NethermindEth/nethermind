@@ -43,7 +43,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         ctx.Test.ReadOnlyState.AccountExists(Address.SystemUser).Should().BeFalse();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            "{\"gasPrice\":\"0x100000\", \"input\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            "{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
         string serialized =
             await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction));
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x53b8\",\"id\":67}"));
@@ -57,7 +57,7 @@ public partial class EthRpcModuleTests
         Address someAccount = new("0x0001020304050607080910111213141516171819");
         ctx.Test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"input\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
         string serialized =
             await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction));
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x53b8\",\"id\":67}"));
@@ -71,7 +71,7 @@ public partial class EthRpcModuleTests
         Address someAccount = new("0x0001020304050607080910111213141516171819");
         ctx.Test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gas\":\"0x100000000\",\"gasPrice\":\"0x100000\", \"input\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gas\":\"0x100000000\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
         string serialized =
             await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction));
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x53b8\",\"id\":67}"));
@@ -121,7 +121,7 @@ public partial class EthRpcModuleTests
 
         TransactionForRpc transaction =
             test.JsonSerializer.Deserialize<TransactionForRpc>(
-                $"{{\"type\":\"0x1\", \"input\": \"{code.ToHexString(true)}\"}}");
+                $"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
         string serialized = await test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
         Assert.That(
             serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{gasPriceWithoutAccessList.ToHexString(true)}\",\"id\":67}}"));
@@ -143,7 +143,7 @@ public partial class EthRpcModuleTests
 
         TransactionForRpc transaction =
             test.JsonSerializer.Deserialize<TransactionForRpc>(
-                $"{{\"type\":\"0x1\", \"input\": \"{code.ToHexString(true)}\"}}");
+                $"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
         transaction.AccessList = accessList;
         string serialized = await test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
         long estimateGas = Convert.ToInt64(JToken.Parse(serialized).Value<string>("result"), 16);
@@ -216,7 +216,7 @@ public partial class EthRpcModuleTests
 
         string dataStr = code.ToHexString();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"input\": \"{dataStr}\"}}");
+            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction));
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0xe891\",\"id\":67}"));
@@ -235,7 +235,7 @@ public partial class EthRpcModuleTests
 
         string dataStr = code.ToHexString();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"input\": \"{dataStr}\"}}");
+            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction));
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"revert\"},\"id\":67}"));
