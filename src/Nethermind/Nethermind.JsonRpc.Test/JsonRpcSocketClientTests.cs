@@ -18,6 +18,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test;
 
+[TestFixture]
 public class JsonRpcSocketClientTests
 {
     private static readonly object _bigObject = BuildRandomBigObject(100_000);
@@ -36,6 +37,7 @@ public class JsonRpcSocketClientTests
         }
 
         [Test]
+        [Explicit("Takes too long to run")]
         public async Task Can_handle_very_large_objects()
         {
             IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
@@ -121,7 +123,7 @@ public class JsonRpcSocketClientTests
                 JsonRpcResult result = JsonRpcResult.Single(
                     new JsonRpcSuccessResponse()
                     {
-                        MethodName = "mock", Id = "42",
+                        MethodName = "mock", Id = "42", Result = BuildRandomBigObject(1000)
                     }, default);
 
                 int totalBytesSent = 0;
@@ -143,6 +145,7 @@ public class JsonRpcSocketClientTests
     class UsingWebSockets
     {
         [Test]
+        [Explicit("Requires background web sockets server")]
         [TestCase(2)]
         [TestCase(10)]
         public async Task Can_send_multiple_messages(int messageCount)
@@ -178,6 +181,8 @@ public class JsonRpcSocketClientTests
 
             await Task.WhenAll(sendMessages);
             int sent = sendMessages.Result;
+            // TODO: Run local websocket server and check that we're getting exactly the same number of messages
+            // that we're sending.
             Assert.That(sent, Is.EqualTo(messageCount));
         }
     }
