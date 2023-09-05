@@ -9,6 +9,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
@@ -92,7 +93,8 @@ public class StartMonitoring : IStep
                     return;
                 }
 
-                Db.Metrics.StateDbSize = dbProvider.StateDb.GetSize();
+                Db.Metrics.StateDbSize = _api.Config<IByPathStateConfig>().Enabled ? dbProvider.PathStateDb.GetSize() : dbProvider.StateDb.GetSize();
+
                 Db.Metrics.ReceiptsDbSize = dbProvider.ReceiptsDb.GetSize();
                 Db.Metrics.HeadersDbSize = dbProvider.HeadersDb.GetSize();
                 Db.Metrics.BlocksDbSize = dbProvider.BlocksDb.GetSize();
