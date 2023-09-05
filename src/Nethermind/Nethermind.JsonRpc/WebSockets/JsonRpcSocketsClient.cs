@@ -111,67 +111,68 @@ namespace Nethermind.JsonRpc.WebSockets
 
         public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result)
         {
-            if (!result.IsCollection)
-            {
-                return await SendJsonRpcResultEntry(result.SingleResponse!.Value);
-            }
-
-            int singleResponseSize = 1;
-            bool isFirst = true;
-            await _handler.SendRawAsync(_jsonOpeningBracket, false);
-            JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(CancellationToken.None);
-            try
-            {
-                while (await enumerator.MoveNextAsync())
-                {
-                    JsonRpcResult.Entry entry = enumerator.Current;
-                    using (entry)
-                    {
-                        if (!isFirst)
-                        {
-                            await _handler.SendRawAsync(_jsonComma, false);
-                            singleResponseSize += 1;
-                        }
-
-                        isFirst = false;
-                        singleResponseSize += await SendJsonRpcResultEntry(entry, false);
-                        _ = _jsonRpcLocalStats.ReportCall(entry.Report);
-
-                        // We reached the limit and don't want to responded to more request in the batch
-                        if (!_jsonRpcContext.IsAuthenticated && singleResponseSize > _maxBatchResponseBodySize)
-                        {
-                            enumerator.IsStopped = true;
-                        }
-                    }
-                }
-            }
-            finally
-            {
-                await enumerator.DisposeAsync();
-            }
-
-            await _handler.SendRawAsync(_jsonClosingBracket, true);
-            singleResponseSize += 1;
-
-            return singleResponseSize;
-        }
-
-        private async Task<int> SendJsonRpcResultEntry(JsonRpcResult.Entry result, bool endOfMessage = true)
-        {
-            using JsonRpcResult.Entry entry = result;
-
             await using Stream stream = _handler.SendUsingStream();
             await using Stream buffered = new BufferedStream(stream);
             await using CounterStream resultData = new CounterStream(buffered);
 
+            if (!result.IsCollection)
+            {
+                SendJsonRpcResultEntry(resultData, result.SingleResponse!.Value);
+            }
+            else
+            {
+                bool isFirst = true;
+                await resultData.WriteAsync(_jsonOpeningBracket);
+                JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(CancellationToken.None);
+                try
+                {
+                    while (await enumerator.MoveNextAsync())
+                    {
+                        JsonRpcResult.Entry entry = enumerator.Current;
+                        using (entry)
+                        {
+                            if (!isFirst)
+                            {
+                                await resultData.WriteAsync(_jsonComma);
+                            }
+                            isFirst = false;
+                            SendJsonRpcResultEntry(resultData, entry);
+                            _ = _jsonRpcLocalStats.ReportCall(entry.Report);
+
+                            // We reached the limit and don't want to responded to more request in the batch
+                            if (!_jsonRpcContext.IsAuthenticated && resultData.WrittenBytes > _maxBatchResponseBodySize)
+                            {
+                                enumerator.IsStopped = true;
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    await enumerator.DisposeAsync();
+                }
+
+                await resultData.WriteAsync(_jsonClosingBracket);
+            }
+
+            // ? What if we write more than int.MaxValue.
+            // Result could be negative
+            // return (int)resultData.WrittenBytes;
+            return (int)resultData.WrittenBytes;
+        }
+
+        private void SendJsonRpcResultEntry(Stream dest, JsonRpcResult.Entry result)
+        {
+            using JsonRpcResult.Entry entry = result;
+
             try
             {
-                _jsonSerializer.SerializeWaitForEnumeration(resultData, result.Response);
+                _jsonSerializer.SerializeWaitForEnumeration(dest, result.Response);
             }
             catch (Exception e) when (e is OperationCanceledException || e.InnerException is OperationCanceledException)
             {
                 _jsonSerializer.Serialize(
-                    resultData,
+                    dest,
                     _jsonRpcService.GetErrorResponse(
                         ErrorCodes.Timeout,
                         "Request was canceled due to enabled timeout.",
@@ -180,10 +181,6 @@ namespace Nethermind.JsonRpc.WebSockets
                     )
                 );
             }
-
-            // ? What if we write more than int.MaxValue.
-            // Result could be negative
-            return (int)resultData.WrittenBytes;
         }
     }
 }
