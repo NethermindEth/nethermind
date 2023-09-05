@@ -138,6 +138,48 @@ public class JsonRpcSocketClientTests
             int received = receiveBytes.Result;
             Assert.That(sent, Is.EqualTo(received));
         }
+
+        [TestCase(2)]
+        [TestCase(10)]
+        [TestCase(50)]
+        public async Task Can_send_collections(int elements)
+        {
+            IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
+
+            Task<int> receiveBytes = MockServer(
+                ipEndPoint,
+                async socket => await CountNumberOfBytes(socket)
+            );
+
+            Task<int> sendCollection = Task.Run(async () =>
+            {
+                using Socket socket = new Socket(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                await socket.ConnectAsync(ipEndPoint);
+
+                ISocketHandler handler = new IpcSocketsHandler(socket);
+                JsonRpcSocketsClient client = new JsonRpcSocketsClient(
+                    clientName: "TestClient",
+                    handler: handler,
+                    endpointType: RpcEndpoint.IPC,
+                    jsonRpcProcessor: null!,
+                    jsonRpcService: null!,
+                    jsonRpcLocalStats: new NullJsonRpcLocalStats(),
+                    jsonSerializer: new EthereumJsonSerializer(converters: new GethLikeTxTraceConverter())
+                );
+                JsonRpcResult result = JsonRpcResult.Collection(
+                    new JsonRpcBatchResult((_, token) =>
+                        BuildRandomAsyncEnumerable(10, 1_000).GetAsyncEnumerator(token)
+                    )
+                );
+
+                return await client.SendJsonRpcResult(result);
+            });
+
+            await Task.WhenAll(sendCollection, receiveBytes);
+            int sent = sendCollection.Result;
+            int received = receiveBytes.Result;
+            Assert.That(sent, Is.EqualTo(received));
+        }
     }
 
     class UsingWebSockets
