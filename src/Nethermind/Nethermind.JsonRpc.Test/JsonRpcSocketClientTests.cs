@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -235,6 +236,91 @@ public class JsonRpcSocketClientTests
             int sent = sendMessages.Result;
             int received = receiveMessages.Result;
             Assert.That(sent, Is.EqualTo(received));
+        }
+
+        [TestCase(2)]
+        [TestCase(10)]
+        [TestCase(50)]
+        public async Task Can_send_collections(int elements)
+        {
+            CancellationTokenSource cts = new();
+            TaskCompletionSource serverDone = new();
+
+            Task<int> server = MockServer("http://localhost:1337/", async webSocket =>
+            {
+                int messages = 0;
+                try
+                {
+                    byte[] buffer = new byte[1024];
+
+                    while (webSocket.State == WebSocketState.Open)
+                    {
+                        WebSocketReceiveResult result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
+                        if (result.EndOfMessage)
+                        {
+                            messages++;
+                        }
+                        if (result.MessageType == WebSocketMessageType.Close)
+                        {
+                            break;
+                        }
+                    }
+                }
+                catch (OperationCanceledException) { }
+                finally
+                {
+                    if (webSocket.State == WebSocketState.Open)
+                    {
+                        await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, cts.Token);
+                    }
+                    webSocket.Dispose();
+                    serverDone.SetResult();
+                }
+
+                return messages;
+            });
+
+            Task sendCollection = Task.Run(async () =>
+            {
+                using ClientWebSocket socket = new ClientWebSocket();
+                await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
+
+                using ISocketHandler handler = new WebSocketHandler(socket, NullLogManager.Instance);
+                using JsonRpcSocketsClient client = new JsonRpcSocketsClient(
+                    clientName: "TestClient",
+                    handler: handler,
+                    endpointType: RpcEndpoint.Ws,
+                    jsonRpcProcessor: null!,
+                    jsonRpcService: null!,
+                    jsonRpcLocalStats: new NullJsonRpcLocalStats(),
+                    jsonSerializer: new EthereumJsonSerializer()
+                );
+                JsonRpcResult result = JsonRpcResult.Collection(
+                    new JsonRpcBatchResult((enumerator, token) =>
+                        BuildRandomAsyncEnumerable(10, 1_000).GetAsyncEnumerator(token)
+                    )
+                );
+
+                await client.SendJsonRpcResult(result);
+                cts.Cancel();
+                await serverDone.Task;
+            });
+
+            await Task.WhenAll(sendCollection, server);
+            Assert.That(server.Result, Is.EqualTo(1));
+        }
+    }
+
+    private static async IAsyncEnumerable<JsonRpcResult.Entry> BuildRandomAsyncEnumerable(int entries, int size)
+    {
+        for (int i = 0; i < entries; i++)
+        {
+            yield return new JsonRpcResult.Entry(
+                new JsonRpcSuccessResponse
+                {
+                    MethodName = "mock", Id = "42", Result = BuildRandomBigObject(size),
+                }, default
+            );
         }
     }
 
