@@ -193,5 +193,5 @@ jobs:
         
     - name: Display machine specs content
       run: |
-        FILE=$(ls downloaded-artifacts/machine-specs | head -n 1)
-        cat "downloaded-artifacts/machine-specs/$FILE"
+        FILE=$(ls downloaded-artifacts/machine-details | head -n 1)
+        cat "downloaded-artifacts/machine-details/$FILE"
