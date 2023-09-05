@@ -102,7 +102,12 @@ jobs:
     - name: Check if master branch and default additional_options
       id: check_conditions
       run: |
-        if [[ "${{ github.ref }}" == "refs/heads/master" && "${{ steps.extract_dockerfile.outputs.dockerfile }}" == "Dockerfile" && "${{ steps.extract_dockerfile.outputs.build-config  }}" == "release" ]]; then
+        if { 
+          [[ "${{ github.ref }}" == "refs/heads/master" ]] || 
+          [[ "${{ github.ref }}" == "refs/heads/kch/optimize_oneClick" ]]
+        } && 
+        [[ "${{ steps.extract_dockerfile.outputs.dockerfile }}" == "Dockerfile" ]] && 
+        [[ "${{ steps.extract_dockerfile.outputs.build-config }}" == "release" ]]; then
           echo "skip=true" >> $GITHUB_OUTPUT
         else
           echo "skip=false" >> $GITHUB_OUTPUT
