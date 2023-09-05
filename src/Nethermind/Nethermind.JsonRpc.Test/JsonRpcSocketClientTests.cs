@@ -180,10 +180,6 @@ public class JsonRpcSocketClientTests
                         {
                             messages++;
                         }
-                        if (result.MessageType == WebSocketMessageType.Close)
-                        {
-                            break;
-                        }
                     }
                 }
                 catch (OperationCanceledException) { }
@@ -225,6 +221,7 @@ public class JsonRpcSocketClientTests
                 for (int i = 0; i < messageCount; i++)
                 {
                     await client.SendJsonRpcResult(result);
+                    await Task.Delay(100);
                 }
                 cts.Cancel();
                 await serverDone.Task;
@@ -260,10 +257,6 @@ public class JsonRpcSocketClientTests
                         {
                             messages++;
                         }
-                        if (result.MessageType == WebSocketMessageType.Close)
-                        {
-                            break;
-                        }
                     }
                 }
                 catch (OperationCanceledException) { }
@@ -296,12 +289,14 @@ public class JsonRpcSocketClientTests
                     jsonSerializer: new EthereumJsonSerializer()
                 );
                 JsonRpcResult result = JsonRpcResult.Collection(
-                    new JsonRpcBatchResult((enumerator, token) =>
+                    new JsonRpcBatchResult((_, token) =>
                         BuildRandomAsyncEnumerable(10, 1_000).GetAsyncEnumerator(token)
                     )
                 );
 
                 await client.SendJsonRpcResult(result);
+
+                await Task.Delay(100);
                 cts.Cancel();
                 await serverDone.Task;
             });
@@ -315,12 +310,13 @@ public class JsonRpcSocketClientTests
     {
         for (int i = 0; i < entries; i++)
         {
-            yield return new JsonRpcResult.Entry(
+            JsonRpcResult.Entry value = await Task.FromResult(new JsonRpcResult.Entry(
                 new JsonRpcSuccessResponse
                 {
                     MethodName = "mock", Id = "42", Result = BuildRandomBigObject(size),
                 }, default
-            );
+            ));
+            yield return value;
         }
     }
 
