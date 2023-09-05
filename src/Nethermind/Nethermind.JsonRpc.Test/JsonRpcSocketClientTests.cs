@@ -73,7 +73,7 @@ public class JsonRpcSocketClientTests
                     endpointType: RpcEndpoint.IPC,
                     jsonRpcProcessor: null!,
                     jsonRpcService: null!,
-                    jsonRpcLocalStats: null!,
+                    jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer(converters: new GethLikeTxTraceConverter())
                 );
                 JsonRpcResult result = JsonRpcResult.Single(
@@ -116,7 +116,7 @@ public class JsonRpcSocketClientTests
                     endpointType: RpcEndpoint.IPC,
                     jsonRpcProcessor: null!,
                     jsonRpcService: null!,
-                    jsonRpcLocalStats: null!,
+                    jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer(converters: new GethLikeTxTraceConverter())
                 );
                 JsonRpcResult result = JsonRpcResult.Single(
@@ -250,7 +250,7 @@ public class JsonRpcSocketClientTests
                     endpointType: RpcEndpoint.Ws,
                     jsonRpcProcessor: null!,
                     jsonRpcService: null!,
-                    jsonRpcLocalStats: null!,
+                    jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer()
                 );
                 JsonRpcResult result = JsonRpcResult.Single(
