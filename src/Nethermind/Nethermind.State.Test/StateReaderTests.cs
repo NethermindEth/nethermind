@@ -240,7 +240,7 @@ namespace Nethermind.Store.Test
                 get
                 {
                     yield return new TestCaseData("Keccak Store", new TrieStore(new MemDb(), Logger));
-                    yield return new TestCaseData("Path Store", new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Logger));
+                    yield return new TestCaseData("Path Store", new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Persist.IfBlockOlderThan(128), Logger));
                 }
             }
 

@@ -200,10 +200,10 @@ public class TrieByPathFuzzTesting
 
         MemColumnsDb<StateColumns> memDb = new();
 
-        using TrieStoreByPath pathTrieStore = new(memDb, _logManager, lookupLimit);
+        using TrieStoreByPath pathTrieStore = new(memDb, Persist.IfBlockOlderThan(lookupLimit), _logManager);
         WorldState pathStateProvider = new(pathTrieStore, new MemDb(), _logManager);
 
-        using TrieStoreByPath trieStore = new(memDb, _logManager, lookupLimit);
+        using TrieStoreByPath trieStore = new(memDb, Persist.IfBlockOlderThan(lookupLimit), _logManager);
         WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
 
         Account[] accounts = new Account[accountsCount];
@@ -384,7 +384,7 @@ public class TrieByPathFuzzTesting
 
         MemColumnsDb<StateColumns> memDb = new();
 
-        using TrieStoreByPath trieStore = new(memDb, _logManager, blocksCount + 1);
+        using TrieStoreByPath trieStore = new(memDb, Persist.IfBlockOlderThan(blocksCount + 1), _logManager);
         var codeDb = new MemDb();
         WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
         //StateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, codeDb, _logManager);

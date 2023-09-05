@@ -39,8 +39,8 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.TxPool;
 using Nethermind.Trie.Pruning;
+using Nethermind.Db.ByPathState;
 
 namespace Nethermind.Init.Steps;
 
@@ -72,7 +72,7 @@ public class InitializeNetwork : IStep
     private readonly ILogger _logger;
     private readonly INetworkConfig _networkConfig;
     protected readonly ISyncConfig _syncConfig;
-    protected readonly IInitConfig _initConfig;
+    protected readonly IByPathStateConfig _pathStateConfig;
 
     public InitializeNetwork(INethermindApi api)
     {
@@ -80,7 +80,7 @@ public class InitializeNetwork : IStep
         _logger = _api.LogManager.GetClassLogger();
         _networkConfig = _api.Config<INetworkConfig>();
         _syncConfig = _api.Config<ISyncConfig>();
-        _initConfig = _api.Config<IInitConfig>();
+        _pathStateConfig = _api.Config<IByPathStateConfig>();
     }
 
     public async Task Execute(CancellationToken cancellationToken)
@@ -106,16 +106,16 @@ public class InitializeNetwork : IStep
 
         ProgressTracker progressTracker;
         ITrieStore trieStore;
-        if (_initConfig.UsePathBasedState)
+        if (_pathStateConfig.Enabled)
         {
             progressTracker = new(_api.BlockTree!, _api.DbProvider.PathStateDb, _api.LogManager, _syncConfig.SnapSyncAccountRangePartitionCount);
             _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager, TrieNodeResolverCapability.Path);
-            trieStore = new TrieStoreByPath(_api.DbProvider.PathStateDb, _api.LogManager, 0);
+            trieStore = new TrieStoreByPath(_api.DbProvider.PathStateDb, _api.LogManager);
         }
         else
         {
             progressTracker = new(_api.BlockTree!, _api.DbProvider.PathStateDb, _api.LogManager, _syncConfig.SnapSyncAccountRangePartitionCount);
-            _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager, TrieNodeResolverCapability.Path);
+            _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager, TrieNodeResolverCapability.Hash);
             trieStore = new TrieStore(_api.DbProvider.StateDb, _api.LogManager);
         }
 

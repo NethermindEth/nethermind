@@ -73,4 +73,10 @@ public class PruningTriggerPersistenceStrategy : IPersistenceStrategy, IDisposab
         _fullPruningDb.PruningStarted -= OnPruningStarted;
         _fullPruningDb.PruningFinished -= OnPruningFinished;
     }
+
+    public bool ShouldPersist(long currentBlockNumber, out long targetBlockNumber)
+    {
+        targetBlockNumber = currentBlockNumber;
+        return ShouldPersist(currentBlockNumber);
+    }
 }

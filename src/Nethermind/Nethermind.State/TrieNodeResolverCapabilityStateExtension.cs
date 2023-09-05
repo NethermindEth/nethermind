@@ -21,7 +21,7 @@ public static class TrieNodeResolverCapabilityStateExtension
         };
     }
 
-    public static IStateTree CreateStateStore(this TrieNodeResolverCapability capability, ITrieStore? store, ITrieStore? storageStore, ILogManager? logManager)
+    public static IStateTree CreateStateStore(this TrieNodeResolverCapability capability, ITrieStore? store, ILogManager? logManager)
     {
         return capability switch
         {
@@ -36,7 +36,7 @@ public static class TrieNodeResolverCapabilityStateExtension
         return capability switch
         {
             TrieNodeResolverCapability.Hash => new StateTree(capability.CreateTrieStore(db, logManager), logManager),
-            TrieNodeResolverCapability.Path => new StateTreeByPath(capability.CreateTrieStore(db, logManager), logManager),
+            TrieNodeResolverCapability.Path => new StateTreeByPath(capability.CreateTrieStore(db, No.Pruning, Persist.IfBlockOlderThan(128), logManager), logManager),
             _ => throw new ArgumentOutOfRangeException(nameof(capability), capability, null)
         };
     }

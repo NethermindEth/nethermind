@@ -13,5 +13,10 @@ namespace Nethermind.Trie.Pruning
         {
             return false;
         }
+        public bool ShouldPersist(long currentBlockNumber, out long targetBlockNumber)
+        {
+            targetBlockNumber = -1;
+            return false;
+        }
     }
 }

@@ -134,15 +134,17 @@ namespace Nethermind.Store.Test
 
         private static ITrieNodeResolver BuildATreeFromNode(TrieNode node)
         {
-            TrieNode.AllowBranchValues = true;
-            byte[] rlp = node.RlpEncode(null);
-            node.ResolveKey(null, true);
-
             MemDb memDb = new();
+            TrieStore trieStore = new(memDb, NullLogManager.Instance);
+
+            TrieNode.AllowBranchValues = true;
+            byte[] rlp = node.RlpEncode(trieStore);
+            node.ResolveKey(trieStore, true);
+
             memDb[node.Keccak.Bytes] = rlp;
 
             // ITrieNodeResolver tree = new PatriciaTree(memDb, node.Keccak, false, true);
-            return new TrieStoreByPath(memDb, NullLogManager.Instance);
+            return trieStore;
         }
     }
 }

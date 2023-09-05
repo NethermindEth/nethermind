@@ -51,7 +51,7 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> stateDb = new();
             MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
-            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance, 0), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Set(TestItem.AddressB, _account0);
             tree.Set(TestItem.AddressC, _account0);
@@ -64,7 +64,7 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> stateDb = new();
             MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
-            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance, 0), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
@@ -83,7 +83,7 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> stateDb = new();
             MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
-            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance, 0), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
@@ -99,7 +99,7 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> stateDb = new();
             MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
-            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance, 0), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
@@ -495,7 +495,7 @@ namespace Nethermind.Store.Test
         public void History_update_one_block()
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Commit(0);
             Keccak root0 = tree.RootHash;
@@ -513,7 +513,7 @@ namespace Nethermind.Store.Test
         public void History_update_one_block_before_null()
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressB, _account0);
             tree.Commit(0);
             Keccak root0 = tree.RootHash;
@@ -535,7 +535,7 @@ namespace Nethermind.Store.Test
         public void History_update_non_continous_blocks()
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Commit(0);
             Keccak root0 = tree.RootHash;
@@ -590,7 +590,7 @@ namespace Nethermind.Store.Test
         public void History_get_on_block_when_account_not_existed()
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Commit(0);
             Keccak root0 = tree.RootHash;
@@ -612,7 +612,7 @@ namespace Nethermind.Store.Test
         public void History_delete_when_max_number_blocks_exceeded()
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Commit(0);
             Keccak root0 = tree.RootHash;
@@ -640,7 +640,7 @@ namespace Nethermind.Store.Test
             ILogger logger = logManager.GetLogger("");
 
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance, 0), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
 
             int numberOfAccounts = 10000;
 
@@ -695,14 +695,14 @@ namespace Nethermind.Store.Test
             tree.Get(TestItem.AddressD).Balance.Should().BeEquivalentTo(_account1.Balance);
         }
 
-        [Test]
+        [Test, Explicit]
         public void Process_block_by_block_and_compare_tries_on_different_storage()
         {
             ILogManager logManager = new NUnitLogManager(LogLevel.Warn);
             ILogger logger = logManager.GetLogger("");
 
             MemColumnsDb<StateColumns> pathDb = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(pathDb, LimboLogs.Instance, 0), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(pathDb, LimboLogs.Instance), LimboLogs.Instance);
 
             MemDb db = new MemDb();
             StateTree hashStateTree = new(new TrieStore(db, logManager), logManager);

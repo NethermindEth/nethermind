@@ -68,7 +68,7 @@ public class TrieByPathTests
     public void Single_leaf()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Commit(0);
@@ -81,7 +81,7 @@ public class TrieByPathTests
     public void Single_leaf_update_same_block()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountA, _longLeaf2);
@@ -99,7 +99,7 @@ public class TrieByPathTests
     public void Single_leaf_update_next_blocks()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Commit(0);
@@ -121,7 +121,7 @@ public class TrieByPathTests
     public void Single_leaf_delete_same_block()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountA, Array.Empty<byte>());
@@ -138,7 +138,7 @@ public class TrieByPathTests
     public void Single_leaf_delete_next_block()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Commit(0);
@@ -191,7 +191,7 @@ public class TrieByPathTests
     public void Branch_with_branch_and_leaf()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
@@ -222,7 +222,7 @@ public class TrieByPathTests
     public void Branch_with_branch_and_leaf_then_deleted()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
@@ -245,7 +245,7 @@ public class TrieByPathTests
     public void Test_add_many(int i)
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, Keccak.EmptyTreeHash, true, true, _logManager);
 
         for (int j = 0; j < i; j++)
@@ -270,7 +270,7 @@ public class TrieByPathTests
     public void Test_try_delete_and_read_missing_nodes(int i)
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, Keccak.EmptyTreeHash, true, true, _logManager);
 
         for (int j = 0; j < i; j++)
@@ -311,7 +311,7 @@ public class TrieByPathTests
     public void Test_update_many(int i)
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
 
         for (int j = 0; j < i; j++)
@@ -343,7 +343,7 @@ public class TrieByPathTests
     public void Test_update_many_next_block(int i)
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
 
         for (int j = 0; j < i; j++)
@@ -380,7 +380,7 @@ public class TrieByPathTests
     public void Test_add_and_delete_many_same_block(int i)
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
 
         for (int j = 0; j < i; j++)
@@ -412,7 +412,7 @@ public class TrieByPathTests
     public void Test_add_and_delete_many_next_block(int i)
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
 
         for (int j = 0; j < i; j++)
@@ -463,7 +463,7 @@ public class TrieByPathTests
     public void Two_branches_exactly_same_leaf()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
@@ -522,7 +522,7 @@ public class TrieByPathTests
     public void Extension_with_branch_with_two_different_children()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf2);
@@ -537,7 +537,7 @@ public class TrieByPathTests
     public void Extension_with_branch_with_two_same_children()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
@@ -552,7 +552,7 @@ public class TrieByPathTests
     public void When_branch_with_two_different_children_change_one_and_change_back_next_block()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf2);
@@ -573,7 +573,7 @@ public class TrieByPathTests
     public void When_branch_with_two_same_children_change_one_and_change_back_next_block()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
@@ -606,7 +606,7 @@ public class TrieByPathTests
         byte[] key3 = Bytes.FromHexString("000000200000000cc").PadLeft(32);
 
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(key1, _longLeaf1);
         patriciaTree.Set(key2, _longLeaf1);
@@ -654,7 +654,7 @@ public class TrieByPathTests
         byte[] key3 = Bytes.FromHexString("000000200000000cc").PadLeft(32);
 
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(key1, _longLeaf1);
         patriciaTree.Set(key2, _longLeaf1);
@@ -676,7 +676,7 @@ public class TrieByPathTests
     public void When_two_branches_with_two_same_children_change_one_and_change_back_next_block()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
@@ -701,7 +701,7 @@ public class TrieByPathTests
     public void Persist_inlined_node()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
 
         byte[] smallLeafValue = Bytes.FromHexString("00000010000000aa");
@@ -737,7 +737,7 @@ public class TrieByPathTests
     public void Request_deletion_for_leaf()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
 
         Span<byte> fullPathNibbles = stackalloc byte[64];
         Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x12345600000033333333333333300ee000000555555555555555550000abcdef"), fullPathNibbles);
@@ -750,7 +750,7 @@ public class TrieByPathTests
     public void Request_deletion_for_extension()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
 
         Span<byte> fullPathNibbles = stackalloc byte[5] { 3, 13, 3, 2, 13 };
         Span<byte> extensionKey = stackalloc byte[2] { 7, 10 };
@@ -783,7 +783,7 @@ public class TrieByPathTests
 
         MemColumnsDb<StateColumns> memDb = new();
 
-        using TrieStoreByPath trieStore = new(memDb, _logManager, lookupLimit);
+        using TrieStoreByPath trieStore = new(memDb, Persist.IfBlockOlderThan(lookupLimit), _logManager);
         StateTreeByPath patriciaTree = new(trieStore, _logManager);
 
         byte[][] accounts = new byte[accountsCount][];
@@ -901,7 +901,7 @@ public class TrieByPathTests
 
         MemColumnsDb<StateColumns> memDb = new();
 
-        using TrieStoreByPath trieStore = new(memDb, _logManager, lookupLimit);
+        using TrieStoreByPath trieStore = new(memDb, Persist.IfBlockOlderThan(lookupLimit), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager);
 
         byte[][] accounts = new byte[accountsCount][];
@@ -1055,7 +1055,7 @@ public class TrieByPathTests
 
         MemColumnsDb<StateColumns> memDb = new();
 
-        using TrieStoreByPath trieStore = new(memDb, _logManager, 0);
+        using TrieStoreByPath trieStore = new(memDb, _logManager);
 
         WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
 

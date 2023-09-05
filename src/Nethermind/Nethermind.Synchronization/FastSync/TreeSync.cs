@@ -104,7 +104,7 @@ namespace Nethermind.Synchronization.FastSync
             else if (resolverCapability == TrieNodeResolverCapability.Path)
             {
                 _pathStateDb = stateDb as IByPathStateDb;
-                _stateStore = new TrieStoreByPath(stateDb, logManager, 0);
+                _stateStore = new TrieStoreByPath(stateDb, logManager);
             }
 
             _additionalLeafNibbles = new ConcurrentDictionary<Keccak, List<byte>>();

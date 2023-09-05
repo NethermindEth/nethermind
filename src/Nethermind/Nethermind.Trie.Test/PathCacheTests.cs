@@ -23,7 +23,7 @@ namespace Nethermind.Trie.Test;
 public class PathCacheTests
 {
     private static readonly ILogManager Logger = NUnitLogManager.Instance;
-    private static readonly ITrieStore _trieStore = new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Logger, 0);
+    private static readonly ITrieStore _trieStore = new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Logger);
     private static readonly int CacheSize = 5;
 
     [TestCaseSource(typeof(Instances))]
@@ -139,6 +139,28 @@ public class PathCacheTests
         Assert.That(n.Value, Is.EqualTo(128000.ToByteArray()).Using<byte[]>(Bytes.Comparer));
     }
 
+    [TestCaseSource(typeof(Instances))]
+    public void Test_persist_until_block_3(IPathTrieNodeCache cache)
+    {
+        byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1ac0000000000000000000000000000000000000000000000000000000091234"));
+
+        cache.AddNode(1, CreateResolvedLeaf(path1, 64000.ToByteArray(), 60));
+        cache.AddNode(2, CreateResolvedLeaf(path1, 128000.ToByteArray(), 60));
+        cache.AddNode(3, CreateResolvedLeaf(path1, 256000.ToByteArray(), 60));
+
+        cache.SetRootHashForBlock(1, TestItem.KeccakA);
+        cache.SetRootHashForBlock(2, TestItem.KeccakB);
+        cache.SetRootHashForBlock(3, TestItem.KeccakC);
+
+        cache.PersistUntilBlock(2);
+
+        //check node is not present in cache for blocks 1 & 2
+        Assert.That(cache.GetNode(TestItem.KeccakA, path1), Is.Null);
+        Assert.That(cache.GetNode(TestItem.KeccakB, path1), Is.Null);
+        //node for block 3 should still be in cache
+        Assert.That(cache.GetNode(TestItem.KeccakC, path1), Is.Not.Null);
+    }
+
     private TrieNode CreateResolvedLeaf(byte[] path, byte[] value, int keyLength)
     {
         TrieNode trieNode = TrieNodeFactory.CreateLeaf(path.Slice(keyLength), value, path.Slice(0, keyLength), Array.Empty<byte>());
@@ -153,7 +175,7 @@ public class PathCacheTests
             get
             {
                 yield return new TestCaseData(new TrieNodeBlockCache(_trieStore, CacheSize, Logger));
-                yield return new TestCaseData(new TrieNodePathCache(_trieStore, CacheSize, Logger));
+                yield return new TestCaseData(new TrieNodePathCache(_trieStore, Logger));
             }
         }
 

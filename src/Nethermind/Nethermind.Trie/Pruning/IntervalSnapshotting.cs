@@ -16,5 +16,11 @@ namespace Nethermind.Trie.Pruning
         {
             return blockNumber % _snapshotInterval == 0;
         }
+
+        public bool ShouldPersist(long currentBlockNumber, out long targetBlockNumber)
+        {
+            targetBlockNumber = currentBlockNumber;
+            return currentBlockNumber % _snapshotInterval == 0;
+        }
     }
 }

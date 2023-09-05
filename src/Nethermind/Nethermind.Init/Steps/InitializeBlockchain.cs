@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.ByPathState;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Services;
@@ -24,6 +25,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Db.FullPruning;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -80,6 +82,7 @@ namespace Nethermind.Init.Steps
             IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
             IMiningConfig miningConfig = getApi.Config<IMiningConfig>();
+            IByPathStateConfig pathStateConfig = getApi.Config<IByPathStateConfig>();
 
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
@@ -107,14 +110,15 @@ namespace Nethermind.Init.Steps
             ITrieStore storageTrieStore;
             IKeyValueStoreWithBatching stateWitnessedBy;
 
-            if (initConfig.UsePathBasedState)
+            if (pathStateConfig.Enabled)
             {
                 setApi.MainStateDbWithCache = getApi.DbProvider.PathStateDb;
                 stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
 
                 setApi.TrieStore = trieStore = new TrieStoreByPath(
                     getApi.DbProvider.PathStateDb,
-                    getApi.LogManager, (int)pruningConfig.PersistenceInterval);
+                    new ByPathConstantPersistenceStrategy(getApi.DbProvider.PathStateDb as IByPathStateDb, getApi.BlockTree!, pathStateConfig.InMemHistoryBlocks, pathStateConfig.PersistenceInterval, getApi.LogManager),
+                    getApi.LogManager);
             }
             else
             {
@@ -187,15 +191,9 @@ namespace Nethermind.Init.Steps
                 try
                 {
                     _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                    ITrieStore noPruningStore;
-                    if (initConfig.UsePathBasedState)
-                    {
-                        noPruningStore = new TrieStoreByPath(getApi.DbProvider.PathStateDb, getApi.LogManager);
-                    }
-                    else
-                    {
-                        noPruningStore = new TrieStore(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
-                    }
+                    ITrieStore noPruningStore = pathStateConfig.Enabled
+                        ? new TrieStoreByPath(getApi.DbProvider.PathStateDb, getApi.LogManager)
+                        : new TrieStore(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
                     IWorldState diagStateProvider = new WorldState(noPruningStore, codeDb, getApi.LogManager)
                     {
                         StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash

@@ -28,26 +28,32 @@ namespace Nethermind.Trie.Pruning
         private int _isFirst;
         private ConcurrentDictionary<StateColumns, IBatch?> _currentBatches = null;
         private readonly ConcurrentDictionary<StateColumns, IPathTrieNodeCache> _committedNodes = null;
+        private readonly IPersistenceStrategy _persistenceStrategy;
 
         private readonly ConcurrentQueue<byte[]> _destroyPrefixes;
 
         private bool _lastPersistedReachedReorgBoundary;
 
         public TrieStoreByPath(
-            IKeyValueStoreWithBatching stateDb,
-            ILogManager? logManager,
-            int historyBlockDepth = 128)
+        IKeyValueStoreWithBatching stateDb,
+        IPersistenceStrategy? persistenceStrategy,
+        ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _stateDb = stateDb as IColumnsDb<StateColumns> ?? throw new ArgumentNullException(nameof(stateDb));
+            _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _committedNodes = new ConcurrentDictionary<StateColumns, IPathTrieNodeCache>();
-            _committedNodes.TryAdd(StateColumns.State, new TrieNodePathCache(this, historyBlockDepth, logManager));
-            _committedNodes.TryAdd(StateColumns.Storage, new TrieNodePathCache(this, historyBlockDepth, logManager));
+            _committedNodes.TryAdd(StateColumns.State, new TrieNodePathCache(this, logManager));
+            _committedNodes.TryAdd(StateColumns.Storage, new TrieNodePathCache(this, logManager));
             _destroyPrefixes = new ConcurrentQueue<byte[]>();
             _pathStateDb = stateDb as IByPathStateDb;
             _currentBatches = new ConcurrentDictionary<StateColumns, IBatch?>();
             _currentBatches.TryAdd(StateColumns.State, null);
             _currentBatches.TryAdd(StateColumns.Storage, null);
+        }
+
+        public TrieStoreByPath(IKeyValueStoreWithBatching stateDb, ILogManager? logManager) : this(stateDb, Pruning.Persist.EveryBlock, logManager)
+        {
         }
 
         public long LastPersistedBlockNumber
@@ -126,9 +132,6 @@ namespace Nethermind.Trie.Pruning
                 _committedNodes[GetProperColumn(nodeCommitInfo.Node.FullPath.Length)].AddNode(blockNumber, node);
                 node.LastSeen = Math.Max(blockNumber, node.LastSeen ?? 0);
 
-                if (_committedNodes[StateColumns.State].MaxNumberOfBlocks == 0)
-                    Persist(node, blockNumber, writeFlags);
-
                 CommittedNodesCount++;
             }
         }
@@ -157,8 +160,7 @@ namespace Nethermind.Trie.Pruning
                     }
                     else
                     {
-                        long persistTarget = Math.Max(LastPersistedBlockNumber, set.BlockNumber - _committedNodes[StateColumns.State].MaxNumberOfBlocks);
-                        if (persistTarget > LastPersistedBlockNumber)
+                        if (_persistenceStrategy.ShouldPersist(set.BlockNumber, out long persistTarget))
                         {
                             Persist(persistTarget);
                             AnnounceReorgBoundaries();

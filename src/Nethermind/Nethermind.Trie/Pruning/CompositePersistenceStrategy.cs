@@ -22,4 +22,18 @@ public class CompositePersistenceStrategy : IPersistenceStrategy
     }
 
     public bool ShouldPersist(long blockNumber) => _strategies.Any(strategy => strategy.ShouldPersist(blockNumber));
+
+    public bool ShouldPersist(long currentBlockNumber, out long targetBlockNumber)
+    {
+        targetBlockNumber = -1;
+        foreach (IPersistenceStrategy strategy in _strategies)
+        {
+            if (strategy.ShouldPersist(currentBlockNumber, out long localTarget))
+            {
+                if (localTarget < targetBlockNumber)
+                    targetBlockNumber = localTarget;
+            }
+        }
+        return targetBlockNumber > -1;
+    }
 }
