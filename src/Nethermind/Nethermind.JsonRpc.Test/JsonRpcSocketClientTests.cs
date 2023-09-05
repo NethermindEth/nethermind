@@ -37,24 +37,29 @@ public class JsonRpcSocketClientTests
             return await func(handler);
         }
 
+        private static async Task<int> CountNumberOfBytes(Socket socket)
+        {
+            byte[] buffer = new byte[1024];
+            int totalRead = 0;
+
+            int read;
+            while ((read = await socket.ReceiveAsync(buffer)) != 0)
+            {
+                totalRead += read;
+            }
+            return totalRead;
+        }
+
         [Test]
         [Explicit("Takes too long to run")]
         public async Task Can_handle_very_large_objects()
         {
             IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
 
-            Task<int> receiveSerialized = MockServer(ipEndPoint, async socket =>
-            {
-                byte[] buffer = new byte[1024];
-                int totalRead = 0;
-
-                int read;
-                while ((read = await socket.ReceiveAsync(buffer)) != 0)
-                {
-                    totalRead += read;
-                }
-                return totalRead;
-            });
+            Task<int> receiveBytes = MockServer(
+                ipEndPoint,
+                async socket => await CountNumberOfBytes(socket)
+            );
 
             Task<int> sendJsonRpcResult = Task.Run(async () =>
             {
@@ -80,9 +85,9 @@ public class JsonRpcSocketClientTests
                 return await client.SendJsonRpcResult(result);
             });
 
-            await Task.WhenAll(sendJsonRpcResult, receiveSerialized);
+            await Task.WhenAll(sendJsonRpcResult, receiveBytes);
             int sent = sendJsonRpcResult.Result;
-            int received = receiveSerialized.Result;
+            int received = receiveBytes.Result;
             Assert.That(sent, Is.EqualTo(received));
         }
 
@@ -93,18 +98,10 @@ public class JsonRpcSocketClientTests
         {
             IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
 
-            Task<int> receiveSerialized = MockServer(ipEndPoint, async socket =>
-            {
-                byte[] buffer = new byte[1024];
-                int totalRead = 0;
-
-                int read;
-                while ((read = await socket.ReceiveAsync(buffer)) != 0)
-                {
-                    totalRead += read;
-                }
-                return totalRead;
-            });
+            Task<int> receiveBytes = MockServer(
+                ipEndPoint,
+                async socket => await CountNumberOfBytes(socket)
+            );
 
             Task<int> sendJsonRpcResult = Task.Run(async () =>
             {
@@ -136,9 +133,9 @@ public class JsonRpcSocketClientTests
                 return totalBytesSent;
             });
 
-            await Task.WhenAll(sendJsonRpcResult, receiveSerialized);
+            await Task.WhenAll(sendJsonRpcResult, receiveBytes);
             int sent = sendJsonRpcResult.Result;
-            int received = receiveSerialized.Result;
+            int received = receiveBytes.Result;
             Assert.That(sent, Is.EqualTo(received));
         }
     }
