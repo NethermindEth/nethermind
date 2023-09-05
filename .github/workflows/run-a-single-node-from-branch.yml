@@ -188,7 +188,7 @@ jobs:
     - name: Download machine specs artifact
       run: |
         ARTIFACT_ID=$(curl -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/runs/${{ env.RUN_ID }}/artifacts | jq '.artifacts[0].id')
-        curl -L -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -o artifact.zip https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/artifacts/${{ steps.get-artifact-id.outputs.artifact_id }}/zip
+        curl -L -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -o artifact.zip https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/artifacts/$ARTIFACT_ID/zip
         unzip artifact.zip -d ./downloaded-artifacts/
         
     - name: Display machine specs content
