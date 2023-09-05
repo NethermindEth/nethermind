@@ -144,12 +144,60 @@ public class JsonRpcSocketClientTests
 
     class UsingWebSockets
     {
+        private static async Task<T> MockServer<T>(string uri, Func<WebSocket, Task<T>> func)
+        {
+            using HttpListener httpListener = new();
+            httpListener.Prefixes.Add(uri);
+            httpListener.Start();
+
+            HttpListenerContext context = await httpListener.GetContextAsync();
+            HttpListenerWebSocketContext webSocketContext = await context.AcceptWebSocketAsync(null);
+            return await func(webSocketContext.WebSocket);
+        }
+
+
         [Test]
-        [Explicit("Requires background web sockets server")]
         [TestCase(2)]
         [TestCase(10)]
         public async Task Can_send_multiple_messages(int messageCount)
         {
+            CancellationTokenSource cts = new();
+
+            Task<int> receiveMessages = MockServer("http://localhost:1337/", async webSocket =>
+            {
+                int messages = 0;
+                try
+                {
+                    byte[] buffer = new byte[1024];
+
+                    while (webSocket.State == WebSocketState.Open)
+                    {
+                        WebSocketReceiveResult result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
+                        if (result.EndOfMessage)
+                        {
+                            messages++;
+                        }
+                        if (result.MessageType == WebSocketMessageType.Close)
+                        {
+                            break;
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                finally
+                {
+                    if (webSocket.State == WebSocketState.Open)
+                    {
+                        await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, cts.Token);
+                    }
+                    webSocket.Dispose();
+                }
+
+                return messages;
+            });
+
             Task<int> sendMessages = Task.Run(async () =>
             {
                 using ClientWebSocket socket = new ClientWebSocket();
@@ -169,21 +217,23 @@ public class JsonRpcSocketClientTests
                     new JsonRpcSuccessResponse
                     {
                         MethodName = "mock", Id = "42", Result = BuildRandomBigObject(1000)
-                    }, default);
+                    },
+                    default);
 
                 for (int i = 0; i < messageCount; i++)
                 {
                     await client.SendJsonRpcResult(result);
                 }
 
+                cts.Cancel();
+
                 return messageCount;
             });
 
-            await Task.WhenAll(sendMessages);
+            await Task.WhenAll(sendMessages, receiveMessages);
             int sent = sendMessages.Result;
-            // TODO: Run local websocket server and check that we're getting exactly the same number of messages
-            // that we're sending.
-            Assert.That(sent, Is.EqualTo(messageCount));
+            int received = receiveMessages.Result;
+            Assert.That(sent, Is.EqualTo(received));
         }
     }
 
