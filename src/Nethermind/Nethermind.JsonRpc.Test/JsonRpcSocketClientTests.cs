@@ -156,6 +156,34 @@ public class JsonRpcSocketClientTests
             return await func(webSocketContext.WebSocket);
         }
 
+        private static async Task<int> CountNumberOfMessages(WebSocket webSocket, CancellationToken token)
+        {
+            int messages = 0;
+            try
+            {
+                byte[] buffer = new byte[1024];
+
+                while (webSocket.State == WebSocketState.Open)
+                {
+                    WebSocketReceiveResult result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), token);
+                    if (result.EndOfMessage)
+                    {
+                        messages++;
+                    }
+                }
+            }
+            catch (OperationCanceledException) { }
+            finally
+            {
+                if (webSocket.State == WebSocketState.Open)
+                {
+                    await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, token);
+                }
+                webSocket.Dispose();
+            }
+
+            return messages;
+        }
 
         [Test]
         [TestCase(2)]
@@ -165,34 +193,10 @@ public class JsonRpcSocketClientTests
         {
             CancellationTokenSource cts = new();
 
-            Task<int> receiveMessages = MockServer("http://localhost:1337/", async webSocket =>
-            {
-                int messages = 0;
-                try
-                {
-                    byte[] buffer = new byte[1024];
-
-                    while (webSocket.State == WebSocketState.Open)
-                    {
-                        WebSocketReceiveResult result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
-                        if (result.EndOfMessage)
-                        {
-                            messages++;
-                        }
-                    }
-                }
-                catch (OperationCanceledException) { }
-                finally
-                {
-                    if (webSocket.State == WebSocketState.Open)
-                    {
-                        await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, cts.Token);
-                    }
-                    webSocket.Dispose();
-                }
-
-                return messages;
-            });
+            Task<int> receiveMessages = MockServer(
+                "http://localhost:1337/",
+                async webSocket => await CountNumberOfMessages(webSocket, cts.Token)
+            );
 
             Task<int> sendMessages = Task.Run(async () =>
             {
@@ -239,34 +243,10 @@ public class JsonRpcSocketClientTests
         {
             CancellationTokenSource cts = new();
 
-            Task<int> server = MockServer("http://localhost:1337/", async webSocket =>
-            {
-                int messages = 0;
-                try
-                {
-                    byte[] buffer = new byte[1024];
-
-                    while (webSocket.State == WebSocketState.Open)
-                    {
-                        WebSocketReceiveResult result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
-                        if (result.EndOfMessage)
-                        {
-                            messages++;
-                        }
-                    }
-                }
-                catch (OperationCanceledException) { }
-                finally
-                {
-                    if (webSocket.State == WebSocketState.Open)
-                    {
-                        await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, cts.Token);
-                    }
-                    webSocket.Dispose();
-                }
-
-                return messages;
-            });
+            Task<int> server = MockServer(
+                "http://localhost:1337/",
+                async webSocket => await CountNumberOfMessages(webSocket, cts.Token)
+            );
 
             Task sendCollection = Task.Run(async () =>
             {
