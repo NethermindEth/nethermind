@@ -15,7 +15,6 @@ public interface IPathTrieNodeCache
     void PersistUntilBlock(long blockNumber, IBatch? batch = null);
     void Clear();
     int Count { get; }
-    int MaxNumberOfBlocks { get; }
     void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix);
     bool IsPathCached(ReadOnlySpan<byte> path);
 }

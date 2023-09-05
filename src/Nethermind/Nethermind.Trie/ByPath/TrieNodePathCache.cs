@@ -51,14 +51,15 @@ public class TrieNodePathCache : IPathTrieNodeCache
                 if (blockNumber < _nodes.Min.BlockNumber)
                     return null;
 
-                NodeAtBlock atLatest = _nodes.GetViewBetween(_nodes.Min, new NodeAtBlock(blockNumber)).Max;
+                SortedSet<NodeAtBlock> viewUntilBlock = _nodes.GetViewBetween(_nodes.Min, new NodeAtBlock(blockNumber));
+                NodeAtBlock atLatest = viewUntilBlock?.Max;
 
-                if (remove && atLatest is not null)
+                if (remove && viewUntilBlock is not null)
                 {
                     try
                     {
                         _lock.EnterWriteLock();
-                        _nodes.Remove(atLatest);
+                        viewUntilBlock.Clear();
                     }
                     finally
                     {
@@ -144,17 +145,14 @@ public class TrieNodePathCache : IPathTrieNodeCache
     private ConcurrentDictionary<byte[], NodeVersions> _nodesByPath = new(Bytes.EqualityComparer);
     private ConcurrentDictionary<Keccak, HashSet<long>> _rootHashToBlock = new();
     private readonly ITrieStore _trieStore;
-    private readonly int _maxNumberOfBlocks;
     private int _count;
     private readonly ILogger _logger;
 
-    public int MaxNumberOfBlocks { get => _maxNumberOfBlocks; }
     public int Count { get => _count; }
 
-    public TrieNodePathCache(ITrieStore trieStore, int maxNumberOfBlocks, ILogManager? logManager)
+    public TrieNodePathCache(ITrieStore trieStore, ILogManager? logManager)
     {
         _trieStore = trieStore;
-        _maxNumberOfBlocks = maxNumberOfBlocks;
         _logger = logManager?.GetClassLogger<TrieNodePathCache>() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
@@ -192,9 +190,6 @@ public class TrieNodePathCache : IPathTrieNodeCache
 
     public void AddNode(long blockNumber, TrieNode trieNode)
     {
-        if (_maxNumberOfBlocks == 0)
-            return;
-
         byte[] path = trieNode.FullPath;
 
         AddNodeInternal(path, trieNode, blockNumber);
@@ -220,9 +215,6 @@ public class TrieNodePathCache : IPathTrieNodeCache
 
     public void SetRootHashForBlock(long blockNo, Keccak? rootHash)
     {
-        if (_maxNumberOfBlocks == 0)
-            return;
-
         rootHash ??= Keccak.EmptyTreeHash;
         if (_rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
             blocks.Add(blockNo);
@@ -276,9 +268,6 @@ public class TrieNodePathCache : IPathTrieNodeCache
 
     public void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix)
     {
-        if (_maxNumberOfBlocks == 0)
-            return;
-
         foreach (byte[] path in _nodesByPath.Keys)
         {
             if (path.Length >= keyPrefix.Length && Bytes.AreEqual(path.AsSpan()[0..keyPrefix.Length], keyPrefix))
