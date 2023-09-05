@@ -22,7 +22,7 @@ namespace Nethermind.Synchronization.ParallelSync
         // TODO: we can search 1024 back and confirm 128 deep header and start using it as Max(0, confirmed)
         // then we will never have to look 128 back again
         // note that we will be doing that every second or so
-        private const int MaxLookupBack = 128;
+        private const int MaxLookupBack = 192;
 
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
