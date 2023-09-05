@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -9,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 
@@ -21,6 +23,7 @@ namespace Nethermind.Merge.AuRa
     public class AuRaMergePlugin : MergePlugin, IInitializationPlugin
     {
         private AuRaNethermindApi? _auraApi;
+        private IAuraConfig? _auraConfig;
 
         public override string Name => "AuRaMerge";
         public override string Description => $"AuRa Merge plugin for ETH1-ETH2";
@@ -30,11 +33,13 @@ namespace Nethermind.Merge.AuRa
         public override async Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
-            _mergeConfig = nethermindApi.Config<IMergeConfig>();
+            _auraConfig = _api.Config<IAuraConfig>();
+            _mergeConfig = _api.Config<IMergeConfig>();
+
             if (MergeEnabled)
             {
-                await base.Init(nethermindApi);
-                _auraApi = (AuRaNethermindApi)nethermindApi;
+                await base.Init(_api);
+                _auraApi = (AuRaNethermindApi)_api;
                 _auraApi.PoSSwitcher = _poSSwitcher;
 
                 // this runs before all init steps that use tx filters
@@ -47,8 +52,8 @@ namespace Nethermind.Merge.AuRa
         public override Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
             _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
-                (AuRaNethermindApi)_api,
-                _api.Config<IAuraConfig>(),
+                _auraApi!,
+                _auraConfig!,
                 _api.DisposeStack,
                 _api.DbProvider!,
                 _api.BlockTree!,
@@ -73,6 +78,21 @@ namespace Nethermind.Merge.AuRa
                 _manualTimestamper!,
                 _blocksConfig,
                 _api.LogManager);
+
+        protected override BlockProducerEnv CreateBlockProducerEnv()
+        {
+            Debug.Assert(_api?.BlockProducerEnvFactory is not null,
+                $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
+
+            ITxSource? encryptedTxSource = null;
+
+            if (_auraConfig!.UseShutter)
+            {
+                // TODO: Initialize encryptedTxSource
+            }
+
+            return _api.BlockProducerEnvFactory.Create(encryptedTxSource);
+        }
 
         private bool ShouldBeEnabled(INethermindApi api) => _mergeConfig.Enabled && IsPreMergeConsensusAuRa(api);
 

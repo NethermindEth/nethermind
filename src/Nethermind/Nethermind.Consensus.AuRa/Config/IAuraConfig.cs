@@ -26,5 +26,8 @@ namespace Nethermind.Consensus.AuRa.Config
                                   "See more at contract details https://github.com/poanetwork/posdao-contracts/blob/master/contracts/TxPriority.sol",
             DefaultValue = "null")]
         string TxPriorityConfigFilePath { get; set; }
+
+        [ConfigItem(Description = "Whether to enable shuttering.")]
+        bool UseShutter { get; set; }
     }
 }
