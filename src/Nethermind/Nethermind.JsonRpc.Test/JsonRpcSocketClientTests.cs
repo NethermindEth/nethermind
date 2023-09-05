@@ -164,7 +164,6 @@ public class JsonRpcSocketClientTests
         public async Task Can_send_multiple_messages(int messageCount)
         {
             CancellationTokenSource cts = new();
-            TaskCompletionSource serverDone = new();
 
             Task<int> receiveMessages = MockServer("http://localhost:1337/", async webSocket =>
             {
@@ -190,7 +189,6 @@ public class JsonRpcSocketClientTests
                         await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, cts.Token);
                     }
                     webSocket.Dispose();
-                    serverDone.SetResult();
                 }
 
                 return messages;
@@ -224,7 +222,6 @@ public class JsonRpcSocketClientTests
                     await Task.Delay(100);
                 }
                 cts.Cancel();
-                await serverDone.Task;
 
                 return messageCount;
             });
@@ -241,7 +238,6 @@ public class JsonRpcSocketClientTests
         public async Task Can_send_collections(int elements)
         {
             CancellationTokenSource cts = new();
-            TaskCompletionSource serverDone = new();
 
             Task<int> server = MockServer("http://localhost:1337/", async webSocket =>
             {
@@ -267,7 +263,6 @@ public class JsonRpcSocketClientTests
                         await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, cts.Token);
                     }
                     webSocket.Dispose();
-                    serverDone.SetResult();
                 }
 
                 return messages;
@@ -298,7 +293,6 @@ public class JsonRpcSocketClientTests
 
                 await Task.Delay(100);
                 cts.Cancel();
-                await serverDone.Task;
             });
 
             await Task.WhenAll(sendCollection, server);
