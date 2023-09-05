@@ -225,6 +225,32 @@ public class JsonRpcSocketClientTests
             return messages;
         }
 
+        private static async Task<long> CountNumberOfBytes(WebSocket webSocket, CancellationToken token)
+        {
+            long bytes = 0;
+            try
+            {
+                byte[] buffer = new byte[1024];
+
+                while (webSocket.State == WebSocketState.Open)
+                {
+                    WebSocketReceiveResult result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), token);
+                    bytes += result.Count;
+                }
+            }
+            catch (OperationCanceledException) { }
+            finally
+            {
+                if (webSocket.State == WebSocketState.Open)
+                {
+                    await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, token);
+                }
+                webSocket.Dispose();
+            }
+
+            return bytes;
+        }
+
         [Test]
         [TestCase(2)]
         [TestCase(10)]
@@ -317,6 +343,55 @@ public class JsonRpcSocketClientTests
 
             await Task.WhenAll(sendCollection, server);
             Assert.That(server.Result, Is.EqualTo(1));
+        }
+
+        [TestCase(1_000)]
+        [TestCase(5_000)]
+        [TestCase(10_000)]
+        [Ignore("Feature does not work correctly")]
+        public async Task Stops_on_limited_body_size(int maxByteCount)
+        {
+            CancellationTokenSource cts = new();
+
+            Task<long> receiveBytes = MockServer(
+                "http://localhost:1337/",
+                async webSocket => await CountNumberOfBytes(webSocket, cts.Token)
+            );
+
+            Task<int> sendCollection = Task.Run(async () =>
+            {
+                using ClientWebSocket socket = new ClientWebSocket();
+                await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
+
+                using ISocketHandler handler = new WebSocketHandler(socket, NullLogManager.Instance);
+                using JsonRpcSocketsClient client = new JsonRpcSocketsClient(
+                    clientName: "TestClient",
+                    handler: handler,
+                    endpointType: RpcEndpoint.Ws,
+                    jsonRpcProcessor: null!,
+                    jsonRpcService: null!,
+                    jsonRpcLocalStats: new NullJsonRpcLocalStats(),
+                    jsonSerializer: new EthereumJsonSerializer(),
+                    maxBatchResponseBodySize: maxByteCount
+                );
+                JsonRpcResult result = JsonRpcResult.Collection(
+                    new JsonRpcBatchResult((_, token) =>
+                        BuildRandomAsyncEnumerable(10, 100).GetAsyncEnumerator(token)
+                    )
+                );
+
+                int sent = await client.SendJsonRpcResult(result);
+
+                await Task.Delay(100);
+                cts.Cancel();
+
+                return sent;
+            });
+
+            await Task.WhenAll(sendCollection, receiveBytes);
+            int sent = sendCollection.Result;
+            long received = receiveBytes.Result;
+            Assert.That(received, Is.LessThanOrEqualTo(Math.Min(sent, maxByteCount)));
         }
     }
 
