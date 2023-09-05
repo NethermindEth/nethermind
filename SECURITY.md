@@ -1,4 +1,4 @@
-# Security policy
+to my reufrujevic750@gmail.com # Security policy
 
 If you believe you have found a security vulnerability in our code, we encourage you to report it to us as soon as possible.
 We ask that you do not publicly disclose any details of the vulnerability until we have had an opportunity to investigate and address it. 
