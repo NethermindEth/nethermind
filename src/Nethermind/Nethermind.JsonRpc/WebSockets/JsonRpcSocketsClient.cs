@@ -115,11 +115,7 @@ namespace Nethermind.JsonRpc.WebSockets
             await using Stream buffered = new BufferedStream(stream);
             await using CounterStream resultData = new CounterStream(buffered);
 
-            if (!result.IsCollection)
-            {
-                SendJsonRpcResultEntry(resultData, result.SingleResponse!.Value);
-            }
-            else
+            if (result.IsCollection)
             {
                 bool isFirst = true;
                 await resultData.WriteAsync(_jsonOpeningBracket);
@@ -153,6 +149,10 @@ namespace Nethermind.JsonRpc.WebSockets
                 }
 
                 await resultData.WriteAsync(_jsonClosingBracket);
+            }
+            else
+            {
+                SendJsonRpcResultEntry(resultData, result.SingleResponse!.Value);
             }
 
             // ? What if we write more than int.MaxValue.
