@@ -153,6 +153,7 @@ public class DbConfig : IDbConfig
     public long? StateDbMaxWriteBytesPerSec { get; set; }
     public long? StateDbMaxBytesPerSec { get; set; }
     public int? StateDbBlockSize { get; set; } = 4 * 1024;
+    public int? PathStateDbBlockSize { get; set; } = 4 * 1024;
     public bool? StateDbUseDirectReads { get; set; } = false;
     public bool? StateDbUseDirectIoForFlushAndCompactions { get; set; } = false;
     public bool? StateDbDisableCompression { get; set; } = false;
