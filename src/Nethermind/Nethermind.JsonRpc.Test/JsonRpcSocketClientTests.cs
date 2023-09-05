@@ -93,7 +93,8 @@ public class JsonRpcSocketClientTests
 
         [Test]
         [TestCase(2)]
-        [TestCase(5)]
+        [TestCase(10)]
+        [TestCase(50)]
         public async Task Can_send_multiple_messages(int messageCount)
         {
             IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
