@@ -146,6 +146,5 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public ulong? Eip6780TransitionTimestamp { get; set; }
         public ulong? Eip4788TransitionTimestamp { get; set; }
         public Address Eip4788ContractAddress { get; set; }
-        public IDictionary<long, IDictionary<Address, byte[]>> RewriteContracts { get; set; }
     }
 }
