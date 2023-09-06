@@ -27,7 +27,7 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
         _processor = processor;
         _logger = logManager.GetClassLogger();
     }
-    public void ScheduleSystemCall(Block block, IReleaseSpec spec)
+    public void ExecuteSystemCall(Block block, IReleaseSpec spec)
     {
         BlockHeader? header = block.Header;
         if (!spec.IsBeaconBlockRootAvailable ||

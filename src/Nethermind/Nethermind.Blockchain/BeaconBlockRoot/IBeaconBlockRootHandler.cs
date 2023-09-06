@@ -8,5 +8,5 @@ using Nethermind.State;
 namespace Nethermind.Blockchain.BeaconBlockRoot;
 public interface IBeaconBlockRootHandler
 {
-    void ScheduleSystemCall(Block block, IReleaseSpec spec);
+    void ExecuteSystemCall(Block block, IReleaseSpec spec);
 }
