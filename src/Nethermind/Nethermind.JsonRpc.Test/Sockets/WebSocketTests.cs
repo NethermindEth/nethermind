@@ -48,7 +48,9 @@ class WebSocketsTests
             JsonRpcResult result = JsonRpcResult.Single(
                 new JsonRpcSuccessResponse
                 {
-                    MethodName = "mock", Id = "42", Result = new RandomObject(1000).Get()
+                    MethodName = "mock",
+                    Id = "42",
+                    Result = new RandomObject(1000).Get()
                 },
                 default);
 
@@ -103,7 +105,9 @@ class WebSocketsTests
                             new JsonRpcResult.Entry(
                                 new JsonRpcSuccessResponse
                                 {
-                                    MethodName = "mock", Id = "42", Result = new RandomObject(100).Get(),
+                                    MethodName = "mock",
+                                    Id = "42",
+                                    Result = new RandomObject(100).Get(),
                                 }, default
                             )
                         )
@@ -158,7 +162,9 @@ class WebSocketsTests
                             new JsonRpcResult.Entry(
                                 new JsonRpcSuccessResponse
                                 {
-                                    MethodName = "mock", Id = "42", Result = new RandomObject(100).Get(),
+                                    MethodName = "mock",
+                                    Id = "42",
+                                    Result = new RandomObject(100).Get(),
                                 }, default
                             )
                         )

@@ -46,7 +46,9 @@ class IpcTests
             JsonRpcResult result = JsonRpcResult.Single(
                 new JsonRpcSuccessResponse()
                 {
-                    MethodName = "mock", Id = "42", Result = bigObject,
+                    MethodName = "mock",
+                    Id = "42",
+                    Result = bigObject,
                 }, default);
 
             return await client.SendJsonRpcResult(result);
@@ -89,7 +91,9 @@ class IpcTests
             JsonRpcResult result = JsonRpcResult.Single(
                 new JsonRpcSuccessResponse()
                 {
-                    MethodName = "mock", Id = "42", Result = new RandomObject(1000).Get()
+                    MethodName = "mock",
+                    Id = "42",
+                    Result = new RandomObject(1000).Get()
                 }, default);
 
             int totalBytesSent = 0;
@@ -142,7 +146,9 @@ class IpcTests
                             new JsonRpcResult.Entry(
                                 new JsonRpcSuccessResponse
                                 {
-                                    MethodName = "mock", Id = "42", Result = new RandomObject(100).Get(),
+                                    MethodName = "mock",
+                                    Id = "42",
+                                    Result = new RandomObject(100).Get(),
                                 }, default
                             )
                         )
