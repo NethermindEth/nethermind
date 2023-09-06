@@ -157,7 +157,6 @@ namespace Nethermind.JsonRpc.WebSockets
 
             // ? What if we write more than int.MaxValue.
             // Result could be negative
-            // return (int)resultData.WrittenBytes;
             return (int)resultData.WrittenBytes;
         }
 
