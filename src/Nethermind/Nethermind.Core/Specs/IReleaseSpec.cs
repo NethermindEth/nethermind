@@ -23,7 +23,7 @@ namespace Nethermind.Core.Specs
         long DifficultyBoundDivisor { get; }
         long? FixedDifficulty { get; }
         int MaximumUncleCount { get; }
-        IDictionary<Address, byte[]> RewriteContracts { get; }
+
         /// <summary>
         /// ---
         /// In chainspec - Ethash.Duration

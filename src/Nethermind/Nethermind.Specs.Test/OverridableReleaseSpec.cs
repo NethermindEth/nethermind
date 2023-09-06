@@ -159,6 +159,5 @@ namespace Nethermind.Specs.Test
         public bool IsEip4788Enabled => _spec.IsEip4788Enabled;
         public Address Eip4788ContractAddress => _spec.Eip4788ContractAddress;
 
-        public IDictionary<Address, byte[]> RewriteContracts => _spec.RewriteContracts;
     }
 }

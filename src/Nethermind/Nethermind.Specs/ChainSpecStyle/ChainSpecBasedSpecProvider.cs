@@ -208,7 +208,6 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.ValidateReceipts = ((chainSpec.Parameters.ValidateReceiptsTransition > 0) ? Math.Max(chainSpec.Parameters.ValidateReceiptsTransition ?? 0, chainSpec.Parameters.Eip658Transition ?? 0) : 0) <= releaseStartBlock;
             releaseSpec.Eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock ? chainSpec.Parameters.Eip1559FeeCollector : null;
             releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559BaseFeeMinValueTransition ?? long.MaxValue) <= releaseStartBlock ? chainSpec.Parameters.Eip1559BaseFeeMinValue : null;
-            releaseSpec.RewriteContracts = chainSpec.Parameters.RewriteContracts.ContainsKey(releaseStartBlock) ? chainSpec.Parameters.RewriteContracts[releaseStartBlock] : null; 
             if (chainSpec.Ethash is not null)
             {
                 foreach (KeyValuePair<long, UInt256> blockReward in chainSpec.Ethash.BlockRewards ?? Enumerable.Empty<KeyValuePair<long, UInt256>>())

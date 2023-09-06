@@ -90,7 +90,5 @@ namespace Nethermind.Specs
             get => IsEip4788Enabled ? _eip4788ContractAddress : null;
             set => _eip4788ContractAddress = value;
         }
-        public Address Eip4788ContractAddress { get; set; }
-        public IDictionary<Address, byte[]> RewriteContracts { get; set;}
     }
 }
