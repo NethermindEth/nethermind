@@ -155,7 +155,7 @@ jobs:
       with:
           workflow: run-single-node.yml
           repo: NethermindEth/post-merge-smoke-tests
-          ref: "kch/output_machine_spec_to_gist"
+          ref: "main"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
                      "github_username": "${{ github.actor }}",
@@ -176,7 +176,7 @@ jobs:
         TIMEOUT: '20'
         ORG_NAME: 'NethermindEth'
         REPO_NAME: 'post-merge-smoke-tests'
-        REF: 'kch/output_machine_spec_to_gist'
+        REF: 'main'
       run: |
         chmod +x scripts/wait-for-workflow-completed.sh
         ./scripts/wait-for-workflow-completed.sh | tee script-output.txt
