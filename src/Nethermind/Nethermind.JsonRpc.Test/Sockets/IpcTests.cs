@@ -16,39 +16,13 @@ namespace Nethermind.JsonRpc.Test.Sockets;
 
 class IpcTests
 {
-    private static readonly object _bigObject = new RandomObject(100_000);
-
-    private static async Task<T> MockServer<T>(IPEndPoint ipEndPoint, Func<Socket, Task<T>> func)
-    {
-        using Socket socket = new Socket(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-        socket.Bind(ipEndPoint);
-        socket.Listen();
-
-        Socket handler = await socket.AcceptAsync();
-
-        return await func(handler);
-    }
-
-    private static async Task<int> CountNumberOfBytes(Socket socket)
-    {
-        byte[] buffer = new byte[1024];
-        int totalRead = 0;
-
-        int read;
-        while ((read = await socket.ReceiveAsync(buffer)) != 0)
-        {
-            totalRead += read;
-        }
-        return totalRead;
-    }
-
     [Test]
     [Explicit("Takes too long to run")]
     public async Task Can_handle_very_large_objects()
     {
         IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
 
-        Task<int> receiveBytes = MockServer(
+        Task<int> receiveBytes = OneShotServer(
             ipEndPoint,
             async socket => await CountNumberOfBytes(socket)
         );
@@ -91,7 +65,7 @@ class IpcTests
     {
         IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
 
-        Task<int> receiveBytes = MockServer(
+        Task<int> receiveBytes = OneShotServer(
             ipEndPoint,
             async socket => await CountNumberOfBytes(socket)
         );
@@ -139,7 +113,7 @@ class IpcTests
     {
         IPEndPoint ipEndPoint = IPEndPoint.Parse("127.0.0.1:1337");
 
-        Task<int> receiveBytes = MockServer(
+        Task<int> receiveBytes = OneShotServer(
             ipEndPoint,
             async socket => await CountNumberOfBytes(socket)
         );
@@ -182,5 +156,31 @@ class IpcTests
         int sent = sendCollection.Result;
         int received = receiveBytes.Result;
         Assert.That(sent, Is.EqualTo(received));
+    }
+
+    private static readonly object _bigObject = new RandomObject(100_000);
+
+    private static async Task<T> OneShotServer<T>(IPEndPoint ipEndPoint, Func<Socket, Task<T>> func)
+    {
+        using Socket socket = new Socket(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+        socket.Bind(ipEndPoint);
+        socket.Listen();
+
+        Socket handler = await socket.AcceptAsync();
+
+        return await func(handler);
+    }
+
+    private static async Task<int> CountNumberOfBytes(Socket socket)
+    {
+        byte[] buffer = new byte[1024];
+        int totalRead = 0;
+
+        int read;
+        while ((read = await socket.ReceiveAsync(buffer)) != 0)
+        {
+            totalRead += read;
+        }
+        return totalRead;
     }
 }
