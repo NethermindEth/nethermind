@@ -178,15 +178,21 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithDataGasUsed(ulong? dataGasUsed)
+    public BlockHeaderBuilder WithBlobGasUsed(ulong? blobGasUsed)
     {
-        TestObjectInternal.DataGasUsed = dataGasUsed;
+        TestObjectInternal.BlobGasUsed = blobGasUsed;
         return this;
     }
 
-    public BlockHeaderBuilder WithExcessDataGas(ulong? excessDataGas)
+    public BlockHeaderBuilder WithExcessBlobGas(ulong? excessBlobGas)
     {
-        TestObjectInternal.ExcessDataGas = excessDataGas;
+        TestObjectInternal.ExcessBlobGas = excessBlobGas;
+        return this;
+    }
+
+    public BlockHeaderBuilder WithParentBeaconBlockRoot(Keccak? parentBeaconBlockRoot)
+    {
+        TestObjectInternal.ParentBeaconBlockRoot = parentBeaconBlockRoot;
         return this;
     }
 }

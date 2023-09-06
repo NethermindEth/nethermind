@@ -12,18 +12,18 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 [TestFixture]
-public class DataGasCalculatorTests
+public class BlobGasCalculatorTests
 {
-    [TestCaseSource(nameof(ExcessDataGasTestCaseSource))]
-    public void Excess_data_gas_is_calculated_properly((ulong parentExcessDataGas, int parentBlobsCount, ulong expectedExcessDataGas) testCase)
+    [TestCaseSource(nameof(ExcessBlobGasTestCaseSource))]
+    public void Excess_blob_gas_is_calculated_properly((ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas) testCase)
     {
         void Test(IReleaseSpec spec, bool areBlobsEnabled)
         {
             BlockHeader parentHeader = Build.A.BlockHeader
-                .WithDataGasUsed(DataGasCalculator.CalculateDataGas(testCase.parentBlobsCount))
-                .WithExcessDataGas(testCase.parentExcessDataGas).TestObject;
+                .WithBlobGasUsed(BlobGasCalculator.CalculateBlobGas(testCase.parentBlobsCount))
+                .WithExcessBlobGas(testCase.parentExcessBlobGas).TestObject;
 
-            Assert.That(DataGasCalculator.CalculateExcessDataGas(parentHeader, spec), Is.EqualTo(areBlobsEnabled ? testCase.expectedExcessDataGas : null));
+            Assert.That(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec), Is.EqualTo(areBlobsEnabled ? testCase.expectedExcessBlobGas : null));
         }
 
         Test(Homestead.Instance, false);
@@ -41,53 +41,53 @@ public class DataGasCalculatorTests
         Test(Cancun.Instance, true);
     }
 
-    [TestCaseSource(nameof(BlobDataGasCostTestCaseSource))]
-    public void Data_gas_price_is_calculated_properly(
-        (Transaction tx, ulong excessDataGas, UInt256 expectedCost) testCase)
+    [TestCaseSource(nameof(BlobGasCostTestCaseSource))]
+    public void Blob_gas_price_is_calculated_properly(
+        (Transaction tx, ulong excessBlobGas, UInt256 expectedCost) testCase)
     {
-        BlockHeader header = Build.A.BlockHeader.WithExcessDataGas(testCase.excessDataGas).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(testCase.excessBlobGas).TestObject;
 
-        bool success = DataGasCalculator.TryCalculateDataGasPrice(header, testCase.tx, out UInt256 dataGasPrice);
+        bool success = BlobGasCalculator.TryCalculateBlobGasPrice(header, testCase.tx, out UInt256 blobGasPrice);
 
         Assert.That(success, Is.True);
-        Assert.That(dataGasPrice, Is.EqualTo(testCase.expectedCost));
+        Assert.That(blobGasPrice, Is.EqualTo(testCase.expectedCost));
     }
 
     [Test]
-    public void Data_gas_price_may_overflow()
+    public void Blob_gas_price_may_overflow()
     {
         var tx = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject;
-        BlockHeader header = Build.A.BlockHeader.WithExcessDataGas(ulong.MaxValue).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(ulong.MaxValue).TestObject;
 
-        bool success = DataGasCalculator.TryCalculateDataGasPrice(header, tx, out UInt256 dataGasPrice);
+        bool success = BlobGasCalculator.TryCalculateBlobGasPrice(header, tx, out UInt256 blobGasPrice);
 
         Assert.That(success, Is.False);
-        Assert.That(dataGasPrice, Is.EqualTo(UInt256.MaxValue));
+        Assert.That(blobGasPrice, Is.EqualTo(UInt256.MaxValue));
     }
 
-    public static IEnumerable<(ulong parentExcessDataGas, int parentBlobsCount, ulong expectedExcessDataGas)> ExcessDataGasTestCaseSource()
+    public static IEnumerable<(ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas)> ExcessBlobGasTestCaseSource()
     {
         yield return (0, 0, 0);
-        yield return (0, (int)(Eip4844Constants.TargetDataGasPerBlock / Eip4844Constants.DataGasPerBlob) - 1, 0);
-        yield return (0, (int)(Eip4844Constants.TargetDataGasPerBlock / Eip4844Constants.DataGasPerBlob), 0);
-        yield return (100000, (int)(Eip4844Constants.TargetDataGasPerBlock / Eip4844Constants.DataGasPerBlob), 100000);
-        yield return (0, (int)(Eip4844Constants.TargetDataGasPerBlock / Eip4844Constants.DataGasPerBlob) + 1, Eip4844Constants.DataGasPerBlob * 1);
-        yield return (Eip4844Constants.TargetDataGasPerBlock, 1, Eip4844Constants.DataGasPerBlob * 1);
-        yield return (Eip4844Constants.TargetDataGasPerBlock, 0, 0);
-        yield return (Eip4844Constants.TargetDataGasPerBlock, 2, Eip4844Constants.DataGasPerBlob * 2);
-        yield return (Eip4844Constants.MaxDataGasPerBlock, 1, Eip4844Constants.TargetDataGasPerBlock + Eip4844Constants.DataGasPerBlob * 1);
+        yield return (0, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob) - 1, 0);
+        yield return (0, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob), 0);
+        yield return (100000, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob), 100000);
+        yield return (0, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob) + 1, Eip4844Constants.BlobGasPerBlob * 1);
+        yield return (Eip4844Constants.TargetBlobGasPerBlock, 1, Eip4844Constants.BlobGasPerBlob * 1);
+        yield return (Eip4844Constants.TargetBlobGasPerBlock, 0, 0);
+        yield return (Eip4844Constants.TargetBlobGasPerBlock, 2, Eip4844Constants.BlobGasPerBlob * 2);
+        yield return (Eip4844Constants.MaxBlobGasPerBlock, 1, Eip4844Constants.TargetBlobGasPerBlock + Eip4844Constants.BlobGasPerBlob * 1);
         yield return (
-            Eip4844Constants.MaxDataGasPerBlock,
-            (int)(Eip4844Constants.TargetDataGasPerBlock / Eip4844Constants.DataGasPerBlob),
-            Eip4844Constants.MaxDataGasPerBlock);
+            Eip4844Constants.MaxBlobGasPerBlock,
+            (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob),
+            Eip4844Constants.MaxBlobGasPerBlock);
         yield return (
-            Eip4844Constants.MaxDataGasPerBlock,
-            (int)(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob),
-            Eip4844Constants.MaxDataGasPerBlock * 2 - Eip4844Constants.TargetDataGasPerBlock
+            Eip4844Constants.MaxBlobGasPerBlock,
+            (int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob),
+            Eip4844Constants.MaxBlobGasPerBlock * 2 - Eip4844Constants.TargetBlobGasPerBlock
             );
     }
 
-    public static IEnumerable<(Transaction tx, ulong excessDataGas, UInt256 expectedCost)> BlobDataGasCostTestCaseSource()
+    public static IEnumerable<(Transaction tx, ulong excessBlobGas, UInt256 expectedCost)> BlobGasCostTestCaseSource()
     {
         yield return (Build.A.Transaction.TestObject, 0, 0);
         yield return (Build.A.Transaction.TestObject, 1000, 0);

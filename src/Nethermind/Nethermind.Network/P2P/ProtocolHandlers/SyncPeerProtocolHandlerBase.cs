@@ -51,7 +51,25 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly TxDecoder _txDecoder;
 
         protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests;
-        protected readonly MessageQueue<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests;
+        protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;
+
+        private readonly LatencyAndMessageSizeBasedRequestSizer _bodiesRequestSizer = new(
+            minRequestLimit: 1,
+            maxRequestLimit: 128,
+
+            // In addition to the byte limit, we also try to keep the latency of the get block bodies between these two
+            // watermark. This reduce timeout rate, and subsequently disconnection rate.
+            lowerLatencyWatermark: TimeSpan.FromMilliseconds(2000),
+            upperLatencyWatermark: TimeSpan.FromMilliseconds(3000),
+
+            // When the bodies message size exceed this, we try to reduce the maximum number of block for this peer.
+            // This is for BeSU and Reth which does not seems to use the 2MB soft limit, causing them to send 20MB of bodies
+            // or receipts. This is not great as large message size are harder for DotNetty to pool byte buffer, causing
+            // higher memory usage. Reducing this even further does seems to help with memory, but may reduce throughput.
+            maxResponseSize: 3_000_000,
+            initialRequestSize: 4
+        );
+
         protected LruKeyCache<Keccak> NotifiedTransactions { get; } = new(2 * MemoryAllowance.MemPoolSize, "notifiedTransactions");
 
         protected SyncPeerProtocolHandlerBase(ISession session,
@@ -64,7 +82,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _timestamper = Timestamper.Default;
             _txDecoder = new TxDecoder();
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
-            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
+            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
+
         }
 
         public void Disconnect(DisconnectReason reason, string details)
@@ -73,20 +92,20 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Session.InitiateDisconnect(reason, details);
         }
 
-        async Task<BlockBody[]> ISyncPeer.GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+        async Task<OwnedBlockBodies> ISyncPeer.GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
         {
             if (blockHashes.Count == 0)
             {
-                return Array.Empty<BlockBody>();
+                return new OwnedBlockBodies(Array.Empty<BlockBody>());
             }
 
-            GetBlockBodiesMessage bodiesMsg = new(blockHashes);
+            OwnedBlockBodies blocks = await _bodiesRequestSizer.Run(blockHashes, async clampedBlockHashes =>
+                await SendRequest(new GetBlockBodiesMessage(clampedBlockHashes), token));
 
-            BlockBody[] blocks = await SendRequest(bodiesMsg, token);
             return blocks;
         }
 
-        protected virtual async Task<BlockBody[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
+        protected virtual async Task<(OwnedBlockBodies, long)> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -349,7 +368,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
         {
             Metrics.Eth62BlockBodiesReceived++;
-            _bodiesRequests.Handle(blockBodiesMessage.Bodies, size);
+            _bodiesRequests.Handle((blockBodiesMessage.Bodies, size), size);
         }
 
         protected void Handle(GetReceiptsMessage msg)

@@ -7,7 +7,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Microsoft.AspNetCore.Connections;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -75,9 +74,9 @@ namespace Nethermind.Synchronization.Test
                 DisconnectRequested = true;
             }
 
-            public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
             {
-                return Task.FromResult(Array.Empty<BlockBody>());
+                return Task.FromResult(new OwnedBlockBodies(Array.Empty<BlockBody>()));
             }
 
             public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)

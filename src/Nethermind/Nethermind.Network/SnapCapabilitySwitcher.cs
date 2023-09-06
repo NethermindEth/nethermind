@@ -5,7 +5,6 @@
 using System;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 
@@ -23,7 +22,7 @@ public class SnapCapabilitySwitcher
     {
         _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
-        _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
     /// <summary>

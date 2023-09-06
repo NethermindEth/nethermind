@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FastEnumUtility;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Merge.Plugin.GC;

@@ -10,13 +10,11 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V68;
@@ -95,7 +93,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
         Stopwatch? stopwatch = isTrace ? Stopwatch.StartNew() : null;
 
-        _pooledTxsRequestor.RequestTransactionsEth66(_sendAction, message.Hashes);
+        _pooledTxsRequestor.RequestTransactionsEth68(_sendAction, message.Hashes, message.Sizes);
 
         stopwatch?.Stop();
 

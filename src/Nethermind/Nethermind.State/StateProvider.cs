@@ -39,11 +39,11 @@ namespace Nethermind.State
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = Resettable.EmptyPosition;
 
-        public StateProvider(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+        public StateProvider(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, StateTree? stateTree = null)
         {
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _tree = new StateTree(trieStore, logManager);
+            _tree = stateTree ?? new StateTree(trieStore, logManager);
         }
 
         public void Accept(ITreeVisitor? visitor, Keccak? stateRoot, VisitingOptions? visitingOptions = null)
@@ -76,7 +76,7 @@ namespace Nethermind.State
             set => _tree.RootHash = value;
         }
 
-        private readonly StateTree _tree;
+        internal readonly StateTree _tree;
 
         public bool IsContract(Address address)
         {
@@ -407,21 +407,18 @@ namespace Nethermind.State
             _keptInCache.Clear();
         }
 
-        public void CreateAccount(Address address, in UInt256 balance)
-        {
-            _needsStateRootUpdate = true;
-            if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance}");
-            Account account = balance.IsZero ? Account.TotallyEmpty : new Account(balance);
-            PushNew(address, account);
-        }
-
-
-        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce)
+        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
         {
             _needsStateRootUpdate = true;
             if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance} and nonce {nonce}");
             Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance);
             PushNew(address, account);
+        }
+
+        public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+        {
+            if (AccountExists(address)) return;
+            CreateAccount(address, balance, nonce);
         }
 
         public void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)

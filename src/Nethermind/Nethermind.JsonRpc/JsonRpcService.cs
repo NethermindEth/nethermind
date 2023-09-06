@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -75,8 +76,15 @@ public class JsonRpcService : IJsonRpcService
             }
             catch (TargetInvocationException ex)
             {
-                if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
-                return GetErrorResponse(rpcRequest.Method, ErrorCodes.InternalError, "Internal error", ex.InnerException?.ToString(), rpcRequest.Id);
+                if (_logger.IsError)
+                    _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
+                return GetErrorResponse(rpcRequest.Method, ErrorCodes.InternalError, "Internal error",
+                    ex.InnerException?.ToString(), rpcRequest.Id);
+            }
+            catch (LimitExceededException ex)
+            {
+                if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
+                return GetErrorResponse(rpcRequest.Method, ErrorCodes.LimitExceeded, "Too many requests", ex.ToString(), rpcRequest.Id);
             }
             catch (ModuleRentalTimeoutException ex)
             {
@@ -92,7 +100,7 @@ public class JsonRpcService : IJsonRpcService
         catch (Exception ex)
         {
             if (_logger.IsError) _logger.Error($"Error during validation, request: {rpcRequest}", ex);
-            return GetErrorResponse(ErrorCodes.ParseError, "Parse error");
+            return GetErrorResponse(ErrorCodes.ParseError, "Parse error", rpcRequest.Id, rpcRequest.Method);
         }
     }
 
@@ -187,7 +195,7 @@ public class JsonRpcService : IJsonRpcService
                     break;
             }
         }
-        catch (TargetParameterCountException e)
+        catch (Exception e) when (e is TargetParameterCountException || e is ArgumentException)
         {
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.ToString(), request.Id, returnAction);
         }
@@ -320,7 +328,11 @@ public class JsonRpcService : IJsonRpcService
                     }
                     else
                     {
-                        executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader($"\"{providedParameter}\"")), paramType);
+                        var stringReader = providedParameter.StartsWith('\"') && providedParameter.EndsWith('\"')
+                            ? new StringReader(providedParameter)
+                            : new StringReader($"\"{providedParameter}\"");
+                        var jsonTextReader = new JsonTextReader(stringReader);
+                        executionParam = _serializer.Deserialize(jsonTextReader, paramType);
                     }
                 }
 
@@ -374,11 +386,8 @@ public class JsonRpcService : IJsonRpcService
         return response;
     }
 
-    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage) =>
-        GetErrorResponse("", errorCode, errorMessage, null, null);
-
-    public JsonRpcErrorResponse GetErrorResponse(string methodName, int errorCode, string errorMessage, object id) =>
-        GetErrorResponse(methodName, errorCode, errorMessage, null, id);
+    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, object? id = null, string? methodName = null) =>
+        GetErrorResponse(methodName ?? string.Empty, errorCode, errorMessage, null, id);
 
     public JsonConverter[] Converters { get; }
 

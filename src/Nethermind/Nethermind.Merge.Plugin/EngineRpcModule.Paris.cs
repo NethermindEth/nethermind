@@ -5,7 +5,9 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
@@ -27,20 +29,23 @@ public partial class EngineRpcModule : IEngineRpcModule
         TransitionConfigurationV1 beaconTransitionConfiguration) => _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => await ForkchoiceUpdated(forkchoiceState, payloadAttributes, 1);
+        => await ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Paris);
 
     public Task<ResultWrapper<ExecutionPayload?>> engine_getPayloadV1(byte[] payloadId) =>
         _getPayloadHandlerV1.HandleAsync(payloadId);
 
     public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
-        => await NewPayload(executionPayload, 1);
+        => await NewPayload(executionPayload, EngineApiVersions.Paris);
 
     private async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
-        if (payloadAttributes?.Validate(_specProvider, version, out string? error) == false)
+        string? error = null;
+        switch (payloadAttributes?.Validate(_specProvider, version, out error))
         {
-            if (_logger.IsWarn) _logger.Warn(error);
-            return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error, ErrorCodes.InvalidParams);
+            case PayloadAttributesValidationResult.InvalidParams:
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.InvalidParams);
+            case PayloadAttributesValidationResult.UnsupportedFork:
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.UnsupportedFork);
         }
 
         if (await _locker.WaitAsync(_timeout))
@@ -64,12 +69,24 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
     }
 
-    private async Task<ResultWrapper<PayloadStatusV1>> NewPayload(ExecutionPayload executionPayload, int version)
+    private async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
-        if (!executionPayload.Validate(_specProvider, version, out string? error))
+        ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
+
+        if (!executionPayload.ValidateFork(_specProvider))
+        {
+            if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
+            return ResultWrapper<PayloadStatusV1>.Fail("unsupported fork", version < 2 ? ErrorCodes.InvalidParams : ErrorCodes.UnsupportedFork);
+        }
+
+        IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
+        ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, out string? error);
+        if (validationResult != ValidationResult.Success)
         {
             if (_logger.IsWarn) _logger.Warn(error);
-            return ResultWrapper<PayloadStatusV1>.Fail(error, ErrorCodes.InvalidParams);
+            return validationResult == ValidationResult.Fail
+                ? ResultWrapper<PayloadStatusV1>.Fail(error!, ErrorCodes.InvalidParams)
+                : ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Invalid(null, error));
         }
 
         if (await _locker.WaitAsync(_timeout))

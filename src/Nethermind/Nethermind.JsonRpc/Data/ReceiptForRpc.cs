@@ -25,8 +25,8 @@ namespace Nethermind.JsonRpc.Data
             CumulativeGasUsed = receipt.GasUsedTotal;
             GasUsed = receipt.GasUsed;
             EffectiveGasPrice = gasInfo.EffectiveGasPrice;
-            DataGasUsed = gasInfo.DataGasUsed;
-            DataGasPrice = gasInfo.DataGasPrice;
+            BlobGasUsed = gasInfo.BlobGasUsed;
+            BlobGasPrice = gasInfo.BlobGasPrice;
             From = receipt.Sender;
             To = receipt.Recipient;
             ContractAddress = receipt.ContractAddress;
@@ -46,10 +46,10 @@ namespace Nethermind.JsonRpc.Data
         public long GasUsed { get; set; }
 
         [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
-        public ulong? DataGasUsed { get; set; }
+        public ulong? BlobGasUsed { get; set; }
 
         [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
-        public UInt256? DataGasPrice { get; set; }
+        public UInt256? BlobGasPrice { get; set; }
 
         public UInt256? EffectiveGasPrice { get; set; }
         public Address From { get; set; }
