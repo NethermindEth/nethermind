@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Test.Sockets;
@@ -23,7 +21,7 @@ namespace Nethermind.JsonRpc.Test;
 [TestFixture]
 public class JsonRpcSocketClientTests
 {
-    private static readonly object _bigObject = BuildRandomBigObject(100_000);
+    private static readonly object _bigObject = new RandomObject(100_000);
 
     class UsingIpc
     {
@@ -123,7 +121,7 @@ public class JsonRpcSocketClientTests
                 JsonRpcResult result = JsonRpcResult.Single(
                     new JsonRpcSuccessResponse()
                     {
-                        MethodName = "mock", Id = "42", Result = BuildRandomBigObject(1000)
+                        MethodName = "mock", Id = "42", Result = new RandomObject(1000).Get()
                     }, default);
 
                 int totalBytesSent = 0;
@@ -170,7 +168,17 @@ public class JsonRpcSocketClientTests
                 );
                 JsonRpcResult result = JsonRpcResult.Collection(
                     new JsonRpcBatchResult((_, token) =>
-                        BuildRandomAsyncEnumerable(10, 1_000).GetAsyncEnumerator(token)
+                        new RandomAsyncEnumerable<JsonRpcResult.Entry>(
+                            10,
+                            () => Task.FromResult(
+                                new JsonRpcResult.Entry(
+                                    new JsonRpcSuccessResponse
+                                    {
+                                        MethodName = "mock", Id = "42", Result = new RandomObject(100),
+                                    }, default
+                                )
+                            )
+                        ).GetAsyncEnumerator(token)
                     )
                 );
 
@@ -283,7 +291,7 @@ public class JsonRpcSocketClientTests
                 JsonRpcResult result = JsonRpcResult.Single(
                     new JsonRpcSuccessResponse
                     {
-                        MethodName = "mock", Id = "42", Result = BuildRandomBigObject(1000)
+                        MethodName = "mock", Id = "42", Result = new RandomObject(1000).Get()
                     },
                     default);
 
@@ -332,7 +340,17 @@ public class JsonRpcSocketClientTests
                 );
                 JsonRpcResult result = JsonRpcResult.Collection(
                     new JsonRpcBatchResult((_, token) =>
-                        BuildRandomAsyncEnumerable(10, 1_000).GetAsyncEnumerator(token)
+                        new RandomAsyncEnumerable<JsonRpcResult.Entry>(
+                            10,
+                            () => Task.FromResult(
+                                new JsonRpcResult.Entry(
+                                    new JsonRpcSuccessResponse
+                                    {
+                                        MethodName = "mock", Id = "42", Result = new RandomObject(100),
+                                    }, default
+                                )
+                            )
+                        ).GetAsyncEnumerator(token)
                     )
                 );
 
@@ -377,7 +395,17 @@ public class JsonRpcSocketClientTests
                 );
                 JsonRpcResult result = JsonRpcResult.Collection(
                     new JsonRpcBatchResult((_, token) =>
-                        BuildRandomAsyncEnumerable(10, 100).GetAsyncEnumerator(token)
+                        new RandomAsyncEnumerable<JsonRpcResult.Entry>(
+                            10,
+                            () => Task.FromResult(
+                                new JsonRpcResult.Entry(
+                                    new JsonRpcSuccessResponse
+                                    {
+                                        MethodName = "mock", Id = "42", Result = new RandomObject(100),
+                                    }, default
+                                )
+                            )
+                        ).GetAsyncEnumerator(token)
                     )
                 );
 
@@ -396,46 +424,4 @@ public class JsonRpcSocketClientTests
         }
     }
 
-    private static async IAsyncEnumerable<JsonRpcResult.Entry> BuildRandomAsyncEnumerable(int entries, int size)
-    {
-        for (int i = 0; i < entries; i++)
-        {
-            JsonRpcResult.Entry value = await Task.FromResult(new JsonRpcResult.Entry(
-                new JsonRpcSuccessResponse
-                {
-                    MethodName = "mock", Id = "42", Result = BuildRandomBigObject(size),
-                }, default
-            ));
-            yield return value;
-        }
-    }
-
-    private static object BuildRandomBigObject(int length)
-    {
-        string[] strings = BuildRandomStringArray(length);
-        return new GethLikeTxTrace()
-        {
-            Entries =
-            {
-                new GethTxTraceEntry
-                {
-                    Stack = strings, Memory = strings,
-                }
-            }
-        };
-    }
-
-    private static string[] BuildRandomStringArray(int length)
-    {
-        string[] array = new string[length];
-        for (int i = 0; i < length; i++)
-        {
-            array[i] = new RandomString(length).ToString();
-            if (i % 100 == 0)
-            {
-                GC.Collect();
-            }
-        }
-        return array;
-    }
 }
