@@ -55,6 +55,7 @@ namespace Nethermind.Core.Extensions
             {
                 return ToHexStringWithEip55Checksum(bytes, withZeroX, skipLeadingZeros);
             }
+            if (bytes.Length == 0) return "";
 
             int leadingZeros = skipLeadingZeros ? Bytes.CountLeadingZeros(bytes) : 0;
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros;

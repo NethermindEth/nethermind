@@ -3,7 +3,6 @@
 
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;

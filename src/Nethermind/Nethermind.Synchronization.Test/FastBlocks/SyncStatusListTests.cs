@@ -4,10 +4,13 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-
-using DotNetty.Codecs;
-
+using FluentAssertions;
+using Nethermind.Blockchain;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Synchronization.FastBlocks;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastBlocks
@@ -35,12 +38,24 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         {
             const int length = 4096;
 
-
             FastBlockStatusList list = CreateFastBlockStatusList(length, false);
             for (int i = 0; i < length; i++)
             {
                 Assert.IsTrue((FastBlockStatus)(i % 3) == list[i]);
             }
+        }
+
+        [Test]
+        public void Will_not_go_below_ancient_barrier()
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(new BlockInfo(TestItem.KeccakA, 0));
+            SyncStatusList syncStatusList = new SyncStatusList(blockTree, 1000, null, 900);
+
+            BlockInfo?[] infos = new BlockInfo?[500];
+            syncStatusList.GetInfosForBatch(infos);
+
+            infos.Count((it) => it != null).Should().Be(101);
         }
 
         [Test]

@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -14,10 +13,8 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Collections;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
@@ -54,7 +51,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly TxDecoder _txDecoder;
 
         protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests;
-        protected readonly MessageQueue<GetBlockBodiesMessage, (BlockBody[], long)> _bodiesRequests;
+        protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;
 
         private readonly LatencyAndMessageSizeBasedRequestSizer _bodiesRequestSizer = new(
             minRequestLimit: 1,
@@ -85,7 +82,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _timestamper = Timestamper.Default;
             _txDecoder = new TxDecoder();
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
-            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (BlockBody[], long)>(Send);
+            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
 
         }
 
@@ -95,20 +92,20 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Session.InitiateDisconnect(reason, details);
         }
 
-        async Task<BlockBody[]> ISyncPeer.GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+        async Task<OwnedBlockBodies> ISyncPeer.GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
         {
             if (blockHashes.Count == 0)
             {
-                return Array.Empty<BlockBody>();
+                return new OwnedBlockBodies(Array.Empty<BlockBody>());
             }
 
-            BlockBody[] blocks = await _bodiesRequestSizer.Run(blockHashes, async clampedBlockHashes =>
+            OwnedBlockBodies blocks = await _bodiesRequestSizer.Run(blockHashes, async clampedBlockHashes =>
                 await SendRequest(new GetBlockBodiesMessage(clampedBlockHashes), token));
 
             return blocks;
         }
 
-        protected virtual async Task<(BlockBody[], long)> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
+        protected virtual async Task<(OwnedBlockBodies, long)> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

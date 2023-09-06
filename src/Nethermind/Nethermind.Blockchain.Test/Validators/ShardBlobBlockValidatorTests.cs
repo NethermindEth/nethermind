@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;

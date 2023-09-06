@@ -11,17 +11,11 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Data;
-using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
-using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -30,10 +24,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract

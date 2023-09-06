@@ -9,7 +9,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
-using Nethermind.Consensus.AuRa.BeaconBlockRoot;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;

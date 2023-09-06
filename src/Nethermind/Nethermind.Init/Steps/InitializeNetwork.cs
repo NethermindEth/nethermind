@@ -39,7 +39,6 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Synchronization.StateSync;
 using Nethermind.Synchronization.Trie;
 
 namespace Nethermind.Init.Steps;
@@ -560,6 +559,13 @@ public class InitializeNetwork : IStep
         NodeRecordSigner nodeRecordSigner = new(_api.EthereumEcdsa, new PrivateKeyGenerator().Generate());
         EnrRecordParser enrRecordParser = new(nodeRecordSigner);
         EnrDiscovery enrDiscovery = new(enrRecordParser, _api.LogManager); // initialize with a proper network
+
+        if (!_networkConfig.DisableDiscV4DnsFeeder)
+        {
+            // Feed some nodes into discoveryApp in case all bootnodes is faulty.
+            _api.DisposeStack.Push(new NodeSourceToDiscV4Feeder(enrDiscovery, _api.DiscoveryApp, 50));
+        }
+
         CompositeNodeSource nodeSources = new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
         _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager);
         _api.PeerManager = new PeerManager(

@@ -2,32 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db.Blooms;
-using Nethermind.Db;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State.Repositories;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Core.Test.Blockchain;
-using System.Threading.Tasks;
-using Nethermind.Consensus.BeaconBlockRoot;
 
 namespace Nethermind.Evm.Test;
 
