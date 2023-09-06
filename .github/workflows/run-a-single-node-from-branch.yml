@@ -106,13 +106,13 @@ jobs:
         [[ "${{ github.ref }}" == "refs/heads/master" ]] && 
         [[ "${{ steps.extract_dockerfile.outputs.dockerfile }}" == "Dockerfile" ]] && 
         [[ "${{ steps.extract_dockerfile.outputs.build-config }}" == "release" ]]; then
-          echo "skip=true" >> $GITHUB_OUTPUT
+          echo "skip_docker_build=true" >> $GITHUB_OUTPUT
         else
-          echo "skip=false" >> $GITHUB_OUTPUT
+          echo "skip_docker_build=false" >> $GITHUB_OUTPUT
         fi
 
     - name: Trigger Docker Build Action with Cleaned Ref
-      if: steps.check_conditions.outputs.skip != 'true'
+      if: steps.check_conditions.outputs.skip_docker_build != 'true'
       uses: benc-uk/workflow-dispatch@v1
       env:
         ADDITIONAL_OPTIONS: ${{ inputs.additional_options }}
@@ -127,7 +127,7 @@ jobs:
            }'
         
     - name: Wait for Docker Build Action to complete
-      if: steps.check_conditions.outputs.skip != 'true'
+      if: steps.check_conditions.outputs.skip_docker_build != 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         WORKFLOW_ID: 'publish-docker.yml'
