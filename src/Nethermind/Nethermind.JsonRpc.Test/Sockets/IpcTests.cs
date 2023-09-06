@@ -27,6 +27,7 @@ class IpcTests
             async socket => await CountNumberOfBytes(socket)
         );
 
+        object bigObject = new RandomObject(200_000).Get();
         Task<int> sendJsonRpcResult = Task.Run(async () =>
         {
             using Socket socket = new Socket(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
@@ -45,7 +46,7 @@ class IpcTests
             JsonRpcResult result = JsonRpcResult.Single(
                 new JsonRpcSuccessResponse()
                 {
-                    MethodName = "mock", Id = "42", Result = _bigObject
+                    MethodName = "mock", Id = "42", Result = bigObject,
                 }, default);
 
             return await client.SendJsonRpcResult(result);
@@ -141,7 +142,7 @@ class IpcTests
                             new JsonRpcResult.Entry(
                                 new JsonRpcSuccessResponse
                                 {
-                                    MethodName = "mock", Id = "42", Result = new RandomObject(100),
+                                    MethodName = "mock", Id = "42", Result = new RandomObject(100).Get(),
                                 }, default
                             )
                         )
@@ -157,8 +158,6 @@ class IpcTests
         int received = receiveBytes.Result;
         Assert.That(sent, Is.EqualTo(received));
     }
-
-    private static readonly object _bigObject = new RandomObject(100_000);
 
     private static async Task<T> OneShotServer<T>(IPEndPoint ipEndPoint, Func<Socket, Task<T>> func)
     {
