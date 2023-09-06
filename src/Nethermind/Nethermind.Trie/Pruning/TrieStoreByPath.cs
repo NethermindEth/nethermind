@@ -33,6 +33,7 @@ namespace Nethermind.Trie.Pruning
         private readonly ConcurrentQueue<byte[]> _destroyPrefixes;
 
         private bool _lastPersistedReachedReorgBoundary;
+        private bool _useCommittedCache = false;
 
         public TrieStoreByPath(
         IKeyValueStoreWithBatching stateDb,
@@ -42,6 +43,7 @@ namespace Nethermind.Trie.Pruning
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _stateDb = stateDb as IColumnsDb<StateColumns> ?? throw new ArgumentNullException(nameof(stateDb));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
+            _useCommittedCache = !(_persistenceStrategy is Archive);
             _committedNodes = new ConcurrentDictionary<StateColumns, IPathTrieNodeCache>();
             _committedNodes.TryAdd(StateColumns.State, new TrieNodePathCache(this, logManager));
             _committedNodes.TryAdd(StateColumns.Storage, new TrieNodePathCache(this, logManager));
@@ -129,7 +131,14 @@ namespace Nethermind.Trie.Pruning
                     throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
                 }
 
-                _committedNodes[GetProperColumn(nodeCommitInfo.Node.FullPath.Length)].AddNode(blockNumber, node);
+                if (_useCommittedCache)
+                {
+                    _committedNodes[GetProperColumn(nodeCommitInfo.Node.FullPath.Length)].AddNode(blockNumber, node);
+                }
+                else
+                {
+                    Persist(nodeCommitInfo.Node, blockNumber, writeFlags);
+                }
                 node.LastSeen = Math.Max(blockNumber, node.LastSeen ?? 0);
 
                 CommittedNodesCount++;
@@ -160,7 +169,7 @@ namespace Nethermind.Trie.Pruning
                     }
                     else
                     {
-                        if (_persistenceStrategy.ShouldPersist(set.BlockNumber, out long persistTarget))
+                        if (_useCommittedCache && _persistenceStrategy.ShouldPersist(set.BlockNumber, out long persistTarget))
                         {
                             Persist(persistTarget);
                             AnnounceReorgBoundaries();
@@ -182,7 +191,8 @@ namespace Nethermind.Trie.Pruning
                     TrieType.Storage => StateColumns.Storage,
                     _ => throw new NotImplementedException()
                 };
-                _committedNodes[column].SetRootHashForBlock(blockNumber, root?.Keccak);
+
+                if (_useCommittedCache) _committedNodes[column].SetRootHashForBlock(blockNumber, root?.Keccak);
 
                 if (trieType == TrieType.State) CurrentPackage = null;
             }
