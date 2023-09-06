@@ -27,7 +27,7 @@ public class TransactionForRpc
         Value = transaction.Value;
         GasPrice = transaction.GasPrice;
         Gas = transaction.GasLimit;
-        Input = transaction.Data.AsArray();
+        Input = Data = transaction.Data.AsArray();
         if (transaction.Supports1559)
         {
             GasPrice = baseFee is not null
@@ -98,6 +98,7 @@ public class TransactionForRpc
 
     public UInt256? MaxFeePerGas { get; set; }
     public long? Gas { get; set; }
+    public byte[]? Data { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
     public byte[]? Input { get; set; }
@@ -136,7 +137,7 @@ public class TransactionForRpc
             To = To,
             SenderAddress = From,
             Value = Value ?? 0,
-            Data = Input,
+            Data = Data ?? Input,
             Type = Type,
             AccessList = TryGetAccessList(),
             ChainId = chainId,
@@ -162,7 +163,7 @@ public class TransactionForRpc
 
     public T ToTransaction<T>(ulong? chainId = null) where T : Transaction, new()
     {
-        byte[]? data = Input;
+        byte[]? data = Data ?? Input;
 
         T tx = new()
         {

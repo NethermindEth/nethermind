@@ -88,7 +88,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, new Transaction());
         transaction.From = TestItem.AddressA;
-        transaction.Input = new byte[] { 1, 2, 3 };
+        transaction.Data = new byte[] { 1, 2, 3 };
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", ctx.Test.JsonSerializer.Serialize(transaction), "latest");
@@ -163,7 +163,7 @@ public partial class EthRpcModuleTests
 
         TransactionForRpc transaction =
             test.JsonSerializer.Deserialize<TransactionForRpc>(
-                $"{{\"type\":\"0x1\", \"input\": \"{code.ToHexString(true)}\"}}");
+                $"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
 
         transaction.AccessList = accessList;
         string serialized = await test.TestEthRpc("eth_call", test.JsonSerializer.Serialize(transaction), "0x0");
@@ -231,7 +231,7 @@ public partial class EthRpcModuleTests
 
         string dataStr = code.ToHexString();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"input\": \"{dataStr}\"}}");
+            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", ctx.Test.JsonSerializer.Serialize(transaction));
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x000000000000000000000000000000000000000000000000000000002da282a8\",\"id\":67}"));
@@ -250,7 +250,7 @@ public partial class EthRpcModuleTests
 
         string dataStr = code.ToHexString();
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"input\": \"{dataStr}\"}}");
+            $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", ctx.Test.JsonSerializer.Serialize(transaction));
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"revert\"},\"id\":67}"));
