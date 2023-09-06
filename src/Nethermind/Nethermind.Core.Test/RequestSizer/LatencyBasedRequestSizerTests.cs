@@ -4,23 +4,32 @@
 using System;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Core.Memory;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.RequestSizer;
 
 public class LatencyBasedRequestSizerTests
 {
-    [TestCase(0, 3)]
-    [TestCase(20, 2)]
-    [TestCase(100, 1)]
-    public async Task TestWait(int waitTimeMs, int afterRequestSize)
+    [TestCase(0, 2, 3, false)]
+    [TestCase(20, 2, 2, false)]
+    [TestCase(100, 2, 1, false)]
+    [TestCase(0, 3, 2, true)]
+    public async Task TestWait(int waitTimeMs, int initialRequestSize, int afterRequestSize, bool underHighMemoryPressure)
     {
-        LatencyBasedRequestSizer sizer = new(
-            1, 4,
-            TimeSpan.FromMilliseconds(10),
-            TimeSpan.FromMilliseconds(50));
+        IMemoryPressureHelper memoryPressureHelper = Substitute.For<IMemoryPressureHelper>();
+        memoryPressureHelper.GetCurrentMemoryPressure().Returns(underHighMemoryPressure
+            ? IMemoryPressureHelper.MemoryPressure.High
+            : IMemoryPressureHelper.MemoryPressure.Low);
 
-        await sizer.MeasureLatency((_ => Task.FromResult(0)));
+        LatencyBasedRequestSizer sizer = new(
+            1, 2, 4,
+            TimeSpan.FromMilliseconds(10),
+            TimeSpan.FromMilliseconds(50),
+            initialRequestSize: initialRequestSize,
+            memoryPressureHelper: memoryPressureHelper);
+
         await sizer.MeasureLatency((async _ =>
         {
             await Task.Delay(waitTimeMs);

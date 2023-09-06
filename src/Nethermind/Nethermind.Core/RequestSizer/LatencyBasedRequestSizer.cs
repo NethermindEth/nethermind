@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
+using Nethermind.Core.Memory;
 
 namespace Nethermind.Core;
 
@@ -12,19 +13,30 @@ public class LatencyBasedRequestSizer
     private readonly TimeSpan _upperWatermark;
     private readonly TimeSpan _lowerWatermark;
     private readonly AdaptiveRequestSizer _requestSizer;
+    private readonly int _lowMemoryRequestLimit;
+    private readonly IMemoryPressureHelper _memoryPressureHelper;
 
     public LatencyBasedRequestSizer(
         int minRequestLimit,
+        int lowMemoryRequestLimit,
         int maxRequestLimit,
         TimeSpan lowerWatermark,
         TimeSpan upperWatermark,
-        double adjustmentFactor = 1.5
+        double adjustmentFactor = 1.5,
+        int? initialRequestSize = null,
+        IMemoryPressureHelper? memoryPressureHelper = null
     )
     {
         _upperWatermark = upperWatermark;
         _lowerWatermark = lowerWatermark;
+        _lowMemoryRequestLimit = lowMemoryRequestLimit;
+        _memoryPressureHelper = memoryPressureHelper ?? MemoryPressureHelper.Instance;
 
-        _requestSizer = new AdaptiveRequestSizer(minRequestLimit, maxRequestLimit, adjustmentFactor: adjustmentFactor);
+        _requestSizer = new AdaptiveRequestSizer(
+            minRequestLimit,
+            maxRequestLimit,
+            adjustmentFactor: adjustmentFactor,
+            initialRequestSize: initialRequestSize);
     }
 
     /// <summary>
@@ -39,6 +51,13 @@ public class LatencyBasedRequestSizer
         {
             long startTime = Stopwatch.GetTimestamp();
             TResponse result = await func(requestSize);
+
+            if (_memoryPressureHelper.GetCurrentMemoryPressure() == IMemoryPressureHelper.MemoryPressure.High &&
+                requestSize > _lowMemoryRequestLimit)
+            {
+                return (result, AdaptiveRequestSizer.Direction.Decrease);
+            }
+
             TimeSpan duration = Stopwatch.GetElapsedTime(startTime);
             if (duration < _lowerWatermark)
             {

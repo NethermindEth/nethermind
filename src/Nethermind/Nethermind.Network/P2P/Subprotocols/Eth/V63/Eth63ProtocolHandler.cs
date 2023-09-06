@@ -40,6 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             // or receipts. This is not great as large message size are harder for DotNetty to pool byte buffer, causing
             // higher memory usage. Reducing this even further does seems to help with memory, but may reduce throughput.
             maxResponseSize: 3_000_000,
+            lowMemoryMaxResponseSize: 500_000,
             initialRequestSize: 8
         );
 

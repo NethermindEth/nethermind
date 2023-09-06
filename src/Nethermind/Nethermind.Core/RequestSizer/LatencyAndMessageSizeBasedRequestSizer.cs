@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Collections;
 
 namespace Nethermind.Core;
@@ -18,7 +19,9 @@ public class LatencyAndMessageSizeBasedRequestSizer
     private readonly TimeSpan _upperLatencyWatermark;
     private readonly TimeSpan _lowerLatencyWatermark;
     private readonly long _maxResponseSize;
+    private readonly long _lowMemoryMaxResponseSize;
     private readonly AdaptiveRequestSizer _requestSizer;
+    private readonly IMemoryPressureHelper _memoryPressureHelper;
 
     public LatencyAndMessageSizeBasedRequestSizer(
         int minRequestLimit,
@@ -26,13 +29,17 @@ public class LatencyAndMessageSizeBasedRequestSizer
         TimeSpan lowerLatencyWatermark,
         TimeSpan upperLatencyWatermark,
         long maxResponseSize,
+        long lowMemoryMaxResponseSize,
         int? initialRequestSize,
-        double adjustmentFactor = 1.5
+        double adjustmentFactor = 1.5,
+        IMemoryPressureHelper? memoryPressureHelper = null
     )
     {
         _upperLatencyWatermark = upperLatencyWatermark;
         _lowerLatencyWatermark = lowerLatencyWatermark;
         _maxResponseSize = maxResponseSize;
+        _lowMemoryMaxResponseSize = lowMemoryMaxResponseSize;
+        _memoryPressureHelper = memoryPressureHelper ?? MemoryPressureHelper.Instance;
 
         _requestSizer = new AdaptiveRequestSizer(
             minRequestLimit,
@@ -60,6 +67,11 @@ public class LatencyAndMessageSizeBasedRequestSizer
             (TResponse result, long messageSize) = await func(request.Clamp(adjustedRequestSize));
             TimeSpan duration = Stopwatch.GetElapsedTime(startTime);
             if (messageSize > _maxResponseSize)
+            {
+                return (result, AdaptiveRequestSizer.Direction.Decrease);
+            }
+
+            if (_memoryPressureHelper.GetCurrentMemoryPressure() == IMemoryPressureHelper.MemoryPressure.High && messageSize > _lowMemoryMaxResponseSize)
             {
                 return (result, AdaptiveRequestSizer.Direction.Decrease);
             }

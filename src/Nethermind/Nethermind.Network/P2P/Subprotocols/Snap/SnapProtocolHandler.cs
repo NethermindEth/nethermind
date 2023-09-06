@@ -27,6 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private readonly LatencyBasedRequestSizer _requestSizer = new(
             minRequestLimit: 50000,
+            lowMemoryRequestLimit: 500000,
             maxRequestLimit: 3_000_000,
             lowerWatermark: LowerLatencyThreshold,
             upperWatermark: UpperLatencyThreshold
