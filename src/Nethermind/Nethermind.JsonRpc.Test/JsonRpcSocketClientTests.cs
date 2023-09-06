@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Test.Sockets;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -429,26 +430,12 @@ public class JsonRpcSocketClientTests
         string[] array = new string[length];
         for (int i = 0; i < length; i++)
         {
-            array[i] = BuildRandomString(length);
+            array[i] = new RandomString(length).ToString();
             if (i % 100 == 0)
             {
                 GC.Collect();
             }
         }
         return array;
-    }
-
-    private static string BuildRandomString(int length)
-    {
-        const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        char[] stringChars = new char[length];
-        Random random = new();
-
-        for (int i = 0; i < stringChars.Length; i++)
-        {
-            stringChars[i] = chars[random.Next(chars.Length)];
-        }
-
-        return new string(stringChars);
     }
 }
