@@ -383,7 +383,9 @@ public class JsonRpcSocketsClientTests
     {
         return new JsonRpcSuccessResponse
         {
-            MethodName = "mock", Id = "42", Result = RandomObject(size)
+            MethodName = "mock",
+            Id = "42",
+            Result = RandomObject(size)
         };
     }
 
