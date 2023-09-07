@@ -20,6 +20,9 @@ RUN if [ "$TARGETARCH" = "amd64" ]; \
       -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH -p:Deterministic=true ; \
     fi
 
+# A temporary symlink to support the old executable name
+RUN ln -s -r out/nethermind out/Nethermind.Runner
+
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:7.0-jammy
 
 ARG TARGETPLATFORM

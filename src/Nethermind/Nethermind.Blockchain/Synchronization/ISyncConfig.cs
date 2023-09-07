@@ -115,5 +115,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         [ConfigItem(Description = "Exit Nethermind once sync is finished", DefaultValue = "false")]
         public bool ExitOnSynced { get; set; }
+
+        [ConfigItem(Description = "Specify wait time after sync finished.", DefaultValue = "60")]
+        public int ExitOnSyncedWaitTimeSec { get; set; }
     }
 }

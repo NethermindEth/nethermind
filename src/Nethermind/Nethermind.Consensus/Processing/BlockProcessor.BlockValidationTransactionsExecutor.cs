@@ -15,7 +15,7 @@ namespace Nethermind.Consensus.Processing
     {
         public class BlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
-            public readonly ITransactionProcessorAdapter _transactionProcessor;
+            private readonly ITransactionProcessorAdapter _transactionProcessor;
             private readonly IWorldState _stateProvider;
 
             public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider)
