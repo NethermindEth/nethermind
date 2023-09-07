@@ -308,7 +308,7 @@ namespace Nethermind.Trie
         }
 
         [SkipLocalsInit]
-        [DebuggerStepThrough]
+       // [DebuggerStepThrough]
         public virtual byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
         {
             try

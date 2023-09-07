@@ -352,5 +352,7 @@ namespace Nethermind.Core.Specs
 
         public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
+
+        public bool SystemCallsWithStateTouch => false; // GethStyle System calls
     }
 }
