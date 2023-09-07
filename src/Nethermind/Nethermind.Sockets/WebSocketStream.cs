@@ -34,7 +34,7 @@ public class WebSocketStream : Stream
     public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
-        _ = _socket ?? throw new ArgumentNullException(nameof(_socket));
+        _ = _socket ?? throw new InvalidOperationException($"The underlying {nameof(WebSocket)} is null");
 
         if (_socket.State is WebSocketState.Closed or WebSocketState.CloseReceived or WebSocketState.CloseSent)
         {
