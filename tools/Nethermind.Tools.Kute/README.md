@@ -52,6 +52,10 @@ Some typical usages are as follow:
 -i /rpc.0 -s keystore/jwt-secret -d
 ```
 
+### A note on "progress"
+
+Kute supports a `-p|--progress` flag which will show how many messages have been processed so far. This feature comes with a **big performance hit during startup** (it will not interfere with metrics though), so it's suggested to **not use it** unless it's required (ex. do not use it in automated environments like CI pipelines).
+
 ### TODO
 
 There are some features that we might add in the future, if they end up being required:

@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 
@@ -78,7 +77,7 @@ namespace Nethermind.Db
 
         public IDb Innermost => this;
 
-        public void Flush()
+        public virtual void Flush()
         {
         }
 

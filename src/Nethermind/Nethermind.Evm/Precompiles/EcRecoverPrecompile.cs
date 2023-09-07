@@ -11,9 +11,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class EcRecoverPrecompile : IPrecompile
+    public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
     {
-        public static readonly IPrecompile Instance = new EcRecoverPrecompile();
+        public static readonly EcRecoverPrecompile Instance = new EcRecoverPrecompile();
 
         private EcRecoverPrecompile()
         {

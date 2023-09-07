@@ -65,7 +65,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.BlockBodiesMessage
             {
-                Bodies = new[] { new BlockBody(new[] { tx1, tx2 }, new[] { header }) }
+                Bodies = new(new[] { new BlockBody(new[] { tx1, tx2 }, new[] { header }) })
             };
 
             BlockBodiesMessage message = new(1111, ethMessage);

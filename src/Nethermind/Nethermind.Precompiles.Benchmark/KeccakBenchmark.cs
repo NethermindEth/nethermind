@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Precompiles.Benchmark

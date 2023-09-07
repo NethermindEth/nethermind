@@ -46,14 +46,14 @@ jobs:
           scripts/deployment/build-runner.sh $GITHUB_SHA $build_timestamp
       - name: Build Nethermind.Cli
         run: nethermind/scripts/deployment/build-cli.sh $GITHUB_SHA ${{ steps.build-runner.outputs.build-timestamp }}
-      - name: Build Nethermind.Launcher
+      - name: Build Nethermind launcher
         run: nethermind/scripts/deployment/build-launcher.sh
-      - name: Build Nethermind.Launcher for Linux arm64
+      - name: Build Nethermind launcher for Linux arm64
         run: |
           cd nethermind
           docker buildx build --platform=linux/arm64 -t tmp-launcher -f Dockerfile.launcher . --load
-          docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
-          mv Nethermind.Launcher $GITHUB_WORKSPACE/$PUB_DIR/linux-arm64/Nethermind.Launcher
+          docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/nethermind-launcher /opt/mount/"
+          mv nethermind-launcher $GITHUB_WORKSPACE/$PUB_DIR/linux-arm64/nethermind-launcher
       - name: Archive packages
         env:
           PACKAGE_PREFIX: nethermind-preview-${{ steps.build-runner.outputs.commit-hash }}

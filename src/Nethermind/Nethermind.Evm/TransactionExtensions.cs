@@ -22,18 +22,18 @@ namespace Nethermind.Evm
 
             if (tx.SupportsBlobs)
             {
-                if (header.ExcessDataGas is null)
+                if (header.ExcessBlobGas is null)
                 {
-                    throw new ArgumentException($"Block that contains Shard Blob Transactions should have {nameof(header.ExcessDataGas)} set.", nameof(header.ExcessDataGas));
+                    throw new ArgumentException($"Block that contains Shard Blob Transactions should have {nameof(header.ExcessBlobGas)} set.", nameof(header.ExcessBlobGas));
                 }
 
-                if (!DataGasCalculator.TryCalculateDataGasPricePerUnit(header, out UInt256 dataGasPrice))
+                if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(header, out UInt256 blobGasPrice))
                 {
-                    throw new OverflowException("Data gas price calculation led to overflow.");
+                    throw new OverflowException("Blob gas price calculation led to overflow.");
                 }
-                ulong dataGas = DataGasCalculator.CalculateDataGas(tx);
+                ulong blobGas = BlobGasCalculator.CalculateBlobGas(tx);
 
-                return new(effectiveGasPrice, dataGasPrice, dataGas);
+                return new(effectiveGasPrice, blobGasPrice, blobGas);
             }
 
             return new(effectiveGasPrice, null, null);
@@ -44,11 +44,11 @@ namespace Nethermind.Evm
     {
         public TxGasInfo() { }
 
-        public TxGasInfo(UInt256? effectiveGasPrice, UInt256? dataGasPrice, ulong? dataGasUsed)
+        public TxGasInfo(UInt256? effectiveGasPrice, UInt256? blobGasPrice, ulong? blobGasUsed)
         {
             EffectiveGasPrice = effectiveGasPrice;
-            DataGasPrice = dataGasPrice;
-            DataGasUsed = dataGasUsed;
+            BlobGasPrice = blobGasPrice;
+            BlobGasUsed = blobGasUsed;
         }
 
         public TxGasInfo(UInt256? effectiveGasPrice)
@@ -57,7 +57,7 @@ namespace Nethermind.Evm
         }
 
         public UInt256? EffectiveGasPrice { get; private set; }
-        public UInt256? DataGasPrice { get; private set; }
-        public ulong? DataGasUsed { get; private set; }
+        public UInt256? BlobGasPrice { get; private set; }
+        public ulong? BlobGasUsed { get; private set; }
     }
 }

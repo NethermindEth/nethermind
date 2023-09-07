@@ -61,7 +61,7 @@ namespace Nethermind.Consensus.Producers
             // TODO: removing transactions from TX pool here seems to be a bad practice since they will
             // not come back if the block is ignored?
             int blobsCounter = 0;
-            UInt256 dataGasPrice = UInt256.Zero;
+            UInt256 blobGasPrice = UInt256.Zero;
 
             foreach (Transaction tx in transactions)
             {
@@ -79,31 +79,31 @@ namespace Nethermind.Consensus.Producers
 
                 if (tx.SupportsBlobs)
                 {
-                    if (dataGasPrice.IsZero)
+                    if (blobGasPrice.IsZero)
                     {
-                        ulong? excessDataGas = DataGasCalculator.CalculateExcessDataGas(parent, _specProvider.GetSpec(parent));
-                        if (excessDataGas is null)
+                        ulong? excessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, _specProvider.GetSpec(parent));
+                        if (excessBlobGas is null)
                         {
                             if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, the specification is not configured to handle shard blob transactions.");
                             continue;
                         }
-                        if (!DataGasCalculator.TryCalculateDataGasPricePerUnit(excessDataGas.Value, out dataGasPrice))
+                        if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(excessBlobGas.Value, out blobGasPrice))
                         {
-                            if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, failed to calculate data gas price.");
+                            if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, failed to calculate blob gas price.");
                             continue;
                         }
                     }
 
                     int txAmountOfBlobs = tx.BlobVersionedHashes?.Length ?? 0;
 
-                    if (dataGasPrice > tx.MaxFeePerDataGas)
+                    if (blobGasPrice > tx.MaxFeePerBlobGas)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, data gas fee is too low.");
+                        if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, blob gas fee is too low.");
                         continue;
                     }
 
-                    if (DataGasCalculator.CalculateDataGas(blobsCounter + txAmountOfBlobs) >
-                        Eip4844Constants.MaxDataGasPerBlock)
+                    if (BlobGasCalculator.CalculateBlobGas(blobsCounter + txAmountOfBlobs) >
+                        Eip4844Constants.MaxBlobGasPerBlock)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, no more blob space.");
                         continue;
