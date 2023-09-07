@@ -235,6 +235,7 @@ public class RegisterRpcModules : IStep
 
         foreach (INethermindPlugin plugin in _api.Plugins)
         {
+            if(logger.IsDebug) logger.Debug($"Registering RPC module from plugin {plugin.Name}");
             await plugin.InitRpcModules();
         }
 

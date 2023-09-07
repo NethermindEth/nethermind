@@ -46,6 +46,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule
         {
+            if(_logger.IsDebug) _logger.Debug($"Registering RPC module {typeof(T).Name}");
             RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
             if (attribute is null)
             {
