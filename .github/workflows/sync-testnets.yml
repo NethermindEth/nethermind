@@ -51,7 +51,7 @@ jobs:
                   --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
                   --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
                   --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
-                  --cl-extra-flag checkpoint-sync-url=http://139.144.26.89:4000/
+                  --checkpoint-sync-url=http://139.144.26.89:4000/
                   echo 'Running sedge...'
                   docker compose up -d
 
