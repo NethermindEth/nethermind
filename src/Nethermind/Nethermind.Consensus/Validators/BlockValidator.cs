@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -301,4 +302,20 @@ public class BlockValidator : IBlockValidator
 
     private static string Invalid(Block block) =>
         $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";
+
+    public bool ValidateOrhpanedBlock(Block block, out string? error)
+    {
+        if (_specProvider.GetSpec(block.Header).IsEip4844Enabled)
+        {
+            var calculated = BlobGasCalculator.CalculateBlobGas(block.Transactions);
+            if (calculated != block.BlobGasUsed)
+            {
+                error = $"Invalid {nameof(block.BlobGasUsed)}: {block.BlobGasUsed}, expected {calculated}";
+                return false;
+            }
+        }
+
+        error = null;
+        return true;
+    }
 }

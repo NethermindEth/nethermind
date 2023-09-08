@@ -35,7 +35,12 @@ namespace Nethermind.Consensus.Validators
         public bool ValidateWithdrawals(Block block, out string? error)
         {
             error = null;
+            return false;
+        }
 
+        public bool ValidateOrhpanedBlock(Block block, out string? error)
+        {
+            error = null;
             return false;
         }
     }
