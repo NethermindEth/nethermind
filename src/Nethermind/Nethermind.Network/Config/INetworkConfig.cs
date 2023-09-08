@@ -97,5 +97,8 @@ namespace Nethermind.Network.Config
 
         [ConfigItem(DefaultValue = null, HiddenFromDocs = true, Description = "[TECHNICAL] Only allow peer with clientId matching this regex. Useful for testing. eg: 'besu' to only connect to BeSU")]
         string? ClientIdMatcher { get; set; }
+
+        [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Disable feeding ENR DNS records to discv4 table")]
+        bool DisableDiscV4DnsFeeder { get; set; }
     }
 }

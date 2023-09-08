@@ -29,6 +29,7 @@ public class PivotUpdator
     private readonly IBlockCacheService _blockCacheService;
     private readonly IBeaconSyncStrategy _beaconSyncStrategy;
     private readonly IDb _metadataDb;
+    private readonly ISyncProgressResolver _syncProgressResolver;
     private readonly ILogger _logger;
 
     private readonly CancellationTokenSource _cancellation = new();
@@ -45,6 +46,7 @@ public class PivotUpdator
         IBlockCacheService blockCacheService,
         IBeaconSyncStrategy beaconSyncStrategy,
         IDb metadataDb,
+        ISyncProgressResolver syncProgressResolver,
         ILogManager logManager)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -54,6 +56,7 @@ public class PivotUpdator
         _blockCacheService = blockCacheService ?? throw new ArgumentNullException(nameof(blockCacheService));
         _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
         _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
+        _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
         _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         _maxAttempts = syncConfig.MaxAttemptsToUpdatePivot;
@@ -76,9 +79,7 @@ public class PivotUpdator
                 long updatedPivotBlockNumber = pivotStream.DecodeLong();
                 Keccak updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
 
-                _syncConfig.PivotNumber = updatedPivotBlockNumber.ToString();
-                _syncConfig.PivotHash = updatedPivotBlockHash.ToString();
-                _syncConfig.MaxAttemptsToUpdatePivot = 0;
+                UpdateConfigValues(updatedPivotBlockHash, updatedPivotBlockNumber);
 
                 if (_logger.IsInfo) _logger.Info($"Pivot block has been set based on data from db. Pivot block number: {updatedPivotBlockNumber}, hash: {updatedPivotBlockHash}");
                 return true;
@@ -231,9 +232,7 @@ public class PivotUpdator
 
         if (isCloseToHead && newPivotHigherThanOld)
         {
-            _syncConfig.PivotHash = finalizedBlockHash.ToString();
-            _syncConfig.PivotNumber = finalizedBlockNumber.ToString();
-            _syncConfig.MaxAttemptsToUpdatePivot = 0;
+            UpdateConfigValues(finalizedBlockHash, finalizedBlockNumber);
 
             RlpStream pivotData = new(38); //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
             pivotData.Encode(finalizedBlockNumber);
@@ -248,4 +247,13 @@ public class PivotUpdator
         if (!newPivotHigherThanOld && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer isn't higher than pivot from initial config. New PivotBlockNumber: {finalizedBlockNumber}, old: {_syncConfig.PivotNumber}");
         return false;
     }
+
+    private void UpdateConfigValues(Keccak finalizedBlockHash, long finalizedBlockNumber)
+    {
+        _syncConfig.PivotHash = finalizedBlockHash.ToString();
+        _syncConfig.PivotNumber = finalizedBlockNumber.ToString();
+        _syncConfig.MaxAttemptsToUpdatePivot = 0;
+        _syncProgressResolver.UpdateBarriers();
+    }
+
 }

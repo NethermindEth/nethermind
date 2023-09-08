@@ -228,7 +228,7 @@ public class DiscoveryManager : IDiscoveryManager
     private TaskCompletionSource<DiscoveryMsg> GetCompletionSource(Keccak senderAddressHash, int messageType)
     {
         MessageTypeKey key = new(senderAddressHash, messageType);
-        TaskCompletionSource<DiscoveryMsg> completionSource = _waitingEvents.GetOrAdd(key, new TaskCompletionSource<DiscoveryMsg>());
+        TaskCompletionSource<DiscoveryMsg> completionSource = _waitingEvents.GetOrAdd(key, new TaskCompletionSource<DiscoveryMsg>(TaskCreationOptions.RunContinuationsAsynchronously));
         return completionSource;
     }
 
