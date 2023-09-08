@@ -33,7 +33,7 @@ namespace Nethermind.State
             TrieType = TrieType.State;
         }
 
-     //   [DebuggerStepThrough]
+        [DebuggerStepThrough]
         public Account? Get(Address address, Keccak? rootHash = null)
         {
             byte[]? bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);

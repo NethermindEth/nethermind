@@ -98,7 +98,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual void Execute(Transaction tx, BlockHeader header, ITxTracer tracer, ExecutionOptions opts)
         {
             IReleaseSpec spec = _specProvider.GetSpec(header);
-            if (tx.IsSystem() && !spec.IsEip4788Enabled) // ToDo add comment
+            if (tx.IsSystem() && !spec.MainnetSystemCalls) // ToDo add comment
                 spec = new SystemTransactionReleaseSpec(spec);
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
@@ -223,7 +223,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         private bool SkipAccountTouch(Transaction tx, IReleaseSpec spec) =>
-            tx.IsSystem() && !spec.SystemCallsWithStateTouch;
+            tx.IsSystem() && !spec.MainnetSystemCalls;
 
 
         private void QuickFail(Transaction tx, BlockHeader block, IReleaseSpec spec, ITxTracer txTracer, string? reason)

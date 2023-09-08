@@ -127,6 +127,6 @@ namespace Nethermind.Specs
         public bool IsEip4788Enabled => _spec.IsEip4788Enabled;
         public Address Eip4788ContractAddress => _spec.Eip4788ContractAddress;
 
-        public bool SystemCallsWithStateTouch => true;
+        public bool MainnetSystemCalls => false;
     }
 }
