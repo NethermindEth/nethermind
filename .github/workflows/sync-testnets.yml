@@ -109,6 +109,7 @@ jobs:
             #       echo "Node is synced."
 
             - name: Debug logs
+              working-directory: sedge
               run: |
                   docker compose logs -f
     sepolia:
