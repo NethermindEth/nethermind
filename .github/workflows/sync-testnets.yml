@@ -47,7 +47,7 @@ jobs:
                   ./build/sedge deps install
                   ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
                   full-node --map-all --no-mev-boost --no-validator --network chiado \
-                  -c lodestar -e nethermind:current_branch_image \
+                  -c teku -e nethermind:current_branch_image \
                   --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
                   --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
                   --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
