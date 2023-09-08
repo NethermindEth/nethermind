@@ -208,22 +208,22 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private void AddToBalance(Transaction tx, in UInt256 balanceChange, IReleaseSpec spec)
         {
-            if (SkipAccountTouch(tx, spec))
+            if (IsMainnetStyleSystemCall(tx, spec))
                 return;
 
             _worldState.AddToBalance(tx.SenderAddress, balanceChange, spec);
         }
 
-        private void SubstractFromBalance(Transaction tx, in UInt256 balanceChange, IReleaseSpec spec)
+        private void SubtractFromBalance(Transaction tx, in UInt256 balanceChange, IReleaseSpec spec)
         {
-            if (SkipAccountTouch(tx, spec))
+            if (IsMainnetStyleSystemCall(tx, spec))
                 return;
 
             _worldState.SubtractFromBalance(tx.SenderAddress, balanceChange, spec);
         }
 
-        private bool SkipAccountTouch(Transaction tx, IReleaseSpec spec) =>
-            tx.IsSystem() && !spec.MainnetSystemCalls;
+        private bool IsMainnetStyleSystemCall(Transaction tx, IReleaseSpec spec) =>
+            tx.IsSystem() && spec.MainnetSystemCalls;
 
 
         private void QuickFail(Transaction tx, BlockHeader block, IReleaseSpec spec, ITxTracer txTracer, string? reason)
@@ -454,7 +454,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             if (validate)
-                SubstractFromBalance(tx, senderReservedGasPayment, spec);
+                SubtractFromBalance(tx, senderReservedGasPayment, spec);
 
             return true;
         }
@@ -483,8 +483,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? _worldState.GetNonce(tx.SenderAddress) : 0) ??
                                 // this transaction is not a contract creation so it should have the recipient known and not null
-                                throw new InvalidDataException(
-                                    "Recipient has not been resolved properly before tx execution");
+                                throw new InvalidDataException("Recipient has not been resolved properly before tx execution");
 
             TxExecutionContext executionContext =
                 new(header, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes);
@@ -526,7 +525,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // Fixes eth_estimateGas.
             // If sender is SystemUser subtracting value will cause InsufficientBalanceException
             if (validate || !tx.IsSystem())
-                SubstractFromBalance(tx, tx.Value, spec);
+                SubtractFromBalance(tx, tx.Value, spec);
 
             try
             {
@@ -692,14 +691,9 @@ namespace Nethermind.Evm.TransactionProcessing
             if (_logger.IsTrace) _logger.Trace($"Invalid tx {transaction.Hash} ({reason})");
         }
 
-        private bool IsGethStyleSystemCall(Transaction tx)
-        {
-            return tx.IsSystem();
-        }
-
-    protected long Refund(Transaction tx, long unspentGas, TransactionSubstate substate,
+        protected long Refund(Transaction tx, long unspentGas, TransactionSubstate substate,
             in UInt256 gasPrice, ExecutionOptions opts, IReleaseSpec spec)
-    {
+        {
             long spentGas = tx.GasLimit;
             if (!substate.IsError)
             {
