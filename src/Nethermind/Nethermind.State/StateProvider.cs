@@ -220,7 +220,11 @@ namespace Nethermind.State
             {
                 if (releaseSpec.IsEip158Enabled)
                 {
-                    Account touched = GetThroughCacheCheckExists();
+                    Account touched = GetThroughCache(address);
+                    if (touched is null)
+                    {
+                        return;
+                    }
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
                     if (touched!.IsEmpty)
                     {
