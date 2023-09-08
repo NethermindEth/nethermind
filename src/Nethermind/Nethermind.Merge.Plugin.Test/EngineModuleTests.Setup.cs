@@ -225,7 +225,8 @@ public partial class EngineModuleTests
                 State,
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
-                TxProcessor, LogManager);
+                TxProcessor,
+                LogManager);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }

@@ -344,7 +344,8 @@ public class TestBlockchain : IDisposable
             State,
             ReceiptStorage,
             NullWitnessCollector.Instance,
-            TxProcessor, LogManager);
+            TxProcessor,
+            LogManager);
 
     public async Task WaitForNewHead()
     {
