@@ -9,8 +9,8 @@ namespace Nethermind.Trie.Pruning;
 public interface IPathTrieNodeCache
 {
     void AddNode(long blockNumber, TrieNode trieNode);
-    TrieNode? GetNode(Keccak? rootHash, byte[] path);
-    TrieNode? GetNode(byte[] path, Keccak keccak);
+    TrieNode? GetNodeFromRoot(Keccak? rootHash, Span<byte> path);
+    TrieNode? GetNode(Span<byte> path, Keccak keccak);
     void SetRootHashForBlock(long blockNumber, Keccak? rootHash);
     void PersistUntilBlock(long blockNumber, IBatch? batch = null);
     void Clear();

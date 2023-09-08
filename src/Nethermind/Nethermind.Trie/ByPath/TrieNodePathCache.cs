@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -142,7 +143,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
         }
     }
 
-    private ConcurrentDictionary<byte[], NodeVersions> _nodesByPath = new(Bytes.EqualityComparer);
+    private SpanConcurrentDictionary<byte, NodeVersions> _nodesByPath = new(Bytes.SpanEqualityComparer);
     private ConcurrentDictionary<Keccak, HashSet<long>> _rootHashToBlock = new();
     private readonly ITrieStore _trieStore;
     private int _count;
@@ -156,7 +157,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
         _logger = logManager?.GetClassLogger<TrieNodePathCache>() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
-    public TrieNode? GetNode(byte[] path, Keccak keccak)
+    public TrieNode? GetNode(Span<byte> path, Keccak keccak)
     {
         if (_nodesByPath.TryGetValue(path, out NodeVersions nodeVersions))
             return nodeVersions.Get(keccak);
@@ -164,7 +165,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
         return null;
     }
 
-    public TrieNode? GetNode(Keccak? rootHash, byte[] path)
+    public TrieNode? GetNodeFromRoot(Keccak? rootHash, Span<byte> path)
     {
         if (_nodesByPath.TryGetValue(path, out NodeVersions nodeVersions))
         {

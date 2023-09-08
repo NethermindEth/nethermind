@@ -36,7 +36,7 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
         return _baseResolver.FindCachedOrUnknown(hash, nodePath, storagePrefix);
     }
 
-    public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, Span<byte> storagePrefix, Keccak rootHash)
+    public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Keccak rootHash)
     {
         return _baseResolver.FindCachedOrUnknown(nodePath, storagePrefix, rootHash);
     }

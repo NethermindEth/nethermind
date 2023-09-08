@@ -383,7 +383,7 @@ namespace Nethermind.Trie.Pruning
             return FindCachedOrUnknown(hash, false);
         }
 
-        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, Span<byte> storagePrefix, Keccak rootHash)
+        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Keccak rootHash)
         {
             throw new NotImplementedException();
         }

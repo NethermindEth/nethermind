@@ -32,9 +32,9 @@ public class PathCacheTests
         byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000001234"));
         TrieNode node = new(NodeType.Leaf, path1, TestItem.KeccakA);
         cache.AddNode(1, node);
-        cache.AddNode(1, new TrieNode(NodeType.Branch, path: Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x000000000000000000000000000000000000000000000000000000000000123"))));
+        cache.AddNode(1, new TrieNode(NodeType.Branch, path: Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x000000000000000000000000000000000000000000000000000000000000123")), Array.Empty<byte>()));
 
-        TrieNode retrieved = cache.GetNode(null, path1);
+        TrieNode retrieved = cache.GetNodeFromRoot(null, path1);
 
         Assert.That(retrieved, Is.Not.Null);
         Assert.That(retrieved, Is.EqualTo(node));
@@ -46,7 +46,7 @@ public class PathCacheTests
         byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000001234"));
         TrieNode node = new(NodeType.Leaf, path1, TestItem.KeccakA);
         cache.AddNode(1, node);
-        cache.AddNode(1, new TrieNode(NodeType.Branch, path: Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x000000000000000000000000000000000000000000000000000000000000123"))));
+        cache.AddNode(1, new TrieNode(NodeType.Branch, path: Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x000000000000000000000000000000000000000000000000000000000000123")), Array.Empty<byte>()));
 
         TrieNode retrieved = cache.GetNode(path1, TestItem.KeccakA);
 
@@ -72,7 +72,7 @@ public class PathCacheTests
         cache.SetRootHashForBlock(2, TestItem.KeccakG);
         cache.SetRootHashForBlock(3, TestItem.KeccakF);
 
-        TrieNode retrieved = cache.GetNode(TestItem.KeccakH, path1);
+        TrieNode retrieved = cache.GetNodeFromRoot(TestItem.KeccakH, path1);
 
         Assert.That(retrieved, Is.Not.Null);
         Assert.That(retrieved, Is.EqualTo(node));
@@ -96,9 +96,9 @@ public class PathCacheTests
 
         cache.AddRemovedPrefix(4, prefix);
 
-        Assert.That(cache.GetNode(null, path1)?.FullRlp, Is.Null);
-        Assert.That(cache.GetNode(null, path2)?.FullRlp, Is.Null);
-        Assert.That(cache.GetNode(null, path3).Value, Is.Not.Null);
+        Assert.That(cache.GetNodeFromRoot(null, path1)?.FullRlp, Is.Null);
+        Assert.That(cache.GetNodeFromRoot(null, path2)?.FullRlp, Is.Null);
+        Assert.That(cache.GetNodeFromRoot(null, path3).Value, Is.Not.Null);
     }
 
     [TestCaseSource(typeof(Instances))]
@@ -155,10 +155,10 @@ public class PathCacheTests
         cache.PersistUntilBlock(2);
 
         //check node is not present in cache for blocks 1 & 2
-        Assert.That(cache.GetNode(TestItem.KeccakA, path1), Is.Null);
-        Assert.That(cache.GetNode(TestItem.KeccakB, path1), Is.Null);
+        Assert.That(cache.GetNodeFromRoot(TestItem.KeccakA, path1), Is.Null);
+        Assert.That(cache.GetNodeFromRoot(TestItem.KeccakB, path1), Is.Null);
         //node for block 3 should still be in cache
-        Assert.That(cache.GetNode(TestItem.KeccakC, path1), Is.Not.Null);
+        Assert.That(cache.GetNodeFromRoot(TestItem.KeccakC, path1), Is.Not.Null);
     }
 
     private TrieNode CreateResolvedLeaf(byte[] path, byte[] value, int keyLength)

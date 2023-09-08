@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -15,7 +16,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Trie.ByPath;
 public class TrieNodeBlockCache : IPathTrieNodeCache
 {
-    public class NodesByBlock : ConcurrentDictionary<long, ConcurrentDictionary<byte[], TrieNode>>
+    public class NodesByBlock : ConcurrentDictionary<long, SpanConcurrentDictionary<byte, TrieNode>>
     {
         public NodesByBlock() : base() { }
 
@@ -25,9 +26,9 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
 
         public void AddOrUpdate(long blockNumber, TrieNode trieNode)
         {
-            if (!TryGetValue(blockNumber, out ConcurrentDictionary<byte[], TrieNode> nodeDictionary))
+            if (!TryGetValue(blockNumber, out SpanConcurrentDictionary<byte, TrieNode> nodeDictionary))
             {
-                nodeDictionary = new(Bytes.EqualityComparer);
+                nodeDictionary = new(Bytes.SpanEqualityComparer);
                 this[blockNumber] = nodeDictionary;
             }
 
@@ -72,14 +73,14 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
         _logger = logManager?.GetClassLogger<TrieNodeBlockCache>() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
-    public TrieNode? GetNode(byte[] path, Keccak keccak)
+    public TrieNode? GetNode(Span<byte> path, Keccak keccak)
     {
         foreach (long blockNumber in _nodesByBlock.Keys.OrderByDescending(b => b))
         {
             if (IsDeleted(blockNumber, path))
                 return null;
 
-            if (_nodesByBlock.TryGetValue(blockNumber, out ConcurrentDictionary<byte[], TrieNode> nodeDictionary))
+            if (_nodesByBlock.TryGetValue(blockNumber, out SpanConcurrentDictionary<byte, TrieNode> nodeDictionary))
             {
                 if (nodeDictionary.TryGetValue(path, out TrieNode node))
                 {
@@ -94,7 +95,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
         return null;
     }
 
-    public TrieNode? GetNode(Keccak? rootHash, byte[] path)
+    public TrieNode? GetNodeFromRoot(Keccak? rootHash, Span<byte> path)
     {
         if (_nodesByBlock.Count == 0)
             return null;
@@ -113,7 +114,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             if (IsDeleted(blockNo, path))
                 return null;
 
-            if (_nodesByBlock.TryGetValue(blockNo, out ConcurrentDictionary<byte[], TrieNode> nodeDictionary))
+            if (_nodesByBlock.TryGetValue(blockNo, out SpanConcurrentDictionary<byte, TrieNode> nodeDictionary))
             {
                 if (nodeDictionary.TryGetValue(path, out TrieNode node))
                 {
@@ -166,7 +167,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
                     _trieStore.DeleteByRange(startKey, endKey);
                 }
             }
-            if (_nodesByBlock.TryRemove(currentBlockNumber, out ConcurrentDictionary<byte[], TrieNode> nodesByPath))
+            if (_nodesByBlock.TryRemove(currentBlockNumber, out SpanConcurrentDictionary<byte, TrieNode> nodesByPath))
             {
                 IOrderedEnumerable<TrieNode> orderedValues = nodesByPath.Values.OrderBy(tn => tn.FullRlp, Bytes.Comparer);
                 foreach (TrieNode? node in orderedValues)
@@ -229,7 +230,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
     public bool IsPathCached(ReadOnlySpan<byte> path)
     {
         byte[] p = path.ToArray();
-        foreach (KeyValuePair<long, ConcurrentDictionary<byte[], TrieNode>> nodes in _nodesByBlock)
+        foreach (KeyValuePair<long, SpanConcurrentDictionary<byte, TrieNode>> nodes in _nodesByBlock)
         {
             if (nodes.Value.ContainsKey(p))
                 return true;
@@ -260,13 +261,13 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
         }
     }
 
-    private bool IsDeleted(long blockNumber, byte[] path)
+    private bool IsDeleted(long blockNumber, Span<byte> path)
     {
         if (_removedPrefixes.TryGetValue(blockNumber, out List<byte[]> prefixes))
         {
             foreach (byte[] prefix in prefixes)
             {
-                if (path.Length >= prefix.Length && Bytes.AreEqual(path.AsSpan()[0..prefix.Length], prefix))
+                if (path.Length >= prefix.Length && Bytes.AreEqual(path[0..prefix.Length], prefix))
                     return true;
             }
         }

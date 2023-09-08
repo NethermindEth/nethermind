@@ -294,17 +294,16 @@ namespace Nethermind.Trie.Pruning
             return node.FullRlp is null ? null : node;
         }
 
-        public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, Span<byte> storagePrefix, Keccak? rootHash)
+        public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Keccak? rootHash)
         {
             StateColumns column = storagePrefix.Length == 0 ? StateColumns.State : StateColumns.Storage;
-            TrieNode node = _committedNodes[column].GetNode(rootHash, storagePrefix.ToArray().Concat(nodePath.ToArray()).ToArray());
+            TrieNode node = storagePrefix.Length == 0
+                ? _committedNodes[column].GetNodeFromRoot(rootHash, nodePath)
+                : _committedNodes[column].GetNodeFromRoot(rootHash, Bytes.Concat(storagePrefix, nodePath));
+
             if (node is null)
-            {
-                return new TrieNode(NodeType.Unknown, path: nodePath)
-                {
-                    StoreNibblePathPrefix = storagePrefix.ToArray()
-                };
-            }
+                return new TrieNode(NodeType.Unknown, nodePath, storagePrefix);
+
             return node.FullRlp is null ? null : node;
         }
 

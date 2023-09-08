@@ -15,11 +15,11 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateBranch(Span<byte> pathToNode, Span<byte> storagePrefix)
+        public static TrieNode CreateBranch(Span<byte> pathToNode, byte[] storagePrefix)
         {
             TrieNode node = new(NodeType.Branch);
             node.PathToNode = pathToNode.ToArray();
-            node.StoreNibblePathPrefix = storagePrefix.ToArray();
+            node.StoreNibblePathPrefix = storagePrefix;
             return node;
         }
 
@@ -31,7 +31,7 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateLeaf(byte[] path, byte[]? value, Span<byte> pathToNode, Span<byte> storagePrefix)
+        public static TrieNode CreateLeaf(byte[] path, byte[]? value, Span<byte> pathToNode, byte[] storagePrefix)
         {
             Debug.Assert(path.Length + pathToNode.Length == 64);
             return new(NodeType.Leaf)
@@ -39,7 +39,7 @@ namespace Nethermind.Trie
                 Key = path,
                 Value = value,
                 PathToNode = pathToNode.ToArray(),
-                StoreNibblePathPrefix = storagePrefix.ToArray()
+                StoreNibblePathPrefix = storagePrefix
             };
         }
 
@@ -50,12 +50,12 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateExtension(byte[] path, Span<byte> pathToNode, Span<byte> storagePrefix)
+        public static TrieNode CreateExtension(byte[] path, Span<byte> pathToNode, byte[] storagePrefix)
         {
             TrieNode node = new(NodeType.Extension);
             node.Key = path;
             node.PathToNode = pathToNode.ToArray();
-            node.StoreNibblePathPrefix = storagePrefix.ToArray();
+            node.StoreNibblePathPrefix = storagePrefix;
             return node;
         }
 
@@ -67,13 +67,13 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateExtension(byte[] path, TrieNode child, Span<byte> pathToNode, Span<byte> storagePrefix)
+        public static TrieNode CreateExtension(byte[] path, TrieNode child, Span<byte> pathToNode, byte[] storagePrefix)
         {
             TrieNode node = new(NodeType.Extension);
             node.SetChild(0, child);
             node.Key = path;
             node.PathToNode = pathToNode.ToArray();
-            node.StoreNibblePathPrefix = storagePrefix.ToArray();
+            node.StoreNibblePathPrefix = storagePrefix;
             return node;
         }
     }

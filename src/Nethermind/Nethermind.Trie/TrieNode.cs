@@ -227,9 +227,10 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieNode(NodeType nodeType, Span<byte> path)
+        public TrieNode(NodeType nodeType, Span<byte> path, byte[] storagePrefix)
         {
             PathToNode = path.ToArray();
+            StoreNibblePathPrefix = storagePrefix;
             NodeType = nodeType;
             if (nodeType == NodeType.Unknown)
             {
