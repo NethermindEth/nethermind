@@ -11,15 +11,15 @@ public class MultiCallCallResult
         {
             if (Error is null) return ResultType.Success;
 
-            if (Return is not null) return ResultType.Failure;
+            if (ReturnData is not null) return ResultType.Failure;
 
             return ResultType.Invalid;
         }
     }
 
-    public Log[]? Logs { get; set; }
     public string Status { get; set; }
-    public byte[]? Return { get; set; }
-    public Error? Error { get; set; }
+    public byte[]? ReturnData { get; set; }
     public ulong? GasUsed { get; set; }
+    public Error? Error { get; set; }
+    public Log[]? Logs { get; set; }
 }
