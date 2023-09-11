@@ -1,9 +1,11 @@
 using System.Threading.Tasks;
+using DotNetty.Common.Internal.Logging;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 
@@ -22,10 +24,8 @@ public class OptimismPlugin : MergePlugin, IConsensusPlugin, IInitializationPlug
     public IBlockProductionTrigger DefaultBlockProductionTrigger =>
         throw new System.NotImplementedException("Block producer is not supported for Optimism Pre-Bedrock.");
 
-    public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
-    {
+    public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null) =>
         throw new System.NotImplementedException("Block producer is not supported for Optimism Pre-Bedrock.");
-    }
 
     public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
 
@@ -37,5 +37,18 @@ public class OptimismPlugin : MergePlugin, IConsensusPlugin, IInitializationPlug
             _manualTimestamper!,
             _blocksConfig,
             _api.LogManager);
+    }
+
+    public override Task Init(INethermindApi nethermindApi)
+    {
+        return base.Init(nethermindApi).ContinueWith(_ =>
+        {
+            if (!MergeEnabled)
+                return;
+
+            _logger.Info("Optimism plugin is enabled.");
+
+            _engineRpcModuleFactory = new OptimismEngineRpcModuleFactory(_api.SpecProvider!, _api.LogManager);
+        });
     }
 }
