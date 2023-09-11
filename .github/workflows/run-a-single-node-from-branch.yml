@@ -190,5 +190,19 @@ jobs:
         REF: 'main'
       run: |
         chmod +x scripts/wait-for-workflow-completed.sh
-        ./scripts/wait-for-workflow-completed.sh
+        ./scripts/wait-for-workflow-completed.sh | tee script-output.txt
+        run_id=$(grep -oP 'Run ID: \K\d+' script-output.txt)
+        echo "Run ID extracted is: $run_id"
+        echo "RUN_ID=$run_id" >> $GITHUB_ENV
       working-directory: ${{ github.workspace }}
+
+    - name: Download machine specs artifact
+      run: |
+        ARTIFACT_ID=$(curl -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/runs/${{ env.RUN_ID }}/artifacts | jq '.artifacts[0].id')
+        curl -L -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -o artifact.zip https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/artifacts/$ARTIFACT_ID/zip
+        unzip artifact.zip -d ./downloaded-artifacts/
+        
+    - name: Display machine specs content
+      run: |
+        FILE=$(ls downloaded-artifacts/machine-details | head -n 1)
+        cat "downloaded-artifacts/machine-details/$FILE"
