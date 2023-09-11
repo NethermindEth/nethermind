@@ -25,7 +25,4 @@ public class AccountOverride
     public AccountOverrideType Type => State != null
         ? AccountOverrideType.AccountOverrideState
         : AccountOverrideType.AccountOverrideStateDiff;
-
-    public bool IsState => Type == AccountOverrideType.AccountOverrideState;
-    public bool IsStateDiff => Type == AccountOverrideType.AccountOverrideStateDiff;
 }
