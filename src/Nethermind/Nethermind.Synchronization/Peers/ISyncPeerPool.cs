@@ -19,7 +19,7 @@ namespace Nethermind.Synchronization.Peers
 
         void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts allocationContexts);
 
-        void ReportBreachOfProtocol(PeerInfo peerInfo, InitiateDisconnectReason initiateDisconnectReason, string details);
+        void ReportBreachOfProtocol(PeerInfo peerInfo, DisconnectReason disconnectReason, string details);
 
         void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts allocationContexts);
 

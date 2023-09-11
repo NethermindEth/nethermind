@@ -38,8 +38,15 @@ public class TransactionForRpc
         }
         ChainId = transaction.ChainId;
         Type = transaction.Type;
-        AccessList = transaction.AccessList is null ? null : AccessListItemForRpc.FromAccessList(transaction.AccessList);
-        MaxFeePerDataGas = transaction.MaxFeePerDataGas;
+        if (transaction.SupportsAccessList)
+        {
+            AccessList = transaction.AccessList is null ? Array.Empty<AccessListItemForRpc>() : AccessListItemForRpc.FromAccessList(transaction.AccessList);
+        }
+        else
+        {
+            AccessList = null;
+        }
+        MaxFeePerBlobGas = transaction.MaxFeePerBlobGas;
         BlobVersionedHashes = transaction.BlobVersionedHashes;
 
         Signature? signature = transaction.Signature;
@@ -49,7 +56,9 @@ public class TransactionForRpc
             YParity = transaction.SupportsAccessList ? signature.RecoveryId : null;
             R = new UInt256(signature.R, true);
             S = new UInt256(signature.S, true);
-            V = transaction.Type == TxType.Legacy ? (UInt256?)signature.V : (UInt256?)signature.RecoveryId;
+            // V must be null for non-legacy transactions. Temporarily set to recovery id for Geth compatibility.
+            // See https://github.com/ethereum/go-ethereum/issues/27727
+            V = transaction.Type == TxType.Legacy ? signature.V : signature.RecoveryId;
         }
     }
 
@@ -82,7 +91,12 @@ public class TransactionForRpc
 
     public UInt256? MaxFeePerGas { get; set; }
     public long? Gas { get; set; }
-    public byte[]? Data { get; set; }
+
+    // Required for compatibility with some CLs like Prysm
+    // Accept during deserialization, ignore during serialization
+    // See: https://github.com/NethermindEth/nethermind/pull/6067
+    [JsonProperty(nameof(Data))]
+    private byte[]? Data { set { Input = value; } }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
     public byte[]? Input { get; set; }
@@ -95,7 +109,7 @@ public class TransactionForRpc
 
 
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
-    public UInt256? MaxFeePerDataGas { get; set; } // eip4844
+    public UInt256? MaxFeePerBlobGas { get; set; } // eip4844
 
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
     public byte[][]? BlobVersionedHashes { get; set; } // eip4844
@@ -121,7 +135,7 @@ public class TransactionForRpc
             To = To,
             SenderAddress = From,
             Value = Value ?? 0,
-            Data = Data ?? Input,
+            Data = Input,
             Type = Type,
             AccessList = TryGetAccessList(),
             ChainId = chainId,
@@ -136,7 +150,7 @@ public class TransactionForRpc
 
         if (tx.SupportsBlobs)
         {
-            tx.MaxFeePerDataGas = MaxFeePerDataGas;
+            tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
             tx.BlobVersionedHashes = BlobVersionedHashes;
         }
 
@@ -147,7 +161,7 @@ public class TransactionForRpc
 
     public T ToTransaction<T>(ulong? chainId = null) where T : Transaction, new()
     {
-        byte[]? data = Data ?? Input;
+        byte[]? data = Input;
 
         T tx = new()
         {
@@ -176,7 +190,7 @@ public class TransactionForRpc
 
         if (tx.SupportsBlobs)
         {
-            tx.MaxFeePerDataGas = MaxFeePerDataGas;
+            tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
             tx.BlobVersionedHashes = BlobVersionedHashes;
         }
 

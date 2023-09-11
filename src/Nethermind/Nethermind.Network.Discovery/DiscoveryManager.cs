@@ -4,10 +4,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -230,7 +228,7 @@ public class DiscoveryManager : IDiscoveryManager
     private TaskCompletionSource<DiscoveryMsg> GetCompletionSource(Keccak senderAddressHash, int messageType)
     {
         MessageTypeKey key = new(senderAddressHash, messageType);
-        TaskCompletionSource<DiscoveryMsg> completionSource = _waitingEvents.GetOrAdd(key, new TaskCompletionSource<DiscoveryMsg>());
+        TaskCompletionSource<DiscoveryMsg> completionSource = _waitingEvents.GetOrAdd(key, new TaskCompletionSource<DiscoveryMsg>(TaskCreationOptions.RunContinuationsAsynchronously));
         return completionSource;
     }
 

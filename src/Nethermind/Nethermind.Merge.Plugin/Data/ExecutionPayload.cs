@@ -3,13 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Newtonsoft.Json;
@@ -19,7 +18,7 @@ namespace Nethermind.Merge.Plugin.Data;
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayload</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayload
+public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 {
     public ExecutionPayload() { } // Needed for tests
 
@@ -39,7 +38,6 @@ public class ExecutionPayload
         Timestamp = block.Timestamp;
         BaseFeePerGas = block.BaseFeePerGas;
         Withdrawals = block.Withdrawals;
-        ExcessDataGas = block.ExcessDataGas;
 
         SetTransactions(block.Transactions);
     }
@@ -93,12 +91,25 @@ public class ExecutionPayload
     /// </summary>
     public IEnumerable<Withdrawal>? Withdrawals { get; set; }
 
+
     /// <summary>
-    /// Gets or sets <see cref="Block.ExcessDataGas"/> as defined in
+    /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
-    [JsonProperty(ItemConverterType = typeof(NullableUInt256Converter), NullValueHandling = NullValueHandling.Ignore)]
-    public UInt256? ExcessDataGas { get; set; }
+    public ulong? BlobGasUsed { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.ExcessBlobGas"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
+    /// </summary>
+    public ulong? ExcessBlobGas { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.ParentBeaconBlockRoot"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
+    /// </summary>
+    [JsonIgnore]
+    public Keccak? ParentBeaconBlockRoot { get; set; }
 
     /// <summary>
     /// Creates the execution block from payload.
@@ -134,7 +145,6 @@ public class ExecutionPayload
                 TotalDifficulty = totalDifficulty,
                 TxRoot = new TxTrie(transactions).RootHash,
                 WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
-                ExcessDataGas = ExcessDataGas,
             };
 
             block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals);
@@ -148,6 +158,7 @@ public class ExecutionPayload
             return false;
         }
     }
+
 
     private Transaction[]? _transactions = null;
 
@@ -171,21 +182,24 @@ public class ExecutionPayload
         _transactions = transactions;
     }
 
-    public override string ToString() => $"{BlockNumber} ({BlockHash})";
-}
+    public override string ToString() => $"{BlockNumber} ({BlockHash.ToShortString()})";
 
-public static class ExecutionPayloadExtensions
-{
-    public static int GetVersion(this ExecutionPayload executionPayload) =>
-        executionPayload.Withdrawals is null ? 1 : 2;
+    ExecutionPayload IExecutionPayloadParams.ExecutionPayload => this;
 
-    public static bool Validate(
-        this ExecutionPayload executionPayload,
-        IReleaseSpec spec,
-        int version,
-        [NotNullWhen(false)] out string? error)
+    public virtual ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
-        int actualVersion = executionPayload.GetVersion();
+        if (spec.IsEip4844Enabled)
+        {
+            error = "ExecutionPayloadV3 expected";
+            return ValidationResult.Fail;
+        }
+
+        int actualVersion = this switch
+        {
+            { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
+            { Withdrawals: not null } => 2,
+            _ => 1
+        };
 
         error = actualVersion switch
         {
@@ -194,15 +208,9 @@ public static class ExecutionPayloadExtensions
             _ => actualVersion > version ? $"ExecutionPayloadV{version} expected" : null
         };
 
-        return error is null;
+        return error is null ? ValidationResult.Success : ValidationResult.Fail;
     }
 
-    public static bool Validate(this ExecutionPayload executionPayload,
-        ISpecProvider specProvider,
-        int version,
-        [NotNullWhen(false)] out string? error) =>
-        executionPayload.Validate(
-            specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp),
-            version,
-            out error);
+    public virtual bool ValidateFork(ISpecProvider specProvider) =>
+        !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 }

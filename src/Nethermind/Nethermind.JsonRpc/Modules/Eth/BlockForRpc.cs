@@ -58,7 +58,13 @@ public class BlockForRpc
 
             if (spec.IsEip4844Enabled)
             {
-                ExcessDataGas = block.Header.ExcessDataGas;
+                BlobGasUsed = block.Header.BlobGasUsed;
+                ExcessBlobGas = block.Header.ExcessBlobGas;
+            }
+
+            if (spec.IsEip4788Enabled)
+            {
+                ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
             }
         }
 
@@ -125,5 +131,11 @@ public class BlockForRpc
     public Keccak? WithdrawalsRoot { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
-    public UInt256? ExcessDataGas { get; set; }
+    public ulong? BlobGasUsed { get; set; }
+
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    public ulong? ExcessBlobGas { get; set; }
+
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    public Keccak? ParentBeaconBlockRoot { get; set; }
 }

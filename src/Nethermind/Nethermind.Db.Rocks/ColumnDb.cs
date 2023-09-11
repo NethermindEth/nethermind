@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks;
@@ -109,6 +110,11 @@ public class ColumnDb : IDbWithSpan
         _mainDb.Flush();
     }
 
+    public void Compact()
+    {
+        _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
+    }
+
     /// <summary>
     /// Not sure how to handle delete of the columns DB
     /// </summary>
@@ -119,10 +125,15 @@ public class ColumnDb : IDbWithSpan
     public long GetIndexSize() => _mainDb.GetIndexSize();
     public long GetMemtableSize() => _mainDb.GetMemtableSize();
 
-    public Span<byte> GetSpan(ReadOnlySpan<byte> key) => _rocksDb.GetSpan(key, _columnFamily);
+    public Span<byte> GetSpan(ReadOnlySpan<byte> key)
+    {
+        _mainDb.UpdateReadMetrics();
+        return _rocksDb.GetSpan(key, _columnFamily);
+    }
 
     public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
     {
+        _mainDb.UpdateWriteMetrics();
         _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteOptions);
     }
 

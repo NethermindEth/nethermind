@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using FluentAssertions;
-using Nethermind.AccountAbstraction.Source;
 using Nethermind.Core;
 using NUnit.Framework;
 

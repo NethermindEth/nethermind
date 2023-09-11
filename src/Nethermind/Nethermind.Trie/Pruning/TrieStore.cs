@@ -8,10 +8,12 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -61,7 +63,7 @@ namespace Nethermind.Trie.Pruning
                 // ReSharper disable once ConditionIsAlwaysTrueOrFalse
                 if (_objectsCache.TryGetValue(hash, out TrieNode? trieNode))
                 {
-                    if (trieNode!.FullRlp is null)
+                    if (trieNode!.FullRlp.IsNull)
                     {
                         // // this happens in SyncProgressResolver
                         // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
@@ -149,6 +151,7 @@ namespace Nethermind.Trie.Pruning
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _dirtyNodes = new DirtyNodesCache(this);
+            _publicStore = new TrieKeyValueStore(this);
         }
 
         public long LastPersistedBlockNumber
@@ -328,7 +331,7 @@ namespace Nethermind.Trie.Pruning
 
             if (rlp is null)
             {
-                throw new TrieException($"Node {keccak} is missing from the DB");
+                throw new TrieNodeException($"Node {keccak} is missing from the DB", keccak);
             }
 
             Metrics.LoadedFromDbNodesCount++;
@@ -336,21 +339,7 @@ namespace Nethermind.Trie.Pruning
             return rlp;
         }
 
-        public byte[] LoadRlp(Keccak keccak, ReadFlags readFlags = ReadFlags.None) => LoadRlp(keccak, null, readFlags);
-
-        public bool IsPersisted(Keccak keccak)
-        {
-            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
-
-            if (rlp is null)
-            {
-                return false;
-            }
-
-            Metrics.LoadedFromDbNodesCount++;
-
-            return true;
-        }
+        public virtual byte[] LoadRlp(Keccak keccak, ReadFlags readFlags = ReadFlags.None) => LoadRlp(keccak, null, readFlags);
 
         public bool IsPersisted(in ValueKeccak keccak)
         {
@@ -569,7 +558,9 @@ namespace Nethermind.Trie.Pruning
 
         #region Private
 
-        private readonly IKeyValueStoreWithBatching _keyValueStore;
+        protected readonly IKeyValueStoreWithBatching _keyValueStore;
+
+        private readonly TrieKeyValueStore _publicStore;
 
         private readonly IPruningStrategy _pruningStrategy;
 
@@ -663,14 +654,14 @@ namespace Nethermind.Trie.Pruning
                 // to prevent it from being removed from cache and also want to have it persisted.
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                _currentBatch.Set(currentNode.Keccak.Bytes, currentNode.FullRlp, writeFlags);
+                _currentBatch.Set(currentNode.Keccak.Bytes, currentNode.FullRlp.ToArray(), writeFlags);
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
                 PersistedNodesCount++;
             }
             else
             {
-                Debug.Assert(currentNode.FullRlp is not null && currentNode.FullRlp.Length < 32,
+                Debug.Assert(currentNode.FullRlp.IsNotNull && currentNode.FullRlp.Length < 32,
                     "We only expect persistence call without Keccak for the nodes that are kept inside the parent RLP (less than 32 bytes).");
             }
         }
@@ -806,7 +797,7 @@ namespace Nethermind.Trie.Pruning
                     Keccak? hash = n.Keccak;
                     if (hash is not null)
                     {
-                        store[hash.Bytes] = n.FullRlp;
+                        store[hash.Bytes] = n.FullRlp.ToArray();
                         int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
                         if (_logger.IsInfo && persistedNodesCount % million == 0)
                         {
@@ -829,20 +820,32 @@ namespace Nethermind.Trie.Pruning
             });
         }
 
-        public byte[]? this[ReadOnlySpan<byte> key]
-        {
-            get => Get(key);
-        }
-
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        private byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             return _pruningStrategy.PruningEnabled
                    && _dirtyNodes.AllNodes.TryGetValue(new ValueKeccak(key), out TrieNode? trieNode)
                    && trieNode is not null
                    && trieNode.NodeType != NodeType.Unknown
-                   && trieNode.FullRlp is not null
-                ? trieNode.FullRlp
+                   && trieNode.FullRlp.IsNotNull
+                ? trieNode.FullRlp.ToArray()
                 : _currentBatch?.Get(key, flags) ?? _keyValueStore.Get(key, flags);
+        }
+
+        public IKeyValueStore AsKeyValueStore() => _publicStore;
+
+        private class TrieKeyValueStore : IKeyValueStore
+        {
+            private readonly TrieStore _trieStore;
+
+            public TrieKeyValueStore(TrieStore trieStore)
+            {
+                _trieStore = trieStore;
+            }
+
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.Get(key, flags);
+
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                => _trieStore._keyValueStore.Set(key, value, flags);
         }
     }
 }

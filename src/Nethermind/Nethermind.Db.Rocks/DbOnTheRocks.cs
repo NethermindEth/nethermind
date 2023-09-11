@@ -12,6 +12,7 @@ using System.Threading;
 using ConcurrentCollections;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
@@ -388,8 +389,8 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         options.SetRecycleLogFileNum(dbConfig
             .RecycleLogFileNum); // potential optimization for reusing allocated log files
 
-        options.SetUseDirectReads(dbConfig.UseDirectReads);
-        options.SetUseDirectIoForFlushAndCompaction(dbConfig.UseDirectIoForFlushAndCompactions);
+        options.SetUseDirectReads(dbConfig.UseDirectReads.GetValueOrDefault());
+        options.SetUseDirectIoForFlushAndCompaction(dbConfig.UseDirectIoForFlushAndCompactions.GetValueOrDefault());
 
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
@@ -422,6 +423,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             _readAheadReadOptions = new ReadOptions();
             _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong)256.KiB());
             _readAheadReadOptions.SetTailing(true);
+        }
+
+        if (dbConfig.CompactionReadAhead != null && dbConfig.CompactionReadAhead != 0)
+        {
+            options.SetCompactionReadaheadSize(dbConfig.CompactionReadAhead.Value);
         }
 
         if (dbConfig.DisableCompression == true)
@@ -915,6 +921,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         }
 
         InnerFlush();
+    }
+
+    public void Compact()
+    {
+        _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
     }
 
     private void InnerFlush()

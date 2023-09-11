@@ -6,10 +6,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -17,9 +18,10 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1052Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
+        protected override long BlockNumber => 10000001;
 
-        protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
+        protected override ISpecProvider SpecProvider => new CustomSpecProvider(
+            ((ForkActivation)0, Byzantium.Instance), ((ForkActivation)10000001, Constantinople.Instance));
 
         [Test]
         public void Account_without_code_returns_empty_data_hash()
@@ -57,7 +59,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Non_existing_precompile_returns_0()
         {
-            Address precompileAddress = Sha256Precompile.Instance.Address;
+            Address precompileAddress = Sha256Precompile.Address;
             Assert.True(precompileAddress.IsPrecompile(Spec));
 
             byte[] code = Prepare.EvmCode
@@ -74,7 +76,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Existing_precompile_returns_empty_data_hash()
         {
-            Address precompileAddress = Sha256Precompile.Instance.Address;
+            Address precompileAddress = Sha256Precompile.Address;
             Assert.True(precompileAddress.IsPrecompile(Spec));
 
             TestState.CreateAccount(precompileAddress, 1.Wei());

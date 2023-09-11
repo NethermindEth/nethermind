@@ -21,8 +21,8 @@ namespace Nethermind.Db
         long GetMemtableSize();
 
         void Flush();
-
         void Clear();
+        void Compact() { }
 
         public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);
     }

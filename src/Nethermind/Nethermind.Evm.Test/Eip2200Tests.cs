@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -14,9 +13,9 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip2200Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => RopstenSpecProvider.IstanbulBlockNumber;
+        protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
 
-        protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
+        protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         [TestCase("0x60006000556000600055", 1612, 0, 0)]
         [TestCase("0x60006000556001600055", 20812, 0, 0)]
@@ -39,7 +38,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(Recipient, 0);
             TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
-            TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
+            TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(Bytes.FromHexString(codeHex));
             AssertGas(receipt, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / 2, refund));
@@ -67,7 +66,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(Recipient, 0);
             TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
-            TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
+            TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2300 - 800), Bytes.FromHexString(codeHex));
             Assert.That(receipt.StatusCode, Is.EqualTo(outOfGasExpected ? 0 : 1));
@@ -79,7 +78,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(Recipient, 0);
             TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
-            TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
+            TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2301 - 800), Bytes.FromHexString(codeHex));
             Assert.That(receipt.StatusCode, Is.EqualTo(1));
@@ -91,7 +90,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(Recipient, 0);
             TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
-            TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
+            TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2299 - 800), Bytes.FromHexString(codeHex));
             Assert.That(receipt.StatusCode, Is.EqualTo(0));

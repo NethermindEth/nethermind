@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -20,8 +21,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
@@ -53,7 +54,7 @@ public class TxBroadcasterTests
     public void Setup()
     {
         _logManager = LimboLogs.Instance;
-        _specProvider = RopstenSpecProvider.Instance;
+        _specProvider = MainnetSpecProvider.Instance;
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);
         _blockTree = Substitute.For<IBlockTree>();
         _comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
@@ -243,7 +244,7 @@ public class TxBroadcasterTests
         const int currentBaseFeeInGwei = 250;
         _headInfo.CurrentBaseFee.Returns(currentBaseFeeInGwei.GWei());
         Block headBlock = Build.A.Block
-            .WithNumber(RopstenSpecProvider.LondonBlockNumber)
+            .WithNumber(MainnetSpecProvider.LondonBlockNumber)
             .WithBaseFeePerGas(currentBaseFeeInGwei.GWei())
             .TestObject;
         _blockTree.Head.Returns(headBlock);
@@ -292,7 +293,7 @@ public class TxBroadcasterTests
         const int currentBaseFeeInGwei = 250;
         _headInfo.CurrentBaseFee.Returns(currentBaseFeeInGwei.GWei());
         Block headBlock = Build.A.Block
-            .WithNumber(RopstenSpecProvider.LondonBlockNumber)
+            .WithNumber(MainnetSpecProvider.LondonBlockNumber)
             .WithBaseFeePerGas(currentBaseFeeInGwei.GWei())
             .TestObject;
         _blockTree.Head.Returns(headBlock);
@@ -451,7 +452,9 @@ public class TxBroadcasterTests
     }
 
     [TestCase(1_000, true)]
-    [TestCase(128 * 1024, true)]
+    [TestCase(4 * 1024, true)]
+    [TestCase(4 * 1024 + 1, false)]
+    [TestCase(128 * 1024, false)]
     [TestCase(128 * 1024 + 1, false)]
     [TestCase(1_000_000, false)]
     public void should_broadcast_full_local_tx_up_to_max_size_and_only_announce_if_larger(int txSize, bool shouldBroadcastFullTx)
@@ -498,5 +501,63 @@ public class TxBroadcasterTests
             session68.Received(1).DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
         }
         session68.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage>());
+    }
+
+    [TestCase(true, true, 1)]
+    [TestCase(false, true, 0)]
+    [TestCase(true, false, 0)]
+    [TestCase(false, false, 0)]
+    public void should_check_tx_policy_for_broadcast(bool canGossipTransactions, bool shouldGossipTransaction, int received)
+    {
+        ITxGossipPolicy txGossipPolicy = Substitute.For<ITxGossipPolicy>();
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager, txGossipPolicy);
+        _headInfo.CurrentBaseFee.Returns(0.GWei());
+
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
+        ITxPoolPeer eth68Handler = new Eth68ProtocolHandler(session,
+            Substitute.For<IMessageSerializationService>(),
+            Substitute.For<INodeStatsManager>(),
+            Substitute.For<ISyncServer>(),
+            Substitute.For<ITxPool>(),
+            Substitute.For<IPooledTxsRequestor>(),
+            Substitute.For<IGossipPolicy>(),
+            new ForkInfo(_specProvider, Keccak.Zero),
+            Substitute.For<ILogManager>());
+        _broadcaster.AddPeer(eth68Handler);
+
+        Transaction localTx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        txGossipPolicy.CanGossipTransactions.Returns(canGossipTransactions);
+        txGossipPolicy.ShouldGossipTransaction(localTx).Returns(shouldGossipTransaction);
+
+        _broadcaster.Broadcast(localTx, true);
+
+        session.Received(received).DeliverMessage(Arg.Any<TransactionsMessage>());
+    }
+
+    [Test]
+    public void should_rebroadcast_all_persistent_transactions_if_PeerNotificationThreshold_is_100([Values(true, false)] bool shouldBroadcastAll)
+    {
+        _txPoolConfig = new TxPoolConfig() { Size = 100, PeerNotificationThreshold = shouldBroadcastAll ? 100 : 5 };
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+
+        for (int i = 0; i < _txPoolConfig.Size; i++)
+        {
+            Transaction tx = Build.A.Transaction
+                .WithNonce((UInt256)i)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            _broadcaster.Broadcast(tx, true);
+        }
+
+        Transaction[] pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend.ToArray();
+        pickedTxs.Length.Should().Be(shouldBroadcastAll ? 100 : 1);
+
+        for (int i = 0; i < pickedTxs.Length; i++)
+        {
+            pickedTxs[i].Nonce.Should().Be((UInt256)i);
+        }
     }
 }

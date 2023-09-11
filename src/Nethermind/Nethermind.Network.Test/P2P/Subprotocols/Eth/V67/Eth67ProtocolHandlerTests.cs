@@ -4,7 +4,6 @@
 using System.Net;
 using DotNetty.Buffers;
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,9 +13,9 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.Rlpx;
@@ -33,15 +32,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V67;
 [TestFixture, Parallelizable(ParallelScope.Self)]
 public class Eth67ProtocolHandlerTests
 {
-    private ISession _session;
-    private IMessageSerializationService _svc;
-    private ISyncServer _syncManager;
-    private ITxPool _transactionPool;
-    private IPooledTxsRequestor _pooledTxsRequestor;
-    private IGossipPolicy _gossipPolicy;
-    private ISpecProvider _specProvider;
-    private Block _genesisBlock;
-    private Eth66ProtocolHandler _handler;
+    private ISession _session = null!;
+    private IMessageSerializationService _svc = null!;
+    private ISyncServer _syncManager = null!;
+    private ITxPool _transactionPool = null!;
+    private IPooledTxsRequestor _pooledTxsRequestor = null!;
+    private IGossipPolicy _gossipPolicy = null!;
+    private ISpecProvider _specProvider = null!;
+    private Block _genesisBlock = null!;
+    private Eth66ProtocolHandler _handler = null!;
 
     [SetUp]
     public void Setup()

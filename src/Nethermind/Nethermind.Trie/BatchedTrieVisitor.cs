@@ -83,12 +83,7 @@ public class BatchedTrieVisitor
         // Get estimated num of file (expected db size / 64MiB), multiplied by a reasonable num of thread we want to
         // confine to a file. If its too high, the overhead of looping through the stack can get a bit high at the end
         // of the visit. But then again its probably not much.
-        int degreeOfParallelism = visitingOptions.MaxDegreeOfParallelism;
-        if (degreeOfParallelism == 0)
-        {
-            degreeOfParallelism = Math.Max(Environment.ProcessorCount, 1);
-        }
-        long maxPartitionCount = (expectedDbSize / 64.MiB()) * Math.Min(4, degreeOfParallelism);
+        long maxPartitionCount = (expectedDbSize / 64.MiB()) * Math.Min(4, visitingOptions.MaxDegreeOfParallelism);
 
         if (_partitionCount > maxPartitionCount)
         {
@@ -140,13 +135,7 @@ public class BatchedTrieVisitor
 
         try
         {
-            int degreeOfParallelism = trieVisitContext.MaxDegreeOfParallelism;
-            if (degreeOfParallelism == 0)
-            {
-                degreeOfParallelism = Math.Max(Environment.ProcessorCount, 1);
-            }
-
-            Task[]? tasks = Enumerable.Range(0, degreeOfParallelism)
+            Task[]? tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
                 .Select((_) => Task.Run(BatchedThread))
                 .ToArray();
 
@@ -260,7 +249,7 @@ public class BatchedTrieVisitor
         for (int i = batchResult.Count - 1; i >= 0; i--)
         {
             (TrieNode trieNode, SmallTrieVisitContext ctx) = batchResult[i];
-            if (trieNode.NodeType == NodeType.Unknown && trieNode.FullRlp != null)
+            if (trieNode.NodeType == NodeType.Unknown && trieNode.FullRlp.IsNotNull)
             {
                 // Inline node. Seems rare, so its fine to create new list for this. Does not have a keccak
                 // to queue, so we'll just process it inline.
@@ -306,7 +295,7 @@ public class BatchedTrieVisitor
 
                 SmallTrieVisitContext ctx = currentBatch[i].Item2;
 
-                if (cur.FullRlp != null) continue;
+                if (cur.FullRlp.IsNotNull) continue;
                 if (cur.Keccak is null) throw new TrieException($"Unable to resolve node without Keccak. ctx: {ctx.Level}, {ctx.ExpectAccounts}, {ctx.IsStorage}, {ctx.BranchChildIndex}");
 
                 resolveOrdering.Add(i);
@@ -348,7 +337,7 @@ public class BatchedTrieVisitor
                 (TrieNode nodeToResolve, SmallTrieVisitContext ctx) = currentBatch[i];
 
                 nextToProcesses.Clear();
-                if (nodeToResolve.FullRlp == null)
+                if (nodeToResolve.FullRlp.IsNull)
                 {
                     // Still need to decrement counter
                     QueueNextNodes(nextToProcesses);

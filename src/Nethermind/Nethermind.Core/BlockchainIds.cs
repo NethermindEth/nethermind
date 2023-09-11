@@ -8,7 +8,6 @@ namespace Nethermind.Core
     /// 0: Olympic, Ethereum public pre-release PoW testnet
     /// 1: Expanse, an alternative Ethereum implementation, chain ID 2
     /// 2: Morden Classic, the public Ethereum Classic PoW testnet
-    /// 3: Ropsten, the public cross-client Ethereum PoS testnet
     /// 4: Rinkeby, the public Geth-only PoA testnet
     /// 5: Goerli, the public cross-client PoA testnet
     /// 42: Kovan, the public Parity-only PoA testnet
@@ -24,7 +23,6 @@ namespace Nethermind.Core
         public const int Olympic = 0;
         public const int Mainnet = 1;
         public const int Morden = 2;
-        public const int Ropsten = 3;
         public const int Rinkeby = 4;
         public const int Goerli = 5;
         public const int RootstockMainnet = 30;
@@ -39,6 +37,7 @@ namespace Nethermind.Core
         public const int Chiado = 10200;
         public const int Volta = 73799;
         public const int Sepolia = 11155111;
+        public const int Holesky = 17000;
 
         public static string GetBlockchainName(ulong networkId)
         {
@@ -47,7 +46,6 @@ namespace Nethermind.Core
                 Olympic => nameof(Olympic),
                 Mainnet => nameof(Mainnet),
                 Morden => nameof(Morden),
-                Ropsten => nameof(Ropsten),
                 Rinkeby => nameof(Rinkeby),
                 Goerli => nameof(Goerli),
                 RootstockMainnet => nameof(RootstockMainnet),

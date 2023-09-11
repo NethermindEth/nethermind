@@ -11,7 +11,6 @@ using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Bloom

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
@@ -50,6 +51,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
     public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
     private readonly List<Capability> SupportedCapabilities = DefaultCapabilities.ToList();
+    private readonly Regex? _clientIdPattern;
 
     public int ListenPort { get; }
     public PublicKey LocalNodeId { get; }
@@ -64,9 +66,12 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         PublicKey localNodeId,
         INodeStatsManager nodeStatsManager,
         IMessageSerializationService serializer,
+        Regex? clientIdPattern,
         ILogManager logManager) : base(session, nodeStatsManager, serializer, logManager)
     {
         _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
+        _clientIdPattern = clientIdPattern;
+
         LocalNodeId = localNodeId;
         ListenPort = session.LocalPort;
         _agreedCapabilities = new List<Capability>();
@@ -130,15 +135,25 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                 {
                     DisconnectMessage disconnectMessage = Deserialize<DisconnectMessage>(msg.Data);
                     ReportIn(disconnectMessage, size);
+
+                    EthDisconnectReason disconnectReason =
+                        FastEnum.IsDefined<EthDisconnectReason>((byte)disconnectMessage.Reason)
+                            ? ((EthDisconnectReason)disconnectMessage.Reason)
+                            : EthDisconnectReason.Other;
+
                     if (Logger.IsTrace)
                     {
-                        string reason = FastEnum.IsDefined<DisconnectReason>((byte)disconnectMessage.Reason)
-                            ? ((DisconnectReason)disconnectMessage.Reason).ToName()
-                            : disconnectMessage.Reason.ToString();
-                        Logger.Trace($"{Session} Received disconnect ({reason}) on {Session.RemotePort}");
+                        if (!FastEnum.IsDefined<EthDisconnectReason>((byte)disconnectMessage.Reason))
+                        {
+                            Logger.Trace($"{Session} unknown disconnect reason ({disconnectMessage.Reason}) on {Session.RemotePort}");
+                        }
+                        else
+                        {
+                            Logger.Trace($"{Session} Received disconnect ({disconnectReason}) on {Session.RemotePort}");
+                        }
                     }
 
-                    Close(disconnectMessage.Reason);
+                    Close(disconnectReason);
                     break;
                 }
             case P2PMessageCode.Ping:
@@ -230,8 +245,15 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         {
             _nodeStatsManager.ReportFailedValidation(Session.Node, CompatibilityValidationType.Capabilities);
             Session.InitiateDisconnect(
-                InitiateDisconnectReason.NoCapabilityMatched,
+                DisconnectReason.NoCapabilityMatched,
                 $"capabilities: {string.Join(", ", capabilities)}");
+        }
+
+        if (_clientIdPattern?.IsMatch(hello.ClientId) == false)
+        {
+            Session.InitiateDisconnect(
+                DisconnectReason.ClientFiltered,
+                $"clientId: {hello.ClientId}");
         }
 
         ReceivedProtocolInitMsg(hello);
@@ -295,7 +317,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
     {
         if (Logger.IsTrace)
             Logger.Trace($"Sending disconnect {disconnectReason} ({details}) to {Session.Node:s}");
-        DisconnectMessage message = new(disconnectReason);
+        DisconnectMessage message = new(disconnectReason.ToEthDisconnectReason());
         Send(message);
         if (NetworkDiagTracer.IsEnabled)
             NetworkDiagTracer.ReportDisconnect(Session.Node.Address, $"Local {disconnectReason} {details}");
@@ -329,23 +351,21 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         Send(PongMessage.Instance);
     }
 
-    private void Close(int disconnectReasonId)
+    private void Close(EthDisconnectReason ethDisconnectReason)
     {
-        DisconnectReason disconnectReason = (DisconnectReason)disconnectReasonId;
-
-        if (disconnectReason != DisconnectReason.TooManyPeers &&
-            disconnectReason != DisconnectReason.Other &&
-            disconnectReason != DisconnectReason.DisconnectRequested)
+        if (ethDisconnectReason != EthDisconnectReason.TooManyPeers &&
+            ethDisconnectReason != EthDisconnectReason.Other &&
+            ethDisconnectReason != EthDisconnectReason.DisconnectRequested)
         {
-            if (Logger.IsDebug) Logger.Debug($"{Session} received disconnect [{disconnectReason}]");
+            if (Logger.IsDebug) Logger.Debug($"{Session} received disconnect [{ethDisconnectReason}]");
         }
         else
         {
-            if (Logger.IsTrace) Logger.Trace($"{Session} P2P received disconnect [{disconnectReason}]");
+            if (Logger.IsTrace) Logger.Trace($"{Session} P2P received disconnect [{ethDisconnectReason}]");
         }
 
         // Received disconnect message, triggering direct TCP disconnection
-        Session.MarkDisconnected(disconnectReason, DisconnectType.Remote, "message");
+        Session.MarkDisconnected(ethDisconnectReason.ToDisconnectReason(), DisconnectType.Remote, "message");
     }
 
     public override string Name => Protocol.P2P;

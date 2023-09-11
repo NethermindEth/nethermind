@@ -65,22 +65,23 @@ namespace Nethermind.TxPool
         /// This class stores all known pending transactions that can be used for block production
         /// (by miners or validators) or simply informing other nodes about known pending transactions (broadcasting).
         /// </summary>
-        /// <param name="txStorage">Tx storage used to reject known transactions.</param>
         /// <param name="ecdsa">Used to recover sender addresses from transaction signatures.</param>
         /// <param name="chainHeadInfoProvider"></param>
         /// <param name="txPoolConfig"></param>
         /// <param name="validator"></param>
         /// <param name="logManager"></param>
         /// <param name="comparer"></param>
+        /// <param name="transactionsGossipPolicy"></param>
         /// <param name="incomingTxFilter"></param>
         /// <param name="thereIsPriorityContract"></param>
-        public TxPool(
-            IEthereumEcdsa ecdsa,
+        /// <param name="txStorage">Tx storage used to reject known transactions.</param>
+        public TxPool(IEthereumEcdsa ecdsa,
             IChainHeadInfoProvider chainHeadInfoProvider,
             ITxPoolConfig txPoolConfig,
             ITxValidator validator,
             ILogManager? logManager,
             IComparer<Transaction> comparer,
+            ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter? incomingTxFilter = null,
             bool thereIsPriorityContract = false)
         {
@@ -94,7 +95,7 @@ namespace Nethermind.TxPool
             AddNodeInfoEntryForTxPool();
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
-            _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager);
+            _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
 
             _headInfo.HeadChanged += OnHeadChange;
 
@@ -154,7 +155,6 @@ namespace Nethermind.TxPool
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
-            // TODO: I think this is dangerous if many blocks are processed one after another
             try
             {
                 // Clear snapshot
@@ -414,6 +414,7 @@ namespace Nethermind.TxPool
         {
             UInt256? previousTxBottleneck = null;
             int i = 0;
+            UInt256 cumulativeCost = 0;
 
             foreach (Transaction tx in transactions)
             {
@@ -434,6 +435,13 @@ namespace Nethermind.TxPool
                         UInt256 effectiveGasPrice =
                             tx.CalculateEffectiveGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                                 _headInfo.CurrentBaseFee);
+
+                        if (tx.CheckForNotEnoughBalance(cumulativeCost, balance, out cumulativeCost))
+                        {
+                            // balance too low, remove tx from the pool
+                            _broadcaster.StopBroadcast(tx.Hash!);
+                            yield return (tx, null);
+                        }
                         gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck ?? 0);
                     }
 

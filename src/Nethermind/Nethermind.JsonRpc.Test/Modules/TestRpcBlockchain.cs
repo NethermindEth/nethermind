@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -36,6 +37,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestRpcBlockchain : TestBlockchain
     {
+        public IJsonRpcConfig RpcConfig { get; private set; } = new JsonRpcConfig();
         public IEthRpcModule EthRpcModule { get; private set; } = null!;
         public IBlockchainBridge Bridge { get; private set; } = null!;
         public ITxSealer TxSealer { get; private set; } = null!;
@@ -101,13 +103,19 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
+            public Builder<T> WithConfig(IJsonRpcConfig config)
+            {
+                _blockchain.RpcConfig = config;
+                return this;
+            }
+
             public async Task<T> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
                 return (T)(await _blockchain.Build(specProvider, initialValues));
             }
         }
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
+        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
         {
             specProvider ??= new TestSpecProvider(Berlin.Instance);
             await base.Build(specProvider, initialValues);
@@ -134,14 +142,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             FeeHistoryOracle ??= new FeeHistoryOracle(BlockFinder, ReceiptStorage, SpecProvider);
             ISyncConfig syncConfig = new SyncConfig();
             EthRpcModule = new EthRpcModule(
-                new JsonRpcConfig(),
+                RpcConfig,
                 Bridge,
                 BlockFinder,
                 StateReader,
                 TxPool,
                 TxSender,
                 TestWallet,
-                ReceiptFinder,
                 LimboLogs.Instance,
                 SpecProvider,
                 GasPriceOracle,
@@ -151,14 +158,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             return this;
         }
 
-        public string TestEthRpc(string method, params string[] parameters)
-        {
-            return RpcTest.TestSerializedRequest(EthModuleFactory.Converters, EthRpcModule, method, parameters);
-        }
+        public Task<string> TestEthRpc(string method, params string[] parameters) =>
+            RpcTest.TestSerializedRequest(EthModuleFactory.Converters, EthRpcModule, method, parameters);
 
-        public string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
-        {
-            return RpcTest.TestSerializedRequest(new JsonConverter[0], module, method, parameters);
-        }
+        public Task<string> TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule =>
+            RpcTest.TestSerializedRequest(Array.Empty<JsonConverter>(), module, method, parameters);
     }
 }

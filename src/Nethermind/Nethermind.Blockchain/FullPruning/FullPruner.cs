@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IProcessExitSource _processExitSource;
         private readonly ILogManager _logManager;
         private readonly IChainEstimations _chainEstimations;
-        private readonly IDriveInfo _driveInfo;
+        private readonly IDriveInfo? _driveInfo;
         private IPruningContext? _currentPruning;
         private int _waitingForBlockProcessed = 0;
         private int _waitingForStateReady = 0;
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.FullPruning
             IStateReader stateReader,
             IProcessExitSource processExitSource,
             IChainEstimations chainEstimations,
-            IDriveInfo driveInfo,
+            IDriveInfo? driveInfo,
             ILogManager logManager)
         {
             _fullPruningDb = fullPruningDb;
@@ -138,7 +138,7 @@ namespace Nethermind.Blockchain.FullPruning
                         BlockHeader? header = _blockTree.FindHeader(_stateToCopy);
                         if (header is not null && Interlocked.CompareExchange(ref _waitingForStateReady, 0, 1) == 1)
                         {
-                            if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {_stateToCopy} with root {header.StateRoot}.");
+                            if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {_stateToCopy} with root {header.StateRoot}");
                             Task.Run(() => RunPruning(_currentPruning, header.StateRoot!));
                             _blockTree.OnUpdateMainChain -= OnUpdateMainChain;
                         }
@@ -181,12 +181,13 @@ namespace Nethermind.Blockchain.FullPruning
                 return true;
             }
 
-            long available = _driveInfo.AvailableFreeSpace;
-            if (available < currentChainSize.Value * ChainSizeThresholdFactor / 100)
+            long available = _driveInfo?.AvailableFreeSpace ?? 0;
+            long required = currentChainSize.Value * ChainSizeThresholdFactor / 100;
+            if (available < required)
             {
                 if (_logger.IsWarn)
                     _logger.Warn(
-                        $"Not enough disk space to run full pruning. Required {(currentChainSize * ChainSizeThresholdFactor) / 1.GB()} GB. Have {available / 1.GB()} GB");
+                        $"Not enough disk space to run full pruning. Required {required / 1.GB()} GB. Have {available / 1.GB()} GB");
                 return false;
             }
             return true;
@@ -222,6 +223,7 @@ namespace Nethermind.Blockchain.FullPruning
                     MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,
                     FullScanMemoryBudget = ((long)_pruningConfig.FullPruningMemoryBudgetMb).MiB(),
                 };
+                if (_logger.IsInfo) _logger.Info($"Full pruning started with MaxDegreeOfParallelism: {visitingOptions.MaxDegreeOfParallelism} and FullScanMemoryBudget: {visitingOptions.FullScanMemoryBudget}");
                 _stateReader.RunTreeVisitor(copyTreeVisitor, statRoot, visitingOptions);
 
                 if (!pruning.CancellationTokenSource.IsCancellationRequested)

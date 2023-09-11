@@ -211,7 +211,8 @@ namespace Nethermind.HealthChecks
             {
                 if (!_nodeHealthService.CheckClAlive())
                 {
-                    if (_logger.IsWarn) _logger.Warn("No incoming messages from Consensus Client. Please make sure that it's working properly");
+                    if (_logger.IsWarn)
+                        _logger.Warn("No incoming messages from the consensus client that is required for sync.");
                 }
             }
         }

@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Test
         public void before_istanbul()
         {
             _blockNumberAdjustment = -1;
-            Address precompileAddress = Blake2FPrecompile.Instance.Address;
+            Address precompileAddress = Blake2FPrecompile.Address;
             Assert.False(precompileAddress.IsPrecompile(Spec));
         }
 
@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Test
         public void after_istanbul()
         {
             byte[] code = Prepare.EvmCode
-                .CallWithInput(Blake2FPrecompile.Instance.Address, 1000L, new byte[InputLength])
+                .CallWithInput(Blake2FPrecompile.Address, 1000L, new byte[InputLength])
                 .Done;
             TestAllTracerWithOutput result = Execute(code);
             Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));

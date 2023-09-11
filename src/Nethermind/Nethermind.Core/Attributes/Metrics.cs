@@ -16,3 +16,17 @@ public sealed class CounterMetricAttribute : Attribute { }
 /// </summary>
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
 public sealed class GaugeMetricAttribute : Attribute { }
+
+/// <summary>
+/// Mark that the attribute is a dictionary whose key is used as a label of name LabelName.
+/// </summary>
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class KeyIsLabelAttribute : Attribute
+{
+    public string LabelName { get; }
+
+    public KeyIsLabelAttribute(string labelName)
+    {
+        LabelName = labelName;
+    }
+}
