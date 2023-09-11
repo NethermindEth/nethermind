@@ -69,11 +69,6 @@ public enum BlockTreeSuggestOptions
     /// Force not to set as main block
     /// </summary>
     ForceDontSetAsMain = 8,
-
-    /// <summary>
-    /// Force skip parent number is known checks
-    /// </summary>
-    ForceDontValidateParent = 8,
 }
 
 public static class BlockTreeSuggestOptionsExtensions
