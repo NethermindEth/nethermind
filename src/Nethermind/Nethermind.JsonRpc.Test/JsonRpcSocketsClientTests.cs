@@ -176,7 +176,6 @@ public class JsonRpcSocketsClientTests
         [TestCase(2)]
         [TestCase(10)]
         [TestCase(50)]
-        [Retry(3)]
         public async Task Can_send_multiple_messages(int messageCount)
         {
             CancellationTokenSource cts = new();
@@ -222,7 +221,6 @@ public class JsonRpcSocketsClientTests
         [TestCase(2)]
         [TestCase(10)]
         [TestCase(50)]
-        [Retry(3)]
         public async Task Can_send_collections(int elements)
         {
             CancellationTokenSource cts = new();
@@ -262,7 +260,6 @@ public class JsonRpcSocketsClientTests
         [TestCase(1_000)]
         [TestCase(5_000)]
         [TestCase(10_000)]
-        [Retry(3)]
         [Ignore("Feature does not work correctly")]
         public async Task Stops_on_limited_body_size(int maxByteCount)
         {
