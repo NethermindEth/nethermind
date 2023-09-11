@@ -7,24 +7,6 @@ using static Nethermind.Core.Extensions.MemoryExtensions;
 
 namespace Nethermind.Facade.Proxy.Models.MultiCall
 {
-    public class CallTransaction
-    {
-        public Address From { get; set; }
-        public Address To { get; set; }
-        public UInt256 Gas { get; set; }
-        public UInt256 GasPrice { get; set; }
-        public UInt256 Value { get; set; }
-        public byte[] Data { get; set; }
-
-        public static CallTransaction FromTransaction(Transaction transaction)
-            => new()
-            {
-                From = transaction.SenderAddress,
-                To = transaction.To,
-                Data = transaction.Data.AsArray(),
-                Value = transaction.Value,
-                Gas = (UInt256)transaction.GasLimit,
-                GasPrice = transaction.GasPrice
-            };
-    }
+    //A stub
+    public class CallTransaction { }
 }
