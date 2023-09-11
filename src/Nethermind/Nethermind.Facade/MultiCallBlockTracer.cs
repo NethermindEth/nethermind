@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.MultiCall;
+using Nethermind.Int256;
 using ResultType = Nethermind.Facade.Proxy.Models.MultiCall.ResultType;
 
 namespace Nethermind.Facade;
@@ -48,9 +49,10 @@ public class MultiCallBlockTracer : BlockTracer
             GasUsed = (ulong)currentBlock.GasUsed,
             Timestamp = currentBlock.Timestamp,
             FeeRecipient = currentBlock.Beneficiary,
-            baseFeePerGas = currentBlock.BaseFeePerGas,
-
+            BaseFeePerGas = currentBlock.BaseFeePerGas,
+            PrevRandao = new UInt256(currentBlock.Header.Random.Bytes)
         };
+
         result.Calls.ForEach(callResult =>
         {
             if (callResult.Type == ResultType.Success)

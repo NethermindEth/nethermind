@@ -9,12 +9,14 @@ namespace Nethermind.Facade.Proxy.Models.MultiCall;
 
 public class MultiCallBlockResult
 {
-    public MultiCallCallResult[] Calls { get; set; }
-    public Keccak Hash { get; set; }
     public ulong Number { get; set; }
-    public UInt256 Timestamp { get; set; }
+    public Keccak Hash { get; set; }
+    public ulong Timestamp { get; set; }
     public ulong GasLimit { get; set; }
     public ulong GasUsed { get; set; }
     public Address FeeRecipient { get; set; }
-    public UInt256 baseFeePerGas { get; set; }
+    public UInt256 BaseFeePerGas { get; set; }
+    public MultiCallCallResult[] Calls { get; set; }
+    public UInt256 PrevRandao { get; set; }
+
 }
