@@ -36,7 +36,7 @@ namespace Nethermind.Merge.Plugin;
 public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlugin
 {
     protected INethermindApi _api = null!;
-    protected ILogger _logger = null!;
+    private ILogger _logger = null!;
     protected IMergeConfig _mergeConfig = null!;
     private ISyncConfig _syncConfig = null!;
     protected IBlocksConfig _blocksConfig = null!;
@@ -49,7 +49,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
     private ManualBlockFinalizationManager _blockFinalizationManager = null!;
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
-    protected IEngineRpcModuleFactory _engineRpcModuleFactory = null!;
 
     public virtual string Name => "Merge";
     public virtual string Description => "Merge plugin for ETH1-ETH2";
@@ -82,8 +81,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             EnsureJsonRpcUrl();
             EnsureReceiptAvailable();
-
-            _engineRpcModuleFactory = new EngineRpcModuleFactory(_api.SpecProvider, _api.LogManager);
 
             _blockCacheService = new BlockCacheService();
             _poSSwitcher = new PoSSwitcher(
@@ -305,7 +302,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
-            IEngineRpcModule engineRpcModule = _engineRpcModuleFactory.Create(
+            IEngineRpcModule engineRpcModule = new EngineRpcModule(
                 new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
                 new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
                 new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -339,7 +336,9 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
                 new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
-                new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager));
+                _api.SpecProvider,
+                new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
+                _api.LogManager);
 
             _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
             if (_logger.IsInfo) _logger.Info("Engine Module has been enabled");
