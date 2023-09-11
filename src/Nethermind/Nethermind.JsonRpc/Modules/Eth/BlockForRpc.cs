@@ -61,6 +61,11 @@ public class BlockForRpc
                 BlobGasUsed = block.Header.BlobGasUsed;
                 ExcessBlobGas = block.Header.ExcessBlobGas;
             }
+
+            if (spec.IsEip4788Enabled)
+            {
+                ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
+            }
         }
 
         Number = block.Number;
@@ -130,4 +135,7 @@ public class BlockForRpc
 
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
     public ulong? ExcessBlobGas { get; set; }
+
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    public Keccak? ParentBeaconBlockRoot { get; set; }
 }

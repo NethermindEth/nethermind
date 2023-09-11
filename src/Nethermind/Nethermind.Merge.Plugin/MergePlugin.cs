@@ -420,6 +420,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _blockCacheService,
                 _beaconSync,
                 _api.DbProvider.MetadataDb,
+                _api.SyncProgressResolver,
                 _api.LogManager);
 
             SyncReport syncReport = new(_api.SyncPeerPool, _api.NodeStatsManager, _api.SyncModeSelector, _syncConfig, _beaconPivot, _api.LogManager);
@@ -453,6 +454,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _poSSwitcher,
                 _mergeConfig,
                 _invalidChainTracker,
+                _api.ProcessExit!,
                 _api.LogManager,
                 syncReport);
         }

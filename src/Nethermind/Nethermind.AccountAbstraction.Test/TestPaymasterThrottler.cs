@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.AccountAbstraction.Source;
-using Nethermind.Core;
 
 namespace Nethermind.AccountAbstraction.Test
 {

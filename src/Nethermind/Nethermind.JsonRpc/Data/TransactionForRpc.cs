@@ -38,7 +38,14 @@ public class TransactionForRpc
         }
         ChainId = transaction.ChainId;
         Type = transaction.Type;
-        AccessList = transaction.AccessList is null ? null : AccessListItemForRpc.FromAccessList(transaction.AccessList);
+        if (transaction.SupportsAccessList)
+        {
+            AccessList = transaction.AccessList is null ? Array.Empty<AccessListItemForRpc>() : AccessListItemForRpc.FromAccessList(transaction.AccessList);
+        }
+        else
+        {
+            AccessList = null;
+        }
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas;
         BlobVersionedHashes = transaction.BlobVersionedHashes;
 

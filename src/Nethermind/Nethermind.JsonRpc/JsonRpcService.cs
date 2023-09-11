@@ -195,7 +195,7 @@ public class JsonRpcService : IJsonRpcService
                     break;
             }
         }
-        catch (TargetParameterCountException e)
+        catch (Exception e) when (e is TargetParameterCountException || e is ArgumentException)
         {
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.ToString(), request.Id, returnAction);
         }
@@ -328,7 +328,11 @@ public class JsonRpcService : IJsonRpcService
                     }
                     else
                     {
-                        executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader($"\"{providedParameter}\"")), paramType);
+                        var stringReader = providedParameter.StartsWith('\"') && providedParameter.EndsWith('\"')
+                            ? new StringReader(providedParameter)
+                            : new StringReader($"\"{providedParameter}\"");
+                        var jsonTextReader = new JsonTextReader(stringReader);
+                        executionParam = _serializer.Deserialize(jsonTextReader, paramType);
                     }
                 }
 

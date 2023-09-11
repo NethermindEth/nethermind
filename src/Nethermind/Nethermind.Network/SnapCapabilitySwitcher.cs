@@ -5,7 +5,6 @@
 using System;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 
