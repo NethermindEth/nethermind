@@ -49,13 +49,12 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
 
     public override Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
     {
-        BlockHeader blockHeader = base.PrepareBlockHeader(parent, payloadAttributes);
+        OptimismPayloadAttributes attrs = (payloadAttributes as OptimismPayloadAttributes)
+            ?? throw new InvalidOperationException("Payload attributes are not set");
 
-        IEnumerable<Transaction> txs = _payloadAttrsTxSource.GetTransactions(
-            parent,
-            payloadAttributes?.GetGasLimit() ?? throw new InvalidOperationException("Gas limit is not set"),
-            payloadAttributes
-        );
+        BlockHeader blockHeader = base.PrepareBlockHeader(parent, attrs);
+
+        IEnumerable<Transaction> txs = _payloadAttrsTxSource.GetTransactions(parent, attrs.GasLimit, attrs);
 
         Block block = new(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
 
