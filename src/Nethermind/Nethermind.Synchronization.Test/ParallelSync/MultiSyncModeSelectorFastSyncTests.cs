@@ -78,6 +78,17 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         }
 
         [Test]
+        public void Load_from_without_merge_sync_pivot_resolved()
+        {
+            Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .WhenMergeSyncPivotNotResolvedYet()
+                .WhateverThePeerPoolLooks()
+                .WhenThisNodeIsLoadingBlocksFromDb()
+                .ThenInAnyFastSyncConfiguration()
+                .TheSyncModeShouldBe(SyncMode.DbLoad | SyncMode.UpdatingPivot);
+        }
+
+        [Test]
         public void Simple_archive()
         {
             Scenario.GoesLikeThis(_needToWaitForHeaders)
