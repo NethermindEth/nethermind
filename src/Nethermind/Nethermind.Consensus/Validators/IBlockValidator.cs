@@ -7,7 +7,7 @@ namespace Nethermind.Consensus.Validators;
 
 public interface IBlockValidator : IHeaderValidator, IWithdrawalValidator
 {
-    bool ValidateOrhpanedBlock(Block block, out string? error);
+    bool ValidateOrphanedBlock(Block block, out string? error);
 
     bool ValidateSuggestedBlock(Block block);
 

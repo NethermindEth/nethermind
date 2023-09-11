@@ -126,9 +126,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parentHeader is null)
         {
-            if (!_blockValidator.ValidateOrhpanedBlock(block!, out string? error))
+            if (!_blockValidator.ValidateOrphanedBlock(block!, out string? error))
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block without parent. Result of {requestStr}.");
+                if (_logger.IsWarn) _logger.Info($"Invalid block without parent. Result of {requestStr}.");
                 return NewPayloadV1Result.Invalid(null, $"Invalid block without parent: {error}.");
             }
 

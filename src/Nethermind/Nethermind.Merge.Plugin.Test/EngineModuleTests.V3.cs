@@ -8,7 +8,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using k8s;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -161,38 +160,25 @@ public partial class EngineModuleTests
         result.Data.Status.Should().Be(expectedPayloadStatus);
     }
 
-    [TestCase(false, PayloadStatus.Valid)]
+    [TestCase(false, PayloadStatus.Syncing)]
     [TestCase(true, PayloadStatus.Invalid)]
     public virtual async Task NewPayloadV3_should_decline_incorrect_blobgasused(bool isBlobGasUsedBroken, string expectedPayloadStatus)
     {
         (IEngineRpcModule prevRpcModule, string payloadId, Transaction[] transactions) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
-        ExecutionPayloadV3 payload1 = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
-
-
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, null);
-        IEngineRpcModule rpcModule = CreateEngineModule(chain);
-        JsonRpcConfig jsonRpcConfig = new() { EnabledModules = new[] { "Engine" } };
-        RpcModuleProvider moduleProvider = new(new FileSystem(), jsonRpcConfig, LimboLogs.Instance);
-        moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(new SingletonFactory<IEngineRpcModule>(rpcModule), true));
-
-        var fcuResult = await rpcModule.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1
-         (
-              TestItem.KeccakB,
-              TestItem.KeccakB,
-              TestItem.KeccakB
-         ));
-
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
 
         if (isBlobGasUsedBroken)
         {
-            payload1.ParentHash = TestItem.KeccakH;
-            payload1.BlobGasUsed += 1;
-            payload1.BlockNumber = 2;
-            payload1.TryGetBlock(out Block b);
-            payload1.BlockHash = b!.CalculateHash();
+            payload.BlobGasUsed += 1;
         }
+
+        payload.ParentHash = TestItem.KeccakA;
+        payload.BlockNumber = 2;
+        payload.TryGetBlock(out Block? b);
+        payload.BlockHash = b!.CalculateHash();
+
         byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
-        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload1, blobVersionedHashes, payload1.ParentBeaconBlockRoot);
+        ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
         result.Data.Status.Should().Be(expectedPayloadStatus);

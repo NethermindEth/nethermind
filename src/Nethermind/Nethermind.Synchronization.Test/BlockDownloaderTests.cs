@@ -474,10 +474,10 @@ namespace Nethermind.Synchronization.Test
                 return true;
             }
 
-            public bool ValidateOrhpanedBlock(Block block, out string? error)
+            public bool ValidateOrphanedBlock(Block block, out string? error)
             {
                 Thread.Sleep(1000);
-                error = string.Empty;
+                error = null;
                 return true;
             }
         }

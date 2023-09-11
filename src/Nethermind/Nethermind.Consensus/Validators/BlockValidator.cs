@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -47,6 +46,30 @@ public class BlockValidator : IBlockValidator
         return _headerValidator.Validate(header, isUncle);
     }
 
+
+    /// <summary>
+    /// Orphaned block validation applies to blocks without parent which may happen during BeaconSync
+    /// </summary>
+    /// <param name="block">A block to validate</param>
+    /// <param name="error">Error description in case of failed validation</param>
+    /// <returns>Validation result</returns>
+    public bool ValidateOrphanedBlock(Block block, out string? error)
+    {
+        if (_specProvider.GetSpec(block.Header).IsEip4844Enabled)
+        {
+            ulong calculated = BlobGasCalculator.CalculateBlobGas(block.Transactions);
+            if (calculated != block.BlobGasUsed)
+            {
+                error = $"Invalid {nameof(block.BlobGasUsed)}: {block.BlobGasUsed}, expected {calculated}";
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}");
+                return false;
+            }
+        }
+
+        error = null;
+        return true;
+    }
+
     /// <summary>
     /// Suggested block validation runs basic checks that can be executed before going through the expensive EVM processing.
     /// </summary>
@@ -66,19 +89,19 @@ public class BlockValidator : IBlockValidator
 
         if (spec.MaximumUncleCount < block.Uncles.Length)
         {
-            _logger.Debug($"{Invalid(block)} Uncle count of {block.Uncles.Length} exceeds the max limit of {spec.MaximumUncleCount}");
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Uncle count of {block.Uncles.Length} exceeds the max limit of {spec.MaximumUncleCount}");
             return false;
         }
 
-        if (!ValidateUnclesHashMatches(block, out var unclesHash))
+        if (!ValidateUnclesHashMatches(block, out Keccak unclesHash))
         {
-            _logger.Debug($"{Invalid(block)} Uncles hash mismatch: expected {block.Header.UnclesHash}, got {unclesHash}");
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Uncles hash mismatch: expected {block.Header.UnclesHash}, got {unclesHash}");
             return false;
         }
 
         if (!_unclesValidator.Validate(block.Header, block.Uncles))
         {
-            _logger.Debug($"{Invalid(block)} Invalid uncles");
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid uncles");
             return false;
         }
 
@@ -302,20 +325,4 @@ public class BlockValidator : IBlockValidator
 
     private static string Invalid(Block block) =>
         $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";
-
-    public bool ValidateOrhpanedBlock(Block block, out string? error)
-    {
-        if (_specProvider.GetSpec(block.Header).IsEip4844Enabled)
-        {
-            var calculated = BlobGasCalculator.CalculateBlobGas(block.Transactions);
-            if (calculated != block.BlobGasUsed)
-            {
-                error = $"Invalid {nameof(block.BlobGasUsed)}: {block.BlobGasUsed}, expected {calculated}";
-                return false;
-            }
-        }
-
-        error = null;
-        return true;
-    }
 }

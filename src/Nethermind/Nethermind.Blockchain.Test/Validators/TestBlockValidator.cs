@@ -56,7 +56,7 @@ public class TestBlockValidator : IBlockValidator
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
 
-    public bool ValidateOrhpanedBlock(Block block, out string? error)
+    public bool ValidateOrphanedBlock(Block block, out string? error)
     {
         error = null;
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();

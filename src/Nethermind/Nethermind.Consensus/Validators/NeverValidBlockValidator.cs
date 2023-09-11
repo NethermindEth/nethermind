@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.Validators
             return false;
         }
 
-        public bool ValidateOrhpanedBlock(Block block, out string? error)
+        public bool ValidateOrphanedBlock(Block block, out string? error)
         {
             error = null;
             return false;

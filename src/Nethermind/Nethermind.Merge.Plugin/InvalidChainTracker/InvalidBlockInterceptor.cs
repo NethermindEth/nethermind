@@ -23,7 +23,7 @@ public class InvalidBlockInterceptor : IBlockValidator
         _logger = logManager.GetClassLogger(typeof(InvalidBlockInterceptor));
     }
 
-    public bool ValidateOrhpanedBlock(Block block, out string? error) => _baseValidator.ValidateOrhpanedBlock(block, out error);
+    public bool ValidateOrphanedBlock(Block block, out string? error) => _baseValidator.ValidateOrphanedBlock(block, out error);
 
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
     {
