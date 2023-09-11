@@ -544,20 +544,19 @@ namespace Nethermind.Facade
                         new CodeInfo(accountOverride.Code), accountOverride.MovePrecompileToAddress);
                 }
 
-
+                //TODO: discuss if clean slate is a must
                 if (accountOverride.State is not null)
                 {
-                    accountOverride.State = new Dictionary<UInt256, byte[]>();
-                    foreach (KeyValuePair<UInt256, byte[]> storage in accountOverride.State)
+                    foreach (KeyValuePair<UInt256, ValueKeccak> storage in accountOverride.State)
                         StateProvider.Set(new StorageCell(address, storage.Key),
-                            storage.Value.WithoutLeadingZeros().ToArray());
+                            storage.Value.ToByteArray().WithoutLeadingZeros().ToArray());
                 }
 
                 if (accountOverride.StateDiff is not null)
                 {
-                    foreach (KeyValuePair<UInt256, byte[]> storage in accountOverride.StateDiff)
+                    foreach (KeyValuePair<UInt256, ValueKeccak> storage in accountOverride.StateDiff)
                         StateProvider.Set(new StorageCell(address, storage.Key),
-                            storage.Value.WithoutLeadingZeros().ToArray());
+                            storage.Value.ToByteArray().WithoutLeadingZeros().ToArray());
                 }
                 StateProvider.Commit(CurrentSpec);
             }
