@@ -1,11 +1,18 @@
+using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.GC;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.Optimism;
 
@@ -37,5 +44,11 @@ public class OptimismPlugin : MergePlugin, IConsensusPlugin, IInitializationPlug
             _manualTimestamper!,
             _blocksConfig,
             _api.LogManager);
+    }
+
+    protected override void RegisterEngineRpcModule(IEngineRpcModule engineRpcModule)
+    {
+        ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
+        _api.RpcModuleProvider.RegisterSingle<IOptimismEngineRpcModule>(new OptimismEngineRpcModule(engineRpcModule));
     }
 }
