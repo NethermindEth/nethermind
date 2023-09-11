@@ -22,7 +22,7 @@ public class BlockOverride
 
     public BlockHeader GetBlockHeader(BlockHeader parent, IBlocksConfig cfg)
     {
-        ulong newTime = Time ?? parent.Timestamp + cfg.SecondsPerSlot;
+        ulong newTime = Time ?? checked(parent.Timestamp + cfg.SecondsPerSlot);
 
         long newGasLimit = GasLimit switch
         {
@@ -33,7 +33,7 @@ public class BlockOverride
 
         long newBlockNumber = Number switch
         {
-            null => parent.Number + 1,
+            null => checked(parent.Number + 1),
             <= long.MaxValue => (long)Number,
             _ => throw new OverflowException($"Block Number value is too large, max value {ulong.MaxValue}")
         };

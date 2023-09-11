@@ -141,7 +141,7 @@ public class EthMulticallTestsBlocksAndTransactions
                     BlockOverrides =
                         new BlockOverride
                         {
-                            Number = (UInt256)new decimal(2),
+                            Number = 2,
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
@@ -153,7 +153,7 @@ public class EthMulticallTestsBlocksAndTransactions
                     BlockOverrides =
                         new BlockOverride
                         {
-                            Number = (UInt256)new decimal(chain.Bridge.HeadBlock.Number + 10000),
+                            Number = (ulong)checked(chain.Bridge.HeadBlock.Number + 10000),
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
@@ -218,7 +218,7 @@ public class EthMulticallTestsBlocksAndTransactions
                     BlockOverrides =
                         new BlockOverride
                         {
-                            Number = (UInt256)new decimal(chain.Bridge.HeadBlock.Number + 10),
+                            Number = (ulong)checked(chain.Bridge.HeadBlock.Number + 10),
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
@@ -230,7 +230,7 @@ public class EthMulticallTestsBlocksAndTransactions
                     BlockOverrides =
                         new BlockOverride
                         {
-                            Number = (UInt256)new decimal(123),
+                            Number = 123,
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
