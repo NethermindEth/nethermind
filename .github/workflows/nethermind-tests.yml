@@ -77,8 +77,6 @@ jobs:
     steps:
     - name: Check out repository
       uses: actions/checkout@v3
-      with:
-        submodules: true
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
       with:

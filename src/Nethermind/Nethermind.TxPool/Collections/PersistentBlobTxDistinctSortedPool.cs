@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -30,13 +31,26 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
     private void RecreateLightTxCollectionAndCache(ITxStorage blobTxStorage)
     {
         if (_logger.IsDebug) _logger.Debug("Recreating light collection of blob transactions and cache");
+        int numberOfTxsInDb = 0;
+        int numberOfBlobsInDb = 0;
+        Stopwatch stopwatch = new();
+        stopwatch.Start();
         foreach (Transaction fullBlobTx in blobTxStorage.GetAll())
         {
-            if (base.TryInsert(fullBlobTx.Hash, new LightTransaction(fullBlobTx)))
+            if (base.TryInsert(fullBlobTx.Hash, new LightTransaction(fullBlobTx), out _))
             {
                 _blobTxCache.Set(fullBlobTx.Hash, fullBlobTx);
+                numberOfTxsInDb++;
+                numberOfBlobsInDb += fullBlobTx.BlobVersionedHashes?.Length ?? 0;
             }
         }
+
+        if (_logger.IsInfo && numberOfTxsInDb != 0)
+        {
+            long loadingTime = stopwatch.ElapsedMilliseconds;
+            _logger.Info($"Loaded {numberOfTxsInDb} blob txs from persistent db, containing {numberOfBlobsInDb} blobs, in {loadingTime}ms");
+        }
+        stopwatch.Stop();
     }
 
     public override bool TryInsert(ValueKeccak hash, Transaction fullBlobTx, out Transaction? removed)
