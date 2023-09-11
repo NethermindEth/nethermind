@@ -1,12 +1,15 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 
 namespace Nethermind.Optimism;
 
-public class OptimismPlugin : MergePlugin, IInitializationPlugin
+public class OptimismPlugin : MergePlugin, IConsensusPlugin, IInitializationPlugin
 {
     public override string Name => "Optimism";
 
@@ -14,7 +17,17 @@ public class OptimismPlugin : MergePlugin, IInitializationPlugin
 
     protected override bool MergeEnabled => ShouldRunSteps(_api);
 
-    public bool ShouldRunSteps(INethermindApi api) => api.Config<IOptimismConfig>().Enabled; // we can also make it chain spec based
+    public string SealEngineType => Core.SealEngineType.Optimism;
+
+    public IBlockProductionTrigger DefaultBlockProductionTrigger =>
+        throw new System.NotImplementedException("Block producer is not supported for Optimism Pre-Bedrock.");
+
+    public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
+    {
+        throw new System.NotImplementedException("Block producer is not supported for Optimism Pre-Bedrock.");
+    }
+
+    public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
 
     protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()
     {

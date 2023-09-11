@@ -2,13 +2,10 @@
   "name": "Optimism goerli",
   "dataDir": "op-goerli",
   "engine": {
-    "Ethash": {
+    "Optimism": {
       "params": {
-        "minimumDifficulty": "0x0",
-        "difficultyBombDisabled": "true",
-        "durationLimit": "0xd",
-        "homesteadTransition": "0x0",
-        "eip100bTransition": "0x0"
+        "regolithTimestamp": "0x0",
+        "bedrockBlockNumber": "0x0"
       }
     }
   },

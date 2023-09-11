@@ -3,6 +3,7 @@
 
 using Nethermind.Api;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -12,12 +13,10 @@ namespace Nethermind.Optimism;
 public class InitializeBlockchainOptimism : InitializeBlockchain
 {
     private readonly INethermindApi _api;
-    private readonly IOptimismConfig _opConfig;
 
     public InitializeBlockchainOptimism(INethermindApi api) : base(api)
     {
         _api = api;
-        _opConfig = api.Config<IOptimismConfig>();
     }
 
     protected override ITransactionProcessor CreateTransactionProcessor()
@@ -27,8 +26,14 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
 
         VirtualMachine virtualMachine = CreateVirtualMachine();
 
-        OPL1CostHelper l1CostHelper = new(_opConfig.L1FeeReceiver);
-        OPConfigHelper opConfigHelper = new(_opConfig.RegolithBlockNumber, _opConfig.BedrockBlockNumber, _opConfig.L1FeeReceiver);
+        Address l1FeeRecipient = new("0x420000000000000000000000000000000000001A");
+
+        OPL1CostHelper l1CostHelper = new(l1FeeRecipient);
+        OPSpecHelper opConfigHelper = new(
+            _api.ChainSpec.Optimism.RegolithTimestamp,
+            _api.ChainSpec.Optimism.BedrockBlockNumber,
+            l1FeeRecipient // it would be good to get this last one from chainspec too
+        );
 
         return new OptimismTransactionProcessor(
             _api.SpecProvider,

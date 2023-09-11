@@ -5,23 +5,23 @@ using Nethermind.Core;
 
 namespace Nethermind.Optimism;
 
-public class OPConfigHelper : IOPConfigHelper
+public class OPSpecHelper : IOPConfigHelper
 {
-    private readonly long _regolithBlockNumber;
+    private readonly ulong _regolithTimestamp;
     private readonly long _bedrockBlockNumber;
 
     public Address L1FeeReceiver { get; init; }
 
-    public OPConfigHelper(long regolithBlockNumber, long bedrockBlockNumber, Address l1FeeReceiver)
+    public OPSpecHelper(ulong regolithTimestamp, long bedrockBlockNumber, Address l1FeeReceiver)
     {
-        _regolithBlockNumber = regolithBlockNumber;
+        _regolithTimestamp = regolithTimestamp;
         _bedrockBlockNumber = bedrockBlockNumber;
         L1FeeReceiver = l1FeeReceiver;
     }
 
     public bool IsRegolith(BlockHeader header)
     {
-        return header.Number >= _regolithBlockNumber;
+        return header.Timestamp >= _regolithTimestamp;
     }
 
     public bool IsBedrock(BlockHeader header)

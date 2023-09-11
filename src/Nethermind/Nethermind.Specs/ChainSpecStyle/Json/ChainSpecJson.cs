@@ -159,6 +159,19 @@ internal class ChainSpecJson
         public AuraEngineParamsJson Params { get; set; }
     }
 
+    internal class OptimismEngineJson
+    {
+        public ulong RegolithTimestamp => Params.RegolithTimestamp;
+        public long BedrockBlockNumber => Params.BedrockBlockNumber;
+        public OptimismEngineParamsJson Params { get; set; }
+    }
+
+    internal class OptimismEngineParamsJson
+    {
+        public ulong RegolithTimestamp { get; set; }
+        public long BedrockBlockNumber { get; set; }
+    }
+
     internal class NethDevJson
     {
     }
@@ -168,6 +181,7 @@ internal class ChainSpecJson
         public EthashEngineJson Ethash { get; set; }
         public CliqueEngineJson Clique { get; set; }
         public AuraEngineJson AuthorityRound { get; set; }
+        public OptimismEngineJson Optimism { get; set; }
         public NethDevJson NethDev { get; set; }
 
         [JsonExtensionData]

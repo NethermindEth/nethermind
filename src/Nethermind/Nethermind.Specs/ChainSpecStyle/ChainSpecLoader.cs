@@ -315,6 +315,15 @@ public class ChainSpecLoader : IChainSpecLoader
                 }
             }
         }
+        else if (chainSpecJson.Engine?.Optimism is not null)
+        {
+            chainSpec.SealEngineType = SealEngineType.Optimism;
+            chainSpec.Optimism = new OptimismParameters
+            {
+                RegolithTimestamp = chainSpecJson.Engine.Optimism.RegolithTimestamp,
+                BedrockBlockNumber = chainSpecJson.Engine.Optimism.BedrockBlockNumber,
+            };
+        }
         else if (chainSpecJson.Engine?.NethDev is not null)
         {
             chainSpec.SealEngineType = SealEngineType.NethDev;
