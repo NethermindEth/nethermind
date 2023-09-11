@@ -48,8 +48,10 @@ public class BlockOverride
             newBlockNumber,
             newGasLimit,
             newTime,
-            Array.Empty<byte>()) {
-            MixHash = PrevRandao, BaseFeePerGas = BaseFeePerGas ?? parent.BaseFeePerGas,
+            Array.Empty<byte>())
+        {
+            MixHash = PrevRandao,
+            BaseFeePerGas = BaseFeePerGas ?? parent.BaseFeePerGas,
         };
 
         UInt256 difficulty = ConstantDifficulty.One.Calculate(result, parent);

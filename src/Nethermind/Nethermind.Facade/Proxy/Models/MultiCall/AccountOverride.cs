@@ -9,7 +9,7 @@ namespace Nethermind.Facade.Proxy.Models.MultiCall;
 
 public class AccountOverride
 {
-    public UInt256? Nonce { get; set; } 
+    public UInt256? Nonce { get; set; }
     public UInt256? Balance { get; set; }
     public byte[]? Code { get; set; }
     public Address? MovePrecompileToAddress { get; set; }
