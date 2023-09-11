@@ -36,11 +36,11 @@ namespace Nethermind.Facade.Proxy
         public Task<RpcResult<ReceiptModel>> eth_getTransactionReceipt(Keccak transactionHash)
             => _proxy.SendAsync<ReceiptModel>(nameof(eth_getTransactionReceipt), transactionHash);
 
-        public Task<RpcResult<byte[]>> eth_call(CallTransactionModel transaction,
+        public Task<RpcResult<byte[]>> eth_call(CallTransaction transaction,
             BlockParameterModel blockParameter = null)
             => _proxy.SendAsync<byte[]>(nameof(eth_call), transaction, MapBlockParameter(blockParameter));
 
-        public Task<RpcResult<MultiCallBlockResult[]>> eth_multicallV1(MultiCallPayload<CallTransactionModel> blockCalls, BlockParameterModel blockParameter = null)
+        public Task<RpcResult<MultiCallBlockResult[]>> eth_multicallV1(MultiCallPayload<CallTransaction> blockCalls, BlockParameterModel blockParameter = null)
         => _proxy.SendAsync<MultiCallBlockResult[]>(nameof(eth_multicallV1), blockCalls, MapBlockParameter(blockParameter));
 
         public Task<RpcResult<byte[]>> eth_getCode(Address address, BlockParameterModel blockParameter = null)

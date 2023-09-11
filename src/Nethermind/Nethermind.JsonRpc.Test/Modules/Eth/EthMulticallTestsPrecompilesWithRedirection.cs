@@ -135,7 +135,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
             executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
-        byte[] addressBytes = result.Data[0].Calls[0].Return
+        byte[] addressBytes = result.Data[0].Calls[0].ReturnData
                .SliceWithZeroPaddingEmptyOnError(12, 20);
         Address resultingAddress = new(addressBytes);
         Assert.AreEqual(realSenderAccount, resultingAddress);

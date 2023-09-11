@@ -81,7 +81,7 @@ namespace Nethermind.Facade.Test.Proxy
         [Test]
         public async Task eth_call_should_invoke_client_method()
         {
-            var callTransaction = new CallTransactionModel();
+            var callTransaction = new CallTransaction();
             var blockParameter = BlockParameterModel.Latest;
             await _proxy.eth_call(callTransaction, blockParameter);
             await _client.Received().SendAsync<byte[]>(nameof(_proxy.eth_call),
@@ -92,7 +92,7 @@ namespace Nethermind.Facade.Test.Proxy
         [Test]
         public async Task eth_multicall_should_invoke_client_method_even_empty()
         {
-            MultiCallPayload<CallTransactionModel> payload = new();
+            MultiCallPayload<CallTransaction> payload = new();
             var blockParameter = BlockParameterModel.Latest;
             await _proxy.eth_multicallV1(payload, blockParameter);
 
@@ -104,9 +104,9 @@ namespace Nethermind.Facade.Test.Proxy
         [Test]
         public async Task eth_multicallV1_should_invoke_client_method()
         {
-            MultiCallPayload<CallTransactionModel> payload = new()
+            MultiCallPayload<CallTransaction> payload = new()
             {
-                BlockStateCalls = new BlockStateCall<CallTransactionModel>[] { },
+                BlockStateCalls = new BlockStateCall<CallTransaction>[] { },
                 TraceTransfers = true
             };
 

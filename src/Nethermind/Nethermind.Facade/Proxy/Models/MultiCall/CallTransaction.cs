@@ -5,9 +5,9 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using static Nethermind.Core.Extensions.MemoryExtensions;
 
-namespace Nethermind.Facade.Proxy.Models
+namespace Nethermind.Facade.Proxy.Models.MultiCall
 {
-    public class CallTransactionModel
+    public class CallTransaction
     {
         public Address From { get; set; }
         public Address To { get; set; }
@@ -16,7 +16,7 @@ namespace Nethermind.Facade.Proxy.Models
         public UInt256 Value { get; set; }
         public byte[] Data { get; set; }
 
-        public static CallTransactionModel FromTransaction(Transaction transaction)
+        public static CallTransaction FromTransaction(Transaction transaction)
             => new()
             {
                 From = transaction.SenderAddress,

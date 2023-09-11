@@ -26,7 +26,7 @@ internal class MultiCallTxTracer : TxTracer
         TraceResult = new MultiCallCallResult()
         {
             GasUsed = (ulong)gasSpent,
-            Return = output,
+            ReturnData = output,
             Status = StatusCode.Success.ToString(),
             Logs = logs.Select((entry, i) => new Log
             {
@@ -49,7 +49,7 @@ internal class MultiCallTxTracer : TxTracer
                 Code = StatusCode.Failure,
                 Message = error
             },
-            Return = output,
+            ReturnData = output,
             Status = StatusCode.Failure.ToString()
         };
     }
