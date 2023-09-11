@@ -112,7 +112,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
                 new AccountOverride
                 {
                     Code = code,
-                    MoveToAddress = new Address("0x0000000000000000000000000000000000000666")
+                    MovePrecompileToAddress = new Address("0x0000000000000000000000000000000000000666")
                 }}
             },
             Calls = new[]

@@ -488,30 +488,61 @@ namespace Nethermind.Facade
                 }
                 catch (Exception)
                 {
-                    // TODO: handle missing block without exceptions
+                    // ignored
                 }
+
+                UInt256 balance = 0;
+                if (accountOverride.Balance != null)
+                {
+                    balance = accountOverride.Balance.Value;
+                }
+
+                UInt256 nonce = 0;
+                if (accountOverride.Nonce != null)
+                {
+                    nonce = accountOverride.Nonce.Value;
+                }
+
 
                 if (!accExists)
                 {
-                    StateProvider.CreateAccount(address, accountOverride.Balance, accountOverride.Nonce);
+                    StateProvider.CreateAccount(address, balance, nonce);
                     acc = StateProvider.GetAccount(address);
                 }
                 else
                     acc = StateProvider.GetAccount(address);
 
                 UInt256 accBalance = acc.Balance;
-                if (accBalance > accountOverride.Balance)
-                    StateProvider.SubtractFromBalance(address, accBalance - accountOverride.Balance, CurrentSpec);
-                else if (accBalance < accountOverride.Nonce)
-                    StateProvider.AddToBalance(address, accountOverride.Balance - accBalance, CurrentSpec);
+                if (accountOverride.Balance != null && accBalance > balance)
+                    StateProvider.SubtractFromBalance(address, accBalance - balance, CurrentSpec);
+
+                else if (accountOverride.Balance != null && accBalance < balance)
+                    StateProvider.AddToBalance(address, balance - accBalance, CurrentSpec);
+
 
                 UInt256 accNonce = acc.Nonce;
-                if (accNonce > accountOverride.Nonce)
-                    StateProvider.DecrementNonce(address);
-                else if (accNonce < accountOverride.Nonce) StateProvider.IncrementNonce(address);
+                if (accountOverride.Nonce != null && accNonce > nonce)
+                {
+                    UInt256 iters = accNonce - nonce;
+                    for (UInt256 i = 0; i < iters; i++)
+                    {
+                        StateProvider.DecrementNonce(address);
+                    }
+                }
+                else if (accountOverride.Nonce != null && accNonce < accountOverride.Nonce)
+                {
+                    UInt256 iters = nonce - accNonce;
+                    for (UInt256 i = 0; i < iters; i++)
+                    {
+                        StateProvider.IncrementNonce(address);
+                    }
+                }
 
-                _multiCallProcessingEnv.VirtualMachine.SetOverwrite(StateProvider, CurrentSpec, address,
-                    new CodeInfo(accountOverride.Code), accountOverride.MoveToAddress);
+                if (accountOverride.Code != null)
+                {
+                    _multiCallProcessingEnv.VirtualMachine.SetOverwrite(StateProvider, CurrentSpec, address,
+                        new CodeInfo(accountOverride.Code), accountOverride.MovePrecompileToAddress);
+                }
 
 
                 if (accountOverride.State is not null)
