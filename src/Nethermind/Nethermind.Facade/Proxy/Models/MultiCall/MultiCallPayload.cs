@@ -6,7 +6,7 @@ namespace Nethermind.Facade.Proxy.Models.MultiCall;
 public class MultiCallPayload
 {
     //Definition of blocks that can contain calls and overrides
-    public BlockStateCalls[] BlockStateCalls { get; set; }
+    public BlockStateCalls[]? BlockStateCalls { get; set; }
 
     //Trace ETH Transfers
     public bool TraceTransfers { get; set; } = false;

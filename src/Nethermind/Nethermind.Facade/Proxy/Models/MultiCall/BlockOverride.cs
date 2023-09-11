@@ -14,11 +14,11 @@ namespace Nethermind.Facade.Proxy.Models.MultiCall;
 public class BlockOverride
 {
     public Keccak PrevRandao { get; set; } = Keccak.Zero;
-    public UInt256 Number { get; set; }
-    public UInt256 Time { get; set; }
-    public ulong GasLimit { get; set; }
+    public UInt256? Number { get; set; } = 0;
+    public UInt256? Time { get; set; } = 0;
+    public ulong? GasLimit { get; set; } = 0;
     public Address FeeRecipient { get; set; } = Address.Zero;
-    public UInt256 BaseFeePerGas { get; set; }
+    public UInt256? BaseFeePerGas { get; set; } = 0;
 
     public BlockHeader GetBlockHeader(BlockHeader parent, IBlocksConfig cfg)
     {
@@ -62,7 +62,7 @@ public class BlockOverride
         result.MixHash = PrevRandao;
 
         //Note we treet parent block as such 
-        result.BaseFeePerGas = BaseFeePerGas != 0 ? BaseFeePerGas : parent.BaseFeePerGas;
+        result.BaseFeePerGas = BaseFeePerGas.Value != 0 ? BaseFeePerGas.Value : parent.BaseFeePerGas;
 
         UInt256 difficulty = ConstantDifficulty.One.Calculate(result, parent);
         result.Difficulty = difficulty;

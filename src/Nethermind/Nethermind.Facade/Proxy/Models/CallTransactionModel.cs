@@ -11,12 +11,12 @@ namespace Nethermind.Facade.Proxy.Models
 {
     public class CallTransactionModel
     {
-        public Address From { get; set; }
-        public Address To { get; set; }
-        public UInt256 Gas { get; set; }
-        public UInt256 GasPrice { get; set; }
-        public UInt256 Value { get; set; }
-        public byte[] Data { get; set; }
+        public Address? From { get; set; } = Address.SystemUser;
+        public Address? To { get; set; } = Address.Zero;
+        public UInt256? Gas { get; set; } = 0;
+        public UInt256? GasPrice { get; set; } = 0;
+        public UInt256? Value { get; set; } = 0;
+        public byte[]? Data { get; set; } = { };
 
         public static CallTransactionModel FromTransaction(Transaction transaction)
             => new()
@@ -40,9 +40,9 @@ namespace Nethermind.Facade.Proxy.Models
                 SenderAddress = From,
                 To = To,
                 Data = Data,
-                Value = Value,
+                Value = Value.Value,
                 GasLimit = (long)Gas,
-                GasPrice = GasPrice
+                GasPrice = GasPrice.Value
 
             };
 
