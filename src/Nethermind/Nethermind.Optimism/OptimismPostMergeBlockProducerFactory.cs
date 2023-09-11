@@ -27,8 +27,11 @@ public class OptimismPostMergeBlockProducerFactory : PostMergeBlockProducerFacto
 
     public override PostMergeBlockProducer Create(BlockProducerEnv producerEnv, IBlockProductionTrigger blockProductionTrigger, ITxSource? txSource = null)
     {
-        return new PostMergeBlockProducer(
-            txSource ?? new OptimismPayloadTxSource().Then(new OptimismTxPoolTxSource(producerEnv.TxSource)),
+        OptimismPayloadTxSource payloadAttrsTxSource = new();
+
+        return new OptimismPostMergeBlockProducer(
+            payloadAttrsTxSource,
+            new OptimismTxPoolTxSource(txSource ?? producerEnv.TxSource),
             producerEnv.ChainProcessor,
             producerEnv.BlockTree,
             blockProductionTrigger,

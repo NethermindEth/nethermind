@@ -9,9 +9,18 @@ using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Optimism;
 
-public class OptimismEngineRpcModuleFactory(ISpecProvider specProvider, ILogManager logManager) : IEngineRpcModuleFactory
+public class OptimismEngineRpcModuleFactory : IEngineRpcModuleFactory
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ISpecProvider _specProvider;
+    private readonly ILogManager _logManager;
+    private readonly ILogger _logger = null!;
+
+    public OptimismEngineRpcModuleFactory(ISpecProvider specProvider, ILogManager logManager)
+    {
+        _specProvider = specProvider;
+        _logManager = logManager;
+        _logger = _logManager.GetClassLogger();
+    }
 
     public IEngineRpcModule Create(
         IAsyncHandler<byte[],
@@ -44,9 +53,9 @@ public class OptimismEngineRpcModuleFactory(ISpecProvider specProvider, ILogMana
             executionGetPayloadBodiesByRangeV1Handler,
             transitionConfigurationHandler,
             capabilitiesHandler,
-            specProvider,
+            _specProvider,
             gcKeeper,
-            logManager
+            _logManager
         );
     }
 }
