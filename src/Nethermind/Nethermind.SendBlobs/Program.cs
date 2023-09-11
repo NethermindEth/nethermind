@@ -1,16 +1,25 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Net.WebSockets;
+using System.Text;
 using Nethermind.Cli;
 using Nethermind.Cli.Console;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Facade.Proxy.Models;
+using Nethermind.Facade.Proxy;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Sockets;
 using Org.BouncyCastle.Utilities.Encoders;
 
 // send-blobs <url-without-auth> <transactions-send-formula 10x1,4x2,3x6> <secret-key> <receiver-address>
@@ -64,6 +73,10 @@ if (args.Length > 4)
 ulong feeMultiplier = 4;
 if (args.Length > 5) ulong.TryParse(args[5], out feeMultiplier);
 
+
+bool waitForBlobInclusion = false;
+if (args.Length > 6) bool.TryParse(args[6], out waitForBlobInclusion);
+
 await KzgPolynomialCommitments.InitializeAsync();
 
 PrivateKey privateKey = new(privateKeyString);
@@ -82,6 +95,18 @@ if (nonceString is null)
     logger.Error("Unable to get nonce");
     return;
 }
+
+if (waitForBlobInclusion)
+{
+    var syncResult = await nodeManager.Post<dynamic>("eth_syncing");
+
+    if (syncResult is not bool)
+    {
+        waitForBlobInclusion = false;
+        logger.Info($"Will not wait for blob inclusion since selected node at {rpcUrl} is still syncing");
+    }
+}
+
 
 string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
 ulong chainId = Convert.ToUInt64(chainIdString, chainIdString.StartsWith("0x") ? 16 : 10);
@@ -115,7 +140,7 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
 
         for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
         {
-            blobs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerBlob];
+             blobs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerBlob];
             new Random().NextBytes(blobs[blobIndex]);
             for (int i = 0; i < Ckzg.Ckzg.BytesPerBlob; i += 32)
             {
@@ -146,7 +171,7 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
         string? maxPriorityFeePerGasRes = await nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
         UInt256 maxPriorityFeePerGas = (UInt256)Convert.ToUInt64(maxPriorityFeePerGasRes, maxPriorityFeePerGasRes.StartsWith("0x") ? 16 : 10);
 
-        Console.WriteLine($"Nonce: {nonce}, GasPrice: {gasPrice}, MaxPriorityFeePerGas: {maxPriorityFeePerGas}");
+        Console.WriteLine($"Nonce: {nonce}, GasPrice: {gasPrice}, MaxPriorityFeePerGas: {maxPriorityFeePerGas}, WaitForBlobInclusion: {waitForBlobInclusion}");
 
         switch (@break)
         {
@@ -184,10 +209,39 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
         string txRlp = Hex.ToHexString(txDecoder
             .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);
 
+
+        var blockResult = await nodeManager.Post<BlockModel<Keccak>>("eth_getBlockByNumber", "latest", false);
+       
         string? result = await nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
 
         Console.WriteLine("Result:" + result);
-
         nonce++;
+
+        if (txCount > 0 && blockResult != null && waitForBlobInclusion) 
+            await WaitForBlobInclusion(nodeManager, tx.CalculateHash(), blockResult.Number, logger);    
+    }
+}
+
+async Task WaitForBlobInclusion(INodeManager nodeManager, Keccak txHash, UInt256 lastBlockNumber, ILogger logger)
+{
+    logger.Info("Waiting for blob transaction to be included in a block");
+
+    while (true)
+    {
+        var blockResult = await nodeManager.Post<BlockModel<Keccak>>("eth_getBlockByNumber", lastBlockNumber, false);
+        if (blockResult != null)
+        {
+            lastBlockNumber++;
+            
+            if (blockResult.Transactions.Contains(txHash))
+            {
+                logger.Info($"Found blob transaction in block {blockResult.Number}");
+                return;
+            }
+        }
+        else
+        {
+            await Task.Delay(2000);
+        }
     }
 }
