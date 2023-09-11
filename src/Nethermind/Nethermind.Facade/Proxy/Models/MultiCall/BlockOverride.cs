@@ -40,7 +40,7 @@ public class BlockOverride
 
         Address newFeeRecipientAddress = FeeRecipient != null ? FeeRecipient : parent.Beneficiary;
 
-        var result = new BlockHeader(
+        BlockHeader? result = new(
             parent.Hash,
             Keccak.OfAnEmptySequenceRlp,
             newFeeRecipientAddress,
@@ -48,10 +48,9 @@ public class BlockOverride
             newBlockNumber,
             newGasLimit,
             newTime,
-            Array.Empty<byte>());
-
-        result.MixHash = PrevRandao;
-        result.BaseFeePerGas = BaseFeePerGas != null ? BaseFeePerGas.Value : parent.BaseFeePerGas;
+            Array.Empty<byte>()) {
+            MixHash = PrevRandao, BaseFeePerGas = BaseFeePerGas ?? parent.BaseFeePerGas,
+        };
 
         UInt256 difficulty = ConstantDifficulty.One.Calculate(result, parent);
         result.Difficulty = difficulty;
