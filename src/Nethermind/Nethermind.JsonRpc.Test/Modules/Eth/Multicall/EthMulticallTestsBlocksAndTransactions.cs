@@ -12,6 +12,7 @@ using Nethermind.Crypto;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
@@ -56,17 +57,17 @@ public class EthMulticallTestsBlocksAndTransactions
             GetTransferTxData(nextNonceA,
                 chain.EthereumEcdsa, pk, new Address("0xA143c0eA6f8059f7B3651417ccD2bAA80FC2d4Ab"), 4_000_000);
 
-        MultiCallPayload payload = new()
+        MultiCallPayload<TransactionForRpc> payload = new()
         {
-            BlockStateCalls = new BlockStateCalls[]
+            BlockStateCalls = new BlockStateCall<TransactionForRpc>[]
             {
                 new()
                 {
                     BlockOverrides = new BlockOverride() { Number = 18000000 },
                     Calls = new[]
                     {
-                        CallTransactionModel.FromTransaction(txMainnetAtoBtoFail),
-                        CallTransactionModel.FromTransaction(txMainnetAtoBToComplete),
+                        new TransactionForRpc(txMainnetAtoBtoFail),
+                        new TransactionForRpc(txMainnetAtoBToComplete),
                     },
                     StateOverrides = new Dictionary<Address, AccountOverride>()
                     {
@@ -131,9 +132,9 @@ public class EthMulticallTestsBlocksAndTransactions
         Transaction txAtoB4 =
             GetTransferTxData(nonceA + 4, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
 
-        MultiCallPayload payload = new()
+        MultiCallPayload<TransactionForRpc> payload = new()
         {
-            BlockStateCalls = new BlockStateCalls[]
+            BlockStateCalls = new BlockStateCall<TransactionForRpc>[]
             {
                 new()
                 {
@@ -145,7 +146,7 @@ public class EthMulticallTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = new[] { CallTransactionModel.FromTransaction(txAtoB1), CallTransactionModel.FromTransaction(txAtoB2) }
+                    Calls = new[] { new TransactionForRpc(txAtoB1), new TransactionForRpc(txAtoB2) }
                 },
                 new()
                 {
@@ -157,7 +158,7 @@ public class EthMulticallTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = new[] { CallTransactionModel.FromTransaction(txAtoB3), CallTransactionModel.FromTransaction(txAtoB4) }
+                    Calls = new[] { new TransactionForRpc(txAtoB3), new TransactionForRpc(txAtoB4) }
                 }
             },
             TraceTransfers = true
@@ -208,9 +209,9 @@ public class EthMulticallTestsBlocksAndTransactions
         //shall fail
         Transaction txAtoB2 =
             GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, UInt256.MaxValue);
-        MultiCallPayload payload = new()
+        MultiCallPayload<TransactionForRpc> payload = new()
         {
-            BlockStateCalls = new BlockStateCalls[]
+            BlockStateCalls = new BlockStateCall<TransactionForRpc>[]
             {
                 new()
                 {
@@ -222,7 +223,7 @@ public class EthMulticallTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = new[] { CallTransactionModel.FromTransaction(txAtoB1) }
+                    Calls = new[] { new TransactionForRpc(txAtoB1) }
                 },
                 new()
                 {
@@ -234,7 +235,7 @@ public class EthMulticallTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = new[] { CallTransactionModel.FromTransaction(txAtoB2) }
+                    Calls = new[] { new TransactionForRpc(txAtoB2) }
                 }
             },
             TraceTransfers = true

@@ -6,9 +6,9 @@ using Nethermind.Core;
 
 namespace Nethermind.Facade.Proxy.Models.MultiCall;
 
-public class BlockStateCalls
+public class BlockStateCall<T>
 {
     public BlockOverride? BlockOverrides { get; set; }
     public Dictionary<Address, AccountOverride>? StateOverrides { get; set; } = new Dictionary<Address, AccountOverride>();
-    public CallTransactionModel[]? Calls { get; set; } = { };
+    public T[]? Calls { get; set; } = { };
 }

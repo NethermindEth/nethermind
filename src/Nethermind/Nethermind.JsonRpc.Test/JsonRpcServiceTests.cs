@@ -82,7 +82,7 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void CanRunEthMulticallV1Empty()
         {
-            MultiCallPayload payload = new() { BlockStateCalls = Array.Empty<BlockStateCalls>() };
+            MultiCallPayload<TransactionForRpc> payload = new() { BlockStateCalls = Array.Empty<BlockStateCall<TransactionForRpc>>() };
 
             EthereumJsonSerializer serializer = new();
 

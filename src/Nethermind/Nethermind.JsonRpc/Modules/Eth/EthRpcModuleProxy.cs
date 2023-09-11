@@ -157,7 +157,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<MultiCallBlockResult[]> eth_multicallV1(MultiCallPayload payload, BlockParameter? blockParameter = null)
+        public ResultWrapper<MultiCallBlockResult[]> eth_multicallV1(MultiCallPayload<TransactionForRpc> payload, BlockParameter? blockParameter = null)
         {
             throw new NotImplementedException();
         }

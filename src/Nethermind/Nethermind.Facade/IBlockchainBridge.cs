@@ -26,7 +26,7 @@ namespace Nethermind.Facade
         TxReceipt GetReceipt(Keccak txHash);
         (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Keccak txHash);
         (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash);
-        MultiCallOutput MultiCall(BlockHeader header, MultiCallPayload payload, CancellationToken cancellationToken);
+        MultiCallOutput MultiCall(BlockHeader header, MultiCallPayload<Transaction> payload, CancellationToken cancellationToken);
         CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
         CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
         CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize);

@@ -3,15 +3,14 @@
 
 namespace Nethermind.Facade.Proxy.Models.MultiCall;
 
-public class MultiCallPayload
+public class MultiCallPayload<T>
 {
     //Definition of blocks that can contain calls and overrides
-    public BlockStateCalls[]? BlockStateCalls { get; set; }
+    public BlockStateCall<T>[]? BlockStateCalls { get; set; }
 
     //Trace ETH Transfers
     public bool TraceTransfers { get; set; } = false;
 
     //When true, the multicall does all validations that a normal EVM would do, except contract sender and signature checks. When false, multicall behaves like eth_call.
     public bool Validation { get; set; } = false;
-
 }

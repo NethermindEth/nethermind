@@ -19,9 +19,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
     //General executor
     public partial class EthRpcModule
     {
-
-
-
         // Single call executor
         private abstract class TxExecutor<TResult> : ExecutorBase<TResult, TransactionForRpc, Transaction>
         {

@@ -186,7 +186,7 @@ namespace Nethermind.Facade
 
 
 
-        public MultiCallOutput MultiCall(BlockHeader header, MultiCallPayload payload, CancellationToken cancellationToken)
+        public MultiCallOutput MultiCall(BlockHeader header, MultiCallPayload<Transaction> payload, CancellationToken cancellationToken)
         {
             MultiCallBlockTracer multiCallOutputTracer = new();
             MultiCallOutput result = new();
@@ -326,7 +326,7 @@ namespace Nethermind.Facade
             transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
         }
 
-        private (bool Success, string Error) TryMultiCallTrace(BlockHeader parent, MultiCallPayload payload,
+        private (bool Success, string Error) TryMultiCallTrace(BlockHeader parent, MultiCallPayload<Transaction> payload,
            IBlockTracer tracer)
         {
             using (IMultiCallBlocksProcessingEnv? env = _multiCallProcessingEnv.Clone(payload.TraceTransfers))
@@ -346,7 +346,7 @@ namespace Nethermind.Facade
                     }
                 }
 
-                foreach (BlockStateCalls? callInputBlock in payload.BlockStateCalls)
+                foreach (BlockStateCall<Transaction>? callInputBlock in payload.BlockStateCalls)
                 {
                     BlockHeader callHeader = null;
                     if (callInputBlock.BlockOverrides == null)
@@ -383,7 +383,7 @@ namespace Nethermind.Facade
                     env.StateProvider.CommitTree(currentBlock.Number);
                     env.StateProvider.RecalculateStateRoot();
 
-                    var transactions = callInputBlock.Calls.Select(model => model.GetTransaction()).ToList();
+                    var transactions = callInputBlock.Calls;
                     foreach (Transaction transaction in transactions)
                     {
                         transaction.SenderAddress ??= Address.SystemUser;

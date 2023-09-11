@@ -12,6 +12,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.MultiCall;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using NUnit.Framework;
 
@@ -102,9 +103,9 @@ public class EthMulticallTestsPrecompilesWithRedirection
         systemTransactionForModifiedVM.GasPrice = header.BaseFeePerGas >= 1 ? header.BaseFeePerGas : 1;
         systemTransactionForModifiedVM.GasLimit = (long)systemTransactionForModifiedVM.CalculateTransactionPotentialCost(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
-        MultiCallPayload payload = new()
+        MultiCallPayload<TransactionForRpc> payload = new()
         {
-            BlockStateCalls = new BlockStateCalls[] { new()
+            BlockStateCalls = new BlockStateCall<TransactionForRpc>[] { new()
         {
             StateOverrides = new Dictionary<Address, AccountOverride>()
             {   {EcRecoverPrecompile.Address,
@@ -116,7 +117,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
             },
             Calls = new[]
             {
-                CallTransactionModel.FromTransaction(systemTransactionForModifiedVM),
+                new TransactionForRpc(systemTransactionForModifiedVM),
             }
         }},
             TraceTransfers = true,

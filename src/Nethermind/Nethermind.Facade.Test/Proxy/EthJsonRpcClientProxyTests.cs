@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -91,7 +92,7 @@ namespace Nethermind.Facade.Test.Proxy
         [Test]
         public async Task eth_multicall_should_invoke_client_method_even_empty()
         {
-            MultiCallPayload payload = new();
+            MultiCallPayload<CallTransactionModel> payload = new();
             var blockParameter = BlockParameterModel.Latest;
             await _proxy.eth_multicallV1(payload, blockParameter);
 
@@ -103,9 +104,9 @@ namespace Nethermind.Facade.Test.Proxy
         [Test]
         public async Task eth_multicallV1_should_invoke_client_method()
         {
-            MultiCallPayload payload = new()
+            MultiCallPayload<CallTransactionModel> payload = new()
             {
-                BlockStateCalls = new BlockStateCalls[] { },
+                BlockStateCalls = new BlockStateCall<CallTransactionModel>[] { },
                 TraceTransfers = true
             };
 

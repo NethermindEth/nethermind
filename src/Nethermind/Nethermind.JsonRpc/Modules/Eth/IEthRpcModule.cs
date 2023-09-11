@@ -155,7 +155,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Executes a simulation across multiple blocks (does not create a transaction or block)",
             IsSharable = false,
             ExampleResponse = "0x")]
-        ResultWrapper<MultiCallBlockResult[]> eth_multicallV1(MultiCallPayload payload, BlockParameter? blockParameter = null);
+        ResultWrapper<MultiCallBlockResult[]> eth_multicallV1(MultiCallPayload<TransactionForRpc> payload, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Executes a tx call and returns gas used (does not create a transaction)",

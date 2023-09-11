@@ -14,40 +14,31 @@ namespace Nethermind.Facade.Proxy.Models.MultiCall;
 public class BlockOverride
 {
     public Keccak PrevRandao { get; set; } = Keccak.Zero;
-    public UInt256? Number { get; set; } = 0;
-    public UInt256? Time { get; set; } = 0;
-    public ulong? GasLimit { get; set; } = 0;
-    public Address FeeRecipient { get; set; } = Address.Zero;
-    public UInt256? BaseFeePerGas { get; set; } = 0;
+    public ulong? Number { get; set; } 
+    public ulong? Time { get; set; } 
+    public ulong? GasLimit { get; set; } 
+    public Address? FeeRecipient { get; set; }
+    public UInt256? BaseFeePerGas { get; set; }
 
     public BlockHeader GetBlockHeader(BlockHeader parent, IBlocksConfig cfg)
     {
-        ulong newTime = parent.Timestamp + cfg.SecondsPerSlot;
-        if (0 == Time) { }
-        else if (Time <= ulong.MaxValue)
-            newTime = (ulong)Time;
-        else
-            throw new OverflowException("Time value is too large to be converted to ulong we use.");
+        ulong newTime = Time ?? parent.Timestamp + cfg.SecondsPerSlot;
 
-        long newGasLimit = parent.GasLimit;
-        if (0 == GasLimit) { }
-        else if (GasLimit <= long.MaxValue)
-            newGasLimit = (long)GasLimit;
-        else
-            throw new OverflowException("GasLimit value is too large to be converted to long we use.");
-
-        long newBlockNumber = parent.Number + 1;
-        if (0 == Number) { }
-        else if (Number <= long.MaxValue)
-            newBlockNumber = (long)Number;
-        else
-            throw new OverflowException("Block Number value is too large to be converted to long we use.");
-
-        Address newFeeRecipientAddress = parent.Beneficiary;
-        if (FeeRecipient != Address.Zero)
+        long newGasLimit = GasLimit switch
         {
-            newFeeRecipientAddress = FeeRecipient;
-        }
+            null => parent.GasLimit,
+            <= long.MaxValue => (long)GasLimit,
+            _ => throw new OverflowException($"GasLimit value is too large, max value {ulong.MaxValue}")
+        };
+
+        long newBlockNumber = Number switch
+        {
+            null => parent.Number + 1,
+            <= long.MaxValue => (long)Number,
+            _ => throw new OverflowException($"Block Number value is too large, max value {ulong.MaxValue}")
+        };
+
+        Address newFeeRecipientAddress = FeeRecipient != null ? FeeRecipient : parent.Beneficiary;
 
         var result = new BlockHeader(
             parent.Hash,
@@ -60,9 +51,7 @@ public class BlockOverride
             Array.Empty<byte>());
 
         result.MixHash = PrevRandao;
-
-        //Note we treet parent block as such 
-        result.BaseFeePerGas = BaseFeePerGas.Value != 0 ? BaseFeePerGas.Value : parent.BaseFeePerGas;
+        result.BaseFeePerGas = BaseFeePerGas != null ? BaseFeePerGas.Value : parent.BaseFeePerGas;
 
         UInt256 difficulty = ConstantDifficulty.One.Calculate(result, parent);
         result.Difficulty = difficulty;
