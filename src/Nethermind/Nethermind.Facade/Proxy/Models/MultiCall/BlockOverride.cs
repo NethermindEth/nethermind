@@ -13,8 +13,8 @@ namespace Nethermind.Facade.Proxy.Models.MultiCall;
 
 public class BlockOverride
 {
-    public Keccak PrevRandao { get; set; } = Keccak.Zero;
     public ulong? Number { get; set; }
+    public Keccak PrevRandao { get; set; } = Keccak.Zero;
     public ulong? Time { get; set; }
     public ulong? GasLimit { get; set; }
     public Address? FeeRecipient { get; set; }
