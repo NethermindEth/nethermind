@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Specs.ChainSpecStyle;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data;
@@ -38,7 +39,9 @@ public class TransactionForRpc
         }
         if (transaction.Type > TxType.Legacy)
         {
-            ChainId = transaction.ChainId ?? BlockchainIds.Mainnet;
+            ChainId = transaction.ChainId
+                      ?? ChainSpecLoader.LastChainSpecLoaded?.ChainId
+                      ?? BlockchainIds.Mainnet;
         }
         else
         {
