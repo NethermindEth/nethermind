@@ -87,8 +87,6 @@ public class ChainSpecLoader : IChainSpecLoader
             return GetTransitions(builtInName, GetForInnerPathExistence);
         }
 
-        ValidateParams(chainSpecJson.Params);
-
         chainSpec.Parameters = new ChainParameters
         {
             GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400,
@@ -170,21 +168,6 @@ public class ChainSpecLoader : IChainSpecLoader
         Eip1559Constants.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier;
         Eip1559Constants.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue;
         Eip1559Constants.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator;
-    }
-
-    private static void ValidateParams(ChainSpecParamsJson parameters)
-    {
-        if (parameters.Eip1283ReenableTransition != parameters.Eip1706Transition
-            && parameters.Eip1283DisableTransition.HasValue)
-        {
-            throw new InvalidOperationException("When 'Eip1283ReenableTransition' or 'Eip1706Transition' are provided they have to have same value as they are both part of 'Eip2200Transition'.");
-        }
-
-        if (parameters.Eip1706Transition.HasValue
-            && parameters.Eip2200Transition.HasValue)
-        {
-            throw new InvalidOperationException("Both 'Eip2200Transition' and 'Eip1706Transition' are provided. Please provide either 'Eip2200Transition' or pair of 'Eip1283ReenableTransition' and 'Eip1706Transition' as they have same meaning.");
-        }
     }
 
     private static void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
@@ -355,6 +338,7 @@ public class ChainSpecLoader : IChainSpecLoader
         UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
         Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
         UInt256 baseFee = chainSpecJson.Genesis.BaseFeePerGas ?? UInt256.Zero;
+        Address constructorSender = chainSpecJson.Genesis.ConstructorSender;
         if (chainSpecJson.Params.Eip1559Transition is not null)
             baseFee = chainSpecJson.Params.Eip1559Transition == 0
                 ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
@@ -399,10 +383,11 @@ public class ChainSpecLoader : IChainSpecLoader
         genesisHeader.AuRaStep = step;
         genesisHeader.AuRaSignature = auRaSignature;
 
-        if (withdrawalsEnabled)
-            chainSpec.Genesis = new Block(genesisHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
-        else
-            chainSpec.Genesis = new Block(genesisHeader);
+        chainSpec.Genesis = withdrawalsEnabled
+            ? new GenesisBlock(genesisHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>())
+            : new GenesisBlock(genesisHeader);
+
+        chainSpec.Genesis.ConstructorSender = constructorSender;
     }
 
     private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

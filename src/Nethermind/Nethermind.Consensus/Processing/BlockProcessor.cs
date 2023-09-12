@@ -301,7 +301,6 @@ public partial class BlockProcessor : IBlockProcessor
         for (int i = 0; i < rewards.Length; i++)
         {
             BlockReward reward = rewards[i];
-
             ITxTracer txTracer = NullTxTracer.Instance;
             if (tracer.IsTracingRewards)
             {

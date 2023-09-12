@@ -190,6 +190,18 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             Block block = blockSearch.Object!;
 
+            return trace_replayBlock(block, traceTypes);
+        }
+
+        public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_replayBlockRLP(byte[] blockRlp, string[] traceTypes)
+        {
+            Block block = Rlp.Decode<Block>(blockRlp);
+            block.Header.TotalDifficulty ??= UInt256.One;
+            return trace_replayBlock(block, traceTypes);
+        }
+
+        private ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_replayBlock(Block block, string[] traceTypes)
+        {
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
             IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new(traceTypes1));
 

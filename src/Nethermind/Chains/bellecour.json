@@ -1,0 +1,180 @@
+{
+  "name": "bellecour",
+  "engine": {
+    "authorityRound": {
+      "params": {
+        "stepDuration": 5,
+        "blockReward": "0x0",
+        "maximumUncleCountTransition": 0,
+        "maximumUncleCount": 0,
+        "validators": {
+          "multi": {
+            "0": {
+              "list": [
+                "0x77ca78b39a75f4265b73b9cb8a5f24047a9edc79"
+              ]
+            },
+            "20000": {
+              "safeContract": "0xf2f8ebd6df066f93dc012cc94fbfa4592727a910"
+            }
+          }
+        },
+        "blockRewardContractAddress": "0xc9970afa357d919248d9042c020f7448baa65e1e",
+        "blockRewardContractTransition": 125000
+      }
+    }
+  },
+  "params": {
+    "gasLimitBoundDivisor": "0x400",
+    "maximumExtraDataSize": "0x20",
+    "minGasLimit": "0x1388",
+    "networkID": "0x86",
+    "registrar": "0x7b79ddc96db3a4cf4f3d6e2fbd820654a35b8500",
+    "transactionPermissionContract": "0x5b422a904174ab816b381e94ba740a20b2ca8132",
+    "transactionPermissionContractTransition": 20000,
+    "eip140Transition": "0x0",
+    "eip145Transition": "0x0",
+    "eip150Transition": "0x0",
+    "eip155Transition": "0x0",
+    "eip160Transition": "0x0",
+    "eip161abcTransition": "0x0",
+    "eip161dTransition": "0x0",
+    "eip211Transition": "0x0",
+    "eip214Transition": "0x0",
+    "eip658Transition": "0x0",
+    "eip1014Transition": "0x0",
+    "eip1052Transition": "0x0",
+    "eip1283Transition": "0x0",
+    "eip1283DisableTransition": "0x0",
+    "eip1344Transition": "0x440750",
+    "eip1706Transition": "0x440750",
+    "eip1884Transition": "0x440750",
+    "eip2028Transition": "0x440750",
+    "eip2929Transition": "0xCA5DDC",
+    "eip2930Transition": "0xCA5DDC",
+    "eip3541Transition": "0xCA5DDC",
+    "eip3529Transition": "0xCA5DDC"
+  },
+  "genesis": {
+    "seal": {
+      "authorityRound": {
+        "step": "0x0",
+        "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    "difficulty": "0x20000",
+    "gasLimit": "0x663BE0"
+  },
+  "nodes": [
+    "enode://49a111bac66704e85297725eda02e9bae5bfdc0b4da640b0cbcb69cf962ac7bde020f2343cc81fd7bec7d5e5399af3cd634ae101639286b86b66b4e2be5a5455@13.53.59.100:30303",
+    "enode://548ec05f0f4613a62bbbc83d60dfe8a2d49b5b217cb02656f669dc9ef222f5cc760ed5c5f790d0c022b69bc60c2ee24f9420939098edb52bebca6e685982705b@13.53.195.204:30303",
+    "enode://f92c095066bc446a5d00fc3cc6c3325c6713a1fee967fdf5e7eec73f60f6de59ed9b38046e84b05adb201feebfee08df4e6cd3e26cefa5451bd734bc08b0cead@3.10.64.47:30303",
+    "enode://69f3fbe8912826186c947d578498f19d2cdd230e0e8264c65083619e7c102ac76b7cb291ef7f4dbdf9e721ff922512f2b52449b3b6660249b98d170d70a677d1@15.188.110.189:30303"
+  ],
+  "accounts": {
+    "0x0000000000000000000000000000000000000001": {
+      "balance": "1",
+      "builtin": {
+        "name": "ecrecover",
+        "pricing": {
+          "linear": {
+            "base": 3000,
+            "word": 0
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000002": {
+      "balance": "1",
+      "builtin": {
+        "name": "sha256",
+        "pricing": {
+          "linear": {
+            "base": 60,
+            "word": 12
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000003": {
+      "balance": "1",
+      "builtin": {
+        "name": "ripemd160",
+        "pricing": {
+          "linear": {
+            "base": 600,
+            "word": 120
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000004": {
+      "balance": "1",
+      "builtin": {
+        "name": "identity",
+        "pricing": {
+          "linear": {
+            "base": 15,
+            "word": 3
+          }
+        }
+      }
+    },
+    "0000000000000000000000000000000000000005": {
+      "builtin": {
+        "name": "modexp",
+        "activate_at": "0x0",
+        "pricing": {
+          "modexp": {
+            "divisor": 20
+          }
+        }
+      }
+    },
+    "0000000000000000000000000000000000000006": {
+      "builtin": {
+        "name": "alt_bn128_add",
+        "activate_at": "0x0",
+        "pricing": {
+          "alt_bn128_const_operations": {
+            "price": 150
+          }
+        }
+      }
+    },
+    "0000000000000000000000000000000000000007": {
+      "builtin": {
+        "name": "alt_bn128_mul",
+        "activate_at": "0x0",
+        "pricing": {
+          "alt_bn128_const_operations": {
+            "price": 6000
+          }
+        }
+      }
+    },
+    "0000000000000000000000000000000000000008": {
+      "builtin": {
+        "name": "alt_bn128_pairing",
+        "activate_at": "0x0",
+        "pricing": {
+          "alt_bn128_pairing": {
+            "base": 45000,
+            "pair": 34000
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000009": {
+      "builtin": {
+        "name": "blake2_f",
+        "activate_at": "0xCA5DDC",
+        "pricing": {
+          "blake2_f": {
+            "gas_per_round": 1
+          }
+        }
+      }
+    }
+  }
+}

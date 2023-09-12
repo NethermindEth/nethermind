@@ -2554,7 +2554,7 @@ ReturnFailure:
         // fail fast before the first storage read if gas is not enough even for reset
         if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return false;
 
-        if (spec.UseNetGasMeteringWithAStipendFix)
+        if (spec.UseNetGasMeteringWithAStipendFix && spec.UseIstanbulNetGasMetering)
         {
             if (typeof(TTracingRefunds) == typeof(IsTracing))
                 _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);

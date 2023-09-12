@@ -27,7 +27,7 @@ configs = {
     "goerli": {
         "url": "api-goerli.etherscan.io",
         "blockReduced": 8192,
-        "multiplierRequirement": 30000
+        "multiplierRequirement": 10000
     },
     "gnosis": {
         "url": "https://rpc.gnosischain.com",
@@ -58,7 +58,17 @@ configs = {
         "url": "https://rpc.exosama.com",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
-    }
+    },
+    "viviani": {
+        "url": "https://viviani.iex.ec/",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },    
+    "bellecour": {
+        "url": "https://bellecour.iex.ec/",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    }	
 }
 
 def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequirement):

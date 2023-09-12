@@ -11,10 +11,13 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Consensus.BeaconBlockRoot;
+using Newtonsoft.Json;
 
 namespace Nethermind.Blockchain
 {
@@ -41,7 +44,7 @@ namespace Nethermind.Blockchain
 
         public Block Load()
         {
-            Block genesis = _chainSpec.Genesis;
+            GenesisBlock genesis = _chainSpec.Genesis;
             Preallocate(genesis);
 
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
@@ -57,7 +60,7 @@ namespace Nethermind.Blockchain
             return genesis;
         }
 
-        private void Preallocate(Block genesis)
+        private void Preallocate(GenesisBlock genesis)
         {
             foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(a => a.Key))
             {
@@ -81,9 +84,10 @@ namespace Nethermind.Blockchain
                 {
                     Transaction constructorTransaction = new SystemTransaction()
                     {
-                        SenderAddress = address,
+                        SenderAddress = genesis.ConstructorSender ?? address,
                         Data = allocation.Constructor,
-                        GasLimit = genesis.GasLimit
+                        GasLimit = genesis.GasLimit,
+                        Recipient = address
                     };
 
                     CallOutputTracer outputTracer = new();
