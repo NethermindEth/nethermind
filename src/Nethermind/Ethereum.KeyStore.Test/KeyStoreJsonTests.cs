@@ -7,13 +7,14 @@ using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Crypto;
+using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
-namespace Nethermind.KeyStore.Test
+namespace Ethereum.KeyStore.Test
 {
     [Parallelizable(ParallelScope.Self)]
     [TestFixture]
@@ -34,9 +35,7 @@ namespace Nethermind.KeyStore.Test
 
             _keyStoreDir = _config.KeyStoreDirectory;
             if (!Directory.Exists(_keyStoreDir))
-            {
                 Directory.CreateDirectory(_keyStoreDir);
-            }
 
             ILogManager logManager = LimboLogs.Instance;
             _serializer = new EthereumJsonSerializer();

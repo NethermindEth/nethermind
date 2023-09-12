@@ -834,6 +834,21 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     _needToWaitForHeaders = needToWaitForHeaders;
                     return this;
                 }
+
+                public ScenarioBuilder WhenMergeSyncPivotNotResolvedYet()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncConfig.MaxAttemptsToUpdatePivot = 3;
+                            BeaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
+                            BeaconSyncStrategy.GetFinalizedHash().Returns(TestItem.KeccakA);
+                            return "merge sync pivot not resolved yet";
+                        }
+                    );
+
+                    return this;
+                }
             }
 
             public static ScenarioBuilder GoesLikeThis(bool needToWaitForHeaders) =>
