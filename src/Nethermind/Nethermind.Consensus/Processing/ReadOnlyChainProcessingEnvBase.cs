@@ -6,7 +6,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -30,7 +29,6 @@ public class ReadOnlyChainProcessingEnvBase : IDisposable
         IBlockPreprocessorStep recoveryStep,
         IRewardCalculator rewardCalculator,
         IReceiptStorage receiptStorage,
-        IReadOnlyDbProvider dbProvider,
         ISpecProvider specProvider,
         ILogManager logManager,
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null)

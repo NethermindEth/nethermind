@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Processing
             IReadOnlyDbProvider dbProvider,
             ISpecProvider specProvider,
             ILogManager logManager,
-            IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null) : base(txEnv, blockValidator, recoveryStep, rewardCalculator, receiptStorage, dbProvider, specProvider, logManager, blockTransactionsExecutor)
+            IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null) : base(txEnv, blockValidator, recoveryStep, rewardCalculator, receiptStorage, specProvider, logManager, blockTransactionsExecutor)
         {
             ChainProcessor = new OneTimeChainProcessor(dbProvider, _blockProcessingQueue);
         }
