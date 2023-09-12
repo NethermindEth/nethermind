@@ -2,7 +2,7 @@
   "profiles": {
     "Nethermind.SendBlobs": {
       "commandName": "Project",
-      "commandLineArgs": "http://localhost:56243 2 ef5177cd0b6b21c87db5a0bf35d4084a8a57a9d6a064f86d51ac85f2b873a4e2 0x000000000000000000000000000000000000f1c1 10000 4 true"
+      "commandLineArgs": "http://localhost:8545 1-8 c2b36204cdfc90550383c3d96b8f95ede48d8447d03ec1c27c07b089a6dd67c1 0x000000000000000000000000000000000000f1c1 4"
     }
   }
 }
