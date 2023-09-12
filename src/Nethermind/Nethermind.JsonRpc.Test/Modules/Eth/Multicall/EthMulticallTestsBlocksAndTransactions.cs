@@ -95,11 +95,11 @@ public class EthMulticallTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
-        ResultWrapper<MultiCallBlockResult[]> result =
+        ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        MultiCallBlockResult[] data = result.Data;
+        IReadOnlyList<MultiCallBlockResult> data = result.Data;
 
-        Assert.AreEqual(1, data.Length);
+        Assert.AreEqual(1, data.Count);
 
         foreach (MultiCallBlockResult blockResult in data)
         {
@@ -178,11 +178,11 @@ public class EthMulticallTestsBlocksAndTransactions
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
-        ResultWrapper<MultiCallBlockResult[]> result =
+        ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        MultiCallBlockResult[] data = result.Data;
+        IReadOnlyList<MultiCallBlockResult> data = result.Data;
 
-        Assert.AreEqual(data.Length, 2);
+        Assert.AreEqual(data.Count, 2);
 
         foreach (MultiCallBlockResult blockResult in data)
         {
@@ -256,7 +256,7 @@ public class EthMulticallTestsBlocksAndTransactions
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
-        ResultWrapper<MultiCallBlockResult[]> result =
+        ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);
         Assert.IsTrue(result.Data[1].Calls[0].Error.Message.StartsWith("insufficient"));
     }

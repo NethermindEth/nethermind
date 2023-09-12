@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,7 +20,7 @@ namespace Nethermind.Facade.Proxy
         Task<RpcResult<UInt256>> eth_getTransactionCount(Address address, BlockParameterModel blockParameter = null);
         Task<RpcResult<ReceiptModel>> eth_getTransactionReceipt(Keccak transactionHash);
         Task<RpcResult<byte[]>> eth_call(CallTransaction transaction, BlockParameterModel blockParameter = null);
-        Task<RpcResult<MultiCallBlockResult[]>> eth_multicallV1(MultiCallPayload<CallTransaction> blockCalls, BlockParameterModel blockParameter = null);
+        Task<RpcResult<IReadOnlyList<MultiCallBlockResult>>> eth_multicallV1(MultiCallPayload<CallTransaction> blockCalls, BlockParameterModel blockParameter = null);
         Task<RpcResult<byte[]>> eth_getCode(Address address, BlockParameterModel blockParameter = null);
         Task<RpcResult<TransactionModel>> eth_getTransactionByHash(Keccak transactionHash);
         Task<RpcResult<TransactionModel[]>> eth_pendingTransactions();

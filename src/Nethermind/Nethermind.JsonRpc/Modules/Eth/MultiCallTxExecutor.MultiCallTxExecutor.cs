@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Find;
@@ -12,7 +13,7 @@ using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class MultiCallTxExecutor : ExecutorBase<MultiCallBlockResult[], MultiCallPayload<TransactionForRpc>, MultiCallPayload<Transaction>>
+public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResult>, MultiCallPayload<TransactionForRpc>, MultiCallPayload<Transaction>>
 {
     public MultiCallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig) :
         base(blockchainBridge, blockFinder, rpcConfig)
@@ -39,16 +40,16 @@ public class MultiCallTxExecutor : ExecutorBase<MultiCallBlockResult[], MultiCal
         return result;
     }
 
-    protected override ResultWrapper<MultiCallBlockResult[]> Execute(BlockHeader header, MultiCallPayload<Transaction> tx, CancellationToken token)
+    protected override ResultWrapper<IReadOnlyList<MultiCallBlockResult>> Execute(BlockHeader header, MultiCallPayload<Transaction> tx, CancellationToken token)
     {
         BlockchainBridge.MultiCallOutput results = _blockchainBridge.MultiCall(header.Clone(), tx, token);
 
         if (results.Error == null)
         {
-            return ResultWrapper<MultiCallBlockResult[]>.Success(results.Items.ToArray());
+            return ResultWrapper<IReadOnlyList<MultiCallBlockResult>>.Success(results.Items);
         }
 
-        return ResultWrapper<MultiCallBlockResult[]>.Fail(results.Error, results.Items.ToArray());
+        return ResultWrapper<IReadOnlyList<MultiCallBlockResult>>.Fail(results.Error, results.Items);
 
     }
 }

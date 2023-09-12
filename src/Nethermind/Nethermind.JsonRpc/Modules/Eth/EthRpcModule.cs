@@ -343,7 +343,7 @@ public partial class EthRpcModule : IEthRpcModule
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter);
 
-    public ResultWrapper<MultiCallBlockResult[]> eth_multicallV1(MultiCallPayload<TransactionForRpc> payload, BlockParameter? blockParameter = null)
+    public ResultWrapper<IReadOnlyList<MultiCallBlockResult>> eth_multicallV1(MultiCallPayload<TransactionForRpc> payload, BlockParameter? blockParameter = null)
     {
         return new MultiCallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .Execute(payload, blockParameter);

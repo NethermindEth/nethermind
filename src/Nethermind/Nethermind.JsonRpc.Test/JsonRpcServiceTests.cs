@@ -90,7 +90,7 @@ namespace Nethermind.JsonRpc.Test
 
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
             ethRpcModule.eth_multicallV1(payload).ReturnsForAnyArgs(x =>
-                ResultWrapper<MultiCallBlockResult[]>.Success(Array.Empty<MultiCallBlockResult>()));
+                ResultWrapper<IReadOnlyList<MultiCallBlockResult>>.Success(Array.Empty<MultiCallBlockResult>()));
             JsonRpcSuccessResponse? response =
                 TestRequest(ethRpcModule, "eth_multicallV1", serializedCall) as JsonRpcSuccessResponse;
             Assert.IsTrue(response != null);

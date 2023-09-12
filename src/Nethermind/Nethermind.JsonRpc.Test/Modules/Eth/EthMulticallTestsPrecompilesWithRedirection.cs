@@ -131,7 +131,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
-        ResultWrapper<MultiCallBlockResult[]> result =
+        ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
