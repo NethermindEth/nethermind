@@ -192,7 +192,7 @@ namespace Nethermind.Init.Steps
                 worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
             }
 
-            TxValidator txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
+            ITxValidator txValidator = setApi.TxValidator = CreateTxValidator();
 
             ITxPool txPool = _api.TxPool = CreateTxPool();
 
@@ -264,6 +264,11 @@ namespace Nethermind.Init.Steps
             InitializeFullPruning(pruningConfig, initConfig, _api, stateReader);
 
             return Task.CompletedTask;
+        }
+
+        protected virtual ITxValidator CreateTxValidator()
+        {
+            return new TxValidator(_api.SpecProvider!.ChainId);
         }
 
         protected virtual ITransactionProcessor CreateTransactionProcessor()

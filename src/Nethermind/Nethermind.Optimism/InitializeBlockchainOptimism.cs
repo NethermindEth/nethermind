@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
+using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
@@ -43,6 +44,11 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             l1CostHelper,
             opConfigHelper
         );
+    }
+
+    protected override ITxValidator CreateTxValidator()
+    {
+        return new OptimismTxValidator(base.CreateTxValidator());
     }
 
     protected override IHeaderValidator CreateHeaderValidator()
