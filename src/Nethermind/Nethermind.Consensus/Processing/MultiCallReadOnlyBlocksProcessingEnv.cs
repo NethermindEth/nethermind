@@ -93,12 +93,14 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             SpecProvider,
             _logManager);
 
-        _blockValidator = new MultiCallBlockValidator(new TxValidator(SpecProvider.ChainId),
+        BlockValidator? blockValidator = new(
+            new TxValidator(SpecProvider.ChainId),
             headerValidator,
             Always.Valid,
             SpecProvider,
             _logManager);
 
+        _blockValidator = new MultiCallBlockValidatorProxy(blockValidator);
     }
 
     public IBlockProcessor GetProcessor()
