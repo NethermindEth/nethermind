@@ -55,7 +55,7 @@ namespace Nethermind.Facade
         private readonly ILogFinder _logFinder;
         private readonly ISpecProvider _specProvider;
         private readonly IBlocksConfig _blocksConfig;
-        
+
         public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
             MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv,
             ITxPool? txPool,
