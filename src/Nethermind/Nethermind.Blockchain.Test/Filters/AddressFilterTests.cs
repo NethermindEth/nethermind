@@ -52,6 +52,29 @@ public class AddressFilterTests
     }
 
     [Test]
+    public void Accepts_any_address()
+    {
+        AddressFilter filter = AddressFilter.AnyAddress;
+
+        filter.Accepts(_address1).Should().BeTrue();
+        filter.Accepts(_address2).Should().BeTrue();
+        filter.Accepts(_address3).Should().BeTrue();
+    }
+
+    [Test]
+    public void Accepts_any_address_by_ref()
+    {
+        AddressFilter filter = AddressFilter.AnyAddress;
+
+        AddressStructRef address1Ref = _address1.ToStructRef();
+        AddressStructRef address2Ref = _address2.ToStructRef();
+        AddressStructRef address3Ref = _address3.ToStructRef();
+        filter.Accepts(ref address1Ref).Should().BeTrue();
+        filter.Accepts(ref address2Ref).Should().BeTrue();
+        filter.Accepts(ref address3Ref).Should().BeTrue();
+    }
+
+    [Test]
     public void Accepts_any_address_when_set_is_null()
     {
         AddressFilter filter = new AddressFilter(addresses: null!);
