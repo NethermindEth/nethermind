@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
-using System.Net.WebSockets;
-using System.Text;
 using Nethermind.Cli;
 using Nethermind.Cli.Console;
 using Nethermind.Consensus;
@@ -12,14 +9,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Proxy.Models;
-using Nethermind.Facade.Proxy;
 using Nethermind.Int256;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Sockets;
 using Org.BouncyCastle.Utilities.Encoders;
 
 // send-blobs <url-without-auth> <transactions-send-formula 10x1,4x2,3x6> <secret-key> <receiver-address>
