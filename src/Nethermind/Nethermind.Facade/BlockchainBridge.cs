@@ -20,7 +20,6 @@ using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
 using System.Threading;
 using Nethermind.Consensus.Processing;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
@@ -138,37 +137,7 @@ namespace Nethermind.Facade
         }
 
 
-        public class MultiCallOutput
-        {
-            public string? Error { get; set; }
 
-            public List<MultiCallBlockResult> Items { get; set; }
-        }
-
-        public class CallOutput
-        {
-            public CallOutput()
-            {
-            }
-
-            public CallOutput(byte[] outputData, long gasSpent, string error, bool inputError = false)
-            {
-                Error = error;
-                OutputData = outputData;
-                GasSpent = gasSpent;
-                InputError = inputError;
-            }
-
-            public string? Error { get; set; }
-
-            public byte[] OutputData { get; set; }
-
-            public long GasSpent { get; set; }
-
-            public bool InputError { get; set; }
-
-            public AccessList? AccessList { get; set; }
-        }
 
         public CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {

@@ -47,6 +47,6 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
 
     protected abstract ResultWrapper<TResult> Execute(BlockHeader header, TProcessing tx, CancellationToken token);
 
-    protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) =>
+    protected ResultWrapper<TResult> GetInputError(CallOutput result) =>
         ResultWrapper<TResult>.Fail(result.Error, ErrorCodes.InvalidInput);
 }

@@ -42,7 +42,7 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResu
 
     protected override ResultWrapper<IReadOnlyList<MultiCallBlockResult>> Execute(BlockHeader header, MultiCallPayload<Transaction> tx, CancellationToken token)
     {
-        BlockchainBridge.MultiCallOutput results = _blockchainBridge.MultiCall(header.Clone(), tx, token);
+        MultiCallOutput results = _blockchainBridge.MultiCall(header.Clone(), tx, token);
 
         if (results.Error == null)
         {

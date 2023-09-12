@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
             {
-                BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, token);
+                CallOutput result = _blockchainBridge.Call(header, tx, token);
 
                 if (result.Error is null)
                 {
@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
             {
-                BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(header, tx, token);
+                CallOutput result = _blockchainBridge.EstimateGas(header, tx, token);
 
                 if (result.Error is null)
                 {
@@ -111,7 +111,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<AccessListForRpc> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
             {
-                BlockchainBridge.CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, _optimize);
+                CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, _optimize);
 
                 if (result.Error is null)
                 {
@@ -123,13 +123,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     : ResultWrapper<AccessListForRpc>.Fail(result.Error, ErrorCodes.ExecutionError, new AccessListForRpc(GetResultAccessList(tx, result), GetResultGas(tx, result)));
             }
 
-            private static AccessListItemForRpc[] GetResultAccessList(Transaction tx, BlockchainBridge.CallOutput result)
+            private static AccessListItemForRpc[] GetResultAccessList(Transaction tx, CallOutput result)
             {
                 AccessList? accessList = result.AccessList ?? tx.AccessList;
                 return accessList is null ? Array.Empty<AccessListItemForRpc>() : AccessListItemForRpc.FromAccessList(accessList);
             }
 
-            private static UInt256 GetResultGas(Transaction transaction, BlockchainBridge.CallOutput result)
+            private static UInt256 GetResultGas(Transaction transaction, CallOutput result)
             {
                 long gas = result.GasSpent;
                 if (result.AccessList is not null)
