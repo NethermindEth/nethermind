@@ -143,7 +143,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
         }
     }
 
-    private SpanConcurrentDictionary<byte, NodeVersions> _nodesByPath = new(Bytes.SpanEqualityComparer);
+    private SpanConcurrentDictionary<byte, NodeVersions> _nodesByPath = new(Bytes.SpanNibbleEqualityComparer);
     private ConcurrentDictionary<Keccak, HashSet<long>> _rootHashToBlock = new();
     private readonly ITrieStore _trieStore;
     private int _count;
