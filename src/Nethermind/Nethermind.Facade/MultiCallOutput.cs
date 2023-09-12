@@ -10,5 +10,5 @@ public class MultiCallOutput
 {
     public string? Error { get; set; }
 
-    public List<MultiCallBlockResult> Items { get; set; }
+    public IReadOnlyList<MultiCallBlockResult> Items { get; set; }
 }

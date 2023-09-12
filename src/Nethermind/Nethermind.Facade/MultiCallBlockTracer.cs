@@ -14,16 +14,16 @@ namespace Nethermind.Facade;
 
 public class MultiCallBlockTracer : BlockTracer
 {
-    public List<MultiCallBlockResult> _results = new();
+    public List<MultiCallBlockResult> Results { get; } = new();
 
-    private List<MultiCallTxTracer> _txTracers = new();
+    private readonly List<MultiCallTxTracer> _txTracers = new();
 
-    private Block currentBlock;
+    private Block _currentBlock;
 
     public override void StartNewBlockTrace(Block block)
     {
         _txTracers.Clear();
-        currentBlock = block;
+        _currentBlock = block;
     }
 
     public override ITxTracer StartNewTxTrace(Transaction? tx)
@@ -43,14 +43,14 @@ public class MultiCallBlockTracer : BlockTracer
         MultiCallBlockResult? result = new()
         {
             Calls = _txTracers.Select(t => t.TraceResult).ToArray(),
-            Number = (ulong)currentBlock.Number,
-            Hash = currentBlock.Hash,
-            GasLimit = (ulong)currentBlock.GasLimit,
-            GasUsed = (ulong)currentBlock.GasUsed,
-            Timestamp = currentBlock.Timestamp,
-            FeeRecipient = currentBlock.Beneficiary,
-            BaseFeePerGas = currentBlock.BaseFeePerGas,
-            PrevRandao = new UInt256(currentBlock.Header.Random.Bytes)
+            Number = (ulong)_currentBlock.Number,
+            Hash = _currentBlock.Hash,
+            GasLimit = (ulong)_currentBlock.GasLimit,
+            GasUsed = (ulong)_currentBlock.GasUsed,
+            Timestamp = _currentBlock.Timestamp,
+            FeeRecipient = _currentBlock.Beneficiary,
+            BaseFeePerGas = _currentBlock.BaseFeePerGas,
+            PrevRandao = new UInt256(_currentBlock.Header.Random.Bytes)
         };
 
         result.Calls.ForEach(callResult =>
@@ -59,13 +59,13 @@ public class MultiCallBlockTracer : BlockTracer
             {
                 callResult.Logs.ForEach(log =>
                 {
-                    log.BlockHash = currentBlock.Hash;
-                    log.BlockNumber = (ulong)currentBlock.Number;
+                    log.BlockHash = _currentBlock.Hash;
+                    log.BlockNumber = (ulong)_currentBlock.Number;
                 });
             }
         });
 
-        _results.Add(result);
+        Results.Add(result);
 
     }
 }

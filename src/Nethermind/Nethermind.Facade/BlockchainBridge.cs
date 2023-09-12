@@ -136,9 +136,6 @@ namespace Nethermind.Facade
             return blockHash is not null ? _receiptFinder.Get(blockHash).ForTransaction(txHash) : null;
         }
 
-
-
-
         public CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
             CallOutputTracer callOutputTracer = new();
@@ -152,8 +149,6 @@ namespace Nethermind.Facade
                 InputError = !tryCallResult.Success
             };
         }
-
-
 
         public MultiCallOutput MultiCall(BlockHeader header, MultiCallPayload<Transaction> payload, CancellationToken cancellationToken)
         {
@@ -174,7 +169,7 @@ namespace Nethermind.Facade
                 result.Error = ex.ToString();
             }
 
-            result.Items = multiCallOutputTracer._results;
+            result.Items = multiCallOutputTracer.Results;
             return result;
         }
 
@@ -239,7 +234,6 @@ namespace Nethermind.Facade
             }
         }
 
-
         private Dictionary<Address, UInt256> NonceDictionary = new();
         private void CallAndRestore(
             BlockHeader blockHeader,
@@ -298,114 +292,108 @@ namespace Nethermind.Facade
         private (bool Success, string Error) TryMultiCallTrace(BlockHeader parent, MultiCallPayload<Transaction> payload,
            IBlockTracer tracer)
         {
-            using (MultiCallReadOnlyBlocksProcessingEnv? env = _multiCallProcessingEnv.Clone(payload.TraceTransfers))
+            using MultiCallReadOnlyBlocksProcessingEnv? env = _multiCallProcessingEnv.Clone(payload.TraceTransfers);
+
+            IBlockProcessor? processor = env.GetProcessor();
+            BlockStateCall<Transaction>? firstBlock = payload.BlockStateCalls.FirstOrDefault();
+            if (firstBlock?.BlockOverrides?.Number != null
+                && firstBlock?.BlockOverrides?.Number > UInt256.Zero
+                && firstBlock?.BlockOverrides?.Number < (ulong)long.MaxValue)
             {
-                var processor = env.GetProcessor();
-                var firstBlock = payload.BlockStateCalls.FirstOrDefault();
-                var startStateRoot = parent.StateRoot;
-                if (firstBlock?.BlockOverrides?.Number != null
-                    && firstBlock?.BlockOverrides?.Number > UInt256.Zero
-                    && firstBlock?.BlockOverrides?.Number < (ulong)long.MaxValue)
+                BlockHeader? searchResult =
+                    _multiCallProcessingEnv.BlockTree.FindHeader((long)firstBlock?.BlockOverrides.Number);
+                if (searchResult != null)
                 {
-                    BlockHeader? searchResult =
-                        _multiCallProcessingEnv.BlockTree.FindHeader((long)firstBlock?.BlockOverrides.Number);
-                    if (searchResult != null)
-                    {
-                        startStateRoot = searchResult.StateRoot;
-                    }
-                }
-
-                foreach (BlockStateCall<Transaction>? callInputBlock in payload.BlockStateCalls)
-                {
-                    BlockHeader callHeader = null;
-                    if (callInputBlock.BlockOverrides == null)
-                    {
-                        callHeader = new BlockHeader(
-                            parent.Hash,
-                            Keccak.OfAnEmptySequenceRlp,
-                            Address.Zero,
-                            UInt256.Zero,
-                            parent.Number + 1,
-                            parent.GasLimit,
-                            parent.Timestamp + 1,
-                            Array.Empty<byte>());
-                        callHeader.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(parent));
-                    }
-                    else
-                    {
-                        callHeader = callInputBlock.BlockOverrides.GetBlockHeader(parent, _blocksConfig);
-                    }
-
-                    env.StateProvider.StateRoot = parent.StateRoot;
-
-                    callHeader.MixHash = parent.MixHash;
-                    callHeader.IsPostMerge = parent.Difficulty == 0;
-                    Block? currentBlock = new(callHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
-
-                    var currentSpec = env.SpecProvider.GetSpec(currentBlock.Header);
-                    if (callInputBlock.StateOverrides != null)
-                    {
-                        ModifyAccounts(callInputBlock.StateOverrides, env.StateProvider, currentSpec);
-                    }
-
-                    env.StateProvider.Commit(currentSpec);
-                    env.StateProvider.CommitTree(currentBlock.Number);
-                    env.StateProvider.RecalculateStateRoot();
-
-                    var transactions = callInputBlock.Calls;
-                    foreach (Transaction transaction in transactions)
-                    {
-                        transaction.SenderAddress ??= Address.SystemUser;
-
-                        Keccak stateRoot = callHeader.StateRoot!;
-
-                        if (transaction.Nonce == 0)
-                        {
-                            try
-                            {
-                                transaction.Nonce = env.StateProvider.GetAccount(transaction.SenderAddress).Nonce;
-                            }
-                            catch (TrieException)
-                            {
-                                // Transaction from unknown account
-                            }
-                        }
-
-                        transaction.Hash = transaction.CalculateHash();
-                    }
-
-                    currentBlock = currentBlock.WithReplacedBody(currentBlock.Body.WithChangedTransactions(transactions.ToArray()));
-
-
-                    currentBlock.Header.StateRoot = env.StateProvider.StateRoot;
-                    currentBlock.Header.IsPostMerge = true; //ToDo: Seal if necessary before merge 192 BPB
-                    currentBlock.Header.Hash = currentBlock.Header.CalculateHash();
-
-                    ProcessingOptions processingFlags = ProcessingOptions.ForceProcessing |
-                                                        ProcessingOptions.DoNotVerifyNonce |
-                                                        ProcessingOptions.IgnoreParentNotOnMainChain |
-                                                        ProcessingOptions.MarkAsProcessed |
-                                                        ProcessingOptions.StoreReceipts;
-
-                    if (!payload.Validation)
-                    {
-                        processingFlags |= ProcessingOptions.NoValidation;
-                    }
-
-                    Block[]? currentBlocks = processor.Process(env.StateProvider.StateRoot,
-                        new List<Block> { currentBlock }, processingFlags, tracer);
-
-                    var processedBlock = currentBlocks.FirstOrDefault();
-                    if (processedBlock != null)
-                    {
-                        parent = processedBlock.Header;
-                    }
-                    else
-                    {
-                        return (false, $"Processing failed at block {currentBlock.Number}");
-                    }
+                    parent = searchResult;
                 }
             }
+
+            foreach (BlockStateCall<Transaction>? callInputBlock in payload.BlockStateCalls)
+            {
+                env.StateProvider.StateRoot = parent.StateRoot!;
+
+                BlockHeader callHeader = callInputBlock.BlockOverrides is not null
+                    ? callInputBlock.BlockOverrides.GetBlockHeader(parent, _blocksConfig)
+                    : new BlockHeader(
+                        parent.Hash,
+                        Keccak.OfAnEmptySequenceRlp,
+                        Address.Zero,
+                        UInt256.Zero,
+                        parent.Number + 1,
+                        parent.GasLimit,
+                        parent.Timestamp + 1,
+                        Array.Empty<byte>())
+                    {
+                        BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(parent)),
+                        MixHash = parent.MixHash,
+                        IsPostMerge = parent.Difficulty == 0
+                    };
+
+
+                var currentSpec = env.SpecProvider.GetSpec(callHeader);
+                if (callInputBlock.StateOverrides != null)
+                {
+                    ModifyAccounts(callInputBlock.StateOverrides, env.StateProvider, currentSpec);
+                }
+
+                env.StateProvider.Commit(currentSpec);
+                env.StateProvider.CommitTree(callHeader.Number);
+                env.StateProvider.RecalculateStateRoot();
+                callHeader.StateRoot = env.StateProvider.StateRoot;
+
+
+                Transaction SetTxHash(Transaction transaction1)
+                {
+                    transaction1.SenderAddress ??= Address.SystemUser;
+
+                    Keccak stateRoot = callHeader.StateRoot!;
+
+                    if (transaction1.Nonce == 0)
+                    {
+                        try
+                        {
+                            transaction1.Nonce = env.StateProvider.GetAccount(transaction1.SenderAddress).Nonce;
+                        }
+                        catch (TrieException)
+                        {
+                            // Transaction from unknown account
+                        }
+                    }
+
+                    transaction1.Hash = transaction1.CalculateHash();
+                    return transaction1;
+                }
+
+                var transactions = callInputBlock.Calls.Select(SetTxHash).ToArray();
+
+                Block? currentBlock = new(callHeader, transactions, Array.Empty<BlockHeader>());
+                currentBlock.Header.Hash = currentBlock.Header.CalculateHash();
+
+                ProcessingOptions processingFlags = ProcessingOptions.ForceProcessing |
+                                                    ProcessingOptions.DoNotVerifyNonce |
+                                                    ProcessingOptions.IgnoreParentNotOnMainChain |
+                                                    ProcessingOptions.MarkAsProcessed |
+                                                    ProcessingOptions.StoreReceipts;
+
+                if (!payload.Validation)
+                {
+                    processingFlags |= ProcessingOptions.NoValidation;
+                }
+
+                Block[]? currentBlocks = processor.Process(env.StateProvider.StateRoot,
+                    new List<Block> { currentBlock }, processingFlags, tracer);
+
+                var processedBlock = currentBlocks.FirstOrDefault();
+                if (processedBlock != null)
+                {
+                    parent = processedBlock.Header;
+                }
+                else
+                {
+                    return (false, $"Processing failed at block {currentBlock.Number}");
+                }
+            }
+
 
             return (true, "");
         }

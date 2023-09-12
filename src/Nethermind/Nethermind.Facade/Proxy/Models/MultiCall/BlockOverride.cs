@@ -6,7 +6,6 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Proxy.Models.MultiCall;
@@ -50,8 +49,9 @@ public class BlockOverride
             newTime,
             Array.Empty<byte>())
         {
-            MixHash = PrevRandao,
             BaseFeePerGas = BaseFeePerGas ?? parent.BaseFeePerGas,
+            MixHash = PrevRandao,
+            IsPostMerge = parent.Difficulty == 0
         };
 
         UInt256 difficulty = ConstantDifficulty.One.Calculate(result, parent);
