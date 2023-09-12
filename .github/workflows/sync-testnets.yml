@@ -2,7 +2,7 @@ name: Sync Testnets
 
 on:
   push:
-    branches: ["master"]
+    branches: [master]
   workflow_dispatch:
 
 env:
@@ -10,19 +10,30 @@ env:
   TERM: xterm
 
 jobs:
-  chiado:
-    name: "Run sync of chiado testnet"
+  testnet-sync:
+    strategy:
+      matrix:
+        include:
+          - network: "chiado"
+            checkpoint-sync-url: "http://139.144.26.89:4000/"
+            cl-client: "lighthouse"
+            el-client: "nethermind:current_branch_image"
+          - network: "sepolia"
+            checkpoint-sync-url: "https://beaconstate-sepolia.chainsafe.io"
+            cl-client: "lighthouse"
+            el-client: "nethermind:current_branch_image"
+    name: "Run sync of ${{ matrix.network }} testnet"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-          
+
       - name: Configure settings
         id: settings
         run: |
           echo "BUILD_TIMESTAMP=$(date '+%s')" >> $GITHUB_OUTPUT
           echo "COMMIT_HASH=$(git describe --always --exclude=* --abbrev=40)" >> $GITHUB_OUTPUT
-          
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
@@ -47,51 +58,51 @@ jobs:
           echo 'Generating sedge docker...'
           ./build/sedge deps install
           ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
-          full-node --map-all --no-mev-boost --no-validator --network chiado \
-          -c lighthouse:sigp/lighthouse:latest -e nethermind:current_branch_image \
+          full-node --map-all --no-mev-boost --no-validator --network ${{ matrix.network }} \
+          -c ${{ matrix.cl-client }} -e ${{ matrix.el-client }} \
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
           --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
-          --cl-extra-flag checkpoint-sync-url=http://139.144.26.89:4000/
+          --checkpoint-sync-url=${{ matrix.checkpoint-sync-url }}
           echo 'Running sedge...'
           docker compose up -d
 
-      - name: Wait for Chiado to sync
+      - name: Wait for ${{ matrix.network }} to sync
         id: wait
         timeout-minutes: 90
         run: |
           set +e
-      
+
           declare -A bad_logs
           bad_logs["Invalid"]=1
           bad_logs["Exception"]=1
           bad_logs["Corrupted"]=1
-      
+
           declare -A good_logs
           good_logs["Synced chain Head"]=0
           good_logs["Processed"]=0
-      
+
           declare -A required_count
           required_count["Synced chain Head"]=20
           required_count["Processed"]=20
-      
+
           echo "Starting Docker logs monitoring..."
           docker logs -f sedge-execution-client | while read -r line; do
             echo "$line"
-      
+
             for bad_log in "${!bad_logs[@]}"; do
               if [[ "$line" == *"$bad_log"* ]]; then
                 echo "Error: $bad_log found in Docker logs."
                 exit 1
               fi
             done
-      
+
             for good_log in "${!good_logs[@]}"; do
               if [[ "$line" == *"$good_log"* ]]; then
                 ((good_logs["$good_log"]++))
               fi
             done
-      
+
             # Check if all good logs have reached the required count
             all_reached_required_count=true
             for good_log in "${!good_logs[@]}"; do
@@ -100,110 +111,11 @@ jobs:
                 break
               fi
             done
-      
+
             if $all_reached_required_count; then
               echo "All required logs found."
               break
             fi
           done
-      
-          echo "Node is synced."
-          
-  sepolia:
-    name: "Run sync of sepolia testnet"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-          
-      - name: Configure settings
-        id: settings
-        run: |
-          echo "BUILD_TIMESTAMP=$(date '+%s')" >> $GITHUB_OUTPUT
-          echo "COMMIT_HASH=$(git describe --always --exclude=* --abbrev=40)" >> $GITHUB_OUTPUT
-          
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
 
-      - name: Build docker image
-        run: docker buildx build --platform=linux/amd64 -t current_branch_image -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --load .
-
-      - name: Setup Go environment
-        uses: actions/setup-go@v4.0.0
-
-      - name: Install Sedge environment
-        run: |
-          echo "Downloading sedge sources..."
-          git clone https://github.com/NethermindEth/sedge.git sedge --branch main --single-branch
-          echo "Sources downloaded."
-          cd sedge
-          echo "Building sedge..."
-          make compile
-
-      - name: Run Sedge
-        working-directory: sedge
-        run: |
-          echo 'Generating sedge docker...'
-          ./build/sedge deps install
-          ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
-          full-node --map-all --no-mev-boost --no-validator --network sepolia \
-          -c lighthouse:sigp/lighthouse:latest -e nethermind:current_branch_image \
-          --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
-          --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
-          --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
-          --cl-extra-flag checkpoint-sync-url=https://beaconstate-sepolia.chainsafe.io
-          echo 'Running sedge...'
-          docker compose up -d
-          
-      - name: Wait for Sepolia to sync
-        id: wait
-        timeout-minutes: 90
-        run: |
-          set +e
-      
-          declare -A bad_logs
-          bad_logs["Invalid"]=1
-          bad_logs["Exception"]=1
-          bad_logs["Corrupted"]=1
-      
-          declare -A good_logs
-          good_logs["Synced chain Head"]=0
-          good_logs["Processed"]=0
-      
-          declare -A required_count
-          required_count["Synced chain Head"]=20
-          required_count["Processed"]=20
-      
-          echo "Starting Docker logs monitoring..."
-          docker logs -f sedge-execution-client | while read -r line; do
-            echo "$line"
-      
-            for bad_log in "${!bad_logs[@]}"; do
-              if [[ "$line" == *"$bad_log"* ]]; then
-                echo "Error: $bad_log found in Docker logs."
-                exit 1
-              fi
-            done
-      
-            for good_log in "${!good_logs[@]}"; do
-              if [[ "$line" == *"$good_log"* ]]; then
-                ((good_logs["$good_log"]++))
-              fi
-            done
-      
-            # Check if all good logs have reached the required count
-            all_reached_required_count=true
-            for good_log in "${!good_logs[@]}"; do
-              if [[ ${good_logs[$good_log]} -lt ${required_count[$good_log]} ]]; then
-                all_reached_required_count=false
-                break
-              fi
-            done
-      
-            if $all_reached_required_count; then
-              echo "All required logs found."
-              break
-            fi
-          done
-      
           echo "Node is synced."
