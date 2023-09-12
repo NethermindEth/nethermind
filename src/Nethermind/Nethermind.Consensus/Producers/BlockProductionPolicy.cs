@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
+
 namespace Nethermind.Consensus.Producers;
 
 /*
@@ -20,6 +22,17 @@ public class BlockProductionPolicy : IBlockProductionPolicy
     }
 
     public bool ShouldStartBlockProduction() => _miningConfig.Enabled;
+}
+
+public class AlwaysStartBlockProductionPolicy : IBlockProductionPolicy
+{
+    public bool ShouldStartBlockProduction() => true;
+
+    public static AlwaysStartBlockProductionPolicy Instance =>
+        LazyInitializer.EnsureInitialized(ref _instance, () => new());
+
+    private static AlwaysStartBlockProductionPolicy _instance;
+    private AlwaysStartBlockProductionPolicy() { }
 }
 
 public interface IBlockProductionPolicy

@@ -8,7 +8,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus
 {
-    public class NullSealEngine : ISealer, ISealValidator
+    public class NullSealEngine : ISealEngine
     {
         private NullSealEngine()
         {
