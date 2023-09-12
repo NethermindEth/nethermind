@@ -27,10 +27,8 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
     private readonly ILogManager? _logManager;
     private readonly IBlockValidator _blockValidator;
     private readonly InMemoryReceiptStorage _receiptStorage;
-    public ITransactionProcessor TransactionProcessor { get; }
     public ISpecProvider SpecProvider { get; }
     public IMultiCallVirtualMachine VirtualMachine { get; }
-    public bool TraceTransfers { get; set; }
 
     //We need ability to get many instances that do not conflict in terms of editable tmp storage - thus we implement env cloning
     public static MultiCallReadOnlyBlocksProcessingEnv Create(bool traceTransfers, IReadOnlyDbProvider? readOnlyDbProvider,
@@ -38,6 +36,15 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
         ILogManager? logManager
         )
     {
+        if (specProvider == null)
+        {
+            throw new ArgumentNullException(nameof(specProvider));
+        }
+        if (readOnlyDbProvider == null)
+        {
+            throw new ArgumentNullException(nameof(readOnlyDbProvider));
+        }
+
         ReadOnlyDbProvider? dbProvider = new(readOnlyDbProvider, true);
         TrieStore trieStore = new(readOnlyDbProvider.StateDb, logManager);
         BlockTree blockTree = new(readOnlyDbProvider,
@@ -105,12 +112,12 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
 
     public IBlockProcessor GetProcessor()
     {
-        var yransactionProcessor = new TransactionProcessor(SpecProvider, StateProvider, VirtualMachine, _logManager);
+        TransactionProcessor? transactionProcessor = new(SpecProvider, StateProvider, VirtualMachine, _logManager);
 
         return new BlockProcessor(SpecProvider,
             _blockValidator,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(yransactionProcessor, StateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, StateProvider),
             StateProvider,
             _receiptStorage,
             NullWitnessCollector.Instance,
