@@ -63,7 +63,7 @@ BrokenTxs
 
 ```sh
 apt install libsnappy-dev dotnet-sdk-7.0 -y
-cd ./nethermind/src/Nethermind/Nethermind.SendBlobs
+cd ./tools/Nethermind.SendBlobs
 dotnet publish --sc -o .
 ./Nethermind.SendBlobs
 ```
@@ -72,6 +72,6 @@ or via docker
 
 ```sh
 cd ./nethermind/ # repository root
-docker build . -f ./src/Nethermind/Nethermind.SendBlobs/Dockerfile -t send-blobs
+docker build . -f ./tools/Nethermind.SendBlobs/Dockerfile -t send-blobs
 docker run send-blobs ... # args samples above
 ```

@@ -12,8 +12,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Cli\Nethermind.Cli.csproj" />
-      <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
+      <ProjectReference Include="..\..\src\Nethermind\Nethermind.Cli\Nethermind.Cli.csproj" />
+      <ProjectReference Include="..\..\src\Nethermind\Nethermind.Crypto\Nethermind.Crypto.csproj" />
     </ItemGroup>
 
 </Project>

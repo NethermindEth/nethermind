@@ -103,7 +103,7 @@ if (waitForBlobInclusion)
     if (syncResult is not bool)
     {
         waitForBlobInclusion = false;
-        logger.Info($"Will not wait for blob inclusion since selected node at {rpcUrl} is still syncing");
+        Console.WriteLine($"Will not wait for blob inclusion since selected node at {rpcUrl} is still syncing");
     }
 }
 
@@ -209,8 +209,9 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
         string txRlp = Hex.ToHexString(txDecoder
             .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);
 
-
-        var blockResult = await nodeManager.Post<BlockModel<Keccak>>("eth_getBlockByNumber", "latest", false);
+        BlockModel<Keccak>? blockResult = null;
+        if (waitForBlobInclusion)
+            blockResult = await nodeManager.Post<BlockModel<Keccak>>("eth_getBlockByNumber", "latest", false);
        
         string? result = await nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
 
@@ -218,13 +219,13 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
         nonce++;
 
         if (txCount > 0 && blockResult != null && waitForBlobInclusion) 
-            await WaitForBlobInclusion(nodeManager, tx.CalculateHash(), blockResult.Number, logger);    
+            await WaitForBlobInclusion(nodeManager, tx.CalculateHash(), blockResult.Number);    
     }
 }
 
-async Task WaitForBlobInclusion(INodeManager nodeManager, Keccak txHash, UInt256 lastBlockNumber, ILogger logger)
+async Task WaitForBlobInclusion(INodeManager nodeManager, Keccak txHash, UInt256 lastBlockNumber)
 {
-    logger.Info("Waiting for blob transaction to be included in a block");
+    Console.WriteLine("Waiting for blob transaction to be included in a block");
 
     while (true)
     {
@@ -235,7 +236,7 @@ async Task WaitForBlobInclusion(INodeManager nodeManager, Keccak txHash, UInt256
             
             if (blockResult.Transactions.Contains(txHash))
             {
-                logger.Info($"Found blob transaction in block {blockResult.Number}");
+                Console.WriteLine($"Found blob transaction in block {blockResult.Number}");
                 return;
             }
         }
