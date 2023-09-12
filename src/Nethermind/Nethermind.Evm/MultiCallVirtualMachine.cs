@@ -16,7 +16,7 @@ public struct MultiCallDoTraceTransfers { }
 public class MultiCallVirtualMachine<TTraceTransfers> : VirtualMachine, IMultiCallVirtualMachine
 
 {
-    private readonly Dictionary<Address, CodeInfo> _overloaded = new();
+    private readonly Dictionary<Address, CodeInfo> _codeOverwrites = new();
 
     public MultiCallVirtualMachine(IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider, ILogManager? logManager) :
@@ -43,18 +43,18 @@ public class MultiCallVirtualMachine<TTraceTransfers> : VirtualMachine, IMultiCa
         return result;
     }
 
-    public void SetOverwrite(IWorldState worldState, IReleaseSpec vmSpec, Address key, CodeInfo value,
+    public void SetCodeOverwrite(IWorldState worldState, IReleaseSpec vmSpec, Address key, CodeInfo value,
         Address? redirectAddress = null)
     {
-        if (redirectAddress != null) _overloaded[redirectAddress] = base.GetCachedCodeInfo(worldState, key, vmSpec);
-        _overloaded[key] = value;
+        if (redirectAddress != null) _codeOverwrites[redirectAddress] = base.GetCachedCodeInfo(worldState, key, vmSpec);
+        _codeOverwrites[key] = value;
     }
 
     public override CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
     {
-        if (_overloaded.TryGetValue(codeSource, out CodeInfo result))
-            return result;
-        return base.GetCachedCodeInfo(worldState, codeSource, vmSpec);
+        return _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
+            ? result
+            : base.GetCachedCodeInfo(worldState, codeSource, vmSpec);
     }
 
 }

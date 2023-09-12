@@ -540,7 +540,7 @@ namespace Nethermind.Facade
 
                 if (accountOverride.Code != null)
                 {
-                    _multiCallProcessingEnv.VirtualMachine.SetOverwrite(StateProvider, CurrentSpec, address,
+                    _multiCallProcessingEnv.VirtualMachine.SetCodeOverwrite(StateProvider, CurrentSpec, address,
                         new CodeInfo(accountOverride.Code), accountOverride.MovePrecompileToAddress);
                 }
 
