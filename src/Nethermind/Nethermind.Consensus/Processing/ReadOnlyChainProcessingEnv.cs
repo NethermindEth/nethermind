@@ -7,13 +7,14 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing
 {
     /// <summary>
     /// Not thread safe.
     /// </summary>
-    public class ReadOnlyChainProcessingEnv : ReadOnlyChainProcessingEnvBase
+    public class ReadOnlyChainProcessingEnv
     {
         public IBlockchainProcessor ChainProcessor { get; }
 
@@ -26,9 +27,23 @@ namespace Nethermind.Consensus.Processing
             IReadOnlyDbProvider dbProvider,
             ISpecProvider specProvider,
             ILogManager logManager,
-            IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null) : base(txEnv, blockValidator, recoveryStep, rewardCalculator, receiptStorage, specProvider, logManager, blockTransactionsExecutor)
+            IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null)
         {
-            ChainProcessor = new OneTimeChainProcessor(dbProvider, _blockProcessingQueue);
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor =
+                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(txEnv.TransactionProcessor, txEnv.StateProvider);
+
+            BlockProcessor? blockProcessor = new(
+                specProvider,
+                blockValidator,
+                rewardCalculator,
+                transactionsExecutor,
+                txEnv.StateProvider,
+                receiptStorage,
+                NullWitnessCollector.Instance,
+                logManager);
+
+            BlockchainProcessor? blockProcessingQueue = new(txEnv.BlockTree, blockProcessor, recoveryStep, txEnv.StateReader, logManager, BlockchainProcessor.Options.NoReceipts);
+            ChainProcessor = new OneTimeChainProcessor(dbProvider, blockProcessingQueue);
         }
     }
 }

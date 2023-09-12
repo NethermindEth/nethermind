@@ -11,7 +11,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Processing;
 
-public class ReadOnlyTxProcessingEnvBase : IReadOnlyTxProcessingEnvBase
+public class ReadOnlyTxProcessingEnvBase
 {
     public IStateReader StateReader { get; }
     public IWorldState StateProvider { get; }
