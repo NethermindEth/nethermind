@@ -33,14 +33,14 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
     public bool TraceTransfers { get; set; }
 
     //We need ability to get many instances that do not conflict in terms of editable tmp storage - thus we implement env cloning
-    public static MultiCallReadOnlyBlocksProcessingEnv Create(bool TraceTransfers, IReadOnlyDbProvider? readOnlyDbProvider,
+    public static MultiCallReadOnlyBlocksProcessingEnv Create(bool traceTransfers, IReadOnlyDbProvider? readOnlyDbProvider,
         ISpecProvider? specProvider,
         ILogManager? logManager
         )
     {
-        ReadOnlyDbProvider? DbProvider = new(readOnlyDbProvider, true);
+        ReadOnlyDbProvider? dbProvider = new(readOnlyDbProvider, true);
         TrieStore trieStore = new(readOnlyDbProvider.StateDb, logManager);
-        BlockTree BlockTree = new(readOnlyDbProvider,
+        BlockTree blockTree = new(readOnlyDbProvider,
             new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb),
             specProvider,
             NullBloomStorage.Instance,
@@ -48,21 +48,21 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             logManager);
 
         return new MultiCallReadOnlyBlocksProcessingEnv(
-            TraceTransfers,
-            DbProvider,
+            traceTransfers,
+            dbProvider,
             trieStore,
-            BlockTree,
+            blockTree,
             specProvider,
             logManager);
     }
 
-    public MultiCallReadOnlyBlocksProcessingEnv Clone(bool TraceTransfers)
+    public MultiCallReadOnlyBlocksProcessingEnv Clone(bool traceTransfers)
     {
-        return Create(TraceTransfers, DbProvider, SpecProvider, _logManager);
+        return Create(traceTransfers, DbProvider, SpecProvider, _logManager);
     }
 
     private MultiCallReadOnlyBlocksProcessingEnv(
-        bool TraceTransfers,
+        bool traceTransfers,
         IReadOnlyDbProvider? readOnlyDbProvider,
         ITrieStore? trieStore,
         IBlockTree? blockTree,
@@ -78,7 +78,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
 
         _receiptStorage = new InMemoryReceiptStorage();
 
-        if (TraceTransfers)
+        if (traceTransfers)
         {
             VirtualMachine = new MultiCallVirtualMachine<MultiCallDoTraceTransfers>(BlockhashProvider, specProvider, logManager);
         }

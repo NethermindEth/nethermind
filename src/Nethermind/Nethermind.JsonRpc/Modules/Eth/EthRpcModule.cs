@@ -55,12 +55,6 @@ public partial class EthRpcModule : IEthRpcModule
     private readonly IEthSyncingInfo _ethSyncingInfo;
 
     private readonly IFeeHistoryOracle _feeHistoryOracle;
-    internal static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
-    {
-        RootCheckVisitor rootCheckVisitor = new();
-        blockchainBridge.RunTreeVisitor(rootCheckVisitor, header.StateRoot!);
-        return rootCheckVisitor.HasRoot;
-    }
 
     public EthRpcModule(
         IJsonRpcConfig rpcConfig,
@@ -166,7 +160,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader header = searchResult.Object;
-        if (!HasStateForBlock(_blockchainBridge, header!))
+        if (!_blockchainBridge.HasStateForBlock(header!))
         {
             return Task.FromResult(GetStateFailureResult<UInt256?>(header));
         }
@@ -210,7 +204,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader header = searchResult.Object;
-        if (!HasStateForBlock(_blockchainBridge, header!))
+        if (!_blockchainBridge.HasStateForBlock(header!))
         {
             return Task.FromResult(GetStateFailureResult<UInt256>(header));
         }
@@ -262,7 +256,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader header = searchResult.Object;
-        if (!HasStateForBlock(_blockchainBridge, header!))
+        if (!_blockchainBridge.HasStateForBlock(header!))
         {
             return GetStateFailureResult<byte[]>(header);
         }
@@ -687,7 +681,7 @@ public partial class EthRpcModule : IEthRpcModule
 
         BlockHeader header = searchResult.Object;
 
-        if (!HasStateForBlock(_blockchainBridge, header!))
+        if (!_blockchainBridge.HasStateForBlock(header!))
         {
             return GetStateFailureResult<AccountProof>(header);
         }
@@ -735,7 +729,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader header = searchResult.Object;
-        if (!HasStateForBlock(_blockchainBridge, header!))
+        if (!_blockchainBridge.HasStateForBlock(header!))
         {
             return GetStateFailureResult<AccountForRpc>(header);
         }

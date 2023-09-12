@@ -32,7 +32,7 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
         }
 
         BlockHeader header = searchResult.Object;
-        if (!EthRpcModule.HasStateForBlock(_blockchainBridge, header))
+        if (!_blockchainBridge.HasStateForBlock(header!))
         {
             return ResultWrapper<TResult>.Fail($"No state available for block {header.Hash}",
                 ErrorCodes.ResourceUnavailable);
