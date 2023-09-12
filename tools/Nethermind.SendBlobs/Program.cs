@@ -133,7 +133,7 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
 
         for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
         {
-             blobs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerBlob];
+            blobs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerBlob];
             new Random().NextBytes(blobs[blobIndex]);
             for (int i = 0; i < Ckzg.Ckzg.BytesPerBlob; i += 32)
             {
@@ -205,14 +205,14 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
         BlockModel<Keccak>? blockResult = null;
         if (waitForBlobInclusion)
             blockResult = await nodeManager.Post<BlockModel<Keccak>>("eth_getBlockByNumber", "latest", false);
-       
+
         string? result = await nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
 
         Console.WriteLine("Result:" + result);
         nonce++;
 
-        if (txCount > 0 && blockResult != null && waitForBlobInclusion) 
-            await WaitForBlobInclusion(nodeManager, tx.CalculateHash(), blockResult.Number);    
+        if (txCount > 0 && blockResult != null && waitForBlobInclusion)
+            await WaitForBlobInclusion(nodeManager, tx.CalculateHash(), blockResult.Number);
     }
 }
 
@@ -226,7 +226,7 @@ async Task WaitForBlobInclusion(INodeManager nodeManager, Keccak txHash, UInt256
         if (blockResult != null)
         {
             lastBlockNumber++;
-            
+
             if (blockResult.Transactions.Contains(txHash))
             {
                 Console.WriteLine($"Found blob transaction in block {blockResult.Number}");
