@@ -44,8 +44,8 @@ namespace Nethermind.Facade
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        private readonly IReadOnlyTxProcessingEnv _processingEnv;
-        private readonly IMultiCallBlocksProcessingEnv _multiCallProcessingEnv;
+        private readonly ReadOnlyTxProcessingEnv _processingEnv;
+        private readonly MultiCallReadOnlyBlocksProcessingEnv _multiCallProcessingEnv;
         private readonly ITxPool _txPool;
         private readonly IFilterStore _filterStore;
         private readonly IEthereumEcdsa _ecdsa;
@@ -55,9 +55,9 @@ namespace Nethermind.Facade
         private readonly ILogFinder _logFinder;
         private readonly ISpecProvider _specProvider;
         private readonly IBlocksConfig _blocksConfig;
-
-        public BlockchainBridge(IReadOnlyTxProcessingEnv processingEnv,
-            IMultiCallBlocksProcessingEnv multiCallProcessingEnv,
+        
+        public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
+            MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv,
             ITxPool? txPool,
             IReceiptFinder? receiptStorage,
             IFilterStore? filterStore,
@@ -329,7 +329,7 @@ namespace Nethermind.Facade
         private (bool Success, string Error) TryMultiCallTrace(BlockHeader parent, MultiCallPayload<Transaction> payload,
            IBlockTracer tracer)
         {
-            using (IMultiCallBlocksProcessingEnv? env = _multiCallProcessingEnv.Clone(payload.TraceTransfers))
+            using (MultiCallReadOnlyBlocksProcessingEnv? env = _multiCallProcessingEnv.Clone(payload.TraceTransfers))
             {
                 var processor = env.GetProcessor();
                 var firstBlock = payload.BlockStateCalls.FirstOrDefault();

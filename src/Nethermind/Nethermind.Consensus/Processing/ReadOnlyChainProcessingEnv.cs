@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Processing
         public IBlockchainProcessor ChainProcessor { get; }
 
         public ReadOnlyChainProcessingEnv(
-            IReadOnlyTxProcessingEnv txEnv,
+            ReadOnlyTxProcessingEnv txEnv,
             IBlockValidator blockValidator,
             IBlockPreprocessorStep recoveryStep,
             IRewardCalculator rewardCalculator,
@@ -29,25 +29,6 @@ namespace Nethermind.Consensus.Processing
             IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null) : base(txEnv, blockValidator, recoveryStep, rewardCalculator, receiptStorage, dbProvider, specProvider, logManager, blockTransactionsExecutor)
         {
             ChainProcessor = new OneTimeChainProcessor(dbProvider, _blockProcessingQueue);
-        }
-    }
-
-    public class MultiCallReadOnlyChainProcessingEnv : ReadOnlyChainProcessingEnvBase
-    {
-        public IBlockchainProcessor ChainProcessor { get; }
-
-        public MultiCallReadOnlyChainProcessingEnv(
-            IReadOnlyTxProcessingEnv txEnv,
-            IBlockValidator blockValidator,
-            IBlockPreprocessorStep recoveryStep,
-            IRewardCalculator rewardCalculator,
-            IReceiptStorage receiptStorage,
-            IReadOnlyDbProvider dbProvider,
-            ISpecProvider specProvider,
-            ILogManager logManager,
-            IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null) : base(txEnv, blockValidator, recoveryStep, rewardCalculator, receiptStorage, dbProvider, specProvider, logManager, blockTransactionsExecutor)
-        {
-            ChainProcessor = new MultiCallChainProcessor(dbProvider, _blockProcessingQueue);
         }
     }
 }

@@ -17,7 +17,7 @@ namespace Nethermind.Consensus.Processing;
 /// </summary>
 public class ReadOnlyChainProcessingEnvBase : IDisposable
 {
-    protected readonly IReadOnlyTxProcessingEnv _txEnv;
+    protected readonly ReadOnlyTxProcessingEnv _txEnv;
 
     protected readonly BlockchainProcessor _blockProcessingQueue;
     public IBlockProcessor BlockProcessor { get; }
@@ -25,7 +25,7 @@ public class ReadOnlyChainProcessingEnvBase : IDisposable
     public IWorldState StateProvider => _txEnv.StateProvider;
 
     public ReadOnlyChainProcessingEnvBase(
-        IReadOnlyTxProcessingEnv txEnv,
+        ReadOnlyTxProcessingEnv txEnv,
         IBlockValidator blockValidator,
         IBlockPreprocessorStep recoveryStep,
         IRewardCalculator rewardCalculator,

@@ -21,7 +21,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Processing;
 
-public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, IMultiCallBlocksProcessingEnv
+public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, IDisposable
 {
     private readonly ITrieStore? _trieStore;
     private readonly ILogManager? _logManager;
@@ -33,7 +33,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
     public bool TraceTransfers { get; set; }
 
     //We need ability to get many instances that do not conflict in terms of editable tmp storage - thus we implement env cloning
-    public static IMultiCallBlocksProcessingEnv Create(bool TraceTransfers, IReadOnlyDbProvider? readOnlyDbProvider,
+    public static MultiCallReadOnlyBlocksProcessingEnv Create(bool TraceTransfers, IReadOnlyDbProvider? readOnlyDbProvider,
         ISpecProvider? specProvider,
         ILogManager? logManager
         )
@@ -56,7 +56,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             logManager);
     }
 
-    public IMultiCallBlocksProcessingEnv Clone(bool TraceTransfers)
+    public MultiCallReadOnlyBlocksProcessingEnv Clone(bool TraceTransfers)
     {
         return Create(TraceTransfers, DbProvider, SpecProvider, _logManager);
     }

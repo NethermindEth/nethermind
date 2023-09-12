@@ -67,7 +67,7 @@ namespace Nethermind.Facade.Test
                 _specProvider,
                 LimboLogs.Instance);
 
-            IMultiCallBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
+            MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
                 false,
                 new ReadOnlyDbProvider(_dbProvider, true),
                 _specProvider,
@@ -217,7 +217,7 @@ namespace Nethermind.Facade.Test
                 _specProvider,
                 LimboLogs.Instance);
 
-            IMultiCallBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
+            MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
                 false,
                 new ReadOnlyDbProvider(_dbProvider, true),
                 _specProvider,
