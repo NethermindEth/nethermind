@@ -185,6 +185,29 @@ public class AddressFilterTests
         filter.Matches(ref bloomRef).Should().BeFalse();
     }
 
+    [Test]
+    public void Matches_bloom_using_any_address()
+    {
+        AddressFilter filter = AddressFilter.AnyAddress;
+
+        filter.Matches(BloomFromAddress(TestItem.AddressA)).Should().BeTrue();
+        filter.Matches(BloomFromAddress(TestItem.AddressB)).Should().BeTrue();
+        filter.Matches(BloomFromAddress(TestItem.AddressC)).Should().BeTrue();
+    }
+
+    [Test]
+    public void Matches_bloom_using_any_address_by_ref()
+    {
+        AddressFilter filter = AddressFilter.AnyAddress;
+
+        BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();
+        BloomStructRef bloomBRef = BloomFromAddress(TestItem.AddressB).ToStructRef();
+        BloomStructRef bloomCRef = BloomFromAddress(TestItem.AddressC).ToStructRef();
+        filter.Matches(ref bloomARef).Should().BeTrue();
+        filter.Matches(ref bloomBRef).Should().BeTrue();
+        filter.Matches(ref bloomCRef).Should().BeTrue();
+    }
+
     private static Core.Bloom BloomFromAddress(Address address)
     {
         LogEntry entry = new LogEntry(address, new byte[]{ }, new Keccak[]{ });
