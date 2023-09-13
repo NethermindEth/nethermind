@@ -14,6 +14,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FastEnum" />
+    <PackageReference Include="Microsoft.ClearScript.osx-x64" />
     <PackageReference Include="Nethermind.Crypto.Pairings" />
     <PackageReference Include="Nethermind.Gmp" />
   </ItemGroup>

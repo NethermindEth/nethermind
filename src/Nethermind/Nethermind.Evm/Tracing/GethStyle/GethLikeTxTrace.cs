@@ -9,7 +9,11 @@ namespace Nethermind.Evm.Tracing.GethStyle;
 
 public class GethLikeTxTrace
 {
-    public GethLikeTxTrace() => Entries = new List<GethTxTraceEntry>();
+    public GethLikeTxTrace()
+    {
+        Entries = new List<GethTxTraceEntry>();
+        CustomTracerResult = new List<object>(); // Initialize CustomTracerResult
+    }
 
     public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
 
@@ -21,4 +25,7 @@ public class GethLikeTxTrace
 
     [JsonProperty(PropertyName = "structLogs")]
     public List<GethTxTraceEntry> Entries { get; set; }
+
+    [JsonProperty(PropertyName = "customTracerResult")]
+    public List<Object> CustomTracerResult { get; set; }
 }
