@@ -18,6 +18,25 @@ namespace Nethermind.TxPool.Test
     public partial class TxPoolTests
     {
         [Test]
+        public void should_reject_blob_tx_if_blobs_not_supported([Values(true, false)] bool isBlobSupportEnabled)
+        {
+            TxPoolConfig txPoolConfig = new() { BlobSupportEnabled = isBlobSupportEnabled };
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+
+            Transaction tx = Build.A.Transaction
+                .WithNonce(UInt256.Zero)
+                .WithShardBlobTxTypeAndFields()
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(isBlobSupportEnabled
+                ? AcceptTxResult.Accepted
+                : AcceptTxResult.NotSupportedTxType);
+        }
+
+        [Test]
         public void blob_pool_size_should_be_correct([Values(true, false)] bool persistentStorageEnabled)
         {
             const int poolSize = 10;

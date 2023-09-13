@@ -13,6 +13,9 @@ namespace Nethermind.TxPool
         [ConfigItem(DefaultValue = "2048", Description = "Max number of transactions held in mempool (more transactions in mempool mean more memory used")]
         int Size { get; set; }
 
+        [ConfigItem(DefaultValue = "true", Description = "If true, blob transactions support will be enabled")]
+        bool BlobSupportEnabled { get; set; }
+
         [ConfigItem(DefaultValue = "false", Description = "If true, all blob transactions would be stored in persistent db")]
         bool PersistentBlobStorageEnabled { get; set; }
 

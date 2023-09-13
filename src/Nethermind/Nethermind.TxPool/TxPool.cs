@@ -99,15 +99,16 @@ namespace Nethermind.TxPool
             AddNodeInfoEntryForTxPool();
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
-            _blobTransactions = txPoolConfig.PersistentBlobStorageEnabled
+            _blobTransactions = txPoolConfig is { BlobSupportEnabled: true, PersistentBlobStorageEnabled: true }
                 ? new PersistentBlobTxDistinctSortedPool(_blobTxStorage, _txPoolConfig, comparer, logManager)
-                : new BlobTxDistinctSortedPool(_txPoolConfig.InMemoryBlobPoolSize, comparer, logManager);
+                : new BlobTxDistinctSortedPool(txPoolConfig.BlobSupportEnabled ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
 
             _headInfo.HeadChanged += OnHeadChange;
 
             _preHashFilters = new IIncomingTxFilter[]
             {
+                new NotSupportedTxFilter(txPoolConfig, _logger),
                 new GasLimitTxFilter(_headInfo, txPoolConfig, _logger),
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
                 new MalformedTxFilter(_specProvider, validator, _logger)
