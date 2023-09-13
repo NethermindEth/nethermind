@@ -266,7 +266,7 @@ public class AddressFilterTests
 
     private static Core.Bloom BloomFromAddress(Address address)
     {
-        LogEntry entry = new LogEntry(address, new byte[]{ }, new Keccak[]{ });
+        LogEntry entry = new LogEntry(address, new byte[] { }, new Keccak[] { });
         Core.Bloom bloom = new Core.Bloom(new[] { entry });
 
         return bloom;
