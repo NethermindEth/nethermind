@@ -11,13 +11,11 @@ namespace Ethereum.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class EIP1153transientStorageTests : GeneralStateTestBase
 {
-    // Uncomment when Eip1153 tests are merged
-
-    // [TestCaseSource(nameof(LoadTests))]
-    // public void Test(GeneralStateTest test)
-    // {
-    //     Assert.True(RunTest(test).Pass);
-    // }
+    [TestCaseSource(nameof(LoadTests))]
+    public void Test(GeneralStateTest test)
+    {
+        Assert.True(RunTest(test).Pass);
+    }
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
