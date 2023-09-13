@@ -113,9 +113,12 @@ namespace Nethermind.TxPool
             }
         }
 
-        public void BroadcastOnce(ITxPoolPeer peer, Transaction[] txs)
+        public void AnnounceOnce(ITxPoolPeer peer, Transaction[] txs)
         {
-            Notify(peer, txs, false);
+            if (txs.Length > 0)
+            {
+                Notify(peer, txs, false);
+            }
         }
 
         public void BroadcastPersistentTxs()
