@@ -65,7 +65,7 @@ public class MultiCallBlockTracer : BlockTracer
             }
         });
 
+        //TODO: We could potentially improve performance, through streaming through enumerable and yield return rather than accumulating huge result list in memory.
         Results.Add(result);
-
     }
 }

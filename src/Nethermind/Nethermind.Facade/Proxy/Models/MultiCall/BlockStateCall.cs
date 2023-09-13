@@ -9,6 +9,6 @@ namespace Nethermind.Facade.Proxy.Models.MultiCall;
 public class BlockStateCall<T>
 {
     public BlockOverride? BlockOverrides { get; set; }
-    public Dictionary<Address, AccountOverride>? StateOverrides { get; set; } = new Dictionary<Address, AccountOverride>();
+    public Dictionary<Address, AccountOverride>? StateOverrides { get; set; }
     public T[]? Calls { get; set; } = { };
 }

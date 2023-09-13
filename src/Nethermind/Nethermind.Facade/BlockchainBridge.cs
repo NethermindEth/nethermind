@@ -51,7 +51,7 @@ namespace Nethermind.Facade
         private readonly ILogFinder _logFinder;
         private readonly ISpecProvider _specProvider;
         private readonly IBlocksConfig _blocksConfig;
-        private readonly MultycallBridgeHelper _multycallBridgeHelper;
+        private readonly MultycallBridgeHelper _multicallBridgeHelper;
 
         public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
             MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv,
@@ -77,7 +77,7 @@ namespace Nethermind.Facade
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blocksConfig = blocksConfig;
             IsMining = isMining;
-            _multycallBridgeHelper = new MultycallBridgeHelper(multiCallProcessingEnv ?? throw new ArgumentNullException(nameof(multiCallProcessingEnv)), _specProvider, _blocksConfig);
+            _multicallBridgeHelper = new MultycallBridgeHelper(multiCallProcessingEnv ?? throw new ArgumentNullException(nameof(multiCallProcessingEnv)), _specProvider, _blocksConfig);
         }
 
         public Block? HeadBlock
@@ -154,7 +154,7 @@ namespace Nethermind.Facade
             MultiCallOutput result = new();
             try
             {
-                (bool Success, string Error) tryMultiCallResult = _multycallBridgeHelper.TryMultiCallTrace(header, payload,
+                (bool Success, string Error) tryMultiCallResult = _multicallBridgeHelper.TryMultiCallTrace(header, payload,
                     multiCallOutputTracer.WithCancellation(cancellationToken));
 
                 if (!tryMultiCallResult.Success)

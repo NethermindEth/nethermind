@@ -19,7 +19,6 @@ internal class MultiCallTxTracer : TxTracer
 
     public MultiCallCallResult TraceResult { get; set; }
 
-
     public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
         Keccak? stateRoot = null)
     {

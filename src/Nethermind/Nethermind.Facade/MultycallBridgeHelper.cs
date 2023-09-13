@@ -68,7 +68,6 @@ public class MultycallBridgeHelper
 
         Dictionary<Address, UInt256> _nonceCache = new();
 
-
         List<Block> suggestedBlocks = new();
 
         foreach (BlockStateCall<Transaction>? callInputBlock in payload.BlockStateCalls)
@@ -92,9 +91,7 @@ public class MultycallBridgeHelper
                     IsPostMerge = parent.Difficulty == 0
                 };
 
-
             UpdateStateByModifyingAccounts(callHeader, callInputBlock, env);
-
 
             Transaction SetTxHash(Transaction transaction1)
             {
@@ -161,6 +158,22 @@ public class MultycallBridgeHelper
         return (true, "");
     }
 
+    bool TryGetAccount(IWorldState? stateProvider, Address address, out Account account)
+    {
+        bool accExists = false;
+        try
+        {
+            accExists = stateProvider.AccountExists(address);
+            account = stateProvider.GetAccount(address);
+        }
+        catch (Exception)
+        {
+            account = Account.TotallyEmpty;
+        }
+
+        return accExists;
+    }
+
     private void ModifyAccounts(Dictionary<Address, AccountOverride> stateOverrides, IWorldState? stateProvider, IReleaseSpec? currentSpec)
     {
         Account? acc;
@@ -169,16 +182,6 @@ public class MultycallBridgeHelper
         {
             Address address = overrideData.Key;
             AccountOverride? accountOverride = overrideData.Value;
-
-            bool accExists = false;
-            try
-            {
-                accExists = stateProvider.AccountExists(address);
-            }
-            catch (Exception)
-            {
-                // ignored
-            }
 
             UInt256 balance = 0;
             if (accountOverride.Balance != null)
@@ -192,62 +195,80 @@ public class MultycallBridgeHelper
                 nonce = accountOverride.Nonce.Value;
             }
 
-
-            if (!accExists)
+            if (!TryGetAccount(stateProvider, address, out acc))
             {
                 stateProvider.CreateAccount(address, balance, nonce);
-                acc = stateProvider.GetAccount(address);
             }
             else
-                acc = stateProvider.GetAccount(address);
-
-            UInt256 accBalance = acc.Balance;
-            if (accountOverride.Balance != null && accBalance > balance)
-                stateProvider.SubtractFromBalance(address, accBalance - balance, currentSpec);
-
-            else if (accountOverride.Balance != null && accBalance < balance)
-                stateProvider.AddToBalance(address, balance - accBalance, currentSpec);
-
-
-            UInt256 accNonce = acc.Nonce;
-            if (accountOverride.Nonce != null && accNonce > nonce)
             {
-                UInt256 iters = accNonce - nonce;
-                for (UInt256 i = 0; i < iters; i++)
-                {
-                    stateProvider.DecrementNonce(address);
-                }
-            }
-            else if (accountOverride.Nonce != null && accNonce < accountOverride.Nonce)
-            {
-                UInt256 iters = nonce - accNonce;
-                for (UInt256 i = 0; i < iters; i++)
-                {
-                    stateProvider.IncrementNonce(address);
-                }
+                UpdateBalance(stateProvider, currentSpec, acc, accountOverride, balance, address);
+                UpdataNonce(stateProvider, acc, accountOverride, nonce, address);
             }
 
-            if (accountOverride.Code != null)
-            {
-                _multiCallProcessingEnv.VirtualMachine.SetCodeOverwrite(stateProvider, currentSpec, address,
-                    new CodeInfo(accountOverride.Code), accountOverride.MovePrecompileToAddress);
-            }
-
-            //TODO: discuss if clean slate is a must
-            if (accountOverride.State is not null)
-            {
-                foreach (KeyValuePair<UInt256, ValueKeccak> storage in accountOverride.State)
-                    stateProvider.Set(new StorageCell(address, storage.Key),
-                        storage.Value.ToByteArray().WithoutLeadingZeros().ToArray());
-            }
-
-            if (accountOverride.StateDiff is not null)
-            {
-                foreach (KeyValuePair<UInt256, ValueKeccak> storage in accountOverride.StateDiff)
-                    stateProvider.Set(new StorageCell(address, storage.Key),
-                        storage.Value.ToByteArray().WithoutLeadingZeros().ToArray());
-            }
-            stateProvider.Commit(currentSpec);
+            UpdateCode(stateProvider, currentSpec, accountOverride, address);
+            UpdateState(stateProvider, accountOverride, address);
         }
+        stateProvider.Commit(currentSpec);
+    }
+
+    private static void UpdateState(IWorldState? stateProvider, AccountOverride? accountOverride, Address address)
+    {
+        //TODO: discuss if clean slate is a must
+        if (accountOverride.State is not null)
+        {
+            foreach (KeyValuePair<UInt256, ValueKeccak> storage in accountOverride.State)
+                stateProvider.Set(new StorageCell(address, storage.Key),
+                    storage.Value.ToByteArray().WithoutLeadingZeros().ToArray());
+        }
+
+        if (accountOverride.StateDiff is not null)
+        {
+            foreach (KeyValuePair<UInt256, ValueKeccak> storage in accountOverride.StateDiff)
+                stateProvider.Set(new StorageCell(address, storage.Key),
+                    storage.Value.ToByteArray().WithoutLeadingZeros().ToArray());
+        }
+    }
+
+    private void UpdateCode(IWorldState? stateProvider, IReleaseSpec? currentSpec, AccountOverride? accountOverride,
+        Address address)
+    {
+        if (accountOverride.Code != null)
+        {
+            _multiCallProcessingEnv.VirtualMachine.SetCodeOverwrite(stateProvider, currentSpec, address,
+                new CodeInfo(accountOverride.Code), accountOverride.MovePrecompileToAddress);
+        }
+    }
+
+    private static void UpdataNonce(IWorldState? stateProvider, Account? acc, AccountOverride? accountOverride,
+        UInt256 nonce, Address address)
+    {
+        UInt256 accNonce = acc.Nonce;
+        if (accountOverride.Nonce != null && accNonce > nonce)
+        {
+            UInt256 iters = accNonce - nonce;
+            for (UInt256 i = 0; i < iters; i++)
+            {
+                stateProvider.DecrementNonce(address);
+            }
+        }
+        else if (accountOverride.Nonce != null && accNonce < accountOverride.Nonce)
+        {
+            UInt256 iters = nonce - accNonce;
+            for (UInt256 i = 0; i < iters; i++)
+            {
+                stateProvider.IncrementNonce(address);
+            }
+        }
+    }
+
+    private static void UpdateBalance(IWorldState? stateProvider, IReleaseSpec? currentSpec, Account? acc,
+        AccountOverride? accountOverride, UInt256 balance, Address address)
+    {
+        UInt256 accBalance = acc.Balance;
+        if (accountOverride.Balance != null && accBalance > balance)
+            stateProvider.SubtractFromBalance(address, accBalance - balance, currentSpec);
+
+        else if (accountOverride.Balance != null && accBalance < balance)
+            stateProvider.AddToBalance(address, balance - accBalance, currentSpec);
     }
 }
