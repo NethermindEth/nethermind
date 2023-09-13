@@ -48,13 +48,14 @@ Issues that can be intentionally added:
   11 = max fee per blob gas = max value / blobgasperblob + 1
   14 = 100 blobs
   15 = 1000 blobs
+  16 = wait for each transaction to be included in a block before posting the next
 
 Syntax:
 
          2x3-4
          ^      tx count
            ^    blobs in every tx (optional, default to 1)
-             ^  how it's broken (optional, tx is correct by default)
+             ^  how it's broken (optional, tx is correct by default) or write true
 
 BrokenTxs
 ```

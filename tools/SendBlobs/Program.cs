@@ -66,10 +66,6 @@ if (args.Length > 4)
 ulong feeMultiplier = 4;
 if (args.Length > 5) ulong.TryParse(args[5], out feeMultiplier);
 
-
-bool waitForBlobInclusion = false;
-if (args.Length > 6) bool.TryParse(args[6], out waitForBlobInclusion);
-
 await KzgPolynomialCommitments.InitializeAsync();
 
 PrivateKey privateKey = new(privateKeyString);
@@ -89,17 +85,7 @@ if (nonceString is null)
     return;
 }
 
-if (waitForBlobInclusion)
-{
-    var syncResult = await nodeManager.Post<dynamic>("eth_syncing");
-
-    if (syncResult is not bool)
-    {
-        waitForBlobInclusion = false;
-        Console.WriteLine($"Will not wait for blob inclusion since selected node at {rpcUrl} is still syncing");
-    }
-}
-
+bool isNodeSynced = await nodeManager.Post<dynamic>("eth_syncing") is bool;
 
 string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
 ulong chainId = Convert.ToUInt64(chainIdString, chainIdString.StartsWith("0x") ? 16 : 10);
@@ -114,6 +100,7 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
     int txCount = txs.txCount;
     int blobCount = txs.blobCount;
     string @break = txs.@break;
+    bool waitForBlock = false;
 
     while (txCount > 0)
     {
@@ -124,6 +111,9 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
             case "2": blobCount = 7; break;
             case "14": blobCount = 100; break;
             case "15": blobCount = 1000; break;
+            case "16": waitForBlock = isNodeSynced;
+                if (!isNodeSynced) Console.WriteLine($"Will not wait for blob inclusion since selected node at {rpcUrl} is still syncing");
+                break;
         }
 
         byte[][] blobs = new byte[blobCount][];
@@ -164,7 +154,7 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
         string? maxPriorityFeePerGasRes = await nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
         UInt256 maxPriorityFeePerGas = (UInt256)Convert.ToUInt64(maxPriorityFeePerGasRes, maxPriorityFeePerGasRes.StartsWith("0x") ? 16 : 10);
 
-        Console.WriteLine($"Nonce: {nonce}, GasPrice: {gasPrice}, MaxPriorityFeePerGas: {maxPriorityFeePerGas}, WaitForBlobInclusion: {waitForBlobInclusion}");
+        Console.WriteLine($"Nonce: {nonce}, GasPrice: {gasPrice}, MaxPriorityFeePerGas: {maxPriorityFeePerGas}");
 
         switch (@break)
         {
@@ -203,7 +193,7 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
             .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);
 
         BlockModel<Keccak>? blockResult = null;
-        if (waitForBlobInclusion)
+        if (waitForBlock)
             blockResult = await nodeManager.Post<BlockModel<Keccak>>("eth_getBlockByNumber", "latest", false);
 
         string? result = await nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
@@ -211,7 +201,7 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
         Console.WriteLine("Result:" + result);
         nonce++;
 
-        if (txCount > 0 && blockResult != null && waitForBlobInclusion)
+        if (txCount > 0 && blockResult != null && waitForBlock)
             await WaitForBlobInclusion(nodeManager, tx.CalculateHash(), blockResult.Number);
     }
 }
@@ -219,7 +209,6 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
 async Task WaitForBlobInclusion(INodeManager nodeManager, Keccak txHash, UInt256 lastBlockNumber)
 {
     Console.WriteLine("Waiting for blob transaction to be included in a block");
-
     while (true)
     {
         var blockResult = await nodeManager.Post<BlockModel<Keccak>>("eth_getBlockByNumber", lastBlockNumber, false);
