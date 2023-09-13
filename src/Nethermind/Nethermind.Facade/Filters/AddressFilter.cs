@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Filters
 
         public bool Accepts(Address address)
         {
-            if (Addresses is not null)
+            if (Addresses is not null && Addresses.Count > 0)
             {
                 return Addresses.Contains(address);
             }
@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Filters
 
         public bool Accepts(ref AddressStructRef address)
         {
-            if (Addresses is not null)
+            if (Addresses is not null && Addresses.Count > 0)
             {
                 foreach (var a in Addresses)
                 {
