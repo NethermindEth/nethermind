@@ -62,6 +62,7 @@ namespace Nethermind.TxPool
 
         private readonly ITimer? _timer;
         private Transaction[]? _transactionSnapshot;
+        private Transaction[]? _blobTransactionSnapshot;
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
@@ -174,6 +175,7 @@ namespace Nethermind.TxPool
             {
                 // Clear snapshot
                 _transactionSnapshot = null;
+                _blobTransactionSnapshot = null;
                 _hashCache.ClearCurrentBlockCache();
                 _headBlocksChannel.Writer.TryWrite(e);
             }
@@ -294,7 +296,8 @@ namespace Nethermind.TxPool
             if (_broadcaster.AddPeer(peer))
             {
                 // worth to refactor and prepare tx snapshot in more efficient way
-                _broadcaster.BroadcastOnce(peer, _transactionSnapshot ??= _transactions.GetSnapshot().Concat(_blobTransactions.GetSnapshot()).ToArray());
+                _broadcaster.BroadcastOnce(peer, _transactionSnapshot ??= _transactions.GetSnapshot());
+                _broadcaster.BroadcastOnce(peer, _blobTransactionSnapshot ??= _blobTransactions.GetSnapshot());
 
                 if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer}");
             }
@@ -339,8 +342,11 @@ namespace Nethermind.TxPool
                 accepted = AddCore(tx, state, startBroadcast);
                 if (accepted)
                 {
-                    // Clear snapshot
-                    _transactionSnapshot = null;
+                    // Clear proper snapshot
+                    if (tx.SupportsBlobs)
+                        _blobTransactionSnapshot = null;
+                    else
+                        _transactionSnapshot = null;
                 }
             }
 
