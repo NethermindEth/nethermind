@@ -88,7 +88,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, new Transaction());
         transaction.From = TestItem.AddressA;
-        transaction.Data = new byte[] { 1, 2, 3 };
+        transaction.Input = new byte[] { 1, 2, 3 };
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", ctx.Test.JsonSerializer.Serialize(transaction), "latest");
