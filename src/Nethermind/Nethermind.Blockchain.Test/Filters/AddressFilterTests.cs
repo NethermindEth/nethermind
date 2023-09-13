@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
@@ -147,5 +148,31 @@ public class AddressFilterTests
         filter.Accepts(ref addressARef).Should().BeTrue();
         filter.Accepts(ref addressBRef).Should().BeFalse();
         filter.Accepts(ref addressCRef).Should().BeTrue();
+    }
+
+    [Test]
+    public void Matches_bloom_using_specific_address()
+    {
+        AddressFilter filter = new AddressFilter(TestItem.AddressA);
+        Core.Bloom bloom = BloomFromAddress(TestItem.AddressA);
+
+        filter.Matches(bloom).Should().BeTrue();
+    }
+
+    [Test]
+    public void Matches_bloom_using_specific_address_by_ref()
+    {
+        AddressFilter filter = new AddressFilter(TestItem.AddressA);
+        BloomStructRef bloomRef = BloomFromAddress(TestItem.AddressA).ToStructRef();
+
+        filter.Matches(ref bloomRef).Should().BeTrue();
+    }
+
+    private static Core.Bloom BloomFromAddress(Address address)
+    {
+        LogEntry entry = new LogEntry(address, new byte[]{ }, new Keccak[]{ });
+        Core.Bloom bloom = new Core.Bloom(new[] { entry });
+
+        return bloom;
     }
 }
