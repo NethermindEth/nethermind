@@ -215,7 +215,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Ss
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Contract", "Nethermind.Network.Contract\Nethermind.Network.Contract.csproj", "{AD151E35-4BBC-4A83-8F57-CC8665F6E007}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SendBlobs", "..\..\tools\Nethermind.SendBlobs\SendBlobs.csproj", "{90B52184-D947-4AC5-A7E0-09780E766E67}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SendBlobs", "..\..\tools\SendBlobs\SendBlobs.csproj", "{EAA543AC-CD70-4C8E-925C-3E2D878ECA89}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -599,10 +599,10 @@ Global
 		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Release|Any CPU.Build.0 = Release|Any CPU
-		{90B52184-D947-4AC5-A7E0-09780E766E67}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{90B52184-D947-4AC5-A7E0-09780E766E67}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{90B52184-D947-4AC5-A7E0-09780E766E67}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{90B52184-D947-4AC5-A7E0-09780E766E67}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EAA543AC-CD70-4C8E-925C-3E2D878ECA89}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EAA543AC-CD70-4C8E-925C-3E2D878ECA89}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EAA543AC-CD70-4C8E-925C-3E2D878ECA89}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EAA543AC-CD70-4C8E-925C-3E2D878ECA89}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -667,7 +667,7 @@ Global
 		{2EDE2554-59C0-4E78-92F7-EB8077AA597D} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
 		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE} = {2EDE2554-59C0-4E78-92F7-EB8077AA597D}
 		{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{90B52184-D947-4AC5-A7E0-09780E766E67} = {ABB7AC7F-0FFE-4C2F-857C-C776E6764A76}
+		{EAA543AC-CD70-4C8E-925C-3E2D878ECA89} = {ABB7AC7F-0FFE-4C2F-857C-C776E6764A76}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}
