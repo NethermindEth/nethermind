@@ -208,6 +208,62 @@ public class AddressFilterTests
         filter.Matches(ref bloomCRef).Should().BeTrue();
     }
 
+    [Test]
+    public void Matches_any_bloom_when_set_is_empty()
+    {
+        HashSet<Address> addresses = new();
+        AddressFilter filter = new AddressFilter(addresses);
+
+        filter.Matches(BloomFromAddress(TestItem.AddressA)).Should().BeTrue();
+        filter.Matches(BloomFromAddress(TestItem.AddressB)).Should().BeTrue();
+        filter.Matches(BloomFromAddress(TestItem.AddressC)).Should().BeTrue();
+    }
+
+    [Test]
+    public void Matches_any_bloom_when_set_is_empty_by_ref()
+    {
+        HashSet<Address> addresses = new();
+        AddressFilter filter = new AddressFilter(addresses);
+
+        BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();
+        BloomStructRef bloomBRef = BloomFromAddress(TestItem.AddressB).ToStructRef();
+        BloomStructRef bloomCRef = BloomFromAddress(TestItem.AddressC).ToStructRef();
+        filter.Matches(ref bloomARef).Should().BeTrue();
+        filter.Matches(ref bloomBRef).Should().BeTrue();
+        filter.Matches(ref bloomCRef).Should().BeTrue();
+    }
+
+    [Test]
+    public void Matches_any_bloom_using_addresses_set()
+    {
+        HashSet<Address> addresses = new()
+        {
+            TestItem.AddressA, TestItem.AddressC
+        };
+        AddressFilter filter = new AddressFilter(addresses);
+
+        filter.Matches(BloomFromAddress(TestItem.AddressA)).Should().BeTrue();
+        filter.Matches(BloomFromAddress(TestItem.AddressB)).Should().BeFalse();
+        filter.Matches(BloomFromAddress(TestItem.AddressC)).Should().BeTrue();
+    }
+
+    [Test]
+    public void Matches_any_bloom_using_addresses_set_by_ref()
+    {
+        HashSet<Address> addresses = new()
+        {
+            TestItem.AddressA, TestItem.AddressC
+        };
+        AddressFilter filter = new AddressFilter(addresses);
+
+        BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();
+        BloomStructRef bloomBRef = BloomFromAddress(TestItem.AddressB).ToStructRef();
+        BloomStructRef bloomCRef = BloomFromAddress(TestItem.AddressC).ToStructRef();
+        filter.Matches(ref bloomARef).Should().BeTrue();
+        filter.Matches(ref bloomBRef).Should().BeFalse();
+        filter.Matches(ref bloomCRef).Should().BeTrue();
+    }
+
     private static Core.Bloom BloomFromAddress(Address address)
     {
         LogEntry entry = new LogEntry(address, new byte[]{ }, new Keccak[]{ });
