@@ -111,7 +111,8 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
             case "2": blobCount = 7; break;
             case "14": blobCount = 100; break;
             case "15": blobCount = 1000; break;
-            case "16": waitForBlock = isNodeSynced;
+            case "16":
+                waitForBlock = isNodeSynced;
                 if (!isNodeSynced) Console.WriteLine($"Will not wait for blob inclusion since selected node at {rpcUrl} is still syncing");
                 break;
         }
@@ -209,6 +210,9 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
 async Task WaitForBlobInclusion(INodeManager nodeManager, Keccak txHash, UInt256 lastBlockNumber)
 {
     Console.WriteLine("Waiting for blob transaction to be included in a block");
+    int waitInMs = 2000;
+    //Retry for about 5 slots worth of time
+    int retryCount = (12 * 5 * 1000) / waitInMs;
     while (true)
     {
         var blockResult = await nodeManager.Post<BlockModel<Keccak>>("eth_getBlockByNumber", lastBlockNumber, false);
@@ -224,7 +228,10 @@ async Task WaitForBlobInclusion(INodeManager nodeManager, Keccak txHash, UInt256
         }
         else
         {
-            await Task.Delay(2000);
+            await Task.Delay(waitInMs);
         }
+
+        retryCount--;
+        if (retryCount == 0) break;
     }
 }
