@@ -9,7 +9,7 @@ namespace Nethermind.Blockchain.Filters
 {
     public class AddressFilter
     {
-        public static AddressFilter AnyAddress = new((Address)null);
+        public static readonly AddressFilter AnyAddress = new(addresses: new HashSet<Address>());
 
         private Bloom.BloomExtract[] _addressesBloomIndexes;
         private Bloom.BloomExtract? _addressBloomExtract;
