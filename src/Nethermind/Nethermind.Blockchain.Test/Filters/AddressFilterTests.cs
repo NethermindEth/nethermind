@@ -72,29 +72,6 @@ public class AddressFilterTests
     }
 
     [Test]
-    public void Accepts_any_address_when_set_is_null()
-    {
-        AddressFilter filter = new AddressFilter(addresses: null!);
-
-        filter.Accepts(TestItem.AddressA).Should().BeTrue();
-        filter.Accepts(TestItem.AddressB).Should().BeTrue();
-        filter.Accepts(TestItem.AddressC).Should().BeTrue();
-    }
-
-    [Test]
-    public void Accepts_any_address_when_set_is_null_by_ref()
-    {
-        AddressFilter filter = new AddressFilter(addresses: null!);
-
-        AddressStructRef addressARef = TestItem.AddressA.ToStructRef();
-        AddressStructRef addressBRef = TestItem.AddressB.ToStructRef();
-        AddressStructRef addressCRef = TestItem.AddressC.ToStructRef();
-        filter.Accepts(ref addressARef).Should().BeTrue();
-        filter.Accepts(ref addressBRef).Should().BeTrue();
-        filter.Accepts(ref addressCRef).Should().BeTrue();
-    }
-
-    [Test]
     public void Accepts_any_address_when_set_is_empty()
     {
         HashSet<Address> addresses = new();
@@ -224,6 +201,29 @@ public class AddressFilterTests
     {
         HashSet<Address> addresses = new();
         AddressFilter filter = new AddressFilter(addresses);
+
+        BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();
+        BloomStructRef bloomBRef = BloomFromAddress(TestItem.AddressB).ToStructRef();
+        BloomStructRef bloomCRef = BloomFromAddress(TestItem.AddressC).ToStructRef();
+        filter.Matches(ref bloomARef).Should().BeTrue();
+        filter.Matches(ref bloomBRef).Should().BeTrue();
+        filter.Matches(ref bloomCRef).Should().BeTrue();
+    }
+
+    [Test]
+    public void Matches_any_bloom_when_set_is_forced_null()
+    {
+        AddressFilter filter = new AddressFilter(addresses: null!);
+
+        filter.Matches(BloomFromAddress(TestItem.AddressA)).Should().BeTrue();
+        filter.Matches(BloomFromAddress(TestItem.AddressB)).Should().BeTrue();
+        filter.Matches(BloomFromAddress(TestItem.AddressC)).Should().BeTrue();
+    }
+
+    [Test]
+    public void Matches_any_bloom_when_set_is_forced_null_by_ref()
+    {
+        AddressFilter filter = new AddressFilter(addresses: null!);
 
         BloomStructRef bloomARef = BloomFromAddress(TestItem.AddressA).ToStructRef();
         BloomStructRef bloomBRef = BloomFromAddress(TestItem.AddressB).ToStructRef();
