@@ -11,7 +11,7 @@ namespace Nethermind.Blockchain.Filters
     {
         public static readonly AddressFilter AnyAddress = new(addresses: new HashSet<Address>());
 
-        private Bloom.BloomExtract[] _addressesBloomIndexes;
+        private Bloom.BloomExtract[]? _addressesBloomIndexes;
         private Bloom.BloomExtract? _addressBloomExtract;
 
         public AddressFilter(Address address)
