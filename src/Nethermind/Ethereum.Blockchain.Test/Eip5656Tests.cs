@@ -9,7 +9,7 @@ namespace Ethereum.Blockchain.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class Eip5656Tests : GeneralStateTestBase
+public class EIP5656MCOPYTests : GeneralStateTestBase
 {
     // wait untill Eip5656 tests are merged to de-comment this
 
