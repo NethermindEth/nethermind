@@ -50,6 +50,9 @@ namespace Nethermind.Init.Steps
                 InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
                 StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory, _api.FileSystem);
                 await dbInitializer.InitStandardDbsAsync(useReceiptsDb, useBlobDb);
+                _api.BlobTxStorage = useBlobDb
+                    ? new BlobTxStorage(_api.DbProvider!.BlobTransactionsDb)
+                    : NullBlobTxStorage.Instance;
             }
             catch (TypeInitializationException ex)
             {

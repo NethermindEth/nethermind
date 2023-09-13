@@ -8,12 +8,14 @@ using Nethermind.Consensus;
 using Nethermind.Crypto;
 using Nethermind.Db.Blooms;
 using Nethermind.State.Repositories;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 namespace Nethermind.Api
 {
     public interface IApiWithStores : IBasicApi
     {
+        ITxStorage? BlobTxStorage { get; set; }
         IBlockTree? BlockTree { get; set; }
         IBloomStorage? BloomStorage { get; set; }
         IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }

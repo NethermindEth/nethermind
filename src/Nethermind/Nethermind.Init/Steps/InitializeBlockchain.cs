@@ -333,7 +333,7 @@ namespace Nethermind.Init.Steps
 
         protected virtual TxPool.TxPool CreateTxPool() =>
             new(_api.EthereumEcdsa!,
-                new BlobTxStorage(_api.DbProvider!.BlobTransactionsDb),
+                _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!),
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
