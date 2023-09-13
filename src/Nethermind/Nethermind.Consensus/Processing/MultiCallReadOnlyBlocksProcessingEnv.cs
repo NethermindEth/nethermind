@@ -26,7 +26,6 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
     private readonly ITrieStore? _trieStore;
     private readonly ILogManager? _logManager;
     private readonly IBlockValidator _blockValidator;
-    private readonly InMemoryReceiptStorage _receiptStorage;
     public ISpecProvider SpecProvider { get; }
     public IMultiCallVirtualMachine VirtualMachine { get; }
 
@@ -77,13 +76,9 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
         ILogManager? logManager) : base(readOnlyDbProvider, trieStore, blockTree,
         logManager)
     {
-
         _trieStore = trieStore;
         _logManager = logManager;
         SpecProvider = specProvider;
-
-
-        _receiptStorage = new InMemoryReceiptStorage();
 
         if (traceTransfers)
         {
@@ -119,7 +114,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, StateProvider),
             StateProvider,
-            _receiptStorage,
+            NullReceiptStorage.Instance,
             NullWitnessCollector.Instance,
             _logManager);
     }
