@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "Nethermind.SendBlobs": {
+    "SendBlobs": {
       "commandName": "Project",
       "commandLineArgs": "http://localhost:8545 1-8 c2b36204cdfc90550383c3d96b8f95ede48d8447d03ec1c27c07b089a6dd67c1 0x000000000000000000000000000000000000f1c1 4"
     }

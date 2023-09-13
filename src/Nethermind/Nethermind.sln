@@ -215,7 +215,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Ss
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Contract", "Nethermind.Network.Contract\Nethermind.Network.Contract.csproj", "{AD151E35-4BBC-4A83-8F57-CC8665F6E007}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.SendBlobs", "..\..\tools\Nethermind.SendBlobs\Nethermind.SendBlobs.csproj", "{90B52184-D947-4AC5-A7E0-09780E766E67}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SendBlobs", "..\..\tools\Nethermind.SendBlobs\SendBlobs.csproj", "{90B52184-D947-4AC5-A7E0-09780E766E67}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -599,10 +599,6 @@ Global
 		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Release|Any CPU.Build.0 = Release|Any CPU
-		{E2CEB1D9-A81C-4142-9324-E086FF312636}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{E2CEB1D9-A81C-4142-9324-E086FF312636}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{E2CEB1D9-A81C-4142-9324-E086FF312636}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{E2CEB1D9-A81C-4142-9324-E086FF312636}.Release|Any CPU.Build.0 = Release|Any CPU
 		{90B52184-D947-4AC5-A7E0-09780E766E67}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{90B52184-D947-4AC5-A7E0-09780E766E67}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{90B52184-D947-4AC5-A7E0-09780E766E67}.Release|Any CPU.ActiveCfg = Release|Any CPU

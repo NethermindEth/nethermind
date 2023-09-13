@@ -10,7 +10,7 @@ docker run ghcr.io/flcl42/send-blobs:latest http://localhost:8545 5x6 0x00000000
 ## Usage
 
 ```sh
-./Nethermind.SendBlobs http://localhost:8545 # url-that-does-not-require-auth-in-header
+./SendBlobs http://localhost:8545 # url-that-does-not-require-auth-in-header
                        1000,5x6,100x2        # transaction count: just a number or a list of tx-count x blob-count
                        0x0000..0000          # secret-key
                        0x0000..0042          # receiver-address
@@ -18,18 +18,18 @@ docker run ghcr.io/flcl42/send-blobs:latest http://localhost:8545 5x6 0x00000000
                        4                     # fee multiplier to compete with other txs in the pool, 4 by default
 
 # send 5 transactions, 1 blob each
-./Nethermind.SendBlobs http://localhost:8545 5 \
+./SendBlobs http://localhost:8545 5 \
                                              0x0000000000000000000000000000000000000000000000000000000000000000 \
                                              0x000000000000000000000000000000000000f1c1 10000 4
 
 # send several transactions with 1 blob, with 6 blobs and than with 2 blobs
-./Nethermind.SendBlobs http://localhost:8545 10x1,10x6,10x2 \
+./SendBlobs http://localhost:8545 10x1,10x6,10x2 \
                                              0x0000000000000000000000000000000000000000000000000000000000000000 \
                                              0x000000000000000000000000000000000000f1c1 10000 4
 
 #send a couple of transactions
 
-./Nethermind.SendBlobs http://localhost:8545 2x4-1 \
+./SendBlobs http://localhost:8545 2x4-1 \
                                              0x0000000000000000000000000000000000000000000000000000000000000000 \
                                              0x0000000000000000000000000000000000000001 10000 4
 
@@ -63,15 +63,15 @@ BrokenTxs
 
 ```sh
 apt install libsnappy-dev dotnet-sdk-7.0 -y
-cd ./tools/Nethermind.SendBlobs
+cd ./tools/SendBlobs
 dotnet publish --sc -o .
-./Nethermind.SendBlobs
+./SendBlobs
 ```
 
 or via docker
 
 ```sh
 cd ./nethermind/ # repository root
-docker build . -f ./tools/Nethermind.SendBlobs/Dockerfile -t send-blobs
+docker build . -f ./tools/SendBlobs/Dockerfile -t send-blobs
 docker run send-blobs ... # args samples above
 ```
