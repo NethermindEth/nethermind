@@ -189,4 +189,3 @@ namespace Nethermind.Evm
         public static string? GetHex(this Instruction instruction) => $"0x{(byte)instruction:X2}";
     }
 }
-

@@ -3,10 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Reflection.Emit;
-using Nethermind.Evm;
 using Nethermind.Core;
-using Microsoft.ClearScript;
 using Microsoft.ClearScript.V8;
 using Nethermind.Int256;
 
@@ -28,6 +25,8 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public string? error { get; set; }
 
         public Contract? contract { get; set; }
+
+        public JSStack? stack { get; set; }
 
         public JSMemory? memory { get; set; }
         public long? getPC()
@@ -56,26 +55,6 @@ namespace Nethermind.Evm.Tracing.GethStyle
             return !string.IsNullOrEmpty(error) ? error : null;
         }
 
-        public JSStack? stack { get; set; } = new JSStack();
-        public class JSStack
-        {
-            private readonly List<string> _items = new();
-
-            public void push(List<string> items) => _items.AddRange(items);
-
-            public string? length() => _items.Count.ToString();
-
-            public string? peek(int index)
-            {
-                int topIndex = _items.Count - 1 - index;
-                if (topIndex >= 0 && topIndex < _items.Count)
-                {
-                    return _items[topIndex];
-                }
-                return null;
-            }
-
-        }
         public class OpcodeString
         {
             private readonly Instruction _value;
@@ -97,41 +76,90 @@ namespace Nethermind.Evm.Tracing.GethStyle
 
         }
 
-        public class JSMemory
+        public class JSStack
         {
-            private readonly List<string> _items = new();
+            private readonly List<string> _items;
 
-            public void push(List<string> items) => _items.AddRange(items);
+            public JSStack(List<string> items)
+            {
+                _items = items;
+            }
 
             public string? length() => _items.Count.ToString();
 
-            public byte[]? slice(int start, int end)
+            public int? getCount() => _items.Count;
+
+            public string? peek(int index)
             {
-                if (start < 0 || end < 0 || start > _items.Count || end > _items.Count)
+                int topIndex = _items.Count - 1 - index;
+                if (topIndex >= 0 && topIndex < _items.Count)
+                {
+                    return _items[topIndex];
+                }
+                return null;
+            }
+            public string? getItem(int index)
+            {
+                if (index >= 0 && index < _items.Count)
+                {
+                    return _items[index];
+                }
+                return null;
+            }
+
+        }
+
+        public class JSMemory
+        {
+            private readonly List<string> _memoryTrace;
+
+            public JSMemory(List<string> memoryTrace)
+            {
+                _memoryTrace = memoryTrace;
+            }
+            public int? getCount() => _memoryTrace.Count;
+
+            public string? getItem(int index)
+            {
+                if (index >= 0 && index < _memoryTrace.Count)
+                {
+                    return _memoryTrace[index];
+                }
+                return null;
+            }
+            public int? length() => _memoryTrace.Count;
+
+            public byte[]? Slice(int start, int end) // needs looking into
+            {
+                if (start < 0 || end < 0 || start > _memoryTrace.Count || end > _memoryTrace.Count)
                 {
                     return null;
                 }
-                List<byte> result = new();
+
+                List<byte> result = new List<byte>();
                 for (int i = start; i < end; i++)
                 {
-                    result.Add(Convert.ToByte(_items[i], 16));
+                    result.Add(Convert.ToByte(_memoryTrace[i], 16));
                 }
+
                 return result.ToArray();
             }
 
-            public byte[]? getUint(int offset)
+            public byte[]? getUint(int offset) // needs looking into
             {
-                if(offset < 0 || offset > _items.Count)
+                if(offset < 0 || offset > _memoryTrace.Count)
                 {
                     return null;
                 }
                 List<byte> result = new();
                 for (int i = offset; i < offset + 32; i++)
                 {
-                    result.Add(Convert.ToByte(_items[i], 16));
+                    result.Add(Convert.ToByte(_memoryTrace[i], 16));
                 }
                 return result.ToArray();
             }
+
+
         }
 
         public class Contract

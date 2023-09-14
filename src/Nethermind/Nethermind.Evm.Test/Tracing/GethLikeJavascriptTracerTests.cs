@@ -19,8 +19,13 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
     public void Js_traces_simple_filter()
     {
         byte[] data = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+        byte[] data1 = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1c");
+        byte[] data2 = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1e");
         byte[] bytecode = Prepare.EvmCode
-            .MSTORE(0, data)
+            .SSTORE(0x20, data)
+            .SSTORE(0x40, data1)
+            .SSTORE(0x60, data2)
+            .MSTORE(0, data2)
             .MCOPY(32, 0, 32)
             .STOP()
             .Done;
@@ -198,10 +203,9 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
         byte[] data = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
         // Store data in storage at slot 0x20
         byte[] bytecode = Prepare.EvmCode
-            .SSTORE(0x20, data)
             // Copy data from storage slot 0x20 to memory
+            .SSTORE(0x20, data)
             .SLOAD(0x20)
-            //.MSTORE(0x40, data)
             .MCOPY(32, 0, 32)
             .STOP()
             .Done;
@@ -246,7 +250,7 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
                             this.retVal.push(log.getPC() + "": SSTORE "" +
                                 this.getAddr(log) + "":"" +
                                 log.stack.peek(0).toString(16) + "" <- "" +
-                                log.stack.peek(0).toString(16));
+                                log.stack.peek(1).toString(16));
                         }
                         // End of step
 
@@ -283,6 +287,7 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
     public void Js_traces_Memory()
     {
         byte[] data = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+   
         byte[] bytecode = Prepare.EvmCode
             .MSTORE(0, data)
             .MCOPY(32, 0, 32)
@@ -290,7 +295,7 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
             .Done;
         string userTracer = @"
                     retVal: [],
-                    step: function(log, db) { this.retVal.push(log.getPC() + ':' + log.op.toString()) },
+                    step: function(log, db) { this.retVal.push(log.getRefund() + '===' + log.getPC() + ':' + log.op.toString()) },
                     fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)) },
                     result: function(ctx, db) { return this.retVal }
                 ";
