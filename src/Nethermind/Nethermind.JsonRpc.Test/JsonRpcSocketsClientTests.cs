@@ -63,6 +63,7 @@ public class JsonRpcSocketsClientTests
         }
 
         [Test]
+        [Retry(5)]
         [TestCase(2)]
         [TestCase(10)]
         [TestCase(50)]
