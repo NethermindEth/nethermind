@@ -441,7 +441,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 throw new InvalidDataException("Recipient has not been resolved properly before tx execution");
 
             TxExecutionContext executionContext =
-                new(tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, blCtx);
+                new(blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes);
 
             CodeInfo codeInfo = tx.IsContractCreation ? new(tx.Data.AsArray())
                                     : _virtualMachine.GetCachedCodeInfo(_worldState, recipient, spec);
