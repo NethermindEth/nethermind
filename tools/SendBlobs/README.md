@@ -60,6 +60,13 @@ Syntax:
 BrokenTxs
 ```
 
+## Debug
+
+```
+For funding the private key used in the project launch settings, the address is:
+0x428a95ceb38b706fbfe74fa0144701cfc1c25ef7
+```
+
 ## Build
 
 ```sh
