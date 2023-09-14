@@ -148,3 +148,18 @@ public class OptimismTransactionProcessor : TransactionProcessor
         return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice);
     }
 }
+
+public class OptimismTransactionProcessorFactory : ITransactionProcessorFactory
+{
+    private readonly IL1CostHelper _l1CostHelper;
+    private readonly IOPConfigHelper _opConfigHelper;
+
+    public OptimismTransactionProcessorFactory(IL1CostHelper l1CostHelper, IOPConfigHelper opConfigHelper)
+    {
+        _l1CostHelper = l1CostHelper;
+        _opConfigHelper = opConfigHelper;
+    }
+
+    public ITransactionProcessor Create(ISpecProvider? specProvider, IWorldState? worldState, IVirtualMachine? virtualMachine, ILogManager? logManager)
+        => new OptimismTransactionProcessor(specProvider, worldState, virtualMachine, logManager, _l1CostHelper, _opConfigHelper);
+}

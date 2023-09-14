@@ -23,7 +23,6 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
     private readonly OptimismNethermindApi _api;
     private readonly IBlocksConfig _blocksConfig;
 
-
     public InitializeBlockchainOptimism(OptimismNethermindApi api) : base(api)
     {
         _api = api;
@@ -50,7 +49,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
 
         Address l1FeeRecipient = new("0x420000000000000000000000000000000000001A");
 
-        OPL1CostHelper l1CostHelper = new(l1FeeRecipient);
+        OPL1CostHelper l1CostHelper = new();
         OPSpecHelper opConfigHelper = new(
             _api.ChainSpec.Optimism.RegolithTimestamp,
             _api.ChainSpec.Optimism.BedrockBlockNumber,

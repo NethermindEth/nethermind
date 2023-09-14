@@ -61,7 +61,31 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             throw new ArgumentException("Optimism does not support custom block production trigger or additional tx source");
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-        ArgumentNullException.ThrowIfNull(_api.BlockProducerEnvFactory);
+
+        // TODO: copy-pasted from InitializeBlockchainOptimism
+        Address l1FeeRecipient = new("0x420000000000000000000000000000000000001A");
+
+        OPL1CostHelper l1CostHelper = new();
+        OPSpecHelper opConfigHelper = new(
+            _api.ChainSpec.Optimism.RegolithTimestamp,
+            _api.ChainSpec.Optimism.BedrockBlockNumber,
+            l1FeeRecipient // it would be good to get this last one from chainspec too
+        );
+
+        _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
+            new OptimismTransactionProcessorFactory(l1CostHelper, opConfigHelper),
+            _api.DbProvider!,
+            _api.BlockTree!,
+            _api.ReadOnlyTrieStore!,
+            _api.SpecProvider!,
+            _api.BlockValidator!,
+            _api.RewardCalculatorSource!,
+            _api.ReceiptStorage!,
+            _api.BlockPreprocessor,
+            _api.TxPool!,
+            _api.TransactionComparerProvider!,
+            _api.Config<IBlocksConfig>(),
+            _api.LogManager);
 
         _api.GasLimitCalculator = new OptimismGasLimitCalculator();
 

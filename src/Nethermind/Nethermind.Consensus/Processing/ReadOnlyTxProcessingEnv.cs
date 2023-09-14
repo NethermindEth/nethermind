@@ -37,12 +37,14 @@ namespace Nethermind.Consensus.Processing
         {
         }
 
+        // TODO Optimism. Remove default value of txProcessorFactory
         public ReadOnlyTxProcessingEnv(
             IReadOnlyDbProvider? readOnlyDbProvider,
             IReadOnlyTrieStore? readOnlyTrieStore,
             IReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            ITransactionProcessorFactory? txProcessorFactory = null)
         {
             if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
 
@@ -56,7 +58,8 @@ namespace Nethermind.Consensus.Processing
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
             Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
-            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, logManager);
+            TransactionProcessor = txProcessorFactory?.Create(specProvider, StateProvider, Machine, logManager) ??
+                                   new TransactionProcessor(specProvider, StateProvider, Machine, logManager);
         }
 
         public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);
