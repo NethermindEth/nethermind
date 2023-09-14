@@ -160,6 +160,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Hash:      {Hash}");
             builder.AppendLine($"{indent}From:      {SenderAddress}");
             builder.AppendLine($"{indent}To:        {To}");
+            builder.AppendLine($"{indent}TxType:    {Type}");
             if (Supports1559)
             {
                 builder.AppendLine($"{indent}MaxPriorityFeePerGas: {MaxPriorityFeePerGas}");
@@ -170,6 +171,9 @@ namespace Nethermind.Core
                 builder.AppendLine($"{indent}Gas Price: {GasPrice}");
             }
 
+            builder.AppendLine($"{indent}SourceHash: {SourceHash}");
+            builder.AppendLine($"{indent}Mint:      {Mint}");
+            builder.AppendLine($"{indent}OpSystem:  {IsOPSystemTransaction}");
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
