@@ -15,7 +15,7 @@ public readonly struct BlockExecutionContext
     public BlockExecutionContext(BlockHeader blockHeader)
     {
         Header = blockHeader;
-        if (blockHeader.ExcessBlobGas is not null)
+        if (blockHeader?.ExcessBlobGas is not null)
         {
             if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(blockHeader.ExcessBlobGas.Value, out UInt256 blobBaseFeeResult))
             {

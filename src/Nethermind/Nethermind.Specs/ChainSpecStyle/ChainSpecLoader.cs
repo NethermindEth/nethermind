@@ -186,6 +186,13 @@ public class ChainSpecLoader : IChainSpecLoader
         {
             throw new InvalidOperationException("Both 'Eip2200Transition' and 'Eip1706Transition' are provided. Please provide either 'Eip2200Transition' or pair of 'Eip1283ReenableTransition' and 'Eip1706Transition' as they have same meaning.");
         }
+
+        if ((!parameters.Eip4844TransitionTimestamp.HasValue
+            || parameters.Eip4844TransitionTimestamp > parameters.Eip7516TransitionTimestamp)
+            && parameters.Eip7516TransitionTimestamp.HasValue)
+        {
+            throw new InvalidOperationException("When 'Eip7516TransitionTimestamp' is provided it has to have bigger or equal in value to 'Eip4844TransitionTimestamp' since it depends on it.");
+        }
     }
 
     private static void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

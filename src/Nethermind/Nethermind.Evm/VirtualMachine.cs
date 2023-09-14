@@ -1526,15 +1526,6 @@ OutOfGas:
                         stack.PushUInt256(in result);
                         break;
                     }
-                case Instruction.BLOBBASEFEE:
-                    {
-                        if (!spec.BlobBaseFeeEnabled) goto InvalidInstruction;
-
-                        gasAvailable -= GasCostOf.Base;
-                        result = blkCtx.BlobBaseFee ?? throw new Exception("BlobBaseFee is not set. EIP-4844 has to be enabled for this opcode");
-                        stack.PushUInt256(in result);
-                        break;
-                    }
                 case Instruction.BLOBHASH:
                     {
                         if (!spec.IsEip4844Enabled) goto InvalidInstruction;
@@ -1551,6 +1542,16 @@ OutOfGas:
                         {
                             stack.PushZero();
                         }
+                        break;
+                    }
+                case Instruction.BLOBBASEFEE:
+                    {
+                        if (!spec.BlobBaseFeeEnabled || !blkCtx.BlobBaseFee.HasValue) goto InvalidInstruction;
+                        
+                        gasAvailable -= GasCostOf.Base;
+
+                        result = blkCtx.BlobBaseFee.Value;
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.POP:
