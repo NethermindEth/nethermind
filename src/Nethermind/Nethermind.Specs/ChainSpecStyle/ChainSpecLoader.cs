@@ -143,7 +143,6 @@ public class ChainSpecLoader : IChainSpecLoader
             Eip5656TransitionTimestamp = chainSpecJson.Params.Eip5656TransitionTimestamp,
             Eip6780TransitionTimestamp = chainSpecJson.Params.Eip6780TransitionTimestamp,
             Eip4788TransitionTimestamp = chainSpecJson.Params.Eip4788TransitionTimestamp,
-            Eip7516TransitionTimestamp = chainSpecJson.Params.Eip7516TransitionTimestamp,
             Eip4788ContractAddress = chainSpecJson.Params.Eip4788ContractAddress,
             TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
             TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
@@ -185,13 +184,6 @@ public class ChainSpecLoader : IChainSpecLoader
             && parameters.Eip2200Transition.HasValue)
         {
             throw new InvalidOperationException("Both 'Eip2200Transition' and 'Eip1706Transition' are provided. Please provide either 'Eip2200Transition' or pair of 'Eip1283ReenableTransition' and 'Eip1706Transition' as they have same meaning.");
-        }
-
-        if ((!parameters.Eip4844TransitionTimestamp.HasValue
-            || parameters.Eip4844TransitionTimestamp > parameters.Eip7516TransitionTimestamp)
-            && parameters.Eip7516TransitionTimestamp.HasValue)
-        {
-            throw new InvalidOperationException("When 'Eip7516TransitionTimestamp' is provided it has to have bigger or equal in value to 'Eip4844TransitionTimestamp' since it depends on it.");
         }
     }
 

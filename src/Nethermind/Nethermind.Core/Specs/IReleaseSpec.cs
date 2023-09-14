@@ -279,11 +279,6 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
-        /// BLOBBASEFEE Opcode
-        /// </summary>
-        public bool IsEip7516Enabled { get; }
-
-        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -365,6 +360,6 @@ namespace Nethermind.Core.Specs
 
         public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
-        public bool BlobBaseFeeEnabled => IsEip7516Enabled;
+        public bool BlobBaseFeeEnabled => IsEip4844Enabled;
     }
 }
