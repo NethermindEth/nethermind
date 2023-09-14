@@ -108,6 +108,7 @@ namespace Nethermind.Evm.Test
                     Instruction.TLOAD,
                     Instruction.MCOPY,
                     Instruction.BLOBHASH,
+                    Instruction.BLOBBASEFEE
                 }
             ).ToArray();
 

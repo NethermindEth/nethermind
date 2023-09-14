@@ -52,10 +52,10 @@ namespace Nethermind.Evm.Tracing
                 : header.GasLimit;
 
             // Execute binary search to find the optimal gas estimation.
-            return BinarySearchEstimate(leftBound, rightBound, tx, header, token);
+            return BinarySearchEstimate(leftBound, rightBound, tx, header, releaseSpec, token);
         }
 
-        private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header, CancellationToken token)
+        private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header, IReleaseSpec spec, CancellationToken token)
         {
             long cap = rightBound;
             while (leftBound + 1 < rightBound)
@@ -87,7 +87,9 @@ namespace Nethermind.Evm.Tracing
             long originalGasLimit = transaction.GasLimit;
 
             transaction.GasLimit = gasLimit;
-            _transactionProcessor.CallAndRestore(transaction, block, tracer.WithCancellation(token));
+
+            BlockExecutionContext blCtx = new(block);
+            _transactionProcessor.CallAndRestore(transaction, blCtx, tracer.WithCancellation(token));
 
             transaction.GasLimit = originalGasLimit;
 
