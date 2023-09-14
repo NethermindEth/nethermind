@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -63,6 +61,39 @@ namespace Nethermind.TxPool.Test
 
             _txPool.GetPendingTransactionsCount().Should().Be(0);
             _txPool.GetPendingBlobTransactionsCount().Should().Be(poolSize);
+        }
+
+        [TestCase(TxType.EIP1559, 0, 5, 100)]
+        [TestCase(TxType.Blob, 5, 0, 100)]
+        [TestCase(TxType.EIP1559, 10, 0, 10)]
+        [TestCase(TxType.Blob, 0, 15, 15)]
+        [TestCase(TxType.EIP1559, 20, 25, 20)]
+        [TestCase(TxType.Blob, 30, 35, 35)]
+        public void should_reject_txs_with_nonce_too_far_in_future(TxType txType, int maxPendingTxs, int maxPendingBlobTxs, int expectedNumberOfAcceptedTxs)
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                Size = 100,
+                MaxPendingTxsPerSender = maxPendingTxs,
+                MaxPendingBlobTxsPerSender = maxPendingBlobTxs
+            };
+
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            for (int nonce = 0; nonce < txPoolConfig.Size; nonce++)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce((UInt256)nonce)
+                    .WithType(txType)
+                    .WithShardBlobTxTypeAndFieldsIfBlobTx()
+                    .WithMaxFeePerGas(1.GWei())
+                    .WithMaxPriorityFeePerGas(1.GWei())
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+                _txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(nonce > expectedNumberOfAcceptedTxs
+                    ? AcceptTxResult.NonceTooFarInFuture
+                    : AcceptTxResult.Accepted);
+            }
         }
 
         [Test]
