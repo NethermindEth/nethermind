@@ -52,10 +52,10 @@ namespace Nethermind.Evm.Tracing
                 : header.GasLimit;
 
             // Execute binary search to find the optimal gas estimation.
-            return BinarySearchEstimate(leftBound, rightBound, tx, header, releaseSpec, token);
+            return BinarySearchEstimate(leftBound, rightBound, tx, header, token);
         }
 
-        private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header, IReleaseSpec spec, CancellationToken token)
+        private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header, CancellationToken token)
         {
             long cap = rightBound;
             while (leftBound + 1 < rightBound)
