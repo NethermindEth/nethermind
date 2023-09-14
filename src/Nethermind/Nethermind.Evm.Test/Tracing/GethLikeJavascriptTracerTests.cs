@@ -8,27 +8,19 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Specs;
+using static System.Runtime.InteropServices.JavaScript.JSType;
+using System;
+
 namespace Nethermind.Evm.Test.Tracing;
 
 public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
 {
     /// <summary>
-    /// Testing Javascript tracers implementation
+    /// Testing Javascript tracers implementation as per geth example implementation
     /// </summary>
     [Test]
     public void Js_traces_simple_filter()
     {
-        byte[] data = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-        byte[] data1 = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1c");
-        byte[] data2 = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1e");
-        byte[] bytecode = Prepare.EvmCode
-            .SSTORE(0x20, data)
-            .SSTORE(0x40, data1)
-            .SSTORE(0x60, data2)
-            .MSTORE(0, data2)
-            .MCOPY(32, 0, 32)
-            .STOP()
-            .Done;
         string userTracer = @"
                     retVal: [],
                     step: function(log, db) { this.retVal.push(log.getPC() + ':' + log.op.toString()) },
@@ -37,33 +29,26 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
                 ";
         GethLikeTxTrace traces = Execute(
             new GethLikeJavascriptTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer  }),
-            bytecode,
+            GetBytecode(),
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-
-        // test outPut of the results written into CustomTracerResult
         for (int i = 0; i < traces.CustomTracerResult.Count; i++)
         {
             dynamic arrayRet = traces.CustomTracerResult[i];
             Assert.That(arrayRet[0], Is.EqualTo("0:PUSH32"));
             Assert.That(arrayRet[1], Is.EqualTo("33:PUSH1"));
             Assert.That(arrayRet[2], Is.EqualTo("35:MSTORE"));
-            Assert.That(arrayRet[3], Is.EqualTo("36:PUSH1"));
-            Assert.That(arrayRet[6], Is.EqualTo("42:JUMPSUB"));
-            Assert.That(arrayRet[7], Is.EqualTo("43:STOP"));
+            Assert.That(arrayRet[3], Is.EqualTo("36:PUSH32"));
+            Assert.That(arrayRet[4], Is.EqualTo("69:PUSH1"));
+            Assert.That(arrayRet[5], Is.EqualTo("71:MSTORE"));
+            Assert.That(arrayRet[6], Is.EqualTo("72:STOP"));
         }
 
     }
     [Test]
     public void Js_traces_filter_with_conditionals()
     {
-        byte[] data = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-        byte[] bytecode = Prepare.EvmCode
-            .MSTORE(0, data)
-            .MCOPY(32, 0, 32)
-            .STOP()
-            .Done;
         string userTracer = @"
                     retVal: [],
                     step: function(log, db) {
@@ -78,20 +63,17 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
                 ";
         GethLikeTxTrace traces = Execute(
             new GethLikeJavascriptTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
-            bytecode,
+            GetBytecode(),
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        // test outPut of the results written into CustomTracerResult
         for (int i = 0; i < traces.CustomTracerResult.Count; i++)
         {
             dynamic arrayRet = traces.CustomTracerResult[i];
             Assert.That(arrayRet[0], Is.EqualTo("33: PUSH1"));
             Assert.That(arrayRet[1], Is.EqualTo("35: MSTORE"));
-            Assert.That(arrayRet[2], Is.EqualTo("36: PUSH1"));
-            Assert.That(arrayRet[3], Is.EqualTo("38: PUSH1"));
-            Assert.That(arrayRet[4], Is.EqualTo("40: PUSH1"));
-
+            Assert.That(arrayRet[2], Is.EqualTo("69: PUSH1"));
+            Assert.That(arrayRet[3], Is.EqualTo("71: MSTORE"));
         }
 
     }
@@ -99,16 +81,6 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
     [Test]
     public void Js_traces_storage_information()
     {
-        byte[] data = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-        // Store data in storage at slot 0x20
-        byte[] bytecode = Prepare.EvmCode
-            .SSTORE(0x20, data)
-            // Copy data from storage slot 0x20 to memory
-            .SLOAD(0x20)
-            .MSTORE(0x40, data)
-            .MCOPY(32, 0, 32)
-            .STOP()
-            .Done;
         string userTracer = @"
                     retVal: [],
                     step: function(log, db) {
@@ -128,33 +100,22 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
                 ";
         GethLikeTxTrace traces = Execute(
             new GethLikeJavascriptTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
-            bytecode,
+            GetStorageBytecode(),
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
-
-        // test outPut of the results written into CustomTracerResult
         for (int i = 0; i < traces.CustomTracerResult.Count; i++)
         {
             dynamic arrayRet = traces.CustomTracerResult[i];
-            Assert.That(arrayRet[0], Is.EqualTo("35: SSTORE 0x102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"));
-            Assert.That(arrayRet[1], Is.EqualTo("38: SLOAD 0x20"));
-            Assert.That(arrayRet[2], Is.EqualTo("82: STOP 0x20 <- 0x0"));
+            Assert.That(arrayRet[0], Is.EqualTo("35: SSTORE 0xa01234"));
+            Assert.That(arrayRet[1], Is.EqualTo("71: SSTORE 0xb15678"));
+            Assert.That(arrayRet[2], Is.EqualTo("107: SLOAD 0xa01234"));
+            Assert.That(arrayRet[3], Is.EqualTo("108: STOP 0x0 <- 0xa01234"));
         }
 
     }
     [Test]
     public void Js_traces_operation_results()
     {
-        byte[] data = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-        // Store data in storage at slot 0x20
-        byte[] bytecode = Prepare.EvmCode
-            .SSTORE(0x20, data)
-            // Copy data from storage slot 0x20 to memory
-            .SLOAD(0x20)
-            //.MSTORE(0x40, data)
-            .MCOPY(32, 0, 32)
-            .STOP()
-            .Done;
         string userTracer = @"
                     retVal: [],
                     afterSload: false,
@@ -168,7 +129,7 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
                             this.afterSload = true;
                         }
                         if (log.op.toNumber() == 0x55)
-                            this.retVal.push(log.getPC() + "" SSTORE"" + log.stack.peek(0).toString(16) + "" <- "" + log.stack.peek(0).toString(16));
+                            this.retVal.push(log.getPC() + "" SSTORE"" + log.stack.peek(0).toString(16) + "" <- "" + log.stack.peek(1).toString(16));
                     },
                     fault: function(log, db) {
                         this.retVal.push(""FAULT: "" + JSON.stringify(log));
@@ -179,37 +140,22 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
                 ";
         GethLikeTxTrace traces = Execute(
             new GethLikeJavascriptTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
-            bytecode,
+            GetOperationalBytecode(),
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
-
-        // test outPut of the results written into CustomTracerResult
         for (int i = 0; i < traces.CustomTracerResult.Count; i++)
         {
             dynamic arrayRet = traces.CustomTracerResult[i];
-            Assert.That(arrayRet[0], Is.EqualTo("35 SSTORE0x102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f <- 0x102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"));
-            Assert.That(arrayRet[1], Is.EqualTo("38SLOAD 0x20"));
-            Assert.That(arrayRet[2], Is.EqualTo("Result: 0x20"));
+            Assert.That(arrayRet[0], Is.EqualTo("68 SSTORE0xa01234 <- 0xb15678"));
+            Assert.That(arrayRet[1], Is.EqualTo("104SLOAD 0xa01234"));
+            Assert.That(arrayRet[2], Is.EqualTo("Result: 0x0"));
         }
 
     }
 
-    /// <summary>
-    /// Testing Javascript tracers implementation
-    /// </summary>
     [Test]
     public void Js_traces_calls_btn_contracts()
     {
-        byte[] data = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-        // Store data in storage at slot 0x20
-        byte[] bytecode = Prepare.EvmCode
-            // Copy data from storage slot 0x20 to memory
-            .SSTORE(0x20, data)
-            .SLOAD(0x20)
-            .MCOPY(32, 0, 32)
-            .STOP()
-            .Done;
-
         string userTracer = @"
                     retVal: [],
                     afterSload: false,
@@ -264,59 +210,56 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
 
         GethLikeTxTrace traces = Execute(
                 new GethLikeJavascriptTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
-                bytecode,
+                GetOperationalBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
-
-        // test outPut of the results written into CustomTracerResult
         for (int i = 0; i < traces.CustomTracerResult.Count; i++)
         {
             dynamic arrayRet = traces.CustomTracerResult[i];
-            Assert.That(arrayRet[0],
-                Is.EqualTo(
-                    "35: SSTORE 942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0x102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f <- 0x102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"));
-            Assert.That(arrayRet[1], Is.EqualTo("38: SLOAD 942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0x20"));
-            Assert.That(arrayRet[2], Is.EqualTo("Result: 0x20"));
+            Assert.That(arrayRet[0], Is.EqualTo("68: SSTORE 942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0xa01234 <- 0xb15678"));
+            Assert.That(arrayRet[1], Is.EqualTo("104: SLOAD 942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0xa01234"));
+            Assert.That(arrayRet[2], Is.EqualTo("Result: 0xa01234"));
 
         }
     }
-    /// <summary>
-    /// Testing Javascript tracers implementation
-    /// </summary>
-    [Test]
-    public void Js_traces_Memory()
+    private static byte[] GetBytecode()
     {
-        byte[] data = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-   
-        byte[] bytecode = Prepare.EvmCode
-            .MSTORE(0, data)
-            .MCOPY(32, 0, 32)
-            .STOP()
+       return  Prepare.EvmCode
+            .PushData(SampleHexData1.PadLeft(64, '0'))
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData(SampleHexData2.PadLeft(64, '0'))
+            .PushData(32)
+            .Op(Instruction.MSTORE)
+            .Op(Instruction.STOP)
             .Done;
-        string userTracer = @"
-                    retVal: [],
-                    step: function(log, db) { this.retVal.push(log.getRefund() + '===' + log.getPC() + ':' + log.op.toString()) },
-                    fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)) },
-                    result: function(ctx, db) { return this.retVal }
-                ";
-        GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer  }),
-                bytecode,
-                MainnetSpecProvider.CancunActivation)
-            .BuildResult();
-
-
-        // test outPut of the results written into CustomTracerResult
-        for (int i = 0; i < traces.CustomTracerResult.Count; i++)
-        {
-            dynamic arrayRet = traces.CustomTracerResult[i];
-            Assert.That(arrayRet[0], Is.EqualTo("0:PUSH32"));
-            Assert.That(arrayRet[1], Is.EqualTo("33:PUSH1"));
-            Assert.That(arrayRet[2], Is.EqualTo("35:MSTORE"));
-            Assert.That(arrayRet[3], Is.EqualTo("36:PUSH1"));
-            Assert.That(arrayRet[6], Is.EqualTo("42:JUMPSUB"));
-            Assert.That(arrayRet[7], Is.EqualTo("43:STOP"));
-        }
-
+    }
+    private static byte[] GetStorageBytecode()
+    {
+        return  Prepare.EvmCode
+             .PushData(SampleHexData1.PadLeft(64, '0'))
+             .PushData(0)
+             .Op(Instruction.SSTORE)
+             .PushData(SampleHexData2.PadLeft(64, '0'))
+             .PushData(32)
+             .Op(Instruction.SSTORE)
+             .PushData(SampleHexData1.PadLeft(64, '0'))
+             .PushData(0)
+             .Op(Instruction.SLOAD)
+             .Op(Instruction.STOP)
+             .Done;
+    }
+    private static byte[] GetOperationalBytecode()
+    {
+        return  Prepare.EvmCode
+             .PushData(SampleHexData2.PadLeft(64, '0'))
+             .PushData(SampleHexData1.PadLeft(64, '0'))
+             .PushData(0)
+             .Op(Instruction.SSTORE)
+             .PushData(SampleHexData1.PadLeft(64, '0'))
+             .PushData(0)
+             .Op(Instruction.SLOAD)
+             .Op(Instruction.STOP)
+             .Done;
     }
 }

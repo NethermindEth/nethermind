@@ -45,7 +45,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
         {
             return depth;
         }
-        public long? getRefund() // not yet tested
+        public long? getRefund()
         {
             return refund;
         }
