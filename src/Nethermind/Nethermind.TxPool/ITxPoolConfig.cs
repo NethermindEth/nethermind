@@ -28,6 +28,12 @@ namespace Nethermind.TxPool
         [ConfigItem(DefaultValue = "512", Description = "Max number of full blob transactions stored in memory. Used only if persistent storage is disabled")]
         int InMemoryBlobPoolSize { get; set; }
 
+        [ConfigItem(DefaultValue = "0", Description = "Max number of pending transactions per single sender. Infinite by default (0)")]
+        int MaxPendingTxsPerSender { get; set; }
+
+        [ConfigItem(DefaultValue = "16", Description = "Max number of pending blob transactions per single sender.")]
+        int MaxPendingBlobTxsPerSender { get; set; }
+
         [ConfigItem(DefaultValue = "524288",
             Description = "Max number of cached hashes of already known transactions." +
                           "It is set automatically by the memory hint.")]
