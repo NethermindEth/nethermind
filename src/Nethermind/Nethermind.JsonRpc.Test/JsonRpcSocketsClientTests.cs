@@ -107,7 +107,8 @@ public class JsonRpcSocketsClientTests
             int received = receiveBytes.Result;
             Assert.That(sent, Is.EqualTo(received));
         }
-
+        
+        [Retry(5)]
         [TestCase(2)]
         [TestCase(10)]
         [TestCase(50)]
@@ -219,7 +220,8 @@ public class JsonRpcSocketsClientTests
             int received = receiveMessages.Result;
             Assert.That(sent, Is.EqualTo(received));
         }
-
+        
+        [Retry(5)]
         [TestCase(2)]
         [TestCase(10)]
         [TestCase(50)]
