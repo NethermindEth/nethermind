@@ -43,6 +43,18 @@ public class OptimismTransactionProcessor : TransactionProcessor
         base.Execute(tx, header, tracer, opts);
     }
 
+    protected override bool ExecuteEVMCall(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+        in long gasAvailable, in ExecutionEnvironment env, out TransactionSubstate? substate, out long spentGas,
+        out byte statusCode)
+    {
+        bool callResult = base.ExecuteEVMCall(tx, header, spec, tracer, opts, in gasAvailable, in env, out substate, out spentGas, out statusCode);
+
+        if (tx.IsOPSystemTransaction && !_opConfigHelper.IsRegolith(header))
+            spentGas = 0;
+
+        return callResult;
+    }
+
     protected override bool BuyGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment)
     {
@@ -137,12 +149,17 @@ public class OptimismTransactionProcessor : TransactionProcessor
         in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice)
     {
         // if deposit: skip refunds, skip tipping coinbase
-        // Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
-        if (tx.IsDeposit() && !_opConfigHelper.IsRegolith(header))
+        if (tx.IsDeposit())
         {
-            // Record deposits as using all their gas
-            // System Transactions are special & are not recorded as using any gas (anywhere)
-            return tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
+            // Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
+            if (!_opConfigHelper.IsRegolith(header))
+            {
+                // Record deposits as using all their gas
+                // System Transactions are special & are not recorded as using any gas (anywhere)
+                return tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
+            }
+
+            return tx.GasLimit - (!substate.IsError ? unspentGas : 0);
         }
 
         return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice);
