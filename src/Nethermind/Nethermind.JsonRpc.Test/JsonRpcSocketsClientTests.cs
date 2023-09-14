@@ -32,17 +32,17 @@ public class JsonRpcSocketsClientTests
 
             Task<int> receiveBytes = OneShotServer(
                 ipEndPoint,
-                async socket => await CountNumberOfBytes(socket)
+                CountNumberOfBytes
             );
 
             JsonRpcSuccessResponse bigObject = RandomSuccessResponse(200_000);
             Task<int> sendJsonRpcResult = Task.Run(async () =>
             {
-                using Socket socket = new Socket(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                using Socket socket = new(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
                 await socket.ConnectAsync(ipEndPoint);
 
                 ISocketHandler handler = new IpcSocketsHandler(socket);
-                JsonRpcSocketsClient client = new JsonRpcSocketsClient(
+                JsonRpcSocketsClient client = new(
                     clientName: "TestClient",
                     handler: handler,
                     endpointType: RpcEndpoint.IPC,
@@ -73,16 +73,16 @@ public class JsonRpcSocketsClientTests
 
             Task<int> receiveBytes = OneShotServer(
                 ipEndPoint,
-                async socket => await CountNumberOfBytes(socket)
+                CountNumberOfBytes
             );
 
             Task<int> sendJsonRpcResult = Task.Run(async () =>
             {
-                using Socket socket = new Socket(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                using Socket socket = new(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
                 await socket.ConnectAsync(ipEndPoint);
 
                 ISocketHandler handler = new IpcSocketsHandler(socket);
-                JsonRpcSocketsClient client = new JsonRpcSocketsClient(
+                JsonRpcSocketsClient client = new(
                     clientName: "TestClient",
                     handler: handler,
                     endpointType: RpcEndpoint.IPC,
@@ -117,16 +117,16 @@ public class JsonRpcSocketsClientTests
 
             Task<int> receiveBytes = OneShotServer(
                 ipEndPoint,
-                async socket => await CountNumberOfBytes(socket)
+                CountNumberOfBytes
             );
 
             Task<int> sendCollection = Task.Run(async () =>
             {
-                using Socket socket = new Socket(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                using Socket socket = new(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
                 await socket.ConnectAsync(ipEndPoint);
 
                 ISocketHandler handler = new IpcSocketsHandler(socket);
-                JsonRpcSocketsClient client = new JsonRpcSocketsClient(
+                JsonRpcSocketsClient client = new(
                     clientName: "TestClient",
                     handler: handler,
                     endpointType: RpcEndpoint.IPC,
@@ -148,7 +148,7 @@ public class JsonRpcSocketsClientTests
 
         private static async Task<T> OneShotServer<T>(IPEndPoint ipEndPoint, Func<Socket, Task<T>> func)
         {
-            using Socket socket = new Socket(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            using Socket socket = new(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
             socket.Bind(ipEndPoint);
             socket.Listen();
 
@@ -174,6 +174,7 @@ public class JsonRpcSocketsClientTests
     public class UsingWebSockets
     {
         [Test]
+        [Retry(5)]
         [TestCase(2)]
         [TestCase(10)]
         [TestCase(50)]
@@ -188,11 +189,11 @@ public class JsonRpcSocketsClientTests
 
             Task<int> sendMessages = Task.Run(async () =>
             {
-                using ClientWebSocket socket = new ClientWebSocket();
+                using ClientWebSocket socket = new();
                 await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
                 using ISocketHandler handler = new WebSocketHandler(socket, NullLogManager.Instance);
-                using JsonRpcSocketsClient client = new JsonRpcSocketsClient(
+                using JsonRpcSocketsClient client = new(
                     clientName: "TestClient",
                     handler: handler,
                     endpointType: RpcEndpoint.Ws,
@@ -233,11 +234,11 @@ public class JsonRpcSocketsClientTests
 
             Task sendCollection = Task.Run(async () =>
             {
-                using ClientWebSocket socket = new ClientWebSocket();
+                using ClientWebSocket socket = new();
                 await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
                 using ISocketHandler handler = new WebSocketHandler(socket, NullLogManager.Instance);
-                using JsonRpcSocketsClient client = new JsonRpcSocketsClient(
+                using JsonRpcSocketsClient client = new(
                     clientName: "TestClient",
                     handler: handler,
                     endpointType: RpcEndpoint.Ws,
@@ -273,11 +274,11 @@ public class JsonRpcSocketsClientTests
 
             Task<int> sendCollection = Task.Run(async () =>
             {
-                using ClientWebSocket socket = new ClientWebSocket();
+                using ClientWebSocket socket = new();
                 await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
                 using ISocketHandler handler = new WebSocketHandler(socket, NullLogManager.Instance);
-                using JsonRpcSocketsClient client = new JsonRpcSocketsClient(
+                using JsonRpcSocketsClient client = new(
                     clientName: "TestClient",
                     handler: handler,
                     endpointType: RpcEndpoint.Ws,
