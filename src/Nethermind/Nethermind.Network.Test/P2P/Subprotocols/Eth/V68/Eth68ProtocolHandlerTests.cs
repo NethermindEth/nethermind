@@ -115,7 +115,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
 
         _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>());
+            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>(), Arg.Any<IReadOnlyList<byte>>());
     }
 
     [TestCase(true)]
@@ -153,7 +153,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
 
         _pooledTxsRequestor.Received(1).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>());
+            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>(), Arg.Any<IReadOnlyList<byte>>());
     }
 
     [TestCase(1)]
@@ -202,7 +202,7 @@ public class Eth68ProtocolHandlerTests
             new NodeStatsManager(_timerFactory, LimboLogs.Instance),
             _syncManager,
             _transactionPool,
-            new PooledTxsRequestor(_transactionPool),
+            new PooledTxsRequestor(_transactionPool, new TxPoolConfig()),
             _gossipPolicy,
             new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
             LimboLogs.Instance,

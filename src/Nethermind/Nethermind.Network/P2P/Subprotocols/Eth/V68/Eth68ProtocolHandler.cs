@@ -93,7 +93,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
         Stopwatch? stopwatch = isTrace ? Stopwatch.StartNew() : null;
 
-        _pooledTxsRequestor.RequestTransactionsEth68(_sendAction, message.Hashes, message.Sizes);
+        _pooledTxsRequestor.RequestTransactionsEth68(_sendAction, message.Hashes, message.Sizes, message.Types);
 
         stopwatch?.Stop();
 

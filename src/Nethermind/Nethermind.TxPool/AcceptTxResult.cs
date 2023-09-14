@@ -80,6 +80,11 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult PendingTxsOfOtherType = new(13, nameof(PendingTxsOfOtherType));
 
+        /// <summary>
+        /// Ignores transactions if tx type is not supported
+        /// </summary>
+        public static readonly AcceptTxResult NotSupportedTxType = new(14, nameof(NotSupportedTxType));
+
         private int Id { get; }
         private string Code { get; }
         private string? Message { get; }

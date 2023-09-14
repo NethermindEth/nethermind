@@ -17,7 +17,7 @@ namespace Nethermind.TxPool
         public static NullTxPool Instance { get; } = new();
 
         public int GetPendingTransactionsCount() => 0;
-
+        public int GetPendingBlobTransactionsCount() => 0;
         public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
 
         public Transaction[] GetPendingTransactionsBySender(Address address) => Array.Empty<Transaction>();

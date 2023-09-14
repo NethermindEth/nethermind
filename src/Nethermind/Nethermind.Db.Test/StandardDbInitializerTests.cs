@@ -62,15 +62,15 @@ namespace Nethermind.Db.Test
         [Test]
         public async Task InitializerTests_WithPruning()
         {
-            IDbProvider dbProvider = await InitializeStandardDb(false, DbModeHint.Mem, "pruning", true);
+            IDbProvider dbProvider = await InitializeStandardDb(false, DbModeHint.Mem, "pruning");
             dbProvider.StateDb.Should().BeOfType<FullPruningDb>();
         }
 
-        private async Task<IDbProvider> InitializeStandardDb(bool useReceipts, DbModeHint dbModeHint, string path, bool pruning = false)
+        private async Task<IDbProvider> InitializeStandardDb(bool useReceipts, DbModeHint dbModeHint, string path)
         {
             using IDbProvider dbProvider = new DbProvider(dbModeHint);
             RocksDbFactory rocksDbFactory = new(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, path));
-            StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), Substitute.For<IFileSystem>(), pruning);
+            StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), Substitute.For<IFileSystem>());
             await initializer.InitStandardDbsAsync(useReceipts);
             return dbProvider;
         }

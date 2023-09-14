@@ -12,33 +12,30 @@ namespace Nethermind.Db
     public class StandardDbInitializer : RocksDbInitializer
     {
         private readonly IFileSystem _fileSystem;
-        private readonly bool _fullPruning;
 
         public StandardDbInitializer(
             IDbProvider? dbProvider,
             IRocksDbFactory? rocksDbFactory,
             IMemDbFactory? memDbFactory,
-            IFileSystem? fileSystem = null,
-            bool fullPruning = false)
+            IFileSystem? fileSystem = null)
             : base(dbProvider, rocksDbFactory, memDbFactory)
         {
             _fileSystem = fileSystem ?? new FileSystem();
-            _fullPruning = fullPruning;
         }
 
-        public void InitStandardDbs(bool useReceiptsDb)
+        public void InitStandardDbs(bool useReceiptsDb, bool useBlobDb = true)
         {
-            RegisterAll(useReceiptsDb);
+            RegisterAll(useReceiptsDb, useBlobDb);
             InitAll();
         }
 
-        public async Task InitStandardDbsAsync(bool useReceiptsDb)
+        public async Task InitStandardDbsAsync(bool useReceiptsDb, bool useBlobDb = true)
         {
-            RegisterAll(useReceiptsDb);
+            RegisterAll(useReceiptsDb, useBlobDb);
             await InitAllAsync();
         }
 
-        private void RegisterAll(bool useReceiptsDb)
+        private void RegisterAll(bool useReceiptsDb, bool useBlobDb)
         {
             RegisterDb(BuildRocksDbSettings(DbNames.Blocks, () => Metrics.BlocksDbReads++, () => Metrics.BlocksDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.Headers, () => Metrics.HeaderDbReads++, () => Metrics.HeaderDbWrites++));
@@ -65,7 +62,10 @@ namespace Nethermind.Db
                 RegisterCustomDb(DbNames.Receipts, () => new ReadOnlyColumnsDb<ReceiptsColumns>(new MemColumnsDb<ReceiptsColumns>(), false));
             }
             RegisterDb(BuildRocksDbSettings(DbNames.Metadata, () => Metrics.MetadataDbReads++, () => Metrics.MetadataDbWrites++));
-            RegisterDb(BuildRocksDbSettings(DbNames.BlobTransactions, () => Metrics.BlobTransactionsDbReads++, () => Metrics.BlobTransactionsDbWrites++));
+            if (useBlobDb)
+            {
+                RegisterDb(BuildRocksDbSettings(DbNames.BlobTransactions, () => Metrics.BlobTransactionsDbReads++, () => Metrics.BlobTransactionsDbWrites++));
+            }
         }
 
         private RocksDbSettings BuildRocksDbSettings(string dbName, Action updateReadsMetrics, Action updateWriteMetrics, bool deleteOnStart = false)
