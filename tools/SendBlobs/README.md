@@ -34,21 +34,21 @@ docker run ghcr.io/flcl42/send-blobs:latest http://localhost:8545 5x6 0x00000000
                                              0x0000000000000000000000000000000000000001 10000 4
 
 <<BrokenTxs
-Issues that can be intentionally added:
-  1 = 0 blobs
-  2 = 1st blob is of wrong size
-  3 = 7 blobs
-  4 = 1st blob's wrong proof
-  5 = 1st blob's wrong commitment
-  6 = 1st blob with a modulo correct, but > modulo value
-  7 = max fee per blob gas = max value
-  8 = max fee per blob gas > max value
-  9 = 1st proof removed
-  10 = 1st commitment removed
-  11 = max fee per blob gas = max value / blobgasperblob + 1
-  14 = 100 blobs
-  15 = 1000 blobs
-  16 = wait for each transaction to be included in a block before posting the next
+Issues/Options that can be intentionally added:
+  1    = 0 blobs
+  2    = 1st blob is of wrong size
+  3    = 7 blobs
+  4    = 1st blob's wrong proof
+  5    = 1st blob's wrong commitment
+  6    = 1st blob with a modulo correct, but > modulo value
+  7    = max fee per blob gas = max value
+  8    = max fee per blob gas > max value
+  9    = 1st proof removed
+  10   = 1st commitment removed
+  11   = max fee per blob gas = max value / blobgasperblob + 1
+  14   = 100 blobs
+  15   = 1000 blobs
+  wait = wait for each transaction to be included in a block before posting the next
 
 Syntax:
 

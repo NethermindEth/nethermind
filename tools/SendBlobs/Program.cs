@@ -111,7 +111,7 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
             case "2": blobCount = 7; break;
             case "14": blobCount = 100; break;
             case "15": blobCount = 1000; break;
-            case "16":
+            case "wait":
                 waitForBlock = isNodeSynced;
                 if (!isNodeSynced) Console.WriteLine($"Will not wait for blob inclusion since selected node at {rpcUrl} is still syncing");
                 break;
@@ -202,7 +202,7 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
         Console.WriteLine("Result:" + result);
         nonce++;
 
-        if (txCount > 0 && blockResult != null && waitForBlock)
+        if (blockResult != null && waitForBlock)
             await WaitForBlobInclusion(nodeManager, tx.CalculateHash(), blockResult.Number);
     }
 }
