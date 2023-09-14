@@ -55,36 +55,36 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public IBlockProductionTrigger DefaultBlockProductionTrigger => throw new NotImplementedException();
 
-    public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
+    public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null,
+        ITxSource? additionalTxSource = null)
     {
         if (blockProductionTrigger is not null || additionalTxSource is not null)
-            throw new ArgumentException("Optimism does not support custom block production trigger or additional tx source");
+            throw new ArgumentException(
+                "Optimism does not support custom block production trigger or additional tx source");
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-
-        // TODO: copy-pasted from InitializeBlockchainOptimism
-        Address l1FeeRecipient = new("0x420000000000000000000000000000000000001A");
-
-        OPL1CostHelper l1CostHelper = new();
-        OPSpecHelper opConfigHelper = new(
-            _api.ChainSpec.Optimism.RegolithTimestamp,
-            _api.ChainSpec.Optimism.BedrockBlockNumber,
-            l1FeeRecipient // it would be good to get this last one from chainspec too
-        );
+        ArgumentNullException.ThrowIfNull(_api.DbProvider);
+        ArgumentNullException.ThrowIfNull(_api.BlockTree);
+        ArgumentNullException.ThrowIfNull(_api.ReadOnlyTrieStore);
+        ArgumentNullException.ThrowIfNull(_api.BlockValidator);
+        ArgumentNullException.ThrowIfNull(_api.RewardCalculatorSource);
+        ArgumentNullException.ThrowIfNull(_api.ReceiptStorage);
+        ArgumentNullException.ThrowIfNull(_api.TxPool);
+        ArgumentNullException.ThrowIfNull(_api.TransactionComparerProvider);
 
         _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
-            new OptimismTransactionProcessorFactory(l1CostHelper, opConfigHelper),
-            _api.DbProvider!,
-            _api.BlockTree!,
-            _api.ReadOnlyTrieStore!,
-            _api.SpecProvider!,
-            _api.BlockValidator!,
-            _api.RewardCalculatorSource!,
-            _api.ReceiptStorage!,
+            _api.ChainSpec,
+            _api.DbProvider,
+            _api.BlockTree,
+            _api.ReadOnlyTrieStore,
+            _api.SpecProvider,
+            _api.BlockValidator,
+            _api.RewardCalculatorSource,
+            _api.ReceiptStorage,
             _api.BlockPreprocessor,
-            _api.TxPool!,
-            _api.TransactionComparerProvider!,
-            _api.Config<IBlocksConfig>(),
+            _api.TxPool,
+            _api.TransactionComparerProvider,
+            _blocksConfig,
             _api.LogManager);
 
         _api.GasLimitCalculator = new OptimismGasLimitCalculator();
@@ -95,7 +95,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         _api.BlockProducer = _blockProducer = new OptimismPostMergeBlockProducer(
             new OptimismPayloadTxSource(),
-            new OptimismTxPoolTxSource(producerEnv.TxSource),
+            producerEnv.TxSource,
             producerEnv.ChainProcessor,
             producerEnv.BlockTree,
             _blockProductionTrigger,
@@ -112,7 +112,8 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     #endregion
 
-    public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager, ChainSpec chainSpec) =>
+    public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
+        ILogManager logManager, ChainSpec chainSpec) =>
         new OptimismNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
 
     public Task Init(INethermindApi api)
