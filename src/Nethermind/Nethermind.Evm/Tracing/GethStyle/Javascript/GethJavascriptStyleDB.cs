@@ -1,24 +1,17 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Reflection.Emit;
-using Nethermind.Evm;
 using Nethermind.Core;
-using Microsoft.ClearScript;
-using Microsoft.ClearScript.V8;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State;
 
-namespace Nethermind.Evm.Tracing.GethStyle;
+namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
-public class GethJavascriptStyleDB
+public class GethJavascriptStyleDb
 {
     private readonly IWorldState _stateRepository;
 
-    public GethJavascriptStyleDB(IWorldState stateRepository)
+    public GethJavascriptStyleDb(IWorldState stateRepository)
     {
         _stateRepository = stateRepository;
     }

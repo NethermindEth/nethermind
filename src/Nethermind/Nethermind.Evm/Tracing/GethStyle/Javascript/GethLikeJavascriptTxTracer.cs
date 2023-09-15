@@ -11,7 +11,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using Newtonsoft.Json.Linq;
 
-namespace Nethermind.Evm.Tracing.GethStyle;
+namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
 {
@@ -23,14 +23,18 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
     public GethLikeJavascriptTxTracer(GethTraceOptions options) : base(options)
     {
         _customTraceEntry = new(_engine);
-        string fullJsCode = options.Tracer;
-        // TODO: options.Tracer can be a name of a file with JS code
-
-        _engine.Execute(fullJsCode);
+        _engine.Execute(LoadJavascriptCode(options.Tracer));
         _tracer = _engine.Script.tracer;
-
         IsTracingRefunds = true;
         IsTracingActions = true;
+    }
+
+    private string LoadJavascriptCode(string tracer) => "tracer = " + (tracer.StartsWith("{") && tracer.EndsWith("}") ? tracer : LoadJavascriptCodeFromFile(tracer));
+
+    private string LoadJavascriptCodeFromFile(string tracerFileName)
+    {
+        // TODO; load from file
+        return "{}";
     }
 
     public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)

@@ -3,12 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core;
 using Microsoft.ClearScript.V8;
+using Nethermind.Core;
 using Nethermind.Int256;
+
 // ReSharper disable InconsistentNaming
 
-namespace Nethermind.Evm.Tracing.GethStyle
+namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 {
     public class GethJavascriptStyleLog
     {
