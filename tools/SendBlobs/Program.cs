@@ -66,6 +66,9 @@ if (args.Length > 4)
 ulong feeMultiplier = 4;
 if (args.Length > 5) ulong.TryParse(args[5], out feeMultiplier);
 
+UInt256 maxPriorityFeePerGas = 0;
+if (args.Length > 6) UInt256.TryParse(args[6], out maxPriorityFeePerGas);
+
 await KzgPolynomialCommitments.InitializeAsync();
 
 PrivateKey privateKey = new(privateKeyString);
@@ -151,11 +154,14 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
 
         string? gasPriceRes = await nodeManager.Post<string>("eth_gasPrice") ?? "1";
         UInt256 gasPrice = (UInt256)Convert.ToUInt64(gasPriceRes, gasPriceRes.StartsWith("0x") ? 16 : 10);
-
+        if (maxPriorityFeePerGas == 0)
+        {
+            maxPriorityFeePerGas = gasPrice * feeMultiplier;
+        }
         string? maxPriorityFeePerGasRes = await nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
-        UInt256 maxPriorityFeePerGas = (UInt256)Convert.ToUInt64(maxPriorityFeePerGasRes, maxPriorityFeePerGasRes.StartsWith("0x") ? 16 : 10);
+        UInt256 networkMaxPriorityFeePerGas = (UInt256)Convert.ToUInt64(maxPriorityFeePerGasRes, maxPriorityFeePerGasRes.StartsWith("0x") ? 16 : 10);
 
-        Console.WriteLine($"Nonce: {nonce}, GasPrice: {gasPrice}, MaxPriorityFeePerGas: {maxPriorityFeePerGas}");
+        Console.WriteLine($"Nonce: {nonce}, GasPrice: {gasPrice}, MaxPriorityFeePerGas: {networkMaxPriorityFeePerGas}");
 
         switch (@break)
         {
