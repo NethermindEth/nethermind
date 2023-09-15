@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Test
             }
 
             byte[] code = codeInitializer.Done;
-            TestAllTracerWithOutput receipt = Execute(BlockNumber, 1_000_000, code, timestamp: timestampParam);
+            TestAllTracerWithOutput receipt = Execute((BlockNumber, timestampParam), 1_000_000, code);
             return receipt;
         }
 

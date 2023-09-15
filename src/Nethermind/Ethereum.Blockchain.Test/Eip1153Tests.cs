@@ -9,7 +9,7 @@ namespace Ethereum.Blockchain.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class EIP5656MCOPYTests : GeneralStateTestBase
+public class EIP1153transientStorageTests : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test)
@@ -19,7 +19,7 @@ public class EIP5656MCOPYTests : GeneralStateTestBase
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadEipTestsStrategy(), "stEIP5656-MCOPY");
+        var loader = new TestsSourceLoader(new LoadEipTestsStrategy(), "stEIP1153-transientStorage");
         return (IEnumerable<GeneralStateTest>)loader.LoadTests();
     }
 }
