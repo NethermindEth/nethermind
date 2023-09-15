@@ -6,84 +6,56 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Microsoft.ClearScript.V8;
 using Nethermind.Int256;
-
+// ReSharper disable InconsistentNaming
 
 namespace Nethermind.Evm.Tracing.GethStyle
 {
-
-    public class GethJavascriptStyleLog : GethTxTraceEntry
+    public class GethJavascriptStyleLog
     {
-        private static V8ScriptEngine _engine = new V8ScriptEngine();
+        private readonly V8ScriptEngine _engine;
+
+        public GethJavascriptStyleLog(V8ScriptEngine engine)
+        {
+            _engine = engine;
+        }
+
         public long? pc { get; set; }
         public OpcodeString? op { get; set; }
         public long? gas { get; set; }
         public long? gasCost { get; set; }
         public int? depth { get; set; }
-
         public long? refund { get; set; }
-
         public string? error { get; set; }
-
         public Contract? contract { get; set; }
-
         public JSStack? stack { get; set; }
-
         public JSMemory? memory { get; set; }
-        public long? getPC()
-        {
-            return pc;
-        }
-        public long? getGas()
-        {
-            return gas;
-        }
-        public long? getCost()
-        {
-            return gasCost;
-        }
-        public int? getDepth()
-        {
-            return depth;
-        }
-        public long? getRefund()
-        {
-            return refund;
-        }
+        public long? getPC() => pc;
+
+        public long? getGas() => gas;
+
+        public long? getCost() => gasCost;
+
+        public int? getDepth() => depth;
+
+        public long? getRefund() => refund;
 
         public string? getError() //needs looking into
-        {
-            return !string.IsNullOrEmpty(error) ? error : null;
-        }
+            => !string.IsNullOrEmpty(error) ? error : null;
 
         public class OpcodeString
         {
             private readonly Instruction _value;
-
-            public OpcodeString(Instruction value)
-            {
-                _value = value;
-            }
-
+            public OpcodeString(Instruction value) => _value = value;
             public string? toNumber() => _value.GetHex();
-
             public string? toString() => _value.GetName();
-
-            public bool? isPush()
-            {
-                return _value >= Instruction.PUSH0 && _value <= Instruction.PUSH32;
-
-            }
-
+            public bool? isPush() => _value is >= Instruction.PUSH0 and <= Instruction.PUSH32;
         }
 
         public class JSStack
         {
             private readonly List<string> _items;
 
-            public JSStack(List<string> items)
-            {
-                _items = items;
-            }
+            public JSStack(List<string> items) => _items = items;
 
             public string? length() => _items.Count.ToString();
 
@@ -92,44 +64,22 @@ namespace Nethermind.Evm.Tracing.GethStyle
             public string? peek(int index)
             {
                 int topIndex = _items.Count - 1 - index;
-                if (topIndex >= 0 && topIndex < _items.Count)
-                {
-                    return _items[topIndex];
-                }
-                return null;
+                return topIndex >= 0 && topIndex < _items.Count ? _items[topIndex] : null;
             }
-            public string? getItem(int index)
-            {
-                if (index >= 0 && index < _items.Count)
-                {
-                    return _items[index];
-                }
-                return null;
-            }
-
+            public string? getItem(int index) => index >= 0 && index < _items.Count ? _items[index] : null;
         }
 
         public class JSMemory
         {
             private readonly List<string> _memoryTrace;
 
-            public JSMemory(List<string> memoryTrace)
-            {
-                _memoryTrace = memoryTrace;
-            }
+            public JSMemory(List<string> memoryTrace) => _memoryTrace = memoryTrace;
             public int? getCount() => _memoryTrace.Count;
 
-            public string? getItem(int index)
-            {
-                if (index >= 0 && index < _memoryTrace.Count)
-                {
-                    return _memoryTrace[index];
-                }
-                return null;
-            }
+            public string? getItem(int index) => index >= 0 && index < _memoryTrace.Count ? _memoryTrace[index] : null;
             public int? length() => _memoryTrace.Count;
-
-            public byte[]? Slice(int start, int end) // needs looking into
+            // TODO: does it need to be an array? Why not ReadOnlySpan?
+            public byte[]? slice(int start, int end) // needs looking into
             {
                 if (start < 0 || end < 0 || start > _memoryTrace.Count || end > _memoryTrace.Count)
                 {
@@ -145,6 +95,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
                 return result.ToArray();
             }
 
+            // TODO: does it need to be an array? Why not ReadOnlySpan?
             public byte[]? getUint(int offset) // needs looking into
             {
                 if(offset < 0 || offset > _memoryTrace.Count)
@@ -158,50 +109,29 @@ namespace Nethermind.Evm.Tracing.GethStyle
                 }
                 return result.ToArray();
             }
-
-
         }
 
         public class Contract
         {
-            // private readonly ScriptEngine _engine;
+            private readonly V8ScriptEngine _engine;
             private readonly Address _caller;
             private readonly Address _address;
             private readonly UInt256 _value;
             private readonly ReadOnlyMemory<byte> _input;
 
-            public Contract( Address caller, Address address,UInt256 value, ReadOnlyMemory<byte> input)
+            public Contract(V8ScriptEngine engine, Address caller, Address address,UInt256 value, ReadOnlyMemory<byte> input)
             {
+                _engine = engine;
                 _address = address;
                 _caller = caller;
                 _value = value;
                 _input = input;
             }
 
-            public dynamic getAddress()
-            {
-                dynamic byteAdrress = _engine.Script.Array.from(_address.Bytes);
-                return byteAdrress;
-            }
-
-            public dynamic getCaller()
-            {
-                dynamic byteCaller = _engine.Script.Array.from(_caller.Bytes);
-                return byteCaller;
-            }
-
-            public dynamic getInput()
-            {
-                var dataBytes = _input.ToArray();
-
-                dynamic dataArray = _engine.Script.Array.from(dataBytes);
-                return dataArray;
-            }
-
-            public UInt256 getValue()
-            {
-                return _value;
-            }
+            public dynamic getAddress() => _engine.Script.Array.from(_address.Bytes);
+            public dynamic getCaller() => _engine.Script.Array.from(_caller.Bytes);
+            public dynamic getInput() => _engine.Script.Array.from(_input.ToArray());
+            public UInt256 getValue() => _value;
         }
     }
 }

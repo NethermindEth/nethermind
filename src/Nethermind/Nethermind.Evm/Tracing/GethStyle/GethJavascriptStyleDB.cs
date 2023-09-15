@@ -16,7 +16,6 @@ namespace Nethermind.Evm.Tracing.GethStyle;
 
 public class GethJavascriptStyleDB
 {
-
     private readonly IWorldState _stateRepository;
 
     public GethJavascriptStyleDB(IWorldState stateRepository)

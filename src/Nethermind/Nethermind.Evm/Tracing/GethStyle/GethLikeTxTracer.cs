@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
-public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxTraceEntry
+public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxTraceEntry, new()
 {
     protected GethLikeTxTracer(GethTraceOptions options)
     {
@@ -92,7 +92,8 @@ public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxT
 
         return Trace;
     }
-    protected abstract void AddTraceEntry(TEntry entry);
 
-    protected abstract TEntry CreateTraceEntry(Instruction opcode);
+    protected virtual void AddTraceEntry(TEntry entry) => Trace.Entries.Add(entry);
+
+    protected virtual TEntry CreateTraceEntry(Instruction opcode) => new();
 }

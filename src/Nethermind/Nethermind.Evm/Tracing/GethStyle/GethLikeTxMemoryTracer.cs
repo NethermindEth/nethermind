@@ -62,8 +62,4 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
             CurrentTraceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);
         }
     }
-
-    protected override void AddTraceEntry(GethTxMemoryTraceEntry entry) => Trace.Entries.Add(entry);
-
-    protected override GethTxMemoryTraceEntry CreateTraceEntry(Instruction opcode) => new();
 }

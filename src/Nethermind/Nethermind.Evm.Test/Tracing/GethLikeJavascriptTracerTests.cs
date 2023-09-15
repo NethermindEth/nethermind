@@ -21,14 +21,14 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
     [Test]
     public void Js_traces_simple_filter()
     {
-        string userTracer = @"
+        string userTracer = @"tracer: {
                     retVal: [],
                     step: function(log, db) { this.retVal.push(log.getPC() + ':' + log.op.toString()) },
                     fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)) },
                     result: function(ctx, db) { return this.retVal }
-                ";
+                }";
         GethLikeTxTrace traces = Execute(
-            new GethLikeJavascriptTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer  }),
+            new GethLikeJavascriptTxTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer  }),
             GetBytecode(),
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -49,7 +49,7 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
     [Test]
     public void Js_traces_filter_with_conditionals()
     {
-        string userTracer = @"
+        string userTracer = @"tracer: {
                     retVal: [],
                     step: function(log, db) {
                         if (log.op.toNumber() == 0x60) {
@@ -60,9 +60,9 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
                     },
                     fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)); },
                     result: function(ctx, db) { return this.retVal; }
-                ";
+                }";
         GethLikeTxTrace traces = Execute(
-            new GethLikeJavascriptTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+            new GethLikeJavascriptTxTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
             GetBytecode(),
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -81,7 +81,7 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
     [Test]
     public void Js_traces_storage_information()
     {
-        string userTracer = @"
+        string userTracer = @"tracer: {
                     retVal: [],
                     step: function(log, db) {
                         if (log.op.toNumber() == 0x55)
@@ -97,9 +97,9 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
                     result: function(ctx, db) {
                         return this.retVal;
                     }
-                ";
+                }";
         GethLikeTxTrace traces = Execute(
-            new GethLikeJavascriptTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+            new GethLikeJavascriptTxTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
             GetStorageBytecode(),
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -116,7 +116,7 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
     [Test]
     public void Js_traces_operation_results()
     {
-        string userTracer = @"
+        string userTracer = @"tracer: {
                     retVal: [],
                     afterSload: false,
                     step: function(log, db) {
@@ -137,9 +137,9 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
                     result: function(ctx, db) {
                         return this.retVal;
                     }
-                ";
+                }";
         GethLikeTxTrace traces = Execute(
-            new GethLikeJavascriptTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+            new GethLikeJavascriptTxTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
             GetOperationalBytecode(),
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -156,7 +156,7 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
     [Test]
     public void Js_traces_calls_btn_contracts()
     {
-        string userTracer = @"
+        string userTracer = @"tracer: {
                     retVal: [],
                     afterSload: false,
                     callStack: [],
@@ -206,10 +206,11 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
                     },
                     result: function(ctx, db) {
                         return this.retVal;
-                }";
+                }
+            }";
 
         GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                new GethLikeJavascriptTxTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
                 GetOperationalBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
