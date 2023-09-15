@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.Tracing.GethStyle.Javascript;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Rlp;
 
@@ -110,7 +111,7 @@ public class GethStyleTracer : IGethStyleTracer
         if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
 
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-        GethLikeBlockMemoryTracer blockTracer = new(options with { TxHash = tx.Hash });
+        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(options with { TxHash = tx.Hash });
         _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
         return blockTracer.BuildResult().SingleOrDefault();
     }
@@ -152,12 +153,17 @@ public class GethStyleTracer : IGethStyleTracer
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
-        var tracer = new GethLikeBlockMemoryTracer(options with { TxHash = txHash });
+        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(options with { TxHash = txHash });
 
         _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
 
         return tracer.BuildResult().SingleOrDefault();
     }
+
+    private static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(GethTraceOptions options) =>
+        !string.IsNullOrEmpty(options.Tracer)
+            ? new GethLikeBlockJavascriptTracer(options)
+            : new GethLikeBlockMemoryTracer(options);
 
     private GethLikeTxTrace[] TraceBlock(Block? block, GethTraceOptions options, CancellationToken cancellationToken)
     {
@@ -174,7 +180,7 @@ public class GethStyleTracer : IGethStyleTracer
             if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
         }
 
-        GethLikeBlockMemoryTracer tracer = new(options);
+        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(options);
         _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
         return tracer.BuildResult().ToArray();
     }

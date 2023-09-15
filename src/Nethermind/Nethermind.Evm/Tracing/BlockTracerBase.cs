@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer where TTracer : class, ITxTracer
+public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer<TTrace> where TTracer : class, ITxTracer
 {
     private readonly Keccak? _txHash;
 
