@@ -17,6 +17,107 @@ namespace Nethermind.Evm.Test.Tracing;
 public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
 {
     /// <summary>
+    /// Testing Javascript tracers functions
+    /// </summary>
+
+    [Test]
+    public void JS_tracers_log_functions()
+    {
+        string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) { this.retVal.push(log.getPC() + ':' + log.op.toString() + ':' + log.getCost() + ':' + log.getGas() + ':' + log.getRefund()) },
+                    fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)) },
+                    result: function(ctx, db) { return this.retVal }
+                }";
+        GethLikeTxTrace traces = Execute(
+                new GethLikeJavascriptTxTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer  }),
+                GetBytecode(),
+                MainnetSpecProvider.CancunActivation)
+            .BuildResult();
+        for (int i = 0; i < traces.CustomTracerResult.Count; i++)
+        {
+            dynamic arrayRet = traces.CustomTracerResult[i];
+            Assert.That(arrayRet[0], Is.EqualTo("0:PUSH32:0:79000:null"));
+            Assert.That(arrayRet[1], Is.EqualTo("33:PUSH1:0:78997:null"));
+            Assert.That(arrayRet[2], Is.EqualTo("35:MSTORE:0:78994:null"));
+            Assert.That(arrayRet[3], Is.EqualTo("36:PUSH32:0:78988:null"));
+            Assert.That(arrayRet[4], Is.EqualTo("69:PUSH1:0:78985:null"));
+            Assert.That(arrayRet[5], Is.EqualTo("71:MSTORE:0:78982:null"));
+            Assert.That(arrayRet[6], Is.EqualTo("72:STOP:0:78976:null"));
+        }
+    }
+    [Test]
+    public void JS_tracers_log_op_functions()
+    {
+        string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) { this.retVal.push(log.op.toString() + ' : ' + log.op.toNumber() + ' : ' + log.op.isPush() ) },
+                    fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)) },
+                    result: function(ctx, db) { return this.retVal }
+                }";
+        GethLikeTxTrace traces = Execute(
+                new GethLikeJavascriptTxTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetBytecode(),
+                MainnetSpecProvider.CancunActivation)
+            .BuildResult();
+        for (int i = 0; i < traces.CustomTracerResult.Count; i++)
+        {
+            dynamic arrayRet = traces.CustomTracerResult[i];
+            Assert.That(arrayRet[0], Is.EqualTo("PUSH32 : 0x7F : true"));
+            Assert.That(arrayRet[1], Is.EqualTo("PUSH1 : 0x60 : true"));
+            Assert.That(arrayRet[2], Is.EqualTo("MSTORE : 0x52 : false"));
+            Assert.That(arrayRet[3], Is.EqualTo("PUSH32 : 0x7F : true"));
+            Assert.That(arrayRet[4], Is.EqualTo("PUSH1 : 0x60 : true"));
+            Assert.That(arrayRet[5], Is.EqualTo("MSTORE : 0x52 : false"));
+            Assert.That(arrayRet[6], Is.EqualTo("STOP : 0x00 : false"));
+        }
+    }
+    [Test]
+    public void JS_tracers_log_stack_functions()
+    {
+        string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) { this.retVal.push(log.stack.length()) },
+                    fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)) },
+                    result: function(ctx, db) { return this.retVal }
+                }";
+        GethLikeTxTrace traces = Execute(
+                new GethLikeJavascriptTxTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetBytecode(),
+                MainnetSpecProvider.CancunActivation)
+            .BuildResult();
+    }
+    [Test]
+    public void JS_tracers_log_memory_functions()
+    {
+        string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) { this.retVal.push(log.stack.length()) },
+                    fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)) },
+                    result: function(ctx, db) { return this.retVal }
+                }";
+        GethLikeTxTrace traces = Execute(
+                new GethLikeJavascriptTxTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetBytecode(),
+                MainnetSpecProvider.CancunActivation)
+            .BuildResult();
+    }
+    [Test]
+    public void JS_tracers_log_contract_functions()
+    {
+        string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) { this.retVal.push(log.contract.getAddress() + ':' + log.contract.getCaller() + ':' + log.contract.getInput() ) },
+                    fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)) },
+                    result: function(ctx, db) { return this.retVal }
+                }";
+        GethLikeTxTrace traces = Execute(
+                new GethLikeJavascriptTxTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetBytecode(),
+                MainnetSpecProvider.CancunActivation)
+            .BuildResult();
+    }
+    /// <summary>
     /// Testing Javascript tracers implementation as per geth example implementation
     /// </summary>
     [Test]
@@ -28,6 +129,7 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
                     fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)) },
                     result: function(ctx, db) { return this.retVal }
                 }";
+
         GethLikeTxTrace traces = Execute(
             new GethLikeJavascriptTxTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer  }),
             GetBytecode(),
