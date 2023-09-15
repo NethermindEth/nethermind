@@ -32,7 +32,12 @@
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="7.0.9" />
     <PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
     <PackageVersion Include="Microsoft.AspNetCore.WebSockets" Version="2.2.1" />
-    <PackageVersion Include="Microsoft.ClearScript.osx-x64" Version="7.4.2" />
+    <PackageVersion Include="Microsoft.ClearScript.V8" Version="7.4.3" />
+    <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-arm64" Version="7.4.3" />
+    <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-x64" Version="7.4.3" />
+    <PackageVersion Include="Microsoft.ClearScript.V8.Native.osx-arm64" Version="7.4.3" />
+    <PackageVersion Include="Microsoft.ClearScript.V8.Native.osx-x64" Version="7.4.3" />
+    <PackageVersion Include="Microsoft.ClearScript.V8.Native.win-x64" Version="7.4.3" />
     <PackageVersion Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="7.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="7.0.0" />
