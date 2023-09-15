@@ -22,11 +22,6 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// </summary>
 public class ChainSpecLoader : IChainSpecLoader
 {
-#nullable enable
-    // HACK: To ensure that serialized Txs always have a `ChainId` we keep the last loaded `ChainSpec`.
-    // See: https://github.com/NethermindEth/nethermind/pull/6061#discussion_r1321634914
-    public static ChainSpec? LastChainSpecLoaded { get; private set; }
-#nullable disable
     private readonly IJsonSerializer _serializer;
 
     public ChainSpecLoader(IJsonSerializer serializer)
@@ -56,7 +51,6 @@ public class ChainSpecLoader : IChainSpecLoader
             LoadParameters(chainSpecJson, chainSpec);
             LoadTransitions(chainSpecJson, chainSpec);
 
-            LastChainSpecLoaded = chainSpec;
             return chainSpec;
         }
         catch (Exception e)
