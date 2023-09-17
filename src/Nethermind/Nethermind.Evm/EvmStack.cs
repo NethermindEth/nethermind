@@ -170,7 +170,7 @@ public ref struct EvmStack<TTracing>
 
         if (Avx2.IsSupported)
         {
-            Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(value));
+            Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(in value));
             Vector256<ulong> convert = Avx2.Permute4x64(permute, 0b_01_00_11_10);
             Word shuffle = Vector256.Create(
                 (byte)

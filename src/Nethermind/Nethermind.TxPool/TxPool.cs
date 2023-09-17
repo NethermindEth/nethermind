@@ -18,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
+using ITimer = Nethermind.Core.Timers.ITimer;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 

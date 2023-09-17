@@ -13,6 +13,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using ITimer = Nethermind.Core.Timers.ITimer;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 namespace Nethermind.Merge.Plugin.Synchronization;

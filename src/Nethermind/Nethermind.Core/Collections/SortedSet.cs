@@ -12,5 +12,5 @@ public class EnhancedSortedSet<T> : SortedSet<T>, IReadOnlySortedSet<T>
     public EnhancedSortedSet(IComparer<T>? comparer) : base(comparer) { }
     public EnhancedSortedSet(IEnumerable<T> collection) : base(collection) { }
     public EnhancedSortedSet(IEnumerable<T> collection, IComparer<T>? comparer) : base(collection, comparer) { }
-    protected EnhancedSortedSet(SerializationInfo info, StreamingContext context) : base(info, context) { }
+    //protected EnhancedSortedSet(SerializationInfo info, StreamingContext context) : base(info, context) { }
 }

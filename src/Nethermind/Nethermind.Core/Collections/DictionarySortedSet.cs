@@ -17,7 +17,7 @@ namespace Nethermind.Core.Collections
 
         public DictionarySortedSet(IEnumerable<KeyValuePair<TKey, TValue>> collection, IComparer<TKey> comparer) : base(collection, GetComparer(comparer)) { }
 
-        protected DictionarySortedSet(SerializationInfo info, StreamingContext context) : base(info, context) { }
+        //protected DictionarySortedSet(SerializationInfo info, StreamingContext context) : base(info, context) { }
 
         private static IComparer<KeyValuePair<TKey, TValue>> GetComparer(IComparer<TKey>? comparer = null) =>
             new KeyValuePairKeyOnlyComparer(comparer ?? Comparer<TKey>.Default);

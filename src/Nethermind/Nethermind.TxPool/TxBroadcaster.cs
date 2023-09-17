@@ -14,6 +14,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
+using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.TxPool
 {
