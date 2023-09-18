@@ -84,17 +84,17 @@ contract EcrecoverProxy {
 
         systemTransactionForModifiedVM.Hash = systemTransactionForModifiedVM.CalculateHash();
 
-        MultiCallPayload payload = new()
+        MultiCallPayload<Transaction> payload = new()
         {
             BlockStateCalls = new[]
             {
-                new BlockStateCalls()
+                new BlockStateCall<Transaction>()
                 {
                     StateOverrides = new Dictionary<Address, AccountOverride>()
                     {
                         { EcRecoverPrecompile.Address, new AccountOverride { Code = code } }
                     },
-                    Calls = new[] { CallTransactionModel.FromTransaction(systemTransactionForModifiedVM) }
+                    Calls = new[] {  systemTransactionForModifiedVM  }
                 }
             },
             TraceTransfers = true,
@@ -102,7 +102,8 @@ contract EcrecoverProxy {
         };
 
         // Act
-        BlockchainBridge.MultiCallOutput result = chain.Bridge.MultiCall(chain.BlockFinder.Head.Header, payload, CancellationToken.None);
+
+        MultiCallOutput result = chain.Bridge.MultiCall(chain.BlockFinder.Head.Header, payload, CancellationToken.None);
         Log[]? logs = result.Items.First().Calls.First().Logs;
 
 
