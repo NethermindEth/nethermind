@@ -20,15 +20,15 @@ public class ByPathStateDb : IByPathStateDb
     private IColumnsDb<StateColumns> _currentDb;
     private Dictionary<StateColumns, ByPathStateDbPrunner> _prunners;
 
-    public ByPathStateDb(RocksDbSettings settings, IRocksDbFactory dbFactory)
+    public ByPathStateDb(RocksDbSettings settings, IRocksDbFactory dbFactory, ILogManager logManager)
     {
         _settings = settings;
         _dbFactory = dbFactory;
         _currentDb = _dbFactory.CreateColumnsDb<StateColumns>(_settings);
         _prunners = new Dictionary<StateColumns, ByPathStateDbPrunner>()
         {
-            { StateColumns.State, new ByPathStateDbPrunner(_currentDb.GetColumnDb(StateColumns.State), LimboLogs.Instance)},
-            { StateColumns.Storage, new ByPathStateDbPrunner(_currentDb.GetColumnDb(StateColumns.Storage), LimboLogs.Instance)}
+            { StateColumns.State, new ByPathStateDbPrunner(_currentDb.GetColumnDb(StateColumns.State), logManager)},
+            { StateColumns.Storage, new ByPathStateDbPrunner(_currentDb.GetColumnDb(StateColumns.Storage), logManager)}
         };
     }
 

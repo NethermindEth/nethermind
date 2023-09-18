@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             {
                 IDbProvider dbProvider = new DbProvider(DbModeHint.Persisted);
                 RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
-                StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), new FileSystem(), true);
+                StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), LogManager, new FileSystem(), true);
                 await standardDbInitializer.InitStandardDbsAsync(true);
                 return dbProvider;
             }

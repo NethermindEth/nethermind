@@ -32,7 +32,7 @@ public class ByPathStateDbPrunner
             if (_logger.IsInfo) _logger.Info("Cleanup queue not available");
             return;
         }
-        if (_logger.IsDebug) _logger.Debug($"Enqueueing range for deletions - from: {from.ToHexString()} | to: {to.ToHexString()}");
+        if (_logger.IsTrace) _logger.Trace($"Enqueueing range for deletions - from: {from.ToHexString()} | to: {to.ToHexString()}");
         _cleanupQueue.Add(new KeyRange(from, to));
     }
 
@@ -107,14 +107,14 @@ public class ByPathStateDbPrunner
                     Interlocked.Increment(ref removed);
                     if (removed > 10_000)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Executed 10 000 deletions in {sw.ElapsedMilliseconds} ms");
+                        if (_logger.IsInfo) _logger.Info($"Executed 10 000 deletions in {sw.ElapsedMilliseconds} ms");
                         sw.Restart();
                         Interlocked.Exchange(ref removed, 0);
                     }
                 }
             }
             sw.Stop();
-            if (_logger.IsWarn) _logger.Warn($"Executed {removed} deletions in {sw.ElapsedMilliseconds} ms");
+            if (_logger.IsInfo) _logger.Info($"Executed {removed} deletions in {sw.ElapsedMilliseconds} ms");
         });
     }
 

@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Db.ByPathState;
 using Nethermind.Db.FullPruning;
+using Nethermind.Logging;
 
 namespace Nethermind.Db
 {
@@ -14,17 +15,20 @@ namespace Nethermind.Db
     {
         private readonly IFileSystem _fileSystem;
         private readonly bool _fullPruning;
+        private readonly ILogManager _logManager;
 
         public StandardDbInitializer(
             IDbProvider? dbProvider,
             IRocksDbFactory? rocksDbFactory,
             IMemDbFactory? memDbFactory,
+            ILogManager logManager,
             IFileSystem? fileSystem = null,
             bool fullPruning = false)
             : base(dbProvider, rocksDbFactory, memDbFactory)
         {
             _fileSystem = fileSystem ?? new FileSystem();
             _fullPruning = fullPruning;
+            _logManager = logManager;
         }
 
         public void InitStandardDbs(bool useReceiptsDb)
@@ -56,7 +60,7 @@ namespace Nethermind.Db
             RocksDbSettings pathStateDbSettings = BuildRocksDbSettings(DbNames.PathState, () => Metrics.StateDbReads++, () => Metrics.StateDbWrites++);
             RegisterCustomDb(DbNames.PathState, () => new ByPathStateDb(
                 pathStateDbSettings,
-                PersistedDb ? RocksDbFactory : new MemDbFactoryToRocksDbAdapter(MemDbFactory)));
+                PersistedDb ? RocksDbFactory : new MemDbFactoryToRocksDbAdapter(MemDbFactory), _logManager));
 
             RegisterDb(BuildRocksDbSettings(DbNames.Code, () => Metrics.CodeDbReads++, () => Metrics.CodeDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.Bloom, () => Metrics.BloomDbReads++, () => Metrics.BloomDbWrites++));
