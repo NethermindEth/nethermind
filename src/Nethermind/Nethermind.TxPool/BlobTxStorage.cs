@@ -4,11 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
@@ -16,6 +15,7 @@ namespace Nethermind.TxPool;
 public class BlobTxStorage : ITxStorage
 {
     private readonly IDb _database;
+    private static readonly TxDecoder _txDecoder = new();
 
     public BlobTxStorage()
     {
@@ -35,9 +35,11 @@ public class BlobTxStorage : ITxStorage
         if (txBytes is not null)
         {
             RlpStream rlpStream = new(txBytes);
-            Address sender = new(rlpStream.Read(20).ToArray());
+            Address sender = rlpStream.DecodeAddress()!;
+            UInt256 timestamp = rlpStream.DecodeUInt256();
             transaction = Rlp.Decode<Transaction>(rlpStream, RlpBehaviors.InMempoolForm);
             transaction.SenderAddress = sender;
+            transaction.Timestamp = timestamp;
             return true;
         }
 
@@ -63,11 +65,16 @@ public class BlobTxStorage : ITxStorage
             throw new ArgumentNullException(nameof(transaction));
         }
 
-        _database.Set(transaction.Hash,
-            Bytes.Concat(
-                    transaction.SenderAddress!.Bytes,
-                    Rlp.Encode(transaction, RlpBehaviors.InMempoolForm).Bytes
-                    ).ToArray());
+        int length = Rlp.LengthOf(transaction.SenderAddress);
+        length += Rlp.LengthOf(transaction.Timestamp);
+        length += _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
+
+        RlpStream rlpStream = new(length);
+        rlpStream.Encode(transaction.SenderAddress);
+        rlpStream.Encode(transaction.Timestamp);
+        rlpStream.Encode(transaction, RlpBehaviors.InMempoolForm);
+
+        _database.Set(transaction.Hash, rlpStream.Data!);
     }
 
     public void Delete(ValueKeccak hash)
