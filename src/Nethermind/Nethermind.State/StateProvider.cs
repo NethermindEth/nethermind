@@ -218,7 +218,7 @@ namespace Nethermind.State
             bool isZero = balanceChange.IsZero;
             if (isZero)
             {
-                if (releaseSpec.IsEip158Enabled)
+                if (releaseSpec.IsEip158Enabled && !isSubtracting)
                 {
                     Account touched = GetThroughCache(address);
                     if (touched is null)
