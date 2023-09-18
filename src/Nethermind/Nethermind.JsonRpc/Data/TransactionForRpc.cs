@@ -198,7 +198,7 @@ public class TransactionForRpc
     }
 
     private AccessList? TryGetAccessList() =>
-        Type != null && (!Type.Value.IsTxTypeWithAccessList() || AccessList is null)
+        Type is null || (Type != null && (!Type.Value.IsTxTypeWithAccessList())) || AccessList is null
             ? null
             : AccessListItemForRpc.ToAccessList(AccessList);
 
