@@ -5,6 +5,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using NSubstitute;
@@ -37,14 +38,14 @@ public class InvalidHeaderInterceptorTest
         _baseValidator.Validate(header, false).Returns(baseReturnValue);
         _invalidHeaderInterceptor.Validate(header, false);
 
-        _tracker.Received().SetChildParent(header.Hash, header.ParentHash);
+        _tracker.Received().SetChildParent(header.GetOrCalculateHash(), header.ParentHash!);
         if (isInvalidBlockReported)
         {
-            _tracker.Received().OnInvalidBlock(header.Hash, header.ParentHash);
+            _tracker.Received().OnInvalidBlock(header.GetOrCalculateHash(), header.ParentHash);
         }
         else
         {
-            _tracker.DidNotReceive().OnInvalidBlock(header.Hash, header.ParentHash);
+            _tracker.DidNotReceive().OnInvalidBlock(header.GetOrCalculateHash(), header.ParentHash);
         }
     }
 
@@ -60,14 +61,14 @@ public class InvalidHeaderInterceptorTest
         _baseValidator.Validate(header, parent, false).Returns(baseReturnValue);
         _invalidHeaderInterceptor.Validate(header, parent, false);
 
-        _tracker.Received().SetChildParent(header.Hash, header.ParentHash);
+        _tracker.Received().SetChildParent(header.GetOrCalculateHash(), header.ParentHash!);
         if (isInvalidBlockReported)
         {
-            _tracker.Received().OnInvalidBlock(header.Hash, header.ParentHash);
+            _tracker.Received().OnInvalidBlock(header.GetOrCalculateHash(), header.ParentHash);
         }
         else
         {
-            _tracker.DidNotReceive().OnInvalidBlock(header.Hash, header.ParentHash);
+            _tracker.DidNotReceive().OnInvalidBlock(header.GetOrCalculateHash(), header.ParentHash);
         }
     }
 
@@ -84,7 +85,7 @@ public class InvalidHeaderInterceptorTest
         _baseValidator.Validate(header, parent, false).Returns(false);
         _invalidHeaderInterceptor.Validate(header, parent, false);
 
-        _tracker.DidNotReceive().SetChildParent(header.Hash, header.ParentHash);
-        _tracker.DidNotReceive().OnInvalidBlock(header.Hash, header.ParentHash);
+        _tracker.DidNotReceive().SetChildParent(header.GetOrCalculateHash(), header.ParentHash!);
+        _tracker.DidNotReceive().OnInvalidBlock(header.GetOrCalculateHash(), header.ParentHash);
     }
 }
