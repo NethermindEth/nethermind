@@ -5,8 +5,10 @@ using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -27,7 +29,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// 3 - External - Reward attributed by an external protocol (e.g. block reward contract)
         /// 101-106 - Uncle - Reward attributed to uncles, with distance 1 to 6 (Ethash engine)
         /// </param>
-        (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind);
+        (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind, IBlockTracer? tracer);
     }
 
     public sealed class RewardContract : CallableContract, IRewardContract
@@ -55,9 +57,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// 3 - External - Reward attributed by an external protocol (e.g. block reward contract)
         /// 101-106 - Uncle - Reward attributed to uncles, with distance 1 to 6 (Ethash engine)
         /// </param>
-        public (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind)
+        public (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind, IBlockTracer? tracer)
         {
-            var result = Call(blockHeader, nameof(Reward), Address.SystemUser, UnlimitedGas, benefactors, kind);
+            var result = Call(blockHeader, nameof(Reward), Address.SystemUser, UnlimitedGas, tracer, benefactors, kind);
             return ((Address[])result[0], (UInt256[])result[1]);
         }
     }

@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Contracts
 {
@@ -19,8 +20,8 @@ namespace Nethermind.Blockchain.Contracts
     /// Base class for contracts that will be interacted by the node engine.
     /// </summary>
     /// <remarks>
-    /// This class is intended to be inherited and concrete contract class should provide contract specific methods to be able for the node to use the contract. 
-    /// 
+    /// This class is intended to be inherited and concrete contract class should provide contract specific methods to be able for the node to use the contract.
+    ///
     /// There are 3 main ways a node can interact with contract:
     /// 1. It can <see cref="GenerateTransaction{T}(string,Nethermind.Core.Address,object[])"/> that will be added to a block.
     /// 2. It can <see cref="CallableContract.Call(Nethermind.Core.BlockHeader,string,Nethermind.Core.Address,object[])"/> contract and modify current state of execution.
@@ -29,7 +30,7 @@ namespace Nethermind.Blockchain.Contracts
     public abstract partial class Contract
     {
         /// <summary>
-        /// Default gas limit of transactions generated from contract. 
+        /// Default gas limit of transactions generated from contract.
         /// </summary>
         public const long DefaultContractGasLimit = 1_600_000L;
 
@@ -165,14 +166,25 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="header">Header in which context the call is done.</param>
         /// <param name="functionName">Function name.</param>
         /// <param name="transaction">Transaction to be executed.</param>
+        /// <param name="blockTracer">to use a custom block tracer.</param>
         /// <param name="callAndRestore">Is it restore call.</param>
         /// <returns>Bytes with result.</returns>
         /// <exception cref="AbiException">Thrown when there is an exception during execution or <see cref="CallOutputTracer.StatusCode"/> is <see cref="StatusCode.Failure"/>.</exception>
-        protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, string functionName, Transaction transaction, bool callAndRestore = false)
+        protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, string functionName, Transaction transaction,  IBlockTracer? blockTracer, bool callAndRestore = false)
         {
             bool failure;
 
-            CallOutputTracer tracer = new();
+            CallOutputTracer outputTracer = new ();
+            ITxTracer tracer;
+            if (blockTracer is not null)
+            {
+                ITxTracer customTracer = blockTracer.StartNewTxTrace(transaction);
+                tracer = new CompositeTxTracer(new[] { outputTracer, customTracer });
+            }
+            else
+            {
+                tracer = outputTracer;
+            }
 
             try
             {
@@ -184,21 +196,22 @@ namespace Nethermind.Blockchain.Contracts
                 {
                     transactionProcessor.Execute(transaction, new BlockExecutionContext(header), tracer);
                 }
-
-                failure = tracer.StatusCode != StatusCode.Success;
+                blockTracer?.EndTxTrace();
+                failure = outputTracer.StatusCode != StatusCode.Success;
             }
             catch (Exception e)
             {
+                blockTracer?.EndTxTrace();
                 throw new AbiException($"System call to {AbiDefinition.Name}.{functionName} returned an exception '{e.Message}' at block {header.Number}.", e);
             }
 
             if (failure)
             {
-                throw new AbiException($"System call to {AbiDefinition.Name}.{functionName} returned error '{tracer.Error}' at block {header.Number}.");
+                throw new AbiException($"System call to {AbiDefinition.Name}.{functionName} returned error '{outputTracer.Error}' at block {header.Number}.");
             }
             else
             {
-                return tracer.ReturnValue;
+                return outputTracer.ReturnValue;
             }
         }
 

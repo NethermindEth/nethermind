@@ -16,7 +16,9 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.JsonRpc.Modules.Trace
@@ -234,7 +236,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = blockSearch.Object!;
-            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new((ParityTraceTypes)(ParityTraceTypes.Trace | ParityTraceTypes.Rewards)));
+            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new((ParityTraceTypes)(ParityTraceTypes.Trace | ParityTraceTypes.Rewards | ParityTraceTypes.StateDiff)));
+
+            IJsonSerializer serializer = new EthereumJsonSerializer();
+            serializer.RegisterConverters(EthModuleFactory.Converters);
+            serializer.RegisterConverters(TraceModuleFactory.Converters);
+            serializer.RegisterConverter(new BlockParameterConverter());
+
+            SimpleConsoleLogger.Instance.Info($"------------------------------------\n{serializer.Serialize(txTraces)}");
+
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
         }
 

@@ -296,8 +296,7 @@ public partial class BlockProcessor : IBlockProcessor
     // TODO: block processor pipeline
     private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)
     {
-        if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
-        BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
+        BlockReward[] rewards = tracer.IsTracingRewards? _rewardCalculator.CalculateRewards(block, tracer): _rewardCalculator.CalculateRewards(block);
         for (int i = 0; i < rewards.Length; i++)
         {
             BlockReward reward = rewards[i];
@@ -321,6 +320,7 @@ public partial class BlockProcessor : IBlockProcessor
                 }
             }
         }
+        _logger.Info("Applying miner rewards: Finished");
     }
 
     // TODO: block processor pipeline (only where rewards needed)

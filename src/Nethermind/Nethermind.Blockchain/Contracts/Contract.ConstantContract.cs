@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Contracts
                 _contract.GenerateTransaction<SystemTransaction>(callInfo.ContractAddress, callInfo.FunctionName, callInfo.Sender, DefaultConstantContractGasLimit, callInfo.ParentHeader, callInfo.Arguments);
 
             protected byte[] CallCore(CallInfo callInfo, IReadOnlyTransactionProcessor readOnlyTransactionProcessor, Transaction transaction) =>
-                _contract.CallCore(readOnlyTransactionProcessor, callInfo.ParentHeader, callInfo.FunctionName, transaction, true);
+                _contract.CallCore(readOnlyTransactionProcessor, callInfo.ParentHeader, callInfo.FunctionName, transaction, null, true);
 
             protected object[] DecodeReturnData(string functionName, byte[] data) => _contract.DecodeReturnData(functionName, data);
 

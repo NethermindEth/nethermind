@@ -8,6 +8,7 @@ using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -61,12 +62,24 @@ namespace Nethermind.Consensus.AuRa.Rewards
             }
 
             return _contracts.TryGetForBlock(block.Number, out var contract)
-                ? CalculateRewardsWithContract(block, contract)
+                ? CalculateRewardsWithContract(block, contract, null)
+                : _blockRewardCalculator.CalculateRewards(block);
+        }
+
+        public BlockReward[] CalculateRewards(Block block, IBlockTracer tracer)
+        {
+            if (block.IsGenesis)
+            {
+                return Array.Empty<BlockReward>();
+            }
+
+            return _contracts.TryGetForBlock(block.Number, out var contract)
+                ? CalculateRewardsWithContract(block, contract, tracer)
                 : _blockRewardCalculator.CalculateRewards(block);
         }
 
 
-        private BlockReward[] CalculateRewardsWithContract(Block block, IRewardContract contract)
+        private BlockReward[] CalculateRewardsWithContract(Block block, IRewardContract contract, IBlockTracer? tracer)
         {
             (Address[] beneficieries, ushort[] kinds) GetBeneficiaries()
             {
@@ -91,7 +104,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
             }
 
             var (beneficiaries, kinds) = GetBeneficiaries();
-            var (addresses, rewards) = contract.Reward(block.Header, beneficiaries, kinds);
+            var (addresses, rewards) = contract.Reward(block.Header, beneficiaries, kinds, tracer);
 
             var blockRewards = new BlockReward[addresses.Length];
             for (int index = 0; index < addresses.Length; index++)

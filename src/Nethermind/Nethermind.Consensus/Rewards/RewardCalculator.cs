@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
@@ -46,6 +47,8 @@ namespace Nethermind.Consensus.Rewards
 
             return rewards;
         }
+
+        public BlockReward[] CalculateRewards(Block block, IBlockTracer tracer) => CalculateRewards(block);
 
         private UInt256 GetUncleReward(UInt256 blockReward, BlockHeader blockHeader, BlockHeader uncle)
         {

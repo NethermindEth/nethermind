@@ -5,6 +5,7 @@ using System;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -27,6 +28,16 @@ namespace Nethermind.Merge.Plugin
             }
 
             return _beforeTheMerge.CalculateRewards(block);
+        }
+
+        public BlockReward[] CalculateRewards(Block block, IBlockTracer tracer)
+        {
+            if (_poSSwitcher.IsPostMerge(block.Header))
+            {
+                return NoBlockRewards.Instance.CalculateRewards(block, tracer);
+            }
+
+            return _beforeTheMerge.CalculateRewards(block, tracer);
         }
     }
 }
