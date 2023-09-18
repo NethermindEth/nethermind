@@ -15,6 +15,7 @@ using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using NSubstitute;
 using NUnit.Framework;
+using System.Collections.Generic;
 
 namespace Nethermind.Facade.Test.Proxy
 {
@@ -97,7 +98,7 @@ namespace Nethermind.Facade.Test.Proxy
             await _proxy.eth_multicallV1(payload, blockParameter);
 
             var calls = _client.ReceivedCalls().ToList();
-            await _client.Received().SendAsync<MultiCallBlockResult[]>(nameof(_proxy.eth_multicallV1),
+            await _client.Received().SendAsync<IReadOnlyList<MultiCallBlockResult>>(nameof(_proxy.eth_multicallV1),
                 payload, blockParameter.Type);
         }
 
@@ -115,7 +116,7 @@ namespace Nethermind.Facade.Test.Proxy
             await _proxy.eth_multicallV1(payload, blockParameter);
 
             var calls = _client.ReceivedCalls().ToList();
-            await _client.Received().SendAsync<MultiCallBlockResult[]>(nameof(_proxy.eth_multicallV1),
+            await _client.Received().SendAsync<IReadOnlyList<MultiCallBlockResult>>(nameof(_proxy.eth_multicallV1),
                  payload, blockParameter.Type);
         }
 

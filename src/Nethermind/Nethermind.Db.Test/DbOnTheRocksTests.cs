@@ -45,7 +45,7 @@ namespace Nethermind.Db.Test
         public void WriteOptions_is_correct()
         {
             IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, LimboLogs.Instance);
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, LimboLogs.Instance);
 
             WriteOptions? options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority);
             Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeTrue();
