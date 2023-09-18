@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Test
 {
@@ -15,10 +16,10 @@ namespace Nethermind.Evm.Test
 
         private bool _setAuthor;
 
-        protected override Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction transaction, long blockGasLimit = DefaultBlockGasLimit, ulong timestamp = 0)
+        protected override Block BuildBlock(ForkActivation activation, SenderRecipientAndMiner senderRecipientAndMiner, Transaction transaction, long blockGasLimit = DefaultBlockGasLimit, ulong exessBlobGas = 0)
         {
             senderRecipientAndMiner ??= new SenderRecipientAndMiner();
-            Block block = base.BuildBlock(blockNumber, senderRecipientAndMiner, transaction, blockGasLimit, timestamp);
+            Block block = base.BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit);
             if (_setAuthor) block.Header.Author = TestItem.AddressC;
             block.Header.Beneficiary = senderRecipientAndMiner.Recipient;
             return block;
