@@ -35,7 +35,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
@@ -334,7 +333,7 @@ namespace Nethermind.Init.Steps
 
         protected virtual TxPool.TxPool CreateTxPool() =>
             new(_api.EthereumEcdsa!,
-                new BlobTxStorage(_api.DbProvider!.PendingTransactionsDb, _api.DbProvider!.ProcessedTransactionsDb),
+                _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!),
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,

@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
@@ -138,7 +137,7 @@ namespace Nethermind.EthStats.Integrations
             {
                 if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
                 SendStatsAsync();
-                SendPendingAsync(_txPool.GetPendingTransactionsCount());
+                SendPendingAsync(_txPool.GetPendingTransactionsCount() + _txPool.GetPendingBlobTransactionsCount());
             }
         }
 

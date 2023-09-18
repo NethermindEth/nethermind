@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
@@ -41,8 +41,6 @@ namespace Nethermind.TxPool
         private readonly TxDistinctSortedPool _transactions;
         private readonly BlobTxDistinctSortedPool _blobTransactions;
 
-        private readonly ITxStorage _blobTxStorage;
-
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IAccountStateProvider _accounts;
         private readonly IChainHeadInfoProvider _headInfo;
@@ -61,6 +59,7 @@ namespace Nethermind.TxPool
 
         private readonly ITimer? _timer;
         private Transaction[]? _transactionSnapshot;
+        private Transaction[]? _blobTransactionSnapshot;
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
@@ -76,7 +75,6 @@ namespace Nethermind.TxPool
         /// <param name="transactionsGossipPolicy"></param>
         /// <param name="incomingTxFilter"></param>
         /// <param name="thereIsPriorityContract"></param>
-        /// <param name="txStorage">Tx storage used to reject known transactions.</param>
         public TxPool(IEthereumEcdsa ecdsa,
             ITxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
@@ -89,7 +87,6 @@ namespace Nethermind.TxPool
             bool thereIsPriorityContract = false)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
             _accounts = _headInfo.AccountStateProvider;
@@ -99,15 +96,16 @@ namespace Nethermind.TxPool
             AddNodeInfoEntryForTxPool();
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
-            _blobTransactions = txPoolConfig.PersistentBlobStorageEnabled
-                ? new PersistentBlobTxDistinctSortedPool(_blobTxStorage, _txPoolConfig, comparer, logManager)
-                : new BlobTxDistinctSortedPool(_txPoolConfig.InMemoryBlobPoolSize, comparer, logManager);
+            _blobTransactions = txPoolConfig is { BlobSupportEnabled: true, PersistentBlobStorageEnabled: true }
+                ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
+                : new BlobTxDistinctSortedPool(txPoolConfig.BlobSupportEnabled ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
 
             _headInfo.HeadChanged += OnHeadChange;
 
             _preHashFilters = new IIncomingTxFilter[]
             {
+                new NotSupportedTxFilter(txPoolConfig, _logger),
                 new GasLimitTxFilter(_headInfo, txPoolConfig, _logger),
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
                 new MalformedTxFilter(_specProvider, validator, _logger)
@@ -119,6 +117,7 @@ namespace Nethermind.TxPool
                 new AlreadyKnownTxFilter(_hashCache, _logger),
                 new UnknownSenderFilter(ecdsa, _logger),
                 new TxTypeTxFilter(_transactions, _blobTransactions), // has to be after UnknownSenderFilter as it uses sender
+                new MaxPendingTxsPerSenderFilter(txPoolConfig, _transactions, _blobTransactions),
                 new BalanceZeroFilter(thereIsPriorityContract, _logger),
                 new BalanceTooLowFilter(_transactions, _blobTransactions, _logger),
                 new LowNonceFilter(_logger), // has to be after UnknownSenderFilter as it uses sender
@@ -156,13 +155,14 @@ namespace Nethermind.TxPool
         public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() =>
             _transactions.GetBucketSnapshot();
 
+        public IDictionary<Address, Transaction[]> GetPendingBlobTransactionsEquivalencesBySender() =>
+            _blobTransactions.GetBucketSnapshot();
+
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
             _transactions.GetBucketSnapshot(address);
 
         // only for testing reasons
         internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
-
-        public IEnumerable<Transaction> GetPendingBlobTransactions() => _blobTransactions.GetBlobTransactions();
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
@@ -172,6 +172,7 @@ namespace Nethermind.TxPool
             {
                 // Clear snapshot
                 _transactionSnapshot = null;
+                _blobTransactionSnapshot = null;
                 _hashCache.ClearCurrentBlockCache();
                 _headBlocksChannel.Writer.TryWrite(e);
             }
@@ -316,8 +317,8 @@ namespace Nethermind.TxPool
         {
             if (_broadcaster.AddPeer(peer))
             {
-                // worth to refactor and prepare tx snapshot in more efficient way
-                _broadcaster.BroadcastOnce(peer, _transactionSnapshot ??= _transactions.GetSnapshot().Concat(_blobTransactions.GetSnapshot()).ToArray());
+                _broadcaster.AnnounceOnce(peer, _transactionSnapshot ??= _transactions.GetSnapshot());
+                _broadcaster.AnnounceOnce(peer, _blobTransactionSnapshot ??= _blobTransactions.GetSnapshot());
 
                 if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer}");
             }
@@ -362,8 +363,11 @@ namespace Nethermind.TxPool
                 accepted = AddCore(tx, state, startBroadcast);
                 if (accepted)
                 {
-                    // Clear snapshot
-                    _transactionSnapshot = null;
+                    // Clear proper snapshot
+                    if (tx.SupportsBlobs)
+                        _blobTransactionSnapshot = null;
+                    else
+                        _transactionSnapshot = null;
                 }
             }
 
@@ -522,21 +526,10 @@ namespace Nethermind.TxPool
         {
             lock (_locker)
             {
-                // ensure the capacity of the pool
-                if (_transactions.Count > _txPoolConfig.Size)
-                    if (_logger.IsWarn) _logger.Warn($"TxPool exceeds the config size {_transactions.Count}/{_txPoolConfig.Size}");
+                _transactions.EnsureCapacity();
                 _transactions.UpdatePool(_accounts, _updateBucket);
 
-                // ensure the capacity of the blob pool
-                if (_blobTransactions.Count > (_txPoolConfig.PersistentBlobStorageEnabled
-                        ? _txPoolConfig.PersistentBlobStorageSize
-                        : _txPoolConfig.InMemoryBlobPoolSize))
-                    if (_logger.IsWarn) _logger.Warn($"Blob TxPool exceeds the config size {_blobTransactions.Count}/{_txPoolConfig.PersistentBlobStorageSize}");
-
-                if (_txPoolConfig.PersistentBlobStorageEnabled
-                    && _blobTransactions.Count == _txPoolConfig.PersistentBlobStorageSize)
-                    if (_logger.IsDebug) _logger.Debug($"Blob persistent storage has reached max size of {_txPoolConfig.PersistentBlobStorageSize}, blob txs can be evicted now");
-
+                _blobTransactions.EnsureCapacity();
                 _blobTransactions.UpdatePool(_accounts, _updateBucket);
             }
         }
@@ -629,6 +622,14 @@ namespace Nethermind.TxPool
                 return _transactions.TryGetValue(hash, out transaction)
                        || _blobTransactions.TryGetValue(hash, out transaction)
                        || _broadcaster.TryGetPersistentTx(hash, out transaction);
+            }
+        }
+
+        public bool TryGetPendingBlobTransaction(Keccak hash, [NotNullWhen(true)] out Transaction? blobTransaction)
+        {
+            lock (_locker)
+            {
+                return _blobTransactions.TryGetValue(hash, out blobTransaction);
             }
         }
 

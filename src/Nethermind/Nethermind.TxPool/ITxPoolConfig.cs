@@ -7,11 +7,14 @@ namespace Nethermind.TxPool
 {
     public interface ITxPoolConfig : IConfig
     {
-        [ConfigItem(DefaultValue = "5", Description = "Defines average percent of tx hashes from persistent broadcast send to peer together with hashes of last added txs.")]
+        [ConfigItem(DefaultValue = "5", Description = "Defines average percent of tx hashes from persistent broadcast send to peer together with hashes of last added txs. Set this value to 100 if you want to broadcast all transactions.")]
         int PeerNotificationThreshold { get; set; }
 
         [ConfigItem(DefaultValue = "2048", Description = "Max number of transactions held in mempool (more transactions in mempool mean more memory used")]
         int Size { get; set; }
+
+        [ConfigItem(DefaultValue = "true", Description = "If true, blob transactions support will be enabled")]
+        bool BlobSupportEnabled { get; set; }
 
         [ConfigItem(DefaultValue = "false", Description = "If true, all blob transactions would be stored in persistent db")]
         bool PersistentBlobStorageEnabled { get; set; }
@@ -27,6 +30,12 @@ namespace Nethermind.TxPool
 
         [ConfigItem(DefaultValue = "true", Description = "If true, all blob processed blob transactions would be stored in persistent db until finalization to readd them to the pool in case of chain reorganization")]
         bool BlobReorgsSupportEnabled { get; set; }
+
+        [ConfigItem(DefaultValue = "0", Description = "Max number of pending transactions per single sender. Infinite by default (0)")]
+        int MaxPendingTxsPerSender { get; set; }
+
+        [ConfigItem(DefaultValue = "16", Description = "Max number of pending blob transactions per single sender.")]
+        int MaxPendingBlobTxsPerSender { get; set; }
 
         [ConfigItem(DefaultValue = "524288",
             Description = "Max number of cached hashes of already known transactions." +

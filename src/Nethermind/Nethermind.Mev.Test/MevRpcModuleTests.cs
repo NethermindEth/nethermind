@@ -16,7 +16,6 @@ using Nethermind.Crypto;
 using Nethermind.JsonRpc;
 using NUnit.Framework;
 using FluentAssertions;
-using Nethermind.Core.Eip2930;
 using Nethermind.Evm;
 using Nethermind.Mev.Data;
 using Nethermind.Specs.Forks;

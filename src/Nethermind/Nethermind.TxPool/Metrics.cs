@@ -84,6 +84,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsLowNonce { get; set; }
 
         [CounterMetric]
+        [Description("Number of transactions with nonce too far in future.")]
+        public static long PendingTransactionsNonceTooFarInFuture { get; set; }
+
+        [CounterMetric]
         [Description("Number of transactions rejected because of already pending tx of other type (allowed blob txs or others, not both at once).")]
         public static long PendingTransactionsConflictingTxType { get; set; }
 

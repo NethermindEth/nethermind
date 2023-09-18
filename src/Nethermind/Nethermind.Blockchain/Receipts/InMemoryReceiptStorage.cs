@@ -3,12 +3,8 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Linq;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {

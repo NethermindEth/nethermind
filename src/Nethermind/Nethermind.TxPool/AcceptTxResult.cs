@@ -76,9 +76,19 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult SenderIsContract = new(12, nameof(SenderIsContract));
 
         /// <summary>
+        /// The nonce is too far in the future.
+        /// </summary>
+        public static readonly AcceptTxResult NonceTooFarInFuture = new(13, nameof(NonceTooFarInFuture));
+
+        /// <summary>
         /// Ignores blob transactions if sender already have pending transactions of other types; ignore other types if has already pending blobs
         /// </summary>
-        public static readonly AcceptTxResult PendingTxsOfOtherType = new(13, nameof(PendingTxsOfOtherType));
+        public static readonly AcceptTxResult PendingTxsOfOtherType = new(14, nameof(PendingTxsOfOtherType));
+
+        /// <summary>
+        /// Ignores transactions if tx type is not supported
+        /// </summary>
+        public static readonly AcceptTxResult NotSupportedTxType = new(15, nameof(NotSupportedTxType));
 
         private int Id { get; }
         private string Code { get; }

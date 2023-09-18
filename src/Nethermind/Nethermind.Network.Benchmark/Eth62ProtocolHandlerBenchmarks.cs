@@ -6,7 +6,6 @@ using BenchmarkDotNet.Attributes;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -57,7 +56,7 @@ namespace Nethermind.Network.Benchmarks
             var specProvider = MainnetSpecProvider.Instance;
             TxPool.TxPool txPool = new TxPool.TxPool(
                 ecdsa,
-                new BlobTxStorage(new MemDb(), new MemDb()),
+                new BlobTxStorage(),
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(TestBlockchainIds.ChainId),

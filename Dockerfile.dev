@@ -28,6 +28,9 @@ RUN if [ "$TARGETARCH" = "amd64" ]; \
         -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH ; \
     fi
 
+# A temporary symlink to support the old executable name
+RUN ln -s -r out/nethermind out/Nethermind.Runner
+
 RUN dotnet tool install --tool-path /dotnetcore-tools dotnet-trace && \
     dotnet tool install --tool-path /dotnetcore-tools dotnet-dump && \
     dotnet tool install --tool-path /dotnetcore-tools dotnet-gcdump

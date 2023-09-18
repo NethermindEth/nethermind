@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
@@ -36,15 +38,11 @@ public class BlobTxStorage : ITxStorage
     {
         if (txBytes is not null)
         {
-            try
-            {
-                transaction = Rlp.Decode<Transaction>(new Rlp(txBytes), RlpBehaviors.InMempoolForm);
-                return true;
-            }
-            catch (Exception)
-            {
-                // ignored
-            }
+            RlpStream rlpStream = new(txBytes);
+            Address sender = new(rlpStream.Read(20).ToArray());
+            transaction = Rlp.Decode<Transaction>(rlpStream, RlpBehaviors.InMempoolForm);
+            transaction.SenderAddress = sender;
+            return true;
         }
 
         transaction = default;
@@ -69,7 +67,11 @@ public class BlobTxStorage : ITxStorage
             throw new ArgumentNullException(nameof(transaction));
         }
 
-        _pendingTxsDb.Set(transaction.Hash, Rlp.Encode(transaction, RlpBehaviors.InMempoolForm).Bytes);
+        _pendingTxsDb.Set(transaction.Hash,
+            Bytes.Concat(
+                    transaction.SenderAddress!.Bytes,
+                    Rlp.Encode(transaction, RlpBehaviors.InMempoolForm).Bytes
+                    ).ToArray());
     }
 
     public void Delete(ValueKeccak hash)

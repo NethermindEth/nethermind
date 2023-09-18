@@ -179,7 +179,7 @@ public class TxBroadcasterTests
         Transaction lightTx = new LightTransaction(tx);
 
         int size = tx.GetLength();
-        size.Should().Be(131324);
+        size.Should().Be(131320);
         lightTx.GetLength().Should().Be(size);
 
         _broadcaster.Broadcast(tx, true);
@@ -202,6 +202,7 @@ public class TxBroadcasterTests
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
         _headInfo.CurrentBaseFee.Returns(0.GWei());
 
+        // add 256 transactions, 10% of them is large
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
@@ -220,48 +221,24 @@ public class TxBroadcasterTests
 
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
-        (IList<Transaction> pickedTxs, IList<Transaction> pickedHashes) = _broadcaster.GetPersistentTxsToSend();
-
+        // count numbers of expected hashes and full transactions
         int expectedCountTotal = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
         int expectedCountOfHashes = expectedCountTotal / 10 + 1;
         int expectedCountOfFullTxs = expectedCountTotal - expectedCountOfHashes;
-        if (expectedCountOfFullTxs > 0)
-        {
-            pickedTxs.Count.Should().Be(expectedCountOfFullTxs);
-        }
-        else
-        {
-            pickedTxs.Should().BeNull();
-        }
 
-        if (expectedCountOfHashes > 0)
-        {
-            pickedHashes.Count.Should().Be(expectedCountOfHashes);
-        }
-        else
-        {
-            pickedHashes.Should().BeNull();
-        }
+        // prepare list of expected full transactions and hashes
+        (IList<Transaction> expectedFullTxs, IList<Keccak> expectedHashes) = GetTxsAndHashesExpectedToBroadcast(transactions, expectedCountTotal);
 
-        List<Transaction> expectedTxs = new();
-        List<Transaction> expectedHashes = new();
+        // get hashes and full transactions to broadcast
+        (IList<Transaction> pickedFullTxs, IList<Transaction> pickedHashes) = _broadcaster.GetPersistentTxsToSend();
 
-        for (int i = 0; i < expectedCountTotal; i++)
-        {
-            Transaction tx = transactions[i];
+        // check if numbers of full transactions and hashes are correct
+        CheckCorrectness(pickedFullTxs, expectedCountOfFullTxs);
+        CheckCorrectness(pickedHashes, expectedCountOfHashes);
 
-            if (tx.CanBeBroadcast())
-            {
-                expectedTxs.Add(tx);
-            }
-            else
-            {
-                expectedHashes.Add(tx);
-            }
-        }
-
-        expectedTxs.Should().BeEquivalentTo(pickedTxs);
-        expectedHashes.Should().BeEquivalentTo(pickedHashes);
+        // check if full transactions and hashes returned by broadcaster are as expected
+        expectedFullTxs.Should().BeEquivalentTo(pickedFullTxs);
+        expectedHashes.Should().BeEquivalentTo(pickedHashes.Select(t => t.Hash).ToArray());
     }
 
     [Test]
@@ -270,6 +247,8 @@ public class TxBroadcasterTests
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
         _headInfo.CurrentBaseFee.Returns(0.GWei());
+
+        // add 256 transactions, 10% of them is blob type
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
@@ -285,46 +264,27 @@ public class TxBroadcasterTests
 
             _broadcaster.Broadcast(transactions[i], true);
         }
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
-        (IList<Transaction> pickedTxs, IList<Transaction> pickedHashes) = _broadcaster.GetPersistentTxsToSend();
 
+        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+
+        // count numbers of expected hashes and full transactions
         int expectedCountTotal = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
         int expectedCountOfBlobHashes = expectedCountTotal / 10 + 1;
         int expectedCountOfNonBlobTxs = expectedCountTotal - expectedCountOfBlobHashes;
-        if (expectedCountOfNonBlobTxs > 0)
-        {
-            pickedTxs.Count.Should().Be(expectedCountOfNonBlobTxs);
-        }
-        else
-        {
-            pickedTxs.Should().BeNull();
-        }
 
-        if (expectedCountOfBlobHashes > 0)
-        {
-            pickedHashes.Count.Should().Be(expectedCountOfBlobHashes);
-        }
-        else
-        {
-            pickedHashes.Should().BeNull();
-        }
-        List<Transaction> expectedTxs = new();
-        List<Transaction> expectedHashes = new();
-        for (int i = 0; i < expectedCountTotal; i++)
-        {
-            Transaction tx = transactions[i];
+        // prepare list of expected full transactions and hashes
+        (IList<Transaction> expectedFullTxs, IList<Keccak> expectedHashes) = GetTxsAndHashesExpectedToBroadcast(transactions, expectedCountTotal);
 
-            if (!tx.SupportsBlobs)
-            {
-                expectedTxs.Add(tx);
-            }
-            else
-            {
-                expectedHashes.Add(new LightTransaction(tx));
-            }
-        }
-        expectedTxs.Should().BeEquivalentTo(pickedTxs);
-        expectedHashes.Should().BeEquivalentTo(pickedHashes);
+        // get hashes and full transactions to broadcast
+        (IList<Transaction> pickedFullTxs, IList<Transaction> pickedHashes) = _broadcaster.GetPersistentTxsToSend();
+
+        // check if numbers of full transactions and hashes are correct
+        CheckCorrectness(pickedFullTxs, expectedCountOfNonBlobTxs);
+        CheckCorrectness(pickedHashes, expectedCountOfBlobHashes);
+
+        // check if full transactions and hashes returned by broadcaster are as expected
+        expectedFullTxs.Should().BeEquivalentTo(pickedFullTxs);
+        expectedHashes.Should().BeEquivalentTo(pickedHashes.Select(t => t.Hash).ToArray());
     }
 
     [Test]
@@ -425,6 +385,7 @@ public class TxBroadcasterTests
         const int currentPricePerBlobGasInGwei = 250;
         _headInfo.CurrentPricePerBlobGas.Returns(currentPricePerBlobGasInGwei.GWei());
 
+        // add 256 transactions with MaxFeePerBlobGas 0-255
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
@@ -441,18 +402,23 @@ public class TxBroadcasterTests
 
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
-        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().HashesToSend;
-
+        // count number of expected hashes to broadcast
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentPricePerBlobGasInGwei);
-        pickedTxs.Count.Should().Be(expectedCount);
 
+        // prepare list of expected hashes to broadcast
         List<Transaction> expectedTxs = new();
-
         for (int i = 1; i <= expectedCount; i++)
         {
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
+        // get actual hashes to broadcast
+        IList<Transaction> pickedHashes = _broadcaster.GetPersistentTxsToSend().HashesToSend;
+
+        // check if number of hashes to broadcast is correct
+        pickedHashes.Count.Should().Be(expectedCount);
+
+        // check if number of hashes to broadcast (with MaxFeePerBlobGas >= current) is correct
         expectedTxs.Count(t => t.MaxFeePerBlobGas >= (UInt256)currentPricePerBlobGasInGwei).Should().Be(expectedCount);
     }
 
@@ -663,5 +629,62 @@ public class TxBroadcasterTests
         _broadcaster.Broadcast(localTx, true);
 
         session.Received(received).DeliverMessage(Arg.Any<TransactionsMessage>());
+    }
+
+    [Test]
+    public void should_rebroadcast_all_persistent_transactions_if_PeerNotificationThreshold_is_100([Values(true, false)] bool shouldBroadcastAll)
+    {
+        _txPoolConfig = new TxPoolConfig() { Size = 100, PeerNotificationThreshold = shouldBroadcastAll ? 100 : 5 };
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+
+        for (int i = 0; i < _txPoolConfig.Size; i++)
+        {
+            Transaction tx = Build.A.Transaction
+                .WithNonce((UInt256)i)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            _broadcaster.Broadcast(tx, true);
+        }
+
+        Transaction[] pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend.ToArray();
+        pickedTxs.Length.Should().Be(shouldBroadcastAll ? 100 : 1);
+
+        for (int i = 0; i < pickedTxs.Length; i++)
+        {
+            pickedTxs[i].Nonce.Should().Be((UInt256)i);
+        }
+    }
+
+    private (IList<Transaction> expectedTxs, IList<Keccak> expectedHashes) GetTxsAndHashesExpectedToBroadcast(Transaction[] transactions, int expectedCountTotal)
+    {
+        List<Transaction> expectedTxs = new();
+        List<Keccak> expectedHashes = new();
+
+        for (int i = 0; i < expectedCountTotal; i++)
+        {
+            Transaction tx = transactions[i];
+
+            if (tx.CanBeBroadcast())
+            {
+                expectedTxs.Add(tx);
+            }
+            else
+            {
+                expectedHashes.Add(tx.Hash);
+            }
+        }
+
+        return (expectedTxs, expectedHashes);
+    }
+
+    private void CheckCorrectness(IList<Transaction> pickedTxs, int expectedCount)
+    {
+        if (expectedCount > 0)
+        {
+            pickedTxs.Count.Should().Be(expectedCount);
+        }
+        else
+        {
+            pickedTxs.Should().BeNull();
+        }
     }
 }

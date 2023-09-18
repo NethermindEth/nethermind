@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -17,6 +15,87 @@ namespace Nethermind.TxPool.Test
     [TestFixture]
     public partial class TxPoolTests
     {
+        [Test]
+        public void should_reject_blob_tx_if_blobs_not_supported([Values(true, false)] bool isBlobSupportEnabled)
+        {
+            TxPoolConfig txPoolConfig = new() { BlobSupportEnabled = isBlobSupportEnabled };
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+
+            Transaction tx = Build.A.Transaction
+                .WithNonce(UInt256.Zero)
+                .WithShardBlobTxTypeAndFields()
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(isBlobSupportEnabled
+                ? AcceptTxResult.Accepted
+                : AcceptTxResult.NotSupportedTxType);
+        }
+
+        [Test]
+        public void blob_pool_size_should_be_correct([Values(true, false)] bool persistentStorageEnabled)
+        {
+            const int poolSize = 10;
+            TxPoolConfig txPoolConfig = new()
+            {
+                PersistentBlobStorageEnabled = persistentStorageEnabled,
+                PersistentBlobStorageSize = persistentStorageEnabled ? poolSize : 0,
+                InMemoryBlobPoolSize = persistentStorageEnabled ? 0 : poolSize
+            };
+
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            for (int i = 0; i < poolSize; i++)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce((UInt256)i)
+                    .WithShardBlobTxTypeAndFields()
+                    .WithMaxFeePerGas(1.GWei() + (UInt256)(100 - i))
+                    .WithMaxPriorityFeePerGas(1.GWei() + (UInt256)(100 - i))
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            }
+
+            _txPool.GetPendingTransactionsCount().Should().Be(0);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(poolSize);
+        }
+
+        [TestCase(TxType.EIP1559, 0, 5, 100)]
+        [TestCase(TxType.Blob, 5, 0, 100)]
+        [TestCase(TxType.EIP1559, 10, 0, 10)]
+        [TestCase(TxType.Blob, 0, 15, 15)]
+        [TestCase(TxType.EIP1559, 20, 25, 20)]
+        [TestCase(TxType.Blob, 30, 35, 35)]
+        public void should_reject_txs_with_nonce_too_far_in_future(TxType txType, int maxPendingTxs, int maxPendingBlobTxs, int expectedNumberOfAcceptedTxs)
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                Size = 100,
+                MaxPendingTxsPerSender = maxPendingTxs,
+                MaxPendingBlobTxsPerSender = maxPendingBlobTxs
+            };
+
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            for (int nonce = 0; nonce < txPoolConfig.Size; nonce++)
+            {
+                Transaction tx = Build.A.Transaction
+                    .WithNonce((UInt256)nonce)
+                    .WithType(txType)
+                    .WithShardBlobTxTypeAndFieldsIfBlobTx()
+                    .WithMaxFeePerGas(1.GWei())
+                    .WithMaxPriorityFeePerGas(1.GWei())
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+                _txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(nonce > expectedNumberOfAcceptedTxs
+                    ? AcceptTxResult.NonceTooFarInFuture
+                    : AcceptTxResult.Accepted);
+            }
+        }
+
         [Test]
         public void should_reject_tx_with_FeeTooLow_even_if_is_blob_type([Values(true, false)] bool isBlob, [Values(true, false)] bool persistentStorageEnabled)
         {
@@ -379,12 +458,12 @@ namespace Nethermind.TxPool.Test
         }
 
         [TestCase(0, 97)]
-        [TestCase(1, 131324)]
-        [TestCase(2, 262534)]
-        [TestCase(3, 393741)]
-        [TestCase(4, 524947)]
-        [TestCase(5, 656156)]
-        [TestCase(6, 787365)]
+        [TestCase(1, 131320)]
+        [TestCase(2, 262530)]
+        [TestCase(3, 393737)]
+        [TestCase(4, 524943)]
+        [TestCase(5, 656152)]
+        [TestCase(6, 787361)]
         public void should_calculate_size_of_blob_tx_correctly(int numberOfBlobs, int expectedLength)
         {
             Transaction blobTx = Build.A.Transaction

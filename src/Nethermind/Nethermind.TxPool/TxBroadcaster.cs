@@ -113,9 +113,12 @@ namespace Nethermind.TxPool
             }
         }
 
-        public void BroadcastOnce(ITxPoolPeer peer, Transaction[] txs)
+        public void AnnounceOnce(ITxPoolPeer peer, Transaction[] txs)
         {
-            Notify(peer, txs, false);
+            if (txs.Length > 0)
+            {
+                Notify(peer, txs, false);
+            }
         }
 
         public void BroadcastPersistentTxs()
@@ -179,7 +182,12 @@ namespace Nethermind.TxPool
             List<Transaction>? persistentTxsToSend = null;
             List<Transaction>? persistentHashesToSend = null;
 
-            foreach (Transaction tx in _persistentTxs.GetFirsts())
+            bool broadcastAllTxs = _txPoolConfig.PeerNotificationThreshold == 100;
+            IEnumerable<Transaction> txsToPickFrom = broadcastAllTxs
+                ? _persistentTxs.GetSnapshot()
+                : _persistentTxs.GetFirsts();
+
+            foreach (Transaction tx in txsToPickFrom)
             {
                 if (numberOfPersistentTxsToBroadcast > 0)
                 {

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using DotNetty.Buffers;
+using Nethermind.Core.Buffers;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -90,6 +91,22 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return rlpStream;
+        }
+
+        public static CappedArray<byte> EncodeToCappedArray<T>(this IRlpStreamDecoder<T> decoder, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null)
+        {
+            int size = decoder.GetLength(item, rlpBehaviors);
+            CappedArray<byte> buffer = bufferPool.SafeRentBuffer(size);
+            decoder.Encode(buffer.AsRlpStream(), item, rlpBehaviors);
+
+            return buffer;
+        }
+
+        public static CappedArray<byte> EncodeToCappedArray(this int item, ICappedArrayPool? bufferPool = null)
+        {
+            CappedArray<byte> buffer = bufferPool.SafeRentBuffer(Rlp.LengthOf(item));
+            buffer.AsRlpStream().Encode(item);
+            return buffer;
         }
 
         public static Rlp Encode<T>(this IRlpObjectDecoder<T> decoder, IReadOnlyCollection<T?>? items, RlpBehaviors behaviors = RlpBehaviors.None)

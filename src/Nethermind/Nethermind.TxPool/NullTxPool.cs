@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -16,14 +17,16 @@ namespace Nethermind.TxPool
         public static NullTxPool Instance { get; } = new();
 
         public int GetPendingTransactionsCount() => 0;
-
+        public int GetPendingBlobTransactionsCount() => 0;
         public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
-
-        public Transaction[] GetOwnPendingTransactions() => Array.Empty<Transaction>();
 
         public Transaction[] GetPendingTransactionsBySender(Address address) => Array.Empty<Transaction>();
 
-        public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() => new Dictionary<Address, Transaction[]>();
+        public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender()
+            => new Dictionary<Address, Transaction[]>();
+
+        public IDictionary<Address, Transaction[]> GetPendingBlobTransactionsEquivalencesBySender()
+            => new Dictionary<Address, Transaction[]>();
 
         public IEnumerable<Transaction> GetPendingBlobTransactions() => Array.Empty<Transaction>();
 
@@ -43,7 +46,12 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public UInt256 ReserveOwnTransactionNonce(Address address) => UInt256.Zero;
+        public bool TryGetPendingBlobTransaction(Keccak hash, [NotNullWhen(true)] out Transaction? blobTransaction)
+        {
+            blobTransaction = null;
+            return false;
+        }
+
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
 

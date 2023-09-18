@@ -102,11 +102,7 @@ namespace Nethermind.State
         {
             _stateProvider.DeleteAccount(address);
         }
-        public void CreateAccount(Address address, in UInt256 balance)
-        {
-            _stateProvider.CreateAccount(address, balance);
-        }
-        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce)
+        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
         {
             _stateProvider.CreateAccount(address, balance, nonce);
         }
@@ -229,6 +225,11 @@ namespace Nethermind.State
         internal void SetNonce(Address address, in UInt256 nonce)
         {
             _stateProvider.SetNonce(address, nonce);
+        }
+
+        public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+        {
+            _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
         }
     }
 }

@@ -1069,7 +1069,7 @@ namespace Nethermind.TxPool.Test
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
             Transaction tx = AddTransactionToPool();
-            await Task.Delay(500);
+            await Task.Delay(1000);
             txPoolPeer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
         }
 

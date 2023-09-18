@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -22,7 +23,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
     {
         _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
         _blobTxCache = new(txPoolConfig.BlobCacheSize, txPoolConfig.BlobCacheSize, "blob txs cache");
-        _logger = logManager.GetClassLogger();
+        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         RecreateLightTxCollectionAndCache(blobTxStorage);
     }
@@ -30,13 +31,26 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
     private void RecreateLightTxCollectionAndCache(ITxStorage blobTxStorage)
     {
         if (_logger.IsDebug) _logger.Debug("Recreating light collection of blob transactions and cache");
+        int numberOfTxsInDb = 0;
+        int numberOfBlobsInDb = 0;
+        Stopwatch stopwatch = new();
+        stopwatch.Start();
         foreach (Transaction fullBlobTx in blobTxStorage.GetAll())
         {
-            if (base.TryInsert(fullBlobTx.Hash, new LightTransaction(fullBlobTx)))
+            if (base.TryInsert(fullBlobTx.Hash, new LightTransaction(fullBlobTx), out _))
             {
                 _blobTxCache.Set(fullBlobTx.Hash, fullBlobTx);
+                numberOfTxsInDb++;
+                numberOfBlobsInDb += fullBlobTx.BlobVersionedHashes?.Length ?? 0;
             }
         }
+
+        if (_logger.IsInfo && numberOfTxsInDb != 0)
+        {
+            long loadingTime = stopwatch.ElapsedMilliseconds;
+            _logger.Info($"Loaded {numberOfTxsInDb} blob txs from persistent db, containing {numberOfBlobsInDb} blobs, in {loadingTime}ms");
+        }
+        stopwatch.Stop();
     }
 
     public override bool TryInsert(ValueKeccak hash, Transaction fullBlobTx, out Transaction? removed)
@@ -71,49 +85,18 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         return false;
     }
 
-    // ToDo: add synchronized?
-    public override IEnumerable<Transaction> GetBlobTransactions()
-    {
-        int pickedBlobs = 0;
-        List<Transaction>? blobTxsToReadd = null;
-
-        while (pickedBlobs < Eip4844Constants.MaxBlobsPerBlock)
-        {
-            Transaction? bestTxLight = GetFirsts().Min;
-
-            if (bestTxLight?.Hash is null)
-            {
-                break;
-            }
-
-            if (TryGetValue(bestTxLight.Hash, out Transaction? fullBlobTx) && pickedBlobs + fullBlobTx.BlobVersionedHashes!.Length <= Eip4844Constants.MaxBlobsPerBlock)
-            {
-                yield return fullBlobTx!;
-                pickedBlobs += fullBlobTx.BlobVersionedHashes.Length;
-            }
-
-            if (TryRemove(bestTxLight.Hash))
-            {
-                blobTxsToReadd ??= new(Eip4844Constants.MaxBlobsPerBlock);
-                blobTxsToReadd.Add(fullBlobTx!);
-            }
-        }
-
-
-        if (blobTxsToReadd is not null)
-        {
-            foreach (Transaction fullBlobTx in blobTxsToReadd)
-            {
-                TryInsert(fullBlobTx.Hash, fullBlobTx!, out Transaction? removed);
-            }
-        }
-
-    }
-
     protected override bool Remove(ValueKeccak hash, Transaction tx)
     {
         _blobTxCache.Delete(hash);
         _blobTxStorage.Delete(hash);
         return base.Remove(hash, tx);
+    }
+
+    public override void EnsureCapacity()
+    {
+        base.EnsureCapacity();
+
+        if (_logger.IsDebug && Count == _poolCapacity)
+            _logger.Debug($"Blob persistent storage has reached max size of {_poolCapacity}, blob txs can be evicted now");
     }
 }

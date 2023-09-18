@@ -19,10 +19,15 @@ namespace Nethermind.TxPool.Collections
     public class TxDistinctSortedPool : DistinctValueSortedPool<ValueKeccak, Transaction, Address>
     {
         private readonly List<Transaction> _transactionsToRemove = new();
+        protected int _poolCapacity;
+        private readonly ILogger _logger;
+
 
         public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
             : base(capacity, comparer, CompetingTransactionEqualityComparer.Instance, logManager)
         {
+            _poolCapacity = capacity;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparer();
@@ -123,6 +128,12 @@ namespace Nethermind.TxPool.Collections
 
                 UpdateGroup(groupKey, groupValue, bucket, changingElements);
             }
+        }
+
+        public virtual void EnsureCapacity()
+        {
+            if (Count > _poolCapacity && _logger.IsWarn)
+                _logger.Warn($"TxPool exceeds the config size {Count}/{_poolCapacity}");
         }
     }
 }

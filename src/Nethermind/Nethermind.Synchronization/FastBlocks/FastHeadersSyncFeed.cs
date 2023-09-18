@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -395,7 +394,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _resetLock.EnterReadLock();
             try
             {
-                if (!_sent.Contains(batch))
+                if (!_sent.TryRemove(batch))
                 {
                     if (_logger.IsDebug) _logger.Debug("Ignoring batch not in sent record");
                     return SyncResponseHandlingResult.Ignored;
@@ -427,7 +426,6 @@ namespace Nethermind.Synchronization.FastBlocks
                 finally
                 {
                     batch.MarkHandlingEnd();
-                    _sent.TryRemove(batch);
                 }
             }
             finally
