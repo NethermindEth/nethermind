@@ -8,6 +8,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -93,29 +94,31 @@ public class MultycallBridgeHelper
 
             UpdateStateByModifyingAccounts(callHeader, callInputBlock, env);
 
-            Transaction SetTxHash(Transaction transaction1)
+            Transaction SetTxHashAndMissingDefaults(Transaction transaction)
             {
-                transaction1.SenderAddress ??= Address.SystemUser;
+                transaction.SenderAddress ??= Address.Zero;
+                transaction.To ??= Address.Zero;
+                transaction.Data ??= Memory<byte>.Empty;
 
                 Keccak stateRoot = callHeader.StateRoot!;
 
-                if (transaction1.Nonce == 0)
+                if (transaction.Nonce == 0)
                 {
                     try
                     {
-                        if (!_nonceCache.TryGetValue(transaction1.SenderAddress, out UInt256 cachedNonce))
+                        if (!_nonceCache.TryGetValue(transaction.SenderAddress, out UInt256 cachedNonce))
                         {
-                            cachedNonce = env.StateProvider.GetAccount(transaction1.SenderAddress).Nonce;
-                            _nonceCache[transaction1.SenderAddress] = cachedNonce;
+                            cachedNonce = env.StateProvider.GetAccount(transaction.SenderAddress).Nonce;
+                            _nonceCache[transaction.SenderAddress] = cachedNonce;
                         }
 
                         else
                         {
                             cachedNonce++;
-                            _nonceCache[transaction1.SenderAddress] = cachedNonce;
+                            _nonceCache[transaction.SenderAddress] = cachedNonce;
                         }
 
-                        transaction1.Nonce = cachedNonce;
+                        transaction.Nonce = cachedNonce;
                     }
                     catch (TrieException)
                     {
@@ -124,11 +127,11 @@ public class MultycallBridgeHelper
                     }
                 }
 
-                transaction1.Hash = transaction1.CalculateHash();
-                return transaction1;
+                transaction.Hash = transaction.CalculateHash();
+                return transaction;
             }
 
-            Transaction[]? transactions = callInputBlock.Calls.Select(SetTxHash).ToArray();
+            Transaction[]? transactions = callInputBlock.Calls.Select(SetTxHashAndMissingDefaults).ToArray();
 
             Block? currentBlock = new(callHeader, transactions, Array.Empty<BlockHeader>());
             currentBlock.Header.Hash = currentBlock.Header.CalculateHash();

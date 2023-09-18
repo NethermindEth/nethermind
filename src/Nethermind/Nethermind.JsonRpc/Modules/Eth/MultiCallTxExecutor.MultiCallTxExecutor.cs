@@ -32,6 +32,7 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResu
                 Calls = blockStateCall.Calls?.Select(callTransactionModel =>
                 {
                     callTransactionModel.EnsureDefaults(_rpcConfig.GasCap);
+                    callTransactionModel.Type ??= TxType.EIP1559;
                     return callTransactionModel.ToTransaction(_blockchainBridge.GetChainId());
                 }).ToArray()
             }).ToArray()
