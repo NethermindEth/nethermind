@@ -66,6 +66,10 @@ if (args.Length > 4)
 ulong feeMultiplier = 4;
 if (args.Length > 5) ulong.TryParse(args[5], out feeMultiplier);
 
+
+UInt256 maxPriorityFeeGasArgs = 0;
+if (args.Length > 6) UInt256.TryParse(args[6], out maxPriorityFeeGasArgs);
+
 await KzgPolynomialCommitments.InitializeAsync();
 
 PrivateKey privateKey = new(privateKeyString);
@@ -172,15 +176,15 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
             case "10": commitments = commitments.Skip(1).ToArray(); break;
             case "11": maxFeePerDataGas = UInt256.MaxValue / Eip4844Constants.DataGasPerBlob + 1; break;
         }
-
+        UInt256 adjustedMaxPriorityFeePerGas = maxPriorityFeeGasArgs == 0 ? maxPriorityFeePerGas : maxPriorityFeeGasArgs;
         Transaction tx = new()
         {
             Type = TxType.Blob,
             ChainId = chainId,
             Nonce = nonce,
             GasLimit = GasCostOf.Transaction,
-            GasPrice = gasPrice * feeMultiplier,
-            DecodedMaxFeePerGas = gasPrice * feeMultiplier,
+            GasPrice = adjustedMaxPriorityFeePerGas,
+            DecodedMaxFeePerGas = gasPrice,
             MaxFeePerDataGas = maxFeePerDataGas,
             Value = 0,
             To = new Address(receiver),
@@ -222,6 +226,8 @@ async Task WaitForBlobInclusion(INodeManager nodeManager, Keccak txHash, UInt256
 
             if (blockResult.Transactions.Contains(txHash))
             {
+                string? receipt = await nodeManager.Post<string>("eth_getTransactionByHash", txHash.ToString(), true);
+
                 Console.WriteLine($"Found blob transaction in block {blockResult.Number}");
                 return;
             }
