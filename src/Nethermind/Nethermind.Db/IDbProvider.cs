@@ -32,7 +32,7 @@ namespace Nethermind.Db
 
         public IDb MetadataDb => GetDb<IDb>(DbNames.Metadata);
 
-        public IDb PendingTransactionsDb => GetDb<IDb>(DbNames.PendingTransactions);
+        public IDb BlobTransactionsDb => GetDb<IDb>(DbNames.BlobTransactions);
 
         public IDb ProcessedTransactionsDb => GetDb<IDb>(DbNames.ProcessedTransactions);
 

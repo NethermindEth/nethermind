@@ -24,4 +24,14 @@ public class NullBlobTxStorage : ITxStorage
     public void Add(Transaction transaction) { }
 
     public void Delete(ValueKeccak hash) { }
+
+    public bool TryGetBlobTransactionsFromBlock(long blockNumber, out Transaction[]? blockBlobTransactions)
+    {
+        blockBlobTransactions = default;
+        return false;
+    }
+
+    public void AddBlobTransactionsFromBlock(long blockNumber, IList<Transaction> blockBlobTransactions) { }
+
+    public void DeleteBlobTransactionsFromBlock(long blockNumber) { }
 }

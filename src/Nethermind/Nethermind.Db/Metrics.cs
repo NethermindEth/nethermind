@@ -120,11 +120,11 @@ namespace Nethermind.Db
 
         [CounterMetric]
         [Description("Number of PendingTransactions DB reads.")]
-        public static long PendingTransactionsDbReads { get; set; }
+        public static long BlobTransactionsDbReads { get; set; }
 
         [CounterMetric]
         [Description("Number of PendingTransactions DB writes.")]
-        public static long PendingTransactionsDbWrites { get; set; }
+        public static long BlobTransactionsDbWrites { get; set; }
 
         [CounterMetric]
         [Description("Number of ProcessedTransactions DB reads.")]

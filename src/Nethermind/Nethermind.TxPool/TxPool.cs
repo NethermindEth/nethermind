@@ -43,6 +43,7 @@ namespace Nethermind.TxPool
 
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IAccountStateProvider _accounts;
+        private readonly ITxStorage _blobTxStorage;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
 
@@ -87,6 +88,7 @@ namespace Nethermind.TxPool
             bool thereIsPriorityContract = false)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
             _accounts = _headInfo.AccountStateProvider;
@@ -769,7 +771,7 @@ Discard Ratios:
 ------------------------------------------------
 Total Added:            {Metrics.PendingTransactionsAdded,24:N0}
 * Eip1559 Added:        {Metrics.Pending1559TransactionsAdded,24:N0}
-* Blob Added:        {Metrics.PendingBlobTransactionsAdded,24:N0}
+* Blob Added:           {Metrics.PendingBlobTransactionsAdded,24:N0}
 ------------------------------------------------
 Total Evicted:          {Metrics.PendingTransactionsEvicted,24:N0}
 ------------------------------------------------
@@ -782,8 +784,8 @@ Amounts:
 * Blobs:                {Metrics.BlobsInBlock,24:N0}
 ------------------------------------------------
 Db usage:
-* PendingDb writes:     {Db.Metrics.PendingTransactionsDbWrites,24:N0}
-* PendingDb reads:      {Db.Metrics.PendingTransactionsDbReads,24:N0}
+* BlobDb writes:        {Db.Metrics.BlobTransactionsDbWrites,24:N0}
+* BlobDb reads:         {Db.Metrics.BlobTransactionsDbReads,24:N0}
 * ProcessedDb writes:   {Db.Metrics.ProcessedTransactionsDbWrites,24:N0}
 * ProcessedDb reads:    {Db.Metrics.ProcessedTransactionsDbReads,24:N0}
 ------------------------------------------------
