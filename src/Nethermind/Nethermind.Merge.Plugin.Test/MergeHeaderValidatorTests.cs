@@ -25,7 +25,7 @@ public class MergeHeaderValidatorTests
 
         public ISealValidator SealValidator => Substitute.For<ISealValidator>();
 
-        public MergeHeaderValidator MergeHeaderValidator =>  new(
+        public MergeHeaderValidator MergeHeaderValidator => new(
             PoSSwitcher,
             PreMergeHeaderValidator,
             BlockTree,
