@@ -13,6 +13,10 @@ namespace Nethermind.JsonRpc.Data;
 
 public class TransactionForRpc
 {
+    // HACK: To ensure that serialized Txs always have a `ChainId` we keep the last loaded `ChainSpec`.
+    // See: https://github.com/NethermindEth/nethermind/pull/6061#discussion_r1321634914
+    public static UInt256? DefaultChainId { get; set; }
+
     public TransactionForRpc(Transaction transaction) : this(null, null, null, transaction) { }
 
     public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction, UInt256? baseFee = null)
@@ -36,7 +40,16 @@ public class TransactionForRpc
             MaxFeePerGas = transaction.MaxFeePerGas;
             MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
         }
-        ChainId = transaction.ChainId;
+        if (transaction.Type > TxType.Legacy)
+        {
+            ChainId = transaction.ChainId
+                      ?? DefaultChainId
+                      ?? BlockchainIds.Mainnet;
+        }
+        else
+        {
+            ChainId = transaction.ChainId;
+        }
         Type = transaction.Type;
         if (transaction.SupportsAccessList)
         {

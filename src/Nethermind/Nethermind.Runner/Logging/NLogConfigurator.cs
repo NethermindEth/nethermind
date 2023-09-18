@@ -71,6 +71,9 @@ namespace Nethermind.Runner.Logging
 
             foreach (LoggingRule rule in LogManager.Configuration.LoggingRules)
             {
+                // WORKAROUND: Skip modifying 'JsonWebAPI*' rules since we want to preserve the original config on the 'NLog.config' file
+                if (rule.LoggerNamePattern == "JsonWebAPI*") { continue; }
+
                 foreach (var ruleTarget in rule.Targets)
                 {
                     if (ruleTarget.Name != "seq")
