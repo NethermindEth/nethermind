@@ -151,6 +151,24 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [Test]
+        public void Eth_getTransactionReceipt_properly_fails_given_wrong_parameters()
+        {
+            IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+
+            string[] parameters = {
+                """["0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71"]"""
+            };
+            JsonRpcResponse response = TestRequest(ethRpcModule, "eth_getTransactionReceipt", parameters);
+
+            response.Should()
+                .BeAssignableTo<JsonRpcErrorResponse>()
+                .Which
+                .Error.Should().NotBeNull();
+            Error error = (response as JsonRpcErrorResponse)!.Error!;
+            error.Code.Should().Be(ErrorCodes.InvalidParams);
+        }
+
+        [Test]
         public void GetWorkTest()
         {
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
