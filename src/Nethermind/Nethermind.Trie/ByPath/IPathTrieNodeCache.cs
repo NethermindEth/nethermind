@@ -17,4 +17,8 @@ public interface IPathTrieNodeCache
     int Count { get; }
     void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix);
     bool IsPathCached(ReadOnlySpan<byte> path);
+    /// <summary>
+    /// For testing
+    /// </summary>
+    int PrefixLength { get; set; }
 }

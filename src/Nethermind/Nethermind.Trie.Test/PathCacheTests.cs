@@ -81,10 +81,12 @@ public class PathCacheTests
     [TestCaseSource(typeof(Instances))]
     public void Add_deleted_prefix_get_node(IPathTrieNodeCache cache)
     {
-        byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1ac0000000000000000000000000000000000000000000000000000000091234"));
-        byte[] path2 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1ac1000000000000000000000000000000000000000000000000000000091234"));
-        byte[] path3 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x2ac0000000000000000000000000000000000000000000000000000000091234"));
-        byte[] prefix = new byte[] { 1, 10, 12 };
+        byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1acf000000000000000000000000000000000000000000000000000000091234"));
+        byte[] path2 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1acf100000000000000000000000000000000000000000000000000000091234"));
+        byte[] path3 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x2acf000000000000000000000000000000000000000000000000000000091234"));
+        byte[] prefix = new byte[] { 1, 10, 12, 15 };
+
+        cache.PrefixLength = 4;
 
         cache.AddNode(1, CreateResolvedLeaf(path1, 64000.ToByteArray(), 60));
         cache.AddNode(2, CreateResolvedLeaf(path2, 64000.ToByteArray(), 60));
@@ -99,6 +101,76 @@ public class PathCacheTests
         Assert.That(cache.GetNodeFromRoot(null, path1)?.FullRlp, Is.Null);
         Assert.That(cache.GetNodeFromRoot(null, path2)?.FullRlp, Is.Null);
         Assert.That(cache.GetNodeFromRoot(null, path3).Value, Is.Not.Null);
+    }
+
+    [TestCaseSource(typeof(Instances))]
+    public void Add_deleted_prefix_persist_get_node(IPathTrieNodeCache cache)
+    {
+        byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1acf000000000000000000000000000000000000000000000000000000091234"));
+        byte[] path2 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1acf100000000000000000000000000000000000000000000000000000091234"));
+        byte[] path3 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x2acf000000000000000000000000000000000000000000000000000000091234"));
+        byte[] prefix = new byte[] { 1, 10, 12, 15 };
+
+        cache.PrefixLength = 4;
+
+        cache.AddNode(1, CreateResolvedLeaf(path1, 64000.ToByteArray(), 60));
+        cache.AddNode(2, CreateResolvedLeaf(path2, 64000.ToByteArray(), 60));
+        cache.AddNode(3, CreateResolvedLeaf(path3, 64000.ToByteArray(), 60));
+
+        cache.SetRootHashForBlock(1, TestItem.KeccakH);
+        cache.SetRootHashForBlock(2, TestItem.KeccakG);
+        cache.SetRootHashForBlock(3, TestItem.KeccakF);
+
+        //persist path1 to DB - to later check it was successfully deleted
+        cache.PersistUntilBlock(1);
+
+        cache.AddRemovedPrefix(4, prefix);
+
+        cache.PersistUntilBlock(4);
+
+        Assert.That(() => _trieStore.LoadRlp(path1), Throws.TypeOf<TrieException>());
+        Assert.That(() => _trieStore.LoadRlp(path2), Throws.TypeOf<TrieException>());
+    }
+
+    [TestCaseSource(typeof(Instances))]
+    public void Add_deleted_prefix_persist_get_node_2(IPathTrieNodeCache cache)
+    {
+        byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1acf000000000000000000000000000000000000000000000000000000091234"));
+        byte[] path2 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1acf100000000000000000000000000000000000000000000000000000091234"));
+        byte[] path3 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x2acf000000000000000000000000000000000000000000000000000000091234"));
+        byte[] prefix = new byte[] { 1, 10, 12, 15 };
+
+        cache.PrefixLength = 4;
+
+        cache.AddNode(1, CreateResolvedLeaf(path1, 64000.ToByteArray(), 60));
+        cache.AddNode(2, CreateResolvedLeaf(path2, 64000.ToByteArray(), 60));
+        cache.AddNode(3, CreateResolvedLeaf(path3, 64000.ToByteArray(), 60));
+
+        cache.SetRootHashForBlock(1, TestItem.KeccakH);
+        cache.SetRootHashForBlock(2, TestItem.KeccakG);
+        cache.SetRootHashForBlock(3, TestItem.KeccakF);
+
+        //persist all nodes until this moment
+        cache.PersistUntilBlock(3);
+
+        //no paths stored in cache when adding deleted prefix
+        cache.AddRemovedPrefix(4, prefix);
+
+        TrieNode n1 = cache.GetNodeFromRoot(null, path1);
+        TrieNode n2 = cache.GetNodeFromRoot(null, path2);
+
+        //should get nodes with null RLP as a marker for deleted data
+        //null returned from cache means a miss in data and load from DB
+        Assert.That(n1, Is.Not.Null);
+        Assert.That(n1.FullRlp, Is.Null);
+
+        Assert.That(n2, Is.Not.Null);
+        Assert.That(n2.FullRlp, Is.Null);
+
+        //add a node again under a prefix that has been marked as deleted
+        cache.AddNode(5, CreateResolvedLeaf(path1, 64000.ToByteArray(), 60));
+
+        Assert.That(cache.GetNodeFromRoot(null, path1).Value, Is.Not.Null);
     }
 
     [TestCaseSource(typeof(Instances))]

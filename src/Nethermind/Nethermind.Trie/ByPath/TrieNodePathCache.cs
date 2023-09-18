@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
@@ -89,13 +90,17 @@ public class TrieNodePathCache : IPathTrieNodeCache
             }
         }
 
-        public TrieNode? Get(Keccak keccak)
+        public TrieNode? Get(Keccak keccak, long minBlockNumber = -1)
         {
             try
             {
                 _lock.EnterReadLock();
 
-                foreach (NodeAtBlock nodeVersion in _nodes)
+                SortedSet<NodeAtBlock> subSet = _nodes;
+                if (minBlockNumber >= 0)
+                    subSet = _nodes.GetViewBetween(new NodeAtBlock(minBlockNumber), _nodes.Max);
+
+                foreach (NodeAtBlock nodeVersion in subSet)
                 {
                     if (nodeVersion.TrieNode.Keccak == keccak)
                     {
@@ -146,22 +151,28 @@ public class TrieNodePathCache : IPathTrieNodeCache
     private SpanConcurrentDictionary<byte, NodeVersions> _nodesByPath = new(Bytes.SpanNibbleEqualityComparer);
     private ConcurrentDictionary<Keccak, HashSet<long>> _rootHashToBlock = new();
     private readonly ITrieStore _trieStore;
+    private readonly SpanConcurrentDictionary<byte, long> _removedPrefixes;
     private int _count;
     private readonly ILogger _logger;
 
     public int Count { get => _count; }
+    public int PrefixLength { get; set; }
 
     public TrieNodePathCache(ITrieStore trieStore, ILogManager? logManager)
     {
         _trieStore = trieStore;
+        _removedPrefixes = new SpanConcurrentDictionary<byte, long>(Bytes.SpanNibbleEqualityComparer);
         _logger = logManager?.GetClassLogger<TrieNodePathCache>() ?? throw new ArgumentNullException(nameof(logManager));
+        PrefixLength = 66;
     }
 
     public TrieNode? GetNode(Span<byte> path, Keccak keccak)
     {
         if (_nodesByPath.TryGetValue(path, out NodeVersions nodeVersions))
-            return nodeVersions.Get(keccak);
-
+        {
+            long deletedAt = IsDeleted(path);
+            return deletedAt >= 0 ? nodeVersions.Get(keccak, deletedAt) : nodeVersions.Get(keccak);
+        }
         return null;
     }
 
@@ -177,7 +188,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
 
             if (_rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
             {
-                long blockNo = blocks.Min();
+                long blockNo = blocks.Max();
 
                 TrieNode? node = nodeVersions.GetLatestUntil(blockNo);
                 if (node is not null)
@@ -185,6 +196,20 @@ public class TrieNodePathCache : IPathTrieNodeCache
 
                 return node;
             }
+        }
+        else
+        {
+            long deletedAt = IsDeleted(path);
+            if (deletedAt < 0)
+                return null;
+
+            long maxBlockNumber = deletedAt;
+
+            if (rootHash is not null && _rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
+                maxBlockNumber = blocks.Max();
+
+            if (maxBlockNumber >= deletedAt)
+                return new TrieNode(NodeType.Leaf, null, true);
         }
         return null;
     }
@@ -227,6 +252,9 @@ public class TrieNodePathCache : IPathTrieNodeCache
     {
         List<byte[]> removedPaths = new();
         List<TrieNode> toPersist = new();
+
+        ProcessDestroyed(blockNumber);
+
         foreach (KeyValuePair<byte[], NodeVersions> nodeVersion in _nodesByPath)
         {
             TrieNode node = nodeVersion.Value.GetLatestUntil(blockNumber, true);
@@ -261,6 +289,22 @@ public class TrieNodePathCache : IPathTrieNodeCache
             _rootHashToBlock.Remove(rootHash, out _);
     }
 
+    private void ProcessDestroyed(long blockNumber)
+    {
+        List<byte[]> paths = _removedPrefixes.Where(kvp => kvp.Value <= blockNumber).Select(kvp => kvp.Key).ToList();
+
+        foreach (byte[] path in paths)
+        {
+            (byte[] startKey, byte[] endKey) = TrieStoreByPath.GetDeleteKeyFromNibblePrefix(path);
+            _trieStore.DeleteByRange(startKey, endKey);
+        }
+
+        foreach (byte[] path in paths)
+        {
+            _removedPrefixes.Remove(path, out _);
+        }
+    }
+
     public void Clear()
     {
         _rootHashToBlock.Clear();
@@ -277,10 +321,20 @@ public class TrieNodePathCache : IPathTrieNodeCache
                 _nodesByPath[path].Add(blockNumber, deletedNode);
             }
         }
+
+        _removedPrefixes[keyPrefix] = blockNumber;
     }
 
     public bool IsPathCached(ReadOnlySpan<byte> path)
     {
         return _nodesByPath.ContainsKey(path.ToArray());
+    }
+
+    private long IsDeleted(Span<byte> path)
+    {
+        if (path.Length >= PrefixLength && _removedPrefixes.TryGetValue(path[0..PrefixLength], out long deletedAtBlock))
+            return deletedAtBlock;
+
+        return -1;
     }
 }

@@ -64,6 +64,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
 
     public int MaxNumberOfBlocks { get => _maxNumberOfBlocks; }
     public int Count { get => _count; }
+    public int PrefixLength { get; set; }
 
     public TrieNodeBlockCache(ITrieStore trieStore, int maxNumberOfBlocks, ILogManager? logManager)
     {

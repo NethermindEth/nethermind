@@ -180,7 +180,17 @@ namespace Nethermind.Trie.Pruning
                 {
                     while (_destroyPrefixes.TryDequeue(out var prefix))
                     {
-                        _committedNodes[StateColumns.Storage].AddRemovedPrefix(blockNumber, prefix);
+                        if (_useCommittedCache)
+                        {
+                            _committedNodes[StateColumns.Storage].AddRemovedPrefix(blockNumber, prefix);
+                        }
+                        else
+                        {
+                            (byte[] startKey, byte[] endKey) = GetDeleteKeyFromNibblePrefix(prefix);
+                            byte[] startDbKey = Nibbles.NibblesToByteStorage(startKey.ToArray());
+                            byte[] endDbKey = Nibbles.NibblesToByteStorage(endKey.ToArray());
+                            _stateDb.GetColumnDb(StateColumns.Storage).DeleteByRange(startDbKey, endDbKey);
+                        }
                     }
                 }
                 // set rootHash here to account for root hashes for the storage trees also in every block
@@ -605,7 +615,10 @@ namespace Nethermind.Trie.Pruning
 
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
         {
-            _stateDb.DeleteByRange(startKey, endKey);
+            StateColumns column = GetProperColumn(startKey.Length);
+            byte[] startDbKey = Nibbles.NibblesToByteStorage(startKey.ToArray());
+            byte[] endDbKey = Nibbles.NibblesToByteStorage(endKey.ToArray());
+            _stateDb.GetColumnDb(column).DeleteByRange(startDbKey, endDbKey);
         }
 
         public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefixNibbles)
@@ -615,8 +628,8 @@ namespace Nethermind.Trie.Pruning
             if (!addPrefixAsDeleted)
             {
                 byte[] keyPath = Nibbles.NibblesToByteStorage(keyPrefixNibbles.ToArray());
-                byte[]? rlp = _currentBatches[column]?[keyPath] ?? _stateDb[keyPath];
-                addPrefixAsDeleted &= rlp != null;
+                byte[]? rlp = _currentBatches[column]?[keyPath] ?? _stateDb.GetColumnDb(column)[keyPath];
+                addPrefixAsDeleted = rlp != null;
             }
 
             if (addPrefixAsDeleted)
@@ -632,7 +645,7 @@ namespace Nethermind.Trie.Pruning
             byte[] toKey = new byte[prefix.Length];
             prefix.CopyTo(toKey);
 
-            return (fromKey.ToArray(), prefix.IncrementNibble().ToArray());
+            return (fromKey.ToArray(), toKey.AsSpan().IncrementNibble().ToArray());
         }
 
         public static (byte[], byte[]) GetDeleteKeyFromNibbles(Span<byte> nibbleFrom, Span<byte> nibbleTo, int oddityOverride)
