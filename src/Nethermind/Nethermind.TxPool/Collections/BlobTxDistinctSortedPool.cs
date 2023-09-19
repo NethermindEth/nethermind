@@ -27,4 +27,10 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
         if (Count > _poolCapacity && _logger.IsWarn)
             _logger.Warn($"Blob pool exceeds the config size {Count}/{_poolCapacity}");
     }
+
+    /// <summary>
+    /// For tests only - to test sorting
+    /// </summary>
+    internal void TryGetBlobTxSortingEquivalent(Keccak hash, out Transaction? lightBlobTx)
+        => base.TryGetValue(hash, out lightBlobTx);
 }
