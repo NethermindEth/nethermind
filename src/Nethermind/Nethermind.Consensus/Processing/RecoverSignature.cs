@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -35,16 +36,25 @@ namespace Nethermind.Consensus.Processing
 
         public void RecoverData(Block block)
         {
-            if (block.Transactions.Length == 0 || block.Transactions[0].SenderAddress is not null)
-            {
+            if (block.Transactions.Length == 0)
                 return;
-            }
+
+            Transaction firstTx = block.Transactions[0];
+            if (firstTx.IsSigned && firstTx.SenderAddress is not null)
+                // already recovered a sender for a signed tx in this block,
+                // so we assume the rest of txs in the block are already recovered
+                return;
 
             var releaseSpec = _specProvider.GetSpec(block.Header);
 
             Parallel.For(0, block.Transactions.Length, i =>
             {
                 Transaction blockTransaction = block.Transactions[i];
+
+                if (!blockTransaction.IsSigned || blockTransaction.SenderAddress is not null)
+                    // there is no signature from which to recover the sender
+                    return;
+
                 _txPool.TryGetPendingTransaction(blockTransaction.Hash, out Transaction? transaction);
 
                 Address sender = transaction?.SenderAddress;
