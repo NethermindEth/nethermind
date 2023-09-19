@@ -327,7 +327,7 @@ public class JsonRpcService : IJsonRpcService
                         executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader(providedParameter)), paramType);
                         if (executionParam is null && !IsNullableParameter(expectedParameter))
                         {
-                            throw new JsonReaderException($"Cannot deserialize parameter `{providedParameter}` into type {paramType}");
+                            executionParameters.Add(Type.Missing);
                         }
                     }
                     else
