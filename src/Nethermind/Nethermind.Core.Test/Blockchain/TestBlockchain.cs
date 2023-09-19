@@ -280,7 +280,7 @@ public class TestBlockchain : IDisposable
             EthereumEcdsa,
             new BlobTxStorage(),
             new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
-            new TxPoolConfig(),
+            new TxPoolConfig() { BlobSupportEnabled = true },
             new TxValidator(SpecProvider.ChainId),
             LogManager,
             TransactionComparerProvider.GetDefaultComparer());
