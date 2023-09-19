@@ -116,7 +116,7 @@ public class OptimismTransactionProcessor : TransactionProcessor
     protected override bool IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
         if (!tx.IsDeposit())
-            base.IncrementNonce(tx, header, spec, tracer, opts);
+            return base.IncrementNonce(tx, header, spec, tracer, opts);
 
         WorldState.IncrementNonce(tx.SenderAddress!);
         return true;
