@@ -178,11 +178,11 @@ namespace Nethermind.Blockchain.Contracts
             {
                 if (callAndRestore)
                 {
-                    transactionProcessor.CallAndRestore(transaction, header, tracer);
+                    transactionProcessor.CallAndRestore(transaction, new BlockExecutionContext(header), tracer);
                 }
                 else
                 {
-                    transactionProcessor.Execute(transaction, header, tracer);
+                    transactionProcessor.Execute(transaction, new BlockExecutionContext(header), tracer);
                 }
 
                 failure = tracer.StatusCode != StatusCode.Success;

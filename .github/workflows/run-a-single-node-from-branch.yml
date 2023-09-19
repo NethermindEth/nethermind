@@ -83,10 +83,6 @@ jobs:
 
     - name: Creating a node with NodeName="DevNode-${{ github.actor }}-${{ env.BASE_TAG }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}"
       run: echo "NodeName='DevNode-${{ github.actor }}-${{ env.BASE_TAG }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}'"
-    
-    - name: Set Repo Variable
-      run: |
-        echo "REPO=$(echo $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
     - name: Extract dockerfile from additional_options
       id: extract_dockerfile
@@ -94,7 +90,25 @@ jobs:
         echo "dockerfile=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile)" >> $GITHUB_OUTPUT
         echo "build-config=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile_build_type | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
+    - name: Set Repo and Org Variables
+      run: |
+        echo "ORG_NAME=${{ github.repository_owner }}" >> $GITHUB_ENV
+        echo "REPO_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
+        
+    - name: Check if master branch and default additional_options
+      id: check_conditions
+      run: |
+        if 
+        [[ "${{ github.ref }}" == "refs/heads/master" ]] && 
+        [[ "${{ steps.extract_dockerfile.outputs.dockerfile }}" == "Dockerfile" ]] && 
+        [[ "${{ steps.extract_dockerfile.outputs.build-config }}" == "release" ]]; then
+          echo "skip_docker_build=true" >> $GITHUB_OUTPUT
+        else
+          echo "skip_docker_build=false" >> $GITHUB_OUTPUT
+        fi
+
     - name: Trigger Docker Build Action with Cleaned Ref
+      if: steps.check_conditions.outputs.skip_docker_build != 'true'
       uses: benc-uk/workflow-dispatch@v1
       env:
         ADDITIONAL_OPTIONS: ${{ inputs.additional_options }}
@@ -107,12 +121,9 @@ jobs:
               "dockerfile": "${{ steps.extract_dockerfile.outputs.dockerfile }}",
               "build-config": "${{ steps.extract_dockerfile.outputs.build-config }}"
            }'
-
-    - name: Set Repo and Org Variables
-      run: |
-        echo "ORG_NAME=$(echo $GITHUB_REPOSITORY | cut -d / -f 1)" >> $GITHUB_ENV
-        echo "REPO_NAME=$(echo $GITHUB_REPOSITORY | cut -d / -f 2)" >> $GITHUB_ENV
+        
     - name: Wait for Docker Build Action to complete
+      if: steps.check_conditions.outputs.skip_docker_build != 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         WORKFLOW_ID: 'publish-docker.yml'
@@ -179,5 +190,19 @@ jobs:
         REF: 'main'
       run: |
         chmod +x scripts/wait-for-workflow-completed.sh
-        ./scripts/wait-for-workflow-completed.sh
+        ./scripts/wait-for-workflow-completed.sh | tee script-output.txt
+        run_id=$(grep -oP 'Run ID: \K\d+' script-output.txt)
+        echo "Run ID extracted is: $run_id"
+        echo "RUN_ID=$run_id" >> $GITHUB_ENV
       working-directory: ${{ github.workspace }}
+
+    - name: Download machine specs artifact
+      run: |
+        ARTIFACT_ID=$(curl -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/runs/${{ env.RUN_ID }}/artifacts | jq '.artifacts[0].id')
+        curl -L -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -o artifact.zip https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/artifacts/$ARTIFACT_ID/zip
+        unzip artifact.zip -d ./downloaded-artifacts/
+        
+    - name: Display machine specs content
+      run: |
+        FILE=$(ls downloaded-artifacts/machine-details | head -n 1)
+        cat "downloaded-artifacts/machine-details/$FILE"
