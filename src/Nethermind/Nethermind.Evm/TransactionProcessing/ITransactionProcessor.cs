@@ -1,11 +1,40 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
+    [Flags]
+    public enum ExecutionOptions
+    {
+        /// <summary>
+        /// Just accumulate the state
+        /// </summary>
+        None = 0,
+
+        /// <summary>
+        /// Commit the state after execution
+        /// </summary>
+        Commit = 1,
+
+        /// <summary>
+        /// Restore state after execution
+        /// </summary>
+        Restore = 2,
+
+        /// <summary>
+        /// Skip potential fail checks
+        /// </summary>
+        NoValidation = Commit | 4,
+
+        /// <summary>
+        /// Commit and later restore state also skip validation, use for CallAndRestore
+        /// </summary>
+        CommitAndRestore = Commit | Restore | NoValidation
+    }
     public interface ITransactionProcessor
     {
         /// <summary>

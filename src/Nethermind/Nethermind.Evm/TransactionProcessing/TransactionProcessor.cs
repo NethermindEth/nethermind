@@ -31,36 +31,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly IVirtualMachine _virtualMachine;
         private readonly ITransactionProcessor _systemTxProcessor;
 
-
-        [Flags]
-        protected enum ExecutionOptions
-        {
-            /// <summary>
-            /// Just accumulate the state
-            /// </summary>
-            None = 0,
-
-            /// <summary>
-            /// Commit the state after execution
-            /// </summary>
-            Commit = 1,
-
-            /// <summary>
-            /// Restore state after execution
-            /// </summary>
-            Restore = 2,
-
-            /// <summary>
-            /// Skip potential fail checks
-            /// </summary>
-            NoValidation = Commit | 4,
-
-            /// <summary>
-            /// Commit and later restore state also skip validation, use for CallAndRestore
-            /// </summary>
-            CommitAndRestore = Commit | Restore | NoValidation
-        }
-
         public TransactionProcessor(
             ISpecProvider? specProvider,
             IWorldState? worldState,

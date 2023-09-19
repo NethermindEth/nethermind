@@ -30,35 +30,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly IWorldState _worldState;
         private readonly IVirtualMachine _virtualMachine;
 
-        [Flags]
-        protected enum ExecutionOptions
-        {
-            /// <summary>
-            /// Just accumulate the state
-            /// </summary>
-            None = 0,
-
-            /// <summary>
-            /// Commit the state after execution
-            /// </summary>
-            Commit = 1,
-
-            /// <summary>
-            /// Restore state after execution
-            /// </summary>
-            Restore = 2,
-
-            /// <summary>
-            /// Skip potential fail checks
-            /// </summary>
-            NoValidation = Commit | 4,
-
-            /// <summary>
-            /// Commit and later restore state also skip validation, use for CallAndRestore
-            /// </summary>
-            CommitAndRestore = Commit | Restore | NoValidation
-        }
-
         public SystemTxProcessor(
             ISpecProvider? specProvider,
             IWorldState? worldState,
@@ -140,9 +111,6 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!BuyGas(tx, header, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment))
                 return;
 
-            if (!IncrementNonce(tx, header, spec, tracer, opts))
-                return;
-
             if (commit)
                 _worldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
 
@@ -150,9 +118,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
             if (!ExecuteEVMCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode))
-                return;
-
-            if (!PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode))
                 return;
 
             // Finalize
@@ -338,11 +303,6 @@ namespace Nethermind.Evm.TransactionProcessing
             return true;
         }
 
-        protected virtual bool IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
-        {
-            return true;
-        }
-
         protected virtual ExecutionEnvironment BuildExecutionEnvironmnet(
             Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
             in UInt256 effectiveGasPrice)
@@ -492,11 +452,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 _worldState.Restore(snapshot);
             }
 
-            return true;
-        }
-
-        protected bool PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
-        {
             return true;
         }
 
