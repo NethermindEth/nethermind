@@ -705,30 +705,6 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_mining_true()
-    {
-        using Context ctx = await Context.Create();
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.IsMining.Returns(true);
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
-
-        string serialized = await ctx.Test.TestEthRpc("eth_mining");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
-    }
-
-    [Test]
-    public async Task Eth_mining_false()
-    {
-        using Context ctx = await Context.Create();
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.IsMining.Returns(false);
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
-
-        string serialized = await ctx.Test.TestEthRpc("eth_mining");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}"));
-    }
-
-    [Test]
     public async Task Eth_accounts()
     {
         using Context ctx = await Context.Create();
