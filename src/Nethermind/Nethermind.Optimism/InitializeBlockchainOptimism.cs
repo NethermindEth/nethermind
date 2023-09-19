@@ -47,14 +47,16 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
 
         VirtualMachine virtualMachine = CreateVirtualMachine();
 
+        // TODO: get from chainspec
         Address l1FeeRecipient = new("0x420000000000000000000000000000000000001A");
+        Address l1BlockAddress = new("0x4200000000000000000000000000000000000015");
 
-        OPL1CostHelper l1CostHelper = new();
         OPSpecHelper opConfigHelper = new(
             _api.ChainSpec.Optimism.RegolithTimestamp,
             _api.ChainSpec.Optimism.BedrockBlockNumber,
-            l1FeeRecipient // it would be good to get this last one from chainspec too
+            l1FeeRecipient
         );
+        OPL1CostHelper l1CostHelper = new(opConfigHelper, l1BlockAddress);
 
         return new OptimismTransactionProcessor(
             _api.SpecProvider,

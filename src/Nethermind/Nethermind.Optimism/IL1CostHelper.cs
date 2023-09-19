@@ -9,5 +9,5 @@ namespace Nethermind.Optimism;
 
 public interface IL1CostHelper
 {
-    UInt256 ComputeL1Cost(Transaction tx, IWorldState worldState, long number, ulong timestamp, bool isDeposit);
+    UInt256 ComputeL1Cost(Transaction tx, BlockHeader header, IWorldState worldState);
 }

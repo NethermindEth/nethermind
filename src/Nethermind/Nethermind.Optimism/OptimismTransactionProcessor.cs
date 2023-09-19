@@ -80,7 +80,7 @@ public class OptimismTransactionProcessor : TransactionProcessor
                 return false;
             }
 
-            UInt256 l1Cost = _l1CostHelper.ComputeL1Cost(tx, WorldState, header.Number, header.Timestamp, tx.IsDeposit());
+            UInt256 l1Cost = _l1CostHelper.ComputeL1Cost(tx, header, WorldState);
             if (UInt256.SubtractUnderflow(balanceLeft, l1Cost, out balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
@@ -142,7 +142,7 @@ public class OptimismTransactionProcessor : TransactionProcessor
 
         if (_opConfigHelper.IsBedrock(header))
         {
-            UInt256 l1Cost = _l1CostHelper.ComputeL1Cost(tx, WorldState, header.Number, header.Timestamp, tx.IsDeposit());
+            UInt256 l1Cost = _l1CostHelper.ComputeL1Cost(tx, header, WorldState);
             WorldState.AddToBalanceAndCreateIfNotExists(_opConfigHelper.L1FeeReceiver, l1Cost, spec);
         }
 
