@@ -22,15 +22,13 @@ using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
-    public class TransactionProcessor : ITransactionProcessor
+    public class SystemTxProcessor : ITransactionProcessor
     {
         private readonly EthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _worldState;
         private readonly IVirtualMachine _virtualMachine;
-        private readonly ITransactionProcessor _systemTxProcessor;
-
 
         [Flags]
         protected enum ExecutionOptions
@@ -61,19 +59,17 @@ namespace Nethermind.Evm.TransactionProcessing
             CommitAndRestore = Commit | Restore | NoValidation
         }
 
-        public TransactionProcessor(
+        public SystemTxProcessor(
             ISpecProvider? specProvider,
             IWorldState? worldState,
             IVirtualMachine? virtualMachine,
-            ILogManager? logManager,
-            ITransactionProcessor? systemTxProcessor = null)
+            ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
             _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
-            _systemTxProcessor = systemTxProcessor ?? new SystemTxProcessor(specProvider, worldState, virtualMachine, logManager);
         }
 
         public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
@@ -101,9 +97,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void Execute(Transaction tx, BlockHeader header, ITxTracer tracer, ExecutionOptions opts)
         {
-            if (tx.IsSystem()) _systemTxProcessor.Execute(tx, header, tracer);
-
             IReleaseSpec spec = _specProvider.GetSpec(header);
+            if (!spec.IsEip4788Enabled) // ToDo add comment
+                spec = new SystemTransactionReleaseSpec(spec);
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
@@ -172,7 +168,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (!opts.HasFlag(ExecutionOptions.NoValidation))
                         _worldState.AddToBalance(tx.SenderAddress, senderReservedGasPayment, spec);
 
-                    _worldState.DecrementNonce(tx.SenderAddress);
                     _worldState.Commit(spec);
                 }
             }
@@ -270,19 +265,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 return false;
             }
 
-            if (tx.GasLimit < intrinsicGas)
-            {
-                TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {intrinsicGas}");
-                QuickFail(tx, header, spec, tracer, "gas limit below intrinsic gas");
-                return false;
-            }
-
-            if (validate && tx.GasLimit > header.GasLimit - header.GasUsed)
-            {
-                TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit} - {header.GasUsed}");
-                QuickFail(tx, header, spec, tracer, "block gas limit exceeded");
-                return false;
-            }
             return true;
         }
 
@@ -351,64 +333,6 @@ namespace Nethermind.Evm.TransactionProcessing
             bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
 
             if (validate)
-            {
-                if (!tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
-                {
-                    TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-                    QuickFail(tx, header, spec, tracer, "miner premium is negative");
-                    return false;
-                }
-
-                UInt256 senderBalance = _worldState.GetBalance(tx.SenderAddress);
-                if (UInt256.SubtractUnderflow(senderBalance, tx.Value, out UInt256 balanceLeft))
-                {
-                    TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                    QuickFail(tx, header, spec, tracer, "insufficient sender balance");
-                    return false;
-                }
-
-
-                bool overflows;
-                if (spec.IsEip1559Enabled && !tx.IsFree())
-                {
-                    overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
-                    if (overflows || balanceLeft < maxGasFee)
-                    {
-                        TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
-                        QuickFail(tx, header, spec, tracer, "insufficient MaxFeePerGas for sender balance");
-                        return false;
-                    }
-                    if (tx.SupportsBlobs)
-                    {
-                        overflows = UInt256.MultiplyOverflow(BlobGasCalculator.CalculateBlobGas(tx), (UInt256)tx.MaxFeePerBlobGas, out UInt256 maxBlobGasFee);
-                        if (overflows || UInt256.AddOverflow(maxGasFee, maxBlobGasFee, out UInt256 multidimGasFee) || multidimGasFee > balanceLeft)
-                        {
-                            TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                            QuickFail(tx, header, spec, tracer, "insufficient sender balance");
-                            return false;
-                        }
-                    }
-                }
-
-                overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
-                if (!overflows && tx.SupportsBlobs)
-                {
-                    overflows = !BlobGasCalculator.TryCalculateBlobGasPrice(header, tx, out UInt256 blobGasFee);
-                    if (!overflows)
-                    {
-                        overflows = UInt256.AddOverflow(senderReservedGasPayment, blobGasFee, out senderReservedGasPayment);
-                    }
-                }
-
-                if (overflows || senderReservedGasPayment > balanceLeft)
-                {
-                    TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                    QuickFail(tx, header, spec, tracer, "insufficient sender balance");
-                    return false;
-                }
-            }
-
-            if (validate)
                 _worldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
 
             return true;
@@ -416,14 +340,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual bool IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
-            if (tx.Nonce != _worldState.GetNonce(tx.SenderAddress))
-            {
-                TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {_worldState.GetNonce(tx.SenderAddress)})");
-                QuickFail(tx, header, spec, tracer, "wrong transaction nonce");
-                return false;
-            }
-
-            _worldState.IncrementNonce(tx.SenderAddress);
             return true;
         }
 
@@ -473,7 +389,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // Fixes eth_estimateGas.
             // If sender is SystemUser subtracting value will cause InsufficientBalanceException
-            _worldState.SubtractFromBalance(tx.SenderAddress, tx.Value, spec);
+            if (validate)
+                _worldState.SubtractFromBalance(tx.SenderAddress, tx.Value, spec);
 
             try
             {
@@ -575,30 +492,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 _worldState.Restore(snapshot);
             }
 
-            if (validate)
-                header.GasUsed += spentGas;
-
             return true;
         }
 
         protected bool PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
         {
-            bool gasBeneficiaryNotDestroyed = substate?.DestroyList.Contains(header.GasBeneficiary) != true;
-            if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
-            {
-
-                UInt256 fees = (UInt256)spentGas * premiumPerGas;
-                UInt256 burntFees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : 0;
-
-                _worldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary, fees, spec);
-
-                if (spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null && !burntFees.IsZero)
-                    _worldState.AddToBalanceAndCreateIfNotExists(spec.Eip1559FeeCollector, burntFees, spec); ;
-
-                if (tracer.IsTracingFees)
-                    tracer.ReportFees(fees, burntFees);
-            }
-
             return true;
         }
 
