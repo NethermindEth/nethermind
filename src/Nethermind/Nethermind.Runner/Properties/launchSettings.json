@@ -2,7 +2,7 @@
   "profiles": {
     "Chiado": {
       "commandName": "Project",
-      "commandLineArgs": "-c chiado -dd .data",
+      "commandLineArgs": "-c chiado -dd .data --Aura.UseShutter true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

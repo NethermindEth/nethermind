@@ -11,6 +11,7 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 
@@ -84,12 +85,9 @@ namespace Nethermind.Merge.AuRa
             Debug.Assert(_api?.BlockProducerEnvFactory is not null,
                 $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
 
-            ITxSource? encryptedTxSource = null;
-
-            if (_auraConfig!.UseShutter)
-            {
-                // TODO: Initialize encryptedTxSource
-            }
+            ITxSource? encryptedTxSource = _auraConfig!.UseShutter
+                ? new EncryptedTxSource()
+                : null;
 
             return _api.BlockProducerEnvFactory.Create(encryptedTxSource);
         }
