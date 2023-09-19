@@ -610,7 +610,7 @@ namespace Nethermind.TxPool
 
         // only for tests - to test sorting
         internal void TryGetBlobTxSortingEquivalent(Keccak hash, out Transaction? transaction)
-            => _blobTransactions.TryGetBlobTxSortingEquivalent(hash, out transaction);
+            => _blobTransactions.TryGetValue(hash, out transaction);
 
         // should own transactions (in broadcaster) be also checked here?
         // maybe it should use NonceManager, as it already has info about local txs?
