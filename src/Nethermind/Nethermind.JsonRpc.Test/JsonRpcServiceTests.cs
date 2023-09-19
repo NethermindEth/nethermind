@@ -151,17 +151,6 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [Test]
-        public void GetWorkTest()
-        {
-            IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-            ethRpcModule.eth_getWork().ReturnsForAnyArgs(x => ResultWrapper<IEnumerable<byte[]>>.Success(new[] { Bytes.FromHexString("aa"), Bytes.FromHexString("01") }));
-            JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_getWork") as JsonRpcSuccessResponse;
-            byte[][]? dataList = response?.Result as byte[][];
-            Assert.NotNull(dataList?.SingleOrDefault(d => d.ToHexString(true) == "0xaa"));
-            Assert.NotNull(dataList?.SingleOrDefault(d => d.ToHexString(true) == "0x01"));
-        }
-
-        [Test]
         public void IncorrectMethodNameTest()
         {
             JsonRpcErrorResponse? response = TestRequest(Substitute.For<IEthRpcModule>(), "incorrect_method") as JsonRpcErrorResponse;
