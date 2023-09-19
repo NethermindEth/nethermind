@@ -31,6 +31,7 @@ namespace Nethermind.Api
 
         public string RpcDbUrl { get; set; } = String.Empty;
         public long? MemoryHint { get; set; }
+        public long MallocTrimmerIntervalSec { get; set; } = 900;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb
