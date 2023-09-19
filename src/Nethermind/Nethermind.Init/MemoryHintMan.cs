@@ -22,7 +22,8 @@ namespace Nethermind.Init
     /// </summary>
     public class MemoryHintMan
     {
-        private const int M_ARENA_MAX = -8;
+        private const int M_TRIM_THRESHOLD = -1;
+        private const int M_MMAP_THRESHOLD = -3;
         private ILogger _logger;
 
         public MemoryHintMan(ILogManager logManager)
@@ -80,23 +81,19 @@ namespace Nethermind.Init
         {
             if (initConfig.DisableMallocOpts) return;
 
-            // Default glibc's arena count.
-            int currentArenaCount = Environment.Is64BitProcess
-                ? Environment.ProcessorCount * 8
-                : Environment.ProcessorCount * 4;
+            if (_logger.IsDebug) _logger.Debug("Setting malloc parameters..");
 
-            // On high core count machine the high number of heap arena causes large additional memory usage due to
-            // how glibc's malloc implementation work. This limits the arena count to something similar to a 4 core
-            // 64 bit machine. On mainnet, the overhead is still around 4.5 GB with this config. Reducing it even
-            // further with the env var `MALLOC_ARENA_MAX` will reduce this overhead even further, but will incur
-            // more lock contention which reduces sync performance. Switching completely to something like jemalloc
-            // is a much better solution, which cut down the overhead to 1.5 GB with no measurable downside.
-            if (currentArenaCount > 32)
-            {
-                if (_logger.IsDebug) _logger.Debug("Setting M_ARENA_MAX to 32");
-                bool success = mallopt(M_ARENA_MAX, 32) == 1;
-                if (!success && _logger.IsDebug) _logger.Debug("Unable to set max arena count");
-            }
+            // The MMAP threshold is the minimum size of allocation before glibc uses mmap to allocate the memory
+            // instead of brk. This means the whole allocation can be released on its own without incurring fragmentation
+            // but its not reusable and incur a system call. It turns out by default this value is dynamically adjusted
+            // up to 4GB in size on 64bit machine starting from 128KB.
+            bool success = mallopt(M_MMAP_THRESHOLD, (int)64.KiB()) == 1;
+            if (!success && _logger.IsDebug) _logger.Debug("Unable to set mmap threshold");
+
+            // The trim threshold is the minimum size of chunk before the memory from brk is released back to the OS.
+            // Default is 128KB. Also by default its dynamically adjusted.
+            success = mallopt(M_TRIM_THRESHOLD, (int)64.KiB()) == 1;
+            if (!success && _logger.IsDebug) _logger.Debug("Unable to set trim threshold");
         }
 
         private long _remainingMemory;
