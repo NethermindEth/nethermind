@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.State;
@@ -30,6 +31,6 @@ public class OPL1CostHelper : IL1CostHelper
 
     private static ulong ComputeDataGas()
     {
-        return 0;
+        throw new NotImplementedException("L1GasCost is not implemented yet");
     }
 }
