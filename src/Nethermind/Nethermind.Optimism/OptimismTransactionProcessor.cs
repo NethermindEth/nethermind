@@ -153,17 +153,12 @@ public class OptimismTransactionProcessor : TransactionProcessor
         in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice)
     {
         // if deposit: skip refunds, skip tipping coinbase
-        if (tx.IsDeposit())
+        // Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
+        if (tx.IsDeposit() && !_opConfigHelper.IsRegolith(header))
         {
-            // Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
-            if (!_opConfigHelper.IsRegolith(header))
-            {
-                // Record deposits as using all their gas
-                // System Transactions are special & are not recorded as using any gas (anywhere)
-                return tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
-            }
-
-            return tx.GasLimit - (!substate.IsError ? unspentGas : 0);
+            // Record deposits as using all their gas
+            // System Transactions are special & are not recorded as using any gas (anywhere)
+            return tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
         }
 
         return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice);
