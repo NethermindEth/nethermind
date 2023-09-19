@@ -75,4 +75,11 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
 
         throw new EmptyBlockProductionException("Setting state for processing block failed");
     }
+
+    protected override void AmendHeader(BlockHeader blockHeader, BlockHeader parent)
+    {
+        base.AmendHeader(blockHeader, parent);
+
+        blockHeader.ExtraData = Array.Empty<byte>();
+    }
 }
