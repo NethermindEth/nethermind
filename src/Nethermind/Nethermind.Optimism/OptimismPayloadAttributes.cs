@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Drawing;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -96,5 +97,25 @@ public class OptimismPayloadAttributes : PayloadAttributes
         }
         BinaryPrimitives.WriteInt64BigEndian(inputSpan.Slice(offset, sizeof(long)), GasLimit);
         return offset + sizeof(long);
+    }
+
+    public override string ToString()
+    {
+        StringBuilder sb = new StringBuilder($"{nameof(PayloadAttributes)} {{")
+            .Append($"{nameof(Timestamp)}: {Timestamp}, ")
+            .Append($"{nameof(PrevRandao)}: {PrevRandao}, ")
+            .Append($"{nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient}, ")
+            .Append($"{nameof(GasLimit)}: {GasLimit}, ")
+            .Append($"{nameof(NoTxPool)}: {NoTxPool}, ")
+            .Append($"{nameof(Transactions)}): {Transactions?.Length ?? 0}");
+
+        if (Withdrawals is not null)
+        {
+            sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Count}");
+        }
+
+        sb.Append('}');
+
+        return sb.ToString();
     }
 }
