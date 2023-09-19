@@ -627,6 +627,24 @@ namespace Nethermind.Serialization.Rlp
                     break;
             }
 
+            EncodeSignature(stream, item, forSigning, chainId, includeSigChainIdHack);
+
+            if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && item.MayHaveNetworkForm)
+            {
+                switch (item.Type)
+                {
+                    case TxType.Blob:
+                        EncodeShardBlobNetworkPayload(item, stream, rlpBehaviors);
+                        break;
+                }
+            }
+        }
+
+        private static void EncodeSignature(RlpStream stream, T item, bool forSigning, ulong chainId, bool includeSigChainIdHack)
+        {
+            if (item.Type == TxType.DepositTx)
+                return;
+
             if (forSigning)
             {
                 if (includeSigChainIdHack)
@@ -650,16 +668,6 @@ namespace Nethermind.Serialization.Rlp
                     stream.Encode(item.Type == TxType.Legacy ? item.Signature.V : item.Signature.RecoveryId);
                     stream.Encode(item.Signature.RAsSpan.WithoutLeadingZeros());
                     stream.Encode(item.Signature.SAsSpan.WithoutLeadingZeros());
-                }
-            }
-
-            if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm && item.MayHaveNetworkForm)
-            {
-                switch (item.Type)
-                {
-                    case TxType.Blob:
-                        EncodeShardBlobNetworkPayload(item, stream, rlpBehaviors);
-                        break;
                 }
             }
         }
@@ -767,6 +775,27 @@ namespace Nethermind.Serialization.Rlp
                     break;
             }
 
+            contentLength += GetSignatureContentLength(item, forSigning, chainId, includeSigChainIdHack);
+
+            if (withNetworkWrapper)
+            {
+                switch (item.Type)
+                {
+                    case TxType.Blob:
+                        contentLength = GetShardBlobNetworkWrapperContentLength(item, contentLength);
+                        break;
+                }
+            }
+            return contentLength;
+        }
+
+        private static int GetSignatureContentLength(T item, bool forSigning, ulong chainId, bool includeSigChainIdHack)
+        {
+            if (item.Type == TxType.DepositTx)
+                return 0;
+
+            int contentLength = 0;
+
             if (forSigning)
             {
                 if (includeSigChainIdHack)
@@ -784,15 +813,6 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());
             }
 
-            if (withNetworkWrapper)
-            {
-                switch (item.Type)
-                {
-                    case TxType.Blob:
-                        contentLength = GetShardBlobNetworkWrapperContentLength(item, contentLength);
-                        break;
-                }
-            }
             return contentLength;
         }
 
