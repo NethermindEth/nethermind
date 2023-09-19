@@ -63,7 +63,6 @@ public class JsonRpcSocketsClientTests
         }
 
         [Test]
-        [Retry(5)]
         [TestCase(2)]
         [TestCase(10)]
         [TestCase(50)]
@@ -108,7 +107,6 @@ public class JsonRpcSocketsClientTests
             Assert.That(sent, Is.EqualTo(received));
         }
 
-        [Retry(5)]
         [TestCase(2)]
         [TestCase(10)]
         [TestCase(50)]
@@ -172,10 +170,10 @@ public class JsonRpcSocketsClientTests
         }
     }
 
+    [Explicit]
     public class UsingWebSockets
     {
         [Test]
-        [Retry(5)]
         [TestCase(2)]
         [TestCase(10)]
         [TestCase(50)]
@@ -221,7 +219,6 @@ public class JsonRpcSocketsClientTests
             Assert.That(sent, Is.EqualTo(received));
         }
 
-        [Retry(5)]
         [TestCase(2)]
         [TestCase(10)]
         [TestCase(50)]

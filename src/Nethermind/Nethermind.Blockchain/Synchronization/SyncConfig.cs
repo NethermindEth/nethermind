@@ -66,6 +66,8 @@ namespace Nethermind.Blockchain.Synchronization
         public bool ExitOnSynced { get; set; } = false;
         public int ExitOnSyncedWaitTimeSec { get; set; } = 60;
 
+        public bool TrieHealing { get; set; } = true;
+
         public override string ToString()
         {
             return
