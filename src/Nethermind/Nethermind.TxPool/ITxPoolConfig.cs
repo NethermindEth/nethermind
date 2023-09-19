@@ -19,7 +19,7 @@ namespace Nethermind.TxPool
         [ConfigItem(DefaultValue = "false", Description = "If true, all blob transactions would be stored in persistent db")]
         bool PersistentBlobStorageEnabled { get; set; }
 
-        [ConfigItem(DefaultValue = "16384", Description = "Max number of full blob transactions stored in db (but more transactions in blob pool mean more memory use too")]
+        [ConfigItem(DefaultValue = "16384", Description = "Max number of full blob transactions stored in the database (increasing the number of transactions in the blob pool also results in higher memory usage)")]
         int PersistentBlobStorageSize { get; set; }
 
         [ConfigItem(DefaultValue = "256", Description = "Max number of full blob transactions stored in memory as a cache for persistent storage")]
@@ -28,10 +28,10 @@ namespace Nethermind.TxPool
         [ConfigItem(DefaultValue = "512", Description = "Max number of full blob transactions stored in memory. Used only if persistent storage is disabled")]
         int InMemoryBlobPoolSize { get; set; }
 
-        [ConfigItem(DefaultValue = "0", Description = "Max number of pending transactions per single sender. Infinite by default (0)")]
+        [ConfigItem(DefaultValue = "0", Description = "Max number of pending transactions per single sender. Set it to 0 to disable the limit.")]
         int MaxPendingTxsPerSender { get; set; }
 
-        [ConfigItem(DefaultValue = "16", Description = "Max number of pending blob transactions per single sender.")]
+        [ConfigItem(DefaultValue = "16", Description = "Max number of pending blob transactions per single sender. Set it to 0 to disable the limit.")]
         int MaxPendingBlobTxsPerSender { get; set; }
 
         [ConfigItem(DefaultValue = "524288",
