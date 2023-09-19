@@ -160,6 +160,30 @@ public partial class EngineModuleTests
         result.Data.Status.Should().Be(expectedPayloadStatus);
     }
 
+    [TestCase(false, PayloadStatus.Syncing)]
+    [TestCase(true, PayloadStatus.Invalid)]
+    public virtual async Task NewPayloadV3_should_decline_incorrect_blobgasused(bool isBlobGasUsedBroken, string expectedPayloadStatus)
+    {
+        (IEngineRpcModule prevRpcModule, string payloadId, Transaction[] transactions) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+
+        if (isBlobGasUsedBroken)
+        {
+            payload.BlobGasUsed += 1;
+        }
+
+        payload.ParentHash = TestItem.KeccakA;
+        payload.BlockNumber = 2;
+        payload.TryGetBlock(out Block? b);
+        payload.BlockHash = b!.CalculateHash();
+
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
+        ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be(expectedPayloadStatus);
+    }
+
     [Test]
     public async Task NewPayloadV3_should_decline_null_blobversionedhashes()
     {
