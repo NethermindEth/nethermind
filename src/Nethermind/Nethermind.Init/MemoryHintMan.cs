@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using DotNetty.Buffers;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
@@ -21,6 +22,7 @@ namespace Nethermind.Init
     /// </summary>
     public class MemoryHintMan
     {
+        private const int M_ARENA_MAX = -8;
         private ILogger _logger;
 
         public MemoryHintMan(ILogManager logManager)
@@ -42,6 +44,8 @@ namespace Nethermind.Init
 
             checked
             {
+                SetupMallocOpts(initConfig);
+
                 if (_logger.IsInfo) _logger.Info("Setting up memory allowances");
                 if (_logger.IsInfo) _logger.Info($"  Memory hint:        {TotalMemory / 1000 / 1000,5} MB");
                 _remainingMemory = initConfig.MemoryHint ?? 2.GB();
@@ -66,6 +70,32 @@ namespace Nethermind.Init
                 _remainingMemory -= DbMemory;
                 if (_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / 1000 / 1000,5} MB");
 
+            }
+        }
+
+        [DllImport("libc")]
+        private static extern int mallopt(int opts, int value);
+
+        private void SetupMallocOpts(IInitConfig initConfig)
+        {
+            if (initConfig.DisableMallocOpts) return;
+
+            // Default glibc's arena count.
+            int currentArenaCount = Environment.Is64BitProcess
+                ? Environment.ProcessorCount * 8
+                : Environment.ProcessorCount * 4;
+
+            // On high core count machine the high number of heap arena causes large additional memory usage due to
+            // how glibc's malloc implementation work. This limits the arena count to something similar to a 4 core
+            // 64 bit machine. On mainnet, the overhead is still around 4.5 GB with this config. Reducing it even
+            // further with the env var `MALLOC_ARENA_MAX` will reduce this overhead even further, but will incur
+            // more lock contention which reduces sync performance. Switching completely to something like jemalloc
+            // is a much better solution, which cut down the overhead to 1.5 GB with no measurable downside.
+            if (currentArenaCount > 32)
+            {
+                if (_logger.IsDebug) _logger.Debug("Setting M_ARENA_MAX to 32");
+                bool success = mallopt(M_ARENA_MAX, 32) == 1;
+                if (!success && _logger.IsDebug) _logger.Debug("Unable to set max arena count");
             }
         }
 
