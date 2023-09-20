@@ -22,7 +22,6 @@ namespace Nethermind.Init
     /// </summary>
     public class MemoryHintMan
     {
-        private const int M_TRIM_THRESHOLD = -1;
         private const int M_MMAP_THRESHOLD = -3;
         private ILogger _logger;
 
@@ -84,16 +83,16 @@ namespace Nethermind.Init
             if (_logger.IsDebug) _logger.Debug("Setting malloc parameters..");
 
             // The MMAP threshold is the minimum size of allocation before glibc uses mmap to allocate the memory
-            // instead of brk. This means the whole allocation can be released on its own without incurring fragmentation
+            // instead of sbrk. This means the whole allocation can be released on its own without incurring fragmentation
             // but its not reusable and incur a system call. It turns out by default this value is dynamically adjusted
-            // up to 4GB in size on 64bit machine starting from 128KB.
+            // from 128KB up to 32MB in size on 64bit machine, so most of the memory reduction is due to just disabling
+            // this auto adjustment.
+            // Setting this essentially reduces the maximum size of a `hole` in the heap, but it causes extra system call.
+            // On 16C/32T machine, this reduces memory usage by about 7GB.
+            // There aren't much difference between 16KB to 64KB, but the system cpu time increase slightly as threshold
+            // lowers. 4k significantly increase cpu system time.
             bool success = mallopt(M_MMAP_THRESHOLD, (int)64.KiB()) == 1;
-            if (!success && _logger.IsDebug) _logger.Debug("Unable to set mmap threshold");
-
-            // The trim threshold is the minimum size of chunk before the memory from brk is released back to the OS.
-            // Default is 128KB. Also by default its dynamically adjusted.
-            success = mallopt(M_TRIM_THRESHOLD, (int)64.KiB()) == 1;
-            if (!success && _logger.IsDebug) _logger.Debug("Unable to set trim threshold");
+            if (!success && _logger.IsDebug) _logger.Debug("Unable to set M_MAP_THRESHOLD");
         }
 
         private long _remainingMemory;
