@@ -720,19 +720,21 @@ Sent
 Total Received:         {Metrics.PendingTransactionsReceived,24:N0}
 ------------------------------------------------
 Discarded at Filter Stage:
-1.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,24:N0}
-2.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,24:N0}
-3.  Malformed           {Metrics.PendingTransactionsMalformed,24:N0}
-4.  Duplicate:          {Metrics.PendingTransactionsKnown,24:N0}
-5.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,24:N0}
-6.  Conflicting TxType  {Metrics.PendingTransactionsConflictingTxType,24:N0}
-7.  Zero Balance:       {Metrics.PendingTransactionsZeroBalance,24:N0}
-8.  Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,24:N0}
-9.  Nonce used:         {Metrics.PendingTransactionsLowNonce,24:N0}
-10. Nonces skipped:     {Metrics.PendingTransactionsNonceGap,24:N0}
+1.  NotSupportedTxType  {Metrics.PendingTransactionsNotSupportedTxType,24:N0}
+2.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,24:N0}
+3.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,24:N0}
+4.  Malformed           {Metrics.PendingTransactionsMalformed,24:N0}
+5.  Duplicate:          {Metrics.PendingTransactionsKnown,24:N0}
+6.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,24:N0}
+7.  Conflicting TxType  {Metrics.PendingTransactionsConflictingTxType,24:N0}
+8.  NonceTooFarInFuture {Metrics.PendingTransactionsNonceTooFarInFuture,24:N0}
+9.  Zero Balance:       {Metrics.PendingTransactionsZeroBalance,24:N0}
+10. Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,24:N0}
 11. Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,24:N0}
-12. Failed replacement  {Metrics.PendingTransactionsPassedFiltersButCannotReplace,24:N0}
-13. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,24:N0}
+12. Nonce used:         {Metrics.PendingTransactionsLowNonce,24:N0}
+13. Nonces skipped:     {Metrics.PendingTransactionsNonceGap,24:N0}
+14. Failed replacement  {Metrics.PendingTransactionsPassedFiltersButCannotReplace,24:N0}
+15. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,24:N0}
 ------------------------------------------------
 Validated via State:    {Metrics.PendingTransactionsWithExpensiveFiltering,24:N0}
 ------------------------------------------------
@@ -755,6 +757,10 @@ Ratios in last block:
 Amounts:
 * Blob txs:             {Metrics.BlobTransactionsInBlock,24:N0}
 * Blobs:                {Metrics.BlobsInBlock,24:N0}
+------------------------------------------------
+Db usage:
+* BlobDb writes:        {Db.Metrics.BlobTransactionsDbWrites,24:N0}
+* BlobDb reads:         {Db.Metrics.BlobTransactionsDbReads,24:N0}
 ------------------------------------------------
 ");
         }
