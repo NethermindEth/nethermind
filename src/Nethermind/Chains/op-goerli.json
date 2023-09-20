@@ -43,7 +43,7 @@
     "eip2930Transition": "0x0",
     "eip1559Transition": "0x3df828",
     "eip1559FeeCollectorTransition": "0x3df828",
-    "eip1559FeeCollector": "0x420000000000000000000000000000000000001A",
+    "eip1559FeeCollector": "0x4200000000000000000000000000000000000019",
     "eip1559ElasticityMultiplier": "0x6",
     "eip1559BaseFeeMaxChangeDenominator": "0x32",
     "eip3198Transition": "0x3df828",
