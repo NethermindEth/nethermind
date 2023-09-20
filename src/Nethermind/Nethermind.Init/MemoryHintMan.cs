@@ -9,6 +9,7 @@ using DotNetty.Buffers;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
@@ -22,11 +23,12 @@ namespace Nethermind.Init
     /// </summary>
     public class MemoryHintMan
     {
-        private const int M_MMAP_THRESHOLD = -3;
         private ILogger _logger;
+        private MallocHelper _mallocHelper;
 
-        public MemoryHintMan(ILogManager logManager)
+        public MemoryHintMan(ILogManager logManager, MallocHelper? mallocHelper = null)
         {
+            _mallocHelper = mallocHelper ?? MallocHelper.Instance;
             _logger = logManager?.GetClassLogger<MemoryHintMan>()
                       ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -73,9 +75,6 @@ namespace Nethermind.Init
             }
         }
 
-        [DllImport("libc")]
-        private static extern int mallopt(int opts, int value);
-
         private void SetupMallocOpts(IInitConfig initConfig)
         {
             if (initConfig.DisableMallocOpts) return;
@@ -91,7 +90,7 @@ namespace Nethermind.Init
             // On 16C/32T machine, this reduces memory usage by about 7GB.
             // There aren't much difference between 16KB to 64KB, but the system cpu time increase slightly as threshold
             // lowers. 4k significantly increase cpu system time.
-            bool success = mallopt(M_MMAP_THRESHOLD, (int)64.KiB()) == 1;
+            bool success = _mallocHelper.MallOpt(MallocHelper.Option.M_MMAP_THRESHOLD, (int)64.KiB());
             if (!success && _logger.IsDebug) _logger.Debug("Unable to set M_MAP_THRESHOLD");
         }
 
