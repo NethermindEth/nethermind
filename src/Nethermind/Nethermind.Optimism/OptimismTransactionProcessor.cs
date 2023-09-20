@@ -43,18 +43,6 @@ public class OptimismTransactionProcessor : TransactionProcessor
         base.Execute(tx, header, tracer, opts);
     }
 
-    protected override bool ExecuteEVMCall(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
-        in long gasAvailable, in ExecutionEnvironment env, out TransactionSubstate? substate, out long spentGas,
-        out byte statusCode)
-    {
-        bool callResult = base.ExecuteEVMCall(tx, header, spec, tracer, opts, in gasAvailable, in env, out substate, out spentGas, out statusCode);
-
-        if (tx.IsOPSystemTransaction && !_opConfigHelper.IsRegolith(header))
-            spentGas = 0;
-
-        return callResult;
-    }
-
     protected override bool BuyGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment)
     {
