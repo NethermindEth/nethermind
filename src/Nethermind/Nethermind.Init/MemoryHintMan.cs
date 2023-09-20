@@ -4,10 +4,12 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using DotNetty.Buffers;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
@@ -22,9 +24,11 @@ namespace Nethermind.Init
     public class MemoryHintMan
     {
         private ILogger _logger;
+        private MallocHelper _mallocHelper;
 
-        public MemoryHintMan(ILogManager logManager)
+        public MemoryHintMan(ILogManager logManager, MallocHelper? mallocHelper = null)
         {
+            _mallocHelper = mallocHelper ?? MallocHelper.Instance;
             _logger = logManager?.GetClassLogger<MemoryHintMan>()
                       ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -42,6 +46,8 @@ namespace Nethermind.Init
 
             checked
             {
+                SetupMallocOpts(initConfig);
+
                 if (_logger.IsInfo) _logger.Info("Setting up memory allowances");
                 if (_logger.IsInfo) _logger.Info($"  Memory hint:        {TotalMemory / 1000 / 1000,5} MB");
                 _remainingMemory = initConfig.MemoryHint ?? 2.GB();
@@ -67,6 +73,25 @@ namespace Nethermind.Init
                 if (_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / 1000 / 1000,5} MB");
 
             }
+        }
+
+        private void SetupMallocOpts(IInitConfig initConfig)
+        {
+            if (initConfig.DisableMallocOpts) return;
+
+            if (_logger.IsDebug) _logger.Debug("Setting malloc parameters..");
+
+            // The MMAP threshold is the minimum size of allocation before glibc uses mmap to allocate the memory
+            // instead of sbrk. This means the whole allocation can be released on its own without incurring fragmentation
+            // but its not reusable and incur a system call. It turns out by default this value is dynamically adjusted
+            // from 128KB up to 32MB in size on 64bit machine, so most of the memory reduction is due to just disabling
+            // this auto adjustment.
+            // Setting this essentially reduces the maximum size of a `hole` in the heap, but it causes extra system call.
+            // On 16C/32T machine, this reduces memory usage by about 7GB.
+            // There aren't much difference between 16KB to 64KB, but the system cpu time increase slightly as threshold
+            // lowers. 4k significantly increase cpu system time.
+            bool success = _mallocHelper.MallOpt(MallocHelper.Option.M_MMAP_THRESHOLD, (int)64.KiB());
+            if (!success && _logger.IsDebug) _logger.Debug("Unable to set M_MAP_THRESHOLD");
         }
 
         private long _remainingMemory;
