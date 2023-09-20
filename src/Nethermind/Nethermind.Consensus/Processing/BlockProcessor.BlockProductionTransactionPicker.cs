@@ -13,9 +13,9 @@ namespace Nethermind.Consensus.Processing
 {
     public partial class BlockProcessor
     {
-        protected class BlockProductionTransactionPicker
+        public class BlockProductionTransactionPicker : IBlockProductionTransactionPicker
         {
-            private readonly ISpecProvider _specProvider;
+            protected readonly ISpecProvider _specProvider;
 
             public BlockProductionTransactionPicker(ISpecProvider specProvider)
             {
@@ -24,7 +24,12 @@ namespace Nethermind.Consensus.Processing
 
             public event EventHandler<AddingTxEventArgs>? AddingTransaction;
 
-            public AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IWorldState stateProvider)
+            protected void OnAddingTransaction(AddingTxEventArgs e)
+            {
+                AddingTransaction?.Invoke(this, e);
+            }
+
+            public virtual AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IWorldState stateProvider)
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
@@ -42,8 +47,7 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, "Null sender");
                 }
 
-                // TODO optimism out of gas in deposit txs
-                if (!currentTx.IsOPSystemTransaction && currentTx.GasLimit > gasRemaining)
+                if (currentTx.GasLimit > gasRemaining)
                 {
                     return args.Set(TxAction.Skip, $"Not enough gas in block, gas limit {currentTx.GasLimit} > {gasRemaining}");
                 }
@@ -76,7 +80,7 @@ namespace Nethermind.Consensus.Processing
                     return args;
                 }
 
-                AddingTransaction?.Invoke(this, args);
+                OnAddingTransaction(args);
                 return args;
             }
 

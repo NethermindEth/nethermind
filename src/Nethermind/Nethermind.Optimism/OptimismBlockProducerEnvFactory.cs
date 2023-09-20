@@ -44,6 +44,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         txPool, transactionComparerProvider, blocksConfig, logManager)
     {
         _chainSpec = chainSpec;
+        TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, logManager);
     }
 
     protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider readOnlyDbProvider,
