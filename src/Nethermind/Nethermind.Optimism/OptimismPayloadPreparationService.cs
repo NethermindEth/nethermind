@@ -25,31 +25,10 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
         _logger = logManager.GetClassLogger();
     }
 
-    // public override string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
-    // {
-    //     if (payloadAttributes is OptimismPayloadAttributes { NoTxPool: false })
-    //         return base.StartPreparingPayload(parentHeader, payloadAttributes);
-    //
-    //     string payloadId = payloadAttributes.GetPayloadId(parentHeader);
-    //     if (!_payloadStorage.ContainsKey(payloadId))
-    //     {
-    //         Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
-    //         NoBlockImprovementContext noBlockImprovementContext = new(emptyBlock, UInt256.Zero, DateTimeOffset.Now);
-    //         if (!_payloadStorage.TryAdd(payloadId, noBlockImprovementContext))
-    //             _logger.Warn($"TryAdd empty (deposit only) payload failed. PayloadId: {payloadId}");
-    //     }
-    //     else if (_logger.IsInfo)
-    //         _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
-    //
-    //     return payloadId;
-    // }
-
     protected override void ImproveBlock(string payloadId, BlockHeader parentHeader,
         PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
     {
-        if (payloadAttributes is OptimismPayloadAttributes { NoTxPool: false })
-            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
-        else
+        if (payloadAttributes is OptimismPayloadAttributes { NoTxPool: true })
         {
             if (_logger.IsInfo)
                 _logger.Info($"Skip block improvement because of NoTxPool payload attribute.");
@@ -58,5 +37,6 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             _payloadStorage.TryAdd(payloadId,
                 new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime));
         }
+        else base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
     }
 }

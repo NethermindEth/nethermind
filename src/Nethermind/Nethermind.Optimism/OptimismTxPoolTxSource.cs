@@ -19,7 +19,7 @@ public class OptimismTxPoolTxSource : ITxSource
     }
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes) =>
-        payloadAttributes is OptimismPayloadAttributes { NoTxPool: false }
-            ? _baseTxSource.GetTransactions(parent, gasLimit, payloadAttributes)
-            : Enumerable.Empty<Transaction>();
+        payloadAttributes is OptimismPayloadAttributes { NoTxPool: true }
+            ? Enumerable.Empty<Transaction>()
+            : _baseTxSource.GetTransactions(parent, gasLimit, payloadAttributes);
 }
