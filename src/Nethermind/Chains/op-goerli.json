@@ -4,7 +4,7 @@
   "engine": {
     "Optimism": {
       "params": {
-        "regolithTimestamp": "0x0",
+        "regolithTimestamp": "0x6414B8B0",
         "bedrockBlockNumber": "0x0"
       }
     }
@@ -42,6 +42,10 @@
     "eip2929Transition": "0x0",
     "eip2930Transition": "0x0",
     "eip1559Transition": "0x3df828",
+    "eip1559FeeCollectorTransition": "0x3df828",
+    "eip1559FeeCollector": "0x420000000000000000000000000000000000001A",
+    "eip1559ElasticityMultiplier": "0x6",
+    "eip1559BaseFeeMaxChangeDenominator": "0x32",
     "eip3198Transition": "0x3df828",
     "eip3529Transition": "0x3df828",
     "eip3541Transition": "0x3df828",
