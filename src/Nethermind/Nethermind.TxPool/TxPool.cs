@@ -746,7 +746,7 @@ Discard Ratios:
 ------------------------------------------------
 Total Added:            {Metrics.PendingTransactionsAdded,24:N0}
 * Eip1559 Added:        {Metrics.Pending1559TransactionsAdded,24:N0}
-* Blob Added:        {Metrics.PendingBlobTransactionsAdded,24:N0}
+* Blob Added:           {Metrics.PendingBlobTransactionsAdded,24:N0}
 ------------------------------------------------
 Total Evicted:          {Metrics.PendingTransactionsEvicted,24:N0}
 ------------------------------------------------
