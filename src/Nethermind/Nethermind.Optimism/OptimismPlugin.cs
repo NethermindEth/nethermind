@@ -259,7 +259,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _blockProductionTrigger,
             TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
 
-        PayloadPreparationService payloadPreparationService = new(
+        OptimismPayloadPreparationService payloadPreparationService = new(
             _blockProducer,
             improvementContextFactory,
             _api.TimerFactory,

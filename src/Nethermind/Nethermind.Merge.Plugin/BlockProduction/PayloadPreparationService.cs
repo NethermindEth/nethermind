@@ -46,7 +46,7 @@ public class PayloadPreparationService : IPayloadPreparationService
     private readonly TimeSpan _timePerSlot;
 
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
-    private readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
+    protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
 
     public PayloadPreparationService(
         PostMergeBlockProducer blockProducer,
@@ -93,7 +93,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         return emptyBlock;
     }
 
-    private void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime) =>
+    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime) =>
         _payloadStorage.AddOrUpdate(payloadId,
             id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime),
             (id, currentContext) =>
