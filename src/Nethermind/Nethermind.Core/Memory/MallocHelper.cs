@@ -31,7 +31,7 @@ public class MallocHelper
     }
 
 
-    public enum Option: int
+    public enum Option : int
     {
         M_MMAP_THRESHOLD = -3
     }

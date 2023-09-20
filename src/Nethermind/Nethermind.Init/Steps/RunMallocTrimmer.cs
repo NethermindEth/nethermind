@@ -10,7 +10,7 @@ using Nethermind.Core;
 namespace Nethermind.Init.Steps;
 
 [RunnerStepDependencies(typeof(MigrateConfigs))]
-public class RunMallocTrimmer: IStep
+public class RunMallocTrimmer : IStep
 {
     private readonly MallocTrimmer? _mallocTrimmer;
 
