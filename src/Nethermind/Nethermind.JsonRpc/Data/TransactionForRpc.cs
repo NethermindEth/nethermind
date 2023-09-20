@@ -17,6 +17,12 @@ public class TransactionForRpc
 
     public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction, UInt256? baseFee = null)
     {
+        if (transaction.Type == TxType.DepositTx)
+        {
+            SourceHash = transaction.SourceHash;
+            Mint = transaction.Mint;
+            IsOPSystemTransaction = transaction.IsOPSystemTransaction;
+        }
         Hash = transaction.Hash;
         Nonce = transaction.Nonce;
         BlockHash = blockHash;
@@ -59,6 +65,10 @@ public class TransactionForRpc
     public TransactionForRpc()
     {
     }
+
+    public Keccak? SourceHash { get; set; }
+    public UInt256? Mint { get; set; }
+    public bool? IsOPSystemTransaction { get; set; }
 
     public Keccak? Hash { get; set; }
     public UInt256? Nonce { get; set; }
