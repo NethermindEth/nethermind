@@ -283,7 +283,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void NewHeadSubscription_on_BlockAddedToMain_event_with_null_block()
         {
-            BlockReplacementEventArgs blockReplacementEventArgs = new(null);
+            BlockReplacementEventArgs blockReplacementEventArgs = new(null!);
 
             JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out _, shouldReceiveResult: false);
 
@@ -777,7 +777,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void NewPendingTransactionsSubscription_on_NewPending_event_with_null_transaction()
         {
-            TxEventArgs txEventArgs = new(null);
+            TxEventArgs txEventArgs = new(null!);
 
             JsonRpcResult jsonRpcResult = GetNewPendingTransactionsResult(txEventArgs, out _);
 
@@ -862,7 +862,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void DroppedPendingTransactionsSubscription_on_EvictedPending_event_with_null_transaction()
         {
-            TxEventArgs txEventArgs = new(null);
+            TxEventArgs txEventArgs = new(null!);
 
             JsonRpcResult jsonRpcResult = GetDroppedPendingTransactionsResult(txEventArgs, out _);
 
