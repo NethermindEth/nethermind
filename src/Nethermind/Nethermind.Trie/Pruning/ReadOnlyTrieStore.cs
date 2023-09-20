@@ -80,7 +80,7 @@ namespace Nethermind.Trie.Pruning
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
 
         public bool CanAccessByPath() => _trieStore.CanAccessByPath();
-        public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefix)
+        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix)
         {
             throw new NotImplementedException();
         }

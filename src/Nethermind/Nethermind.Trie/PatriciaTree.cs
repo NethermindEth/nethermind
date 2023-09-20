@@ -83,6 +83,7 @@ namespace Nethermind.Trie
         }
         public byte[] StoreNibblePathPrefix { get; private set; }
 
+        public bool ClearedBySelfDestruct = false;
 
         /// <summary>
         /// Only used in EthereumTests
@@ -190,6 +191,8 @@ namespace Nethermind.Trie
             //process deletions - it can happend that a root is set too empty hash due to deletions - needs to be outside of root ref condition
             if (TrieStore.Capability == TrieNodeResolverCapability.Path)
             {
+                if (ClearedBySelfDestruct)
+                    TrieStore.MarkPrefixDeleted(blockNumber, StoreNibblePathPrefix);
                 while (_deleteNodes != null && _deleteNodes.TryDequeue(out TrieNode delNode))
                     _currentCommit.Enqueue(new NodeCommitInfo(delNode));
             }
@@ -214,6 +217,7 @@ namespace Nethermind.Trie
 
             TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef, writeFlags);
             _uncommitedPaths = new Bloom();
+            ClearedBySelfDestruct = false;
             if (_logger.IsDebug) _logger.Debug($"Finished committing block {blockNumber}");
         }
         private void Commit(NodeCommitInfo nodeCommitInfo, bool skipSelf = false)
@@ -414,8 +418,12 @@ namespace Nethermind.Trie
                 if (RootRef is null) return null;
                 if (RootRef?.IsDirty == true)
                 {
-                    if (_uncommitedPaths is null || _uncommitedPaths.Matches(rawKey))
+                    if (_uncommitedPaths is null || _uncommitedPaths.Matches(rawKey) || ClearedBySelfDestruct)
                         return GetInternal(rawKey);
+                }
+                else
+                {
+                    rootHash = RootRef.Keccak;
                 }
             }
 

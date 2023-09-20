@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -12,7 +11,6 @@ using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -92,6 +90,7 @@ namespace Nethermind.Evm.Test
             TestState.Set(new StorageCell(contractAddress, 2), new byte[] { 1 });
             CommitEverything(MainnetSpecProvider.MuirGlacierBlockNumber + 4);
             AssertStorage(new StorageCell(contractAddress, 1), 0);
+            AssertStorage(new StorageCell(contractAddress, 2), 1);
         }
 
         void CommitEverything(long blockNumber)
@@ -459,11 +458,11 @@ namespace Nethermind.Evm.Test
 
             tracer = new ParityLikeTxTracer(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(tx1, block.Header, tracer);
-            // AssertStorage(new StorageCell(deploymentAddress, 7), 7);
+            AssertStorage(new StorageCell(deploymentAddress, 7), 7);
 
             tracer = new ParityLikeTxTracer(block, tx2, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(tx2, block.Header, tracer);
-            // AssertStorage(new StorageCell(deploymentAddress, 7), 0);
+            AssertStorage(new StorageCell(deploymentAddress, 7), 0);
 
             tracer = new ParityLikeTxTracer(block, tx3, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(tx3, block.Header, tracer);
@@ -472,6 +471,10 @@ namespace Nethermind.Evm.Test
             tracer = new ParityLikeTxTracer(block, tx4, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(tx4, block.Header, tracer);
             AssertStorage(new StorageCell(deploymentAddress, 7), 0);
+
+            TestState.CommitTree(1);
+            AssertStorage(new StorageCell(deploymentAddress, 7), 0);
+            AssertStorage(new StorageCell(deploymentAddress, 1), 1);
         }
     }
 }

@@ -176,23 +176,6 @@ namespace Nethermind.Trie.Pruning
                         }
                     }
                 }
-                if (trieType == TrieType.Storage)
-                {
-                    while (_destroyPrefixes.TryDequeue(out var prefix))
-                    {
-                        if (_useCommittedCache)
-                        {
-                            _committedNodes[StateColumns.Storage].AddRemovedPrefix(blockNumber, prefix);
-                        }
-                        else
-                        {
-                            (byte[] startKey, byte[] endKey) = GetDeleteKeyFromNibblePrefix(prefix);
-                            byte[] startDbKey = Nibbles.NibblesToByteStorage(startKey.ToArray());
-                            byte[] endDbKey = Nibbles.NibblesToByteStorage(endKey.ToArray());
-                            _stateDb.GetColumnDb(StateColumns.Storage).DeleteByRange(startDbKey, endDbKey);
-                        }
-                    }
-                }
                 // set rootHash here to account for root hashes for the storage trees also in every block
                 // there needs to be a better way to handle this
                 StateColumns column = trieType switch
@@ -621,31 +604,32 @@ namespace Nethermind.Trie.Pruning
             _stateDb.GetColumnDb(column).DeleteByRange(startDbKey, endDbKey);
         }
 
-        public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefixNibbles)
+        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefixNibbles)
         {
-            StateColumns column = GetProperColumn(keyPrefixNibbles.Length);
-            bool addPrefixAsDeleted = _committedNodes[column].IsPathCached(keyPrefixNibbles);
-            if (!addPrefixAsDeleted)
+            if (_useCommittedCache)
             {
-                byte[] keyPath = Nibbles.NibblesToByteStorage(keyPrefixNibbles.ToArray());
-                byte[]? rlp = _currentBatches[column]?[keyPath] ?? _stateDb.GetColumnDb(column)[keyPath];
-                addPrefixAsDeleted = rlp != null;
+                _committedNodes[StateColumns.Storage].AddRemovedPrefix(blockNumber, keyPrefixNibbles);
             }
-
-            if (addPrefixAsDeleted)
-                _destroyPrefixes.Enqueue(keyPrefixNibbles.ToArray());
+            else
+            {
+                (byte[] startKey, byte[] endKey) = GetDeleteKeyFromNibblePrefix(keyPrefixNibbles);
+                byte[] startDbKey = Nibbles.NibblesToByteStorage(startKey.ToArray());
+                byte[] endDbKey = Nibbles.NibblesToByteStorage(endKey.ToArray());
+                _stateDb.GetColumnDb(StateColumns.Storage).DeleteByRange(startDbKey, endDbKey);
+            }
         }
 
-        public static (byte[], byte[]) GetDeleteKeyFromNibblePrefix(Span<byte> prefix)
+        public static (byte[], byte[]) GetDeleteKeyFromNibblePrefix(ReadOnlySpan<byte> prefix)
         {
             if (prefix.Length % 2 != 0)
                 throw new ArgumentException("Only even length prefixes supported");
 
-            Span<byte> fromKey = prefix;
-            byte[] toKey = new byte[prefix.Length];
+            Span<byte> fromKey = new (GC.AllocateUninitializedArray<byte>(prefix.Length));
+            prefix.CopyTo(fromKey);
+            Span<byte> toKey = new(GC.AllocateUninitializedArray<byte>(prefix.Length));
             prefix.CopyTo(toKey);
 
-            return (fromKey.ToArray(), toKey.AsSpan().IncrementNibble().ToArray());
+            return (fromKey.ToArray(), toKey.IncrementNibble().ToArray());
         }
 
         public static (byte[], byte[]) GetDeleteKeyFromNibbles(Span<byte> nibbleFrom, Span<byte> nibbleTo, int oddityOverride)

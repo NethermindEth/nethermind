@@ -882,7 +882,7 @@ namespace Nethermind.Trie.Pruning
             _keyValueStore.DeleteByRange(startKey, endKey);
         }
 
-        public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefix)
+        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix)
         {
             throw new NotImplementedException();
         }

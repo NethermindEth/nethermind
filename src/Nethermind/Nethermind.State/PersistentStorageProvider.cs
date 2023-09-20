@@ -139,15 +139,12 @@ namespace Nethermind.State
 
                 if (change.ChangeType == ChangeType.Destroy)
                 {
-                    //Span<byte> storagePrefix = new byte[34];
-                    //Keccak.Compute(change.StorageCell.Address.Bytes).Bytes.AsSpan().CopyTo(storagePrefix[1..]);
-                    //storagePrefix[33] = 128;
-                    //Span<byte> storagePrefix = new byte[33];
-                    //Keccak.Compute(change.StorageCell.Address.Bytes).Bytes.CopyTo(storagePrefix);
-                    //storagePrefix[^1] = 128;
-                    //Span<byte> storagePrefixNibbles = new byte[66];
-                    //Nibbles.BytesToNibbleBytes(storagePrefix, storagePrefixNibbles);
-                    //_trieStore.MarkPrefixDeleted(storagePrefixNibbles);
+                    //mark the prefix consisting of the account address as deleted to avoid dirty reads after storage is cleared
+                    if (_trieStore.Capability == TrieNodeResolverCapability.Path)
+                    {
+                        StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
+                        tree.ClearedBySelfDestruct = true;
+                    }
                     continue;
                 }
 
@@ -176,7 +173,6 @@ namespace Nethermind.State
                         {
                             trace![change.StorageCell] = new ChangeTrace(change.Value);
                         }
-
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -285,30 +281,11 @@ namespace Nethermind.State
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
             _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager, address);
+            // mark the tree as cleared by SD - will be used by path state to avoid reads from flat storage until
+            // they get committed to avoid reading uncleared data
+            _storages[address].ClearedBySelfDestruct = true;
 
-            //StorageCell cell = new(address, 0);
-            //SetupRegistry(cell);
-            //IncrementChangePosition();
-            //_intraBlockCache[cell].Push(_currentPosition);
-            //_changes[_currentPosition] = new Change(ChangeType.Destroy, new StorageCell(address, 0), null);
 
-            //Span<byte> storagePrefix = stackalloc byte[34];
-            //Keccak.Compute(address.Bytes).Bytes.AsSpan().CopyTo(storagePrefix[1..]);
-            //storagePrefix[33] = 128;
-
-            //_trieStore.DeleteByPrefix(storagePrefix);
-
-            //mark the prefix consisting of the account address as deleted to avoid dirty reads after storage is cleared
-            if (_trieStore.Capability == TrieNodeResolverCapability.Path)
-            {
-                Span<byte> storagePrefix = new byte[33];
-                Keccak.Compute(address.Bytes).Bytes.CopyTo(storagePrefix);
-                storagePrefix[^1] = 128;
-                Span<byte> storagePrefixNibbles = new byte[66];
-                Nibbles.BytesToNibbleBytes(storagePrefix, storagePrefixNibbles);
-
-                _trieStore.MarkPrefixDeleted(storagePrefixNibbles);
-            }
         }
     }
 }
