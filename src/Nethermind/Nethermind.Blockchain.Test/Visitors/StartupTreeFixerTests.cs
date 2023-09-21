@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             Assert.Null(blockInfosDb.Get(4), "level 4");
             Assert.Null(blockInfosDb.Get(5), "level 5");
 
-            tree.Head.Header.Should().BeEquivalentTo(block2.Header, options => options.Excluding(t => t.MaybeParent));
+            tree.Head!.Header.Should().BeEquivalentTo(block2.Header, options => options.Excluding(t => t.MaybeParent));
             tree.BestSuggestedHeader.Should().BeEquivalentTo(block2.Header, options => options.Excluding(t => t.MaybeParent));
             tree.BestSuggestedBody?.Body.Should().BeEquivalentTo(block2.Body);
             tree.BestKnownNumber.Should().Be(2);
