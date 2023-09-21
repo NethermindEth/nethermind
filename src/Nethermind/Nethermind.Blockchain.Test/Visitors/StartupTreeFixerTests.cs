@@ -162,18 +162,18 @@ namespace Nethermind.Blockchain.Test.Visitors
             testRpc.BlockchainProcessor = newBlockchainProcessor;
 
             IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.DbProvider.StateDb, LimboNoErrorLogger.Instance, 5);
-            BlockVisitOutcome result = await fixer.VisitBlock(null, CancellationToken.None);
+            BlockVisitOutcome result = await fixer.VisitBlock(null!, CancellationToken.None);
 
             Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
         }
 
         private static void SuggestNumberOfBlocks(IBlockTree blockTree, int blockAmount)
         {
-            Block newParent = blockTree.Head;
+            Block newParent = blockTree.Head!;
             for (int i = 0; i < blockAmount; ++i)
             {
                 Block newBlock = Build.A.Block
-                    .WithNumber(newParent!.Number + 1)
+                    .WithNumber(newParent.Number + 1)
                     .WithDifficulty(newParent.Difficulty + 1)
                     .WithParent(newParent)
                     .WithStateRoot(newParent.StateRoot!).TestObject;
@@ -214,7 +214,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             Assert.That(tree.BestKnownNumber, Is.EqualTo(2L), "best known");
             Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header), "head");
-            Assert.That(tree.BestSuggestedHeader.Hash, Is.EqualTo(block2.Hash), "suggested");
+            Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(block2.Hash), "suggested");
         }
     }
 }
