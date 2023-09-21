@@ -109,6 +109,13 @@ namespace Nethermind.Blockchain.Test.Builders
             return this;
         }
 
+        public FilterBuilder WithAnyAddress()
+        {
+            _address = AddressFilter.AnyAddress;
+
+            return this;
+        }
+
         public FilterBuilder WithAddress(Address address)
         {
             _address = new AddressFilter(address);

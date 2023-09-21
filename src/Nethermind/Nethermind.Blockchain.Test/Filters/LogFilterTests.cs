@@ -18,8 +18,8 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test, Timeout(Timeout.MaxTestTime)]
         public void any_address_filter_matches_bloom()
         {
-            var filter = FilterBuilder.New(ref _filterCounter)
-                .WithAddress(null)
+            LogFilter filter = FilterBuilder.New(ref _filterCounter)
+                .WithAnyAddress()
                 .Build();
 
             filter.Matches(Core.Bloom.Empty).Should().BeTrue();
