@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -69,9 +70,10 @@ namespace Nethermind.Consensus.Processing
 
                 int i = 0;
                 LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
+                BlockExecutionContext blkCtx = new(block.Header);
                 foreach (Transaction currentTx in transactions)
                 {
-                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
+                    TxAction action = ProcessTransaction(block, blkCtx, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
                     if (action == TxAction.Stop) break;
                 }
 
@@ -83,6 +85,7 @@ namespace Nethermind.Consensus.Processing
 
             protected TxAction ProcessTransaction(
                 Block block,
+                BlockExecutionContext blkCtx,
                 Transaction currentTx,
                 int index,
                 BlockReceiptsTracer receiptsTracer,
@@ -98,7 +101,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
+                    _transactionProcessor.ProcessTransaction(blkCtx, currentTx, receiptsTracer, processingOptions, _stateProvider);
 
                     if (addToBlock)
                     {

@@ -35,10 +35,10 @@
     "eip3198Transition": "0x0",
     "eip3529Transition": "0x0",
     "eip3541Transition": "0x0",
-    "eip3651TransitionTimestamp": "0x6505e360",
-    "eip3855TransitionTimestamp": "0x6505e360",
-    "eip3860TransitionTimestamp": "0x6505e360",
-    "eip4895TransitionTimestamp": "0x6505e360",
+    "eip3651TransitionTimestamp": "0x6516eac0",
+    "eip3855TransitionTimestamp": "0x6516eac0",
+    "eip3860TransitionTimestamp": "0x6516eac0",
+    "eip4895TransitionTimestamp": "0x6516eac0",
     "terminalTotalDifficulty": "0x0",
     "gasLimitBoundDivisor": "0x400",
     "maxCodeSize": "0x6000",
@@ -57,10 +57,10 @@
     },
     "difficulty": "0x01",
     "author": "0x0000000000000000000000000000000000000000",
-    "extraData": "0x686f77206d7563682069732074686520666973683f",
+    "extraData": "",
     "gasLimit": "0x17D7840",
     "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-    "timestamp": "0x65046234"
+    "timestamp": "0x65156994"
   },
   "nodes": [
     "enode://ac906289e4b7f12df423d654c5a962b6ebe5b3a74cc9e06292a85221f9a64a6f1cfdd6b714ed6dacef51578f92b34c60ee91e9ede9c7f8fadc4d347326d95e2b@146.190.13.128:30303",

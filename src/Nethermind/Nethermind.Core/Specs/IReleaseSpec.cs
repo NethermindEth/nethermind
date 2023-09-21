@@ -361,5 +361,6 @@ namespace Nethermind.Core.Specs
         public bool MCopyIncluded => IsEip5656Enabled;
 
         public bool MainnetSystemCalls { get; } // ToDo add comment
+        public bool BlobBaseFeeEnabled => IsEip4844Enabled;
     }
 }
