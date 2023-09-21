@@ -1766,11 +1766,11 @@ namespace Nethermind.Blockchain.Test
                 foreach (BlockTreeLookupOptions blockTreeLookupOptions in valueCombinations)
                 {
                     bool allowInvalid = (blockTreeLookupOptions & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
-                    yield return new TestCaseData(FindHeader, blockTreeLookupOptions, allowInvalid)
+                    yield return new TestCaseData((Func<BlockTree, Keccak?, BlockTreeLookupOptions, BlockHeader?>)FindHeader, blockTreeLookupOptions, allowInvalid)
                     {
                         TestName = $"InvalidBlock_{nameof(FindHeader)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
                     };
-                    yield return new TestCaseData(FindBlock, blockTreeLookupOptions, allowInvalid)
+                    yield return new TestCaseData((Func<BlockTree, Keccak?, BlockTreeLookupOptions, BlockHeader?>)FindBlock, blockTreeLookupOptions, allowInvalid)
                     {
                         TestName = $"InvalidBlock_{nameof(FindBlock)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
                     };
