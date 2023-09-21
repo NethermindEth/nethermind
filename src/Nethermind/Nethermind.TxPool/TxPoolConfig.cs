@@ -14,6 +14,8 @@ namespace Nethermind.TxPool
                                                                         // every day about 21600 blobs will be included (7200 blocks per day * 3 blob target)
         public int BlobCacheSize { get; set; } = 256;
         public int InMemoryBlobPoolSize { get; set; } = 512; // it is used when persistent pool is disabled
+        public int MaxPendingTxsPerSender { get; set; } = 0;
+        public int MaxPendingBlobTxsPerSender { get; set; } = 16;
         public int HashCacheSize { get; set; } = 512 * 1024;
         public long? GasLimit { get; set; } = null;
         public int? ReportMinutes { get; set; } = null;

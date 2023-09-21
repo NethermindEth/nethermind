@@ -25,6 +25,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsDiscarded { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending transactions received that were ignored because of not supported transaction type.")]
+        public static long PendingTransactionsNotSupportedTxType { get; set; }
+
+        [CounterMetric]
         [Description(
             "Number of pending transactions received that were ignored because of not having preceding nonce of this sender in TxPool.")]
         public static long PendingTransactionsNonceGap { get; set; }
@@ -82,6 +86,10 @@ namespace Nethermind.TxPool
         [CounterMetric]
         [Description("Number of transactions with already used nonce.")]
         public static long PendingTransactionsLowNonce { get; set; }
+
+        [CounterMetric]
+        [Description("Number of transactions with nonce too far in future.")]
+        public static long PendingTransactionsNonceTooFarInFuture { get; set; }
 
         [CounterMetric]
         [Description("Number of transactions rejected because of already pending tx of other type (allowed blob txs or others, not both at once).")]
