@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Test.Builders
         private static int _id;
         private BlockParameter _fromBlock = new(BlockParameterType.Latest);
         private BlockParameter _toBlock = new(BlockParameterType.Latest);
-        private AddressFilter _address = new((Address)null);
+        private AddressFilter _address = AddressFilter.AnyAddress;
         private SequenceTopicsFilter _topicsFilter = new();
 
         private FilterBuilder()
