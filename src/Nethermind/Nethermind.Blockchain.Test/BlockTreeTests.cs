@@ -1143,8 +1143,10 @@ namespace Nethermind.Blockchain.Test
 
             blocksDb.Set(0, Rlp.Encode(1L).Bytes);
 
-            SyncConfig syncConfig = new();
-            syncConfig.PivotNumber = beginIndex.ToString();
+            SyncConfig syncConfig = new()
+            {
+                PivotNumber = beginIndex.ToString(),
+            };
 
             ChainLevelInfoRepository repo = new ChainLevelInfoRepository(blockInfosDb);
             BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, repo, MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
@@ -1365,8 +1367,10 @@ namespace Nethermind.Blockchain.Test
 
             long pivotNumber = 0L;
 
-            SyncConfig syncConfig = new();
-            syncConfig.PivotNumber = pivotNumber.ToString();
+            SyncConfig syncConfig = new()
+            {
+                PivotNumber = pivotNumber.ToString(),
+            };
 
             BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
             Block genesis = Build.A.Block.Genesis.TestObject;
@@ -1798,9 +1802,9 @@ namespace Nethermind.Blockchain.Test
                 _manualResetEvent = manualResetEvent;
             }
 
-            public bool PreventsAcceptingNewBlocks { get; } = true;
-            public long StartLevelInclusive { get; } = 0;
-            public long EndLevelExclusive { get; } = 3;
+            public bool PreventsAcceptingNewBlocks => true;
+            public long StartLevelInclusive => 0;
+            public long EndLevelExclusive => 3;
             public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
             {
                 if (_wait)
