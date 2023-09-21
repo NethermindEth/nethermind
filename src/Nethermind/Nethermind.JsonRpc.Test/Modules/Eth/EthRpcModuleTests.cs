@@ -201,9 +201,9 @@ public partial class EthRpcModuleTests
         Transaction txWithFutureNonce = Build.A.Transaction.To(TestItem.AddressB)
             .SignedAndResolved(TestItem.PrivateKeyA).WithValue(0.Ether()).WithNonce(5).TestObject;
         ValueTask<(Keccak? Hash, AcceptTxResult? AddTxResult)> resultNextNonce =
-            ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None);
+            ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None)!;
         ValueTask<(Keccak? Hash, AcceptTxResult? AddTxResult)> resultFutureNonce =
-            ctx.Test.TxSender.SendTransaction(txWithFutureNonce, TxHandlingOptions.None);
+            ctx.Test.TxSender.SendTransaction(txWithFutureNonce, TxHandlingOptions.None)!;
         Assert.That(AcceptTxResult.Accepted, Is.EqualTo(resultNextNonce.Result.AddTxResult));
         Assert.That(AcceptTxResult.Accepted, Is.EqualTo(resultFutureNonce.Result.AddTxResult));
 
@@ -228,7 +228,7 @@ public partial class EthRpcModuleTests
         Transaction txWithNextNonce = Build.A.Transaction.To(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyB).WithValue(0.Ether()).WithNonce(0).TestObject;
         ValueTask<(Keccak? Hash, AcceptTxResult? AddTxResult)> resultNextNonce =
-            ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None);
+            ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None)!;
         Assert.That(AcceptTxResult.Accepted, Is.EqualTo(resultNextNonce.Result.AddTxResult));
         string serializedLatestAfter = await ctx.Test.TestEthRpc("eth_getTransactionCount", TestItem.AddressB.Bytes.ToHexString(true));
         Assert.That(serializedLatestAfter, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}"));
@@ -667,7 +667,7 @@ public partial class EthRpcModuleTests
     {
         IBlockchainBridge? blockchainBridge = Substitute.For<IBlockchainBridge>();
         TestRpcBlockchain ctx = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(blockchainBridge).Build(MainnetSpecProvider.Instance);
-        ctx.TestEthRpc("eth_getBlockByNumber", blockParameter, "false");
+        await ctx.TestEthRpc("eth_getBlockByNumber", blockParameter, "false");
         blockchainBridge.Received(0).RecoverTxSenders(Arg.Any<Block>());
     }
 
