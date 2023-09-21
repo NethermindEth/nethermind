@@ -26,6 +26,8 @@ public class MallocTrimmer
         _mallocHelper = mallocHelper ?? new MallocHelper();
         _logger = logManager.GetClassLogger();
 
+        if (interval == TimeSpan.Zero) return;
+
         Timer timer = new(interval);
         timer.Elapsed += (sender, args) => Trim();
 
