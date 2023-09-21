@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int MaxProcessingThreads { get; set; }
         public bool ExitOnSynced { get; set; } = false;
         public int ExitOnSyncedWaitTimeSec { get; set; } = 60;
-        public double MallocTrimIntervalSec { get; set; } = 300;
+        public int MallocTrimIntervalSec { get; set; } = 300;
         public bool TrieHealing { get; set; } = true;
 
         public override string ToString()
