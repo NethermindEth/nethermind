@@ -80,4 +80,10 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
 
         return _result;
     }
+
+    public bool ValidateOrphanedBlock(Block block, out string? error)
+    {
+        error = null;
+        return _result;
+    }
 }
