@@ -22,14 +22,24 @@ using Nethermind.Serialization.Rlp;
 using Org.BouncyCastle.Utilities.Encoders;
 
 namespace SendBlobs;
-internal class PrivateKeyHelper
+internal class FundsDistributor
 {
     public static IEnumerable<PrivateKey> ReadKeysFromFile(string path)
     {
         return File.ReadAllLines(path).Select(l => new PrivateKey(l));
     }
 
-    public async static Task<IEnumerable<PrivateKey>> DitributeFunds(INodeManager nodeManager, ulong chainId, Signer distributeFrom, uint keysToMake, string? keyFilePath = null)
+    /// <summary>
+    /// Distribute the available funds from an address to a number of newly generated private keys.
+    /// </summary>
+    /// <param name="nodeManager"></param>
+    /// <param name="chainId"></param>
+    /// <param name="distributeFrom"></param>
+    /// <param name="keysToMake"></param>
+    /// <param name="keyFilePath">Path to a file </param>
+    /// <returns><see cref="IEnumerable{string}"/> containing all the executed tx hashes.</returns>
+    /// <exception cref="Exception"></exception>
+    public async static Task<IEnumerable<string>> DitributeFunds(INodeManager nodeManager, ulong chainId, Signer distributeFrom, uint keysToMake, string keyFilePath)
     {
         string? balanceString = await nodeManager.Post("eth_getBalance", distributeFrom.Address, "latest");
         if (balanceString is null)
@@ -50,26 +60,23 @@ internal class PrivateKeyHelper
 
         ulong nonce = Convert.ToUInt64(nonceString, nonceString.StartsWith("0x") ? 16 : 10);
 
-        //Distribute 97% of the balance
-        UInt256 temp;
-        UInt256.Multiply(balance, 970, out temp);
-        UInt256 balanceToDistribute;
-        UInt256.Divide(temp, 1000, out balanceToDistribute);
+        UInt256 approxGasFee = (gasPrice + maxPriorityFeePerGas) * GasCostOf.Transaction;
 
-        //Add an extra buffer for gas fees
-        temp = balanceToDistribute;
-        UInt256 gasBuffer = new UInt256(keysToMake) * 1_000_000_000;
-        UInt256.Subtract(temp, gasBuffer, out balanceToDistribute);
+        //Leave 10% of the balance as buffer in case of gas spikes
+        UInt256 balanceMinusBuffer = (balance * 900) / 1000;
+        UInt256 totalFee = approxGasFee * keysToMake;
 
-        //Check for underflow
-        if (balanceToDistribute > balance)
+        if (balanceMinusBuffer <= totalFee)
             throw new Exception($"Not enough balance on {distributeFrom.Address} to distribute to {keysToMake} addresses");
 
-        UInt256 perKeyToSend;
-        UInt256.Divide(balanceToDistribute, new UInt256(keysToMake), out perKeyToSend);
+        UInt256 balanceToDistribute = balanceMinusBuffer - totalFee;
+
+        UInt256 perKeyToSend = balanceToDistribute / keysToMake;
 
         using PrivateKeyGenerator generator = new();
-        IEnumerable<PrivateKey> privateKeys = Enumerable.Range(1, (int)keysToMake).Select(i => generator.Generate());
+        IEnumerable<PrivateKey> privateKeys = Enumerable.Range(1, (int)keysToMake).Select(i => generator.Generate()).ToArray();
+
+        List<string> txHash = new List<string>();
 
         TxDecoder txDecoder = new();
 
@@ -98,33 +105,32 @@ internal class PrivateKeyHelper
                 .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
 
             string? result = await nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
-
+            if (result != null)
+                txHash.Add(result);
             nonce++;
         }
         if (!string.IsNullOrWhiteSpace(keyFilePath))
             File.WriteAllLines(keyFilePath, privateKeys.Select(k => k.ToString()), Encoding.ASCII);
 
-        IEnumerable<PrivateKey> privateSigners =
-        File.ReadAllLines(keyFilePath, Encoding.ASCII)
-            .Select(k => new PrivateKey(k));
-
-        foreach (PrivateKey privateSigner in privateSigners)
-        {
-            if (!privateKeys.Any(k => k.Equals(privateSigner)))
-            {
-
-            }
-        }    
-
-
-        return privateKeys;
+        return txHash;
     }
-    public async static Task ReclaimFunds(INodeManager nodeManager, ulong chainId, Address beneficiary, string keyFilePath, ILogManager logManager)
+    /// <summary>
+    /// Send all available funds from a list of private keys contained in <paramref name="keyFilePath"/> to <paramref name="beneficiary"/>.
+    /// </summary>
+    /// <param name="nodeManager"></param>
+    /// <param name="chainId"></param>
+    /// <param name="beneficiary"></param>
+    /// <param name="keyFilePath"></param>
+    /// <param name="logManager"></param>
+    /// <returns><see cref="IEnumerable{string}"/> containing all the executed tx hashes.</returns>
+    public async static Task<IEnumerable<string>> ReclaimFunds(INodeManager nodeManager, ulong chainId, Address beneficiary, string keyFilePath, ILogManager logManager)
     {
         IEnumerable<Signer> privateSigners =
-            File.ReadAllLines(keyFilePath)
-            .Select(k=> new Signer(chainId, new PrivateKey(k), logManager));
+            File.ReadAllLines(keyFilePath, Encoding.ASCII)
+            .Select(k => new Signer(chainId, new PrivateKey(k), logManager));
 
+        ILogger log = logManager.GetClassLogger();
+        List<string> txHashes = new List<string>();
         foreach (var signer in privateSigners)
         {
             string? balanceString = await nodeManager.Post("eth_getBalance", signer.Address, "latest");
@@ -144,12 +150,11 @@ internal class PrivateKeyHelper
             string? maxPriorityFeePerGasRes = await nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
             UInt256 maxPriorityFeePerGas = (UInt256)Convert.ToUInt64(maxPriorityFeePerGasRes, maxPriorityFeePerGasRes.StartsWith("0x") ? 16 : 10);
 
-            //10 gwei extra buffer
-            UInt256 approxGasFee = (gasPrice + maxPriorityFeePerGas + 10_000_000_000) * GasCostOf.Transaction;
+            UInt256 approxGasFee = (gasPrice + maxPriorityFeePerGas) * GasCostOf.Transaction;
 
             if (balance < approxGasFee)
             {
-                Console.WriteLine($"Not enough funds on {signer.Address} to pay for gas");
+                log.Info($"Not enough funds on {signer.Address} to pay for gas");
                 continue;
             }
 
@@ -173,8 +178,9 @@ internal class PrivateKeyHelper
                 .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
 
             string? result = await nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
+            if (result != null)
+                txHashes.Add(result);
         }
-
-
+        return txHashes;
     }
 }

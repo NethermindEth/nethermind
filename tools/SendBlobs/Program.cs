@@ -14,7 +14,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Org.BouncyCastle.Utilities.Encoders;
-using SendBlobs;
 
 // send-blobs <url-without-auth> <transactions-send-formula 10x1,4x2,3x6> <secret-key> <receiver-address>
 // send-blobs http://localhost:8545 5 0x0000000000000000000000000000000000000000000000000000000000000000 0x000000000000000000000000000000000000f1c1 100 100
@@ -31,7 +30,6 @@ using SendBlobs;
 // 11 = max fee per blob gas = max value / blobgasperblob + 1
 // 14 = 100 blobs
 // 15 = 1000 blobs 
-
 
 if (args.Length < 4)
 {
@@ -67,7 +65,6 @@ if (args.Length > 4)
 ulong feeMultiplier = 4;
 if (args.Length > 5) ulong.TryParse(args[5], out feeMultiplier);
 
-
 UInt256 maxPriorityFeeGasArgs = 0;
 if (args.Length > 6) UInt256.TryParse(args[6], out maxPriorityFeeGasArgs);
 
@@ -96,10 +93,6 @@ string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
 ulong chainId = Convert.ToUInt64(chainIdString, chainIdString.StartsWith("0x") ? 16 : 10);
 
 Signer signer = new Signer(chainId, privateKey, new OneLoggerLogManager(logger));
-
-//TODO remove after debugging
-//await PrivateKeyHelper.DitributeFunds(nodeManager, chainId, signer, 5, "privatekeys.txt");
-//await PrivateKeyHelper.ReclaimFunds(nodeManager, chainId, signer.Address, "privatekeys.txt", logManager);
 
 TxDecoder txDecoder = new();
 
@@ -158,7 +151,6 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
                 blobhashes[blobIndex].AsSpan());
         }
 
-
         string? gasPriceRes = await nodeManager.Post<string>("eth_gasPrice") ?? "1";
         UInt256 gasPrice = (UInt256)Convert.ToUInt64(gasPriceRes, gasPriceRes.StartsWith("0x") ? 16 : 10);
 
@@ -190,8 +182,8 @@ foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
             ChainId = chainId,
             Nonce = nonce,
             GasLimit = GasCostOf.Transaction,
-            GasPrice = adjustedMaxPriorityFeePerGas,
-            DecodedMaxFeePerGas = gasPrice,
+            GasPrice = adjustedMaxPriorityFeePerGas * feeMultiplier,
+            DecodedMaxFeePerGas = gasPrice * feeMultiplier,
             MaxFeePerDataGas = maxFeePerDataGas,
             Value = 0,
             To = new Address(receiver),
