@@ -20,16 +20,23 @@ public class MallocHelper
     private static MallocHelper? _instance;
     public static MallocHelper Instance => _instance ??= new MallocHelper();
 
-    public virtual bool MallOpt(Option option, int value)
+    public bool MallOpt(Option option, int value)
     {
+        // Windows can't find libc and osx does not have the method for some reason
+        // FreeBSD uses jemalloc by default anyway....
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return true;
+
         return mallopt((int)option, value) == 1;
     }
 
     public virtual bool MallocTrim(uint trailingSpace)
     {
+        // Windows can't find libc and osx does not have the method for some reason
+        // FreeBSD uses jemalloc by default anyway....
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return true;
+
         return malloc_trim(trailingSpace) == 1;
     }
-
 
     public enum Option : int
     {
