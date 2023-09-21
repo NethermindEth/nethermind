@@ -1111,7 +1111,8 @@ namespace Nethermind.Blockchain.Test
             MemDb headersDb = new();
             MemDb metadataDb = new();
 
-            SyncConfig syncConfig = new() {
+            SyncConfig syncConfig = new()
+            {
                 FastSync = true,
                 PivotNumber = beginIndex.ToString(),
             };
