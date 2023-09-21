@@ -12,6 +12,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <PackageReference Include="Microsoft.Extensions.Configuration.CommandLine" Version="7.0.0" />
+    </ItemGroup>
+
+    <ItemGroup>
       <ProjectReference Include="..\..\src\Nethermind\Nethermind.Cli\Nethermind.Cli.csproj" />
       <ProjectReference Include="..\..\src\Nethermind\Nethermind.Crypto\Nethermind.Crypto.csproj" />
     </ItemGroup>
