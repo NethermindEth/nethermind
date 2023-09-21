@@ -280,9 +280,10 @@ namespace Nethermind.Blockchain
 
         private void LoadForkChoiceInfo()
         {
-            if (_metadataDb.KeyExists(MetadataDbKeys.FinalizedBlockHash))
+            _logger.Info("Loading fork choice info");
+            if (FinalizedHash is null && _metadataDb.KeyExists(MetadataDbKeys.FinalizedBlockHash))
                 FinalizedHash = _metadataDb.Get(MetadataDbKeys.FinalizedBlockHash)?.AsRlpStream().DecodeKeccak();
-            if (_metadataDb.KeyExists(MetadataDbKeys.SafeBlockHash))
+            if (SafeHash is null && _metadataDb.KeyExists(MetadataDbKeys.SafeBlockHash))
                 SafeHash = _metadataDb.Get(MetadataDbKeys.SafeBlockHash)?.AsRlpStream().DecodeKeccak();
         }
 
