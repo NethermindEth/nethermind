@@ -181,7 +181,7 @@ public class GCKeeper
 
                 System.GC.Collect((int)generation, mode, blocking: true, compacting: compacting > 0);
 
-                MallocHelper.Instance.MallocTrim((uint)64.KiB());
+                MallocHelper.Instance.MallocTrim((uint)1.MiB());
             }
         }
     }
