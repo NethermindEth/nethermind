@@ -121,7 +121,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithAccessList(AccessList accessList)
+        public TransactionBuilder<T> WithAccessList(AccessList? accessList)
         {
             TestObjectInternal.AccessList = accessList;
             TestObjectInternal.ChainId = TestObjectInternal.Signature?.ChainId ?? TestObjectInternal.ChainId;
