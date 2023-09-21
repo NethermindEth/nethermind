@@ -188,7 +188,7 @@ public class Eip2930Tests
         Dictionary<Address, IReadOnlySet<UInt256>> data = new()
         {
             {
-                TestItem.AddressA, null
+                TestItem.AddressA, null!
             },
         };
         Transaction transaction = new()
