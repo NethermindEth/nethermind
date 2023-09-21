@@ -12,7 +12,7 @@ namespace Nethermind.Consensus.BeaconBlockRoot;
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 {
     public static UInt256 HISTORICAL_ROOTS_LENGTH = 8191;
-    private static readonly Address DefaultPbbrContractAddress = new Address("0xbEaC02001Aedb23b4088c853e4C05c57491c8bCA");
+    private static readonly Address DefaultPbbrContractAddress = new Address("0xbEAC020008aFF7331c0A389CB2AAb67597567d7a");
 
     public void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState stateProvider)
     {
