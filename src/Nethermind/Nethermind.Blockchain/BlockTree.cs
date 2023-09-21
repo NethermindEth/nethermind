@@ -258,6 +258,7 @@ namespace Nethermind.Blockchain
             LoadLowestInsertedBeaconHeader();
             LoadBestKnown();
             LoadBeaconBestKnown();
+            LoadForkChoiceInfo();
         }
 
         private void LoadLowestInsertedBodyNumber()
@@ -275,6 +276,14 @@ namespace Nethermind.Blockchain
                     .AsRlpStream().DecodeKeccak();
                 _lowestInsertedBeaconHeader = FindHeader(lowestBeaconHeaderHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
+        }
+
+        private void LoadForkChoiceInfo()
+        {
+            if (_metadataDb.KeyExists(MetadataDbKeys.FinalizedBlockHash))
+                FinalizedHash = _metadataDb.Get(MetadataDbKeys.FinalizedBlockHash)?.AsRlpStream().DecodeKeccak();
+            if (_metadataDb.KeyExists(MetadataDbKeys.SafeBlockHash))
+                SafeHash = _metadataDb.Get(MetadataDbKeys.SafeBlockHash)?.AsRlpStream().DecodeKeccak();
         }
 
         private void LoadLowestInsertedHeader()
