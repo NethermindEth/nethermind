@@ -182,7 +182,6 @@ namespace Nethermind.Blockchain.Test.Visitors
             }
         }
 
-        [Ignore("It is causing some trouble now. Disabling it while the restarts logic is under review")]
         [Test, Timeout(Timeout.MaxTestTime)]
         public async Task When_head_block_is_followed_by_a_block_bodies_gap_it_should_delete_all_levels_after_the_gap_start()
         {
