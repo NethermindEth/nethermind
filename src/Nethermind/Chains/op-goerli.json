@@ -44,15 +44,11 @@
     "eip1559Transition": "0x3df828",
     "eip1559FeeCollectorTransition": "0x3df828",
     "eip1559FeeCollector": "0x4200000000000000000000000000000000000019",
-    "eip1559ElasticityMultiplier": "0x6",
+    "eip1559ElasticityMultiplier": "0xa",
     "eip1559BaseFeeMaxChangeDenominator": "0x32",
     "eip3198Transition": "0x3df828",
     "eip3529Transition": "0x3df828",
     "eip3541Transition": "0x3df828",
-    "eip4895TransitionTimestamp": "0x63FD7D60",
-    "eip3855TransitionTimestamp": "0x63FD7D60",
-    "eip3651TransitionTimestamp": "0x63FD7D60",
-    "eip3860TransitionTimestamp": "0x63FD7D60",
 
     "terminalTotalDifficulty": "0"
   },

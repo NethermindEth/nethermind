@@ -56,6 +56,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "OP Goerli": {
+      "commandName": "Project",
+      "commandLineArgs": "-c op-goerli -dd %NETHERMIND_DATA_DIR%",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Hive": {
       "commandName": "Project",
       "commandLineArgs": "-c hive -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
