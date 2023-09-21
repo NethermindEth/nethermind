@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Memory;
@@ -18,6 +19,10 @@ public class MallocHelper
 
     public bool MallOpt(Option option, int value)
     {
+        // Windows can't find libc and osx does not have the method for some reason
+        // FreeBSD uses jemalloc by default anyway....
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return true;
+
         return mallopt((int)option, value) == 1;
     }
 
