@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 private long _eip1559TransitionBlock;
                 private bool _eip1559Enabled;
                 private TestRpcBlockchain _testRpcBlockchain;
-                private Task<ScenarioBuilder> _antecedent;
+                private Task<ScenarioBuilder>? _antecedent;
                 private UInt256 _currentNonce = 1;
 
                 public ScenarioBuilder WithEip1559TransitionBlock(long transitionBlock)
@@ -154,13 +154,13 @@ namespace Nethermind.Blockchain.Test.Producers
                 {
                     await ExecuteAntecedentIfNeeded();
                     IBlockTree blockTree = _testRpcBlockchain.BlockTree;
-                    Block startingBlock = blockTree.Head;
-                    Assert.That(startingBlock!.Header.BaseFeePerGas, Is.EqualTo(UInt256.Zero));
+                    Block startingBlock = blockTree.Head!;
+                    Assert.That(startingBlock.Header.BaseFeePerGas, Is.EqualTo(UInt256.Zero));
                     for (long i = startingBlock.Number; i < _eip1559TransitionBlock - 1; ++i)
                     {
                         await _testRpcBlockchain.AddBlock();
-                        Block currentBlock = blockTree.Head;
-                        Assert.That(currentBlock!.Header.BaseFeePerGas, Is.EqualTo(UInt256.Zero));
+                        Block currentBlock = blockTree.Head!;
+                        Assert.That(currentBlock.Header.BaseFeePerGas, Is.EqualTo(UInt256.Zero));
                     }
 
                     return this;
@@ -172,8 +172,8 @@ namespace Nethermind.Blockchain.Test.Producers
                     await ExecuteAntecedentIfNeeded();
                     await _testRpcBlockchain.AddBlock(transactions);
                     IBlockTree blockTree = _testRpcBlockchain.BlockTree;
-                    Block headBlock = blockTree.Head;
-                    Assert.That(headBlock!.Header.BaseFeePerGas, Is.EqualTo(expectedBaseFee));
+                    Block headBlock = blockTree.Head!;
+                    Assert.That(headBlock.Header.BaseFeePerGas, Is.EqualTo(expectedBaseFee));
 
                     return this;
                 }
@@ -183,10 +183,10 @@ namespace Nethermind.Blockchain.Test.Producers
                     await ExecuteAntecedentIfNeeded();
 
                     IBlockTree blockTree = _testRpcBlockchain.BlockTree;
-                    Block startingBlock = blockTree.Head;
+                    Block startingBlock = blockTree.Head!;
                     await _testRpcBlockchain.AddBlock();
-                    Block newBlock = blockTree.Head;
-                    Assert.Less(newBlock!.Header.BaseFeePerGas, startingBlock!.Header.BaseFeePerGas);
+                    Block newBlock = blockTree.Head!;
+                    Assert.Less(newBlock.Header.BaseFeePerGas, startingBlock.Header.BaseFeePerGas);
 
                     return this;
                 }
@@ -196,10 +196,10 @@ namespace Nethermind.Blockchain.Test.Producers
                     await ExecuteAntecedentIfNeeded();
 
                     IBlockTree blockTree = _testRpcBlockchain.BlockTree;
-                    Block startingBlock = blockTree.Head;
+                    Block startingBlock = blockTree.Head!;
                     await _testRpcBlockchain.AddBlock();
-                    Block newBlock = blockTree.Head;
-                    Assert.Less(startingBlock!.Header.BaseFeePerGas, newBlock!.Header.BaseFeePerGas);
+                    Block newBlock = blockTree.Head!;
+                    Assert.Less(startingBlock.Header.BaseFeePerGas, newBlock.Header.BaseFeePerGas);
 
                     return this;
                 }
