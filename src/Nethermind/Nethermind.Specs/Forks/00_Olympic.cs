@@ -26,6 +26,7 @@ namespace Nethermind.Specs.Forks
             Eip1559TransitionBlock = long.MaxValue;
             ValidateChainId = true;
             ValidateReceipts = true;
+            MainnetSystemCalls = true;
         }
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Olympic());

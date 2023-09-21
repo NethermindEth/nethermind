@@ -6,11 +6,11 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -33,6 +33,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
+using Nethermind.Synchronization;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -50,7 +51,6 @@ public class TestBlockchain : IDisposable
     public ITxPool TxPool { get; set; } = null!;
     public IDb CodeDb => DbProvider.CodeDb;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
-    public IBeaconBlockRootHandler BeaconBlockRootHandler { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
     public IBlockPreprocessorStep BlockPreprocessorStep { get; set; } = null!;
@@ -99,6 +99,8 @@ public class TestBlockchain : IDisposable
     public IHeaderValidator HeaderValidator { get; set; } = null!;
 
     public IBlockValidator BlockValidator { get; set; } = null!;
+
+    public IBeaconBlockRootHandler BeaconBlockRootHandler { get; set; } = null!;
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
     public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; } = null!;
@@ -122,7 +124,7 @@ public class TestBlockchain : IDisposable
         // Eip4788 precompile state account
         if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
         {
-            State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress, 1);
+            State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress!, 1);
         }
 
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
@@ -161,7 +163,7 @@ public class TestBlockchain : IDisposable
         TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, LogManager);
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
-
+        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, LogManager);
         new ReceiptCanonicalityMonitor(BlockTree, ReceiptStorage, LogManager);
 
         BlockValidator = new BlockValidator(
@@ -178,7 +180,7 @@ public class TestBlockchain : IDisposable
         BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId, LimboLogs.Instance), SpecProvider);
         LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
-        BeaconBlockRootHandler = new BeaconBlockRootHandler();
+        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, LogManager);
         BlockProcessor = CreateBlockProcessor();
 
         BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
@@ -342,6 +344,7 @@ public class TestBlockchain : IDisposable
             State,
             ReceiptStorage,
             NullWitnessCollector.Instance,
+            TxProcessor,
             LogManager);
 
     public async Task WaitForNewHead()

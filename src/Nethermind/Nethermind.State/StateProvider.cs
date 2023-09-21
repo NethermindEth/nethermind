@@ -198,13 +198,18 @@ namespace Nethermind.State
         {
             _needsStateRootUpdate = true;
 
-            Account GetThroughCacheCheckExists()
+            void ThrowNotExistingAccount()
+            {
+                if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
+                throw new InvalidOperationException("Updating balance of a non-existing account");
+            }
+
+            Account? GetThroughCacheCheckExists()
             {
                 Account result = GetThroughCache(address);
                 if (result is null)
                 {
-                    if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
-                    throw new InvalidOperationException("Updating balance of a non-existing account");
+                    ThrowNotExistingAccount();
                 }
 
                 return result;
@@ -215,9 +220,13 @@ namespace Nethermind.State
             {
                 if (releaseSpec.IsEip158Enabled)
                 {
-                    Account touched = GetThroughCacheCheckExists();
+                    Account touched = GetThroughCache(address);
+                    if (touched is null)
+                    {
+                        return;
+                    }
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
-                    if (touched.IsEmpty)
+                    if (touched!.IsEmpty)
                     {
                         PushTouch(address, touched, releaseSpec, true);
                     }
@@ -228,7 +237,7 @@ namespace Nethermind.State
 
             Account account = GetThroughCacheCheckExists();
 
-            if (isSubtracting && account.Balance < balanceChange)
+            if (isSubtracting && account!.Balance < balanceChange)
             {
                 throw new InsufficientBalanceException(address);
             }

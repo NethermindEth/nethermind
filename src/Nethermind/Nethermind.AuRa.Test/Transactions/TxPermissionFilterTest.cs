@@ -298,6 +298,7 @@ public class TxPermissionFilterTest
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
+                TxProcessor,
                 PermissionBasedTxFilter);
         }
 

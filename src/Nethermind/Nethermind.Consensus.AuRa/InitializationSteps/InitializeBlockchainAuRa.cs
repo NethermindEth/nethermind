@@ -97,6 +97,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.LogManager,
             _api.BlockTree,
             NullWithdrawalProcessor.Instance,
+            _api.TransactionProcessor,
             txFilter,
             GetGasLimitCalculator(),
             contractRewriter

@@ -191,6 +191,7 @@ namespace Nethermind.AccountAbstraction.Test
                     State,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
+                    TxProcessor,
                     LogManager);
 
                 var parser = new AbiDefinitionParser();
