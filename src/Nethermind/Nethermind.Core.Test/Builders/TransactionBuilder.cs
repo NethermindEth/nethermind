@@ -153,7 +153,7 @@ namespace Nethermind.Core.Test.Builders
                 return this;
             }
 
-            TestObjectInternal.BlobVersionedHashes = Enumerable.Range(0, count.Value).Select(x =>
+            TestObjectInternal.BlobVersionedHashes = Enumerable.Range(0, count.Value).Select(_ =>
             {
                 byte[] bvh = new byte[32];
                 bvh[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
@@ -241,7 +241,7 @@ namespace Nethermind.Core.Test.Builders
             privateKey ??= TestItem.IgnoredPrivateKey;
             EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? TestBlockchainIds.ChainId, LimboLogs.Instance);
 
-            return Signed(ecdsa, privateKey, true);
+            return Signed(ecdsa, privateKey, isEip155Enabled: true);
         }
 
         // TODO: auto create ecdsa here
