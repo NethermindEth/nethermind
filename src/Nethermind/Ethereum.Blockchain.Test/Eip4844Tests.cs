@@ -9,17 +9,19 @@ namespace Ethereum.Blockchain.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class EIP5656MCOPYTests : GeneralStateTestBase
+public class EIP4844blobtransactionsTests : GeneralStateTestBase
 {
-    [TestCaseSource(nameof(LoadTests))]
-    public void Test(GeneralStateTest test)
-    {
-        Assert.True(RunTest(test).Pass);
-    }
+    // Uncomment when stEIP4844 tests are merged
+
+    // [TestCaseSource(nameof(LoadTests))]
+    // public void Test(GeneralStateTest test)
+    // {
+    //     Assert.True(RunTest(test).Pass);
+    // }
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadEipTestsStrategy(), "stEIP5656-MCOPY");
+        var loader = new TestsSourceLoader(new LoadEipTestsStrategy(), "stEIP4844-blobtransactions");
         return (IEnumerable<GeneralStateTest>)loader.LoadTests();
     }
 }

@@ -133,6 +133,12 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parentHeader is null)
         {
+            if (!_blockValidator.ValidateOrphanedBlock(block!, out string? error))
+            {
+                if (_logger.IsWarn) _logger.Info($"Invalid block without parent. Result of {requestStr}.");
+                return NewPayloadV1Result.Invalid(null, $"Invalid block without parent: {error}.");
+            }
+
             // possible that headers sync finished before this was called, so blocks in cache weren't inserted
             if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
             {
