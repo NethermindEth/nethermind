@@ -1083,7 +1083,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             // Also notice that the heavier the tune, the higher the reads.
             case ITunableDb.TuneType.WriteBias:
                 // Keep the same l1 size but apply other adjustment which should increase buffer number and make
-                // l0 the same size as l1.
+                // l0 the same size as l1, but keep the LSM the same. This improve flush parallelization, and
+                // write amplification due to mismatch of l0 and l1 size, but does not reduce compaction from other
+                // levels.
                 ApplyOptions(GetHeavyWriteOptions(_perTableDbConfig.MaxBytesForLevelBase / (ulong)8.MiB()));
                 break;
             case ITunableDb.TuneType.HeavyWrite:
@@ -1174,19 +1176,25 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     /// <returns></returns>
     private IDictionary<string, string> GetHeavyWriteOptions(ulong l0FileNumTarget)
     {
+        // Make buffer (probably) smaller so that it does not take too much memory to have many of them.
+        // More buffer means more parallel flush, but each read have to go through all buffer one by one much like l0
+        // but no io, only cpu.
+        // bufferSize*maxBufferNumber = 128MB, which is the max memory used, which tend to be the case as its now
+        // stalled by compaction instead of flush.
+        ulong bufferSize = (ulong)8.MiB();
+        ulong maxBufferNumber = 16;
+
         // Guide recommend to have l0 and l1 to be the same size. They have to be compacted together so if l1 is larger,
         // the extra size in l1 is basically extra rewrites. If l0 is larger... then I don't know why not. Even so, it seems to
         // always get triggered when l0 size exceed max_bytes_for_level_base even if file num is less than l0FileNumTarget.
-        // The 2 here is MinWriteBufferToMerge. Note, that this does highly depends on the WriteBufferSize as do standard
-        // config.
-        ulong l1SizeTarget = l0FileNumTarget * (ulong)8.MiB();
+        ulong l1SizeTarget = l0FileNumTarget * bufferSize;
 
         return new Dictionary<string, string>()
         {
             { "write_buffer_size", 8.MiB().ToString() },
-            { "max_write_buffer_number", 16.ToString() },
-            { "max_bytes_for_level_base", l1SizeTarget.ToString() },
+            { "max_write_buffer_number", maxBufferNumber.ToString() },
 
+            { "max_bytes_for_level_base", l1SizeTarget.ToString() },
             { "level0_file_num_compaction_trigger", l0FileNumTarget.ToString() },
 
             // Note: If ratelimiter is not specified and if delayed_write_rate is not specified, the default is 16MBps.
