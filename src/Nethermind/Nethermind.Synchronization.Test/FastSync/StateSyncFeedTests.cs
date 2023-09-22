@@ -103,9 +103,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             await ActivateAndWait(ctx, dbContext, 1024, true, 120000);
 
-
             dbContext.CompareTrees("END");
             dbContext.CompareCodeDbs();
+            dbContext.AssertFlushed();
         }
 
         [Test]

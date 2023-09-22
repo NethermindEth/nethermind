@@ -4,7 +4,6 @@
 using System.IO.Abstractions;
 using FluentAssertions;
 using Nethermind.Db.FullPruning;
-using Nethermind.Db.Rocks;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;

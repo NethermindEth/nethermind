@@ -19,12 +19,12 @@ public class DbConfig : IDbConfig
     public bool CacheIndexAndFilterBlocks { get; set; } = false;
     public int? MaxOpenFiles { get; set; }
     public long? MaxBytesPerSec { get; set; }
-    public long? MaxWriteBytesPerSec { get; set; }
     public int? BlockSize { get; set; } = 16 * 1024;
     public ulong? ReadAheadSize { get; set; } = (ulong)256.KiB();
     public bool? UseDirectReads { get; set; } = false;
     public bool? UseDirectIoForFlushAndCompactions { get; set; } = false;
     public bool? DisableCompression { get; set; } = false;
+    public ulong? CompactionReadAhead { get; set; }
     public IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
 
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)8.MiB();
@@ -32,11 +32,11 @@ public class DbConfig : IDbConfig
     public ulong ReceiptsDbBlockCacheSize { get; set; } = 0;
     public bool ReceiptsDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? ReceiptsDbMaxOpenFiles { get; set; }
-    public long? ReceiptsDbMaxWriteBytesPerSec { get; set; }
     public long? ReceiptsDbMaxBytesPerSec { get; set; }
-    public int? ReceiptsBlockSize { get; set; }
-    public bool? ReceiptsUseDirectReads { get; set; } = false;
-    public bool? ReceiptsUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public int? ReceiptsDbBlockSize { get; set; }
+    public bool? ReceiptsDbUseDirectReads { get; set; }
+    public bool? ReceiptsDbUseDirectIoForFlushAndCompactions { get; set; }
+    public ulong? ReceiptsDbCompactionReadAhead { get; set; }
     public IDictionary<string, string>? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
     public ulong BlocksDbWriteBufferSize { get; set; } = (ulong)8.MiB();
@@ -44,11 +44,11 @@ public class DbConfig : IDbConfig
     public ulong BlocksDbBlockCacheSize { get; set; } = 0;
     public bool BlocksDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? BlocksDbMaxOpenFiles { get; set; }
-    public long? BlocksDbMaxWriteBytesPerSec { get; set; }
     public long? BlocksDbMaxBytesPerSec { get; set; }
     public int? BlocksBlockSize { get; set; }
-    public bool? BlocksUseDirectReads { get; set; } = false;
-    public bool? BlocksUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public bool? BlocksDbUseDirectReads { get; set; }
+    public bool? BlocksDbUseDirectIoForFlushAndCompactions { get; set; }
+    public ulong? BlocksDbCompactionReadAhead { get; set; }
     public IDictionary<string, string>? BlocksDbAdditionalRocksDbOptions { get; set; }
 
     public ulong HeadersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
@@ -56,11 +56,11 @@ public class DbConfig : IDbConfig
     public ulong HeadersDbBlockCacheSize { get; set; } = 0;
     public bool HeadersDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? HeadersDbMaxOpenFiles { get; set; }
-    public long? HeadersDbMaxWriteBytesPerSec { get; set; }
     public long? HeadersDbMaxBytesPerSec { get; set; }
-    public int? HeadersBlockSize { get; set; } = 4 * 1024;
-    public bool? HeadersUseDirectReads { get; set; } = false;
-    public bool? HeadersUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public int? HeadersDbBlockSize { get; set; }
+    public bool? HeadersDbUseDirectReads { get; set; }
+    public bool? HeadersDbUseDirectIoForFlushAndCompactions { get; set; }
+    public ulong? HeadersDbCompactionReadAhead { get; set; }
     public IDictionary<string, string>? HeadersDbAdditionalRocksDbOptions { get; set; }
 
     public ulong BlockInfosDbWriteBufferSize { get; set; } = (ulong)8.MiB();
@@ -68,11 +68,11 @@ public class DbConfig : IDbConfig
     public ulong BlockInfosDbBlockCacheSize { get; set; } = 0;
     public bool BlockInfosDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? BlockInfosDbMaxOpenFiles { get; set; }
-    public long? BlockInfosDbMaxWriteBytesPerSec { get; set; }
     public long? BlockInfosDbMaxBytesPerSec { get; set; }
-    public int? BlockInfosBlockSize { get; set; }
-    public bool? BlockInfosUseDirectReads { get; set; } = false;
-    public bool? BlockInfosUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public int? BlockInfosDbBlockSize { get; set; }
+    public bool? BlockInfosDbUseDirectReads { get; set; }
+    public bool? BlockInfosDbUseDirectIoForFlushAndCompactions { get; set; }
+    public ulong? BlockInfosDbCompactionReadAhead { get; set; }
     public IDictionary<string, string>? BlockInfosDbAdditionalRocksDbOptions { get; set; }
 
     public ulong PendingTxsDbWriteBufferSize { get; set; } = (ulong)4.MiB();
@@ -80,11 +80,11 @@ public class DbConfig : IDbConfig
     public ulong PendingTxsDbBlockCacheSize { get; set; } = 0;
     public bool PendingTxsDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? PendingTxsDbMaxOpenFiles { get; set; }
-    public long? PendingTxsDbMaxWriteBytesPerSec { get; set; }
     public long? PendingTxsDbMaxBytesPerSec { get; set; }
-    public int? PendingTxsBlockSize { get; set; }
-    public bool? PendingTxsUseDirectReads { get; set; } = false;
-    public bool? PendingTxsUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public int? PendingTxsDbBlockSize { get; set; }
+    public bool? PendingTxsDbUseDirectReads { get; set; }
+    public bool? PendingTxsDbUseDirectIoForFlushAndCompactions { get; set; }
+    public ulong? PendingTxsDbCompactionReadAhead { get; set; }
     public IDictionary<string, string>? PendingTxsDbAdditionalRocksDbOptions { get; set; }
 
     public ulong CodeDbWriteBufferSize { get; set; } = (ulong)2.MiB();
@@ -92,11 +92,11 @@ public class DbConfig : IDbConfig
     public ulong CodeDbBlockCacheSize { get; set; } = 0;
     public bool CodeDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? CodeDbMaxOpenFiles { get; set; }
-    public long? CodeDbMaxWriteBytesPerSec { get; set; }
     public long? CodeDbMaxBytesPerSec { get; set; }
-    public int? CodeBlockSize { get; set; }
+    public int? CodeDbBlockSize { get; set; }
     public bool? CodeUseDirectReads { get; set; } = false;
     public bool? CodeUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public ulong? CodeCompactionReadAhead { get; set; }
     public IDictionary<string, string>? CodeDbAdditionalRocksDbOptions { get; set; }
 
     public ulong BloomDbWriteBufferSize { get; set; } = (ulong)1.KiB();
@@ -104,7 +104,6 @@ public class DbConfig : IDbConfig
     public ulong BloomDbBlockCacheSize { get; set; } = 0;
     public bool BloomDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? BloomDbMaxOpenFiles { get; set; }
-    public long? BloomDbMaxWriteBytesPerSec { get; set; }
     public long? BloomDbMaxBytesPerSec { get; set; }
     public IDictionary<string, string>? BloomDbAdditionalRocksDbOptions { get; set; }
 
@@ -113,11 +112,11 @@ public class DbConfig : IDbConfig
     public ulong WitnessDbBlockCacheSize { get; set; } = 0;
     public bool WitnessDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? WitnessDbMaxOpenFiles { get; set; }
-    public long? WitnessDbMaxWriteBytesPerSec { get; set; }
     public long? WitnessDbMaxBytesPerSec { get; set; }
-    public int? WitnessBlockSize { get; set; }
+    public int? WitnessDbBlockSize { get; set; }
     public bool? WitnessUseDirectReads { get; set; } = false;
     public bool? WitnessUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public ulong? WitnessCompactionReadAhead { get; set; }
     public IDictionary<string, string>? WitnessDbAdditionalRocksDbOptions { get; set; }
 
     // TODO - profile and customize
@@ -126,11 +125,11 @@ public class DbConfig : IDbConfig
     public ulong CanonicalHashTrieDbBlockCacheSize { get; set; } = 0;
     public bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? CanonicalHashTrieDbMaxOpenFiles { get; set; }
-    public long? CanonicalHashTrieDbMaxWriteBytesPerSec { get; set; }
     public long? CanonicalHashTrieDbMaxBytesPerSec { get; set; }
-    public int? CanonicalHashTrieBlockSize { get; set; }
+    public int? CanonicalHashTrieDbBlockSize { get; set; }
     public bool? CanonicalHashTrieUseDirectReads { get; set; } = false;
     public bool? CanonicalHashTrieUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public ulong? CanonicalHashTrieCompactionReadAhead { get; set; }
     public IDictionary<string, string>? CanonicalHashTrieDbAdditionalRocksDbOptions { get; set; }
 
     public ulong MetadataDbWriteBufferSize { get; set; } = (ulong)1.KiB();
@@ -138,11 +137,11 @@ public class DbConfig : IDbConfig
     public ulong MetadataDbBlockCacheSize { get; set; } = 0;
     public bool MetadataDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? MetadataDbMaxOpenFiles { get; set; }
-    public long? MetadataDbMaxWriteBytesPerSec { get; set; }
     public long? MetadataDbMaxBytesPerSec { get; set; }
-    public int? MetadataBlockSize { get; set; }
+    public int? MetadataDbBlockSize { get; set; }
     public bool? MetadataUseDirectReads { get; set; } = false;
     public bool? MetadataUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public ulong? MetadataCompactionReadAhead { get; set; }
     public IDictionary<string, string>? MetadataDbAdditionalRocksDbOptions { get; set; }
 
     public ulong StateDbWriteBufferSize { get; set; }
@@ -150,12 +149,12 @@ public class DbConfig : IDbConfig
     public ulong StateDbBlockCacheSize { get; set; }
     public bool StateDbCacheIndexAndFilterBlocks { get; set; }
     public int? StateDbMaxOpenFiles { get; set; }
-    public long? StateDbMaxWriteBytesPerSec { get; set; }
     public long? StateDbMaxBytesPerSec { get; set; }
     public int? StateDbBlockSize { get; set; } = 4 * 1024;
     public int? PathStateDbBlockSize { get; set; } = 4 * 1024;
     public bool? StateDbUseDirectReads { get; set; } = false;
     public bool? StateDbUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public ulong? StateDbCompactionReadAhead { get; set; }
     public bool? StateDbDisableCompression { get; set; } = false;
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 

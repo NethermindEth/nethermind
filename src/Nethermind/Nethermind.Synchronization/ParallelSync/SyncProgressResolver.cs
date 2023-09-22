@@ -32,10 +32,10 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncConfig _syncConfig;
 
         // ReSharper disable once NotAccessedField.Local
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
-        private readonly long _bodiesBarrier;
-        private readonly long _receiptsBarrier;
+        private long _bodiesBarrier;
+        private long _receiptsBarrier;
 
         public SyncProgressResolver(IBlockTree blockTree,
             IReceiptStorage receiptStorage,
@@ -53,6 +53,12 @@ namespace Nethermind.Synchronization.ParallelSync
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
+            _bodiesBarrier = _syncConfig.AncientBodiesBarrierCalc;
+            _receiptsBarrier = _syncConfig.AncientReceiptsBarrierCalc;
+        }
+
+        public void UpdateBarriers()
+        {
             _bodiesBarrier = _syncConfig.AncientBodiesBarrierCalc;
             _receiptsBarrier = _syncConfig.AncientReceiptsBarrierCalc;
         }

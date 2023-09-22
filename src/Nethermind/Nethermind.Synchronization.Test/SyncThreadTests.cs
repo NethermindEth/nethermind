@@ -15,7 +15,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -374,9 +373,10 @@ namespace Nethermind.Synchronization.Test
                 blockDownloaderFactory,
                 pivot,
                 syncReport,
+                Substitute.For<IProcessExitSource>(),
                 logManager);
             SyncServer syncServer = new(
-                trieStore,
+                trieStore.AsKeyValueStore(),
                 codeDb,
                 tree,
                 receiptStorage,

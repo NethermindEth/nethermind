@@ -77,7 +77,7 @@ public partial class EngineModuleTests
             JsonConvert.SerializeObject(preparePayloadParams)
         };
         // prepare a payload
-        string result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters!);
+        string result = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters!);
         byte[] expectedPayloadId = Bytes.FromHexString(payloadId);
         result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\",\"latestValidHash\":\"{latestValidHash}\",\"validationError\":null}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
 
@@ -100,10 +100,10 @@ public partial class EngineModuleTests
             Transactions = Array.Empty<byte[]>()
         });
         // get the payload
-        result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", expectedPayloadId.ToHexString(true));
+        result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", expectedPayloadId.ToHexString(true));
         result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedPayload},\"id\":67}}");
         // execute the payload
-        result = RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV1", expectedPayload);
+        result = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV1", expectedPayload);
         result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"latestValidHash\":\"{expectedBlockHash}\",\"validationError\":null}},\"id\":67}}");
 
         forkChoiceUpdatedParams = new
@@ -114,7 +114,7 @@ public partial class EngineModuleTests
         };
         parameters = new[] { JsonConvert.SerializeObject(forkChoiceUpdatedParams), null };
         // update the fork choice
-        result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters!);
+        result = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters!);
         result.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"VALID\",\"latestValidHash\":\"" +
                            expectedBlockHash +
                            "\",\"validationError\":null},\"payloadId\":null},\"id\":67}");
@@ -132,7 +132,7 @@ public partial class EngineModuleTests
             finalizedBlockHash = Keccak.Zero.ToString(),
         };
         string[] parameters = new[] { JsonConvert.SerializeObject(forkChoiceUpdatedParams) };
-        string? result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
+        string? result = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
         result.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"SYNCING\",\"latestValidHash\":null,\"validationError\":null},\"payloadId\":null},\"id\":67}");
     }
 
@@ -451,7 +451,7 @@ public partial class EngineModuleTests
         ((TestBlockProcessorInterceptor)chain.BlockProcessor).ExceptionToThrow =
             new Exception("unxpected exception");
 
-        ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        ExecutionPayload executionPayload = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
     }
@@ -787,7 +787,7 @@ public partial class EngineModuleTests
             TerminalTotalDifficulty = $"{terminalTotalDifficulty}"
         });
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        ExecutionPayload executionPayload = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Invalid);
         resultWrapper.Data.LatestValidHash.Should().Be(Keccak.Zero);
@@ -904,7 +904,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        ExecutionPayload executionPayload = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
         new ExecutionPayload(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload);
@@ -916,6 +916,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload executionPayload = CreateBlockRequest(
+            chain.SpecProvider.GenesisSpec, chain.State,
             CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
@@ -1001,7 +1002,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        ExecutionPayload executionPayload = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
         ForkchoiceStateV1 forkChoiceUpdatedRequest = new(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash);
@@ -1028,7 +1029,7 @@ public partial class EngineModuleTests
         foreach (ExecutionPayload block in branch)
         {
             uint count = 10;
-            ExecutionPayload executePayloadRequest = CreateBlockRequest(block, TestItem.AddressA);
+            ExecutionPayload executePayloadRequest = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, block, TestItem.AddressA);
             PrivateKey from = TestItem.PrivateKeyB;
             Address to = TestItem.AddressD;
             (_, UInt256 toBalanceAfter) = AddTransactions(chain, executePayloadRequest, from, to, count, 1, out BlockHeader? parentHeader);
@@ -1066,7 +1067,7 @@ public partial class EngineModuleTests
         foreach (ExecutionPayload block in branch)
         {
             uint count = 10;
-            ExecutionPayload executionPayload = CreateBlockRequest(block, TestItem.AddressA);
+            ExecutionPayload executionPayload = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, block, TestItem.AddressA);
             PrivateKey from = TestItem.PrivateKeyB;
             Address to = TestItem.AddressD;
             (_, UInt256 toBalanceAfter) = AddTransactions(chain, executionPayload, from, to, count, 1, out BlockHeader parentHeader);
@@ -1219,6 +1220,7 @@ public partial class EngineModuleTests
     private async Task<ExecutionPayload> SendNewBlockV1(IEngineRpcModule rpc, MergeTestBlockchain chain)
     {
         ExecutionPayload executionPayload = CreateBlockRequest(
+            chain.SpecProvider.GenesisSpec, chain.State,
             CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> executePayloadResult =
@@ -1266,6 +1268,7 @@ public partial class EngineModuleTests
 
         // Correct new payload
         ExecutionPayload executionPayloadV11 = CreateBlockRequest(
+            chain.SpecProvider.GenesisSpec, chain.State,
             CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult1 = await rpc.engine_newPayloadV1(executionPayloadV11);
@@ -1293,6 +1296,7 @@ public partial class EngineModuleTests
 
         // Correct new payload
         ExecutionPayload executionPayloadV11 = CreateBlockRequest(
+            chain.SpecProvider.GenesisSpec, chain.State,
             CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult1 = await rpc.engine_newPayloadV1(executionPayloadV11);
@@ -1305,7 +1309,7 @@ public partial class EngineModuleTests
         forkchoiceUpdatedResult1.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
         // New payload unknown parent hash
-        ExecutionPayload executionPayloadV12A = CreateBlockRequest(executionPayloadV11, TestItem.AddressA);
+        ExecutionPayload executionPayloadV12A = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, executionPayloadV11, TestItem.AddressA);
         executionPayloadV12A.ParentHash = TestItem.KeccakB;
         TryCalculateHash(executionPayloadV12A, out Keccak? hash);
         executionPayloadV12A.BlockHash = hash;
@@ -1320,7 +1324,7 @@ public partial class EngineModuleTests
         forkchoiceUpdatedResult2A.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Syncing);
 
         // New payload with correct parent hash
-        ExecutionPayload executionPayloadV12B = CreateBlockRequest(executionPayloadV11, TestItem.AddressA);
+        ExecutionPayload executionPayloadV12B = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, executionPayloadV11, TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult2B = await rpc.engine_newPayloadV1(executionPayloadV12B);
         newPayloadResult2B.Data.Status.Should().Be(PayloadStatus.Valid);
 
@@ -1331,7 +1335,7 @@ public partial class EngineModuleTests
         forkchoiceUpdatedResult2B.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
         // New payload unknown parent hash
-        ExecutionPayload executionPayloadV13A = CreateBlockRequest(executionPayloadV12A, TestItem.AddressA);
+        ExecutionPayload executionPayloadV13A = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, executionPayloadV12A, TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult3A = await rpc.engine_newPayloadV1(executionPayloadV13A);
         newPayloadResult3A.Data.Status.Should().Be(PayloadStatus.Syncing);
 
@@ -1342,7 +1346,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult3A = await rpc.engine_forkchoiceUpdatedV1(forkChoiceState3A);
         forkchoiceUpdatedResult3A.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Syncing);
 
-        ExecutionPayload executionPayloadV13B = CreateBlockRequest(executionPayloadV12B, TestItem.AddressA);
+        ExecutionPayload executionPayloadV13B = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, executionPayloadV12B, TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult3B = await rpc.engine_newPayloadV1(executionPayloadV13B);
         newPayloadResult3B.Data.Status.Should().Be(PayloadStatus.Valid);
 
@@ -1361,6 +1365,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         ExecutionPayload blockRequestResult1 = CreateBlockRequest(
+            chain.SpecProvider.GenesisSpec, chain.State,
             CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult1 = await rpc.engine_newPayloadV1(blockRequestResult1);
@@ -1371,15 +1376,15 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult1 = await rpc.engine_forkchoiceUpdatedV1(forkChoiceState1);
         forkchoiceUpdatedResult1.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
-        ExecutionPayload blockRequestResult2A = CreateBlockRequest(blockRequestResult1, TestItem.AddressB);
+        ExecutionPayload blockRequestResult2A = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, blockRequestResult1, TestItem.AddressB);
         ResultWrapper<PayloadStatusV1> newPayloadResult2A = await rpc.engine_newPayloadV1(blockRequestResult2A);
         newPayloadResult2A.Data.Status.Should().Be(PayloadStatus.Valid);
 
-        ExecutionPayload blockRequestResult2B = CreateBlockRequest(blockRequestResult1, TestItem.AddressA);
+        ExecutionPayload blockRequestResult2B = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, blockRequestResult1, TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult2B = await rpc.engine_newPayloadV1(blockRequestResult2B);
         newPayloadResult2B.Data.Status.Should().Be(PayloadStatus.Valid);
 
-        ExecutionPayload blockRequestResult3B = CreateBlockRequest(blockRequestResult2B, TestItem.AddressA);
+        ExecutionPayload blockRequestResult3B = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, blockRequestResult2B, TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult3B = await rpc.engine_newPayloadV1(blockRequestResult3B);
         newPayloadResult3B.Data.Status.Should().Be(PayloadStatus.Valid);
 
@@ -1397,6 +1402,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         ExecutionPayload blockRequestResult1 = CreateBlockRequest(
+            chain.SpecProvider.GenesisSpec, chain.State,
             CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult1 = await rpc.engine_newPayloadV1(blockRequestResult1);
@@ -1407,15 +1413,15 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult1 = await rpc.engine_forkchoiceUpdatedV1(forkChoiceState1);
         forkchoiceUpdatedResult1.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
-        ExecutionPayload blockRequestResult2A = CreateBlockRequest(blockRequestResult1, TestItem.AddressB);
+        ExecutionPayload blockRequestResult2A = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, blockRequestResult1, TestItem.AddressB);
         ResultWrapper<PayloadStatusV1> newPayloadResult2A = await rpc.engine_newPayloadV1(blockRequestResult2A);
         newPayloadResult2A.Data.Status.Should().Be(PayloadStatus.Valid);
 
-        ExecutionPayload blockRequestResult2B = CreateBlockRequest(blockRequestResult1, TestItem.AddressA);
+        ExecutionPayload blockRequestResult2B = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, blockRequestResult1, TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult2B = await rpc.engine_newPayloadV1(blockRequestResult2B);
         newPayloadResult2B.Data.Status.Should().Be(PayloadStatus.Valid);
 
-        ExecutionPayload blockRequestResult3B = CreateBlockRequest(blockRequestResult2B, TestItem.AddressA);
+        ExecutionPayload blockRequestResult3B = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, blockRequestResult2B, TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult3B = await rpc.engine_newPayloadV1(blockRequestResult3B);
         newPayloadResult3B.Data.Status.Should().Be(PayloadStatus.Valid);
 
@@ -1453,6 +1459,7 @@ public partial class EngineModuleTests
 
         // Add one block
         ExecutionPayload executionPayloadV11 = CreateBlockRequest(
+            chain.SpecProvider.GenesisSpec, chain.State,
             CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressA);
         executionPayloadV11.PrevRandao = prevRandao1;
@@ -1478,6 +1485,7 @@ public partial class EngineModuleTests
 
         {
             ExecutionPayload executionPayloadV12 = CreateBlockRequest(
+                chain.SpecProvider.GenesisSpec, chain.State,
                 executionPayloadV11,
                 TestItem.AddressA);
 
@@ -1502,6 +1510,7 @@ public partial class EngineModuleTests
         // re-org
         {
             ExecutionPayload executionPayloadV13 = CreateBlockRequest(
+                chain.SpecProvider.GenesisSpec, chain.State,
                 executionPayloadV11,
                 TestItem.AddressA);
 

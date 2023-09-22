@@ -17,7 +17,7 @@
 
   <PropertyGroup>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-    <DockerfileRunArguments>-v $(NETHERMIND_DATA_DIR):/data -p 8545:8545 -p 8551:8551 -p 30303:30303</DockerfileRunArguments>
+    <DockerfileRunArguments>-v $(OutDir)/.data:/data -p 8545:8545 -p 8551:8551 -p 30303:30303</DockerfileRunArguments>
     <UserSecretsId>03db39d0-4200-473e-9ff8-4a48d496381f</UserSecretsId>
   </PropertyGroup>
 

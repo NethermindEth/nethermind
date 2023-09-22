@@ -36,8 +36,7 @@ namespace Nethermind.JsonRpc.Test
         {
             IJsonRpcService service = Substitute.For<IJsonRpcService>();
             service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(ci => _returnErrors ? new JsonRpcErrorResponse { Id = ci.Arg<JsonRpcRequest>().Id } : new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
-            service.GetErrorResponse(0, null!).ReturnsForAnyArgs(_errorResponse);
-            service.GetErrorResponse(null!, 0, null!, null!).ReturnsForAnyArgs(_errorResponse);
+            service.GetErrorResponse(0, null!, null!, null!).ReturnsForAnyArgs(_errorResponse);
             service.Converters.Returns(new JsonConverter[] { new AddressConverter() }); // just to test converter loader
 
             IFileSystem fileSystem = Substitute.For<IFileSystem>();
@@ -380,15 +379,6 @@ namespace Nethermind.JsonRpc.Test
             result[0].Response.Should().NotBeNull();
             result[0].BatchedResponses.Should().BeNull();
             result[0].Response.Should().BeSameAs(_errorResponse);
-        }
-
-        [Test]
-        public void Cannot_accept_null_file_system()
-        {
-            Assert.Throws<ArgumentNullException>(() => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
-                Substitute.For<IJsonSerializer>(),
-                Substitute.For<IJsonRpcConfig>(),
-                null, LimboLogs.Instance));
         }
     }
 }

@@ -583,7 +583,7 @@ namespace Nethermind.Synchronization.Test
             MemDb stateDb = new();
             TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
             ctx.SyncServer = new SyncServer(
-                trieStore,
+                trieStore.AsKeyValueStore(),
                 new MemDb(),
                 localBlockTree,
                 NullReceiptStorage.Instance,

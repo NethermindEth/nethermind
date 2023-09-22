@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -40,8 +41,8 @@ namespace Nethermind.State
         }
 
         [DebuggerStepThrough]
-        public StateTree()
-            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance)
+        public StateTree(ICappedArrayPool? bufferPool = null)
+            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool: bufferPool)
         {
             TrieType = TrieType.State;
         }
@@ -59,7 +60,6 @@ namespace Nethermind.State
         {
             byte[]? bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
             return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
-
         }
 
         [DebuggerStepThrough]
@@ -67,7 +67,6 @@ namespace Nethermind.State
         {
             byte[]? bytes = Get(keccak.Bytes);
             return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
-
         }
 
         public void Set(Address address, Account? account)

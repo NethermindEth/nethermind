@@ -19,10 +19,7 @@ namespace Nethermind.Trie.Pruning
 
         public void HackPersistOnShutdown() { }
 
-        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
-        {
-            return this;
-        }
+        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore) => this;
 
         public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
         {
@@ -36,10 +33,9 @@ namespace Nethermind.Trie.Pruning
             remove { }
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak hash)
-        {
-            return new(NodeType.Unknown, hash);
-        }
+        public IKeyValueStore AsKeyValueStore() => null!;
+
+        public TrieNode FindCachedOrUnknown(Keccak hash) => new(NodeType.Unknown, hash);
 
         public TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath, Span<byte> storagePrefix)
         {
@@ -56,7 +52,6 @@ namespace Nethermind.Trie.Pruning
             return Array.Empty<byte>();
         }
 
-        public bool IsPersisted(Keccak keccak) => true;
         public bool IsPersisted(in ValueKeccak keccak) => true;
 
         public void Dispose() { }

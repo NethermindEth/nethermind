@@ -8,14 +8,14 @@ namespace Nethermind.Evm
 {
     public readonly struct TxExecutionContext
     {
-        public BlockHeader Header { get; }
+        public readonly BlockExecutionContext BlockExecutionContext;
         public Address Origin { get; }
         public UInt256 GasPrice { get; }
         public byte[][]? BlobVersionedHashes { get; }
 
-        public TxExecutionContext(BlockHeader blockHeader, Address origin, in UInt256 gasPrice, byte[][] blobVersionedHashes)
+        public TxExecutionContext(BlockExecutionContext blockExecutionContext, Address origin, in UInt256 gasPrice, byte[][] blobVersionedHashes)
         {
-            Header = blockHeader;
+            BlockExecutionContext = blockExecutionContext;
             Origin = origin;
             GasPrice = gasPrice;
             BlobVersionedHashes = blobVersionedHashes;

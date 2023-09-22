@@ -110,7 +110,7 @@ namespace Nethermind.Synchronization.StateSync
             for (; accountPathIndex < accountTreePaths.Count; accountPathIndex++)
             {
                 (byte[] path, StateSyncItem syncItem) accountPath = accountTreePaths[accountPathIndex];
-                request.AccountAndStoragePaths[accountPathIndex] = new PathGroup() { Group = new[] { EncodePath(accountPath.path) } };
+                request.AccountAndStoragePaths[accountPathIndex] = new PathGroup() { Group = new[] { Nibbles.EncodePath(accountPath.path) } };
 
                 // We validate the order of the response later and it has to be the same as RequestedNodes
                 batch.RequestedNodes[requestedNodeIndex] = accountPath.syncItem;
@@ -121,12 +121,12 @@ namespace Nethermind.Synchronization.StateSync
             foreach (var kvp in itemsGroupedByAccount)
             {
                 byte[][] group = new byte[kvp.Value.Count + 1][];
-                group[0] = EncodePath(kvp.Key);
+                group[0] = Nibbles.EncodePath(kvp.Key);
 
                 for (int groupIndex = 1; groupIndex < group.Length; groupIndex++)
                 {
                     (byte[] path, StateSyncItem syncItem) storagePath = kvp.Value[groupIndex - 1];
-                    group[groupIndex] = EncodePath(storagePath.path);
+                    group[groupIndex] = Nibbles.EncodePath(storagePath.path);
 
                     // We validate the order of the response later and it has to be the same as RequestedNodes
                     batch.RequestedNodes[requestedNodeIndex] = storagePath.syncItem;
@@ -146,8 +146,6 @@ namespace Nethermind.Synchronization.StateSync
 
             return request;
         }
-
-        private static byte[] EncodePath(byte[] input) => input.Length == 64 ? Nibbles.ToBytes(input) : Nibbles.ToCompactHexEncoding(input);
 
         /// <summary>
         /// Present an array of StateSyncItem[] as IReadOnlyList<Keccak> to avoid allocating secondary array

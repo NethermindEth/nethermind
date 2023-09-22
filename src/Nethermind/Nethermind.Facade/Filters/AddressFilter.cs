@@ -9,10 +9,10 @@ namespace Nethermind.Blockchain.Filters
 {
     public class AddressFilter
     {
-        public static AddressFilter AnyAddress = new((Address)null);
+        public static readonly AddressFilter AnyAddress = new(addresses: new HashSet<Address>());
 
-        private Core.Bloom.BloomExtract[] _addressesBloomIndexes;
-        private Core.Bloom.BloomExtract? _addressBloomExtract;
+        private Bloom.BloomExtract[]? _addressesBloomIndexes;
+        private Bloom.BloomExtract? _addressBloomExtract;
 
         public AddressFilter(Address address)
         {
@@ -24,14 +24,14 @@ namespace Nethermind.Blockchain.Filters
             Addresses = addresses;
         }
 
-        public Address? Address { get; set; }
-        public HashSet<Address>? Addresses { get; set; }
-        private Core.Bloom.BloomExtract[] AddressesBloomExtracts => _addressesBloomIndexes ??= CalculateBloomExtracts();
-        private Core.Bloom.BloomExtract AddressBloomExtract => _addressBloomExtract ??= Core.Bloom.GetExtract(Address);
+        public Address? Address { get; }
+        public HashSet<Address>? Addresses { get; }
+        private Bloom.BloomExtract[] AddressesBloomExtracts => _addressesBloomIndexes ??= CalculateBloomExtracts();
+        private Bloom.BloomExtract AddressBloomExtract => _addressBloomExtract ??= Bloom.GetExtract(Address);
 
         public bool Accepts(Address address)
         {
-            if (Addresses is not null)
+            if (Addresses?.Count > 0)
             {
                 return Addresses.Contains(address);
             }
@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Filters
 
         public bool Accepts(ref AddressStructRef address)
         {
-            if (Addresses is not null)
+            if (Addresses?.Count > 0)
             {
                 foreach (var a in Addresses)
                 {
@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Filters
             return Address is null || Address == address;
         }
 
-        public bool Matches(Core.Bloom bloom)
+        public bool Matches(Bloom bloom)
         {
             if (Addresses is not null)
             {
@@ -71,14 +71,11 @@ namespace Nethermind.Blockchain.Filters
 
                 return result;
             }
-            else if (Address is null)
+            if (Address is null)
             {
                 return true;
             }
-            else
-            {
-                return bloom.Matches(AddressBloomExtract);
-            }
+            return bloom.Matches(AddressBloomExtract);
         }
 
         public bool Matches(ref BloomStructRef bloom)
@@ -98,16 +95,13 @@ namespace Nethermind.Blockchain.Filters
 
                 return result;
             }
-            else if (Address is null)
+            if (Address is null)
             {
                 return true;
             }
-            else
-            {
-                return bloom.Matches(AddressBloomExtract);
-            }
+            return bloom.Matches(AddressBloomExtract);
         }
 
-        private Core.Bloom.BloomExtract[] CalculateBloomExtracts() => Addresses.Select(Core.Bloom.GetExtract).ToArray();
+        private Bloom.BloomExtract[] CalculateBloomExtracts() => Addresses.Select(Bloom.GetExtract).ToArray();
     }
 }

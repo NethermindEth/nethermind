@@ -100,7 +100,7 @@ public class JsonRpcService : IJsonRpcService
         catch (Exception ex)
         {
             if (_logger.IsError) _logger.Error($"Error during validation, request: {rpcRequest}", ex);
-            return GetErrorResponse(ErrorCodes.ParseError, "Parse error");
+            return GetErrorResponse(ErrorCodes.ParseError, "Parse error", rpcRequest.Id, rpcRequest.Method);
         }
     }
 
@@ -195,7 +195,7 @@ public class JsonRpcService : IJsonRpcService
                     break;
             }
         }
-        catch (TargetParameterCountException e)
+        catch (Exception e) when (e is TargetParameterCountException || e is ArgumentException)
         {
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.ToString(), request.Id, returnAction);
         }
@@ -325,10 +325,18 @@ public class JsonRpcService : IJsonRpcService
                     if (providedParameter.StartsWith('[') || providedParameter.StartsWith('{'))
                     {
                         executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader(providedParameter)), paramType);
+                        if (executionParam is null && !IsNullableParameter(expectedParameter))
+                        {
+                            executionParameters.Add(Type.Missing);
+                        }
                     }
                     else
                     {
-                        executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader($"\"{providedParameter}\"")), paramType);
+                        var stringReader = providedParameter.StartsWith('\"') && providedParameter.EndsWith('\"')
+                            ? new StringReader(providedParameter)
+                            : new StringReader($"\"{providedParameter}\"");
+                        var jsonTextReader = new JsonTextReader(stringReader);
+                        executionParam = _serializer.Deserialize(jsonTextReader, paramType);
                     }
                 }
 
@@ -382,11 +390,8 @@ public class JsonRpcService : IJsonRpcService
         return response;
     }
 
-    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage) =>
-        GetErrorResponse("", errorCode, errorMessage, null, null);
-
-    public JsonRpcErrorResponse GetErrorResponse(string methodName, int errorCode, string errorMessage, object id) =>
-        GetErrorResponse(methodName, errorCode, errorMessage, null, id);
+    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, object? id = null, string? methodName = null) =>
+        GetErrorResponse(methodName ?? string.Empty, errorCode, errorMessage, null, id);
 
     public JsonConverter[] Converters { get; }
 

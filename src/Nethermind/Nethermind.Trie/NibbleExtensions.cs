@@ -99,7 +99,7 @@ namespace Nethermind.Trie
             return (byte)(((byte)highNibble << 4) | (byte)lowNibble);
         }
 
-        public static byte[] ToBytes(byte[] nibbles)
+        public static byte[] ToBytes(ReadOnlySpan<byte> nibbles)
         {
             return ToBytes(nibbles.AsSpan());
         }

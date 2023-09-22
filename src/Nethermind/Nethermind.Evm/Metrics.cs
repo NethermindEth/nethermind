@@ -89,7 +89,6 @@ public class Metrics
 
     [Description("Number of contract create calls.")]
     public static long Creates { get; set; }
-
     internal static long Transactions { get; set; }
     internal static decimal AveGasPrice { get; set; }
     internal static decimal MinGasPrice { get; set; } = decimal.MaxValue;

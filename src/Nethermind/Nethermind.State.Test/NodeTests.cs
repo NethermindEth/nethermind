@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -134,17 +133,15 @@ namespace Nethermind.Store.Test
 
         private static ITrieNodeResolver BuildATreeFromNode(TrieNode node)
         {
-            MemDb memDb = new();
-            TrieStore trieStore = new(memDb, NullLogManager.Instance);
-
             TrieNode.AllowBranchValues = true;
-            byte[] rlp = node.RlpEncode(trieStore);
+            CappedArray<byte> rlp = node.RlpEncode(trieStore);
             node.ResolveKey(trieStore, true);
 
-            memDb[node.Keccak.Bytes] = rlp;
+            MemDb memDb = new();
+            memDb[node.Keccak.Bytes] = rlp.ToArray();
 
             // ITrieNodeResolver tree = new PatriciaTree(memDb, node.Keccak, false, true);
-            return trieStore;
+            return new TrieStore(memDb, NullLogManager.Instance);
         }
     }
 }
