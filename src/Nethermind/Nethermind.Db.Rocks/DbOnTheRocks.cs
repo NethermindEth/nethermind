@@ -388,6 +388,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         options.SetRecycleLogFileNum(dbConfig
             .RecycleLogFileNum); // potential optimization for reusing allocated log files
 
+        options.SetMaxBytesForLevelBase(dbConfig.MaxBytesForLevelBase);
         options.SetUseDirectReads(dbConfig.UseDirectReads.GetValueOrDefault());
         options.SetUseDirectIoForFlushAndCompaction(dbConfig.UseDirectIoForFlushAndCompactions.GetValueOrDefault());
 
@@ -1150,7 +1151,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             { "level0_slowdown_writes_trigger", 20.ToString() },
             { "level0_stop_writes_trigger", 36.ToString() },
 
-            { "max_bytes_for_level_base", 256.MiB().ToString() },
+            { "max_bytes_for_level_base", _perTableDbConfig.MaxBytesForLevelBase.ToString() },
             { "target_file_size_base", 64.MiB().ToString() },
             { "disable_auto_compactions", "false" },
 
