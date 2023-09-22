@@ -721,7 +721,9 @@ Sent
 * Transactions:         {Metrics.PendingTransactionsSent,24:N0}
 * Hashes:               {Metrics.PendingTransactionsHashesSent,24:N0}
 ------------------------------------------------
-Total Received:         {Metrics.PendingTransactionsReceived,24:N0}
+Received
+* Transactions:         {Metrics.PendingTransactionsReceived,24:N0}
+* Hashes:               {Metrics.PendingTransactionsHashesReceived,24:N0}
 ------------------------------------------------
 Discarded at Filter Stage:
 1.  NotSupportedTxType  {Metrics.PendingTransactionsNotSupportedTxType,24:N0}
