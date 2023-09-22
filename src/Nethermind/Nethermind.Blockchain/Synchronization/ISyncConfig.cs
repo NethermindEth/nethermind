@@ -121,5 +121,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         [ConfigItem(Description = "Specify wait time after sync finished.", DefaultValue = "60")]
         public int ExitOnSyncedWaitTimeSec { get; set; }
+
+        [ConfigItem(Description = "[TECHNICAL] specify interval between malloc_trim during sync", DefaultValue = "300", HiddenFromDocs = true)]
+        public int MallocTrimIntervalSec { get; set; }
     }
 }
