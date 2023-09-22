@@ -168,7 +168,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 LocalDb = new TestMemDb();
                 RemoteStateDb = RemoteDb;
                 LocalStateDb = new ByPathStateMemDb();
-                LocalCodeDb = new MemDb();
+                LocalCodeDb = new TestMemDb();
                 RemoteCodeDb = new MemDb();
                 RemoteTrieStore = new TrieStore(RemoteStateDb, logManager);
 

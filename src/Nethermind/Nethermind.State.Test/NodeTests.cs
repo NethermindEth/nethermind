@@ -133,11 +133,12 @@ namespace Nethermind.Store.Test
 
         private static ITrieNodeResolver BuildATreeFromNode(TrieNode node)
         {
+            MemDb memDb = new();
+            TrieStore trieStore = new(memDb, NullLogManager.Instance);
             TrieNode.AllowBranchValues = true;
             CappedArray<byte> rlp = node.RlpEncode(trieStore);
             node.ResolveKey(trieStore, true);
 
-            MemDb memDb = new();
             memDb[node.Keccak.Bytes] = rlp.ToArray();
 
             // ITrieNodeResolver tree = new PatriciaTree(memDb, node.Keccak, false, true);

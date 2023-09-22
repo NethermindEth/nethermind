@@ -14,6 +14,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Stats.Model;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -557,7 +558,7 @@ public class TrieByPathWithPrefixTest
 
     private static PatriciaTree CreateCheckTree(MemDb memDb, PatriciaTree patriciaTree)
     {
-        PatriciaTree checkTree = new PatriciaTree(memDb, NUnitLogManager.Instance, patriciaTree.Capability)
+        PatriciaTree checkTree = new PatriciaTree(memDb, NUnitLogManager.Instance, capability: patriciaTree.Capability)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
         };;

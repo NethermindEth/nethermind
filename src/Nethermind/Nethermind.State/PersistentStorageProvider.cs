@@ -233,6 +233,8 @@ namespace Nethermind.State
                 StorageTree storageTree = _storageTreeFactory.Create(address, _trieStore, _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
                 return _storages[address] = storageTree;
             }
+            return _storages[address];
+        }
 
         private byte[] LoadFromTree(in StorageCell storageCell)
         {

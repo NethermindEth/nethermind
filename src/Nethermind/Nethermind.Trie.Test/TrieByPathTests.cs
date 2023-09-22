@@ -486,10 +486,7 @@ public class TrieByPathTests
         MemColumnsDb<StateColumns> memDb = new();
         using TrieStoreByPath trieStore = new(memDb, LimboLogs.Instance);
 
-        PatriciaTree patriciaTree = new PatriciaTree(trieStore, Keccak.EmptyTreeHash, true, true, _logManager);
-        patriciaTree.TrieType = TrieType.State;
-
-
+        PatriciaTree patriciaTree = new StateTree(trieStore, _logManager);
 
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
@@ -513,7 +510,7 @@ public class TrieByPathTests
 
     private static PatriciaTree CreateCheckTree(MemDb memDb, PatriciaTree patriciaTree)
     {
-        PatriciaTree checkTree = new(memDb, patriciaTree.Capability);
+        PatriciaTree checkTree = new(memDb, capability: patriciaTree.Capability);
         checkTree.RootHash = patriciaTree.RootHash;
         return checkTree;
     }

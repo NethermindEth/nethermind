@@ -107,7 +107,6 @@ namespace Nethermind.Init.Steps
                 .WitnessedBy(witnessCollector);
 
             ITrieStore trieStore;
-            ITrieStore storageTrieStore;
             IKeyValueStoreWithBatching stateWitnessedBy;
 
             if (pathStateConfig.Enabled)
@@ -147,7 +146,7 @@ namespace Nethermind.Init.Steps
                     persistenceStrategy = Persist.EveryBlock;
                 }
 
-                TrieStore trieStore = syncConfig.TrieHealing
+                trieStore = syncConfig.TrieHealing
                         ? new HealingTrieStore(
                             stateWitnessedBy,
                             pruningStrategy,

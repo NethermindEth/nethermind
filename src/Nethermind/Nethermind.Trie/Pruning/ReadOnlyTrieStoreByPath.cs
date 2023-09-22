@@ -15,11 +15,13 @@ namespace Nethermind.Trie.Pruning
     {
         private readonly TrieStoreByPath _trieStore;
         private readonly IKeyValueStore? _readOnlyStore;
+        private readonly ReadOnlyValueStore _publicStore;
 
         public ReadOnlyTrieStoreByPath(TrieStoreByPath trieStore, IKeyValueStore? readOnlyStore)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _readOnlyStore = readOnlyStore;
+            _publicStore = new ReadOnlyValueStore(_trieStore.AsKeyValueStore());
         }
 
         public TrieNode FindCachedOrUnknown(Keccak hash) =>
@@ -79,5 +81,21 @@ namespace Nethermind.Trie.Pruning
         public byte[]? this[ReadOnlySpan<byte> key] => _trieStore[key];
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags) => _trieStore.Get(key, flags);
+
+        public IKeyValueStore AsKeyValueStore() => _publicStore;
+
+        private class ReadOnlyValueStore : IKeyValueStore
+        {
+            private readonly IKeyValueStore _keyValueStore;
+
+            public ReadOnlyValueStore(IKeyValueStore keyValueStore)
+            {
+                _keyValueStore = keyValueStore;
+            }
+
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _keyValueStore.Get(key, flags);
+
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
+        }
     }
 }

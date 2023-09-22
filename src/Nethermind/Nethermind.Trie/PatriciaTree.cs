@@ -58,7 +58,7 @@ namespace Nethermind.Trie
         public ITrieStore TrieStore { get; }
         public ICappedArrayPool? _bufferPool;
 
-        public TrieNodeResolverCapability Capability => _trieStore.Capability;
+        public TrieNodeResolverCapability Capability => TrieStore.Capability;
 
         private readonly bool _parallelBranches;
 
@@ -105,8 +105,6 @@ namespace Nethermind.Trie
             set => SetRootHash(value, true);
         }
 
-        public ITrieStore TrieStore => _trieStore;
-
         public TrieNode? RootRef { get => _rootRef; set => _rootRef = value; }
 
         public PatriciaTree()
@@ -114,13 +112,13 @@ namespace Nethermind.Trie
         {
         }
 
-        public PatriciaTree(IKeyValueStoreWithBatching keyValueStore, TrieNodeResolverCapability capability = TrieNodeResolverCapability.Hash)
-            : this(keyValueStore, EmptyTreeHash, false, true, NullLogManager.Instance, capability)
+        public PatriciaTree(IKeyValueStoreWithBatching keyValueStore, ICappedArrayPool? bufferPool = null, TrieNodeResolverCapability capability = TrieNodeResolverCapability.Hash)
+            : this(keyValueStore, EmptyTreeHash, false, true, NullLogManager.Instance, bufferPool, capability)
         {
         }
 
-        public PatriciaTree(IKeyValueStoreWithBatching keyValueStore, ILogManager logManager, TrieNodeResolverCapability capability = TrieNodeResolverCapability.Hash)
-            : this(keyValueStore, EmptyTreeHash, false, true, logManager, capability)
+        public PatriciaTree(IKeyValueStoreWithBatching keyValueStore, ILogManager logManager, ICappedArrayPool? bufferPool = null, TrieNodeResolverCapability capability = TrieNodeResolverCapability.Hash)
+            : this(keyValueStore, EmptyTreeHash, false, true, logManager, bufferPool, capability)
         {
         }
 
@@ -135,7 +133,7 @@ namespace Nethermind.Trie
             bool parallelBranches,
             bool allowCommits,
             ILogManager logManager,
-            ICappedArrayPool? bufferPool = null)
+            ICappedArrayPool? bufferPool = null,
             TrieNodeResolverCapability capability = TrieNodeResolverCapability.Hash)
             : this(
                 trieStore: capability switch
@@ -161,7 +159,7 @@ namespace Nethermind.Trie
             ICappedArrayPool? bufferPool = null)
         {
             _logger = logManager?.GetClassLogger(GetType()) ?? throw new ArgumentNullException(nameof(logManager));
-            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+            TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;
             RootHash = rootHash;
@@ -340,7 +338,7 @@ namespace Nethermind.Trie
 
 
             //for path based store, inlined nodes need to be stored separately to be access directly by path
-            if (node.FullRlp?.Length >= 32 || TrieStore.Capability == TrieNodeResolverCapability.Path)
+            if (node.FullRlp.Length >= 32 || TrieStore.Capability == TrieNodeResolverCapability.Path)
             {
                 if (!skipSelf)
                 {
@@ -423,7 +421,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
+        public virtual byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
         {
             //for diagnostics
             //if (Capability == TrieNodeResolverCapability.Path)
@@ -438,12 +436,12 @@ namespace Nethermind.Trie
             return Capability switch
             {
                 TrieNodeResolverCapability.Hash => GetInternal(rawKey, rootHash),
-                TrieNodeResolverCapability.Path => _trieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash),
+                TrieNodeResolverCapability.Path => TrieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash),
                 _ => throw new ArgumentOutOfRangeException()
             };
         }
 
-        private byte[]? GetByPath(Span<byte> rawKey, Keccak? rootHash = null)
+        private byte[]? GetByPath(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
         {
             if (rootHash is null)
             {
@@ -478,12 +476,21 @@ namespace Nethermind.Trie
                 node.ResolveNode(TrieStore);
             }
 
-            return node.Value;
+            return node.Value.ToArray();
         }
 
-
-        public void Set(ReadOnlySpan<byte> rawKey, byte[] value)
+        [SkipLocalsInit]
+        [DebuggerStepThrough]
+        public virtual void Set(ReadOnlySpan<byte> rawKey, byte[] value)
         {
+            Set(rawKey, new CappedArray<byte>(value));
+        }
+
+        public virtual void Set(ReadOnlySpan<byte> rawKey, CappedArray<byte> value)
+        {
+            if (_logger.IsTrace)
+                _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.AsSpan().ToHexString()}")}");
+
             int nibblesCount = 2 * rawKey.Length;
             byte[] array = null;
             Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
@@ -1291,7 +1298,7 @@ namespace Nethermind.Trie
 
             public override string ToString()
             {
-                return $"{(IsDelete ? "DELETE" : IsUpdate ? "UPDATE" : "READ")} {UpdatePath.ToHexString()}{(IsRead ? string.Empty : $" -> {UpdateValue?.ToHexString()}")}";
+                return $"{(IsDelete ? "DELETE" : IsUpdate ? "UPDATE" : "READ")} {UpdatePath.ToHexString()}{(IsRead ? string.Empty : $" -> {UpdateValue}")}";
             }
         }
 

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -42,20 +43,11 @@ namespace Nethermind.State
         }
 
         [DebuggerStepThrough]
-        public StateTreeByPath()
-            : base(new MemColumnsDb<StateColumns>(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, TrieNodeResolverCapability.Path)
+        public StateTreeByPath(ICappedArrayPool? bufferPool = null)
+            : base(new MemColumnsDb<StateColumns>(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool, TrieNodeResolverCapability.Path)
         {
             TrieType = TrieType.State;
         }
-
-        [DebuggerStepThrough]
-        //public StateTreeByPath(ITrieStore? store, ITrieStore? storageStore, ILogManager? logManager)
-        //    : base(store, Keccak.EmptyTreeHash, true, true, logManager)
-        //{
-        //    if (store.Capability == TrieNodeResolverCapability.Hash) throw new ArgumentException("Only accepts by path store");
-        //    TrieType = TrieType.State;
-        //    _storageTrieStore = storageStore;
-        //}
 
         public StateTreeByPath(ITrieStore? store, ILogManager? logManager)
             : base(store, Keccak.EmptyTreeHash, true, true, logManager)

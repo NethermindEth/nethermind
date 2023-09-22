@@ -170,7 +170,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             }
             if (_nodesByBlock.TryRemove(currentBlockNumber, out SpanConcurrentDictionary<byte, TrieNode> nodesByPath))
             {
-                IOrderedEnumerable<TrieNode> orderedValues = nodesByPath.Values.OrderBy(tn => tn.FullRlp, Bytes.Comparer);
+                IOrderedEnumerable<TrieNode> orderedValues = nodesByPath.Values.OrderBy(tn => tn.FullRlp.ToArray(), Bytes.Comparer);
                 foreach (TrieNode? node in orderedValues)
                 {
                     _trieStore.SaveNodeDirectly(blockNumber, node, batch);
@@ -255,7 +255,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
         for (int i = 0; i < 16; i++)
         {
             TrieNode childNode = node.GetData(i) as TrieNode;
-            if (childNode?.NodeType == NodeType.Leaf && childNode?.FullRlp?.Length < 32)
+            if (childNode?.NodeType == NodeType.Leaf && childNode?.FullRlp.Length < 32)
             {
                 _nodesByBlock.AddOrUpdate(blockNumber, childNode);
             }

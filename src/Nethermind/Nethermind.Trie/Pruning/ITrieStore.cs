@@ -19,6 +19,8 @@ namespace Nethermind.Trie.Pruning
 
         event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
+        IKeyValueStore AsKeyValueStore();
+
         void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None);
 
         public void ClearCache();

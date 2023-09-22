@@ -264,7 +264,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
             if (node is null)
                 continue;
 
-            if (node.FullRlp is null) toPersist.Insert(0, node); else toPersist.Add(node);
+            if (node.FullRlp.IsNull) toPersist.Insert(0, node); else toPersist.Add(node);
         }
 
         foreach (TrieNode node in toPersist)

@@ -328,7 +328,7 @@ namespace Nethermind.Trie
         {
 #if DEBUG
             return
-                $"[{NodeType}({FullRlp?.Length}){(FullRlp is not null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
+                $"[{NodeType}({FullRlp.Length}){(FullRlp.IsNotNull && FullRlp.Length < 32 ? $"{FullRlp.AsSpan().ToHexString()}" : "")}" +
                 $"|{Keccak}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|FP:{FullPath?.ToHexString()}|SP:{StoreNibblePathPrefix.ToHexString()}";
 #else
             return $"[{NodeType}({FullRlp.Length})|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
@@ -657,7 +657,7 @@ namespace Nethermind.Trie
             {
                 // we expect this to happen as a Trie traversal error (please see the stack trace above)
                 // we need to investigate this case when it happens again
-                bool isKeccakCalculated = Keccak is not null && FullRlp is not null;
+                bool isKeccakCalculated = Keccak is not null && FullRlp.IsNotNull;
                 bool isKeccakCorrect = isKeccakCalculated && Keccak == Keccak.Compute(FullRlp);
                 throw new TrieException($"Unexpected type found at position {childIndex} of {this} with {nameof(_data)} of length {_data?.Length}. Expected a {nameof(TrieNode)} or {nameof(Keccak)} but found {childOrRef?.GetType()} with a value of {childOrRef}. Keccak calculated? : {isKeccakCalculated}; Keccak correct? : {isKeccakCorrect}");
             }
@@ -868,7 +868,7 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedValue(byte[]? changedValue)
+        public TrieNode CloneWithChangedValue(CappedArray<byte> changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Value = changedValue;
@@ -883,7 +883,7 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(byte[] key, byte[]? changedValue, byte[] changedPathToNode)
+        public TrieNode CloneWithChangedKeyAndValue(byte[] key, CappedArray<byte> changedValue, byte[] changedPathToNode)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
@@ -1020,7 +1020,7 @@ namespace Nethermind.Trie
             if (!IsLeaf) return false;
 
             if (storageRoot is not null) return true;
-            if (!(Value?.Length > 64)) return false; // is not a storage leaf
+            if (!(Value.Length > 64)) return false; // is not a storage leaf
 
             Keccak storageRootKey = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
             if (storageRootKey == Keccak.EmptyTreeHash) return false;

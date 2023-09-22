@@ -35,6 +35,8 @@ namespace Nethermind.Trie.Pruning
         private bool _lastPersistedReachedReorgBoundary;
         private bool _useCommittedCache = false;
 
+        private readonly TrieKeyValueStore _publicStore;
+
         public TrieStoreByPath(
         IKeyValueStoreWithBatching stateDb,
         IPersistenceStrategy? persistenceStrategy,
@@ -52,6 +54,7 @@ namespace Nethermind.Trie.Pruning
             _currentBatches = new ConcurrentDictionary<StateColumns, IBatch?>();
             _currentBatches.TryAdd(StateColumns.State, null);
             _currentBatches.TryAdd(StateColumns.Storage, null);
+            _publicStore = new TrieKeyValueStore(this);
         }
 
         public TrieStoreByPath(IKeyValueStoreWithBatching stateDb, ILogManager? logManager) : this(stateDb, Pruning.Persist.EveryBlock, logManager)
@@ -284,7 +287,7 @@ namespace Nethermind.Trie.Pruning
                 };
             }
 
-            return node.FullRlp is null ? null : node;
+            return node.FullRlp.IsNull ? null : node;
         }
 
         public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Keccak? rootHash)
@@ -297,7 +300,7 @@ namespace Nethermind.Trie.Pruning
             if (node is null)
                 return new TrieNode(NodeType.Unknown, nodePath, storagePrefix);
 
-            return node.FullRlp is null ? null : node;
+            return node.FullRlp.IsNull ? null : node;
         }
 
         public void Dispose()
@@ -308,7 +311,7 @@ namespace Nethermind.Trie.Pruning
 
         #region Private
 
-        private readonly IColumnsDb<StateColumns> _stateDb;
+        protected readonly IColumnsDb<StateColumns> _stateDb;
         private readonly IByPathStateDb _pathStateDb;
 
         private readonly ILogger _logger;
@@ -526,7 +529,7 @@ namespace Nethermind.Trie.Pruning
 
                 if (_logger.IsDebug) _logger.Trace($"Saving node {trieNode.NodeType} path to nibbles {pathToNodeNibbles.ToHexString()}, bytes: {pathToNodeBytes.ToHexString()}, full: {pathBytes.ToHexString()}");
 
-                if (trieNode.FullRlp == null)
+                if (trieNode.FullRlp.IsNull)
                 {
                     keyValueStore.Set(pathToNodeBytes, null, writeFlags);
                 }
@@ -560,7 +563,7 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            keyValueStore.Set(pathBytes, trieNode.FullRlp, writeFlags);
+            keyValueStore.Set(pathBytes, trieNode.FullRlp.ToArray(), writeFlags);
         }
 
         public bool ExistsInDB(Keccak hash, byte[] pathNibbles)
@@ -871,6 +874,23 @@ namespace Nethermind.Trie.Pruning
         private StateColumns GetProperColumn(TrieNode trieNode)
         {
             return trieNode.StoreNibblePathPrefix?.Length == 0 ? StateColumns.State : StateColumns.Storage;
+        }
+
+        public IKeyValueStore AsKeyValueStore() => _publicStore;
+
+        private class TrieKeyValueStore : IKeyValueStore
+        {
+            private readonly TrieStoreByPath _trieStore;
+
+            public TrieKeyValueStore(TrieStoreByPath trieStore)
+            {
+                _trieStore = trieStore;
+            }
+
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.Get(key, flags);
+
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                => _trieStore._stateDb.Set(key, value, flags);
         }
     }
 }

@@ -101,11 +101,6 @@ namespace Nethermind.Trie
 
         public static byte[] ToBytes(ReadOnlySpan<byte> nibbles)
         {
-            return ToBytes(nibbles.AsSpan());
-        }
-
-        public static byte[] ToBytes(Span<byte> nibbles)
-        {
             byte[] bytes = new byte[nibbles.Length / 2];
             for (int i = 0; i < bytes.Length; i++)
             {
@@ -136,7 +131,7 @@ namespace Nethermind.Trie
             return bytes;
         }
 
-        public static byte[] ToCompactHexEncoding(byte[] nibbles)
+        public static byte[] ToCompactHexEncoding(ReadOnlySpan<byte> nibbles)
         {
             int oddity = nibbles.Length % 2;
             byte[] bytes = new byte[nibbles.Length / 2 + 1];
@@ -249,5 +244,7 @@ namespace Nethermind.Trie
                 nibbles.Slice(0, nibbles.Length - omitted) :
                 nibbles;
         }
+
+        public static byte[] EncodePath(ReadOnlySpan<byte> input) => input.Length == 64 ? ToBytes(input) : ToCompactHexEncoding(input);
     }
 }

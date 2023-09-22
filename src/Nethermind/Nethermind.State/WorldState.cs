@@ -40,7 +40,7 @@ namespace Nethermind.State
 
         public WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
-            _stateProvider = new StateProvider(trieStore, trieStore, codeDb, logManager);
+            _stateProvider = new StateProvider(trieStore, codeDb, logManager);
             _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }

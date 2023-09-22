@@ -16,6 +16,7 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.JsonRpc.Test.Modules;
 using NUnit.Framework;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.Test.Visitors
 {

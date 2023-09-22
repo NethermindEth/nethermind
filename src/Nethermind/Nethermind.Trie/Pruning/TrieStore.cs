@@ -844,7 +844,7 @@ namespace Nethermind.Trie.Pruning
         public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
         {
             keyValueStore ??= _keyValueStore;
-            keyValueStore.Set(trieNode.Keccak.Bytes, trieNode.Value, writeFlags);
+            keyValueStore.Set(trieNode.Keccak.Bytes, trieNode.Value.ToArray(), writeFlags);
         }
 
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles)

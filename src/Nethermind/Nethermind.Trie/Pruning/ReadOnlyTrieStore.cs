@@ -81,6 +81,14 @@ namespace Nethermind.Trie.Pruning
         public byte[]? this[ReadOnlySpan<byte> key] => _trieStore[key];
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
 
+        public bool CanAccessByPath() => _trieStore.CanAccessByPath();
+        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
+
         private class ReadOnlyValueStore : IKeyValueStore
         {
             private readonly IKeyValueStore _keyValueStore;
@@ -91,16 +99,6 @@ namespace Nethermind.Trie.Pruning
             }
 
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _keyValueStore.Get(key, flags);
-
-        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
-
-        public bool CanAccessByPath() => _trieStore.CanAccessByPath();
-        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix)
-        {
-            throw new NotImplementedException();
-        }
-
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags) => _trieStore.Get(key, flags);
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
         }
     }
