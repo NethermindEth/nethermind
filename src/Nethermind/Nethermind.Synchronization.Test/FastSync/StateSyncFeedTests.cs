@@ -357,10 +357,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.RemoteStateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
             dbContext.RemoteStateTree.Commit(0);
 
-            SafeContext ctx = new SafeContext();
-            ctx = new SafeContext();
+            SafeContext ctx = new();
 
-            BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)StateSyncFeedTestsBase.BlockTree.BestSuggestedHeader.Number).TestObject;
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = true;
@@ -383,10 +382,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.RemoteStateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
             dbContext.RemoteStateTree.Commit(0);
 
-            SafeContext ctx = new SafeContext();
-            ctx = new SafeContext();
+            SafeContext ctx = new();
 
-            BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)StateSyncFeedTestsBase.BlockTree.BestSuggestedHeader.Number).TestObject;
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = true;
@@ -398,7 +396,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             StateSyncBatch? request = await ctx.Feed.PrepareRequest();
             request.Should().NotBeNull();
 
-            ctx.Feed.HandleResponse(request, null)
+            ctx.Feed.HandleResponse(request, peer: null)
                 .Should().Be(SyncResponseHandlingResult.NotAssigned);
         }
 

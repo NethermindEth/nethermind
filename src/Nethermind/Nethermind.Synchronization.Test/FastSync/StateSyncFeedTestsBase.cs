@@ -279,7 +279,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 return responses;
             }
 
-            public void SetFilter(Keccak[] availableHashes)
+            public void SetFilter(Keccak[]? availableHashes)
             {
                 _filter = availableHashes;
             }
