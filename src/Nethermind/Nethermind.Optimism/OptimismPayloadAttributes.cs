@@ -118,7 +118,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
             sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Count}");
         }
 
-        // sb.AppendLine("}");
+        sb.Append('}');
+        // sb.AppendLine();
         //
         // sb.AppendLine("--------");
         // Transaction[] txs = GetTransactions()?.ToArray() ?? Array.Empty<Transaction>();
