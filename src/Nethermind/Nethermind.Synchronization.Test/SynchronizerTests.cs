@@ -594,13 +594,13 @@ namespace Nethermind.Synchronization.Test
 
             public void Stop()
             {
-                Task task = new(async () =>
+                Task task = Task.Run(async () =>
                 {
                     await Synchronizer.StopAsync();
                     await SyncPeerPool.StopAsync();
                 });
 
-                task.RunSynchronously();
+                task.GetAwaiter().GetResult();
             }
         }
 
