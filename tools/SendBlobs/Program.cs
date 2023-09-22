@@ -117,7 +117,7 @@ static void SetupExecute(CommandLineApplication app)
             maxFeePerDataGas,
             feeMultiplier,
             maxPriorityFeeGasArgs);
-        
+
         return 0;
     });
 }
@@ -143,9 +143,9 @@ async static Task SendBlobs(
     string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
     ulong chainId = Convert.ToUInt64(chainIdString, chainIdString.StartsWith("0x") ? 16 : 10);
 
-    OneLoggerLogManager logManager = new (logger);
+    OneLoggerLogManager logManager = new(logger);
 
-    foreach(PrivateKey privateKey in privateKeys) 
+    foreach (PrivateKey privateKey in privateKeys)
     {
         string? nonceString = await nodeManager.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
         if (nonceString is null)
@@ -155,7 +155,7 @@ async static Task SendBlobs(
         }
         ulong nonce = Convert.ToUInt64(nonceString, nonceString.StartsWith("0x") ? 16 : 10);
 
-        signers.Add(new (new Signer(chainId, privateKey, logManager), nonce));
+        signers.Add(new(new Signer(chainId, privateKey, logManager), nonce));
     }
 
     TxDecoder txDecoder = new();
@@ -275,7 +275,7 @@ async static Task SendBlobs(
 
             Console.WriteLine("Result:" + result);
 
-            signers[signerIndex] = new (signer, nonce + 1);
+            signers[signerIndex] = new(signer, nonce + 1);
 
             if (blockResult != null && waitForBlock)
                 await WaitForBlobInclusion(nodeManager, tx.CalculateHash(), blockResult.Number);
@@ -378,7 +378,7 @@ static void SetupReclaimCommand(CommandLineApplication app)
 
             IEnumerable<string> hashes = await FundsDistributor.ReclaimFunds(nodeManager, chainId, beneficiary, keyFileOption.Value(), new OneLoggerLogManager(logger), maxFee, maxPriorityFee);
 
-            return 0;            
+            return 0;
         });
     });
 }
