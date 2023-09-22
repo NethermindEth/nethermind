@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -10,7 +11,10 @@ using System.Text;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
+using Org.BouncyCastle.Utilities;
+using Bytes = Nethermind.Core.Extensions.Bytes;
 
 namespace Nethermind.Optimism;
 
@@ -114,7 +118,26 @@ public class OptimismPayloadAttributes : PayloadAttributes
             sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Count}");
         }
 
-        sb.Append('}');
+        // sb.AppendLine("}");
+        //
+        // sb.AppendLine("--------");
+        // Transaction[] txs = GetTransactions()?.ToArray() ?? Array.Empty<Transaction>();
+        // for (int i =0; i<txs.Length; i++)
+        // {
+        //     Transaction tx = txs[i];
+        //     sb.AppendLine(Transactions?[i].ToHexString());
+        //     sb.AppendLine("[");
+        //     sb.AppendLine($"  {tx.SourceHash}");
+        //     sb.AppendLine($"  {tx.SenderAddress}");
+        //     sb.AppendLine($"  {tx.To}");
+        //     sb.AppendLine($"  {tx.Mint}");
+        //     sb.AppendLine($"  {tx.Value}");
+        //     sb.AppendLine($"  {tx.GasLimit}");
+        //     sb.AppendLine($"  {tx.IsOPSystemTransaction}");
+        //     sb.AppendLine($"  {tx.DataLength.ToHexString()}");
+        //     sb.AppendLine("]");
+        // }
+        // sb.AppendLine("--------");
 
         return sb.ToString();
     }
