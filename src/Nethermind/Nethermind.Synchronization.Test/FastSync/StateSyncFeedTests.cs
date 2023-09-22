@@ -364,10 +364,6 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
 
-            SyncConfig _ = new()
-            {
-                FastSync = true,
-            };
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
             ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
@@ -391,10 +387,6 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
 
-            SyncConfig _ = new()
-            {
-                FastSync = true,
-            };
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
             ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
