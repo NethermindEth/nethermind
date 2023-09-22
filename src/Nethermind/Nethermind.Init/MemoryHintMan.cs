@@ -239,7 +239,7 @@ namespace Nethermind.Init
 
             long maxWantedMemory = Math.Max(minMemory, (long)(memoryHint * maxPercentage));
             long availableDynamic = minMemory >= maxWantedMemory ? 0L : maxWantedMemory - minMemory;
-            long availableForBuffer = (long)(availableDynamic * 0.05m);
+            long availableForBuffer = (long)(availableDynamic * 0.2m);
             long bufferDynamic = Math.Min(maxBufferMem, availableForBuffer);
             long bufferMem = minBufferMem + bufferDynamic;
             long cacheDynamic = availableDynamic - bufferDynamic;
