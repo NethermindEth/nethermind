@@ -299,7 +299,7 @@ namespace Nethermind.Init
             // remove optimize for point lookup here?
             return new DbNeeds(
                 preferredBuffers,
-                16.MB(), // min buffer size
+                1.MB(), // min buffer size
                 64.MB(), // max buffer size
                 0, // min block cache
                 0, // max block cache
@@ -312,7 +312,7 @@ namespace Nethermind.Init
             // remove optimize for point lookup here?
             return new DbNeeds(
                 preferredBuffers,
-                4.MB(), // min buffer size
+                1.MB(), // min buffer size
                 8.MB(), // max buffer size
                 1.MB(), // min block cache
                 512.MB(), // max block cache
@@ -324,11 +324,11 @@ namespace Nethermind.Init
             uint preferredBuffers = Math.Min(cpuCount, 2u);
             return new DbNeeds(
                 preferredBuffers,
-                16.MB(), // min buffer size
+                4.MB(), // min buffer size
                 16.MB(), // max buffer size
                 1.MB(), // min block cache
                 1.GB(), // max block cache
-                0.02m); // db memory %
+                0.05m); // db memory %
         }
 
         private DbNeeds GetBlocksNeeds(uint cpuCount)
@@ -371,7 +371,7 @@ namespace Nethermind.Init
             uint preferredBuffers = Math.Min(cpuCount, 2u);
             return new DbNeeds(
                 preferredBuffers,
-                4.MB(), // min buffer size
+                1.MB(), // min buffer size
                 4.MB(), // max buffer size
                 0, // min block cache
                 0, // max block cache

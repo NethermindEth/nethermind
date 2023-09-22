@@ -1082,10 +1082,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             // than read measured from process. It is likely that most files are cached as I have 128GB of RAM.
             // Also notice that the heavier the tune, the higher the reads.
             case ITunableDb.TuneType.WriteBias:
-                // The default l1SizeTarget is 256MB, so the compaction is fairly light. But the default options is not very
-                // efficient for write amplification to conserve memory, so the write amplification reduction is noticeable.
-                // Does not seems to impact sync performance, might improve sync time slightly if user is IO limited.
-                ApplyOptions(GetHeavyWriteOptions(32));
+                // Keep the same l1 size but apply other adjustment which should increase buffer number and make
+                // l0 the same size as l1.
+                ApplyOptions(GetHeavyWriteOptions(_perTableDbConfig.MaxBytesForLevelBase / (ulong)8.MiB()));
                 break;
             case ITunableDb.TuneType.HeavyWrite:
                 // Compaction spikes are clear at this point. Will definitely affect attestation performance.
