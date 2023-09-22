@@ -56,7 +56,7 @@ static void SetupExecute(CommandLineApplication app)
     CommandOption rpcUrlOption = app.Option("--rpcurl <rpcUrl>", "Url of the Json RPC.", CommandOptionType.SingleValue);
     CommandOption blobTxOption = app.Option("--bloboptions <blobOptions>", "Options in format '10x1-2', '2x5-5' etc. for the blobs.", CommandOptionType.MultipleValue);
     CommandOption privateKeyOption = app.Option("--privatekey <privateKey>", "The key to use for sending blobs.", CommandOptionType.SingleValue);
-    CommandOption privateKeyFileOption = app.Option("--privatekeyfile <privateKeyFile>", "File containing private keys that each blob tx will be send from.", CommandOptionType.SingleValue);
+    CommandOption privateKeyFileOption = app.Option("--keyfile <keyFile>", "File containing private keys that each blob tx will be send from.", CommandOptionType.SingleValue);
     CommandOption receiverOption = app.Option("--receiveraddress <receiverAddress>", "Receiver address of the blobs.", CommandOptionType.SingleValue);
     CommandOption maxFeePerDataGasOption = app.Option("--maxfeeperdatagas <maxFeePerDataGas>", "(Optional) Set the maximum fee per blob data.", CommandOptionType.SingleValue);
     CommandOption feeMultiplierOption = app.Option("--feemultiplier <feeMultiplier>", "(Optional) A multiplier to use for gas fees.", CommandOptionType.SingleValue);
@@ -80,13 +80,18 @@ static void SetupExecute(CommandLineApplication app)
             })
             .ToArray();
 
-        //PrivateKey[] privateKeys;
-        //if (privateKeyOption.HasValue())
-        //    privateKeys = new[] { new PrivateKey(privateKeyOption.Value()) };
-        //else if (privateKeyFileOption.HasValue())
-        //    privateKeys = File.ReadAllLines(privateKeyFileOption.Value(), System.Text.Encoding.ASCII).Select(k=> new PrivateKey(k)).ToArray();
+        PrivateKey[] privateKeys;
 
-        string privateKeyString = privateKeyOption.Value();
+        if (privateKeyFileOption.HasValue())
+            privateKeys = File.ReadAllLines(privateKeyFileOption.Value(), System.Text.Encoding.ASCII).Select(k => new PrivateKey(k)).ToArray();
+        else if (privateKeyOption.HasValue())
+            privateKeys = new[] { new PrivateKey(privateKeyOption.Value()) };
+        else
+        {
+            Console.WriteLine("Missing private key argument.");
+            app.ShowHelp();
+            return 1;
+        }
 
         string receiver = receiverOption.Value();
 
@@ -107,7 +112,7 @@ static void SetupExecute(CommandLineApplication app)
         await SendBlobs(
             rpcUrl,
             blobTxCounts,
-            privateKeyString,
+            privateKeys,
             receiver,
             maxFeePerDataGas,
             feeMultiplier,
@@ -120,7 +125,7 @@ static void SetupExecute(CommandLineApplication app)
 async static Task SendBlobs(
     string rpcUrl,
     (int count, int blobCount, string @break)[] blobTxCounts,
-    string privateKeyString,
+    PrivateKey[] privateKeys,
     string receiver,
     UInt256 maxFeePerDataGas,
     ulong feeMultiplier,
@@ -128,29 +133,33 @@ async static Task SendBlobs(
 {
     await KzgPolynomialCommitments.InitializeAsync();
 
-    PrivateKey privateKey = new(privateKeyString);
-    //PrivateKey[] privateKeys = Array.Empty<PrivateKey>();
-
     ILogger logger = SimpleConsoleLogManager.Instance.GetLogger("send blobs");
     INodeManager nodeManager = InitNodeManager(rpcUrl, logger);
 
-    string? nonceString = await nodeManager.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
-    if (nonceString is null)
-    {
-        logger.Error("Unable to get nonce");
-        return;
-    }
+    List<(Signer, ulong)> signers = new List<(Signer, ulong)>();
 
     bool isNodeSynced = await nodeManager.Post<dynamic>("eth_syncing") is bool;
 
     string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
     ulong chainId = Convert.ToUInt64(chainIdString, chainIdString.StartsWith("0x") ? 16 : 10);
 
-    Signer signer = new (chainId, privateKey, new OneLoggerLogManager(logger));
+    OneLoggerLogManager logManager = new (logger);
+
+    foreach(PrivateKey privateKey in privateKeys) 
+    {
+        string? nonceString = await nodeManager.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
+        if (nonceString is null)
+        {
+            logger.Error("Unable to get nonce");
+            return;
+        }
+        ulong nonce = Convert.ToUInt64(nonceString, nonceString.StartsWith("0x") ? 16 : 10);
+
+        signers.Add(new (new Signer(chainId, privateKey, logManager), nonce));
+    }
 
     TxDecoder txDecoder = new();
-
-    ulong nonce = Convert.ToUInt64(nonceString, nonceString.StartsWith("0x") ? 16 : 10);
+    int signerIndex = -1;
 
     foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
     {
@@ -162,6 +171,14 @@ async static Task SendBlobs(
         while (txCount > 0)
         {
             txCount--;
+
+            signerIndex++;
+            if (signerIndex >= signers.Count)
+                signerIndex = 0;
+
+            Signer signer = signers[signerIndex].Item1;
+            ulong nonce = signers[signerIndex].Item2;
+
             switch (@break)
             {
                 case "1": blobCount = 0; break;
@@ -257,7 +274,8 @@ async static Task SendBlobs(
             string? result = await nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
 
             Console.WriteLine("Result:" + result);
-            nonce++;
+
+            signers[signerIndex] = new (signer, nonce + 1);
 
             if (blockResult != null && waitForBlock)
                 await WaitForBlobInclusion(nodeManager, tx.CalculateHash(), blockResult.Number);
@@ -329,7 +347,6 @@ static void SetupDistributeCommand(CommandLineApplication app)
 
             return 0;
         });
-
     });
 }
 
@@ -363,7 +380,6 @@ static void SetupReclaimCommand(CommandLineApplication app)
 
             return 0;            
         });
-
     });
 }
 
