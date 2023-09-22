@@ -171,49 +171,49 @@ namespace Nethermind.Init
 
             DbMemory = _remainingMemory;
             long remaining = DbMemory;
-            DbNeeds dbNeeds = GetHeaderNeeds(cpuCount, syncConfig);
+            DbNeeds dbNeeds = GetHeaderNeeds(cpuCount);
             DbGets dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.HeadersDbWriteBufferNumber = dbGets.Buffers;
             dbConfig.HeadersDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
             dbConfig.HeadersDbBlockCacheSize = (ulong)dbGets.CacheMem;
 
-            dbNeeds = GetBlocksNeeds(cpuCount, syncConfig);
+            dbNeeds = GetBlocksNeeds(cpuCount);
             dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.BlocksDbWriteBufferNumber = dbGets.Buffers;
             dbConfig.BlocksDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
             dbConfig.BlocksDbBlockCacheSize = (ulong)dbGets.CacheMem;
 
-            dbNeeds = GetBlockInfosNeeds(cpuCount, syncConfig);
+            dbNeeds = GetBlockInfosNeeds(cpuCount);
             dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.BlockInfosDbWriteBufferNumber = dbGets.Buffers;
             dbConfig.BlockInfosDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
             dbConfig.BlockInfosDbBlockCacheSize = (ulong)dbGets.CacheMem;
 
-            dbNeeds = GetReceiptsNeeds(cpuCount, syncConfig);
+            dbNeeds = GetReceiptsNeeds(cpuCount);
             dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.ReceiptsDbWriteBufferNumber = dbGets.Buffers;
             dbConfig.ReceiptsDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
             dbConfig.ReceiptsDbBlockCacheSize = (ulong)dbGets.CacheMem;
 
-            dbNeeds = GetCodeNeeds(cpuCount, syncConfig);
+            dbNeeds = GetCodeNeeds(cpuCount);
             dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.CodeDbWriteBufferNumber = dbGets.Buffers;
             dbConfig.CodeDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
             dbConfig.CodeDbBlockCacheSize = (ulong)dbGets.CacheMem;
 
-            dbNeeds = GetPendingTxNeeds(cpuCount, syncConfig);
+            dbNeeds = GetPendingTxNeeds(cpuCount);
             dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.PendingTxsDbWriteBufferNumber = dbGets.Buffers;
             dbConfig.PendingTxsDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
             dbConfig.PendingTxsDbBlockCacheSize = (ulong)dbGets.CacheMem;
 
-            dbNeeds = GetStateNeeds(cpuCount, syncConfig);
+            dbNeeds = GetStateNeeds(cpuCount);
             dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.StateDbWriteBufferNumber = dbGets.Buffers;
@@ -293,47 +293,47 @@ namespace Nethermind.Init
             public decimal PreferredMemoryPercentage { get; set; }
         }
 
-        private DbNeeds GetStateNeeds(uint cpuCount, ISyncConfig syncConfig)
+        private DbNeeds GetStateNeeds(uint cpuCount)
         {
-            uint preferredBuffers = Math.Min(cpuCount, syncConfig.FastSync ? 8u : 4u);
+            uint preferredBuffers = Math.Min(cpuCount, 2u);
             // remove optimize for point lookup here?
             return new DbNeeds(
                 preferredBuffers,
-                1.MB(), // min buffer size
+                16.MB(), // min buffer size
                 64.MB(), // max buffer size
                 0, // min block cache
                 0, // max block cache
                 1m); // db memory %
         }
 
-        private DbNeeds GetBlockInfosNeeds(uint cpuCount, ISyncConfig syncConfig)
+        private DbNeeds GetBlockInfosNeeds(uint cpuCount)
         {
-            uint preferredBuffers = Math.Min(cpuCount, syncConfig.FastBlocks ? 4u : 2u);
+            uint preferredBuffers = Math.Min(cpuCount, 2u);
             // remove optimize for point lookup here?
             return new DbNeeds(
                 preferredBuffers,
-                1.MB(), // min buffer size
+                4.MB(), // min buffer size
                 8.MB(), // max buffer size
                 1.MB(), // min block cache
                 512.MB(), // max block cache
                 0.02m); // db memory %
         }
 
-        private DbNeeds GetHeaderNeeds(uint cpuCount, ISyncConfig syncConfig)
+        private DbNeeds GetHeaderNeeds(uint cpuCount)
         {
-            uint preferredBuffers = Math.Min(cpuCount, syncConfig.FastBlocks ? 4u : 2u);
+            uint preferredBuffers = Math.Min(cpuCount, 2u);
             return new DbNeeds(
                 preferredBuffers,
-                1.MB(), // min buffer size
-                8.MB(), // max buffer size
+                16.MB(), // min buffer size
+                16.MB(), // max buffer size
                 1.MB(), // min block cache
                 1.GB(), // max block cache
                 0.02m); // db memory %
         }
 
-        private DbNeeds GetBlocksNeeds(uint cpuCount, ISyncConfig syncConfig)
+        private DbNeeds GetBlocksNeeds(uint cpuCount)
         {
-            uint preferredBuffers = Math.Min(cpuCount, syncConfig.FastBlocks ? 4u : 2u);
+            uint preferredBuffers = Math.Min(cpuCount, 2u);
             return new DbNeeds(
                 preferredBuffers,
                 4.MB(), // min buffer size
@@ -343,9 +343,9 @@ namespace Nethermind.Init
                 0.04m); // db memory %
         }
 
-        private DbNeeds GetReceiptsNeeds(uint cpuCount, ISyncConfig syncConfig)
+        private DbNeeds GetReceiptsNeeds(uint cpuCount)
         {
-            uint preferredBuffers = Math.Min(cpuCount, syncConfig.FastBlocks ? 4u : 2u);
+            uint preferredBuffers = Math.Min(cpuCount, 2u);
             return new DbNeeds(
                 preferredBuffers,
                 2.MB(), // min buffer size
@@ -355,7 +355,7 @@ namespace Nethermind.Init
                 0.01m); // db memory %
         }
 
-        private DbNeeds GetPendingTxNeeds(uint cpuCount, ISyncConfig syncConfig)
+        private DbNeeds GetPendingTxNeeds(uint cpuCount)
         {
             return new DbNeeds(
                 4,
@@ -366,12 +366,12 @@ namespace Nethermind.Init
                 0.01m); // db memory %
         }
 
-        private DbNeeds GetCodeNeeds(uint cpuCount, ISyncConfig syncConfig)
+        private DbNeeds GetCodeNeeds(uint cpuCount)
         {
-            uint preferredBuffers = Math.Min(cpuCount, syncConfig.FastSync ? 4u : 2u);
+            uint preferredBuffers = Math.Min(cpuCount, 2u);
             return new DbNeeds(
                 preferredBuffers,
-                1.MB(), // min buffer size
+                4.MB(), // min buffer size
                 4.MB(), // max buffer size
                 0, // min block cache
                 0, // max block cache

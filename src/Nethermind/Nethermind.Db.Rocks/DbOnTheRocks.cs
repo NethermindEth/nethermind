@@ -369,7 +369,6 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         options.SetWriteBufferSize(writeBufferSize);
         int writeBufferNumber = (int)dbConfig.WriteBufferNumber;
         options.SetMaxWriteBufferNumber(writeBufferNumber);
-        options.SetMinWriteBufferNumberToMerge(2);
 
         lock (_dbsByPath)
         {
@@ -1085,7 +1084,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 // The default l1SizeTarget is 256MB, so the compaction is fairly light. But the default options is not very
                 // efficient for write amplification to conserve memory, so the write amplification reduction is noticeable.
                 // Does not seems to impact sync performance, might improve sync time slightly if user is IO limited.
-                ApplyOptions(GetHeavyWriteOptions(64));
+                ApplyOptions(GetHeavyWriteOptions(32));
                 break;
             case ITunableDb.TuneType.HeavyWrite:
                 // Compaction spikes are clear at this point. Will definitely affect attestation performance.
@@ -1144,6 +1143,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         // Defaults are from rocksdb source code
         return new Dictionary<string, string>()
         {
+            { "write_buffer_size", _perTableDbConfig.WriteBufferSize.ToString() },
+            { "max_write_buffer_number", _perTableDbConfig.WriteBufferNumber.ToString() },
+
             { "level0_file_num_compaction_trigger", 4.ToString() },
             { "level0_slowdown_writes_trigger", 20.ToString() },
             { "level0_stop_writes_trigger", 36.ToString() },
@@ -1152,7 +1154,6 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             { "target_file_size_base", 64.MiB().ToString() },
             { "disable_auto_compactions", "false" },
 
-            { "write_buffer_size", _perTableDbConfig.WriteBufferSize.ToString() },
             { "enable_blob_files", "false" },
 
             { "soft_pending_compaction_bytes_limit", 64.GiB().ToString() },
@@ -1178,10 +1179,12 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         // always get triggered when l0 size exceed max_bytes_for_level_base even if file num is less than l0FileNumTarget.
         // The 2 here is MinWriteBufferToMerge. Note, that this does highly depends on the WriteBufferSize as do standard
         // config.
-        ulong l1SizeTarget = l0FileNumTarget * _perTableDbConfig.WriteBufferSize * 2;
+        ulong l1SizeTarget = l0FileNumTarget * (ulong)8.MiB();
 
         return new Dictionary<string, string>()
         {
+            { "write_buffer_size", 8.MiB().ToString() },
+            { "max_write_buffer_number", 16.ToString() },
             { "max_bytes_for_level_base", l1SizeTarget.ToString() },
 
             { "level0_file_num_compaction_trigger", l0FileNumTarget.ToString() },
