@@ -36,7 +36,6 @@ using SendBlobs;
 CommandLineApplication app = new() { Name = "SendBlobs" };
 
 SetupExecute(app);
-
 SetupDistributeCommand(app);
 SetupReclaimCommand(app);
 
@@ -47,7 +46,7 @@ try
 catch (CommandParsingException ex)
 {
     Console.WriteLine(ex.Message);
-    app.ShowHelp();    
+    app.ShowHelp();
 }
 
 static void SetupExecute(CommandLineApplication app)
@@ -57,6 +56,7 @@ static void SetupExecute(CommandLineApplication app)
     CommandOption rpcUrlOption = app.Option("--rpcurl <rpcUrl>", "Url of the Json RPC.", CommandOptionType.SingleValue);
     CommandOption blobTxOption = app.Option("--bloboptions <blobOptions>", "Options in format '10x1-2', '2x5-5' etc. for the blobs.", CommandOptionType.MultipleValue);
     CommandOption privateKeyOption = app.Option("--privatekey <privateKey>", "The key to use for sending blobs.", CommandOptionType.SingleValue);
+    CommandOption privateKeyFileOption = app.Option("--privatekeyfile <privateKeyFile>", "File containing private keys that each blob tx will be send from.", CommandOptionType.SingleValue);
     CommandOption receiverOption = app.Option("--receiveraddress <receiverAddress>", "Receiver address of the blobs.", CommandOptionType.SingleValue);
     CommandOption maxFeePerDataGasOption = app.Option("--maxfeeperdatagas <maxFeePerDataGas>", "(Optional) Set the maximum fee per blob data.", CommandOptionType.SingleValue);
     CommandOption feeMultiplierOption = app.Option("--feemultiplier <feeMultiplier>", "(Optional) A multiplier to use for gas fees.", CommandOptionType.SingleValue);
@@ -79,7 +79,15 @@ static void SetupExecute(CommandLineApplication app)
                  : (int.Parse(x), 1, @break);
             })
             .ToArray();
+
+        //PrivateKey[] privateKeys;
+        //if (privateKeyOption.HasValue())
+        //    privateKeys = new[] { new PrivateKey(privateKeyOption.Value()) };
+        //else if (privateKeyFileOption.HasValue())
+        //    privateKeys = File.ReadAllLines(privateKeyFileOption.Value(), System.Text.Encoding.ASCII).Select(k=> new PrivateKey(k)).ToArray();
+
         string privateKeyString = privateKeyOption.Value();
+
         string receiver = receiverOption.Value();
 
         UInt256 maxFeePerDataGas = 1000;
@@ -109,17 +117,19 @@ static void SetupExecute(CommandLineApplication app)
     });
 }
 
-async static Task SendBlobs(string rpcUrl, (int count, int blobCount, string @break)[] blobTxCounts, string privateKeyString, string receiver, UInt256 maxFeePerDataGas, ulong feeMultiplier, UInt256 maxPriorityFeeGasArgs)
+async static Task SendBlobs(
+    string rpcUrl,
+    (int count, int blobCount, string @break)[] blobTxCounts,
+    string privateKeyString,
+    string receiver,
+    UInt256 maxFeePerDataGas,
+    ulong feeMultiplier,
+    UInt256 maxPriorityFeeGasArgs)
 {
-    //if (args.Length < 4)
-    //{
-    //    Console.WriteLine("Try:\n\n  send-blobs <url-without-auth> <transactions-send-formula 10x1,4x2,3x6> <secret-key> <receiver-address>\n");
-    //    return;
-    //}
-
     await KzgPolynomialCommitments.InitializeAsync();
 
     PrivateKey privateKey = new(privateKeyString);
+    //PrivateKey[] privateKeys = Array.Empty<PrivateKey>();
 
     ILogger logger = SimpleConsoleLogManager.Instance.GetLogger("send blobs");
     INodeManager nodeManager = InitNodeManager(rpcUrl, logger);
@@ -136,7 +146,7 @@ async static Task SendBlobs(string rpcUrl, (int count, int blobCount, string @br
     string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
     ulong chainId = Convert.ToUInt64(chainIdString, chainIdString.StartsWith("0x") ? 16 : 10);
 
-    Signer signer = new Signer(chainId, privateKey, new OneLoggerLogManager(logger));
+    Signer signer = new (chainId, privateKey, new OneLoggerLogManager(logger));
 
     TxDecoder txDecoder = new();
 
@@ -297,30 +307,26 @@ static void SetupDistributeCommand(CommandLineApplication app)
         CommandOption privateKeyOption = command.Option("--privatekey <privateKey>", "The private key to distribute funds from.", CommandOptionType.SingleValue);
         CommandOption keyNumberOption = command.Option("--number <number>", "The number of new addresses/keys to make.", CommandOptionType.SingleValue);
         CommandOption keyFileOption = command.Option("--keyfile <keyFile>", "File where the newly generated keys are written.", CommandOptionType.SingleValue);
+        CommandOption maxPriorityFeeGasOption = command.Option("--maxpriorityfee <maxPriorityFee>", "(Optional) The maximum priority fee for each transaction.", CommandOptionType.SingleValue);
+        CommandOption maxFeeOption = command.Option("--maxfee <maxFee>", "(Optional) The maxFeePerGas fee paid for each transaction.", CommandOptionType.SingleValue);
 
         command.OnExecute(async () =>
         {
-            try
-            {
-                uint keysToMake = uint.Parse(keyNumberOption.Value());
-                PrivateKey privateKey = new(privateKeyOption.Value());
+            uint keysToMake = uint.Parse(keyNumberOption.Value());
+            PrivateKey privateKey = new(privateKeyOption.Value());
 
-                ILogger logger = SimpleConsoleLogManager.Instance.GetLogger("distribute funds");
-                INodeManager nodeManager = InitNodeManager(rpcUrlOption.Value(), logger);
+            ILogger logger = SimpleConsoleLogManager.Instance.GetLogger("distribute funds");
+            INodeManager nodeManager = InitNodeManager(rpcUrlOption.Value(), logger);
 
-                string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
-                ulong chainId = Convert.ToUInt64(chainIdString, chainIdString.StartsWith("0x") ? 16 : 10);
+            string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
+            ulong chainId = Convert.ToUInt64(chainIdString, chainIdString.StartsWith("0x") ? 16 : 10);
 
-                Signer signer = new Signer(chainId, privateKey, new OneLoggerLogManager(logger));
+            Signer signer = new Signer(chainId, privateKey, new OneLoggerLogManager(logger));
+            UInt256 maxFee = maxFeeOption.HasValue() ? UInt256.Parse(maxFeeOption.Value()) : 0;
+            UInt256 maxPriorityFee = maxPriorityFeeGasOption.HasValue() ? UInt256.Parse(maxPriorityFeeGasOption.Value()) : 0;
 
-                await FundsDistributor.DitributeFunds(nodeManager, chainId, signer, keysToMake, keyFileOption.Value());
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex.Message);
-                app.ShowHelp();
-                return 1;
-            }
+            IEnumerable<string> hashes = await FundsDistributor.DitributeFunds(nodeManager, chainId, signer, keysToMake, keyFileOption.Value(), maxFee, maxPriorityFee);
+
             return 0;
         });
 
@@ -337,27 +343,24 @@ static void SetupReclaimCommand(CommandLineApplication app)
         CommandOption rpcUrlOption = command.Option("--rpcurl <rpcUrl>", "Url of the Json RPC.", CommandOptionType.SingleValue);
         CommandOption receiverOption = command.Option("--receiveraddress <receiverAddress>", "The address to send the funds to.", CommandOptionType.SingleValue);
         CommandOption keyFileOption = command.Option("--keyfile <keyFile>", "File of the private keys to reclaim from.", CommandOptionType.SingleValue);
+        CommandOption maxPriorityFeeGasOption = command.Option("--maxpriorityfee <maxPriorityFee>", "(Optional) The maximum priority fee for each transaction.", CommandOptionType.SingleValue);
+        CommandOption maxFeeOption = command.Option("--maxfee <maxFee>", "(Optional) The maxFeePerGas paid for each transaction.", CommandOptionType.SingleValue);
 
         command.OnExecute(async () =>
         {
-            try
-            {
-                ILogger logger = SimpleConsoleLogManager.Instance.GetLogger("reclaim funds");
-                INodeManager nodeManager = InitNodeManager(rpcUrlOption.Value(), logger);
+            ILogger logger = SimpleConsoleLogManager.Instance.GetLogger("reclaim funds");
+            INodeManager nodeManager = InitNodeManager(rpcUrlOption.Value(), logger);
 
-                string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
-                ulong chainId = Convert.ToUInt64(chainIdString, chainIdString.StartsWith("0x") ? 16 : 10);
+            string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
+            ulong chainId = Convert.ToUInt64(chainIdString, chainIdString.StartsWith("0x") ? 16 : 10);
 
-                Address beneficiary = new Address(receiverOption.Value());
+            Address beneficiary = new Address(receiverOption.Value());
 
-                await FundsDistributor.ReclaimFunds(nodeManager, chainId, beneficiary, keyFileOption.Value(), new OneLoggerLogManager(logger));
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex.Message);
-                app.ShowHelp();
-                return 1;
-            }
+            UInt256 maxFee = maxFeeOption.HasValue() ? UInt256.Parse(maxFeeOption.Value()) : 0;
+            UInt256 maxPriorityFee = maxPriorityFeeGasOption.HasValue() ? UInt256.Parse(maxPriorityFeeGasOption.Value()) : 0;
+
+            IEnumerable<string> hashes = await FundsDistributor.ReclaimFunds(nodeManager, chainId, beneficiary, keyFileOption.Value(), new OneLoggerLogManager(logger), maxFee, maxPriorityFee);
+
             return 0;            
         });
 

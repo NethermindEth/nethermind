@@ -1,21 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.DataProtection.KeyManagement;
-using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Cli;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Facade.Proxy.Models;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -39,7 +31,7 @@ internal class FundsDistributor
     /// <param name="keyFilePath">Path to a file </param>
     /// <returns><see cref="IEnumerable{string}"/> containing all the executed tx hashes.</returns>
     /// <exception cref="Exception"></exception>
-    public async static Task<IEnumerable<string>> DitributeFunds(INodeManager nodeManager, ulong chainId, Signer distributeFrom, uint keysToMake, string keyFilePath)
+    public async static Task<IEnumerable<string>> DitributeFunds(INodeManager nodeManager, ulong chainId, Signer distributeFrom, uint keysToMake, string keyFilePath, UInt256 maxFee, UInt256 maxPriorityFee)
     {
         string? balanceString = await nodeManager.Post("eth_getBalance", distributeFrom.Address, "latest");
         if (balanceString is null)
@@ -51,8 +43,14 @@ internal class FundsDistributor
         string? gasPriceRes = await nodeManager.Post<string>("eth_gasPrice") ?? "1";
         UInt256 gasPrice = (UInt256)Convert.ToUInt64(gasPriceRes, gasPriceRes.StartsWith("0x") ? 16 : 10);
 
-        string? maxPriorityFeePerGasRes = await nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
-        UInt256 maxPriorityFeePerGas = (UInt256)Convert.ToUInt64(maxPriorityFeePerGasRes, maxPriorityFeePerGasRes.StartsWith("0x") ? 16 : 10);
+        string? maxPriorityFeePerGasRes;
+        UInt256 maxPriorityFeePerGas = maxPriorityFee;
+        if (maxPriorityFee == 0)
+        {
+            maxPriorityFeePerGasRes = await nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
+            maxPriorityFeePerGas = (UInt256)Convert.ToUInt64(maxPriorityFeePerGasRes, maxPriorityFeePerGasRes.StartsWith("0x") ? 16 : 10);
+        }
+
         UInt256 balance = new UInt256(Bytes.FromHexString(balanceString));
 
         if (balance == 0)
@@ -82,23 +80,22 @@ internal class FundsDistributor
 
         foreach (PrivateKey key in privateKeys)
         {
-            gasPriceRes = await nodeManager.Post<string>("eth_gasPrice") ?? "1";
-            gasPrice = (UInt256)Convert.ToUInt64(gasPriceRes, gasPriceRes.StartsWith("0x") ? 16 : 10);
-
-            maxPriorityFeePerGasRes = await nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
-            maxPriorityFeePerGas = (UInt256)Convert.ToUInt64(maxPriorityFeePerGasRes, maxPriorityFeePerGasRes.StartsWith("0x") ? 16 : 10);
-
-            Transaction tx = new()
+            if (maxFee == 0)
             {
-                Type = TxType.EIP1559,
-                ChainId = chainId,
-                Nonce = nonce,
-                GasLimit = GasCostOf.Transaction,
-                GasPrice = maxPriorityFeePerGas,
-                DecodedMaxFeePerGas = gasPrice + maxPriorityFeePerGas,
-                Value = perKeyToSend,
-                To = key.Address,
-            };
+                gasPriceRes = await nodeManager.Post<string>("eth_gasPrice") ?? "1";
+                gasPrice = (UInt256)Convert.ToUInt64(gasPriceRes, gasPriceRes.StartsWith("0x") ? 16 : 10);
+
+                maxPriorityFeePerGasRes = await nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
+                maxPriorityFeePerGas = (UInt256)Convert.ToUInt64(maxPriorityFeePerGasRes, maxPriorityFeePerGasRes.StartsWith("0x") ? 16 : 10);
+            }
+
+            Transaction tx = CreateTx(chainId,
+                                      key.Address,
+                                      maxFee != 0 ? maxFee : gasPrice + maxPriorityFeePerGas,
+                                      nonce,
+                                      maxPriorityFeePerGas,
+                                      perKeyToSend);
+
             await distributeFrom.Sign(tx);
 
             string txRlp = Hex.ToHexString(txDecoder
@@ -123,7 +120,7 @@ internal class FundsDistributor
     /// <param name="keyFilePath"></param>
     /// <param name="logManager"></param>
     /// <returns><see cref="IEnumerable{string}"/> containing all the executed tx hashes.</returns>
-    public async static Task<IEnumerable<string>> ReclaimFunds(INodeManager nodeManager, ulong chainId, Address beneficiary, string keyFilePath, ILogManager logManager)
+    public async static Task<IEnumerable<string>> ReclaimFunds(INodeManager nodeManager, ulong chainId, Address beneficiary, string keyFilePath, ILogManager logManager, UInt256 maxFee, UInt256 maxPriorityFee)
     {
         IEnumerable<Signer> privateSigners =
             File.ReadAllLines(keyFilePath, Encoding.ASCII)
@@ -147,8 +144,12 @@ internal class FundsDistributor
             string? gasPriceRes = await nodeManager.Post<string>("eth_gasPrice") ?? "1";
             UInt256 gasPrice = (UInt256)Convert.ToUInt64(gasPriceRes, gasPriceRes.StartsWith("0x") ? 16 : 10);
 
-            string? maxPriorityFeePerGasRes = await nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
-            UInt256 maxPriorityFeePerGas = (UInt256)Convert.ToUInt64(maxPriorityFeePerGasRes, maxPriorityFeePerGasRes.StartsWith("0x") ? 16 : 10);
+            UInt256 maxPriorityFeePerGas = maxPriorityFee;
+            if (maxPriorityFee == 0)
+            {
+                string? maxPriorityFeePerGasRes = await nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
+                maxPriorityFeePerGas = (UInt256)Convert.ToUInt64(maxPriorityFeePerGasRes, maxPriorityFeePerGasRes.StartsWith("0x") ? 16 : 10);
+            }
 
             UInt256 approxGasFee = (gasPrice + maxPriorityFeePerGas) * GasCostOf.Transaction;
 
@@ -161,17 +162,12 @@ internal class FundsDistributor
             UInt256 toSend = balance - approxGasFee;
 
             TxDecoder txDecoder = new();
-            Transaction tx = new()
-            {
-                Type = TxType.EIP1559,
-                ChainId = chainId,
-                Nonce = nonce,
-                GasLimit = GasCostOf.Transaction,
-                GasPrice = maxPriorityFeePerGas,
-                DecodedMaxFeePerGas = gasPrice + maxPriorityFeePerGas,
-                Value = toSend,
-                To = beneficiary,
-            };
+            Transaction tx = CreateTx(chainId,
+                                      beneficiary,
+                                      maxFee != 0 ? maxFee : gasPrice + maxPriorityFeePerGas,
+                                      nonce,
+                                      maxPriorityFeePerGas,
+                                      toSend);
             await signer.Sign(tx);
 
             string txRlp = Hex.ToHexString(txDecoder
@@ -182,5 +178,20 @@ internal class FundsDistributor
                 txHashes.Add(result);
         }
         return txHashes;
+    }
+
+    private static Transaction CreateTx(ulong chainId, Address beneficiary, UInt256 maxFee, ulong nonce, UInt256 maxPriorityFeePerGas, UInt256 toSend)
+    {
+        return new()
+        {
+            Type = TxType.EIP1559,
+            ChainId = chainId,
+            Nonce = nonce,
+            GasLimit = GasCostOf.Transaction,
+            GasPrice = maxPriorityFeePerGas,
+            DecodedMaxFeePerGas = maxFee,
+            Value = toSend,
+            To = beneficiary,
+        };
     }
 }
