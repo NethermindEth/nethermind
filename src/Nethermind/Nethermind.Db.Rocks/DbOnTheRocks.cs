@@ -1191,7 +1191,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
         return new Dictionary<string, string>()
         {
-            { "write_buffer_size", 8.MiB().ToString() },
+            { "write_buffer_size", bufferSize.ToString() },
             { "max_write_buffer_number", maxBufferNumber.ToString() },
 
             { "max_bytes_for_level_base", l1SizeTarget.ToString() },
