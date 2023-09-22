@@ -398,36 +398,5 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.Feed.HandleResponse(request, peer: null)
                 .Should().Be(SyncResponseHandlingResult.NotAssigned);
         }
-
-        // [Test, Retry(5)]
-        // public async Task Silences_bad_peers()
-        // {
-        //     DbContext dbContext = new DbContext(_logger, _logManager);
-        //     SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb, SyncPeerMock.NotPreimage);
-        //     SafeContext ctx = PrepareDownloader(mock);
-        //     _feed.SetNewStateRoot(1024, Keccak.Compute("the_peer_has_no_data"));
-        //     _feed.Activate();
-        //     await Task.WhenAny(_stateSyncDispatcher.Start(CancellationToken.None), Task.Delay(1000)).Unwrap()
-        //         .ContinueWith(t =>
-        //         {
-        //             Assert.AreEqual(0, _pool.InitializedPeers.Count(p => p.CanBeAllocated(AllocationContexts.All)));
-        //         });
-        // }
-
-        // [Test]
-        // [Retry(3)]
-        // public async Task Silences_when_peer_sends_empty_byte_arrays()
-        // {
-        //     DbContext dbContext = new DbContext(_logger, _logManager);
-        //     SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb, SyncPeerMock.EmptyArraysInResponses);
-        //     SafeContext ctx = PrepareDownloader(mock);
-        //     _feed.SetNewStateRoot(1024, Keccak.Compute("the_peer_has_no_data"));
-        //     _feed.Activate();
-        //     await Task.WhenAny(_stateSyncDispatcher.Start(CancellationToken.None), Task.Delay(1000)).Unwrap()
-        //         .ContinueWith(t =>
-        //         {
-        //             _pool.InitializedPeers.Count(p => p.CanBeAllocated(AllocationContexts.All)).Should().Be(0);
-        //         });
-        // }
     }
 }
