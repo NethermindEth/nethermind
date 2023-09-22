@@ -202,6 +202,13 @@ namespace Nethermind.Core.Specs
         bool IsEip2930Enabled { get; }
 
         /// <summary>
+        /// Should EIP158 be ignored for this account.
+        /// </summary>
+        /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>
+        /// <param name="address"></param>
+        /// <returns></returns>
+        bool IsEip158IgnoredAccount(Address address);
+        /// <summary>
         /// BaseFee opcode
         /// </summary>
         bool IsEip3198Enabled { get; }
@@ -352,5 +359,8 @@ namespace Nethermind.Core.Specs
 
         public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
+
+        public bool MainnetSystemCalls { get; } // ToDo add comment
+        public bool BlobBaseFeeEnabled => IsEip4844Enabled;
     }
 }

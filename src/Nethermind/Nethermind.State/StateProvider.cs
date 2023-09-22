@@ -189,7 +189,7 @@ namespace Nethermind.State
                 if (_logger.IsTrace) _logger.Trace($"  Touch {address} (code hash)");
                 if (account.IsEmpty)
                 {
-                    PushTouch(address, account);
+                    PushTouch(address, account, spec, account.Balance.IsZero);
                 }
             }
         }
@@ -220,14 +220,15 @@ namespace Nethermind.State
             {
                 if (releaseSpec.IsEip158Enabled)
                 {
-                    if (address == Address.SystemUser) // ToDo add comment
+                    Account touched = GetThroughCache(address);
+                    if (touched is null)
+                    {
                         return;
-
-                    Account touched = GetThroughCacheCheckExists();
+                    }
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
                     if (touched!.IsEmpty)
                     {
-                        PushTouch(address, touched);
+                        PushTouch(address, touched, releaseSpec, true);
                     }
                 }
 
@@ -728,8 +729,9 @@ namespace Nethermind.State
             Push(ChangeType.Update, address, account);
         }
 
-        private void PushTouch(Address address, Account account)
+        private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
         {
+            if (isZero && releaseSpec.IsEip158IgnoredAccount(address)) return;
             Push(ChangeType.Touch, address, account);
         }
 

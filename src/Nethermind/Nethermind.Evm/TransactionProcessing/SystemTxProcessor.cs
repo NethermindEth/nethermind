@@ -17,7 +17,7 @@ using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Tracing;
 using static Nethermind.Core.Extensions.MemoryExtensions;
-
+using static Nethermind.Evm.TransactionProcessing.ITransactionProcessor;
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm.TransactionProcessing
@@ -43,31 +43,32 @@ namespace Nethermind.Evm.TransactionProcessing
             _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
-        public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void CallAndRestore(Transaction transaction, BlockExecutionContext blkCtx, ITxTracer txTracer)
         {
-            Execute(transaction, block, txTracer, ExecutionOptions.CommitAndRestore);
+            Execute(transaction, blkCtx, txTracer, ExecutionOptions.CommitAndRestore);
         }
 
-        public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void BuildUp(Transaction transaction, BlockExecutionContext blkCtx, ITxTracer txTracer)
         {
             // we need to treat the result of previous transaction as the original value of next transaction
             // when we do not commit
             _worldState.TakeSnapshot(true);
-            Execute(transaction, block, txTracer, ExecutionOptions.None);
+            Execute(transaction, blkCtx, txTracer, ExecutionOptions.None);
         }
 
-        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void Execute(Transaction transaction, BlockExecutionContext blkCtx, ITxTracer txTracer)
         {
-            Execute(transaction, block, txTracer, ExecutionOptions.Commit);
+            Execute(transaction, blkCtx, txTracer, ExecutionOptions.Commit);
         }
 
-        public void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        public void Trace(Transaction transaction, BlockExecutionContext blkCtx, ITxTracer txTracer)
         {
-            Execute(transaction, block, txTracer, ExecutionOptions.NoValidation);
+            Execute(transaction, blkCtx, txTracer, ExecutionOptions.NoValidation);
         }
 
-        protected virtual void Execute(Transaction tx, BlockHeader header, ITxTracer tracer, ExecutionOptions opts)
+        protected virtual void Execute(Transaction tx, BlockExecutionContext blkCtx, ITxTracer tracer, ExecutionOptions opts)
         {
+            BlockHeader header = blkCtx.Header;
             IReleaseSpec spec = _specProvider.GetSpec(header);
             if (!spec.IsEip4788Enabled) // ToDo add comment
                 spec = new SystemTransactionReleaseSpec(spec);

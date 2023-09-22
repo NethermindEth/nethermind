@@ -17,7 +17,7 @@ namespace Nethermind.Blockchain.BeaconBlockRoot;
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 {
     private readonly ITransactionProcessor _processor;
-    private static Address Default4788Address = Address.FromNumber(0x0b);
+    private static Address Default4788Address = new Address("0xbEAC020008aFF7331c0A389CB2AAb67597567d7a");
     private readonly ILogger _logger;
     private const long GasLimit = 30_000_000L;
     public BeaconBlockRootHandler(

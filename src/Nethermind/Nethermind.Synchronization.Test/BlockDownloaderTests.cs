@@ -473,6 +473,13 @@ namespace Nethermind.Synchronization.Test
                 error = string.Empty;
                 return true;
             }
+
+            public bool ValidateOrphanedBlock(Block block, out string? error)
+            {
+                Thread.Sleep(1000);
+                error = null;
+                return true;
+            }
         }
 
         [Test, MaxTime(7000)]

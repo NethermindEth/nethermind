@@ -124,7 +124,7 @@ public class TestBlockchain : IDisposable
         // Eip4788 precompile state account
         if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
         {
-            State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress, 1);
+            State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress!, 1);
         }
 
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
@@ -344,7 +344,8 @@ public class TestBlockchain : IDisposable
             State,
             ReceiptStorage,
             NullWitnessCollector.Instance,
-            TxProcessor, LogManager);
+            TxProcessor,
+            LogManager);
 
     public async Task WaitForNewHead()
     {

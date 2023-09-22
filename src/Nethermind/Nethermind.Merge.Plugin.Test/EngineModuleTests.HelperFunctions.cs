@@ -89,11 +89,11 @@ namespace Nethermind.Merge.Plugin.Test
 
         private static ExecutionPayloadV3 CreateBlockRequestV3(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null, ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null)
         {
-            var spec = chain.SpecProvider.GenesisSpec;
-            var state = chain.State;
-            var blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, beaconParentBlockRoot: parentBeaconBlockRoot);
+            IReleaseSpec spec = chain.SpecProvider.GenesisSpec;
+            IWorldState state = chain.State;
+            ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, beaconParentBlockRoot: parentBeaconBlockRoot);
             blockRequestV3.TryGetBlock(out Block? block);
-            chain.BeaconBlockRootHandler.ExecuteSystemCall(block, spec);
+            chain.BeaconBlockRootHandler.ExecuteSystemCall(block!, spec);
 
             state.Commit(spec);
             state.CommitTree(blockRequestV3.BlockNumber);
