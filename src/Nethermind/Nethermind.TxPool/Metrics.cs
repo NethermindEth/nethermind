@@ -21,6 +21,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsReceived { get; set; }
 
         [CounterMetric]
+        [Description("Number of hashes of pending transactions received from peers.")]
+        public static long PendingTransactionsHashesReceived { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending transactions received that were ignored.")]
         public static long PendingTransactionsDiscarded { get; set; }
 

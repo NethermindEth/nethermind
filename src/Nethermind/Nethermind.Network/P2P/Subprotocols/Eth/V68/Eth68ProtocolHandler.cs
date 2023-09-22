@@ -88,6 +88,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
 
         Metrics.Eth68NewPooledTransactionHashesReceived++;
+        TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
 
         AddNotifiedTransactions(message.Hashes);
 

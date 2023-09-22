@@ -205,6 +205,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             bool isTrace = Logger.IsTrace;
             Stopwatch? stopwatch = isTrace ? Stopwatch.StartNew() : null;
 
+            TxPool.Metrics.PendingTransactionsHashesReceived += msg.Hashes.Count;
             _pooledTxsRequestor.RequestTransactionsEth66(_sendAction, msg.Hashes);
 
             stopwatch?.Stop();

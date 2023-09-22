@@ -100,6 +100,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             Stopwatch stopwatch = Stopwatch.StartNew();
 
+            TxPool.Metrics.PendingTransactionsHashesReceived += msg.Hashes.Count;
             _pooledTxsRequestor.RequestTransactions(Send, msg.Hashes);
 
             stopwatch.Stop();
