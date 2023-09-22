@@ -590,6 +590,10 @@ namespace Nethermind.TxPool
             return hasBeenRemoved;
         }
 
+        public bool ContainsTx(Keccak hash, TxType txType) => txType == TxType.Blob
+            ? _blobTransactions.ContainsValue(hash)
+            : _transactions.ContainsValue(hash) || _broadcaster.ContainsTx(hash);
+
         public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
         {
             lock (_locker)

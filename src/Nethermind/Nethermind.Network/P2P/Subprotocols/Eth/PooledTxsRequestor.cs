@@ -74,8 +74,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void RequestTransactionsEth68(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes, IReadOnlyList<int> sizes, IReadOnlyList<byte> types)
         {
-            using ArrayPoolList<(Keccak Hash, int Size)> discoveredTxHashesAndSizes = new(hashes.Count);
-            AddMarkUnknownHashesEth68(hashes, sizes, discoveredTxHashesAndSizes);
+            using ArrayPoolList<(Keccak Hash, byte Type, int Size)> discoveredTxHashesAndSizes = new(hashes.Count);
+            AddMarkUnknownHashesEth68(hashes, sizes, types, discoveredTxHashesAndSizes);
 
             if (discoveredTxHashesAndSizes.Count != 0)
             {
@@ -85,6 +85,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 for (int i = 0; i < discoveredTxHashesAndSizes.Count; i++)
                 {
                     int txSize = discoveredTxHashesAndSizes[i].Size;
+                    TxType txType = (TxType)discoveredTxHashesAndSizes[i].Type;
 
                     if (txSize > packetSizeLeft && hashesToRequest.Count > 0)
                     {
@@ -93,7 +94,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                         packetSizeLeft = TransactionsMessage.MaxPacketSize;
                     }
 
-                    if (_txPoolConfig.BlobSupportEnabled || (TxType)types[i] != TxType.Blob)
+                    if (_txPoolConfig.BlobSupportEnabled || txType != TxType.Blob)
                     {
                         hashesToRequest.Add(discoveredTxHashesAndSizes[i].Hash);
                         packetSizeLeft -= txSize;
@@ -119,15 +120,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 }
             }
         }
-        private void AddMarkUnknownHashesEth68(IReadOnlyList<Keccak> hashes, IReadOnlyList<int> sizes, ArrayPoolList<(Keccak, int)> discoveredTxHashesAndSizes)
+        private void AddMarkUnknownHashesEth68(IReadOnlyList<Keccak> hashes, IReadOnlyList<int> sizes, IReadOnlyList<byte> types, ArrayPoolList<(Keccak, byte, int)> discoveredTxHashesAndSizes)
         {
             int count = hashes.Count;
             for (int i = 0; i < count; i++)
             {
                 Keccak hash = hashes[i];
-                if (!_txPool.IsKnown(hash) && _pendingHashes.Set(hash))
+                if (!_txPool.IsKnown(hash) && !_txPool.ContainsTx(hash, (TxType)types[i]) && _pendingHashes.Set(hash))
                 {
-                    discoveredTxHashesAndSizes.Add((hash, sizes[i]));
+                    discoveredTxHashesAndSizes.Add((hash, types[i], sizes[i]));
                 }
             }
         }

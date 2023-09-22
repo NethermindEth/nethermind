@@ -35,6 +35,7 @@ namespace Nethermind.TxPool
         Transaction[] GetPendingTransactionsBySender(Address address);
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
+        bool ContainsTx(Keccak hash, TxType txType);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         bool RemoveTransaction(Keccak? hash);
         bool IsKnown(Keccak hash);
