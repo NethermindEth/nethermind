@@ -21,7 +21,7 @@ public class TransactionForRpc
         {
             SourceHash = transaction.SourceHash;
             Mint = transaction.Mint;
-            IsOPSystemTransaction = transaction.IsOPSystemTransaction;
+            IsSystemTx = transaction.IsOPSystemTransaction;
         }
         Hash = transaction.Hash;
         Nonce = transaction.Nonce;
@@ -68,7 +68,7 @@ public class TransactionForRpc
 
     public Keccak? SourceHash { get; set; }
     public UInt256? Mint { get; set; }
-    public bool? IsOPSystemTransaction { get; set; }
+    public bool? IsSystemTx { get; set; } // this is the IsOpSystemTransaction flag
 
     public Keccak? Hash { get; set; }
     public UInt256? Nonce { get; set; }

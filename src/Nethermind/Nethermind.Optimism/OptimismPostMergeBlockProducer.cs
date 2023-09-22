@@ -66,6 +66,10 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
                 {
                     return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
                 }
+                else
+                {
+                    throw new EmptyBlockProductionException($"Setting state for processing block failed: couldn't set state to stateRoot {parent.StateRoot}");
+                }
             }
             finally
             {
