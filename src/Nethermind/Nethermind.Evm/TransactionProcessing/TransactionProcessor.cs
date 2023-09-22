@@ -401,11 +401,9 @@ namespace Nethermind.Evm.TransactionProcessing
                     QuickFail(tx, header, spec, tracer, "insufficient sender balance");
                     return false;
                 }
-            }
 
-            if (validate)
                 _worldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
-
+            }
             return true;
         }
 
