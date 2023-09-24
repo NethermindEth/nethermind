@@ -28,6 +28,7 @@ using Nethermind.Evm.Tracing.Debugger;
 #endif
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Lab")]
 
 namespace Nethermind.Evm;
 

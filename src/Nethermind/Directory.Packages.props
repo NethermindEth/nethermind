@@ -81,5 +81,8 @@
     <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="19.2.29" />
     <PackageVersion Include="Websocket.Client" Version="4.6.1" />
     <PackageVersion Include="YamlDotNet" Version="13.1.1" />
+
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.5.0" />
+    <PackageVersion Include="Terminal.Gui" Version="1.10" />
   </ItemGroup>
 </Project>

@@ -19,7 +19,9 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using System.Runtime.CompilerServices;
 
+[assembly: InternalsVisibleTo("Nethermind.Evm.Lab")]
 namespace Nethermind.Evm.Test;
 
 public class VirtualMachineTestsBase
@@ -27,7 +29,7 @@ public class VirtualMachineTestsBase
     protected const string SampleHexData1 = "a01234";
     protected const string SampleHexData2 = "b15678";
     protected const string HexZero = "00";
-    protected const long DefaultBlockGasLimit = 8000000;
+    internal const long DefaultBlockGasLimit = 8000000;
 
     private IEthereumEcdsa _ethereumEcdsa;
     protected ITransactionProcessor _processor;
@@ -47,7 +49,7 @@ public class VirtualMachineTestsBase
     protected virtual ForkActivation Activation => (BlockNumber, Timestamp);
     protected virtual long BlockNumber { get; } = MainnetSpecProvider.ByzantiumBlockNumber;
     protected virtual ulong Timestamp => 0UL;
-    protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+    protected virtual ISpecProvider SpecProvider { get; set; } = MainnetSpecProvider.Instance;
     protected IReleaseSpec Spec => SpecProvider.GetSpec(Activation);
 
     protected virtual ILogManager GetLogManager()
@@ -120,6 +122,13 @@ public class VirtualMachineTestsBase
     protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
     {
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
+        _processor.Execute(transaction, block.Header, tracer);
+        return tracer;
+    }
+
+    protected T Execute<T>(T tracer, long gas, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
+    {
+        (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, gas, code);
         _processor.Execute(transaction, block.Header, tracer);
         return tracer;
     }

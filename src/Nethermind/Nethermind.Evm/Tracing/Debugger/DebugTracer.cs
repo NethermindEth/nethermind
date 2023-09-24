@@ -16,9 +16,10 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public enum DebugPhase { Starting, Blocked, Running, Aborted }
 
     private readonly AutoResetEvent _autoResetEvent = new(false);
-    private readonly Dictionary<(int depth, int pc), Func<EvmState, bool>> _breakPoints = new();
+    public Dictionary<(int depth, int pc), Func<EvmState, bool>> BreakPoints { get; private set; } = new();
     private Func<EvmState, bool>? _globalBreakCondition;
     private readonly object _lock = new();
+
 
     public DebugTracer(ITxTracer tracer)
     {
@@ -59,20 +60,20 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public bool IsTracingStorage => InnerTracer.IsTracingStorage;
 
-    public bool IsBreakpoitnSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
+    public bool IsBreakpoitnSet(int depth, int programCounter) => BreakPoints.ContainsKey((depth, programCounter));
 
     public void SetBreakPoint((int depth, int pc) point, Func<EvmState, bool> condition = null)
     {
         if (CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting)
         {
-            _breakPoints[point] = condition;
+            BreakPoints[point] = condition;
         }
     }
     public void UnsetBreakPoint(int depth, int programCounter)
     {
         if (CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting)
         {
-            _breakPoints.Remove((depth, programCounter));
+            BreakPoints.Remove((depth, programCounter));
         }
     }
 
@@ -119,7 +120,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         lock (_lock)
         {
             CurrentPhase = DebugPhase.Starting;
-            _breakPoints.Clear();
+            BreakPoints.Clear();
             CurrentState = null;
             InnerTracer = newInnerTracer;
         }
@@ -160,7 +161,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     {
         (int CallDepth, int ProgramCounter) breakpoint = (CurrentState!.Env.CallDepth, CurrentState.ProgramCounter);
 
-        if (_breakPoints.TryGetValue(breakpoint, out Func<EvmState, bool>? point))
+        if (BreakPoints.TryGetValue(breakpoint, out Func<EvmState, bool>? point))
         {
             bool conditionResults = point?.Invoke(CurrentState) ?? true;
             if (conditionResults)
