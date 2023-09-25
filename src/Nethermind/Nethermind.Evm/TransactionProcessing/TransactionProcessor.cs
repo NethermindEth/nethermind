@@ -173,7 +173,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 else
                 {
                     if (!opts.HasFlag(ExecutionOptions.NoValidation))
-                        AddToBalance(tx, senderReservedGasPayment, spec);
+                        _worldState.AddToBalance(tx.SenderAddress, senderReservedGasPayment, spec);
                     if (!tx.IsSystem())
                         _worldState.DecrementNonce(tx.SenderAddress);
 
@@ -327,7 +327,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             bool deleteCallerAccount = false;
 
-            if (!_worldState.AccountExists(tx.SenderAddress) && tx.IsSystem() == false) // Added for experiments
+            if (!_worldState.AccountExists(tx.SenderAddress) && !IsMainnetStyleSystemCall(tx, spec)) // Added for experiments
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"TX sender account does not exist {tx.SenderAddress} - trying to recover it");
@@ -455,7 +455,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             if (validate)
-                SubtractFromBalance(tx, senderReservedGasPayment, spec);
+                _worldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
 
             return true;
         }
@@ -526,7 +526,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // Fixes eth_estimateGas.
             // If sender is SystemUser subtracting value will cause InsufficientBalanceException
             if (validate || !tx.IsSystem())
-                SubtractFromBalance(tx, tx.Value, spec);
+                _worldState.SubtractFromBalance(tx.SenderAddress, tx.Value, spec);
 
             try
             {
@@ -708,7 +708,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     _logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
                 // If noValidation we didn't charge for gas, so do not refund
                 if (!opts.HasFlag(ExecutionOptions.NoValidation))
-                    AddToBalance(tx, (ulong)(unspentGas + refund) * gasPrice, spec);
+                    _worldState.AddToBalance(tx.SenderAddress, (ulong)(unspentGas + refund) * gasPrice, spec);
                 spentGas -= refund;
             }
 

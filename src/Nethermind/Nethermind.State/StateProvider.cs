@@ -218,7 +218,8 @@ namespace Nethermind.State
             bool isZero = balanceChange.IsZero;
             if (isZero)
             {
-                if (releaseSpec.IsEip158Enabled && !isSubtracting)
+                bool ignoreTouch = isSubtracting && releaseSpec.MainnetSystemCalls;
+                if (releaseSpec.IsEip158Enabled && !ignoreTouch)
                 {
                     Account touched = GetThroughCache(address);
                     if (touched is null)
