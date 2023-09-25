@@ -230,8 +230,8 @@ namespace Nethermind.Synchronization.Test
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             Context ctx = CreateMergeContext(9, (UInt256)ttd);
 
-            Block? block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
-            block!.Header.TotalDifficulty *= 2;
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
+            block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
             Assert.That(block.Header.Hash, Is.EqualTo(ctx.LocalBlockTree.BestSuggestedHeader!.Hash));
@@ -251,7 +251,7 @@ namespace Nethermind.Synchronization.Test
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
             if (sendFakeTd)
             {
-                block.Header.TotalDifficulty *= 2;
+                block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
             }
 
             Assert.Throws<EthSyncException>(() => ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock));
@@ -276,7 +276,7 @@ namespace Nethermind.Synchronization.Test
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
             if (sendFakeTd)
             {
-                block.Header.TotalDifficulty *= 2;
+                block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
             }
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
@@ -304,7 +304,7 @@ namespace Nethermind.Synchronization.Test
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
             if (sendFakeTd)
             {
-                block.Header.TotalDifficulty *= 2;
+                block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
             }
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
@@ -330,7 +330,7 @@ namespace Nethermind.Synchronization.Test
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
             if (sendFakeTd)
             {
-                block.Header.TotalDifficulty *= 2;
+                block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
             }
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
@@ -481,7 +481,7 @@ namespace Nethermind.Synchronization.Test
                 LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
-            block.Header.TotalDifficulty *= 2;
+            block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
             Assert.That(block.Header.Hash, Is.EqualTo(localBlockTree.BestSuggestedHeader!.Hash));
