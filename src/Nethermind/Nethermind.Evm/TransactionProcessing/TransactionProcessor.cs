@@ -327,7 +327,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             bool deleteCallerAccount = false;
 
-            if (!_worldState.AccountExists(tx.SenderAddress))
+            if (!_worldState.AccountExists(tx.SenderAddress) && tx.IsSystem() == false) // Added for experiments
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"TX sender account does not exist {tx.SenderAddress} - trying to recover it");
