@@ -125,6 +125,8 @@ public class VirtualMachine : IVirtualMachine
     public interface IIsTracing { }
     public readonly struct NotTracing : IIsTracing { }
     public readonly struct IsTracing : IIsTracing { }
+    public readonly struct IsDebugging : IIsTracing { }
+    public readonly struct NotDebugging : IIsTracing { }
 }
 
 internal sealed class VirtualMachine<TLogger> : IVirtualMachine
@@ -235,11 +237,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                     if (!_txTracer.IsTracingInstructions)
                     {
-                        callResult = ExecuteCall<NotTracing>(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
+                        callResult = ExecuteCall<NotTracing, NotDebugging>(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
                     }
                     else
                     {
-                        callResult = ExecuteCall<IsTracing>(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
+                        if(txTracer is DebugTracer)
+                        {
+                            callResult = ExecuteCall<IsTracing, IsDebugging>(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
+
+                        } else
+                        {
+                            callResult = ExecuteCall<IsTracing, NotDebugging>(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
+                        }
                     }
 
                     if (!callResult.IsReturn)
@@ -695,7 +704,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     /// values at compile time.
     /// </remarks>
     [SkipLocalsInit]
-    private CallResult ExecuteCall<TTracingInstructions>(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+    private CallResult ExecuteCall<TTracingInstructions, TDebugging>(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
@@ -754,14 +763,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         if (!_txTracer.IsTracingRefunds)
         {
             return _txTracer.IsTracingOpLevelStorage ?
-                ExecuteCode<TTracingInstructions, NotTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
-                ExecuteCode<TTracingInstructions, NotTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
+                ExecuteCode<TTracingInstructions, NotTracing, IsTracing, TDebugging>(vmState, ref stack, gasAvailable, spec) :
+                ExecuteCode<TTracingInstructions, NotTracing, NotTracing, TDebugging>(vmState, ref stack, gasAvailable, spec);
         }
         else
         {
             return _txTracer.IsTracingOpLevelStorage ?
-                ExecuteCode<TTracingInstructions, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
-                ExecuteCode<TTracingInstructions, IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
+                ExecuteCode<TTracingInstructions, IsTracing, IsTracing, TDebugging>(vmState, ref stack, gasAvailable, spec) :
+                ExecuteCode<TTracingInstructions, IsTracing, NotTracing, TDebugging>(vmState, ref stack, gasAvailable, spec);
         }
 Empty:
         return CallResult.Empty;
@@ -770,7 +779,7 @@ OutOfGas:
     }
 
     [SkipLocalsInit]
-    private CallResult ExecuteCode<TTracingInstructions, TTracingRefunds, TTracingStorage>(EvmState vmState, scoped ref EvmStack<TTracingInstructions> stack, long gasAvailable, IReleaseSpec spec)
+    private CallResult ExecuteCode<TTracingInstructions, TTracingRefunds, TTracingStorage, TDebugging>(EvmState vmState, scoped ref EvmStack<TTracingInstructions> stack, long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
@@ -782,9 +791,11 @@ OutOfGas:
         Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
         EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
-#if DEBUG
-        DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
-#endif
+        DebugTracer? debugger = null;
+        if (typeof(TDebugging) == typeof(IsDebugging))
+        {
+            debugger = _txTracer.GetTracer<DebugTracer>();
+        }
         Span<byte> bytes;
         SkipInit(out UInt256 a);
         SkipInit(out UInt256 b);
@@ -796,9 +807,10 @@ OutOfGas:
         uint codeLength = (uint)code.Length;
         while ((uint)programCounter < codeLength)
         {
-#if DEBUG
-            debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
-#endif
+            if (typeof(TDebugging) == typeof(IsDebugging))
+            {
+                debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+            }
             Instruction instruction = (Instruction)code[programCounter];
 
             // Evaluated to constant at compile time and code elided if not tracing
@@ -2098,9 +2110,9 @@ EmptyReturnNoTrace:
 // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-#if DEBUG
-        debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
-#endif
+        if (typeof(TDebugging) == typeof(IsDebugging)) { 
+            debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+        }
         return CallResult.Empty;
 DataReturn:
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
