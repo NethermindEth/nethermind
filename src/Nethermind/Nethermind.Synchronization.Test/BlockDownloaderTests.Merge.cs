@@ -106,8 +106,7 @@ public partial class BlockDownloaderTests
         };
 
         DownloaderOptions downloaderOptions = (DownloaderOptions)options;
-        ctx.MergeConfig = new MergeConfig
-            { TerminalTotalDifficulty = $"{ttd}" };
+        ctx.MergeConfig = new MergeConfig { TerminalTotalDifficulty = $"{ttd}" };
         if (withBeaconPivot)
             ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
 
@@ -443,7 +442,7 @@ public partial class BlockDownloaderTests
         public MergeConfig MergeConfig
         {
             get => _mergeConfig ??= new MergeConfig
-                { TerminalTotalDifficulty = "58750000000000000000000" }; // Main block downloader test assume pre-merge
+            { TerminalTotalDifficulty = "58750000000000000000000" }; // Main block downloader test assume pre-merge
             set => _mergeConfig = value;
         }
 
