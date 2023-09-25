@@ -370,6 +370,12 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         int writeBufferNumber = (int)dbConfig.WriteBufferNumber;
         options.SetMaxWriteBufferNumber(writeBufferNumber);
 
+        // Memtable is slower to writes the bigger it gets, but small memtable means small l0 file size, which means
+        // higher write amp for l0->l1 compaction. This allows multiple memtable to go into one l0 file so that it is
+        // not too small so it helps with write amp when setting small write buffer. AFAIK that is its only use compared
+        // to just specifying large write buffer. Sadly, this setting can't dynamically change.
+        options.SetMinWriteBufferNumberToMerge(2);
+
         lock (_dbsByPath)
         {
             _maxThisDbSize += (long)writeBufferSize * writeBufferNumber;
@@ -1068,16 +1074,14 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             // at 1/10th the specified speed (if rate limited).
             //
             // Read and writes written on different tune during mainnet sync in TB.
-            // +-----------------------------+----------------+--------------+---------------+---------------+--------------+----------------+---------------------+
-            // | L0FileNumTarget             | Total (R/W)    | State        | Code          | Header        | Blocks       | Receipts_Blocks | Receipt_Transactions |
-            // +-----------------------------+----------------+--------------+---------------+---------------+--------------+----------------+---------------------+
-            // | 4 (Default)                 | 7.853 / 8.41   | 2.58 / 2.78  | 0.104 / 0.107 | 0.133 / 0.141 | 4.34 / 4.58  | 0.502 / 0.593  | 0.194 / 0.209       |
-            // | 4 (8GB memory hint)         | 7.875 / 8.393  | 2.40 / 2.56  | 0.103 / 0.106 | 0.114 / 0.122 | 4.51 / 4.75  | 0.556 / 0.648  | 0.192 / 0.207       |
-            // | 14                          | 7.001 / 7.514  | 2.38 / 2.54  | 0.029 / 0.032 | 0.132 / 0.141 | 4.04 / 4.27  | 0.287 / 0.378  | 0.138 / 0.153       |
-            // | 64 (WriteBias)              | 5.986 / 6.493  | 1.63 / 1.79  | 0.023 / 0.026 | 0.120 / 0.128 | 3.82 / 4.05  | 0.280 / 0.371  | 0.113 / 0.128       |
-            // | 256 (HeavyWrite)            | 4.386 / 4.895  | 1.12 / 1.28  | 0.013 / 0.016 | 0.131 / 0.140 | 2.89 / 3.12  | 0.178 / 0.270  | 0.054 / 0.069       |
-            // | 1024 (AggressiveHeavyWrite) | 2.942 / 3.452  | 0.60 / 0.76  | 0.006 / 0.009 | 0.133 / 0.142 | 2.01 / 2.24  | 0.171 / 0.263  | 0.022 / 0.038       |
-            // +-----------------------------+-----------------+--------------+---------------+--------------+--------------+----------------+---------------------+
+            // +-----------------------------+---------------+-------------+---------------+---------------+-------------+---------------+
+            // | L0FileNumTarget             | Total (W/R)   | State       | Code          | Header        | Blocks      | Receipts      |
+            // +-----------------------------+---------------+-------------+---------------+---------------+-------------+---------------+
+            // | 4 (Default)                 | 5.055 / 2.649 | 2.27 / 2.31 | 0.242 / 0.243 | 0.123 / 0.133 | 1.14 / 0.01 | 1.280 / 0.953 |
+            // | 64 (WriteBias)              | 4.962 / 3.041 | 2.12 / 2.14 | 0.049 / 0.035 | 0.132 / 0.122 | 1.14 / 0.01 | 1.080 / 0.734 |
+            // | 256 (HeavyWrite)            | 3.592 / 1.998 | 1.32 / 1.26 | 0.032 / 0.018 | 0.116 / 0.104 | 1.14 / 0.01 | 0.984 / 0.606 |
+            // | 1024 (AggressiveHeavyWrite) | 3.029 / 2.172 | 0.92 / 0.79 | 0.024 / 0.008 | 0.118 / 0.106 | 1.14 / 0.01 | 0.827 / 0.431 |
+            // +-----------------------------+---------------+-------------+---------------+--------------+-------------+----------------+
             // Note, in practice on my machine, the reads does not reach the SSD. Read measured from SSD is much lower
             // than read measured from process. It is likely that most files are cached as I have 128GB of RAM.
             // Also notice that the heavier the tune, the higher the reads.
@@ -1181,13 +1185,18 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         // but no io, only cpu.
         // bufferSize*maxBufferNumber = 128MB, which is the max memory used, which tend to be the case as its now
         // stalled by compaction instead of flush.
-        ulong bufferSize = (ulong)8.MiB();
-        ulong maxBufferNumber = 16;
+        // The skiplist (memtable) have a branching factor of 4, so I assume it slows down a little as num of record
+        // grows by 4x. So we are looking at 1,4,16,64,256,1k,4k,16k,64k and so on num of keys. Assuming average size of
+        // 120 bytes per key for state db, we are targeting between 4k to 16k of keys per memtable.
+        // A small memtable however, have the drawback of making l0 files smaller. Causing more compaction overhead.
+        ulong bufferSize = (ulong)4.MiB();
+        ulong writeBufferToMerge = 2;
+        ulong maxBufferNumber = 16 * writeBufferToMerge;
 
         // Guide recommend to have l0 and l1 to be the same size. They have to be compacted together so if l1 is larger,
         // the extra size in l1 is basically extra rewrites. If l0 is larger... then I don't know why not. Even so, it seems to
         // always get triggered when l0 size exceed max_bytes_for_level_base even if file num is less than l0FileNumTarget.
-        ulong l1SizeTarget = l0FileNumTarget * bufferSize;
+        ulong l1SizeTarget = l0FileNumTarget * bufferSize * writeBufferToMerge;
 
         return new Dictionary<string, string>()
         {
@@ -1207,6 +1216,21 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             { "hard_pending_compaction_bytes_limit", 100000.GiB().ToString() },
         };
     }
+
+    private IDictionary<string, string> GetDisableCompactionOptions()
+    {
+        IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(2048);
+
+        heavyWriteOption["disable_auto_compactions"] = "true";
+        // Increase the size of the write buffer, which reduces the number of l0 file by 4x. This does slows down
+        // the memtable a little bit. So if you are not write limited, you'll get memtable limited instead.
+        // This does increase the total memory buffer size, but counterintuitively, this reduces overall memory usage
+        // as it ran out of bloom filter cache so it need to do actual IO.
+        heavyWriteOption["write_buffer_size"] = 16.MiB().ToString();
+
+        return heavyWriteOption;
+    }
+
 
     private IDictionary<string, string> GetBlobFilesOptions()
     {
