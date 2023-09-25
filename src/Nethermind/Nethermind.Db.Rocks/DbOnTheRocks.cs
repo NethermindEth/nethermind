@@ -1073,15 +1073,16 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             // smoothens this spike somewhat by not blocking writes while allowing compaction to happen in background
             // at 1/10th the specified speed (if rate limited).
             //
-            // Read and writes written on different tune during mainnet sync in TB.
-            // +-----------------------------+---------------+-------------+---------------+---------------+-------------+---------------+
-            // | L0FileNumTarget             | Total (W/R)   | State       | Code          | Header        | Blocks      | Receipts      |
-            // +-----------------------------+---------------+-------------+---------------+---------------+-------------+---------------+
-            // | 4 (Default)                 | 5.055 / 2.649 | 2.27 / 2.31 | 0.242 / 0.243 | 0.123 / 0.133 | 1.14 / 0.01 | 1.280 / 0.953 |
-            // | 64 (WriteBias)              | 4.962 / 3.041 | 2.12 / 2.14 | 0.049 / 0.035 | 0.132 / 0.122 | 1.14 / 0.01 | 1.080 / 0.734 |
-            // | 256 (HeavyWrite)            | 3.592 / 1.998 | 1.32 / 1.26 | 0.032 / 0.018 | 0.116 / 0.104 | 1.14 / 0.01 | 0.984 / 0.606 |
-            // | 1024 (AggressiveHeavyWrite) | 3.029 / 2.172 | 0.92 / 0.79 | 0.024 / 0.008 | 0.118 / 0.106 | 1.14 / 0.01 | 0.827 / 0.431 |
-            // +-----------------------------+---------------+-------------+---------------+--------------+-------------+----------------+
+            // Total writes written on different tune during mainnet sync in TB.
+            // +-----------------------+-------+-------+-------+-------+-------+---------+
+            // | L0FileNumTarget       | Total | State | Code  | Header| Blocks| Receipts |
+            // +-----------------------+-------+-------+-------+-------+-------+---------+
+            // | Default               | 5.055 | 2.27  | 0.242 | 0.123 | 1.14  | 1.280   |
+            // | WriteBias             | 4.962 | 2.12  | 0.049 | 0.132 | 1.14  | 1.080   |
+            // | HeavyWrite            | 3.592 | 1.32  | 0.032 | 0.116 | 1.14  | 0.984   |
+            // | AggressiveHeavyWrite  | 3.029 | 0.92  | 0.024 | 0.118 | 1.14  | 0.827   |
+            // | DisableCompaction     | 2.215 | 0.36  | 0.031 | 0.137 | 1.14  | 0.547   |
+            // +-----------------------+-------+-------+-------+-------+-------+---------+
             // Note, in practice on my machine, the reads does not reach the SSD. Read measured from SSD is much lower
             // than read measured from process. It is likely that most files are cached as I have 128GB of RAM.
             // Also notice that the heavier the tune, the higher the reads.
