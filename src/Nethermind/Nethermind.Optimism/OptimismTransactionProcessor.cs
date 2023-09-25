@@ -43,6 +43,25 @@ public class OptimismTransactionProcessor : TransactionProcessor
         base.Execute(tx, header, tracer, opts);
     }
 
+    protected override bool ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+        out long intrinsicGas)
+    {
+        bool result = base.ValidateStatic(tx, header, spec, tracer, opts, out intrinsicGas);
+        if (tx.IsDeposit() && !tx.IsOPSystemTransaction && !result)
+        {
+            if (!WorldState.AccountExists(tx.SenderAddress!))
+            {
+                WorldState.CreateAccount(tx.SenderAddress!, 0, 1);
+            }
+            else
+            {
+                WorldState.IncrementNonce(tx.SenderAddress!);
+            }
+        }
+
+        return result;
+    }
+
     protected override bool BuyGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment)
     {
@@ -50,6 +69,22 @@ public class OptimismTransactionProcessor : TransactionProcessor
         senderReservedGasPayment = UInt256.Zero;
 
         bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
+
+        UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
+
+        if (tx.IsDeposit() && !tx.IsOPSystemTransaction && senderBalance < tx.Value)
+        {
+            if (!WorldState.AccountExists(tx.SenderAddress!))
+            {
+                WorldState.CreateAccount(tx.SenderAddress!, 0, 1);
+            }
+            else
+            {
+                WorldState.IncrementNonce(tx.SenderAddress!);
+            }
+            QuickFail(tx, header, spec, tracer, "insufficient sender balance");
+            return false;
+        }
 
         if (validate && !tx.IsDeposit())
         {
@@ -60,7 +95,6 @@ public class OptimismTransactionProcessor : TransactionProcessor
                 return false;
             }
 
-            UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
             if (UInt256.SubtractUnderflow(senderBalance, tx.Value, out UInt256 balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
