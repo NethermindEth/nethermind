@@ -590,6 +590,10 @@ namespace Nethermind.TxPool
             return hasBeenRemoved;
         }
 
+        public bool ContainsTx(Keccak hash, TxType txType) => txType == TxType.Blob
+            ? _blobTransactions.ContainsValue(hash)
+            : _transactions.ContainsValue(hash) || _broadcaster.ContainsTx(hash);
+
         public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
         {
             lock (_locker)
@@ -717,7 +721,9 @@ Sent
 * Transactions:         {Metrics.PendingTransactionsSent,24:N0}
 * Hashes:               {Metrics.PendingTransactionsHashesSent,24:N0}
 ------------------------------------------------
-Total Received:         {Metrics.PendingTransactionsReceived,24:N0}
+Received
+* Transactions:         {Metrics.PendingTransactionsReceived,24:N0}
+* Hashes:               {Metrics.PendingTransactionsHashesReceived,24:N0}
 ------------------------------------------------
 Discarded at Filter Stage:
 1.  NotSupportedTxType  {Metrics.PendingTransactionsNotSupportedTxType,24:N0}

@@ -34,6 +34,8 @@ namespace Nethermind.TxPool
 
         public void RemovePeer(PublicKey nodeId) { }
 
+        public bool ContainsTx(Keccak hash, TxType txType) => false;
+
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Accepted;
 
         public bool RemoveTransaction(Keccak? hash) => false;

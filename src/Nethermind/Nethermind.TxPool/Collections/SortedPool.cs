@@ -261,7 +261,7 @@ namespace Nethermind.TxPool.Collections
         /// <param name="key">Key to check presence.</param>
         /// <returns>True if element is present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        protected bool ContainsValue(TKey key)
+        public bool ContainsValue(TKey key)
         {
             return _cacheMap.ContainsKey(key);
         }
