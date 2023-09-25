@@ -207,22 +207,6 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        private void AddToBalance(Transaction tx, in UInt256 balanceChange, IReleaseSpec spec)
-        {
-            if (IsMainnetStyleSystemCall(tx, spec))
-                return;
-
-            _worldState.AddToBalance(tx.SenderAddress, balanceChange, spec);
-        }
-
-        private void SubtractFromBalance(Transaction tx, in UInt256 balanceChange, IReleaseSpec spec)
-        {
-            if (IsMainnetStyleSystemCall(tx, spec))
-                return;
-
-            _worldState.SubtractFromBalance(tx.SenderAddress, balanceChange, spec);
-        }
-
         private bool IsMainnetStyleSystemCall(Transaction tx, IReleaseSpec spec) =>
             tx.IsSystem() && spec.MainnetSystemCalls;
 
