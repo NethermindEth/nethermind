@@ -1123,9 +1123,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 // user config may not be able to handle this.
                 // With all those cons, this result in the minimum write amplification possible via tweaking compaction
                 // without changing memory budget. Not recommended for mainnet, unless you are very desperate.
-                IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(2048);
-                heavyWriteOption["disable_auto_compactions"] = "true";
-                ApplyOptions(heavyWriteOption);
+                ApplyOptions(GetDisableCompactionOptions());
                 break;
             case ITunableDb.TuneType.EnableBlobFiles:
                 ApplyOptions(GetBlobFilesOptions());
