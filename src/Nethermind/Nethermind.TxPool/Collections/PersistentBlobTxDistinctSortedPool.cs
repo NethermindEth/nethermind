@@ -67,7 +67,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
 
     public override bool TryGetValue(ValueKeccak hash, [NotNullWhen(true)] out Transaction? fullBlobTx)
     {
-        if (base.ContainsValue(hash))
+        if (base.ContainsKey(hash))
         {
             if (_blobTxCache.TryGet(hash, out fullBlobTx))
             {

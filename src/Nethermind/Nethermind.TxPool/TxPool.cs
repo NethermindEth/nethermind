@@ -591,8 +591,8 @@ namespace Nethermind.TxPool
         }
 
         public bool ContainsTx(Keccak hash, TxType txType) => txType == TxType.Blob
-            ? _blobTransactions.ContainsValue(hash)
-            : _transactions.ContainsValue(hash) || _broadcaster.ContainsTx(hash);
+            ? _blobTransactions.ContainsKey(hash)
+            : _transactions.ContainsKey(hash) || _broadcaster.ContainsTx(hash);
 
         public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
         {
