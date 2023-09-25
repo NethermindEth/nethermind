@@ -33,8 +33,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         if (_logger.IsDebug) _logger.Debug("Recreating light collection of blob transactions and cache");
         int numberOfTxsInDb = 0;
         int numberOfBlobsInDb = 0;
-        Stopwatch stopwatch = new();
-        stopwatch.Start();
+        Stopwatch stopwatch = Stopwatch.StartNew();
         foreach (Transaction fullBlobTx in blobTxStorage.GetAll())
         {
             if (base.TryInsert(fullBlobTx.Hash, new LightTransaction(fullBlobTx), out _))
