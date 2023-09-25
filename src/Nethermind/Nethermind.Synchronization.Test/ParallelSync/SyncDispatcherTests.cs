@@ -111,8 +111,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 return null;
             }
 
-            public event EventHandler<PeerBlockNotificationEventArgs>? NotifyPeerBlock;
-            public event EventHandler<PeerHeadRefreshedEventArgs>? PeerRefreshed;
+            public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock = delegate { };
+            public event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed = delegate { };
         }
 
         private class TestBatch
