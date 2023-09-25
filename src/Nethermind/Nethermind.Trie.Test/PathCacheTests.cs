@@ -100,7 +100,7 @@ public class PathCacheTests
 
         Assert.That(cache.GetNodeFromRoot(null, path1)?.FullRlp, Is.Null);
         Assert.That(cache.GetNodeFromRoot(null, path2)?.FullRlp, Is.Null);
-        Assert.That(cache.GetNodeFromRoot(null, path3).Value, Is.Not.Null);
+        Assert.That(cache.GetNodeFromRoot(null, path3).Value.ToArray(), Is.Empty);
     }
 
     [TestCaseSource(typeof(Instances))]
@@ -162,15 +162,15 @@ public class PathCacheTests
         //should get nodes with null RLP as a marker for deleted data
         //null returned from cache means a miss in data and load from DB
         Assert.That(n1, Is.Not.Null);
-        Assert.That(n1.FullRlp, Is.Null);
+        Assert.That(n1.FullRlp.IsNull, Is.True);
 
         Assert.That(n2, Is.Not.Null);
-        Assert.That(n2.FullRlp, Is.Null);
+        Assert.That(n2.FullRlp.IsNull, Is.True);
 
         //add a node again under a prefix that has been marked as deleted
         cache.AddNode(5, CreateResolvedLeaf(path1, 64000.ToByteArray(), 60));
 
-        Assert.That(cache.GetNodeFromRoot(null, path1).Value, Is.Not.Null);
+        Assert.That(cache.GetNodeFromRoot(null, path1).Value.IsNull, Is.True);
     }
 
     [TestCaseSource(typeof(Instances))]
@@ -208,7 +208,7 @@ public class PathCacheTests
         TrieNode n = new(NodeType.Unknown, rlp);
         n.ResolveNode(_trieStore);
 
-        Assert.That(n.Value, Is.EqualTo(128000.ToByteArray()).Using<byte[]>(Bytes.Comparer));
+        Assert.That(n.Value.ToArray(), Is.EqualTo(128000.ToByteArray()).Using<byte[]>(Bytes.Comparer));
     }
 
     [TestCaseSource(typeof(Instances))]

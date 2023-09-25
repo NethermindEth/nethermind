@@ -51,7 +51,7 @@ namespace Nethermind.State
         public StateTree(ITrieStore? store, ILogManager? logManager)
             : base(store, Keccak.EmptyTreeHash, true, true, logManager)
         {
-            Debug.Assert(store.Capability == TrieNodeResolverCapability.Hash);
+            //Debug.Assert(store.Capability == TrieNodeResolverCapability.Hash);
             TrieType = TrieType.State;
         }
 

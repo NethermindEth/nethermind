@@ -299,7 +299,7 @@ namespace Nethermind.State
         private class StorageTreeFactory : IStorageTreeFactory
         {
             public StorageTree Create(Address address, ITrieStore trieStore, Keccak storageRoot, Keccak stateRoot, ILogManager? logManager)
-                => new(trieStore, storageRoot, logManager);
+                => new(trieStore, storageRoot, logManager, address);
         }
     }
 }

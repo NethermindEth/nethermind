@@ -19,7 +19,7 @@ public class HealingStorageTree : StorageTree
     private readonly ITrieNodeRecovery<GetTrieNodesRequest>? _recovery;
 
     public HealingStorageTree(ITrieStore? trieStore, Keccak rootHash, ILogManager? logManager, Address address, Keccak stateRoot, ITrieNodeRecovery<GetTrieNodesRequest>? recovery)
-        : base(trieStore, rootHash, logManager)
+        : base(trieStore, rootHash, logManager, address)
     {
         _address = address;
         _stateRoot = stateRoot;
