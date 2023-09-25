@@ -501,10 +501,10 @@ namespace Nethermind.TxPool
         {
             lock (_locker)
             {
-                _transactions.EnsureCapacity();
+                _transactions.VerifyCapacity();
                 _transactions.UpdatePool(_accounts, _updateBucket);
 
-                _blobTransactions.EnsureCapacity();
+                _blobTransactions.VerifyCapacity();
                 _blobTransactions.UpdatePool(_accounts, _updateBucket);
             }
         }
