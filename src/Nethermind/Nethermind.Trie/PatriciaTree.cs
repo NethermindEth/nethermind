@@ -204,7 +204,7 @@ namespace Nethermind.Trie
 
             bool processCommits = RootRef?.IsDirty == true;
             if (processCommits)
-                Commit(new NodeCommitInfo(RootRef), skipSelf: skipRoot);
+                Commit(new NodeCommitInfo(RootRef), skipSelf: skipRoot, writeFlags: writeFlags);
 
             while (_currentCommit.TryDequeue(out NodeCommitInfo node))
             {
@@ -225,7 +225,7 @@ namespace Nethermind.Trie
             ClearedBySelfDestruct = false;
             if (_logger.IsDebug) _logger.Debug($"Finished committing block {blockNumber}");
         }
-        private void Commit(NodeCommitInfo nodeCommitInfo, bool skipSelf = false)
+        private void Commit(NodeCommitInfo nodeCommitInfo, bool skipSelf = false, WriteFlags writeFlags = WriteFlags.None)
         {
             if (_currentCommit is null)
             {
@@ -249,7 +249,7 @@ namespace Nethermind.Trie
                     {
                         if (node.IsChildDirty(i))
                         {
-                            Commit(new NodeCommitInfo(node.GetChild(TrieStore, i)!, node, i));
+                            Commit(new NodeCommitInfo(node.GetChild(TrieStore, i)!, node, i), writeFlags: writeFlags);
                         }
                         else
                         {
@@ -293,7 +293,7 @@ namespace Nethermind.Trie
                         {
                             try
                             {
-                                Commit(nodesToCommit[i]);
+                                Commit(nodesToCommit[i], writeFlags: writeFlags);
                             }
                             catch (Exception e)
                             {
@@ -310,7 +310,7 @@ namespace Nethermind.Trie
                     {
                         for (int i = 0; i < nodesToCommit.Count; i++)
                         {
-                            Commit(nodesToCommit[i]);
+                            Commit(nodesToCommit[i], writeFlags: writeFlags);
                         }
                     }
                 }
@@ -325,7 +325,7 @@ namespace Nethermind.Trie
 
                 if (extensionChild.IsDirty)
                 {
-                    Commit(new NodeCommitInfo(extensionChild, node, 0));
+                    Commit(new NodeCommitInfo(extensionChild, node, 0), writeFlags: writeFlags);
                 }
                 else
                 {

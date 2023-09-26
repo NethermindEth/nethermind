@@ -371,7 +371,7 @@ namespace Nethermind.Trie.Pruning
                     _currentBatches[column] ??= _stateDb.GetColumnDb(column).StartBatch();
                     _committedNodes[column].PersistUntilBlock(persistUntilBlock, _currentBatches[column]);
                 }
-                
+
                 stopwatch.Stop();
                 Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
@@ -413,7 +413,7 @@ namespace Nethermind.Trie.Pruning
 
             if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
 
-            SaveNodeDirectly(blockNumber, currentNode, _currentBatches[column]);
+            SaveNodeDirectly(blockNumber, currentNode, _currentBatches[column], writeFlags: writeFlags);
 
             currentNode.IsPersisted = true;
             currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
