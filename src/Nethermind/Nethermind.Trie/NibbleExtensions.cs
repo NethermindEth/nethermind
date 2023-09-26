@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie
@@ -155,25 +156,148 @@ namespace Nethermind.Trie
 
         public static byte[] NibblesToByteStorage(Span<byte> nibbles)
         {
-            int oddity = nibbles.Length % 2;
-            byte[] bytes = new byte[nibbles.Length / 2 + 1];
-            for (int i = 0; i < bytes.Length - 1; i++)
+            //int oddity = nibbles.Length % 2;
+            //byte[] bytes = new byte[nibbles.Length / 2 + 1];
+            //for (int i = 0; i < bytes.Length - 1; i++)
+            //{
+            //    bytes[i + 1] = ToByte(nibbles[2 * i + oddity], nibbles[2 * i + 1 + oddity]);
+            //}
+            //if (oddity == 1)
+            //{
+            //    bytes[0] = ToByte(1, nibbles[0]);
+            //}
+            //return bytes;
+
+            //int oddity = nibbles.Length % 2;
+            //byte[] bytes = new byte[nibbles.Length / 2 + 1];
+            //for (int i = 0; i < bytes.Length - 1; i++)
+            //{
+            //    bytes[i] = ToByte(nibbles[2 * i], nibbles[2 * i + 1]);
+            //}
+            //if (oddity == 1)
+            //{
+            //    bytes[^1] = ToByte(nibbles[^1], 0);
+            //}
+            //else
+            //{
+            //    bytes[^1] = 255;
+            //}
+            //return bytes;
+
+
+            //return nibbles.ToArray();
+
+            Span<byte> bytes = stackalloc byte[nibbles.Length];
+
+            int ni = 0;
+            int bi = 0;
+            bool pushZero = false;
+            while (ni < nibbles.Length)
             {
-                bytes[i + 1] = ToByte(nibbles[2 * i + oddity], nibbles[2 * i + 1 + oddity]);
+                byte highNibble;
+                byte lowNibble;
+
+                if (pushZero)
+                {
+                    highNibble = 0;
+                    lowNibble = nibbles[ni];
+                    ni++;
+                    pushZero = lowNibble == 0;
+                }
+                else
+                {
+                    highNibble = nibbles[ni];
+                    if (ni + 1 >= nibbles.Length)
+                    {
+                        lowNibble = 0;
+                        ni++;
+                    }
+                    else if (nibbles[ni + 1] == 0)
+                    {
+                        lowNibble = 0;
+                        pushZero = true;
+                        ni += 2;
+                    }
+                    else
+                    {
+                        lowNibble = nibbles[ni + 1];
+                        ni += 2;
+                    }
+                }
+
+                bytes[bi++] = ToByte(highNibble, lowNibble);
             }
-            if (oddity == 1)
-            {
-                bytes[0] = ToByte(1, nibbles[0]);
-            }
-            return bytes;
+            if (pushZero)
+                bytes[bi++] = 0;
+
+            return bytes.Slice(0, bi).ToArray();
         }
 
         public static byte[] BytesToNibblesStorage(Span<byte> bytes)
         {
+            //Span<byte> nibbles = stackalloc byte[bytes.Length * 2];
+            //BytesToNibbleBytes(bytes, nibbles);
+            //int oddity = nibbles[0];
+            //return oddity == 1 ? nibbles[1..].ToArray() : nibbles[2..].ToArray();
+
+            //Span<byte> nibbles = stackalloc byte[bytes.Length * 2];
+            //BytesToNibbleBytes(bytes, nibbles);
+            //byte oddity = nibbles[^1];
+            //return oddity == 0 ? nibbles[..^1].ToArray() : nibbles[..^2].ToArray();
+
+
+            //return bytes.ToArray();
+
+
             Span<byte> nibbles = stackalloc byte[bytes.Length * 2];
-            BytesToNibbleBytes(bytes, nibbles);
-            int oddity = nibbles[0];
-            return oddity == 1 ? nibbles[1..].ToArray() : nibbles[2..].ToArray();
+
+            byte[] last2Nibbles = new byte[2];
+            last2Nibbles[0] = (byte)((bytes[^1] & 240) >> 4);
+            last2Nibbles[1] = (byte)(bytes[^1] & 15);
+
+            int ni = 0;
+            int bi = 0;
+            bool skipZero = false;
+            bool lastNibbleSkipped = false;
+            while (bi < bytes.Length)
+            {
+                if (skipZero)
+                {
+                    nibbles[ni] = (byte)(bytes[bi] & 15);
+                    skipZero = nibbles[ni] == 0;
+                    ni++;
+                    bi++;
+                    continue;
+                }
+                else
+                {
+                    nibbles[ni] = (byte)((bytes[bi] & 240) >> 4);
+                    nibbles[ni + 1] = (byte)(bytes[bi] & 15);
+                }
+
+                if (nibbles[ni] == 0 && nibbles[ni + 1] == 0)
+                {
+                    ni++;
+                    lastNibbleSkipped = true;
+                }
+                else if (nibbles[ni] != 0 && nibbles[ni + 1] == 0)
+                {
+                    ni += 2;
+                    skipZero = true;
+                    lastNibbleSkipped = false;
+                }
+                else
+                {
+                    ni += 2;
+                    lastNibbleSkipped = false;
+                }
+
+                bi++;
+            }
+
+            int nibblesCount = lastNibbleSkipped ? ni : (last2Nibbles[1] == 0 ? ni - 1 : ni);
+
+            return nibbles.Slice(0, nibblesCount).ToArray();
         }
 
         public static void NibblesToByteStorage(Span<byte> nibbles, in Span<byte> bytes)

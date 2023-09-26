@@ -227,7 +227,7 @@ namespace Nethermind.Trie.Pruning
 
             if (rlp is null)
             {
-                throw new TrieException($"Node {Nibbles.NibblesToByteStorage(path).ToHexString()} is missing from the DB | path.Length {path.Length} - {Nibbles.ToCompactHexEncoding(path.ToArray()).ToHexString()}");
+                throw new TrieException($"Node {Nibbles.NibblesToByteStorage(path).ToHexString()} is missing from the DB | path.Length {path.Length} - {path.ToHexString()}");
             }
 
             Metrics.LoadedFromDbNodesCount++;
@@ -634,8 +634,11 @@ namespace Nethermind.Trie.Pruning
 
         public static (byte[], byte[]) GetDeleteKeyFromNibbles(Span<byte> nibbleFrom, Span<byte> nibbleTo, int oddityOverride)
         {
-            byte[] fromKey = EncodePathWithEnforcedOddity2(nibbleFrom, oddityOverride);
-            byte[] toKey = EncodePathWithEnforcedOddity2(nibbleTo, oddityOverride);
+            //byte[] fromKey = EncodePathWithEnforcedOddity2(nibbleFrom, oddityOverride);
+            //byte[] toKey = EncodePathWithEnforcedOddity2(nibbleTo, oddityOverride);
+
+            byte[] fromKey = Nibbles.NibblesToByteStorage(nibbleFrom);
+            byte[] toKey = Nibbles.NibblesToByteStorage(nibbleTo);
 
             return (fromKey, toKey);
         }
@@ -723,22 +726,33 @@ namespace Nethermind.Trie.Pruning
 
             if (!keySlice.IsZero())
             {
-                (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathNibbles, 0);
-                _pathStateDb?.EnqueueDeleteRange(column, from, to);
+                //(from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathNibbles, 0);
+                //_pathStateDb?.EnqueueDeleteRange(column, from, to);
 
-                (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathNibbles, 1);
+                //(from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathNibbles, 1);
+                //_pathStateDb?.EnqueueDeleteRange(column, from, to);
+
+                (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathNibbles, 0);
+                //_logger.Info($"Leaf deletion for {pathToNodeNibbles.ToHexString()} | {fullPathNibbles.ToHexString()} | {from.ToHexString()} - {to.ToHexString()}");
                 _pathStateDb?.EnqueueDeleteRange(column, from, to);
             }
 
             if (keySlice.IndexOfAnyExcept((byte)0xf) >= 0)
             {
+                //Span<byte> fullPathIncremented = stackalloc byte[fullPathNibbles.Length];
+                //fullPathNibbles.CopyTo(fullPathIncremented);
+                //Span<byte> endNibbles = fromNibblesKey.Slice(0, pathToNodeNibbles.Length).IncrementNibble(true);
+                //(from, to) = GetDeleteKeyFromNibbles(fullPathIncremented.IncrementNibble(), endNibbles, 0);
+                //_pathStateDb?.EnqueueDeleteRange(column, from, to);
+
+                //(from, to) = GetDeleteKeyFromNibbles(fullPathIncremented, endNibbles, 1);
+                //_pathStateDb?.EnqueueDeleteRange(column, from, to);
+
                 Span<byte> fullPathIncremented = stackalloc byte[fullPathNibbles.Length];
                 fullPathNibbles.CopyTo(fullPathIncremented);
                 Span<byte> endNibbles = fromNibblesKey.Slice(0, pathToNodeNibbles.Length).IncrementNibble(true);
                 (from, to) = GetDeleteKeyFromNibbles(fullPathIncremented.IncrementNibble(), endNibbles, 0);
-                _pathStateDb?.EnqueueDeleteRange(column, from, to);
-
-                (from, to) = GetDeleteKeyFromNibbles(fullPathIncremented, endNibbles, 1);
+                //_logger.Info($"Leaf deletion for {pathToNodeNibbles.ToHexString()} | {fullPathNibbles.ToHexString()} | {from.ToHexString()} - {to.ToHexString()}");
                 _pathStateDb?.EnqueueDeleteRange(column, from, to);
             }
         }
@@ -748,35 +762,44 @@ namespace Nethermind.Trie.Pruning
             void GenerateRangesAndRequest(Span<byte> childPathFrom, Span<byte> childPathTo, byte? from, byte? to, byte toMask)
             {
                 int fullKeyLength = childPathFrom.Length >= 66 ? 66 : 33;
-                byte[][] keyRanges = new byte[4][];
+                //byte[][] keyRanges = new byte[4][];
+                byte[][] keyRanges = new byte[2][];
 
                 if (childPathFrom.Length > 0)
                 {
                     childPathFrom[^1] = from.Value;
-                    keyRanges[0] = EncodePathWithEnforcedOddity2(childPathFrom, 0);
-                    keyRanges[2] = EncodePathWithEnforcedOddity2(childPathFrom, 1);
+                    //keyRanges[0] = EncodePathWithEnforcedOddity2(childPathFrom, 0);
+                    //keyRanges[2] = EncodePathWithEnforcedOddity2(childPathFrom, 1);
+
+                    keyRanges[0] = Nibbles.NibblesToByteStorage(childPathFrom);
                 }
                 else
                 {
-                    keyRanges[0] = EncodePathWithEnforcedOddity(childPathFrom, fullKeyLength, 0, 0x00);
-                    keyRanges[2] = EncodePathWithEnforcedOddity(childPathFrom, fullKeyLength, 1, 0x00);
+                    //keyRanges[0] = EncodePathWithEnforcedOddity(childPathFrom, fullKeyLength, 0, 0x00);
+                    //keyRanges[2] = EncodePathWithEnforcedOddity(childPathFrom, fullKeyLength, 1, 0x00);
+                    keyRanges[0] = Nibbles.NibblesToByteStorage(childPathFrom);
                 }
 
                 if (childPathTo.Length > 0)
                 {
                     if (to is not null)
                         childPathTo[^1] = to.Value;
-                    keyRanges[1] = EncodePathWithEnforcedOddity2(childPathTo, 0);
-                    keyRanges[3] = EncodePathWithEnforcedOddity2(childPathTo, 1);
+                    //keyRanges[1] = EncodePathWithEnforcedOddity2(childPathTo, 0);
+                    //keyRanges[3] = EncodePathWithEnforcedOddity2(childPathTo, 1);
+
+                    keyRanges[1] = Nibbles.NibblesToByteStorage(childPathTo);
                 }
                 else
                 {
-                    keyRanges[1] = EncodePathWithEnforcedOddity(childPathTo, fullKeyLength, 0, 0xff);
-                    keyRanges[3] = EncodePathWithEnforcedOddity(childPathTo, fullKeyLength, 1, 0xff);
+                    //keyRanges[1] = EncodePathWithEnforcedOddity(childPathTo, fullKeyLength, 0, 0xff);
+                    //keyRanges[3] = EncodePathWithEnforcedOddity(childPathTo, fullKeyLength, 1, 0xff);
+
+                    keyRanges[1] = Nibbles.NibblesToByteStorage(childPathTo);
                 }
 
-                for (int i = 0; i < 4; i+=2)
+                for (int i = 0; i < 2; i+=2)
                 {
+                    //_logger.Info($"Branch deletion for {branchNode.FullPath.ToHexString()} | {keyRanges[i].ToHexString()} - {keyRanges[i].ToHexString()}");
                     _pathStateDb?.EnqueueDeleteRange(fullKeyLength == 66 ? StateColumns.Storage : StateColumns.State, keyRanges[i], keyRanges[i + 1]);
                 }
             }
@@ -829,10 +852,11 @@ namespace Nethermind.Trie.Pruning
             if (!key.IsZero())
             {
                 (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathAndKey, 0);
+                //_logger.Info($"Extension deletion for {fullPathAndKey.ToHexString()} | {from.ToHexString()} - {to.ToHexString()}");
                 _pathStateDb?.EnqueueDeleteRange(column, from, to);
 
-                (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathAndKey, 1);
-                _pathStateDb?.EnqueueDeleteRange(column, from, to);
+                //(from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathAndKey, 1);
+                //_pathStateDb?.EnqueueDeleteRange(column, from, to);
             }
 
             if (key.IndexOfAnyExcept((byte)0xf) >= 0)
@@ -843,10 +867,11 @@ namespace Nethermind.Trie.Pruning
                 Span<byte> endNibbles = fromNibblesKey[..fullPathNibbles.Length].IncrementNibble(true);
 
                 (from, to) = GetDeleteKeyFromNibbles(fullPathAndKey, endNibbles, 0);
+                //_logger.Info($"Extension deletion for {fullPathAndKey.ToHexString()} | {from.ToHexString()} - {to.ToHexString()}");
                 _pathStateDb?.EnqueueDeleteRange(column, from, to);
 
-                (from, to) = GetDeleteKeyFromNibbles(fullPathAndKey, endNibbles, 1);
-                _pathStateDb?.EnqueueDeleteRange(column, from, to);
+                //(from, to) = GetDeleteKeyFromNibbles(fullPathAndKey, endNibbles, 1);
+                //_pathStateDb?.EnqueueDeleteRange(column, from, to);
             }
         }
 
