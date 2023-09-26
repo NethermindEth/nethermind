@@ -67,29 +67,17 @@ public class OptimismPayloadAttributes : PayloadAttributes
         _transactions = transactions;
     }
 
-    [SkipLocalsInit]
-    protected override string ComputePayloadId(BlockHeader parentHeader)
-    {
-        Span<byte> inputSpan = stackalloc byte[
-            Keccak.Size + // parent hash
-            sizeof(long) + // timestamp
-            Keccak.Size + // prev randao
-            Address.Size + // suggested fee recipient
-            Keccak.Size + // withdrawals root hash
-            sizeof(bool) + // no tx pool
-            Keccak.Size * TransactionsLength + // tx hashes
-            sizeof(long)]; // gas limit
-
-        WritePayloadIdMembers(parentHeader, inputSpan);
-
-        return ComputePayloadId(inputSpan);
-    }
+    protected override int ComputePayloadIdMembersSize() =>
+        // Add NoTxPool + Txs + GasLimit
+        base.ComputePayloadIdMembersSize() + sizeof(bool) + Keccak.Size * TransactionsLength + sizeof(long);
 
     protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
         int offset = base.WritePayloadIdMembers(parentHeader, inputSpan);
+
         inputSpan[offset] = NoTxPool ? (byte)1 : (byte)0;
-        offset += sizeof(bool);
+        offset += 1;
+
         Transaction[]? transactions = GetTransactions();
         if (transactions is not null)
         {
@@ -99,8 +87,11 @@ public class OptimismPayloadAttributes : PayloadAttributes
                 offset += Keccak.Size;
             }
         }
+
         BinaryPrimitives.WriteInt64BigEndian(inputSpan.Slice(offset, sizeof(long)), GasLimit);
-        return offset + sizeof(long);
+        offset += sizeof(long);
+
+        return offset;
     }
 
     public override string ToString()

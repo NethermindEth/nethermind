@@ -62,20 +62,19 @@ public class PayloadAttributes
     [SkipLocalsInit]
     protected virtual string ComputePayloadId(BlockHeader parentHeader)
     {
-        int withdrawalsSize = Withdrawals is null ? 0 : Keccak.Size;
-        int parentBeaconBlockRootSize = ParentBeaconBlockRoot is null ? 0 : Keccak.Size;
-
-        Span<byte> inputSpan = stackalloc byte[
-            Keccak.Size + // parent hash
-            sizeof(ulong) + // timestamp
-            Keccak.Size + // prev randao
-            Address.Size + // suggested fee recipient
-            withdrawalsSize + // withdrawals root hash
-            parentBeaconBlockRootSize]; // parent beacon block root
-
+        int size = ComputePayloadIdMembersSize();
+        Span<byte> inputSpan = stackalloc byte[size];
         WritePayloadIdMembers(parentHeader, inputSpan);
         return ComputePayloadId(inputSpan);
     }
+
+    protected virtual int ComputePayloadIdMembersSize() =>
+        Keccak.Size // parent hash
+        + sizeof(ulong) // timestamp
+        + Keccak.Size // prev randao
+        + Address.Size // suggested fee recipient
+        + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
+        + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size); // parent beacon block root
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
