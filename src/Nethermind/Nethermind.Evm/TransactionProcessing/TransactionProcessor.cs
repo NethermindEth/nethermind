@@ -99,7 +99,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             BlockHeader header = blCtx.Header;
             IReleaseSpec spec = _specProvider.GetSpec(header);
-            if (tx.IsSystem() && !spec.MainnetSystemCalls) // ToDo add comment
+            if (tx.IsAuRaSystemCall(spec))
                 spec = new SystemTransactionReleaseSpec(spec);
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
@@ -207,9 +207,6 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        private bool IsMainnetStyleSystemCall(Transaction tx, IReleaseSpec spec) =>
-            tx.IsSystem() && spec.MainnetSystemCalls;
-
 
         private void QuickFail(Transaction tx, BlockHeader block, IReleaseSpec spec, ITxTracer txTracer, string? reason)
         {
@@ -311,7 +308,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             bool deleteCallerAccount = false;
 
-            if (!_worldState.AccountExists(tx.SenderAddress) && !IsMainnetStyleSystemCall(tx, spec)) // Added for experiments
+            if (!_worldState.AccountExists(tx.SenderAddress) && !tx.IsGethStyleSystemCall(spec)) // ToDo add comment
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"TX sender account does not exist {tx.SenderAddress} - trying to recover it");

@@ -360,7 +360,7 @@ namespace Nethermind.Core.Specs
         public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
 
-        public bool MainnetSystemCalls { get; } // ToDo add comment
+        public bool AuRaSystemCalls { get; } // ToDo add comment
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
     }
 }
