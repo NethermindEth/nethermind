@@ -197,7 +197,7 @@ public partial class EngineModuleTests
             executionPayloadString, null!);
         JsonRpcErrorResponse? response = (await jsonRpcService.SendRequestAsync(request, context)) as JsonRpcErrorResponse;
         Assert.That(response?.Error, Is.Not.Null);
-        Assert.That(response.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
     private async Task<(JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 correctExecutionPayload)>
@@ -246,7 +246,7 @@ public partial class EngineModuleTests
                serializer.Serialize(executionPayloadAsJObject), blobsString);
             JsonRpcErrorResponse? response = (await jsonRpcService.SendRequestAsync(request, context)) as JsonRpcErrorResponse;
             Assert.That(response?.Error, Is.Not.Null);
-            Assert.That(response.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
         }
 
         foreach (string prop in props)
@@ -258,7 +258,7 @@ public partial class EngineModuleTests
                serializer.Serialize(executionPayloadAsJObject), blobsString);
             JsonRpcErrorResponse? response = (await jsonRpcService.SendRequestAsync(request, context)) as JsonRpcErrorResponse;
             Assert.That(response?.Error, Is.Not.Null);
-            Assert.That(response.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
         }
     }
 

@@ -20,7 +20,7 @@ namespace Nethermind.Merge.Plugin.Test;
 [TestFixture]
 public class InvalidChainTrackerTest
 {
-    private InvalidChainTracker.InvalidChainTracker _tracker;
+    private InvalidChainTracker.InvalidChainTracker _tracker = null!;
 
     [SetUp]
     public void Setup()
