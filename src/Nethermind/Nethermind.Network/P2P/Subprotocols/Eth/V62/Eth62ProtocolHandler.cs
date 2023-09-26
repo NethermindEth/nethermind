@@ -20,9 +20,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
-using ShouldGossip = Nethermind.Consensus.ShouldGossip;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {

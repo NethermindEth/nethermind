@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
@@ -30,7 +31,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncPeerPool _syncPeerPool;
 
         private long _pivotNumber;
-        private readonly long _barrier;
+        private long _barrier;
 
         private SyncStatusList _syncStatusList;
 
@@ -57,7 +58,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
-            _barrier = _barrier = _syncConfig.AncientBodiesBarrierCalc;
+            _barrier = _syncConfig.AncientBodiesBarrierCalc;
             if (_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in bodies sync");
 
             ResetSyncStatusList();
@@ -68,6 +69,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (_pivotNumber < _syncConfig.PivotNumberParsed)
             {
                 _pivotNumber = _syncConfig.PivotNumberParsed;
+                _barrier = _syncConfig.AncientBodiesBarrierCalc;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in bodies sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
             }
@@ -80,7 +82,8 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
-                _blockTree.LowestInsertedBodyNumber);
+                _blockTree.LowestInsertedBodyNumber,
+                _syncConfig.AncientBodiesBarrier);
         }
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
@@ -152,6 +155,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             finally
             {
+                batch.Response?.Dispose();
                 batch?.MarkHandlingEnd();
             }
         }
@@ -159,7 +163,8 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, out Block? block)
         {
             BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash);
-            bool txRootIsValid = new TxTrie(blockBody.Transactions).RootHash == header.TxRoot;
+            Keccak rootHash = TxTrie.CalculateRoot(blockBody.Transactions);
+            bool txRootIsValid = rootHash == header.TxRoot;
             bool unclesHashIsValid = UnclesHash.Calculate(blockBody.Uncles) == header.UnclesHash;
             if (txRootIsValid && unclesHashIsValid)
             {
@@ -177,13 +182,14 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
+            BlockBody[]? responses = batch.Response?.Bodies ?? Array.Empty<BlockBody>();
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {
                 BlockInfo? blockInfo = batch.Infos[i];
-                BlockBody? body = (batch.Response?.Length ?? 0) <= i
+                BlockBody? body = responses.Length <= i
                     ? null
-                    : batch.Response![i];
+                    : responses[i];
 
                 // last batch
                 if (blockInfo is null)

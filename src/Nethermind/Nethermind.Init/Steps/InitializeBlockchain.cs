@@ -35,7 +35,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
@@ -127,17 +126,28 @@ namespace Nethermind.Init.Steps
                 persistenceStrategy = Persist.EveryBlock;
             }
 
-            TrieStore trieStore = new HealingTrieStore(
-                stateWitnessedBy,
-                pruningStrategy,
-                persistenceStrategy,
-                getApi.LogManager);
+            TrieStore trieStore = syncConfig.TrieHealing
+                ? new HealingTrieStore(
+                    stateWitnessedBy,
+                    pruningStrategy,
+                    persistenceStrategy,
+                    getApi.LogManager)
+                : new TrieStore(
+                    stateWitnessedBy,
+                    pruningStrategy,
+                    persistenceStrategy,
+                    getApi.LogManager);
             setApi.TrieStore = trieStore;
 
-            IWorldState worldState = setApi.WorldState = new HealingWorldState(
-                trieStore,
-                codeDb,
-                getApi.LogManager);
+            IWorldState worldState = setApi.WorldState = syncConfig.TrieHealing
+                ? new HealingWorldState(
+                    trieStore,
+                    codeDb,
+                    getApi.LogManager)
+                : new WorldState(
+                    trieStore,
+                    codeDb,
+                    getApi.LogManager);
 
             if (pruningConfig.Mode.IsFull())
             {

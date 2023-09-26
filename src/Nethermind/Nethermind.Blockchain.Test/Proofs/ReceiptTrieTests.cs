@@ -21,16 +21,16 @@ namespace Nethermind.Blockchain.Test.Proofs
         public void Can_calculate_root_no_eip_658()
         {
             TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
-            ReceiptTrie receiptTrie = new(MainnetSpecProvider.Instance.GetSpec((1, null)), new[] { receipt });
-            Assert.That(receiptTrie.RootHash.ToString(), Is.EqualTo("0xe51a2d9f986d68628990c9d65e45c36128ec7bb697bd426b0bb4d18a3f3321be"));
+            Keccak rootHash = ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((1, null)), new[] { receipt });
+            Assert.That(rootHash.ToString(), Is.EqualTo("0xe51a2d9f986d68628990c9d65e45c36128ec7bb697bd426b0bb4d18a3f3321be"));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_calculate_root()
         {
             TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
-            ReceiptTrie receiptTrie = new(MainnetSpecProvider.Instance.GetSpec((MainnetSpecProvider.MuirGlacierBlockNumber, null)), new[] { receipt });
-            Assert.That(receiptTrie.RootHash.ToString(), Is.EqualTo("0x2e6d89c5b539e72409f2e587730643986c2ef33db5e817a4223aa1bb996476d5"));
+            Keccak rootHash = ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((MainnetSpecProvider.MuirGlacierBlockNumber, null)), new[] { receipt });
+            Assert.That(rootHash.ToString(), Is.EqualTo("0x2e6d89c5b539e72409f2e587730643986c2ef33db5e817a4223aa1bb996476d5"));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]

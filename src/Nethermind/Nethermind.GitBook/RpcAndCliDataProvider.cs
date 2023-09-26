@@ -48,7 +48,7 @@ namespace Nethermind.GitBook
 
         private List<Type> GetCliModules()
         {
-            Assembly assembly = Assembly.Load("Nethermind.Cli");
+            Assembly assembly = Assembly.Load("nethermind-cli");
             List<Type> cliModules = new List<Type>();
 
             foreach (Type type in assembly.GetTypes()

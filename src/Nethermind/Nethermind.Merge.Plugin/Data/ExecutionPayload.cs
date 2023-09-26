@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -12,6 +11,7 @@ using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
+using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -91,6 +91,25 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     /// </summary>
     public IEnumerable<Withdrawal>? Withdrawals { get; set; }
 
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
+    /// </summary>
+    public ulong? BlobGasUsed { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.ExcessBlobGas"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
+    /// </summary>
+    public ulong? ExcessBlobGas { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.ParentBeaconBlockRoot"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
+    /// </summary>
+    [JsonIgnore]
+    public Keccak? ParentBeaconBlockRoot { get; set; }
 
     /// <summary>
     /// Creates the execution block from payload.
@@ -177,15 +196,18 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
     public virtual ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
-        int GetVersion() => Withdrawals is null ? 1 : 2;
-
         if (spec.IsEip4844Enabled)
         {
             error = "ExecutionPayloadV3 expected";
             return ValidationResult.Fail;
         }
 
-        int actualVersion = GetVersion();
+        int actualVersion = this switch
+        {
+            { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
+            { Withdrawals: not null } => 2,
+            _ => 1
+        };
 
         error = actualVersion switch
         {

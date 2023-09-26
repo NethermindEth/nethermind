@@ -325,10 +325,18 @@ public class JsonRpcService : IJsonRpcService
                     if (providedParameter.StartsWith('[') || providedParameter.StartsWith('{'))
                     {
                         executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader(providedParameter)), paramType);
+                        if (executionParam is null && !IsNullableParameter(expectedParameter))
+                        {
+                            executionParameters.Add(Type.Missing);
+                        }
                     }
                     else
                     {
-                        executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader($"\"{providedParameter}\"")), paramType);
+                        var stringReader = providedParameter.StartsWith('\"') && providedParameter.EndsWith('\"')
+                            ? new StringReader(providedParameter)
+                            : new StringReader($"\"{providedParameter}\"");
+                        var jsonTextReader = new JsonTextReader(stringReader);
+                        executionParam = _serializer.Deserialize(jsonTextReader, paramType);
                     }
                 }
 

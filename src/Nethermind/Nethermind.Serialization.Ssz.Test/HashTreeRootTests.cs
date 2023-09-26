@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 //using Nethermind.Core2.Containers;
 //using Nethermind.Core2.Crypto;
 //using Nethermind.Core2.Types;

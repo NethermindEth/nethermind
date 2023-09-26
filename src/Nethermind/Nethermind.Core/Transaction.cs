@@ -4,8 +4,8 @@
 using System;
 using System.Buffers;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -63,9 +63,9 @@ namespace Nethermind.Core
                 {
                     if (_hash is not null) return _hash;
 
-                    if (_preHash.Count > 0)
+                    if (_preHash.Length > 0)
                     {
-                        _hash = Keccak.Compute(_preHash.AsSpan());
+                        _hash = Keccak.Compute(_preHash.Span);
                         ClearPreHashInternal();
                     }
                 }
@@ -79,24 +79,38 @@ namespace Nethermind.Core
             }
         }
 
-        private ArraySegment<byte> _preHash;
+        private Memory<byte> _preHash;
+        private IMemoryOwner<byte>? _preHashMemoryOwner;
         public void SetPreHash(ReadOnlySpan<byte> transactionSequence)
         {
             lock (this)
             {
-                // Used to delay hash generation, as may be filtered as having too low gas etc
-                _hash = null;
-
-                int size = transactionSequence.Length;
-                byte[] preHash = ArrayPool<byte>.Shared.Rent(size);
-                transactionSequence.CopyTo(preHash);
-                _preHash = new ArraySegment<byte>(preHash, 0, size);
+                SetPreHashNoLock(transactionSequence);
             }
+        }
+
+        public void SetPreHashNoLock(ReadOnlySpan<byte> transactionSequence)
+        {
+            // Used to delay hash generation, as may be filtered as having too low gas etc
+            _hash = null;
+
+            int size = transactionSequence.Length;
+            _preHashMemoryOwner = MemoryPool<byte>.Shared.Rent(size);
+            _preHash = _preHashMemoryOwner.Memory[..size];
+            transactionSequence.CopyTo(_preHash.Span);
+        }
+
+        public void SetPreHashMemoryNoLock(Memory<byte> transactionSequence, IMemoryOwner<byte>? preHashMemoryOwner = null)
+        {
+            // Used to delay hash generation, as may be filtered as having too low gas etc
+            _hash = null;
+            _preHash = transactionSequence;
+            _preHashMemoryOwner = preHashMemoryOwner;
         }
 
         public void ClearPreHash()
         {
-            if (_preHash.Count > 0)
+            if (_preHash.Length > 0)
             {
                 lock (this)
                 {
@@ -107,9 +121,10 @@ namespace Nethermind.Core
 
         private void ClearPreHashInternal()
         {
-            if (_preHash.Count > 0)
+            if (_preHash.Length > 0)
             {
-                ArrayPool<byte>.Shared.Return(_preHash.Array!);
+                _preHashMemoryOwner?.Dispose();
+                _preHashMemoryOwner = null;
                 _preHash = default;
             }
         }
@@ -195,6 +210,42 @@ namespace Nethermind.Core
         public override string ToString() => ToString(string.Empty);
 
         public bool MayHaveNetworkForm => Type is TxType.Blob;
+
+        public class PoolPolicy : IPooledObjectPolicy<Transaction>
+        {
+            public Transaction Create()
+            {
+                return new Transaction();
+            }
+
+            public bool Return(Transaction obj)
+            {
+                obj.ClearPreHash();
+                obj.Hash = default;
+                obj.ChainId = default;
+                obj.Type = default;
+                obj.Nonce = default;
+                obj.GasPrice = default;
+                obj.GasBottleneck = default;
+                obj.DecodedMaxFeePerGas = default;
+                obj.GasLimit = default;
+                obj.To = default;
+                obj.Value = default;
+                obj.Data = default;
+                obj.SenderAddress = default;
+                obj.Signature = default;
+                obj.Timestamp = default;
+                obj.AccessList = default;
+                obj.MaxFeePerBlobGas = default;
+                obj.BlobVersionedHashes = default;
+                obj.NetworkWrapper = default;
+                obj.IsServiceTransaction = default;
+                obj.PoolIndex = default;
+                obj._size = default;
+
+                return true;
+            }
+        }
     }
 
     /// <summary>
