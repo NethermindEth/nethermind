@@ -34,13 +34,12 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         int numberOfTxsInDb = 0;
         int numberOfBlobsInDb = 0;
         Stopwatch stopwatch = Stopwatch.StartNew();
-        foreach (Transaction fullBlobTx in blobTxStorage.GetAll())
+        foreach (LightTransaction lightBlobTx in blobTxStorage.GetAll())
         {
-            if (base.TryInsert(fullBlobTx.Hash, new LightTransaction(fullBlobTx), out _))
+            if (base.TryInsert(lightBlobTx.Hash, lightBlobTx, out _))
             {
-                _blobTxCache.Set(fullBlobTx.Hash, fullBlobTx);
                 numberOfTxsInDb++;
-                numberOfBlobsInDb += fullBlobTx.BlobVersionedHashes?.Length ?? 0;
+                numberOfBlobsInDb += lightBlobTx.BlobVersionedHashes?.Length ?? 0;
             }
         }
 

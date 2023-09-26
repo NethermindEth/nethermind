@@ -11,7 +11,7 @@ namespace Nethermind.TxPool;
 public interface ITxStorage
 {
     bool TryGet(ValueKeccak hash, [NotNullWhen(true)] out Transaction? transaction);
-    IEnumerable<Transaction> GetAll();
+    IEnumerable<LightTransaction> GetAll();
     void Add(Transaction transaction);
     void Delete(ValueKeccak hash);
 }

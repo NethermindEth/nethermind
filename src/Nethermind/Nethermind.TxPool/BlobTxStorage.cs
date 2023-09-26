@@ -14,23 +14,30 @@ namespace Nethermind.TxPool;
 
 public class BlobTxStorage : ITxStorage
 {
-    private readonly IDb _database;
+    private readonly IColumnsDb<BlobTxsColumns> _database;
+    private readonly IDb _fullBlobTxsDb;
+    private readonly IDb _lightBlobTxsDb;
     private static readonly TxDecoder _txDecoder = new();
+    private static readonly LightTxDecoder _lightTxDecoder = new();
 
     public BlobTxStorage()
     {
-        _database = new MemDb();
+        _database = new MemDbFactory().CreateColumnsDb<BlobTxsColumns>("BlobTxs");
+        _fullBlobTxsDb = new MemDb();
+        _lightBlobTxsDb = new MemDb();
     }
 
-    public BlobTxStorage(IDb database)
+    public BlobTxStorage(IColumnsDb<BlobTxsColumns> database)
     {
         _database = database ?? throw new ArgumentNullException(nameof(database));
+        _fullBlobTxsDb = database.GetColumnDb(BlobTxsColumns.FullBlobTxs);
+        _lightBlobTxsDb = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
     }
 
     public bool TryGet(ValueKeccak hash, [NotNullWhen(true)] out Transaction? transaction)
-        => TryDecode(_database.Get(hash.Bytes), out transaction);
+        => TryDecodeFullTx(_fullBlobTxsDb.Get(hash.Bytes), out transaction);
 
-    private static bool TryDecode(byte[]? txBytes, out Transaction? transaction)
+    private static bool TryDecodeFullTx(byte[]? txBytes, out Transaction? transaction)
     {
         if (txBytes is not null)
         {
@@ -47,11 +54,23 @@ public class BlobTxStorage : ITxStorage
         return false;
     }
 
-    public IEnumerable<Transaction> GetAll()
+    private static bool TryDecodeLightTx(byte[]? txBytes, out LightTransaction? lightTx)
     {
-        foreach (byte[] txBytes in _database.GetAllValues())
+        if (txBytes is not null)
         {
-            if (TryDecode(txBytes, out Transaction? transaction))
+            lightTx = _lightTxDecoder.Decode(txBytes);
+            return true;
+        }
+
+        lightTx = default;
+        return false;
+    }
+
+    public IEnumerable<LightTransaction> GetAll()
+    {
+        foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())
+        {
+            if (TryDecodeLightTx(txBytes, out LightTransaction? transaction))
             {
                 yield return transaction!;
             }
@@ -74,7 +93,8 @@ public class BlobTxStorage : ITxStorage
         rlpStream.Encode(transaction.Timestamp);
         rlpStream.Encode(transaction, RlpBehaviors.InMempoolForm);
 
-        _database.Set(transaction.Hash, rlpStream.Data!);
+        _fullBlobTxsDb.Set(transaction.Hash, rlpStream.Data!);
+        _lightBlobTxsDb.Set(transaction.Hash, _lightTxDecoder.Encode(transaction));
     }
 
     public void Delete(ValueKeccak hash)

@@ -19,7 +19,7 @@ public class NullBlobTxStorage : ITxStorage
         return false;
     }
 
-    public IEnumerable<Transaction> GetAll() => Array.Empty<Transaction>();
+    public IEnumerable<LightTransaction> GetAll() => Array.Empty<LightTransaction>();
 
     public void Add(Transaction transaction) { }
 

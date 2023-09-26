@@ -3,6 +3,8 @@
 
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 
@@ -13,7 +15,7 @@ public class LightTransaction : Transaction
 {
     public LightTransaction(Transaction fullTx)
     {
-        Type = TxType.Blob;
+        Type = fullTx.Type;
         Hash = fullTx.Hash;
         SenderAddress = fullTx.SenderAddress;
         Nonce = fullTx.Nonce;
@@ -27,5 +29,34 @@ public class LightTransaction : Transaction
         Timestamp = fullTx.Timestamp;
         PoolIndex = fullTx.PoolIndex;
         _size = fullTx.GetLength();
+    }
+
+    public LightTransaction(TxType type,
+        Keccak hash,
+        Address sender,
+        UInt256 nonce,
+        UInt256 value,
+        long gasLimit,
+        UInt256 gasPrice,
+        UInt256 maxFeePerGas,
+        UInt256 maxFeePerBlobGas,
+        byte[][] blobVersionHashes,
+        UInt256 timestamp,
+        ulong poolIndex,
+        int size)
+    {
+        Type = type;
+        Hash = hash;
+        SenderAddress = sender;
+        Nonce = nonce;
+        Value = value;
+        GasLimit = gasLimit;
+        GasPrice = gasPrice; // means MaxPriorityFeePerGas
+        DecodedMaxFeePerGas = maxFeePerGas;
+        MaxFeePerBlobGas = maxFeePerBlobGas;
+        BlobVersionedHashes = blobVersionHashes;
+        Timestamp = timestamp;
+        PoolIndex = poolIndex;
+        _size = size;
     }
 }
