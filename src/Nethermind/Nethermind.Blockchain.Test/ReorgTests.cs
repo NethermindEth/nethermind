@@ -123,8 +123,8 @@ namespace Nethermind.Blockchain.Test
             Assert.That(() => _blockTree.Head, Is.EqualTo(block2B).After(10000, 500));
 
             events.Should().HaveCount(6);
-            events[4].Hash.Should().Be(block1B.Hash);
-            events[5].Hash.Should().Be(block2B.Hash);
+            events[4].Hash.Should().Be(block1B.Hash!);
+            events[5].Hash.Should().Be(block2B.Hash!);
         }
     }
 }

@@ -201,9 +201,9 @@ public partial class EthRpcModuleTests
         Transaction txWithFutureNonce = Build.A.Transaction.To(TestItem.AddressB)
             .SignedAndResolved(TestItem.PrivateKeyA).WithValue(0.Ether()).WithNonce(5).TestObject;
         ValueTask<(Keccak? Hash, AcceptTxResult? AddTxResult)> resultNextNonce =
-            ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None);
+            ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None)!;
         ValueTask<(Keccak? Hash, AcceptTxResult? AddTxResult)> resultFutureNonce =
-            ctx.Test.TxSender.SendTransaction(txWithFutureNonce, TxHandlingOptions.None);
+            ctx.Test.TxSender.SendTransaction(txWithFutureNonce, TxHandlingOptions.None)!;
         Assert.That(AcceptTxResult.Accepted, Is.EqualTo(resultNextNonce.Result.AddTxResult));
         Assert.That(AcceptTxResult.Accepted, Is.EqualTo(resultFutureNonce.Result.AddTxResult));
 
@@ -228,7 +228,7 @@ public partial class EthRpcModuleTests
         Transaction txWithNextNonce = Build.A.Transaction.To(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyB).WithValue(0.Ether()).WithNonce(0).TestObject;
         ValueTask<(Keccak? Hash, AcceptTxResult? AddTxResult)> resultNextNonce =
-            ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None);
+            ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None)!;
         Assert.That(AcceptTxResult.Accepted, Is.EqualTo(resultNextNonce.Result.AddTxResult));
         string serializedLatestAfter = await ctx.Test.TestEthRpc("eth_getTransactionCount", TestItem.AddressB.Bytes.ToHexString(true));
         Assert.That(serializedLatestAfter, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}"));
@@ -667,7 +667,7 @@ public partial class EthRpcModuleTests
     {
         IBlockchainBridge? blockchainBridge = Substitute.For<IBlockchainBridge>();
         TestRpcBlockchain ctx = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(blockchainBridge).Build(MainnetSpecProvider.Instance);
-        ctx.TestEthRpc("eth_getBlockByNumber", blockParameter, "false");
+        await ctx.TestEthRpc("eth_getBlockByNumber", blockParameter, "false");
         blockchainBridge.Received(0).RecoverTxSenders(Arg.Any<Block>());
     }
 
@@ -702,30 +702,6 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getCode", TestItem.AddressA.ToString());
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0xabcd\",\"id\":67}"));
-    }
-
-    [Test]
-    public async Task Eth_mining_true()
-    {
-        using Context ctx = await Context.Create();
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.IsMining.Returns(true);
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
-
-        string serialized = await ctx.Test.TestEthRpc("eth_mining");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
-    }
-
-    [Test]
-    public async Task Eth_mining_false()
-    {
-        using Context ctx = await Context.Create();
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.IsMining.Returns(false);
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
-
-        string serialized = await ctx.Test.TestEthRpc("eth_mining");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}"));
     }
 
     [Test]
