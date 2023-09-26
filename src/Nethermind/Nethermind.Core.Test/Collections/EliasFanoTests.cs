@@ -16,10 +16,10 @@ public class EliasFanoTests
         UIntPtr[] data = new UIntPtr[200];
         for (uint i = 0; i < 200; i++) data[i] = i * 20000;
 
-        EliasFano efb = new (data[^1], data.Length);
+        EliasFanoBuilder efb = new (data[^1], data.Length);
 
         foreach (UIntPtr val in data) efb.Push(val);
-        EliasFanoS ef = efb.Build();
+        EliasFano ef = efb.Build();
         Console.WriteLine(string.Join(", ", data));
         ef.Rank(300000).Should().Be(15);
     }
@@ -27,13 +27,13 @@ public class EliasFanoTests
     [Test]
     public void TestCase()
     {
-        EliasFano efb = new (8, 4);
+        EliasFanoBuilder efb = new (8, 4);
         efb.Push(1);
         efb.Push(3);
         efb.Push(3);
         efb.Push(7);
 
-        EliasFanoS ef = efb.Build();
+        EliasFano ef = efb.Build();
         ef.Rank(3).Should().Be(1);
         ef.Rank(4).Should().Be(3);
         ef.Rank(8).Should().Be(4);
@@ -43,7 +43,7 @@ public class EliasFanoTests
     [Test]
     public void TestCaseBlocks()
     {
-        EliasFano efb = new (1000, 14);
+        EliasFanoBuilder efb = new (1000, 14);
         efb.Push(1);
         efb.Push(3);
         efb.Push(3);
@@ -59,7 +59,7 @@ public class EliasFanoTests
         efb.Push(899);
         efb.Push(999);
 
-        EliasFanoS ef = efb.Build();
+        EliasFano ef = efb.Build();
         ef.Rank(0).Should().Be(0);
         ef.Rank(1).Should().Be(0);
         ef.Rank(2).Should().Be(1);

@@ -5,17 +5,17 @@ using Nethermind.Core.Collections.EliasFano;
 
 namespace Nethermind.Serialization.Rlp.EliasFano;
 
-public class EliasFanoDecoder: IRlpStreamDecoder<EliasFanoS>
+public class EliasFanoDecoder: IRlpStreamDecoder<Core.Collections.EliasFano.EliasFano>
 {
     private readonly BitVectorDecoder _vecDecoder = new();
     private readonly DArrayDecoder _dArrayDecoder = new();
 
-    public int GetLength(EliasFanoS item, RlpBehaviors rlpBehaviors)
+    public int GetLength(Core.Collections.EliasFano.EliasFano item, RlpBehaviors rlpBehaviors)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }
 
-    public int GetContentLength(EliasFanoS item, RlpBehaviors rlpBehaviors)
+    public int GetContentLength(Core.Collections.EliasFano.EliasFano item, RlpBehaviors rlpBehaviors)
     {
         int contentLength = 0;
         contentLength += _dArrayDecoder.GetLength(item._highBits, rlpBehaviors);
@@ -25,16 +25,16 @@ public class EliasFanoDecoder: IRlpStreamDecoder<EliasFanoS>
         return contentLength;
     }
 
-    public EliasFanoS Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public Core.Collections.EliasFano.EliasFano Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         DArray hghBits = _dArrayDecoder.Decode(rlpStream);
         BitVector lowBits = _vecDecoder.Decode(rlpStream);
         int lowLen = rlpStream.DecodeInt();
         ulong universe = rlpStream.DecodeUlong();
-        return new EliasFanoS(hghBits, lowBits, lowLen, universe);
+        return new Core.Collections.EliasFano.EliasFano(hghBits, lowBits, lowLen, universe);
     }
 
-    public void Encode(RlpStream stream, EliasFanoS item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode(RlpStream stream, Core.Collections.EliasFano.EliasFano item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int contentLength = GetContentLength(item, rlpBehaviors);
         stream.StartSequence(contentLength);

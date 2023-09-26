@@ -2,19 +2,23 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using Nethermind.Core.Collections.EliasFano;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Collections.EliasFano;
 
-public readonly struct EliasFanoS
+public struct EliasFano
 {
-    public readonly DArray _highBits;
-    public readonly BitVector _lowBits;
-    public readonly int _lowLen;
-    public readonly ulong _universe;
+    public const int LinearScanThreshold= 64;
+    public DArray _highBits;
+    public BitVector _lowBits;
+    public int _lowLen;
+    public ulong _universe;
 
-    public EliasFanoS(DArray highBits, BitVector lowBits, int lowLen, ulong universe)
+    public int Length => _highBits.NumOnes;
+
+    public EliasFano(DArray highBits, BitVector lowBits, int lowLen, ulong universe)
     {
         _highBits = highBits;
         _lowBits = lowBits;
@@ -22,6 +26,13 @@ public readonly struct EliasFanoS
         _universe = universe;
     }
 
+    /// <summary>
+    ///
+    ///
+    /// </summary>
+    /// <param name="pos"></param>
+    /// <returns></returns>
+    /// <exception cref="ArgumentException"></exception>
     public int Rank(ulong pos)
     {
         if (_universe < pos) throw new ArgumentException();
@@ -43,50 +54,110 @@ public readonly struct EliasFanoS
 
         return rank;
     }
-}
 
-public struct EliasFano
-{
-    private BitVector _highBits;
-    private BitVector _lowBits;
-    private readonly ulong _universe;
-    private readonly int _numValues;
-    private int _pos;
-    private ulong _last;
-    private readonly int _lowLen;
-
-    public EliasFano(ulong universe, int numValues)
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="k"></param>
+    /// <returns></returns>
+    public ulong? Delta(int k)
     {
-        int lowLen = (int)Math.Ceiling(Math.Log2(universe / (ulong)numValues));
-        _highBits = new BitVector((numValues + 1) + (int)(universe >> lowLen) + 1);
-        _lowBits = new BitVector();
-        _universe = universe;
-        _numValues = numValues;
-        _pos = 0;
-        _last = 0;
-        _lowLen = lowLen;
-    }
+        if (Length <= k) return null;
 
+        int highVal = _highBits.Select1(k)!.Value;
+        ulong lowVal = _lowBits.GetBits(k * _lowLen, _lowLen)!.Value;
 
-    public void Push(ulong val)
-    {
-        if (val < _last) throw new ArgumentException("not allowed");
-        if (_universe < _last) throw new ArgumentException("not allowed");
-        if (_numValues <= _pos) throw new ArgumentException("not allowed");
-
-        _last = val;
-        ulong lowMask = (((ulong)1) << _lowLen) - 1;
-
-        if (_lowLen != 0)
+        ulong x = 0;
+        if (k != 0)
         {
-            _lowBits.PushBits(val & lowMask, _lowLen);
+            int temp = highVal - _highBits._data.Predecessor1(highVal - 1)!.Value - 1;
+            x = ((ulong)temp << _lowLen) + lowVal - _lowBits.GetBits((k - 1) * _lowLen, _lowLen)!.Value;
         }
-        _highBits.SetBit((int)(val >> _lowLen) + _pos, true);
-        _pos += 1;
+        else
+        {
+            x = (((ulong)highVal) << _lowLen) | lowVal;
+        }
+
+        return x;
     }
 
-    public EliasFanoS Build()
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="start"></param>
+    /// <param name="end"></param>
+    /// <param name="val"></param>
+    /// <returns></returns>
+    public int? BinSearchRange(int start, int end, ulong val)
     {
-        return new EliasFanoS(new DArray(_highBits), _lowBits, _lowLen, _universe);
+        if (start < end) return null;
+
+        int hi = end;
+        int lo = start;
+
+        while ((hi - lo)>LinearScanThreshold)
+        {
+            int mi = (lo + hi) / 2;
+            ulong x = Select(mi)!.Value;
+            if (val == x) return mi;
+            if (val < x)
+            {
+                hi = mi;
+            }
+            else
+            {
+                lo = mi + 1;
+            }
+        }
+
+        EliasFanoIterator it = new EliasFanoIterator(this, lo);
+        for (int i = lo; i < hi; i++)
+        {
+            it.MoveNext();
+            ulong x = it.Current;
+            if (val == x) return i;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="k"></param>
+    /// <returns></returns>
+    public ulong? Select(int k)
+    {
+        if (Length <= k) return null;
+
+        ulong temp = (ulong)(_highBits.Select1(k)!.Value - k) << _lowLen;
+        temp |= _lowBits.GetBits(k * _lowLen, _lowLen)!.Value;
+        return temp;
+    }
+
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="pos"></param>
+    /// <returns></returns>
+    public ulong? Predecessor(ulong pos)
+    {
+        if (_universe <= pos) return null;
+
+        int rank = Rank(pos + 1);
+        return rank > 0 ? Select(rank - 1) : null;
+    }
+
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="pos"></param>
+    /// <returns></returns>
+    public ulong? Successor(ulong pos)
+    {
+        if (_universe <= pos) return null;
+
+        int rank = Rank(pos);
+        return rank < Length ? Select(rank) : null;
     }
 }
