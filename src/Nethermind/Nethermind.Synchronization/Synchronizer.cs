@@ -136,7 +136,7 @@ namespace Nethermind.Synchronization
 
         private void SetupDbOptimizer()
         {
-            new SyncDbTuner(_syncConfig, _snapSyncFeed, _bodiesFeed, _receiptsFeed, _dbProvider.StateDb, _dbProvider.CodeDb,
+            new SyncDbTuner(_syncConfig, _snapSyncFeed, _bodiesFeed, _receiptsFeed, _dbProvider.PathStateDb, _dbProvider.CodeDb,
                 _dbProvider.BlocksDb, _dbProvider.ReceiptsDb);
         }
 

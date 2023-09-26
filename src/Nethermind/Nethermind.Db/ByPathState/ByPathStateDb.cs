@@ -12,7 +12,7 @@ using Nethermind.Core;
 using Nethermind.Logging;
 
 namespace Nethermind.Db.ByPathState;
-public class ByPathStateDb : IByPathStateDb
+public class ByPathStateDb : IByPathStateDb, ITunableDb
 {
     private readonly RocksDbSettings _settings;
     private readonly IRocksDbFactory _dbFactory;
@@ -71,6 +71,14 @@ public class ByPathStateDb : IByPathStateDb
     public void Clear()
     {
         _currentDb.Clear();
+    }
+
+    public void Tune(ITunableDb.TuneType type)
+    {
+        if (_currentDb is ITunableDb tunable)
+        {
+            tunable.Tune(type);
+        }
     }
 
     public void DangerousReleaseMemory(in Span<byte> span)
