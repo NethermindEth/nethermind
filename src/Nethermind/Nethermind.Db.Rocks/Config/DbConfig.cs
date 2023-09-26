@@ -169,13 +169,38 @@ public class DbConfig : IDbConfig
     public int? StateDbMaxOpenFiles { get; set; }
     public long? StateDbMaxBytesPerSec { get; set; }
     public int? StateDbBlockSize { get; set; } = 4 * 1024;
-    public int? PathStateDbBlockSize { get; set; } = 4 * 1024;
     public bool? StateDbUseDirectReads { get; set; } = false;
     public bool? StateDbUseDirectIoForFlushAndCompactions { get; set; } = false;
     public ulong? StateDbCompactionReadAhead { get; set; }
     public bool? StateDbDisableCompression { get; set; } = false;
     public int StateDbTargetFileSizeMultiplier { get; set; } = 2;
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
+
+    public ulong PathStateStateDbWriteBufferSize { get; set; }
+    public uint PathStateStateDbWriteBufferNumber { get; set; }
+    public ulong PathStateStateDbBlockCacheSize { get; set; }
+    public bool PathStateStateDbCacheIndexAndFilterBlocks { get; set; }
+    public int? PathStateStateDbMaxOpenFiles { get; set; }
+    public long? PathStateStateDbMaxBytesPerSec { get; set; }
+    public int? PathStateStateDbBlockSize { get; set; } = 4 * 1024;
+    public bool? PathStateStateDbUseDirectReads { get; set; }
+    public bool? PathStateStateDbUseDirectIoForFlushAndCompactions { get; set; }
+    public ulong? PathStateStateDbCompactionReadAhead { get; set; }
+    public bool? PathStateStateDbDisableCompression { get; set; } = true;
+    public IDictionary<string, string>? PathStateStateDbAdditionalRocksDbOptions { get; set; }
+
+    public ulong PathStateStorageDbWriteBufferSize { get; set; }
+    public uint PathStateStorageDbWriteBufferNumber { get; set; }
+    public ulong PathStateStorageDbBlockCacheSize { get; set; }
+    public bool PathStateStorageDbCacheIndexAndFilterBlocks { get; set; }
+    public int? PathStateStorageDbMaxOpenFiles { get; set; }
+    public long? PathStateStorageDbMaxBytesPerSec { get; set; }
+    public int? PathStateStorageDbBlockSize { get; set; } = 4 * 1024;
+    public bool? PathStateStorageDbUseDirectReads { get; set; }
+    public bool? PathStateStorageDbUseDirectIoForFlushAndCompactions { get; set; }
+    public ulong? PathStateStorageDbCompactionReadAhead { get; set; }
+    public bool? PathStateStorageDbDisableCompression { get; set; } = true;
+    public IDictionary<string, string>? PathStateStorageDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;
     public bool WriteAheadLogSync { get; set; } = false;

@@ -176,6 +176,32 @@ public interface IDbConfig : IConfig
     int StateDbTargetFileSizeMultiplier { get; set; }
     IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
+    ulong PathStateStateDbWriteBufferSize { get; set; }
+    uint PathStateStateDbWriteBufferNumber { get; set; }
+    ulong PathStateStateDbBlockCacheSize { get; set; }
+    bool PathStateStateDbCacheIndexAndFilterBlocks { get; set; }
+    int? PathStateStateDbMaxOpenFiles { get; set; }
+    long? PathStateStateDbMaxBytesPerSec { get; set; }
+    int? PathStateStateDbBlockSize { get; set; }
+    bool? PathStateStateDbUseDirectReads { get; set; }
+    bool? PathStateStateDbUseDirectIoForFlushAndCompactions { get; set; }
+    ulong? PathStateStateDbCompactionReadAhead { get; set; }
+    bool? PathStateStateDbDisableCompression { get; set; }
+    IDictionary<string, string>? PathStateStateDbAdditionalRocksDbOptions { get; set; }
+
+    ulong PathStateStorageDbWriteBufferSize { get; set; }
+    uint PathStateStorageDbWriteBufferNumber { get; set; }
+    ulong PathStateStorageDbBlockCacheSize { get; set; }
+    bool PathStateStorageDbCacheIndexAndFilterBlocks { get; set; }
+    int? PathStateStorageDbMaxOpenFiles { get; set; }
+    long? PathStateStorageDbMaxBytesPerSec { get; set; }
+    int? PathStateStorageDbBlockSize { get; set; }
+    bool? PathStateStorageDbUseDirectReads { get; set; }
+    bool? PathStateStorageDbUseDirectIoForFlushAndCompactions { get; set; }
+    ulong? PathStateStorageDbCompactionReadAhead { get; set; }
+    bool? PathStateStorageDbDisableCompression { get; set; }
+    IDictionary<string, string>? PathStateStorageDbAdditionalRocksDbOptions { get; set; }
+
     /// <summary>
     /// Enables DB Statistics - https://github.com/facebook/rocksdb/wiki/Statistics
     /// It can has a RocksDB perfomance hit between 5 and 10%.
