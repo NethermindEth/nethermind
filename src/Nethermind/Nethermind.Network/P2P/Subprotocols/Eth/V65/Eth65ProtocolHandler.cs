@@ -147,6 +147,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
                     txsToSend.Add(tx);
                     packetSizeLeft -= txSize;
+                    TxPool.Metrics.PendingTransactionsSent++;
                 }
             }
 
