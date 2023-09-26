@@ -93,7 +93,7 @@ namespace Nethermind.Merge.Plugin.Test
         private static ExecutionPayloadV3 CreateBlockRequestV3(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
                 ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null)
         {
-            var blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(spec, state, parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
+            ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(spec, state, parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             blockRequestV3.TryGetBlock(out Block? block);
             _beaconBlockRootHandler.ApplyContractStateChanges(block!, spec, state);
 

@@ -69,8 +69,17 @@ namespace Nethermind.Runner.Logging
 
             Console.WriteLine($"Enabling log level override: {logLevel.ToUpperInvariant()}");
 
+            // There are some rules for which we don't want to override the log level
+            // but instead preserve the original config defined in the 'NLog.config' file
+            string[] ignoredRuleNames =
+            {
+                "JsonWebAPI*",
+                "JsonWebAPI.Microsoft.Extensions.Diagnostics.HealthChecks.DefaultHealthCheckService",
+            };
             foreach (LoggingRule rule in LogManager.Configuration.LoggingRules)
             {
+                if (ignoredRuleNames.Contains(rule.LoggerNamePattern)) { continue; }
+
                 foreach (var ruleTarget in rule.Targets)
                 {
                     if (ruleTarget.Name != "seq")
