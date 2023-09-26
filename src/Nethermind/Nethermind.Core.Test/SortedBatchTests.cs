@@ -11,26 +11,26 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
-public class KeccakSortedBatchTests
+public class SortedBatchTests
 {
     [Test]
     public void Test_BatchWillSort()
     {
         TestBatch baseBatch = new TestBatch();
 
-        IKeccakBatch keccakBatch = baseBatch.ToKeccakBatch();
+        IBatch sortedBatch = baseBatch.ToSortedBatch();
 
         IList<byte[]> expectedOrder = new List<byte[]>();
         for (int i = 0; i < 10; i++)
         {
-            keccakBatch[TestItem.ValueKeccaks[i]] = TestItem.ValueKeccaks[i].ToByteArray();
+            sortedBatch[TestItem.ValueKeccaks[i].ToByteArray()] = TestItem.ValueKeccaks[i].ToByteArray();
             expectedOrder.Add(TestItem.ValueKeccaks[i].ToByteArray());
         }
 
         baseBatch.DisposeCalled.Should().BeFalse();
         baseBatch.SettedValues.Count.Should().Be(0);
 
-        keccakBatch.Dispose();
+        sortedBatch.Dispose();
 
         baseBatch.DisposeCalled.Should().BeTrue();
         expectedOrder = expectedOrder.Order(Bytes.Comparer).ToList();

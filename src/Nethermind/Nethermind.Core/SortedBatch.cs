@@ -3,9 +3,9 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core;
 
@@ -14,26 +14,26 @@ namespace Nethermind.Core;
 /// to be limited to 1Mil writes per second.
 /// TODO: FlatDB layout need different key type to match the DB ordering.
 /// </summary>
-public class KeccakSortedBatch: IKeccakBatch
+public class SortedBatch: IBatch
 {
     private const int InitialBatchSize = 300;
     private static readonly int MaxCached = Environment.ProcessorCount;
 
-    private static ConcurrentQueue<Dictionary<ValueKeccak, byte[]?>> s_cache = new();
+    private static ConcurrentQueue<SpanDictionary<byte, byte[]?>> s_cache = new();
 
     private readonly IBatch _baseBatch;
     private WriteFlags _writeFlags = WriteFlags.None;
 
-    private Dictionary<ValueKeccak, byte[]?> _batchData = CreateOrGetFromCache();
+    private SpanDictionary<byte, byte[]?> _batchData = CreateOrGetFromCache();
 
-    public KeccakSortedBatch(IBatch dbOnTheRocks)
+    public SortedBatch(IBatch dbOnTheRocks)
     {
         _baseBatch = dbOnTheRocks;
     }
 
     public void Dispose()
     {
-        Dictionary<ValueKeccak, byte[]?> batchData = _batchData;
+        SpanDictionary<byte, byte[]?> batchData = _batchData;
         // Clear the _batchData reference so is null if Get is called.
         _batchData = null!;
         if (batchData.Count == 0)
@@ -45,39 +45,39 @@ public class KeccakSortedBatch: IKeccakBatch
         }
 
         // Sort the batch by key
-        foreach (var kv in batchData.OrderBy(i => i.Key))
+        foreach (var kv in batchData.OrderBy(i => i.Key, Bytes.Comparer))
         {
-            _baseBatch.Set(kv.Key.BytesAsSpan, kv.Value, _writeFlags);
+            _baseBatch.Set(kv.Key, kv.Value, _writeFlags);
         }
         ReturnToCache(batchData);
 
         _baseBatch.Dispose();
     }
 
-    public byte[]? Get(ValueKeccak key, ReadFlags flags = ReadFlags.None)
+    public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
         // Not checking _isDisposing here as for some reason, sometimes is is read after dispose
-        return _batchData?.TryGetValue(key, out byte[]? value) ?? false ? value : _baseBatch.Get(key.BytesAsSpan);
+        return _batchData?.TryGetValue(key, out byte[]? value) ?? false ? value : _baseBatch.Get(key);
     }
 
-    public void Set(ValueKeccak key, byte[]? value, WriteFlags flags = WriteFlags.None)
+    public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
         _batchData[key] = value;
 
         _writeFlags = flags;
     }
 
-    private static Dictionary<ValueKeccak, byte[]?> CreateOrGetFromCache()
+    private static SpanDictionary<byte, byte[]?> CreateOrGetFromCache()
     {
-        if (s_cache.TryDequeue(out Dictionary<ValueKeccak, byte[]?>? batchData))
+        if (s_cache.TryDequeue(out SpanDictionary<byte, byte[]?>? batchData))
         {
             return batchData;
         }
 
-        return new Dictionary<ValueKeccak, byte[]?>(InitialBatchSize);
+        return new SpanDictionary<byte, byte[]?>(InitialBatchSize, Bytes.SpanEqualityComparer);
     }
 
-    private static void ReturnToCache(Dictionary<ValueKeccak, byte[]?> batchData)
+    private static void ReturnToCache(SpanDictionary<byte, byte[]?> batchData)
     {
         if (s_cache.Count >= MaxCached) return;
 
@@ -88,8 +88,8 @@ public class KeccakSortedBatch: IKeccakBatch
 }
 
 public static class BatchExtensions {
-    public static KeccakSortedBatch ToKeccakBatch(this IBatch batch)
+    public static SortedBatch ToSortedBatch(this IBatch batch)
     {
-        return new KeccakSortedBatch(batch);
+        return new SortedBatch(batch);
     }
 }
