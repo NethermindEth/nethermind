@@ -17,9 +17,9 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class InvalidBlockInterceptorTest
 {
-    private IBlockValidator _baseValidator;
-    private IInvalidChainTracker _tracker;
-    private InvalidBlockInterceptor _invalidBlockInterceptor;
+    private IBlockValidator _baseValidator = null!;
+    private IInvalidChainTracker _tracker = null!;
+    private InvalidBlockInterceptor _invalidBlockInterceptor = null!;
 
     [SetUp]
     public void Setup()
