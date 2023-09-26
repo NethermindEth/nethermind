@@ -23,7 +23,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(true, false)]
         [TestCase(true, true)]
         [TestCase(false, false)]
-        public async Task Smoke(bool fastSync, bool fastBlocks)
+        public void Smoke(bool fastSync, bool fastBlocks)
         {
             ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
@@ -32,20 +32,22 @@ namespace Nethermind.Synchronization.Test
             ITimer timer = Substitute.For<ITimer>();
             timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
 
-            Queue<SyncMode> _syncModes = new();
-            _syncModes.Enqueue(SyncMode.WaitingForBlock);
-            _syncModes.Enqueue(SyncMode.FastSync);
-            _syncModes.Enqueue(SyncMode.Full);
-            _syncModes.Enqueue(SyncMode.FastBlocks);
-            _syncModes.Enqueue(SyncMode.StateNodes);
-            _syncModes.Enqueue(SyncMode.Disconnected);
+            Queue<SyncMode> syncModes = new();
+            syncModes.Enqueue(SyncMode.WaitingForBlock);
+            syncModes.Enqueue(SyncMode.FastSync);
+            syncModes.Enqueue(SyncMode.Full);
+            syncModes.Enqueue(SyncMode.FastBlocks);
+            syncModes.Enqueue(SyncMode.StateNodes);
+            syncModes.Enqueue(SyncMode.Disconnected);
 
-            SyncConfig syncConfig = new();
-            syncConfig.FastBlocks = fastBlocks;
-            syncConfig.FastSync = fastSync;
+            SyncConfig syncConfig = new()
+            {
+                FastBlocks = fastBlocks,
+                FastSync = fastSync,
+            };
 
             SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), selector, syncConfig, Substitute.For<IPivot>(), LimboLogs.Instance, timerFactory);
-            selector.Current.Returns((ci) => _syncModes.Count > 0 ? _syncModes.Dequeue() : SyncMode.Full);
+            selector.Current.Returns(_ => syncModes.Count > 0 ? syncModes.Dequeue() : SyncMode.Full);
             timer.Elapsed += Raise.Event();
             syncReport.FastBlocksHeaders.MarkEnd();
             syncReport.FastBlocksBodies.MarkEnd();
@@ -69,22 +71,24 @@ namespace Nethermind.Synchronization.Test
             logger.IsInfo.Returns(true);
             logManager.GetClassLogger().Returns(logger);
 
-            Queue<SyncMode> _syncModes = new();
-            _syncModes.Enqueue(SyncMode.FastHeaders);
-            _syncModes.Enqueue(SyncMode.FastBodies);
-            _syncModes.Enqueue(SyncMode.FastReceipts);
+            Queue<SyncMode> syncModes = new();
+            syncModes.Enqueue(SyncMode.FastHeaders);
+            syncModes.Enqueue(SyncMode.FastBodies);
+            syncModes.Enqueue(SyncMode.FastReceipts);
 
-            SyncConfig syncConfig = new();
-            syncConfig.FastBlocks = true;
-            syncConfig.FastSync = true;
-            syncConfig.PivotNumber = "100";
+            SyncConfig syncConfig = new()
+            {
+                FastBlocks = true,
+                FastSync = true,
+                PivotNumber = "100",
+            };
             if (setBarriers)
             {
                 syncConfig.AncientBodiesBarrier = 30;
                 syncConfig.AncientReceiptsBarrier = 35;
             }
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), selector, syncConfig, Substitute.For<IPivot>(), logManager, timerFactory);
+            SyncReport _ = new(pool, Substitute.For<INodeStatsManager>(), selector, syncConfig, Substitute.For<IPivot>(), logManager, timerFactory);
             selector.Current.Returns(_ => SyncMode.FastHeaders | SyncMode.FastBodies | SyncMode.FastReceipts);
             timer.Elapsed += Raise.Event();
 
