@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core.Collections.EliasFano;
 using Nethermind.Core.Extensions;
@@ -159,5 +160,11 @@ public struct EliasFano
 
         int rank = Rank(pos);
         return rank < Length ? Select(rank) : null;
+    }
+
+    public IEnumerable<ulong> GetEnumerator(int k)
+    {
+        EliasFanoIterator itr = new EliasFanoIterator(this, k);
+        while (itr.MoveNext()) yield return itr.Current;
     }
 }

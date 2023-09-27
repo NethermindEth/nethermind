@@ -27,6 +27,7 @@ public class EliasFanoDecoder: IRlpStreamDecoder<Core.Collections.EliasFano.Elia
 
     public Core.Collections.EliasFano.EliasFano Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        rlpStream.ReadSequenceLength();
         DArray hghBits = _dArrayDecoder.Decode(rlpStream);
         BitVector lowBits = _vecDecoder.Decode(rlpStream);
         int lowLen = rlpStream.DecodeInt();

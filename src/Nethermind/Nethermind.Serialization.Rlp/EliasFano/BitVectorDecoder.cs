@@ -12,7 +12,7 @@ public class BitVectorDecoder: IRlpStreamDecoder<BitVector>
 {
     public int GetLength(BitVector item, RlpBehaviors rlpBehaviors)
     {
-        return GetContentLength(item, rlpBehaviors);
+        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }
     public int GetContentLength(BitVector item, RlpBehaviors rlpBehaviors)
     {

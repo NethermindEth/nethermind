@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Core.Collections.EliasFano;
 
@@ -58,6 +59,11 @@ public struct EliasFanoBuilder
         }
         _highBits.SetBit((int)(val >> _lowLen) + _pos, true);
         _pos += 1;
+    }
+
+    public void Extend(IEnumerable<ulong> values)
+    {
+        foreach (ulong val in values) Push(val);
     }
 
     public EliasFano Build()
