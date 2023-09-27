@@ -15,9 +15,9 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class InvalidHeaderInterceptorTest
 {
-    private IHeaderValidator _baseValidator;
-    private IInvalidChainTracker _tracker;
-    private InvalidHeaderInterceptor _invalidHeaderInterceptor;
+    private IHeaderValidator _baseValidator = null!;
+    private IInvalidChainTracker _tracker = null!;
+    private InvalidHeaderInterceptor _invalidHeaderInterceptor = null!;
 
     [SetUp]
     public void Setup()

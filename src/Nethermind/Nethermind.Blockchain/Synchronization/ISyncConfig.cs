@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "[EXPERIMENTAL] Only for non validator nodes! If set to true, DownloadReceiptsInFastSync and/or DownloadBodiesInFastSync can be set to false.", DefaultValue = "false")]
         public bool NonValidatorNode { get; set; }
 
-        [ConfigItem(Description = "[EXPERIMENTAL] Optimize db for write during sync. Significantly reduce total writes written and some sync time if you are not network limited.", DefaultValue = "Default")]
+        [ConfigItem(Description = "[EXPERIMENTAL] Optimize db for write during sync. Significantly reduce total writes written and some sync time if you are not network limited.", DefaultValue = "WriteBias")]
         public ITunableDb.TuneType TuneDbMode { get; set; }
 
         [ConfigItem(Description = "[EXPERIMENTAL] Optimize db for write during sync just for blocks db. Useful for turning on blobs file.", DefaultValue = "EnableBlobFiles")]
@@ -121,5 +121,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         [ConfigItem(Description = "Specify wait time after sync finished.", DefaultValue = "60")]
         public int ExitOnSyncedWaitTimeSec { get; set; }
+
+        [ConfigItem(Description = "[TECHNICAL] specify interval between malloc_trim during sync", DefaultValue = "300", HiddenFromDocs = true)]
+        public int MallocTrimIntervalSec { get; set; }
     }
 }

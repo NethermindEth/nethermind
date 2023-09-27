@@ -105,16 +105,6 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<Address>.Success(Address.Zero);
     }
 
-    public ResultWrapper<bool?> eth_mining()
-    {
-        return ResultWrapper<bool?>.Success(_blockchainBridge.IsMining);
-    }
-
-    public ResultWrapper<UInt256?> eth_hashrate()
-    {
-        return ResultWrapper<UInt256?>.Success(0);
-    }
-
     public ResultWrapper<UInt256?> eth_gasPrice()
     {
         return ResultWrapper<UInt256?>.Success(_gasPriceOracle.GetGasPriceEstimate());
@@ -652,21 +642,6 @@ public partial class EthRpcModule : IEthRpcModule
         {
             return GetFailureResult<IEnumerable<FilterLog>>(exception, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
         }
-    }
-
-    public ResultWrapper<IEnumerable<byte[]>> eth_getWork()
-    {
-        return ResultWrapper<IEnumerable<byte[]>>.Fail("eth_getWork not supported", ErrorCodes.MethodNotFound);
-    }
-
-    public ResultWrapper<bool?> eth_submitWork(byte[] nonce, Keccak headerPowHash, byte[] mixDigest)
-    {
-        return ResultWrapper<bool?>.Fail("eth_submitWork not supported", ErrorCodes.MethodNotFound, null);
-    }
-
-    public ResultWrapper<bool?> eth_submitHashrate(string hashRate, string id)
-    {
-        return ResultWrapper<bool?>.Fail("eth_submitHashrate not supported", ErrorCodes.MethodNotFound, null);
     }
 
     // https://github.com/ethereum/EIPs/issues/1186
