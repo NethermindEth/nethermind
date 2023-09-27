@@ -103,7 +103,7 @@ contract EcrecoverProxy {
 
         // Act
 
-        MultiCallOutput result = chain.Bridge.MultiCall(chain.BlockFinder.Head.Header, payload, CancellationToken.None);
+        MultiCallOutput result = chain.Bridge.MultiCall(chain.BlockFinder.Head?.Header!, payload, CancellationToken.None);
         Log[]? logs = result.Items.First().Calls.First().Logs;
 
 
@@ -112,7 +112,7 @@ contract EcrecoverProxy {
             EthRpcMulticallTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
 
         Assert.NotNull(mainChainRpcAddress);
-        Assert.AreEqual(TestItem.AddressA, mainChainRpcAddress);
+        Assert.That(mainChainRpcAddress, Is.EqualTo(TestItem.AddressA));
 
     }
 }

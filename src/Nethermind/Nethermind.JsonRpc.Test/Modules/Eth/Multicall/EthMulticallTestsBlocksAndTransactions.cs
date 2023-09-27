@@ -91,21 +91,21 @@ public class EthMulticallTestsBlocksAndTransactions
 
 
         //Force persistancy of head block in main chain
-        chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
+        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
         ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<MultiCallBlockResult> data = result.Data;
 
-        Assert.AreEqual(1, data.Count);
+        Assert.That(data.Count, Is.EqualTo(1));
 
         foreach (MultiCallBlockResult blockResult in data)
         {
-            Assert.AreEqual(2, blockResult.Calls.Length);
-            Assert.AreEqual(ResultType.Failure, blockResult.Calls[0].Type);
-            Assert.AreEqual(ResultType.Success, blockResult.Calls[1].Type);
+            Assert.That(blockResult.Calls.Length, Is.EqualTo(2));
+            Assert.That(blockResult.Calls[0].Type, Is.EqualTo(ResultType.Failure));
+            Assert.That(blockResult.Calls[1].Type, Is.EqualTo(ResultType.Success));
         }
     }
 
@@ -170,11 +170,11 @@ public class EthMulticallTestsBlocksAndTransactions
         UInt256 after = chain.State.GetAccount(TestItem.AddressA).Balance;
         Assert.Less(after, before);
 
-        chain.Bridge.GetReceipt(txMainnetAtoB.Hash);
+        chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
         //Force persistancy of head block in main chain
-        chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
+        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
@@ -182,11 +182,11 @@ public class EthMulticallTestsBlocksAndTransactions
             executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<MultiCallBlockResult> data = result.Data;
 
-        Assert.AreEqual(data.Count, 2);
+        Assert.That(data.Count, Is.EqualTo(2));
 
         foreach (MultiCallBlockResult blockResult in data)
         {
-            Assert.AreEqual(blockResult.Calls.Length, 2);
+            Assert.That(blockResult.Calls.Length, Is.EqualTo(2));
         }
     }
 
@@ -247,17 +247,17 @@ public class EthMulticallTestsBlocksAndTransactions
         UInt256 after = chain.State.GetAccount(TestItem.AddressA).Balance;
         Assert.Less(after, before);
 
-        chain.Bridge.GetReceipt(txMainnetAtoB.Hash);
+        chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
         //Force persistancy of head block in main chain
-        chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
+        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
         ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        Assert.IsTrue(result.Data[1].Calls[0].Error.Message.StartsWith("insufficient"));
+        Assert.IsTrue(result.Data[1].Calls[0].Error?.Message.StartsWith("insufficient"));
     }
 }

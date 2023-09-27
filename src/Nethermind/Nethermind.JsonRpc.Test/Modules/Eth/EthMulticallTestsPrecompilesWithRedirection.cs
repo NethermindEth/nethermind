@@ -10,7 +10,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -95,8 +94,8 @@ public class EthMulticallTestsPrecompilesWithRedirection
         };
 
 
-        chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
+        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         BlockHeader header = chain.BlockFinder.Head.Header;
         IReleaseSpec spec = chain.SpecProvider.GetSpec(header);
@@ -126,7 +125,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
 
         //Force persistancy of head block in main chain
         chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
+        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
@@ -135,10 +134,10 @@ public class EthMulticallTestsPrecompilesWithRedirection
             executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
-        byte[] addressBytes = result.Data[0].Calls[0].ReturnData
+        byte[] addressBytes = result.Data[0].Calls[0].ReturnData!
                .SliceWithZeroPaddingEmptyOnError(12, 20);
         Address resultingAddress = new(addressBytes);
-        Assert.AreEqual(realSenderAccount, resultingAddress);
+        Assert.That(resultingAddress, Is.EqualTo(realSenderAccount));
 
     }
 }
