@@ -33,7 +33,7 @@ namespace Nethermind.Core.Eip2930
 
         private Address? _currentAddress;
 
-        public void AddAddress(Address address)
+        public AccessListBuilder AddAddress(Address address)
         {
             _currentAddress = address;
             _orderQueue.Enqueue(_currentAddress);
@@ -41,9 +41,11 @@ namespace Nethermind.Core.Eip2930
             {
                 _data[_currentAddress] = new HashSet<UInt256>();
             }
+
+            return this;
         }
 
-        public void AddStorage(in UInt256 index)
+        public AccessListBuilder AddStorage(in UInt256 index)
         {
             if (_currentAddress is null)
             {
@@ -52,6 +54,8 @@ namespace Nethermind.Core.Eip2930
 
             _orderQueue.Enqueue(index);
             (_data[_currentAddress] as HashSet<UInt256>)!.Add(index);
+
+            return this;
         }
 
         public AccessList ToAccessList()
