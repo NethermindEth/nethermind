@@ -244,6 +244,36 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(rlpStreamResult.Bytes, Is.EqualTo(rlpResult.Bytes));
         }
 
+        [Test]
+        public void Duplicate_storage_keys_result_in_different_hashes()
+        {
+            Transaction noDuplicates = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithChainId(TestBlockchainIds.ChainId)
+                .WithAccessList(
+                    new AccessList(
+                        new Dictionary<Address, IReadOnlySet<UInt256>>
+                        {
+                            { Address.Zero, new HashSet<UInt256> { UInt256.One } }
+                        }, new Queue<object>(new List<object> { Address.Zero, UInt256.One })))
+                .SignedAndResolved()
+                .TestObject;
+
+            Transaction duplicates = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithChainId(TestBlockchainIds.ChainId)
+                .WithAccessList(
+                    new AccessList(
+                        new Dictionary<Address, IReadOnlySet<UInt256>>
+                        {
+                            { Address.Zero, new HashSet<UInt256> { UInt256.One, UInt256.One } }
+                        }, new Queue<object>(new List<object> { Address.Zero, UInt256.One, UInt256.One })))
+                .SignedAndResolved()
+                .TestObject;
+
+            duplicates.CalculateHash().Should().NotBe(noDuplicates.CalculateHash());
+        }
+
         public static IEnumerable<(string, Keccak)> SkipTypedWrappingTestCases()
         {
             yield return
