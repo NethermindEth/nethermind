@@ -180,25 +180,25 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                     switch (accessListEntry)
                     {
                         case Core.Eip2930.AccessListItem.Address address:
-                        {
-                            // serialize any element that is not the last
-                            SerializeCurrent();
-                            currentItem = new AccessListItem(address.Value, new List<UInt256>());
-
-                            break;
-                        }
-                        case Core.Eip2930.AccessListItem.StorageKey storageKey:
-                        {
-                            if (currentItem is null)
                             {
-                                throw new InvalidDataException(
-                                    $"{nameof(AccessList)} order looks corrupted - processing index ahead of address");
+                                // serialize any element that is not the last
+                                SerializeCurrent();
+                                currentItem = new AccessListItem(address.Value, new List<UInt256>());
+
+                                break;
                             }
+                        case Core.Eip2930.AccessListItem.StorageKey storageKey:
+                            {
+                                if (currentItem is null)
+                                {
+                                    throw new InvalidDataException(
+                                        $"{nameof(AccessList)} order looks corrupted - processing index ahead of address");
+                                }
 
-                            currentItem.Value.Indexes.Add(storageKey.Value);
+                                currentItem.Value.Indexes.Add(storageKey.Value);
 
-                            break;
-                        }
+                                break;
+                            }
                     }
                 }
 
@@ -267,25 +267,25 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 switch (accessListEntry)
                 {
                     case Core.Eip2930.AccessListItem.Address:
-                    {
-                        if (isOpen)
                         {
-                            contentLength += new AccessItemLengths(indexCounter).SequenceLength;
-                            indexCounter = 0;
-                        }
-                        else
-                        {
-                            isOpen = true;
-                        }
+                            if (isOpen)
+                            {
+                                contentLength += new AccessItemLengths(indexCounter).SequenceLength;
+                                indexCounter = 0;
+                            }
+                            else
+                            {
+                                isOpen = true;
+                            }
 
-                        break;
-                    }
+                            break;
+                        }
                     case Core.Eip2930.AccessListItem.StorageKey:
-                    {
-                        indexCounter++;
+                        {
+                            indexCounter++;
 
-                        break;
-                    }
+                            break;
+                        }
                 }
             }
 
