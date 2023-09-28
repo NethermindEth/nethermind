@@ -136,13 +136,13 @@ namespace Ethereum.Test.Base
             transaction.Signature = new Signature(1, 1, 27);
             transaction.Hash = transaction.CalculateHash();
 
-            AccessListBuilder builder = new();
+            AccessList.Builder builder = new();
             ProcessAccessList(transactionJson.AccessLists is not null
                 ? transactionJson.AccessLists[postStateJson.Indexes.Data]
                 : transactionJson.AccessList, builder);
-            transaction.AccessList = builder.ToAccessList();
+            transaction.AccessList = builder.Build();
 
-            if (transaction.AccessList.Data.Count != 0)
+            if (transaction.AccessList.Raw.Count != 0)
                 transaction.Type = TxType.AccessList;
             else
                 transaction.AccessList = null;
@@ -153,7 +153,7 @@ namespace Ethereum.Test.Base
             return transaction;
         }
 
-        private static void ProcessAccessList(AccessListItemJson[]? accessList, AccessListBuilder builder)
+        private static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)
         {
             foreach (AccessListItemJson accessListItemJson in accessList ?? Array.Empty<AccessListItemJson>())
             {
