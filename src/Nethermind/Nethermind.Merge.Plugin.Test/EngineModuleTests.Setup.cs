@@ -116,6 +116,7 @@ public partial class EngineModuleTests
                 chain.BeaconSync,
                 chain.BeaconPivot,
                 peerRefresher,
+                chain.SpecProvider,
                 chain.LogManager),
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
