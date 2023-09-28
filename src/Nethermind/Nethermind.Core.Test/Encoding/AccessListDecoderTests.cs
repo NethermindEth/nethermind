@@ -53,6 +53,15 @@ namespace Nethermind.Core.Test.Encoding
                     .Build());
 
             yield return (
+                "2-1",
+                new AccessList.Builder()
+                    .AddAddress(TestItem.AddressA)
+                    .AddStorage(1)
+                    .AddAddress(TestItem.AddressB)
+                    .AddStorage(2)
+                    .Build());
+
+            yield return (
                 "2-2",
                 new AccessList.Builder()
                     .AddAddress(TestItem.AddressA)
@@ -64,16 +73,7 @@ namespace Nethermind.Core.Test.Encoding
                     .Build());
 
             yield return (
-                "with order queue",
-                new AccessList.Builder()
-                    .AddAddress(TestItem.AddressA)
-                    .AddStorage(1)
-                    .AddAddress(TestItem.AddressB)
-                    .AddStorage(2)
-                    .Build());
-
-            yield return (
-                "with order queue and duplicates",
+                "with duplicates",
                 new AccessList.Builder()
                     .AddAddress(TestItem.AddressA)
                     .AddStorage(1)
