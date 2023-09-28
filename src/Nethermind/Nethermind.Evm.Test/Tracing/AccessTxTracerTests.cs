@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -30,7 +31,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
-            IEnumerable<Address> addressesAccessed = tracer.AccessList.Data.Keys;
+            IEnumerable<Address> addressesAccessed = tracer.AccessList!.AsDictionary().Keys.ToArray();
             IEnumerable<Address> expected = new[] {
                 SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, TestItem.AddressC
             };
@@ -50,7 +51,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
-            IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> accessedData = tracer.AccessList.Data;
+            IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> accessedData = tracer.AccessList!.AsDictionary();
 
             Assert.IsNotEmpty(accessedData);
             accessedData.Should().BeEquivalentTo(
