@@ -3,7 +3,6 @@
 
 using System;
 using System.IO;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
@@ -63,25 +62,14 @@ public static class IntrinsicGasCalculator
         {
             if (releaseSpec.UseTxAccessLists)
             {
-                if (accessList.IsNormalized)
+                foreach (AccessListItem o in accessList.Raw)
                 {
-                    accessListCost += accessList.Data.Count * GasCostOf.AccessAccountListEntry;
-                    accessListCost += accessList.Data.Sum(d => d.Value.Count) *
-                                        GasCostOf.AccessStorageListEntry;
-                }
-                else
-                {
-                    foreach (object o in accessList.OrderQueue!)
+                    accessListCost += o switch
                     {
-                        if (o is Address)
-                        {
-                            accessListCost += GasCostOf.AccessAccountListEntry;
-                        }
-                        else
-                        {
-                            accessListCost += GasCostOf.AccessStorageListEntry;
-                        }
-                    }
+                        AccessListItem.Address => GasCostOf.AccessAccountListEntry,
+                        AccessListItem.StorageKey => GasCostOf.AccessStorageListEntry,
+                        _ => throw new ArgumentException($"Malformed {typeof(AccessList)}")
+                    };
                 }
             }
             else
