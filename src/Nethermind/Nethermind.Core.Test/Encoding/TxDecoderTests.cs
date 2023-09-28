@@ -33,11 +33,10 @@ namespace Nethermind.Core.Test.Encoding
                 .WithType(TxType.AccessList)
                 .WithChainId(TestBlockchainIds.ChainId)
                 .WithAccessList(
-                    new AccessList(
-                        new Dictionary<Address, IReadOnlySet<UInt256>>
-                        {
-                            { Address.Zero, new HashSet<UInt256> { (UInt256)1 } }
-                        }, new Queue<object>(new List<object> { Address.Zero, (UInt256)1 })))
+                    new AccessList.Builder()
+                        .AddAddress(Address.Zero)
+                        .AddStorage(1)
+                        .Build())
                 .SignedAndResolved(), "access list");
             yield return (Build.A.Transaction
                 .WithData(new byte[] { 1, 2, 3 })
@@ -45,11 +44,10 @@ namespace Nethermind.Core.Test.Encoding
                 .WithMaxFeePerGas(30)
                 .WithChainId(TestBlockchainIds.ChainId)
                 .WithAccessList(
-                    new AccessList(
-                        new Dictionary<Address, IReadOnlySet<UInt256>>
-                        {
-                            { Address.Zero, new HashSet<UInt256> { (UInt256)1 } }
-                        }, new Queue<object>(new List<object> { Address.Zero, (UInt256)1 })))
+                    new AccessList.Builder()
+                        .AddAddress(Address.Zero)
+                        .AddStorage(1)
+                        .Build())
                 .SignedAndResolved(), "EIP1559 - access list");
             yield return (Build.A.Transaction
                 .WithType(TxType.EIP1559)
@@ -251,11 +249,10 @@ namespace Nethermind.Core.Test.Encoding
                 .WithType(TxType.EIP1559)
                 .WithChainId(TestBlockchainIds.ChainId)
                 .WithAccessList(
-                    new AccessList(
-                        new Dictionary<Address, IReadOnlySet<UInt256>>
-                        {
-                            { Address.Zero, new HashSet<UInt256> { UInt256.One } }
-                        }, new Queue<object>(new List<object> { Address.Zero, UInt256.One })))
+                    new AccessList.Builder()
+                        .AddAddress(Address.Zero)
+                        .AddStorage(1)
+                        .Build())
                 .SignedAndResolved()
                 .TestObject;
 
@@ -263,11 +260,11 @@ namespace Nethermind.Core.Test.Encoding
                 .WithType(TxType.EIP1559)
                 .WithChainId(TestBlockchainIds.ChainId)
                 .WithAccessList(
-                    new AccessList(
-                        new Dictionary<Address, IReadOnlySet<UInt256>>
-                        {
-                            { Address.Zero, new HashSet<UInt256> { UInt256.One, UInt256.One } }
-                        }, new Queue<object>(new List<object> { Address.Zero, UInt256.One, UInt256.One })))
+                    new AccessList.Builder()
+                        .AddAddress(Address.Zero)
+                        .AddStorage(1)
+                        .AddStorage(1)
+                        .Build())
                 .SignedAndResolved()
                 .TestObject;
 
