@@ -41,23 +41,23 @@ namespace Nethermind.JsonRpc.Data
                 switch (element)
                 {
                     case Address address:
-                    {
-                        if (current is not null)
                         {
-                            result.Add(current);
+                            if (current is not null)
+                            {
+                                result.Add(current);
+                            }
+                            current = new AccessListItemForRpc(address, new UInt256[] { });
+                            break;
                         }
-                        current = new AccessListItemForRpc(address, new UInt256[]{ });
-                        break;
-                    }
                     case UInt256 storageKey:
-                    {
-                        current!.StorageKeys!.Add(storageKey);
-                        break;
-                    }
+                        {
+                            current!.StorageKeys!.Add(storageKey);
+                            break;
+                        }
                     default:
-                    {
-                        throw new ArgumentException($"{nameof(accessList)} values are not from the expected type");
-                    }
+                        {
+                            throw new ArgumentException($"{nameof(accessList)} values are not from the expected type");
+                        }
                 }
             }
             if (current is not null)
