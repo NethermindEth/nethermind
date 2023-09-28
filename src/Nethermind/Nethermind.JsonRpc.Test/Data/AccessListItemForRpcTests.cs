@@ -12,7 +12,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data;
 
-public class AccessListTests
+public class AccessListItemForRpcTests
 {
     [Test]
     public void Single_address_with_multiple_storage_keys()
