@@ -71,15 +71,14 @@ namespace Nethermind.JsonRpc.Data
         public static AccessList ToAccessList(AccessListItemForRpc[] accessList)
         {
             AccessListBuilder accessListBuilder = new();
-            for (int i = 0; i < accessList.Length; i++)
+            foreach (AccessListItemForRpc accessListItem in accessList)
             {
-                var accessListItem = accessList[i];
                 accessListBuilder.AddAddress(accessListItem.Address);
                 if (accessListItem.StorageKeys is not null)
                 {
-                    for (int j = 0; j < accessListItem.StorageKeys.Count; j++)
+                    foreach (UInt256 index in accessListItem.StorageKeys)
                     {
-                        accessListBuilder.AddStorage(accessListItem.StorageKeys[j]);
+                        accessListBuilder.AddStorage(index);
                     }
                 }
             }
