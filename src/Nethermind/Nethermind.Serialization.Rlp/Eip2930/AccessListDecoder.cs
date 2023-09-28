@@ -29,7 +29,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             int length = rlpStream.ReadSequenceLength();
             int check = rlpStream.Position + length;
 
-            AccessListBuilder accessListBuilder = new();
+            AccessList.Builder accessListBuilder = new();
             while (rlpStream.Position < check)
             {
                 int accessListItemLength = rlpStream.ReadSequenceLength();
@@ -72,7 +72,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 rlpStream.Check(check);
             }
 
-            return accessListBuilder.ToAccessList();
+            return accessListBuilder.Build();
         }
 
         /// <summary>
@@ -94,7 +94,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             int length = decoderContext.ReadSequenceLength();
             int check = decoderContext.Position + length;
 
-            AccessListBuilder accessListBuilder = new();
+            AccessList.Builder accessListBuilder = new();
             while (decoderContext.Position < check)
             {
                 int accessListItemLength = decoderContext.ReadSequenceLength();
@@ -137,7 +137,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 decoderContext.Check(check);
             }
 
-            return accessListBuilder.ToAccessList();
+            return accessListBuilder.Build();
         }
 
         private readonly struct AccessListItem
@@ -164,28 +164,30 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 int contentLength = GetContentLength(item);
                 stream.StartSequence(contentLength);
 
-                if (!item.IsNormalized)
+                AccessListItem? currentItem = default;
+
+                void SerializeCurrent()
                 {
-                    AccessListItem? currentItem = default;
-
-                    void SerializeCurrent()
+                    if (currentItem is not null)
                     {
-                        if (currentItem is not null)
-                        {
-                            AccessListItem toEncode = currentItem.Value;
-                            EncodeListItem(stream, toEncode.Address, toEncode.Indexes, toEncode.Indexes.Count);
-                        }
+                        AccessListItem toEncode = currentItem.Value;
+                        EncodeListItem(stream, toEncode.Address, toEncode.Indexes, toEncode.Indexes.Count);
                     }
+                }
 
-                    foreach (object accessListEntry in item.OrderQueue!)
+                foreach (Core.Eip2930.AccessListItem accessListEntry in item.Raw)
+                {
+                    switch (accessListEntry)
                     {
-                        if (accessListEntry is Address address)
+                        case Core.Eip2930.AccessListItem.Address address:
                         {
                             // serialize any element that is not the last
                             SerializeCurrent();
-                            currentItem = new AccessListItem(address, new List<UInt256>());
+                            currentItem = new AccessListItem(address.Value, new List<UInt256>());
+
+                            break;
                         }
-                        else
+                        case Core.Eip2930.AccessListItem.StorageKey storageKey:
                         {
                             if (currentItem is null)
                             {
@@ -193,20 +195,15 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                                     $"{nameof(AccessList)} order looks corrupted - processing index ahead of address");
                             }
 
-                            currentItem.Value.Indexes.Add((UInt256)accessListEntry);
+                            currentItem.Value.Indexes.Add(storageKey.Value);
+
+                            break;
                         }
                     }
+                }
 
-                    // serialize the last element
-                    SerializeCurrent();
-                }
-                else
-                {
-                    foreach ((Address address, IReadOnlySet<UInt256> indexes) in item.Data)
-                    {
-                        EncodeListItem(stream, address, indexes, indexes.Count);
-                    }
-                }
+                // serialize the last element
+                SerializeCurrent();
             }
         }
 
@@ -262,21 +259,14 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         private static int GetContentLength(AccessList accessList)
         {
             int contentLength = 0;
-            if (accessList.IsNormalized)
+            IReadOnlyCollection<Core.Eip2930.AccessListItem> orderQueue = accessList.Raw;
+            bool isOpen = false;
+            int indexCounter = 0;
+            foreach (Core.Eip2930.AccessListItem accessListEntry in orderQueue)
             {
-                foreach ((_, IReadOnlySet<UInt256> indexes) in accessList.Data)
+                switch (accessListEntry)
                 {
-                    contentLength += new AccessItemLengths(indexes.Count).SequenceLength;
-                }
-            }
-            else
-            {
-                IReadOnlyCollection<object> orderQueue = accessList.OrderQueue;
-                bool isOpen = false;
-                int indexCounter = 0;
-                foreach (object accessListEntry in orderQueue!)
-                {
-                    if (accessListEntry is Address)
+                    case Core.Eip2930.AccessListItem.Address:
                     {
                         if (isOpen)
                         {
@@ -287,17 +277,21 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                         {
                             isOpen = true;
                         }
+
+                        break;
                     }
-                    else
+                    case Core.Eip2930.AccessListItem.StorageKey:
                     {
                         indexCounter++;
+
+                        break;
                     }
                 }
+            }
 
-                if (isOpen)
-                {
-                    contentLength += new AccessItemLengths(indexCounter).SequenceLength;
-                }
+            if (isOpen)
+            {
+                contentLength += new AccessItemLengths(indexCounter).SequenceLength;
             }
 
             return contentLength;
