@@ -22,12 +22,12 @@ public class AccessListItemForRpcTests
         UInt256 storageKey2 = (UInt256)2;
         UInt256 storageKey3 = (UInt256)3;
 
-        AccessList accessList = new AccessListBuilder()
+        AccessList accessList = new AccessList.Builder()
             .AddAddress(address)
             .AddStorage(storageKey1)
             .AddStorage(storageKey2)
             .AddStorage(storageKey3)
-            .ToAccessList();
+            .Build();
 
         AccessListItemForRpc[] forRpc = AccessListItemForRpc.FromAccessList(accessList);
 
@@ -45,13 +45,13 @@ public class AccessListItemForRpcTests
         UInt256 storageKey2 = (UInt256)2;
         UInt256 storageKey3 = (UInt256)3;
 
-        AccessList accessList = new AccessListBuilder()
+        AccessList accessList = new AccessList.Builder()
             .AddAddress(address)
             .AddStorage(storageKey1)
             .AddStorage(storageKey2)
             .AddStorage(storageKey3)
             .AddStorage(storageKey1)
-            .ToAccessList();
+            .Build();
 
         AccessListItemForRpc[] forRpc = AccessListItemForRpc.FromAccessList(accessList);
 
@@ -69,13 +69,13 @@ public class AccessListItemForRpcTests
         UInt256 storageKey2 = (UInt256)2;
         UInt256 storageKey3 = (UInt256)3;
 
-        AccessList accessList = new AccessListBuilder()
+        AccessList accessList = new AccessList.Builder()
             .AddAddress(address)
             .AddStorage(storageKey1)
             .AddStorage(storageKey2)
             .AddAddress(address)
             .AddStorage(storageKey3)
-            .ToAccessList();
+            .Build();
 
         AccessListItemForRpc[] forRpc = AccessListItemForRpc.FromAccessList(accessList);
 
@@ -100,14 +100,14 @@ public class AccessListItemForRpcTests
         UInt256 storageKey2 = (UInt256)2;
         UInt256 storageKey3 = (UInt256)3;
 
-        AccessList accessList = new AccessListBuilder()
+        AccessList accessList = new AccessList.Builder()
             .AddAddress(address)
             .AddStorage(storageKey1)
             .AddStorage(storageKey2)
             .AddAddress(address)
             .AddStorage(storageKey1)
             .AddStorage(storageKey3)
-            .ToAccessList();
+            .Build();
 
         AccessListItemForRpc[] forRpc = AccessListItemForRpc.FromAccessList(accessList);
 
