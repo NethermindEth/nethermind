@@ -38,7 +38,7 @@ namespace Nethermind.Evm
 
             /// <summary>
             /// The word 'return' acts here once as a verb 'to return stack to the pool' and once as a part of the
-            /// compound noun 'return stack' which is a stack of subroutine return values.  
+            /// compound noun 'return stack' which is a stack of subroutine return values.
             /// </summary>
             /// <param name="dataStack"></param>
             /// <param name="returnStack"></param>
@@ -275,7 +275,7 @@ namespace Nethermind.Evm
         {
             if (accessList is not null)
             {
-                foreach ((Address address, IReadOnlySet<UInt256> storages) in accessList.Data)
+                foreach ((Address address, IReadOnlySet<UInt256> storages) in accessList.AsDictionary())
                 {
                     WarmUp(address);
                     foreach (UInt256 storage in storages)
