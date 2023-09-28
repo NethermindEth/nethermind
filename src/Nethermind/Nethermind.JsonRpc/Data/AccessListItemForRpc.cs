@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -27,36 +26,25 @@ namespace Nethermind.JsonRpc.Data
 
         public static AccessListItemForRpc[] FromAccessList(AccessList accessList)
         {
-            if (accessList.OrderQueue is null)
-            {
-                return accessList.Data
-                    .Select(kvp => new AccessListItemForRpc(kvp.Key, kvp.Value))
-                    .ToArray();
-            }
-
             List<AccessListItemForRpc> result = new();
             AccessListItemForRpc? current = null;
-            foreach (object element in accessList.OrderQueue)
+            foreach (AccessListItem element in accessList.Raw)
             {
                 switch (element)
                 {
-                    case Address address:
+                    case AccessListItem.Address address:
                         {
                             if (current is not null)
                             {
                                 result.Add(current);
                             }
-                            current = new AccessListItemForRpc(address, new UInt256[] { });
+                            current = new AccessListItemForRpc(address.Value, new UInt256[] { });
                             break;
                         }
-                    case UInt256 storageKey:
+                    case AccessListItem.StorageKey storageKey:
                         {
-                            current!.StorageKeys!.Add(storageKey);
+                            current!.StorageKeys!.Add(storageKey.Value);
                             break;
-                        }
-                    default:
-                        {
-                            throw new ArgumentException($"{nameof(accessList)} values are not from the expected type");
                         }
                 }
             }
@@ -70,19 +58,19 @@ namespace Nethermind.JsonRpc.Data
 
         public static AccessList ToAccessList(AccessListItemForRpc[] accessList)
         {
-            AccessListBuilder accessListBuilder = new();
+            AccessList.Builder builder = new();
             foreach (AccessListItemForRpc accessListItem in accessList)
             {
-                accessListBuilder.AddAddress(accessListItem.Address);
+                builder.AddAddress(accessListItem.Address);
                 if (accessListItem.StorageKeys is not null)
                 {
                     foreach (UInt256 index in accessListItem.StorageKeys)
                     {
-                        accessListBuilder.AddStorage(index);
+                        builder.AddStorage(index);
                     }
                 }
             }
-            return accessListBuilder.ToAccessList();
+            return builder.Build();
         }
     }
 }
