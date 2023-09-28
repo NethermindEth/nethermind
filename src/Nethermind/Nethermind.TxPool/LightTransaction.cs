@@ -15,7 +15,7 @@ public class LightTransaction : Transaction
 {
     public LightTransaction(Transaction fullTx)
     {
-        Type = fullTx.Type;
+        Type = TxType.Blob;
         Hash = fullTx.Hash;
         SenderAddress = fullTx.SenderAddress;
         Nonce = fullTx.Nonce;
@@ -31,21 +31,21 @@ public class LightTransaction : Transaction
         _size = fullTx.GetLength();
     }
 
-    public LightTransaction(TxType type,
-        Keccak hash,
+    public LightTransaction(
+        UInt256 timestamp,
         Address sender,
         UInt256 nonce,
+        Keccak hash,
         UInt256 value,
         long gasLimit,
         UInt256 gasPrice,
         UInt256 maxFeePerGas,
         UInt256 maxFeePerBlobGas,
         byte[][] blobVersionHashes,
-        UInt256 timestamp,
         ulong poolIndex,
         int size)
     {
-        Type = type;
+        Type = TxType.Blob;
         Hash = hash;
         SenderAddress = sender;
         Nonce = nonce;
