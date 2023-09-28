@@ -54,6 +54,10 @@ namespace Nethermind.JsonRpc.Data
                         current!.StorageKeys!.Add(storageKey);
                         break;
                     }
+                    default:
+                    {
+                        throw new ArgumentException($"{nameof(accessList)} values are not from the expected type");
+                    }
                 }
             }
             if (current is not null)
