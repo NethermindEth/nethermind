@@ -238,14 +238,12 @@ public partial class BlockProcessor : IBlockProcessor
         _receiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec);
-        _stateProvider.RecalculateStateRoot();
-
-        block.Header.StateRoot = _stateProvider.StateRoot;
 
         // TODO: optimism
-        if (block.IsGenesis && _specProvider.ChainId == 420)
+        if (!block.IsGenesis || !_specProvider.GenesisStateUnavailable)
         {
-            block.Header.StateRoot = new Keccak("0x9e6b478a1cd331a979c39e4bddf42c676bcf5a63382f898dc441fe3fe5eb0837");
+            _stateProvider.RecalculateStateRoot();
+            block.Header.StateRoot = _stateProvider.StateRoot;
         }
 
         block.Header.Hash = block.Header.CalculateHash();
@@ -291,6 +289,12 @@ public partial class BlockProcessor : IBlockProcessor
             WithdrawalsRoot = bh.WithdrawalsRoot,
             IsPostMerge = bh.IsPostMerge,
         };
+
+        // TODO: Optimism
+        if (bh.IsGenesis && _specProvider.GenesisStateUnavailable)
+        {
+            headerForProcessing.StateRoot = bh.StateRoot;
+        }
 
         return suggestedBlock.CreateCopy(headerForProcessing);
     }

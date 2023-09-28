@@ -724,14 +724,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 // TODO: optimism
                 // TD for block 4061224 is 0, but previous is not
-                if (header.Number == 4061223)
-                {
-                    _nextHeaderDiff = 8122445;
-                }
-                else
-                {
-                    _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
-                }
+                _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
             }
         }
     }

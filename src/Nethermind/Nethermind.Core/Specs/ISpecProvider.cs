@@ -43,6 +43,11 @@ namespace Nethermind.Core.Specs
         IReleaseSpec GenesisSpec { get; }
 
         /// <summary>
+        /// When true genesis state root calculation is disabled and spec state root is set.
+        /// </summary>
+        bool GenesisStateUnavailable { get => false; }
+
+        /// <summary>
         /// Block number at which DAO happens (only relevant for mainnet)
         /// </summary>
         long? DaoBlockNumber { get; }

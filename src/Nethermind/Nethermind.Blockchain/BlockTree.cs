@@ -1815,11 +1815,11 @@ namespace Nethermind.Blockchain
                 header.TotalDifficulty = blockInfo.TotalDifficulty;
                 return;
             }
-            // TODO: optimism for some reason ttd for bedrock genesis is zero
-            if (header.Number == 4061224 && _specProvider.ChainId == 420)
-            {
-                header.TotalDifficulty = 0;
-            }
+            // // TODO: optimism for some reason ttd for bedrock genesis is zero
+            // if (header.Number == 4061224 && _specProvider.ChainId == 420)
+            // {
+            //     header.TotalDifficulty = 0;
+            // }
 
             if (IsTotalDifficultyAlwaysZero())
             {
