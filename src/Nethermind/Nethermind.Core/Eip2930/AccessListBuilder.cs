@@ -24,6 +24,10 @@ namespace Nethermind.Core.Eip2930
     /// It be further optimized by only including a queue of integers and a strict ordering algorithm for the dictionary.
     ///
     /// I leave it for later in case such an optimization is needed.
+    ///
+    /// As discussed in https://github.com/NethermindEth/nethermind/issues/6140, it's required during serialization to preserve
+    /// duplicates to ensure that any client can correctly compute the original hash, despite duplicates having no actual effect in
+    /// the usage of the 'accessList'
     /// </summary>
     public class AccessListBuilder
     {
