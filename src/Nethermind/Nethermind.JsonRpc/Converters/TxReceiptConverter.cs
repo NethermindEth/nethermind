@@ -8,18 +8,17 @@ using Nethermind.JsonRpc.Data;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Nethermind.JsonRpc.Converters
-{
-    public class TxReceiptConverter : JsonConverter<TxReceipt>
-    {
-        public override TxReceipt? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            return JsonSerializer.Deserialize<ReceiptForRpc>(ref reader, options)?.ToReceipt();
-        }
+namespace Nethermind.JsonRpc.Converters;
 
-        public override void Write(Utf8JsonWriter writer, TxReceipt value, JsonSerializerOptions options)
-        {
-            JsonSerializer.Serialize(writer, new ReceiptForRpc(value.TxHash!, value, UInt256.Zero), options);
-        }
+public class TxReceiptConverter : JsonConverter<TxReceipt>
+{
+    public override TxReceipt? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return JsonSerializer.Deserialize<ReceiptForRpc>(ref reader, options)?.ToReceipt();
+    }
+
+    public override void Write(Utf8JsonWriter writer, TxReceipt value, JsonSerializerOptions options)
+    {
+        JsonSerializer.Serialize(writer, new ReceiptForRpc(value.TxHash!, value, UInt256.Zero), options);
     }
 }

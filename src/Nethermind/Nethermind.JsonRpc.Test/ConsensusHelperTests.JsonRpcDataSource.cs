@@ -10,69 +10,68 @@ using System.Threading.Tasks;
 using Nethermind.Serialization.Json;
 
 
-namespace Nethermind.JsonRpc.Test
+namespace Nethermind.JsonRpc.Test;
+
+public partial class ConsensusHelperTests
 {
-    public partial class ConsensusHelperTests
+    private abstract class JsonRpcDataSource<T2> : IConsensusDataSource<T2>
     {
-        private abstract class JsonRpcDataSource<T2> : IConsensusDataSource<T2>
+        private readonly Uri _uri;
+        protected readonly IJsonSerializer _serializer;
+        private readonly HttpClient _httpClient;
+
+        protected JsonRpcDataSource(Uri uri, IJsonSerializer serializer)
         {
-            private readonly Uri _uri;
-            protected readonly IJsonSerializer _serializer;
-            private readonly HttpClient _httpClient;
+            _uri = uri;
+            _serializer = serializer;
+            _httpClient = new HttpClient();
+        }
 
-            protected JsonRpcDataSource(Uri uri, IJsonSerializer serializer)
+        protected async Task<string> SendRequest(JsonRpcRequest request)
+        {
+            using HttpRequestMessage message = new(HttpMethod.Post, _uri)
             {
-                _uri = uri;
-                _serializer = serializer;
-                _httpClient = new HttpClient();
-            }
+                Content = new StringContent(_serializer.Serialize(request), Encoding.UTF8, "application/json")
 
-            protected async Task<string> SendRequest(JsonRpcRequest request)
+            };
+            using HttpResponseMessage result = await _httpClient.SendAsync(message);
+            string content = await result.Content.ReadAsStringAsync();
+            return content;
+        }
+
+        protected JsonRpcRequestWithParams CreateRequest(string methodName, params object[] parameters) =>
+            new()
             {
-                using HttpRequestMessage message = new(HttpMethod.Post, _uri)
-                {
-                    Content = new StringContent(_serializer.Serialize(request), Encoding.UTF8, "application/json")
+                Id = 1,
+                JsonRpc = "2.0",
+                Method = methodName,
+                Params = parameters
+            };
 
-                };
-                using HttpResponseMessage result = await _httpClient.SendAsync(message);
-                string content = await result.Content.ReadAsStringAsync();
-                return content;
-            }
+        public void Dispose()
+        {
+            _httpClient?.Dispose();
+        }
 
-            protected JsonRpcRequestWithParams CreateRequest(string methodName, params object[] parameters) =>
-                new()
-                {
-                    Id = 1,
-                    JsonRpc = "2.0",
-                    Method = methodName,
-                    Params = parameters
-                };
+        protected class JsonRpcSuccessResponse<T> : JsonRpcSuccessResponse
+        {
+            [JsonPropertyOrder(1)]
+            [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+            public new T Result { get { return (T)base.Result; } set { base.Result = value; } }
+        }
 
-            public void Dispose()
-            {
-                _httpClient?.Dispose();
-            }
+        public virtual async Task<(T2, string)> GetData()
+        {
+            string jsonData = await GetJsonData();
+            return (_serializer.Deserialize<JsonRpcSuccessResponse<T2>>(jsonData).Result, jsonData);
+        }
 
-            protected class JsonRpcSuccessResponse<T> : JsonRpcSuccessResponse
-            {
-                [JsonPropertyOrder(1)]
-                [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-                public new T Result { get { return (T)base.Result; } set { base.Result = value; } }
-            }
+        public abstract Task<string> GetJsonData();
 
-            public virtual async Task<(T2, string)> GetData()
-            {
-                string jsonData = await GetJsonData();
-                return (_serializer.Deserialize<JsonRpcSuccessResponse<T2>>(jsonData).Result, jsonData);
-            }
-
-            public abstract Task<string> GetJsonData();
-
-            public class JsonRpcRequestWithParams : JsonRpcRequest
-            {
-                [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-                public new object[]? Params { get; set; }
-            }
+        public class JsonRpcRequestWithParams : JsonRpcRequest
+        {
+            [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+            public new object[]? Params { get; set; }
         }
     }
 }

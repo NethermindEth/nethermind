@@ -4,12 +4,11 @@
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Modules;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.JsonRpc;
+
+public interface IJsonRpcService
 {
-    public interface IJsonRpcService
-    {
-        Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context);
-        JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage);
-        JsonRpcErrorResponse GetErrorResponse(string methodName, int errorCode, string errorMessage, object id);
-    }
+    Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context);
+    JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage);
+    JsonRpcErrorResponse GetErrorResponse(string methodName, int errorCode, string errorMessage, object id);
 }

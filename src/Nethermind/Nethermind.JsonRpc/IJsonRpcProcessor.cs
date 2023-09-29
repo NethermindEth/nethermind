@@ -5,10 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.JsonRpc;
+
+public interface IJsonRpcProcessor
 {
-    public interface IJsonRpcProcessor
-    {
-        IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader stream, JsonRpcContext context);
-    }
+    IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader stream, JsonRpcContext context);
 }

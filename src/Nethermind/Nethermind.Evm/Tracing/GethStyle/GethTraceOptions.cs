@@ -4,25 +4,24 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Nethermind.Evm.Tracing.GethStyle
+namespace Nethermind.Evm.Tracing.GethStyle;
+
+public class GethTraceOptions
 {
-    public class GethTraceOptions
-    {
-        [JsonPropertyName("disableStorage")]
-        public bool DisableStorage { get; set; }
+    [JsonPropertyName("disableStorage")]
+    public bool DisableStorage { get; set; }
 
-        [JsonPropertyName("disableMemory")]
-        public bool DisableMemory { get; set; }
+    [JsonPropertyName("disableMemory")]
+    public bool DisableMemory { get; set; }
 
-        [JsonPropertyName("disableStack")]
-        public bool DisableStack { get; set; }
+    [JsonPropertyName("disableStack")]
+    public bool DisableStack { get; set; }
 
-        [JsonPropertyName("tracer")]
-        public string Tracer { get; set; }
+    [JsonPropertyName("tracer")]
+    public string Tracer { get; set; }
 
-        [JsonPropertyName("timeout")]
-        public string Timeout { get; set; }
+    [JsonPropertyName("timeout")]
+    public string Timeout { get; set; }
 
-        public static GethTraceOptions Default = new();
-    }
+    public static GethTraceOptions Default = new();
 }
