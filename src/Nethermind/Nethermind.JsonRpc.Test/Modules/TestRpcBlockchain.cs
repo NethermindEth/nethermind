@@ -45,63 +45,63 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReceiptFinder ReceiptFinder { get; private set; } = null!;
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
 
-    public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
-    public IWallet TestWallet { get; } =
-        new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
-            LimboLogs.Instance);
+        public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
+        public IWallet TestWallet { get; } =
+            new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
+                LimboLogs.Instance);
 
-    public IFeeHistoryOracle? FeeHistoryOracle { get; private set; }
-    public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
+        public IFeeHistoryOracle? FeeHistoryOracle { get; private set; }
+        public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
 
-    public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new() =>
-        new(new T { SealEngineType = sealEngineType });
+        public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new() =>
+            new(new T { SealEngineType = sealEngineType });
 
-    public static Builder<T> ForTest<T>(T blockchain) where T : TestRpcBlockchain =>
-        new(blockchain);
+        public static Builder<T> ForTest<T>(T blockchain) where T : TestRpcBlockchain =>
+            new(blockchain);
 
-    public class Builder<T> where T : TestRpcBlockchain
-    {
-        private readonly TestRpcBlockchain _blockchain;
-
-        public Builder(T blockchain)
+        public class Builder<T> where T : TestRpcBlockchain
         {
-            _blockchain = blockchain;
-        }
+            private readonly TestRpcBlockchain _blockchain;
 
-        public Builder<T> WithBlockchainBridge(IBlockchainBridge blockchainBridge)
-        {
-            _blockchain.Bridge = blockchainBridge;
-            return this;
-        }
+            public Builder(T blockchain)
+            {
+                _blockchain = blockchain;
+            }
 
-        public Builder<T> WithBlockFinder(IBlockFinder blockFinder)
-        {
-            _blockchain.BlockFinder = blockFinder;
-            return this;
-        }
+            public Builder<T> WithBlockchainBridge(IBlockchainBridge blockchainBridge)
+            {
+                _blockchain.Bridge = blockchainBridge;
+                return this;
+            }
 
-        public Builder<T> WithReceiptFinder(IReceiptFinder receiptFinder)
-        {
-            _blockchain.ReceiptFinder = receiptFinder;
-            return this;
-        }
-        public Builder<T> WithTxSender(ITxSender txSender)
-        {
-            _blockchain.TxSender = txSender;
-            return this;
-        }
+            public Builder<T> WithBlockFinder(IBlockFinder blockFinder)
+            {
+                _blockchain.BlockFinder = blockFinder;
+                return this;
+            }
 
-        public Builder<T> WithGenesisBlockBuilder(BlockBuilder blockBuilder)
-        {
-            _blockchain.GenesisBlockBuilder = blockBuilder;
-            return this;
-        }
+            public Builder<T> WithReceiptFinder(IReceiptFinder receiptFinder)
+            {
+                _blockchain.ReceiptFinder = receiptFinder;
+                return this;
+            }
+            public Builder<T> WithTxSender(ITxSender txSender)
+            {
+                _blockchain.TxSender = txSender;
+                return this;
+            }
 
-        public Builder<T> WithGasPriceOracle(IGasPriceOracle gasPriceOracle)
-        {
-            _blockchain.GasPriceOracle = gasPriceOracle;
-            return this;
-        }
+            public Builder<T> WithGenesisBlockBuilder(BlockBuilder blockBuilder)
+            {
+                _blockchain.GenesisBlockBuilder = blockBuilder;
+                return this;
+            }
+
+            public Builder<T> WithGasPriceOracle(IGasPriceOracle gasPriceOracle)
+            {
+                _blockchain.GasPriceOracle = gasPriceOracle;
+                return this;
+            }
 
             public Builder<T> WithConfig(IJsonRpcConfig config)
             {
@@ -122,17 +122,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
 
-        ReadOnlyTxProcessingEnv processingEnv = new(
-            new ReadOnlyDbProvider(DbProvider, false),
-            new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-            new ReadOnlyBlockTree(BlockTree),
-            SpecProvider,
-            LimboLogs.Instance);
+            ReadOnlyTxProcessingEnv processingEnv = new(
+                new ReadOnlyDbProvider(DbProvider, false),
+                new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                new ReadOnlyBlockTree(BlockTree),
+                SpecProvider,
+                LimboLogs.Instance);
 
-        ReceiptFinder ??= ReceiptStorage;
-        Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, new BlocksConfig(), false);
-        BlockFinder ??= BlockTree;
-        GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
+            ReceiptFinder ??= ReceiptStorage;
+            Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, new BlocksConfig(), false);
+            BlockFinder ??= BlockTree;
+            GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
 
 
             ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider.ChainId);
@@ -155,8 +155,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, new StaticSelector(SyncMode.All), LogManager),
                 FeeHistoryOracle);
 
-        return this;
-    }
+            return this;
+        }
 
         public Task<string> TestEthRpc(string method, params string[] parameters) =>
             RpcTest.TestSerializedRequest(EthModuleFactory.Converters, EthRpcModule, method, parameters);

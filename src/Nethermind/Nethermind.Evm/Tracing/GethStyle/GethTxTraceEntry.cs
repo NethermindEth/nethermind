@@ -25,12 +25,12 @@ public class GethTxTraceEntry
     public long Gas { get; set; }
 
     public long GasCost { get; set; }
-    
+
     public List<string>? Memory { get; set; }
 
     [JsonPropertyName("op")]
     public string? Opcode { get; set; }
-    
+
     [JsonPropertyName("pc")]
     [JsonConverter(typeof(LongRawJsonConverter))]
     public long ProgramCounter { get; set; }
