@@ -8,12 +8,10 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -614,7 +612,7 @@ namespace Nethermind.Trie.Pruning
 
             try
             {
-                _currentBatch ??= _keyValueStore.StartBatch();
+                _currentBatch ??= _keyValueStore.StartBatch().ToSortedBatch();
                 if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
@@ -639,7 +637,7 @@ namespace Nethermind.Trie.Pruning
 
         private void Persist(TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None)
         {
-            _currentBatch ??= _keyValueStore.StartBatch();
+            _currentBatch ??= _keyValueStore.StartBatch().ToSortedBatch();
             if (currentNode is null)
             {
                 throw new ArgumentNullException(nameof(currentNode));

@@ -31,8 +31,8 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class ReorgTests
     {
-        private BlockchainProcessor _blockchainProcessor;
-        private BlockTree _blockTree;
+        private BlockchainProcessor _blockchainProcessor = null!;
+        private BlockTree _blockTree = null!;
 
         [SetUp]
         public void Setup()

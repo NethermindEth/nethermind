@@ -40,18 +40,18 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class SubscribeModuleTests
     {
-        private ISubscribeRpcModule _subscribeRpcModule;
-        private ILogManager _logManager;
-        private IBlockTree _blockTree;
-        private ITxPool _txPool;
-        private IReceiptStorage _receiptStorage;
-        private IFilterStore _filterStore;
-        private ISubscriptionManager _subscriptionManager;
-        private IJsonRpcDuplexClient _jsonRpcDuplexClient;
-        private IJsonSerializer _jsonSerializer;
-        private ISpecProvider _specProvider;
-        private IReceiptMonitor _receiptCanonicalityMonitor;
-        private ISyncConfig _syncConfig;
+        private ISubscribeRpcModule _subscribeRpcModule = null!;
+        private ILogManager _logManager = null!;
+        private IBlockTree _blockTree = null!;
+        private ITxPool _txPool = null!;
+        private IReceiptStorage _receiptStorage = null!;
+        private IFilterStore _filterStore = null!;
+        private ISubscriptionManager _subscriptionManager = null!;
+        private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
+        private IJsonSerializer _jsonSerializer = null!;
+        private ISpecProvider _specProvider = null!;
+        private IReceiptMonitor _receiptCanonicalityMonitor = null!;
+        private ISyncConfig _syncConfig = null!;
 
         [SetUp]
         public void Setup()
