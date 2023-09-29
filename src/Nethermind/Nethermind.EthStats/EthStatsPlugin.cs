@@ -64,7 +64,7 @@ public class EthStatsPlugin : INethermindPlugin
 
     public async Task InitNetworkProtocol()
     {
-        var (getFromAPi, _) = _api.ForNetwork;
+        (IApiWithNetwork getFromAPi, _) = _api.ForNetwork;
         INetworkConfig networkConfig = _api.Config<INetworkConfig>();
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
@@ -104,12 +104,13 @@ public class EthStatsPlugin : INethermindPlugin
                 _ethStatsConfig.Secret!,
                 _ethStatsClient,
                 sender,
-                getFromAPi.TxPool,
-                getFromAPi.BlockTree,
-                getFromAPi.PeerManager,
-                getFromAPi.GasPriceOracle,
+                getFromAPi.TxPool!,
+                getFromAPi.BlockTree!,
+                getFromAPi.PeerManager!,
+                getFromAPi.GasPriceOracle!,
                 getFromAPi.EthSyncingInfo!,
                 initConfig.IsMining,
+                _ethStatsConfig.SendInterval,
                 getFromAPi.LogManager);
 
             await _ethStatsIntegration.InitAsync();

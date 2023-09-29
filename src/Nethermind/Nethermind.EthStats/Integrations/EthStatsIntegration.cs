@@ -45,12 +45,14 @@ namespace Nethermind.EthStats.Integrations
         private readonly IGasPriceOracle _gasPriceOracle;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly bool _isMining;
+        private readonly int _sendStatsInterval;
+
         private IWebsocketClient? _websocketClient;
         private bool _connected;
         private long _lastBlockProcessedTimestamp;
         private Timer? _timer;
         private const int ThrottlingThreshold = 250;
-        private const int SendStatsInterval = 1000;
+        private const int MillisecondsInSeconds = 1000;
 
         public EthStatsIntegration(
             string name,
@@ -63,15 +65,16 @@ namespace Nethermind.EthStats.Integrations
             string contact,
             bool canUpdateHistory,
             string secret,
-            IEthStatsClient? ethStatsClient,
-            IMessageSender? sender,
-            ITxPool? txPool,
-            IBlockTree? blockTree,
-            IPeerManager? peerManager,
-            IGasPriceOracle? gasPriceOracle,
+            IEthStatsClient ethStatsClient,
+            IMessageSender sender,
+            ITxPool txPool,
+            IBlockTree blockTree,
+            IPeerManager peerManager,
+            IGasPriceOracle gasPriceOracle,
             IEthSyncingInfo ethSyncingInfo,
             bool isMining,
-            ILogManager? logManager)
+            int sendIntervalInSeconds,
+            ILogManager logManager)
         {
             _name = name;
             _node = node;
@@ -83,20 +86,23 @@ namespace Nethermind.EthStats.Integrations
             _contact = contact;
             _canUpdateHistory = canUpdateHistory;
             _secret = secret;
-            _ethStatsClient = ethStatsClient ?? throw new ArgumentNullException(nameof(ethStatsClient));
-            _sender = sender ?? throw new ArgumentNullException(nameof(sender));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
-            _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
-            _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
+            _ethStatsClient = ethStatsClient;
+            _sender = sender;
+            _txPool = txPool;
+            _blockTree = blockTree;
+            _peerManager = peerManager;
+            _gasPriceOracle = gasPriceOracle;
+            _ethSyncingInfo = ethSyncingInfo;
             _isMining = isMining;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _sendStatsInterval = sendIntervalInSeconds > 0
+                ? sendIntervalInSeconds * MillisecondsInSeconds
+                : throw new ArgumentOutOfRangeException(nameof(sendIntervalInSeconds));
+            _logger = logManager.GetClassLogger();
         }
 
         public async Task InitAsync()
         {
-            _timer = new Timer { Interval = SendStatsInterval };
+            _timer = new Timer { Interval = _sendStatsInterval };
             _timer.Elapsed += TimerOnElapsed;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             _websocketClient = await _ethStatsClient.InitAsync();
