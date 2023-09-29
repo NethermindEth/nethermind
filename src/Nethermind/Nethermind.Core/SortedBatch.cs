@@ -14,7 +14,7 @@ namespace Nethermind.Core;
 /// to be limited to 1Mil writes per second.
 /// TODO: FlatDB layout need different key type to match the DB ordering.
 /// </summary>
-public class SortedBatch: IBatch
+public class SortedBatch : IBatch
 {
     private const int InitialBatchSize = 300;
     private static readonly int MaxCached = Environment.ProcessorCount;
@@ -87,7 +87,8 @@ public class SortedBatch: IBatch
     }
 }
 
-public static class BatchExtensions {
+public static class BatchExtensions
+{
     public static SortedBatch ToSortedBatch(this IBatch batch)
     {
         return new SortedBatch(batch);
