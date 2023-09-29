@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:7.0-jammy AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-jammy AS build
 
 ARG TARGETPLATFORM
 ARG TARGETOS
@@ -23,7 +23,7 @@ RUN if [ "$TARGETARCH" = "amd64" ]; \
 # A temporary symlink to support the old executable name
 RUN ln -s -r out/nethermind out/Nethermind.Runner
 
-FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:7.0-jammy
+FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:8.0-jammy
 
 ARG TARGETPLATFORM
 ARG TARGETOS

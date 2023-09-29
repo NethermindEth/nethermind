@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:7.0 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-jammy AS build
 
 ARG TARGETPLATFORM
 ARG TARGETOS
@@ -35,7 +35,7 @@ RUN dotnet tool install --tool-path /dotnetcore-tools dotnet-trace && \
     dotnet tool install --tool-path /dotnetcore-tools dotnet-dump && \
     dotnet tool install --tool-path /dotnetcore-tools dotnet-gcdump
 
-FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:7.0
+FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:8.0-jammy
 
 RUN apt-get update && apt-get -y install libsnappy-dev procps && \
     rm -rf /var/lib/apt/lists/*
