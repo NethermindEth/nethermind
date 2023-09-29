@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State;
 
@@ -33,13 +34,13 @@ public class GethJavascriptStyleDb
         return _stateRepository.GetCode(address);
     }
 
-    // public byte[] getState(Address address, Keccak hash)
-    // {
-    //     return _stateRepository.GetCodeOrEmpty(address, hash);
-    // }
+    public byte[] getState(Address address, Keccak hash)
+    {
+        return _stateRepository.Get(new StorageCell(address, new UInt256(hash.Bytes)));
+    }
 
     public bool exists(Address address)
     {
-        return _stateRepository.IsContract(address);
+        return !_stateRepository.GetAccount(address).IsTotallyEmpty;
     }
 }
