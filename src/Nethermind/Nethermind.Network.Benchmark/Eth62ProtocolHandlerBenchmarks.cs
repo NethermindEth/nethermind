@@ -6,7 +6,6 @@ using BenchmarkDotNet.Attributes;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -65,7 +64,7 @@ namespace Nethermind.Network.Benchmarks
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
             BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
             syncSrv.Head.Returns(head);
-            _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, txPool, ShouldGossip.Instance, LimboLogs.Instance);
+            _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, txPool, Consensus.ShouldGossip.Instance, LimboLogs.Instance);
             _handler.DisableTxFiltering();
 
             StatusMessage statusMessage = new StatusMessage();

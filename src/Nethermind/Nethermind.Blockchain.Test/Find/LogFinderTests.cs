@@ -14,7 +14,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -345,9 +344,9 @@ namespace Nethermind.Blockchain.Test.Find
         {
             if (withBloomDb)
             {
-                for (int i = 0; i <= _blockTree.Head.Number; i++)
+                for (int i = 0; i <= _blockTree.Head!.Number; i++)
                 {
-                    _bloomStorage.Store(i, _blockTree.FindHeader(i).Bloom);
+                    _bloomStorage.Store(i, _blockTree.FindHeader(i)!.Bloom!);
                 }
             }
         }

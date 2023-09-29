@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -13,11 +14,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -29,6 +32,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IReceiptStorage _receiptStorage;
     private readonly IWitnessCollector _witnessCollector;
     private readonly IWithdrawalProcessor _withdrawalProcessor;
+    private readonly IBeaconBlockRootHandler _beaconBlockRootHandler;
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
@@ -61,7 +65,7 @@ public partial class BlockProcessor : IBlockProcessor
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
-
+        _beaconBlockRootHandler = new BeaconBlockRootHandler();
 
         _receiptsTracer = new BlockReceiptsTracer();
     }
@@ -221,7 +225,16 @@ public partial class BlockProcessor : IBlockProcessor
 
         _receiptsTracer.SetOtherTracer(blockTracer);
         _receiptsTracer.StartNewBlockTrace(block);
+
+        _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
+        _stateProvider.Commit(spec);
+
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
+
+        if (spec.IsEip4844Enabled)
+        {
+            block.Header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
+        }
 
         block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
@@ -258,7 +271,8 @@ public partial class BlockProcessor : IBlockProcessor
             bh.GasLimit,
             bh.Timestamp,
             bh.ExtraData,
-            bh.ExcessDataGas)
+            bh.BlobGasUsed,
+            bh.ExcessBlobGas)
         {
             Bloom = Bloom.Empty,
             Author = bh.Author,
@@ -273,6 +287,7 @@ public partial class BlockProcessor : IBlockProcessor
             BaseFeePerGas = bh.BaseFeePerGas,
             WithdrawalsRoot = bh.WithdrawalsRoot,
             IsPostMerge = bh.IsPostMerge,
+            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
         };
 
         return suggestedBlock.CreateCopy(headerForProcessing);

@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -92,9 +93,10 @@ namespace Nethermind.Synchronization.Test
                 blockDownloaderFactory,
                 pivot,
                 syncReport,
+                Substitute.For<IProcessExitSource>(),
                 LimboLogs.Instance);
             _syncServer = new SyncServer(
-                trieStore,
+                trieStore.AsKeyValueStore(),
                 _codeDb,
                 _blockTree,
                 _receiptStorage,
@@ -116,15 +118,15 @@ namespace Nethermind.Synchronization.Test
             await _synchronizer.StopAsync();
         }
 
-        private IDb _stateDb;
-        private IDb _codeDb;
-        private IBlockTree _blockTree;
-        private IBlockTree _remoteBlockTree;
-        private IReceiptStorage _receiptStorage;
-        private Block _genesisBlock;
-        private ISyncPeerPool _pool;
-        private ISyncServer _syncServer;
-        private ISynchronizer _synchronizer;
+        private IDb _stateDb = null!;
+        private IDb _codeDb = null!;
+        private IBlockTree _blockTree = null!;
+        private IBlockTree _remoteBlockTree = null!;
+        private IReceiptStorage _receiptStorage = null!;
+        private Block _genesisBlock = null!;
+        private ISyncPeerPool _pool = null!;
+        private ISyncServer _syncServer = null!;
+        private ISynchronizer _synchronizer = null!;
 
         [Test, Ignore("travis")]
         public void Retrieves_missing_blocks_in_batches()
@@ -133,7 +135,7 @@ namespace Nethermind.Synchronization.Test
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new(false);
-            _synchronizer.SyncEvent += (sender, args) =>
+            _synchronizer.SyncEvent += (_, args) =>
             {
                 if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
@@ -142,7 +144,7 @@ namespace Nethermind.Synchronization.Test
             _pool.AddPeer(peer);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
-            Assert.That((int)_blockTree.BestSuggestedHeader.Number, Is.EqualTo(SyncBatchSize.Max * 2 - 1));
+            Assert.That(_blockTree.BestSuggestedHeader!.Number, Is.EqualTo(SyncBatchSize.Max * 2 - 1));
         }
 
         [Test]
@@ -155,7 +157,7 @@ namespace Nethermind.Synchronization.Test
             _synchronizer.Start();
             _pool.AddPeer(peer);
 
-            Assert.That((int)_blockTree.BestSuggestedHeader.Number, Is.EqualTo(0));
+            Assert.That(_blockTree.BestSuggestedHeader!.Number, Is.EqualTo(0));
         }
 
         [Test]
@@ -166,13 +168,13 @@ namespace Nethermind.Synchronization.Test
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new(false);
-            _synchronizer.SyncEvent += (sender, args) => { resetEvent.Set(); };
+            _synchronizer.SyncEvent += (_, _) => { resetEvent.Set(); };
             _pool.Start();
             _synchronizer.Start();
             _pool.AddPeer(peer);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
-            Assert.That((int)_blockTree.BestSuggestedHeader.Number, Is.EqualTo(SyncBatchSize.Max * 2 - 1));
+            Assert.That(_blockTree.BestSuggestedHeader!.Number, Is.EqualTo(SyncBatchSize.Max * 2 - 1));
         }
 
         [Test]
@@ -183,7 +185,7 @@ namespace Nethermind.Synchronization.Test
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
             SemaphoreSlim semaphore = new(0);
-            _synchronizer.SyncEvent += (sender, args) =>
+            _synchronizer.SyncEvent += (_, args) =>
             {
                 if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) semaphore.Release(1);
             };
@@ -192,22 +194,24 @@ namespace Nethermind.Synchronization.Test
             _pool.AddPeer(peer);
 
             BlockTreeBuilder.ExtendTree(_remoteBlockTree, SyncBatchSize.Max * 2);
-            _syncServer.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock(), peer);
+            _syncServer.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock()!, peer);
 
             semaphore.Wait(_standardTimeoutUnit);
             semaphore.Wait(_standardTimeoutUnit);
 
-            Assert.That((int)_blockTree.BestSuggestedHeader.Number, Is.EqualTo(SyncBatchSize.Max * 2 - 1));
+            Assert.That(_blockTree.BestSuggestedHeader!.Number, Is.EqualTo(SyncBatchSize.Max * 2 - 1));
         }
 
         [Test, Ignore("travis")]
         public void Can_add_new_block()
         {
-            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SyncBatchSize.Max).TestObject;
+            _remoteBlockTree = Build.A
+                .BlockTree(_genesisBlock)
+                .OfChainLength(SyncBatchSize.Max).TestObject;
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new(false);
-            _synchronizer.SyncEvent += (sender, args) =>
+            _synchronizer.SyncEvent += (_, args) =>
             {
                 if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
@@ -216,12 +220,15 @@ namespace Nethermind.Synchronization.Test
             _synchronizer.Start();
             _pool.AddPeer(peer);
 
-            Block block = Build.A.Block.WithParent(_remoteBlockTree.Head).WithTotalDifficulty((_remoteBlockTree.Head.TotalDifficulty ?? 0) + 1).TestObject;
+            Block block = Build.A.Block
+                .WithParent(_remoteBlockTree.Head!)
+                .WithTotalDifficulty((_remoteBlockTree.Head!.TotalDifficulty ?? 0) + 1)
+                .TestObject;
             _syncServer.AddNewBlock(block, peer);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            Assert.That((int)_blockTree.BestSuggestedHeader.Number, Is.EqualTo(SyncBatchSize.Max - 1));
+            Assert.That(_blockTree.BestSuggestedHeader!.Number, Is.EqualTo(SyncBatchSize.Max - 1));
         }
 
         [Test]
@@ -231,7 +238,7 @@ namespace Nethermind.Synchronization.Test
             ISyncPeer miner1 = new SyncPeerMock(miner1Tree);
 
             ManualResetEvent resetEvent = new(false);
-            _synchronizer.SyncEvent += (sender, args) =>
+            _synchronizer.SyncEvent += (_, args) =>
             {
                 if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
@@ -244,7 +251,10 @@ namespace Nethermind.Synchronization.Test
 
             miner1Tree.BestSuggestedHeader.Should().BeEquivalentTo(_blockTree.BestSuggestedHeader, "client agrees with miner before split");
 
-            Block splitBlock = Build.A.Block.WithParent(miner1Tree.FindParent(miner1Tree.Head, BlockTreeLookupOptions.TotalDifficultyNotNeeded)).WithDifficulty(miner1Tree.Head.Difficulty - 1).TestObject;
+            Block splitBlock = Build.A.Block
+                .WithParent(miner1Tree.FindParent(miner1Tree.Head!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!)
+                .WithDifficulty(miner1Tree.Head!.Difficulty - 1)
+                .TestObject;
             Block splitBlockChild = Build.A.Block.WithParent(splitBlock).TestObject;
 
             miner1Tree.SuggestBlock(splitBlock);
@@ -260,7 +270,7 @@ namespace Nethermind.Synchronization.Test
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            Assert.That(_blockTree.BestSuggestedHeader.Hash, Is.EqualTo(miner1Tree.BestSuggestedHeader.Hash), "client agrees with miner after split");
+            Assert.That(_blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Hash), "client agrees with miner after split");
         }
 
         [Test]
@@ -270,7 +280,7 @@ namespace Nethermind.Synchronization.Test
             ISyncPeer miner1 = new SyncPeerMock(miner1Tree);
 
             ManualResetEvent resetEvent = new(false);
-            _synchronizer.SyncEvent += (sender, args) =>
+            _synchronizer.SyncEvent += (_, args) =>
             {
                 if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
@@ -281,7 +291,7 @@ namespace Nethermind.Synchronization.Test
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            Assert.That(_blockTree.BestSuggestedHeader.Hash, Is.EqualTo(miner1Tree.BestSuggestedHeader.Hash), "client agrees with miner before split");
+            Assert.That(_blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Hash), "client agrees with miner before split");
 
             miner1Tree.AddBranch(7, 0, 1);
 
@@ -289,7 +299,7 @@ namespace Nethermind.Synchronization.Test
 
             resetEvent.Reset();
 
-            _syncServer.AddNewBlock(miner1Tree.RetrieveHeadBlock(), miner1);
+            _syncServer.AddNewBlock(miner1Tree.RetrieveHeadBlock()!, miner1);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
@@ -304,7 +314,7 @@ namespace Nethermind.Synchronization.Test
             ISyncPeer miner1 = new SyncPeerMock(minerTree);
 
             AutoResetEvent resetEvent = new(false);
-            _synchronizer.SyncEvent += (sender, args) =>
+            _synchronizer.SyncEvent += (_, args) =>
             {
                 if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
@@ -314,9 +324,9 @@ namespace Nethermind.Synchronization.Test
             _pool.AddPeer(miner1);
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            Assert.That(_blockTree.BestSuggestedHeader.Hash, Is.EqualTo(minerTree.BestSuggestedHeader.Hash), "client agrees with miner before split");
+            Assert.That(_blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(minerTree.BestSuggestedHeader!.Hash), "client agrees with miner before split");
 
-            Block newBlock = Build.A.Block.WithParent(minerTree.Head).TestObject;
+            Block newBlock = Build.A.Block.WithParent(minerTree.Head!).TestObject;
             minerTree.SuggestBlock(newBlock);
             minerTree.UpdateMainChain(newBlock);
 
@@ -342,7 +352,7 @@ namespace Nethermind.Synchronization.Test
             ISyncPeer miner1 = new SyncPeerMock(minerTree);
 
             AutoResetEvent resetEvent = new(false);
-            _synchronizer.SyncEvent += (sender, args) =>
+            _synchronizer.SyncEvent += (_, args) =>
             {
                 if (args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
@@ -352,9 +362,9 @@ namespace Nethermind.Synchronization.Test
             _pool.AddPeer(miner1);
             resetEvent.WaitOne(_standardTimeoutUnit);
 
-            Assert.That(_blockTree.BestSuggestedHeader.Hash, Is.EqualTo(minerTree.BestSuggestedHeader.Hash), "client agrees with miner before split");
+            Assert.That(_blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(minerTree.BestSuggestedHeader!.Hash), "client agrees with miner before split");
 
-            Block newBlock = Build.A.Block.WithParent(minerTree.Head).TestObject;
+            Block newBlock = Build.A.Block.WithParent(minerTree.Head!).TestObject;
             minerTree.SuggestBlock(newBlock);
             minerTree.UpdateMainChain(newBlock);
 
@@ -376,21 +386,23 @@ namespace Nethermind.Synchronization.Test
         public void Can_retrieve_node_values()
         {
             _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
-            byte[][] values = _syncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB });
-            Assert.That(values.Length, Is.EqualTo(2), "data.Length");
-            Assert.That(values[0], Is.EqualTo(TestItem.RandomDataA), "data[0]");
-            Assert.That(values[1], Is.EqualTo(null), "data[1]");
+            byte[]?[] data = _syncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB });
+
+            Assert.That(data, Is.Not.Null);
+            Assert.That(data.Length, Is.EqualTo(2), "data.Length");
+            Assert.That(data[0], Is.EqualTo(TestItem.RandomDataA), "data[0]");
+            Assert.That(data[1], Is.EqualTo(null), "data[1]");
         }
 
         [Test]
         public void Can_retrieve_empty_receipts()
         {
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(2).TestObject;
-            Block block0 = _blockTree.FindBlock(0, BlockTreeLookupOptions.None);
-            Block block1 = _blockTree.FindBlock(1, BlockTreeLookupOptions.None);
+            Block? block0 = _blockTree.FindBlock(0, BlockTreeLookupOptions.None);
+            Block? block1 = _blockTree.FindBlock(1, BlockTreeLookupOptions.None);
 
-            _syncServer.GetReceipts(block0.Hash).Should().HaveCount(0);
-            _syncServer.GetReceipts(block1.Hash).Should().HaveCount(0);
+            _syncServer.GetReceipts(block0!.Hash!).Should().HaveCount(0);
+            _syncServer.GetReceipts(block1!.Hash!).Should().HaveCount(0);
             _syncServer.GetReceipts(TestItem.KeccakA).Should().HaveCount(0);
         }
     }

@@ -6,7 +6,6 @@ using System.IO;
 using System.Net;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;

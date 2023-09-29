@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -109,18 +108,18 @@ namespace Nethermind.Blockchain.Test
                         }
                         else
                         {
-                            _rootProcessed.Add(suggestedBlocks.Last().StateRoot);
+                            _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
                             BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), Array.Empty<TxReceipt>()));
                             return suggestedBlocks.ToArray();
                         }
                     }
                 }
 
-                public event EventHandler<BlocksProcessingEventArgs> BlocksProcessing;
+                public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
-                public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
+                public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
-                public event EventHandler<TxProcessedEventArgs> TransactionProcessed
+                public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
                 {
                     add { }
                     remove { }
@@ -129,11 +128,9 @@ namespace Nethermind.Blockchain.Test
 
             private class RecoveryStepMock : IBlockPreprocessorStep
             {
-                private ILogger _logger;
-
-                private ConcurrentDictionary<Keccak, object> _allowed = new();
-
-                private ConcurrentDictionary<Keccak, object> _allowedToFail = new();
+                private readonly ILogger _logger;
+                private readonly ConcurrentDictionary<Keccak, object> _allowed = new();
+                private readonly ConcurrentDictionary<Keccak, object> _allowedToFail = new();
 
                 public RecoveryStepMock(ILogManager logManager)
                 {
@@ -144,12 +141,6 @@ namespace Nethermind.Blockchain.Test
                 {
                     _logger.Info($"Allowing {hash} to recover");
                     _allowed[hash] = new object();
-                }
-
-                public void AllowToFail(Keccak hash)
-                {
-                    _logger.Info($"Allowing {hash} to fail recover");
-                    _allowedToFail[hash] = new object();
                 }
 
                 public void RecoverData(Block block)
@@ -163,11 +154,12 @@ namespace Nethermind.Blockchain.Test
 
                     while (true)
                     {
-                        if (!_allowed.ContainsKey(block.Hash))
+                        Keccak blockHash = block.Hash!;
+                        if (!_allowed.ContainsKey(blockHash))
                         {
-                            if (_allowedToFail.ContainsKey(block.Hash))
+                            if (_allowedToFail.ContainsKey(blockHash))
                             {
-                                _allowedToFail.Remove(block.Hash, out _);
+                                _allowedToFail.Remove(blockHash, out _);
                                 throw new Exception();
                             }
 
@@ -176,22 +168,23 @@ namespace Nethermind.Blockchain.Test
                         }
 
                         block.Header.Author = Address.Zero;
-                        _allowed.Remove(block.Hash, out _);
+                        _allowed.Remove(blockHash, out _);
                         return;
                     }
                 }
             }
 
-            private BlockTree _blockTree;
-            private AutoResetEvent _resetEvent;
-            private AutoResetEvent _queueEmptyResetEvent;
-            private BlockProcessorMock _blockProcessor;
-            private RecoveryStepMock _recoveryStep;
-            private BlockchainProcessor _processor;
-            private ILogger _logger;
-            private Keccak _headBefore;
+            private readonly BlockTree _blockTree;
+            private readonly AutoResetEvent _resetEvent;
+            private readonly AutoResetEvent _queueEmptyResetEvent;
+            private readonly BlockProcessorMock _blockProcessor;
+            private readonly RecoveryStepMock _recoveryStep;
+            private readonly BlockchainProcessor _processor;
+            private readonly ILogger _logger;
+
+            private Keccak? _headBefore;
             private int _processingQueueEmptyFired;
-            public const int ProcessingWait = 2000;
+            private const int ProcessingWait = 2000;
 
             public ProcessingTestContext(bool startProcessor)
             {
@@ -215,7 +208,7 @@ namespace Nethermind.Blockchain.Test
                     _queueEmptyResetEvent.Set();
                 };
 
-                _blockTree.NewHeadBlock += (sender, args) =>
+                _blockTree.NewHeadBlock += (_, args) =>
                 {
                     _logger.Info($"Finished waiting for {args.Block.ToString(Block.Format.Short)} as block became the new head block");
                     _resetEvent.Set();
@@ -243,7 +236,7 @@ namespace Nethermind.Blockchain.Test
                 _headBefore = _blockTree.Head?.Hash;
                 ManualResetEvent processedEvent = new(false);
                 bool wasProcessed = false;
-                _blockProcessor.BlockProcessed += (sender, args) =>
+                _blockProcessor.BlockProcessed += (_, args) =>
                 {
                     if (args.Block.Hash == block.Hash)
                     {
@@ -253,7 +246,7 @@ namespace Nethermind.Blockchain.Test
                 };
 
                 _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to process");
-                _blockProcessor.Allow(block.Hash);
+                _blockProcessor.Allow(block.Hash!);
                 processedEvent.WaitOne(ProcessingWait);
                 Assert.True(wasProcessed, $"Expected this block to get processed but it was not: {block.ToString(Block.Format.Short)}");
 
@@ -264,7 +257,7 @@ namespace Nethermind.Blockchain.Test
             {
                 _headBefore = _blockTree.Head?.Hash;
                 _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to be skipped");
-                _blockProcessor.Allow(block.Hash);
+                _blockProcessor.Allow(block.Hash!);
                 return new AfterBlock(_logManager, this, block);
             }
 
@@ -273,7 +266,7 @@ namespace Nethermind.Blockchain.Test
                 _headBefore = _blockTree.Head?.Hash;
                 ManualResetEvent processedEvent = new(false);
                 bool wasProcessed = false;
-                _blockProcessor.BlockProcessed += (sender, args) =>
+                _blockProcessor.BlockProcessed += (_, args) =>
                 {
                     if (args.Block.Hash == block.Hash)
                     {
@@ -283,7 +276,7 @@ namespace Nethermind.Blockchain.Test
                 };
 
                 _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to fail processing");
-                _blockProcessor.AllowToFail(block.Hash);
+                _blockProcessor.AllowToFail(block.Hash!);
                 processedEvent.WaitOne(ProcessingWait);
                 Assert.True(wasProcessed, $"Block was never processed {block.ToString(Block.Format.Short)}");
                 Assert.That(_blockTree.Head?.Hash, Is.EqualTo(_headBefore), $"Processing did not fail - {block.ToString(Block.Format.Short)} became a new head block");
@@ -312,15 +305,8 @@ namespace Nethermind.Blockchain.Test
                 }
 
                 _blockTree.UpdateMainChain(new[] { block }, false);
-                _blockProcessor.Allow(block.Hash);
-                _recoveryStep.Allow(block.Hash);
-
-                return this;
-            }
-
-            public ProcessingTestContext StartProcessor()
-            {
-                _processor.Start();
+                _blockProcessor.Allow(block.Hash!);
+                _recoveryStep.Allow(block.Hash!);
 
                 return this;
             }
@@ -339,7 +325,7 @@ namespace Nethermind.Blockchain.Test
 
             public ProcessingTestContext Recovered(Block block)
             {
-                _recoveryStep.Allow(block.Hash);
+                _recoveryStep.Allow(block.Hash!);
                 return this;
             }
 
@@ -347,12 +333,6 @@ namespace Nethermind.Blockchain.Test
             {
                 var count = ((IBlockProcessingQueue)_processor).Count;
                 Assert.That(expectedCount, Is.EqualTo(count));
-                return this;
-            }
-
-            public ProcessingTestContext ThenRecoveredFail(Block block)
-            {
-                _recoveryStep.AllowToFail(block.Hash);
                 return this;
             }
 
@@ -386,10 +366,10 @@ namespace Nethermind.Blockchain.Test
 
             public class AfterBlock
             {
-                private ILogger _logger;
                 public const int IgnoreWait = 200;
-                private readonly Block _block;
 
+                private readonly ILogger _logger;
+                private readonly Block _block;
                 private readonly ProcessingTestContext _processingTestContext;
 
                 public AfterBlock(ILogManager logManager, ProcessingTestContext processingTestContext, Block block)
@@ -403,7 +383,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to become genesis block");
                     _processingTestContext._resetEvent.WaitOne(ProcessingWait);
-                    Assert.That(_processingTestContext._blockTree.Genesis.Hash, Is.EqualTo(_block.Header.Hash), "genesis");
+                    Assert.That(_processingTestContext._blockTree.Genesis!.Hash, Is.EqualTo(_block.Header.Hash), "genesis");
                     return _processingTestContext;
                 }
 
@@ -411,7 +391,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to become the new head block");
                     _processingTestContext._resetEvent.WaitOne(ProcessingWait);
-                    Assert.That(() => _processingTestContext._blockTree.Head.Hash, Is.EqualTo(_block.Header.Hash).After(1000, 100));
+                    Assert.That(() => _processingTestContext._blockTree.Head!.Hash, Is.EqualTo(_block.Header.Hash).After(1000, 100));
                     return _processingTestContext;
                 }
 
@@ -419,7 +399,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to be ignored");
                     _processingTestContext._resetEvent.WaitOne(IgnoreWait);
-                    Assert.That(_processingTestContext._blockTree.Head.Hash, Is.EqualTo(_processingTestContext._headBefore), "head");
+                    Assert.That(_processingTestContext._blockTree.Head!.Hash, Is.EqualTo(_processingTestContext._headBefore), "head");
                     _logger.Info($"Finished waiting for {_block.ToString(Block.Format.Short)} to be ignored");
                     return _processingTestContext;
                 }
@@ -428,7 +408,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to be deleted");
                     _processingTestContext._resetEvent.WaitOne(IgnoreWait);
-                    Assert.That(_processingTestContext._blockTree.Head.Hash, Is.EqualTo(_processingTestContext._headBefore), "head");
+                    Assert.That(_processingTestContext._blockTree.Head!.Hash, Is.EqualTo(_processingTestContext._headBefore), "head");
                     _logger.Info($"Finished waiting for {_block.ToString(Block.Format.Short)} to be deleted");
                     Assert.Null(_processingTestContext._blockTree.FindBlock(_block.Hash, BlockTreeLookupOptions.None));
                     return _processingTestContext;
@@ -449,17 +429,17 @@ namespace Nethermind.Blockchain.Test
             public static ProcessingTestContext ProcessorIsNotStarted => new(false);
         }
 
-        private static Block _block0 = Build.A.Block.WithNumber(0).WithNonce(0).WithDifficulty(0).TestObject;
-        private static Block _block1D2 = Build.A.Block.WithNumber(1).WithNonce(1).WithParent(_block0).WithDifficulty(2).TestObject;
-        private static Block _block2D4 = Build.A.Block.WithNumber(2).WithNonce(2).WithParent(_block1D2).WithDifficulty(2).TestObject;
-        private static Block _block3D6 = Build.A.Block.WithNumber(3).WithNonce(3).WithParent(_block2D4).WithDifficulty(2).TestObject;
-        private static Block _block4D8 = Build.A.Block.WithNumber(4).WithNonce(4).WithParent(_block3D6).WithDifficulty(2).TestObject;
-        private static Block _block5D10 = Build.A.Block.WithNumber(5).WithNonce(5).WithParent(_block4D8).WithDifficulty(2).TestObject;
-        private static Block _blockB2D4 = Build.A.Block.WithNumber(2).WithNonce(6).WithParent(_block1D2).WithDifficulty(2).TestObject;
-        private static Block _blockB3D8 = Build.A.Block.WithNumber(3).WithNonce(7).WithParent(_blockB2D4).WithDifficulty(4).TestObject;
-        private static Block _blockC2D100 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(98).TestObject;
-        private static Block _blockD2D200 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(198).TestObject;
-        private static Block _blockE2D300 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(298).TestObject;
+        private static readonly Block _block0 = Build.A.Block.WithNumber(0).WithNonce(0).WithDifficulty(0).TestObject;
+        private static readonly Block _block1D2 = Build.A.Block.WithNumber(1).WithNonce(1).WithParent(_block0).WithDifficulty(2).TestObject;
+        private static readonly Block _block2D4 = Build.A.Block.WithNumber(2).WithNonce(2).WithParent(_block1D2).WithDifficulty(2).TestObject;
+        private static readonly Block _block3D6 = Build.A.Block.WithNumber(3).WithNonce(3).WithParent(_block2D4).WithDifficulty(2).TestObject;
+        private static readonly Block _block4D8 = Build.A.Block.WithNumber(4).WithNonce(4).WithParent(_block3D6).WithDifficulty(2).TestObject;
+        private static readonly Block _block5D10 = Build.A.Block.WithNumber(5).WithNonce(5).WithParent(_block4D8).WithDifficulty(2).TestObject;
+        private static readonly Block _blockB2D4 = Build.A.Block.WithNumber(2).WithNonce(6).WithParent(_block1D2).WithDifficulty(2).TestObject;
+        private static readonly Block _blockB3D8 = Build.A.Block.WithNumber(3).WithNonce(7).WithParent(_blockB2D4).WithDifficulty(4).TestObject;
+        private static readonly Block _blockC2D100 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(98).TestObject;
+        private static readonly Block _blockD2D200 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(198).TestObject;
+        private static readonly Block _blockE2D300 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(298).TestObject;
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_ignore_lower_difficulty()
@@ -525,12 +505,12 @@ namespace Nethermind.Blockchain.Test
             await testBlockchain.BuildSomeBlocks(5);
 
             When.ProcessingBlocks
-                .FullyProcessed(testBlockchain.BlockTree.FindBlock(0)).BecomesGenesis()
-                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(1))
-                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(2))
-                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(3))
-                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(4))
-                .FullyProcessed(testBlockchain.BlockTree.FindBlock(5)).BecomesNewHead();
+                .FullyProcessed(testBlockchain.BlockTree.FindBlock(0)!).BecomesGenesis()
+                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(1)!)
+                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(2)!)
+                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(3)!)
+                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(4)!)
+                .FullyProcessed(testBlockchain.BlockTree.FindBlock(5)!).BecomesNewHead();
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]

@@ -35,6 +35,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
+using Nethermind.Synchronization.Trie;
 using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -104,11 +105,12 @@ namespace Nethermind.Init.Steps
             IKeyValueStore codeDb = getApi.DbProvider.CodeDb
                 .WitnessedBy(witnessCollector);
 
-            TrieStore trieStore;
             IKeyValueStoreWithBatching stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
+            IPersistenceStrategy persistenceStrategy;
+            IPruningStrategy pruningStrategy;
             if (pruningConfig.Mode.IsMemory())
             {
-                IPersistenceStrategy persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
+                persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
                 if (pruningConfig.Mode.IsFull())
                 {
                     PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new((IFullPruningDb)getApi.DbProvider!.StateDb, getApi.BlockTree!, getApi.LogManager);
@@ -116,29 +118,45 @@ namespace Nethermind.Init.Steps
                     persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
                 }
 
-                setApi.TrieStore = trieStore = new TrieStore(
-                    stateWitnessedBy,
-                    Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
-                    persistenceStrategy,
-                    getApi.LogManager);
-
-                if (pruningConfig.Mode.IsFull())
-                {
-                    IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
-                    fullPruningDb.PruningStarted += (_, args) =>
-                    {
-                        cachedStateDb.PersistCache(args.Context);
-                        trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
-                    };
-                }
+                pruningStrategy = Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()); // TODO: memory hint should define this
             }
             else
             {
-                setApi.TrieStore = trieStore = new TrieStore(
+                pruningStrategy = No.Pruning;
+                persistenceStrategy = Persist.EveryBlock;
+            }
+
+            TrieStore trieStore = syncConfig.TrieHealing
+                ? new HealingTrieStore(
                     stateWitnessedBy,
-                    No.Pruning,
-                    Persist.EveryBlock,
+                    pruningStrategy,
+                    persistenceStrategy,
+                    getApi.LogManager)
+                : new TrieStore(
+                    stateWitnessedBy,
+                    pruningStrategy,
+                    persistenceStrategy,
                     getApi.LogManager);
+            setApi.TrieStore = trieStore;
+
+            IWorldState worldState = setApi.WorldState = syncConfig.TrieHealing
+                ? new HealingWorldState(
+                    trieStore,
+                    codeDb,
+                    getApi.LogManager)
+                : new WorldState(
+                    trieStore,
+                    codeDb,
+                    getApi.LogManager);
+
+            if (pruningConfig.Mode.IsFull())
+            {
+                IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
+                fullPruningDb.PruningStarted += (_, args) =>
+                {
+                    cachedStateDb.PersistCache(args.Context);
+                    trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
+                };
             }
 
             TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);
@@ -146,11 +164,6 @@ namespace Nethermind.Init.Steps
             getApi.DisposeStack.Push(trieStore);
 
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
-
-            IWorldState worldState = setApi.WorldState = new WorldState(
-                trieStore,
-                codeDb,
-                getApi.LogManager);
 
             ReadOnlyDbProvider readOnly = new(getApi.DbProvider, false);
 
@@ -258,7 +271,10 @@ namespace Nethermind.Init.Steps
                 {
                     StoreReceiptsByDefault = initConfig.StoreReceipts,
                     DumpOptions = initConfig.AutoDump
-                });
+                })
+            {
+                IsMainProcessor = true
+            };
 
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
@@ -329,7 +345,8 @@ namespace Nethermind.Init.Steps
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
                 _api.LogManager,
-                CreateTxPoolTxComparer());
+                CreateTxPoolTxComparer(),
+                _api.TxGossipPolicy);
 
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 

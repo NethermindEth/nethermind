@@ -15,15 +15,15 @@ namespace Nethermind.Evm.Precompiles
     /// <summary>
     ///     https://github.com/ethereum/EIPs/blob/vbuterin-patch-2/EIPS/bigint_modexp.md
     /// </summary>
-    public class ModExpPrecompile : IPrecompile
+    public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     {
-        public static readonly IPrecompile Instance = new ModExpPrecompile();
+        public static readonly ModExpPrecompile Instance = new ModExpPrecompile();
 
         private ModExpPrecompile()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(5);
+        public static Address Address { get; } = Address.FromNumber(5);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {

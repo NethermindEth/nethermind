@@ -344,13 +344,13 @@ namespace Nethermind.Stats
                 {
                     rlpxReputation = (long)(rlpxReputation * 0.3);
                 }
-                else if (_lastLocalDisconnect != DisconnectReason.DisconnectRequested)
+                else if (_lastLocalDisconnect?.ToEthDisconnectReason() != EthDisconnectReason.DisconnectRequested)
                 {
                     if (_lastRemoteDisconnect == DisconnectReason.TooManyPeers)
                     {
                         rlpxReputation = (long)(rlpxReputation * 0.3);
                     }
-                    else if (_lastRemoteDisconnect != DisconnectReason.DisconnectRequested)
+                    else if (_lastRemoteDisconnect?.ToEthDisconnectReason() != EthDisconnectReason.DisconnectRequested)
                     {
                         rlpxReputation = (long)(rlpxReputation * 0.2);
                     }

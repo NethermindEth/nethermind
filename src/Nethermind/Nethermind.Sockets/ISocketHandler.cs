@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
+using System.IO;
 using System.Threading.Tasks;
 
 namespace Nethermind.Sockets
@@ -17,5 +16,6 @@ namespace Nethermind.Sockets
         Task SendRawAsync(ArraySegment<byte> data, bool endMessage = true);
         Task<ReceiveResult?> GetReceiveResult(ArraySegment<byte> buffer);
         Task CloseAsync(ReceiveResult? result);
+        Stream SendUsingStream();
     }
 }

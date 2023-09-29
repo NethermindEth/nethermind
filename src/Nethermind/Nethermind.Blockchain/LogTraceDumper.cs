@@ -43,7 +43,7 @@ public static class BlockTraceDumper
 
             }
 
-            if (blockTracer is GethLikeBlockTracer gethTracer)
+            if (blockTracer is GethLikeBlockMemoryTracer gethTracer)
             {
                 fileName = $"gethStyle_{blockHash}.txt";
                 using FileStream diagnosticFile = GetFileStream(fileName);

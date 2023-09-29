@@ -6,22 +6,29 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
-public class GethTraceOptions
+public record GethTraceOptions
 {
-    [JsonPropertyName("disableStorage")]
-    public bool DisableStorage { get; set; }
-
     [JsonPropertyName("disableMemory")]
-    public bool DisableMemory { get; set; }
+    [Obsolete("Use EnableMemory instead.")]
+    public bool DisableMemory { get => !EnableMemory; init => EnableMemory = !value; }
+
+    [JsonPropertyName("disableStorage")]
+    public bool DisableStorage { get; init; }
+
+    [JsonProperty("enableMemory")]
+    public bool EnableMemory { get; init; }
 
     [JsonPropertyName("disableStack")]
-    public bool DisableStack { get; set; }
-
-    [JsonPropertyName("tracer")]
-    public string Tracer { get; set; }
+    public bool DisableStack { get; init; }
 
     [JsonPropertyName("timeout")]
-    public string Timeout { get; set; }
+    public string Timeout { get; init; }
 
-    public static GethTraceOptions Default = new();
+    [JsonPropertyName("tracer")]
+    public string Tracer { get; init; }
+
+    [JsonProperty("txHash")]
+    public Keccak? TxHash { get; init; }
+
+    public static GethTraceOptions Default { get; } = new();
 }

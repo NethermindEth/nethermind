@@ -12,6 +12,7 @@ using System.Threading;
 using ConcurrentCollections;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
@@ -368,6 +369,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         options.SetWriteBufferSize(writeBufferSize);
         int writeBufferNumber = (int)dbConfig.WriteBufferNumber;
         options.SetMaxWriteBufferNumber(writeBufferNumber);
+
+        // Memtable is slower to writes the bigger it gets, but small memtable means small l0 file size, which means
+        // higher write amp for l0->l1 compaction. This allows multiple memtable to go into one l0 file so that it is
+        // not too small so it helps with write amp when setting small write buffer. AFAIK that is its only use compared
+        // to just specifying large write buffer. Sadly, this setting can't dynamically change.
         options.SetMinWriteBufferNumberToMerge(2);
 
         lock (_dbsByPath)
@@ -388,8 +394,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         options.SetRecycleLogFileNum(dbConfig
             .RecycleLogFileNum); // potential optimization for reusing allocated log files
 
-        options.SetUseDirectReads(dbConfig.UseDirectReads);
-        options.SetUseDirectIoForFlushAndCompaction(dbConfig.UseDirectIoForFlushAndCompactions);
+        options.SetMaxBytesForLevelBase(dbConfig.MaxBytesForLevelBase);
+        options.SetUseDirectReads(dbConfig.UseDirectReads.GetValueOrDefault());
+        options.SetUseDirectIoForFlushAndCompaction(dbConfig.UseDirectIoForFlushAndCompactions.GetValueOrDefault());
 
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
@@ -422,6 +429,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             _readAheadReadOptions = new ReadOptions();
             _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong)256.KiB());
             _readAheadReadOptions.SetTailing(true);
+        }
+
+        if (dbConfig.CompactionReadAhead != null && dbConfig.CompactionReadAhead != 0)
+        {
+            options.SetCompactionReadaheadSize(dbConfig.CompactionReadAhead.Value);
         }
 
         if (dbConfig.DisableCompression == true)
@@ -917,6 +929,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         InnerFlush();
     }
 
+    public void Compact()
+    {
+        _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
+    }
+
     private void InnerFlush()
     {
         try
@@ -1056,25 +1073,25 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             // smoothens this spike somewhat by not blocking writes while allowing compaction to happen in background
             // at 1/10th the specified speed (if rate limited).
             //
-            // Read and writes written on different tune during mainnet sync in TB.
-            // +-----------------------------+----------------+--------------+---------------+---------------+--------------+----------------+---------------------+
-            // | L0FileNumTarget             | Total (R/W)    | State        | Code          | Header        | Blocks       | Receipts_Blocks | Receipt_Transactions |
-            // +-----------------------------+----------------+--------------+---------------+---------------+--------------+----------------+---------------------+
-            // | 4 (Default)                 | 7.853 / 8.41   | 2.58 / 2.78  | 0.104 / 0.107 | 0.133 / 0.141 | 4.34 / 4.58  | 0.502 / 0.593  | 0.194 / 0.209       |
-            // | 4 (8GB memory hint)         | 7.875 / 8.393  | 2.40 / 2.56  | 0.103 / 0.106 | 0.114 / 0.122 | 4.51 / 4.75  | 0.556 / 0.648  | 0.192 / 0.207       |
-            // | 14                          | 7.001 / 7.514  | 2.38 / 2.54  | 0.029 / 0.032 | 0.132 / 0.141 | 4.04 / 4.27  | 0.287 / 0.378  | 0.138 / 0.153       |
-            // | 64 (WriteBias)              | 5.986 / 6.493  | 1.63 / 1.79  | 0.023 / 0.026 | 0.120 / 0.128 | 3.82 / 4.05  | 0.280 / 0.371  | 0.113 / 0.128       |
-            // | 256 (HeavyWrite)            | 4.386 / 4.895  | 1.12 / 1.28  | 0.013 / 0.016 | 0.131 / 0.140 | 2.89 / 3.12  | 0.178 / 0.270  | 0.054 / 0.069       |
-            // | 1024 (AggressiveHeavyWrite) | 2.942 / 3.452  | 0.60 / 0.76  | 0.006 / 0.009 | 0.133 / 0.142 | 2.01 / 2.24  | 0.171 / 0.263  | 0.022 / 0.038       |
-            // +-----------------------------+-----------------+--------------+---------------+--------------+--------------+----------------+---------------------+
+            // Total writes written on different tune during mainnet sync in TB.
+            // +-----------------------+-------+-------+-------+-------+-------+---------+
+            // | L0FileNumTarget       | Total | State | Code  | Header| Blocks| Receipts |
+            // +-----------------------+-------+-------+-------+-------+-------+---------+
+            // | Default               | 5.055 | 2.27  | 0.242 | 0.123 | 1.14  | 1.280   |
+            // | WriteBias             | 4.962 | 2.12  | 0.049 | 0.132 | 1.14  | 1.080   |
+            // | HeavyWrite            | 3.592 | 1.32  | 0.032 | 0.116 | 1.14  | 0.984   |
+            // | AggressiveHeavyWrite  | 3.029 | 0.92  | 0.024 | 0.118 | 1.14  | 0.827   |
+            // | DisableCompaction     | 2.215 | 0.36  | 0.031 | 0.137 | 1.14  | 0.547   |
+            // +-----------------------+-------+-------+-------+-------+-------+---------+
             // Note, in practice on my machine, the reads does not reach the SSD. Read measured from SSD is much lower
             // than read measured from process. It is likely that most files are cached as I have 128GB of RAM.
             // Also notice that the heavier the tune, the higher the reads.
             case ITunableDb.TuneType.WriteBias:
-                // The default l1SizeTarget is 256MB, so the compaction is fairly light. But the default options is not very
-                // efficient for write amplification to conserve memory, so the write amplification reduction is noticeable.
-                // Does not seems to impact sync performance, might improve sync time slightly if user is IO limited.
-                ApplyOptions(GetHeavyWriteOptions(64));
+                // Keep the same l1 size but apply other adjustment which should increase buffer number and make
+                // l0 the same size as l1, but keep the LSM the same. This improve flush parallelization, and
+                // write amplification due to mismatch of l0 and l1 size, but does not reduce compaction from other
+                // levels.
+                ApplyOptions(GetHeavyWriteOptions(_perTableDbConfig.MaxBytesForLevelBase / (ulong)8.MiB()));
                 break;
             case ITunableDb.TuneType.HeavyWrite:
                 // Compaction spikes are clear at this point. Will definitely affect attestation performance.
@@ -1107,9 +1124,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 // user config may not be able to handle this.
                 // With all those cons, this result in the minimum write amplification possible via tweaking compaction
                 // without changing memory budget. Not recommended for mainnet, unless you are very desperate.
-                IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(2048);
-                heavyWriteOption["disable_auto_compactions"] = "true";
-                ApplyOptions(heavyWriteOption);
+                ApplyOptions(GetDisableCompactionOptions());
                 break;
             case ITunableDb.TuneType.EnableBlobFiles:
                 ApplyOptions(GetBlobFilesOptions());
@@ -1133,15 +1148,17 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         // Defaults are from rocksdb source code
         return new Dictionary<string, string>()
         {
+            { "write_buffer_size", _perTableDbConfig.WriteBufferSize.ToString() },
+            { "max_write_buffer_number", _perTableDbConfig.WriteBufferNumber.ToString() },
+
             { "level0_file_num_compaction_trigger", 4.ToString() },
             { "level0_slowdown_writes_trigger", 20.ToString() },
             { "level0_stop_writes_trigger", 36.ToString() },
 
-            { "max_bytes_for_level_base", 256.MiB().ToString() },
+            { "max_bytes_for_level_base", _perTableDbConfig.MaxBytesForLevelBase.ToString() },
             { "target_file_size_base", 64.MiB().ToString() },
             { "disable_auto_compactions", "false" },
 
-            { "write_buffer_size", _perTableDbConfig.WriteBufferSize.ToString() },
             { "enable_blob_files", "false" },
 
             { "soft_pending_compaction_bytes_limit", 64.GiB().ToString() },
@@ -1162,17 +1179,30 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     /// <returns></returns>
     private IDictionary<string, string> GetHeavyWriteOptions(ulong l0FileNumTarget)
     {
+        // Make buffer (probably) smaller so that it does not take too much memory to have many of them.
+        // More buffer means more parallel flush, but each read have to go through all buffer one by one much like l0
+        // but no io, only cpu.
+        // bufferSize*maxBufferNumber = 128MB, which is the max memory used, which tend to be the case as its now
+        // stalled by compaction instead of flush.
+        // The skiplist (memtable) have a branching factor of 4, so I assume it slows down a little as num of record
+        // grows by 4x. So we are looking at 1,4,16,64,256,1k,4k,16k,64k and so on num of keys. Assuming average size of
+        // 120 bytes per key for state db, we are targeting between 4k to 16k of keys per memtable.
+        // A small memtable however, have the drawback of making l0 files smaller. Causing more compaction overhead.
+        ulong bufferSize = (ulong)4.MiB();
+        ulong writeBufferToMerge = 2;
+        ulong maxBufferNumber = 16 * writeBufferToMerge;
+
         // Guide recommend to have l0 and l1 to be the same size. They have to be compacted together so if l1 is larger,
         // the extra size in l1 is basically extra rewrites. If l0 is larger... then I don't know why not. Even so, it seems to
         // always get triggered when l0 size exceed max_bytes_for_level_base even if file num is less than l0FileNumTarget.
-        // The 2 here is MinWriteBufferToMerge. Note, that this does highly depends on the WriteBufferSize as do standard
-        // config.
-        ulong l1SizeTarget = l0FileNumTarget * _perTableDbConfig.WriteBufferSize * 2;
+        ulong l1SizeTarget = l0FileNumTarget * bufferSize * writeBufferToMerge;
 
         return new Dictionary<string, string>()
         {
-            { "max_bytes_for_level_base", l1SizeTarget.ToString() },
+            { "write_buffer_size", bufferSize.ToString() },
+            { "max_write_buffer_number", maxBufferNumber.ToString() },
 
+            { "max_bytes_for_level_base", l1SizeTarget.ToString() },
             { "level0_file_num_compaction_trigger", l0FileNumTarget.ToString() },
 
             // Note: If ratelimiter is not specified and if delayed_write_rate is not specified, the default is 16MBps.
@@ -1185,6 +1215,21 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             { "hard_pending_compaction_bytes_limit", 100000.GiB().ToString() },
         };
     }
+
+    private IDictionary<string, string> GetDisableCompactionOptions()
+    {
+        IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(2048);
+
+        heavyWriteOption["disable_auto_compactions"] = "true";
+        // Increase the size of the write buffer, which reduces the number of l0 file by 4x. This does slows down
+        // the memtable a little bit. So if you are not write limited, you'll get memtable limited instead.
+        // This does increase the total memory buffer size, but counterintuitively, this reduces overall memory usage
+        // as it ran out of bloom filter cache so it need to do actual IO.
+        heavyWriteOption["write_buffer_size"] = 16.MiB().ToString();
+
+        return heavyWriteOption;
+    }
+
 
     private IDictionary<string, string> GetBlobFilesOptions()
     {

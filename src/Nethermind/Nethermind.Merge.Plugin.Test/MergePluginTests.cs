@@ -27,7 +27,7 @@ namespace Nethermind.Merge.Plugin.Test
         private MergeConfig _mergeConfig = null!;
         private NethermindApi _context = null!;
         private MergePlugin _plugin = null!;
-        private CliquePlugin _consensusPlugin = null;
+        private CliquePlugin? _consensusPlugin = null;
 
         [SetUp]
         public void Setup()
@@ -54,9 +54,10 @@ namespace Nethermind.Merge.Plugin.Test
                 _context.ReceiptStorage!,
                 _context.BlockPreprocessor!,
                 _context.TxPool!,
-                _context.TransactionComparerProvider,
+                _context.TransactionComparerProvider!,
                 miningConfig,
                 _context.LogManager!);
+            _context.ProcessExit = Substitute.For<IProcessExitSource>();
             _context.ChainSpec!.Clique = new CliqueParameters()
             {
                 Epoch = CliqueConfig.Default.Epoch,
@@ -88,11 +89,11 @@ namespace Nethermind.Merge.Plugin.Test
         public void Init_merge_plugin_does_not_throw_exception(bool enabled)
         {
             _mergeConfig.TerminalTotalDifficulty = enabled ? "0" : null;
-            Assert.DoesNotThrowAsync(async () => await _consensusPlugin.Init(_context));
+            Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(_context));
             Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
             Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
             Assert.DoesNotThrowAsync(async () => await _plugin.InitSynchronization());
-            Assert.DoesNotThrowAsync(async () => await _plugin.InitBlockProducer(_consensusPlugin));
+            Assert.DoesNotThrowAsync(async () => await _plugin.InitBlockProducer(_consensusPlugin!));
             Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
             Assert.DoesNotThrowAsync(async () => await _plugin.DisposeAsync());
         }
@@ -100,17 +101,17 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public async Task Initializes_correctly()
         {
-            Assert.DoesNotThrowAsync(async () => await _consensusPlugin.Init(_context));
+            Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(_context));
             await _plugin.Init(_context);
             await _plugin.InitSynchronization();
             await _plugin.InitNetworkProtocol();
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
             Assert.IsTrue(syncConfig.NetworkingEnabled);
             Assert.IsTrue(_context.GossipPolicy.CanGossipBlocks);
-            await _plugin.InitBlockProducer(_consensusPlugin);
+            await _plugin.InitBlockProducer(_consensusPlugin!);
             Assert.IsInstanceOf<MergeBlockProducer>(_context.BlockProducer);
             await _plugin.InitRpcModules();
-            _context.RpcModuleProvider.Received().Register(Arg.Is<IRpcModulePool<IEngineRpcModule>>(m => m is SingletonModulePool<IEngineRpcModule>));
+            _context.RpcModuleProvider!.Received().Register(Arg.Is<IRpcModulePool<IEngineRpcModule>>(m => m is SingletonModulePool<IEngineRpcModule>));
             await _plugin.DisposeAsync();
         }
 

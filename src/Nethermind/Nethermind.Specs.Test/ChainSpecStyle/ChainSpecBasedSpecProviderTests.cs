@@ -22,7 +22,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle;
 [TestFixture]
 public class ChainSpecBasedSpecProviderTests
 {
-    private const ulong GnosisBlockTime = 5;
+    private const double GnosisBlockTime = 5;
 
     [TestCase(0, null, false)]
     [TestCase(0, 0ul, false)]
@@ -141,6 +141,34 @@ public class ChainSpecBasedSpecProviderTests
 
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             t => ValidateSlotByTimestamp(t, SepoliaSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
+    }
+
+    [Test]
+    public void Holesky_loads_properly()
+    {
+        ChainSpec chainSpec = LoadChainSpecFromChainFolder("holesky");
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ISpecProvider hardCodedSpec = HoleskySpecProvider.Instance;
+
+        List<ForkActivation> forkActivationsToTest = new()
+        {
+            new ForkActivation(0, HoleskySpecProvider.GenesisTimestamp),
+            new ForkActivation(1, HoleskySpecProvider.ShanghaiTimestamp),
+            new ForkActivation(3, HoleskySpecProvider.ShanghaiTimestamp + 24),
+            //new ForkActivation(4, HoleskySpecProvider.CancunTimestamp),
+            //new ForkActivation(5, HoleskySpecProvider.CancunTimestamp + 12),
+        };
+
+        CompareSpecProviders(hardCodedSpec, provider, forkActivationsToTest);
+        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(hardCodedSpec.TerminalTotalDifficulty));
+        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(0));
+        Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(0));
+        Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Holesky));
+        Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Holesky));
+
+        // because genesis time for holesky is set 5 minutes before the launch of the chain. this test fails.
+        //GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
+        //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
     }
 
     [Test]
@@ -265,15 +293,14 @@ public class ChainSpecBasedSpecProviderTests
 
         VerifyGnosisPreShanghaiExceptions(provider);
 
-        /* ToDo uncomment with Gnosis fork specified
         IReleaseSpec? preShanghaiSpec = provider.GetSpec((GnosisSpecProvider.LondonBlockNumber + 1,
             GnosisSpecProvider.ShanghaiTimestamp - 1));
         IReleaseSpec? postShanghaiSpec = provider.GetSpec((GnosisSpecProvider.LondonBlockNumber + 1,
             GnosisSpecProvider.ShanghaiTimestamp));
 
-        VerifyGnosisPreShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
+        VerifyGnosisShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue()); */
+            t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
     }
 
     private void VerifyGnosisShanghaiExceptions(IReleaseSpec preShanghaiSpec, IReleaseSpec postShanghaiSpec)
@@ -438,43 +465,6 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(propertyInfo.GetValue(actualSpec), Is.EqualTo(propertyInfo.GetValue(expectedSpec)),
                 activation + "." + propertyInfo.Name);
         }
-    }
-
-    [Test]
-    public void Ropsten_loads_properly()
-    {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/ropsten.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-        RopstenSpecProvider ropsten = RopstenSpecProvider.Instance;
-
-        List<ForkActivation> forkActivationsToTest = new()
-        {
-            (ForkActivation)0,
-            (ForkActivation)1,
-            (ForkActivation)(RopstenSpecProvider.SpuriousDragonBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.SpuriousDragonBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.ByzantiumBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.ByzantiumBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.ConstantinopleFixBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.ConstantinopleFixBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.IstanbulBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.IstanbulBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.MuirGlacierBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.MuirGlacierBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.BerlinBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.BerlinBlockNumber,
-            (ForkActivation)(RopstenSpecProvider.LondonBlockNumber - 1),
-            (ForkActivation)RopstenSpecProvider.LondonBlockNumber,
-            (ForkActivation)999_999_999, // far in the future
-        };
-
-        CompareSpecProviders(ropsten, provider, forkActivationsToTest, CompareSpecsOptions.CheckDifficultyBomb);
-        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(RopstenSpecProvider.Instance.TerminalTotalDifficulty));
-        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(RopstenSpecProvider.LondonBlockNumber));
     }
 
     private ChainSpec LoadChainSpecFromChainFolder(string chain)
@@ -832,6 +822,8 @@ public class ChainSpecBasedSpecProviderTests
     /// <param name="genesisTimestamp">The network's genesis timestamp</param>
     /// <param name="blockTime">The network's block time in seconds</param>
     /// <returns><c>true</c> if the timestamp is valid; otherwise, <c>false</c>.</returns>
-    private static bool ValidateSlotByTimestamp(ulong timestamp, ulong genesisTimestamp, ulong blockTime = 12) =>
-        timestamp > genesisTimestamp && (timestamp - genesisTimestamp) / blockTime % 0x2000 == 0;
+    private static bool ValidateSlotByTimestamp(ulong timestamp, ulong genesisTimestamp, double blockTime = 12) =>
+        timestamp > genesisTimestamp &&
+        Math.Round((timestamp - genesisTimestamp) / blockTime) % 0x2000 == 0 &&
+        Math.Ceiling((timestamp - genesisTimestamp) / blockTime) % 0x2000 == 0;
 }

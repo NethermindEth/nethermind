@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://user-images.githubusercontent.com/337518/184757509-5ac8a259-659a-42dd-a51c-cd093a41a0ad.png">
-    <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/337518/184757473-5d70ac41-4afd-42f6-ab7b-5338ae09b2fb.png">
-    <img alt="Nethermind" src="https://user-images.githubusercontent.com/337518/184757473-5d70ac41-4afd-42f6-ab7b-5338ae09b2fb.png" height="64">
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/nethermindeth/nethermind/assets/337518/3e3b3c06-9cf3-4364-a774-158e649588cc">
+    <source media="(prefers-color-scheme: light)" srcset="https://github.com/nethermindeth/nethermind/assets/337518/d1cc365c-6045-409f-a961-18d22ddb2535">
+    <img alt="Nethermind" src="https://github.com/nethermindeth/nethermind/assets/337518/d1cc365c-6045-409f-a961-18d22ddb2535" height="64">
   </picture>
 </p>
 
@@ -22,7 +22,7 @@ Nethermind documentation is available at [docs.nethermind.io](https://docs.nethe
 
 ### Supported networks
 
-**`Mainnet`** **`Goerli`** **`Sepolia`** **`Gnosis (xDai)`** **`Energy Web`** **`Volta`**
+**`Mainnet`** **`Goerli`** **`Sepolia`** **`Holesky`** **`Gnosis (xDai)`** **`Chiado`** **`Energy Web`** **`Volta`**
 
 ## Download and run
 
@@ -65,8 +65,8 @@ winget install Microsoft.VCRedist.2015+.x64
 #### Install using Windows Package Manager
 
 1. `winget install nethermind`
-2. To run directly: `nethermind.runner.exe -c mainnet` \
-   or with the assistant: `nethermind.launcher.exe` 
+2. To run directly: `nethermind.exe -c mainnet` \
+   or with the assistant: `nethermind-launcher.exe` 
 
 ### On macOS
 
@@ -106,7 +106,7 @@ Install [.NET SDK](https://dotnet.microsoft.com/en-us/download)
 ### Clone the repository
 
 ```sh
-git clone https://github.com/nethermindeth/nethermind --recursive
+git clone --recursive https://github.com/nethermindeth/nethermind.git
 ```
 
 ### Build and run

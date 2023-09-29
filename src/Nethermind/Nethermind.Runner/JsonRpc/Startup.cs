@@ -279,15 +279,16 @@ namespace Nethermind.Runner.JsonRpc
             }
             else
             {
-                return ModuleTimeout(result.Response)
+                return IsResourceUnavailableError(result.Response)
                     ? StatusCodes.Status503ServiceUnavailable
                     : StatusCodes.Status200OK;
             }
         }
 
-        private static bool ModuleTimeout(JsonRpcResponse? response)
+        private static bool IsResourceUnavailableError(JsonRpcResponse? response)
         {
-            return response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout };
+            return response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
+                        or JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded };
         }
 
         private sealed class CountingPipeReader : PipeReader

@@ -31,7 +31,6 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using NSubstitute;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -141,7 +140,6 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullTxPool.Instance,
                 NullTxSender.Instance,
                 NullWallet.Instance,
-                Substitute.For<IReceiptFinder>(),
                 LimboLogs.Instance,
                 specProvider,
                 gasPriceOracle,

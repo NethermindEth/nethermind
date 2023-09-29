@@ -4,7 +4,6 @@
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -13,7 +12,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -109,8 +107,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         public void Should_return_correct_block_reward(bool isPostMerge)
         {
             Block block = Build.A.Block.WithParent(Build.A.Block.Genesis.TestObject).TestObject;
-            _blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
-            _poSSwitcher.IsPostMerge(Arg.Any<BlockHeader>()).Returns(isPostMerge);
+            _blockTree!.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+            _poSSwitcher!.IsPostMerge(Arg.Any<BlockHeader>()).Returns(isPostMerge);
 
             TraceRpcModule traceRpcModule = new(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig, MainnetSpecProvider.Instance, LimboLogs.Instance);
             ParityTxTraceFromStore[] result = traceRpcModule.trace_block(new BlockParameter(block.Number)).Data.ToArray();

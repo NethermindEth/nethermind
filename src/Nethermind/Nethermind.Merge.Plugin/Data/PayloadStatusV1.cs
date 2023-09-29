@@ -19,10 +19,11 @@ namespace Nethermind.Merge.Plugin.Data
 
         public static readonly PayloadStatusV1 Accepted = new() { Status = PayloadStatus.Accepted };
 
-        public static PayloadStatusV1 Invalid(Keccak? latestValidHash) => new()
+        public static PayloadStatusV1 Invalid(Keccak? latestValidHash, string? validationError = null) => new()
         {
             Status = PayloadStatus.Invalid,
-            LatestValidHash = latestValidHash
+            LatestValidHash = latestValidHash,
+            ValidationError = validationError
         };
 
         /// <summary>

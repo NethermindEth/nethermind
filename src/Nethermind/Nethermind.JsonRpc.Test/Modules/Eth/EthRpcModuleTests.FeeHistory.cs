@@ -16,7 +16,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_feeHistory(long blockCount, string blockParameter, string expected)
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
-        string serialized = ctx.Test.TestEthRpc("eth_feeHistory", blockCount.ToString(), blockParameter, "[0,10.5,20,60,90]");
-        Assert.AreEqual(expected, serialized);
+        string serialized = await ctx.Test.TestEthRpc("eth_feeHistory", blockCount.ToString(), blockParameter, "[0,10.5,20,60,90]");
+        serialized.Should().Be(expected);
     }
 }

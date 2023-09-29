@@ -9,13 +9,21 @@ public class NodeAddResult
 
     public NodeBucketItem? EvictionCandidate { get; private init; }
 
+    private static NodeAddResult? _added = null;
+    private static NodeAddResult? _dropped = null;
+
     public static NodeAddResult Added()
     {
-        return new NodeAddResult { ResultType = NodeAddResultType.Added };
+        return _added ?? new NodeAddResult { ResultType = NodeAddResultType.Added };
     }
 
     public static NodeAddResult Full(NodeBucketItem evictionCandidate)
     {
         return new NodeAddResult { ResultType = NodeAddResultType.Full, EvictionCandidate = evictionCandidate };
+    }
+
+    public static NodeAddResult Dropped()
+    {
+        return _dropped ?? new NodeAddResult { ResultType = NodeAddResultType.Dropped };
     }
 }

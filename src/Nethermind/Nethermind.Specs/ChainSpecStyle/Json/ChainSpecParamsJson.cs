@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -142,5 +141,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public ulong? Eip4895TransitionTimestamp { get; set; }
         public ulong? Eip4844TransitionTimestamp { get; set; }
         public ulong? Eip2537TransitionTimestamp { get; set; }
+        public ulong? Eip5656TransitionTimestamp { get; set; }
+        public ulong? Eip6780TransitionTimestamp { get; set; }
+        public ulong? Eip4788TransitionTimestamp { get; set; }
+        public Address Eip4788ContractAddress { get; set; }
     }
 }

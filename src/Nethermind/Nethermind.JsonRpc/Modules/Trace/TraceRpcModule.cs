@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using FastEnumUtility;
@@ -129,7 +128,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     header.Number + 1,
                     header.GasLimit,
                     header.Timestamp + 1,
-                    header.ExtraData);
+                    header.ExtraData,
+                    header.BlobGasUsed,
+                    header.ExcessBlobGas);
 
                 header.TotalDifficulty = 2 * header.Difficulty;
                 header.BaseFeePerGas = baseFee;

@@ -15,48 +15,35 @@ public class GethTxTraceEntry
 {
     public GethTxTraceEntry()
     {
-        Stack = new List<string>();
-        Memory = new List<string>();
     }
 
-    [JsonConverter(typeof(LongRawJsonConverter))]
-    public long Pc { get; set; }
+    public int Depth { get; set; }
 
-    [JsonPropertyName("op")]
-    public string? Operation { get; set; }
+    public string? Error { get; set; }
 
     [JsonConverter(typeof(LongRawJsonConverter))]
     public long Gas { get; set; }
 
-    [JsonConverter(typeof(LongRawJsonConverter))]
     public long GasCost { get; set; }
+    
+    public List<string>? Memory { get; set; }
 
-    public int Depth { get; set; }
+    [JsonPropertyName("op")]
+    public string? Opcode { get; set; }
+    
+    [JsonPropertyName("pc")]
+    [JsonConverter(typeof(LongRawJsonConverter))]
+    public long ProgramCounter { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public string? Error { get; set; }
 
     public List<string>? Stack { get; set; }
 
-    public List<string>? Memory { get; set; }
 
     public Dictionary<string, string>? Storage { get; set; }
 
-    [JsonIgnore]
-    public Dictionary<string, string>? SortedStorage => Storage?.OrderBy(p => p.Key).ToDictionary(p => p.Key, p => p.Value);
-
-    internal void UpdateMemorySize(ulong size)
-    {
-        // Geth's approach to memory trace is to show empty memory spaces on entry for the values that are being set by the operation
-        Memory ??= new List<string>();
-
-        int missingChunks = (int)((size - (ulong)Memory.Count * EvmPooledMemory.WordSize) / EvmPooledMemory.WordSize);
-        for (int i = 0; i < missingChunks; i++)
-        {
-            Memory.Add("0000000000000000000000000000000000000000000000000000000000000000");
-        }
-    }
+    internal virtual void UpdateMemorySize(ulong size) { }
 }
+
 public class LongRawJsonConverter : JsonConverter<long>
 {
     public override long Read(

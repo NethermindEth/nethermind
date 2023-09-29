@@ -135,9 +135,9 @@ public static class Int64Extensions
     [SkipLocalsInit]
     public static string ToHexString(this long value, bool skipLeadingZeros)
     {
-        if (value == UInt256.Zero)
+        if (value == 0L)
         {
-            return "0x";
+            return "0x0";
         }
 
         Span<byte> bytes = stackalloc byte[8];
@@ -148,9 +148,9 @@ public static class Int64Extensions
     [SkipLocalsInit]
     public static string ToHexString(this ulong value, bool skipLeadingZeros)
     {
-        if (value == UInt256.Zero)
+        if (value == 0UL)
         {
-            return "0x";
+            return "0x0";
         }
 
         Span<byte> bytes = stackalloc byte[8];
@@ -163,9 +163,9 @@ public static class Int64Extensions
     {
         if (skipLeadingZeros)
         {
-            if (value == UInt256.Zero)
+            if (value == default)
             {
-                return "0x";
+                return "0x0";
             }
 
             if (value == UInt256.One)

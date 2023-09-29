@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -63,7 +62,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
-            public void ReportBreachOfProtocol(PeerInfo peerInfo, InitiateDisconnectReason initiateDisconnectReason, string details)
+            public void ReportBreachOfProtocol(PeerInfo peerInfo, DisconnectReason disconnectReason, string details)
             {
             }
 
@@ -107,13 +106,13 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 return Task.CompletedTask;
             }
 
-            public PeerInfo GetPeer(Node node)
+            public PeerInfo? GetPeer(Node node)
             {
                 return null;
             }
 
-            public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
-            public event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed;
+            public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock = delegate { };
+            public event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed = delegate { };
         }
 
         private class TestBatch
@@ -126,7 +125,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             public int Start { get; }
             public int Length { get; }
-            public int[] Result { get; set; }
+            public int[]? Result { get; set; }
         }
 
         private class TestDownloader : ISyncDownloader<TestBatch>
@@ -160,15 +159,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 Max = max;
             }
 
-            public int Max;
+            public int Max { get; }
+            public int HighestRequested { get; private set; }
 
-            public int HighestRequested;
-
-            public HashSet<int> _results = new();
-
-            private ConcurrentQueue<TestBatch> _returned = new();
-
-            private ManualResetEvent _responseLock = new ManualResetEvent(true);
+            public readonly HashSet<int> _results = new();
+            private readonly ConcurrentQueue<TestBatch> _returned = new();
+            private readonly ManualResetEvent _responseLock = new ManualResetEvent(true);
 
             public void LockResponse()
             {
@@ -180,7 +176,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 _responseLock.Set();
             }
 
-            public override SyncResponseHandlingResult HandleResponse(TestBatch response, PeerInfo peer = null)
+            public override SyncResponseHandlingResult HandleResponse(TestBatch response, PeerInfo? peer = null)
             {
                 _responseLock.WaitOne();
                 if (response.Result is null)
@@ -212,7 +208,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public override async Task<TestBatch> PrepareRequest(CancellationToken token = default)
             {
                 TestBatch testBatch;
-                if (_returned.TryDequeue(out TestBatch returned))
+                if (_returned.TryDequeue(out TestBatch? returned))
                 {
                     Console.WriteLine("Sending previously failed batch");
                     testBatch = returned;
@@ -232,7 +228,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             Finish();
                         }
 
-                        return null;
+                        return null!;
                     }
 
                     lock (_results)
@@ -289,7 +285,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
                 LimboLogs.Instance);
 
-            Task executorTask = dispatcher.Start(CancellationToken.None);
+            Task _ = dispatcher.Start(CancellationToken.None);
             syncFeed.Activate();
             await Task.Delay(100);
 

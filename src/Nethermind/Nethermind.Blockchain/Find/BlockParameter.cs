@@ -72,6 +72,10 @@ namespace Nethermind.Blockchain.Find
         }
 
         public override int GetHashCode() => HashCode.Combine(Type, BlockNumber, BlockHash, RequireCanonical);
+
+        public static bool operator ==(BlockParameter? left, BlockParameter? right) => Equals(left, right);
+
+        public static bool operator !=(BlockParameter? left, BlockParameter? right) => !Equals(left, right);
     }
 }
 

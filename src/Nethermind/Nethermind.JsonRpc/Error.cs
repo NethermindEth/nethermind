@@ -19,5 +19,8 @@ namespace Nethermind.JsonRpc
         [JsonPropertyName("data")]
         [JsonPropertyOrder(2)]
         public object? Data { get; set; }
+
+        [JsonIgnore]
+        public bool SuppressWarning { get; set; }
     }
 }

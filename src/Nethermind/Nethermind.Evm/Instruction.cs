@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm
 {
@@ -39,7 +38,7 @@ namespace Nethermind.Evm
         SHR = 0x1c, // EIP-145
         SAR = 0x1d, // EIP-145
 
-        SHA3 = 0x20,
+        KECCAK256 = 0x20,
 
         ADDRESS = 0x30,
         BALANCE = 0x31,
@@ -68,6 +67,7 @@ namespace Nethermind.Evm
         SELFBALANCE = 0x47,
         BASEFEE = 0x48,
         BLOBHASH = 0x49,
+        BLOBBASEFEE = 0x4a,
 
         POP = 0x50,
         MLOAD = 0x51,
@@ -84,6 +84,7 @@ namespace Nethermind.Evm
         BEGINSUB = 0x5c,
         RETURNSUB = 0x5d,
         JUMPSUB = 0x5e,
+        MCOPY = 0x5e,
 
         PUSH0 = 0x5f, // EIP-3855
         PUSH1 = 0x60,
@@ -160,8 +161,8 @@ namespace Nethermind.Evm
         LOG4 = 0xa4,
 
         // EIP-1153
-        TLOAD = 0xb3,
-        TSTORE = 0xb4,
+        TLOAD = 0x5c,
+        TSTORE = 0x5d,
 
         CREATE = 0xf0,
         CALL = 0xf1,
@@ -177,12 +178,15 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
-        public static string? GetName(this Instruction instruction, bool isPostMerge = false) =>
-            (instruction == Instruction.PREVRANDAO && !isPostMerge)
-                ? "DIFFICULTY"
-                : FastEnum.IsDefined(instruction)
-                    ? FastEnum.GetName(instruction)
-                    : null;
+        public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null) =>
+            instruction switch
+            {
+                Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
+                Instruction.TLOAD or Instruction.BEGINSUB => spec?.TransientStorageEnabled == true ? "TLOAD" : "BEGINSUB",
+                Instruction.TSTORE or Instruction.RETURNSUB => spec?.TransientStorageEnabled == true ? "TSTORE" : "RETURNSUB",
+                Instruction.JUMPSUB or Instruction.MCOPY => spec?.IsEip5656Enabled == true ? "MCOPY" : "JUMPSUB",
+                _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null
+            };
     }
 }
 

@@ -149,6 +149,10 @@ public class ChainSpecLoader : IChainSpecLoader
             Eip4895TransitionTimestamp = chainSpecJson.Params.Eip4895TransitionTimestamp,
             Eip4844TransitionTimestamp = chainSpecJson.Params.Eip4844TransitionTimestamp,
             Eip2537TransitionTimestamp = chainSpecJson.Params.Eip2537TransitionTimestamp,
+            Eip5656TransitionTimestamp = chainSpecJson.Params.Eip5656TransitionTimestamp,
+            Eip6780TransitionTimestamp = chainSpecJson.Params.Eip6780TransitionTimestamp,
+            Eip4788TransitionTimestamp = chainSpecJson.Params.Eip4788TransitionTimestamp,
+            Eip4788ContractAddress = chainSpecJson.Params.Eip4788ContractAddress,
             TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
             TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
             ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
@@ -225,6 +229,7 @@ public class ChainSpecLoader : IChainSpecLoader
         chainSpec.ArrowGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(4).FirstOrDefault();
         chainSpec.GrayGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(5).FirstOrDefault();
         chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp;
+        chainSpec.CancunTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp;
 
         // TheMerge parameters
         chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
@@ -393,7 +398,16 @@ public class ChainSpecLoader : IChainSpecLoader
 
         bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
         if (isEip4844Enabled)
-            genesisHeader.ExcessDataGas ??= 0;
+        {
+            genesisHeader.BlobGasUsed = chainSpecJson.Genesis.BlobGasUsed;
+            genesisHeader.ExcessBlobGas = chainSpecJson.Genesis.ExcessBlobGas;
+        }
+
+        bool isEip4788Enabled = chainSpecJson.Params.Eip4788TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4788TransitionTimestamp;
+        if (isEip4788Enabled)
+        {
+            genesisHeader.ParentBeaconBlockRoot = Keccak.Zero;
+        }
 
         genesisHeader.AuRaStep = step;
         genesisHeader.AuRaSignature = auRaSignature;

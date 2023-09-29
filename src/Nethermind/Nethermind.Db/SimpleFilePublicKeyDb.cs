@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -22,7 +21,7 @@ namespace Nethermind.Db
     {
         public const string DbFileName = "SimpleFileDb.db";
 
-        private ILogger _logger;
+        private readonly ILogger _logger;
         private bool _hasPendingChanges;
         private SpanConcurrentDictionary<byte, byte[]> _cache;
 
@@ -122,15 +121,25 @@ namespace Nethermind.Db
             if (_logger.IsDebug) _logger.Debug($"Saving data in {DbPath} | backup stored in {backup.BackupPath}");
             try
             {
-                using StreamWriter streamWriter = new(DbPath);
-                foreach ((byte[] key, byte[] value) in snapshot)
+                using StreamWriter fileWriter = new(DbPath);
+                StringBuilder lineBuilder = new(400); // longest found in practice was 320, adding some headroom
+                using StringWriter lineWriter = new(lineBuilder);
+                foreach ((byte[] key, byte[]? value) in snapshot)
                 {
+                    lineBuilder.Clear();
+
                     if (value is not null)
                     {
-                        key.StreamHex(streamWriter);
-                        streamWriter.Write(',');
-                        value.StreamHex(streamWriter);
-                        streamWriter.WriteLine();
+                        key.StreamHex(lineWriter);
+                        lineWriter.Write(',');
+                        value.StreamHex(lineWriter);
+                        lineWriter.WriteLine();
+                        lineWriter.Flush();
+
+                        foreach (ReadOnlyMemory<char> chunk in lineBuilder.GetChunks())
+                        {
+                            fileWriter.Write(chunk.Span);
+                        }
                     }
                 }
             }
@@ -268,7 +277,7 @@ namespace Nethermind.Db
             ArrayPool<byte>.Shared.Return(rentedBuffer);
             if (bytes.Length > 0)
             {
-                ThrowInvalidDataException();
+                if (_logger.IsWarn) _logger.Warn($"Malformed {Name}. Ignoring...");
             }
 
             void RecordError(Span<byte> data)
@@ -276,13 +285,8 @@ namespace Nethermind.Db
                 if (_logger.IsError)
                 {
                     string line = Encoding.UTF8.GetString(data);
-                    _logger.Error($"Error when loading data from {Name} - expected two items separated by a comma and got '{line}')");
+                    if (_logger.IsError) _logger.Error($"Error when loading data from {Name} - expected two items separated by a comma and got '{line}')");
                 }
-            }
-
-            static void ThrowInvalidDataException()
-            {
-                throw new InvalidDataException("Malformed data");
             }
         }
 

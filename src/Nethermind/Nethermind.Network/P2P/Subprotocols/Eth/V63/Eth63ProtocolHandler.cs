@@ -24,7 +24,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
     {
         private readonly MessageQueue<GetNodeDataMessage, byte[][]> _nodeDataRequests;
 
-        private readonly MessageQueue<GetReceiptsMessage, TxReceipt[][]> _receiptsRequests;
+        private readonly MessageQueue<GetReceiptsMessage, (TxReceipt[][], long)> _receiptsRequests;
+
+        private readonly LatencyAndMessageSizeBasedRequestSizer _receiptsRequestSizer = new(
+            minRequestLimit: 1,
+            maxRequestLimit: 128,
+
+            // In addition to the byte limit, we also try to keep the latency of the get receipts between these two
+            // watermark. This reduce timeout rate, and subsequently disconnection rate.
+            lowerLatencyWatermark: TimeSpan.FromMilliseconds(2000),
+            upperLatencyWatermark: TimeSpan.FromMilliseconds(3000),
+
+            // When the receipts message size exceed this, we try to reduce the maximum number of block for this peer.
+            // This is for BeSU and Reth which does not seems to use the 2MB soft limit, causing them to send 20MB of bodies
+            // or receipts. This is not great as large message size are harder for DotNetty to pool byte buffer, causing
+            // higher memory usage. Reducing this even further does seems to help with memory, but may reduce throughput.
+            maxResponseSize: 3_000_000,
+            initialRequestSize: 8
+        );
 
         public Eth63ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -32,10 +49,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ISyncServer syncServer,
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
-            ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager)
+            ILogManager logManager,
+            ITxGossipPolicy? transactionsGossipPolicy = null)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
             _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
-            _receiptsRequests = new MessageQueue<GetReceiptsMessage, TxReceipt[][]>(Send);
+            _receiptsRequests = new MessageQueue<GetReceiptsMessage, (TxReceipt[][], long)>(Send);
         }
 
         public override byte ProtocolVersion => EthVersions.Eth63;
@@ -77,7 +96,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         protected virtual void Handle(ReceiptsMessage msg, long size)
         {
             Metrics.Eth63ReceiptsReceived++;
-            _receiptsRequests.Handle(msg.TxReceipts, size);
+            _receiptsRequests.Handle((msg.TxReceipts, size), size);
         }
 
         private void Handle(GetNodeDataMessage msg)
@@ -130,8 +149,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return Array.Empty<TxReceipt[]>();
             }
 
-            GetReceiptsMessage msg = new(blockHashes);
-            TxReceipt[][] txReceipts = await SendRequest(msg, token);
+            TxReceipt[][] txReceipts = await _receiptsRequestSizer.Run(blockHashes, async clampedBlockHashes =>
+                await SendRequest(new GetReceiptsMessage(clampedBlockHashes), token));
+
             return txReceipts;
         }
 
@@ -151,7 +171,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 token);
         }
 
-        protected virtual async Task<TxReceipt[][]> SendRequest(GetReceiptsMessage message, CancellationToken token)
+        protected virtual async Task<(TxReceipt[][], long)> SendRequest(GetReceiptsMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

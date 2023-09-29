@@ -64,21 +64,21 @@ namespace Nethermind.Synchronization.Test
 
         public Node Node { get; }
 
-        public Node LocalNode { get; }
+        private Node LocalNode { get; }
+        public byte ProtocolVersion { get; } = default;
+        public string ProtocolCode { get; } = null!;
         public string ClientId => Node.ClientId;
         public Keccak HeadHash { get; set; }
         public long HeadNumber { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
-        public byte ProtocolVersion { get; }
-        public string ProtocolCode { get; }
 
-        public void Disconnect(InitiateDisconnectReason reason, string details)
+        public void Disconnect(DisconnectReason reason, string details)
         {
         }
 
-        public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+        public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
         {
             BlockBody[] result = new BlockBody[blockHashes.Count];
             for (int i = 0; i < blockHashes.Count; i++)
@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.Test
                 result[i] = new BlockBody(block?.Transactions, block?.Uncles);
             }
 
-            return Task.FromResult(result);
+            return Task.FromResult(new OwnedBlockBodies(result));
         }
 
         public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)

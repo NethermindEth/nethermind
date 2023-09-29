@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -37,6 +38,25 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly IReadOnlyBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
     private ILogger _logger;
+namespace Nethermind.JsonRpc.Modules.DebugModule;
+
+public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
+{
+    private readonly IJsonRpcConfig _jsonRpcConfig;
+    private readonly IBlockValidator _blockValidator;
+    private readonly IRewardCalculatorSource _rewardCalculatorSource;
+    private readonly IReceiptStorage _receiptStorage;
+    private readonly IReceiptsMigration _receiptsMigration;
+    private readonly IReadOnlyTrieStore _trieStore;
+    private readonly IConfigProvider _configProvider;
+    private readonly ISpecProvider _specProvider;
+    private readonly ILogManager _logManager;
+    private readonly IBlockPreprocessorStep _recoveryStep;
+    private readonly IReadOnlyDbProvider _dbProvider;
+    private readonly IReadOnlyBlockTree _blockTree;
+    private readonly ISyncModeSelector _syncModeSelector;
+    private readonly IFileSystem _fileSystem;
+    private ILogger _logger;
 
     public DebugModuleFactory(
         IDbProvider dbProvider,
@@ -51,6 +71,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IConfigProvider configProvider,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
+        IFileSystem fileSystem,
         ILogManager logManager)
     {
         _dbProvider = dbProvider.AsReadOnly(false);
@@ -66,6 +87,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
+        _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _logger = logManager.GetClassLogger();
     }
 
@@ -95,7 +117,8 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             chainProcessingEnv.ChainProcessor,
             _receiptStorage,
             _blockTree,
-            transactionProcessorAdapter);
+            transactionProcessorAdapter,
+            _fileSystem);
 
         DebugBridge debugBridge = new(
             _configProvider,

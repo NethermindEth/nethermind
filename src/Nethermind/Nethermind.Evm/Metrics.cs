@@ -41,6 +41,10 @@ public class Metrics
     public static long TstoreOpcode { get; set; }
 
     [CounterMetric]
+    [Description("Number of MCOPY opcodes executed.")]
+    public static long MCopyOpcode { get; set; }
+
+    [CounterMetric]
     [Description("Number of MODEXP precompiles executed.")]
     public static long ModExpOpcode { get; set; }
 
@@ -85,7 +89,6 @@ public class Metrics
 
     [Description("Number of contract create calls.")]
     public static long Creates { get; set; }
-
     internal static long Transactions { get; set; }
     internal static decimal AveGasPrice { get; set; }
     internal static decimal MinGasPrice { get; set; } = decimal.MaxValue;

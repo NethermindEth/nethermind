@@ -20,7 +20,7 @@ public class BlockBodiesMessageSerializerTests
     [TestCaseSource(nameof(GetBlockBodyValues))]
     public void Should_pass_roundtrip(BlockBody[] bodies) => SerializerTester.TestZero(
         new BlockBodiesMessageSerializer(),
-        new BlockBodiesMessage { Bodies = bodies },
+        new BlockBodiesMessage(bodies),
         additionallyExcluding: (o) =>
             o.Excluding(c => c.Name == nameof(Transaction.SenderAddress))
                 .Excluding(c => c.Name == nameof(Transaction.NetworkWrapper)));
@@ -30,9 +30,9 @@ public class BlockBodiesMessageSerializerTests
     {
         IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
         BlockBodiesMessageSerializer serializer = new();
-        serializer.Serialize(buffer, new BlockBodiesMessage { Bodies = bodies });
+        serializer.Serialize(buffer, new BlockBodiesMessage(bodies));
         BlockBodiesMessage deserializedMessage = serializer.Deserialize(buffer);
-        foreach (BlockBody? body in deserializedMessage.Bodies)
+        foreach (BlockBody? body in deserializedMessage.Bodies.Bodies)
         {
             if (body is null) continue;
             foreach (Transaction tx in body.Transactions.Where(t => t.SupportsBlobs))
@@ -47,7 +47,7 @@ public class BlockBodiesMessageSerializerTests
         BlockHeader header = Build.A.BlockHeader.TestObject;
         Transaction tx = Build.A.Transaction
             .WithTo(TestItem.AddressA)
-            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA)
+            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
             .TestObject;
 
         tx.SenderAddress = null;

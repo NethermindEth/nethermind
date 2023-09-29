@@ -29,7 +29,7 @@ namespace Nethermind.Trie
         {
             if (rootHash == Keccak.EmptyTreeHash)
             {
-                _builder.AppendLine("EMPTY TREEE");
+                _builder.AppendLine("EMPTY TREE");
             }
             else
             {
@@ -88,7 +88,7 @@ namespace Nethermind.Trie
 
         private string? KeccakOrRlpStringOfNode(TrieNode node)
         {
-            return node.Keccak != null ? node.Keccak!.Bytes.ToHexString() : node.FullRlp?.ToHexString();
+            return node.Keccak != null ? node.Keccak!.Bytes.ToHexString() : node.FullRlp.AsSpan().ToHexString();
         }
     }
 }

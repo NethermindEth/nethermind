@@ -36,7 +36,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 Blocks = new Block[_pivotNumber + 1];
                 Blocks[0] = Build.A.Block.Genesis.TestObject;
 
-                Block parent = Blocks[0];
+                Block parent = Blocks[0]!;
                 for (int blockNumber = 1; blockNumber <= _pivotNumber; blockNumber++)
                 {
                     Block block = Build.A.Block
@@ -56,34 +56,34 @@ namespace Nethermind.Synchronization.Test.FastSync
                     parent = block;
                 }
 
-                BlocksByHash = Blocks.Where(b => b is not null).ToDictionary(b => b.Hash!, b => b);
+                BlocksByHash = Blocks
+                    .Where(b => b is not null)
+                    .ToDictionary(b => b!.Hash!, b => b!);
             }
 
-            public Dictionary<Keccak, Block> BlocksByHash;
-
-            public Block[] Blocks;
-
-            public Block LowestInsertedBody;
+            public Dictionary<Keccak, Block> BlocksByHash { get; }
+            public Block?[] Blocks { get; }
+            public Block? LowestInsertedBody { get; }
         }
 
-        private static ISpecProvider _specProvider;
-        private IReceiptStorage _receiptStorage;
-        private ISyncPeerPool _syncPeerPool;
-        private ISyncModeSelector _selector;
-        private ReceiptsSyncFeed _feed;
-        private ISyncConfig _syncConfig;
-        private ISyncReport _syncReport;
-        private IBlockTree _blockTree;
+        private static readonly ISpecProvider _specProvider;
+        private IReceiptStorage _receiptStorage = null!;
+        private ISyncPeerPool _syncPeerPool = null!;
+        private ISyncModeSelector _selector = null!;
+        private ReceiptsSyncFeed _feed = null!;
+        private ISyncConfig _syncConfig = null!;
+        private ISyncReport _syncReport = null!;
+        private IBlockTree _blockTree = null!;
 
-        private static long _pivotNumber = 1024;
+        private static readonly long _pivotNumber = 1024;
 
-        private static Scenario _1024BodiesWithOneTxEach;
-        private static Scenario _256BodiesWithOneTxEach;
-        private static Scenario _64BodiesWithOneTxEach;
-        private static Scenario _64BodiesWithOneTxEachFollowedByEmpty;
+        private static readonly Scenario _1024BodiesWithOneTxEach;
+        private static readonly Scenario _256BodiesWithOneTxEach;
+        private static readonly Scenario _64BodiesWithOneTxEach;
+        private static readonly Scenario _64BodiesWithOneTxEachFollowedByEmpty;
 
-        private MeasuredProgress _measuredProgress;
-        private MeasuredProgress _measuredProgressQueue;
+        private MeasuredProgress _measuredProgress = null!;
+        private MeasuredProgress _measuredProgressQueue = null!;
 
         static ReceiptsSyncFeedTests()
         {
@@ -154,7 +154,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _syncReport,
                 LimboLogs.Instance);
 
-            var request = await _feed.PrepareRequest();
+            ReceiptsSyncBatch? request = await _feed.PrepareRequest();
             request.Should().BeNull();
             _feed.CurrentState.Should().Be(SyncFeedState.Finished);
         }
@@ -181,7 +181,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void When_activating_should_emit_an_event()
         {
             SyncFeedState state = SyncFeedState.Dormant;
-            _feed.StateChanged += (s, e) => state = e.NewState;
+            _feed.StateChanged += (_, e) => state = e.NewState;
             _feed.Activate();
             state.Should().Be(SyncFeedState.Active);
         }
@@ -240,7 +240,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             _syncConfig = syncConfig;
             _syncConfig.PivotNumber = _pivotNumber.ToString();
-            _syncConfig.PivotHash = scenario.Blocks.Last().Hash?.ToString();
+            _syncConfig.PivotHash = scenario.Blocks.Last()?.Hash?.ToString();
 
             _feed = new ReceiptsSyncFeed(
                 _selector,
@@ -252,18 +252,20 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _syncReport,
                 LimboLogs.Instance);
 
-            _blockTree.Genesis.Returns(scenario.Blocks[0].Header);
+            _blockTree.Genesis.Returns(scenario.Blocks[0]!.Header);
             _blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(
                 ci =>
                 {
-                    Block block = scenario.Blocks[ci.Arg<long>()];
+                    Block? block = scenario.Blocks[ci.Arg<long>()];
                     if (block is null)
                     {
                         return null;
                     }
 
-                    BlockInfo blockInfo = new(block.Hash!, block.TotalDifficulty ?? 0);
-                    blockInfo.BlockNumber = ci.Arg<long>();
+                    BlockInfo blockInfo = new(block.Hash!, block.TotalDifficulty ?? 0)
+                    {
+                        BlockNumber = ci.Arg<long>(),
+                    };
                     return blockInfo;
                 });
 
@@ -277,7 +279,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                         : null);
 
             _receiptStorage.LowestInsertedReceiptBlockNumber.Returns((long?)null);
-            _blockTree.LowestInsertedBodyNumber.Returns(scenario.LowestInsertedBody.Number);
+            _blockTree.LowestInsertedBodyNumber.Returns(scenario.LowestInsertedBody!.Number);
         }
 
         [Test]
@@ -323,7 +325,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
             handlingResult.Should().Be(SyncResponseHandlingResult.NoProgress);
 
-            _syncPeerPool.Received().ReportBreachOfProtocol(peerInfo, InitiateDisconnectReason.InvalidReceiptRoot, Arg.Any<string>());
+            _syncPeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.InvalidReceiptRoot, Arg.Any<string>());
         }
 
         private static void FillBatchResponses(ReceiptsSyncBatch batch)

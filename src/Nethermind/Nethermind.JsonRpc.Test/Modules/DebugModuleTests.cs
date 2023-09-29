@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -131,7 +133,7 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void Get_trace()
+    public async Task Get_trace()
     {
         GethTxTraceEntry entry = new();
         entry.Storage = new Dictionary<string, string>
@@ -152,7 +154,7 @@ public class DebugModuleTests
             "8".PadLeft(64, '0')
         };
 
-        entry.Operation = "STOP";
+        entry.Opcode = "STOP";
         entry.Gas = 22000;
         entry.GasCost = 1;
         entry.Depth = 1;
@@ -170,7 +172,7 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void Get_trace_with_options()
+    public async Task Get_trace_with_options()
     {
         GethTxTraceEntry entry = new();
         entry.Storage = new Dictionary<string, string>
@@ -189,7 +191,7 @@ public class DebugModuleTests
         {
         };
 
-        entry.Operation = "STOP";
+        entry.Opcode = "STOP";
         entry.Gas = 22000;
         entry.GasCost = 1;
         entry.Depth = 1;
@@ -224,7 +226,7 @@ public class DebugModuleTests
         };
 
         entry.Stack = new List<string> { };
-        entry.Operation = "STOP";
+        entry.Opcode = "STOP";
         entry.Gas = 22000;
         entry.GasCost = 1;
         entry.Depth = 1;
@@ -258,9 +260,9 @@ public class DebugModuleTests
                             "0000000000000000000000000000000000000000000000000000000000000005",
                             "0000000000000000000000000000000000000000000000000000000000000006"
                         },
-                        Operation = "STOP",
-                        Pc = 0,
-                        Stack = { },
+                        Opcode = "STOP",
+                        ProgramCounter = 0,
+                        Stack = Array.Empty<string>(),
                         Storage = new Dictionary<string, string>()
                         {
                             {
@@ -283,11 +285,11 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void Migrate_receipts()
+    public async Task Migrate_receipts()
     {
         debugBridge.MigrateReceipts(Arg.Any<long>()).Returns(true);
         IDebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
-        string response = RpcTest.TestSerializedRequest(rpcModule, "debug_migrateReceipts", "100");
+        string response = await RpcTest.TestSerializedRequest(rpcModule, "debug_migrateReceipts", "100");
         Assert.NotNull(response);
     }
 
@@ -330,6 +332,25 @@ public class DebugModuleTests
         var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
         var actual = rpcModule.debug_traceBlock(blockRlp.Bytes);
         var expected = ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for RLP {blockRlp.Bytes.ToHexString()}", ErrorCodes.ResourceNotFound);
+
+        actual.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public void StandardTraceBlockToFile()
+    {
+        var blockHash = Keccak.EmptyTreeHash;
+
+        static IEnumerable<string> GetFileNames(Keccak hash) =>
+            new[] { $"block_{hash.ToShortString()}-0", $"block_{hash.ToShortString()}-1" };
+
+        debugBridge
+            .TraceBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(c => GetFileNames(c.ArgAt<Keccak>(0)));
+
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+        var actual = rpcModule.debug_standardTraceBlockToFile(blockHash);
+        var expected = ResultWrapper<IEnumerable<string>>.Success(GetFileNames(blockHash));
 
         actual.Should().BeEquivalentTo(expected);
     }
@@ -416,8 +437,8 @@ public class DebugModuleTests
                 "5".PadLeft(64, '0'),
                 "6".PadLeft(64, '0')
             },
-            Operation = "STOP",
-            Pc = 32,
+            Opcode = "STOP",
+            ProgramCounter = 32,
             Stack = new List<string>
             {
                 "7".PadLeft(64, '0'),

@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
@@ -30,9 +29,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     public class Eth66ProtocolHandler : Eth65ProtocolHandler
     {
         private readonly MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, BlockHeader[]> _headersRequests66;
-        private readonly MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, BlockBody[]> _bodiesRequests66;
+        private readonly MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
         private readonly MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]> _nodeDataRequests66;
-        private readonly MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, TxReceipt[][]> _receiptsRequests66;
+        private readonly MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, (TxReceipt[][], long)> _receiptsRequests66;
         private readonly IPooledTxsRequestor _pooledTxsRequestor;
         private readonly Action<GetPooledTransactionsMessage> _sendAction;
 
@@ -44,13 +43,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             IPooledTxsRequestor pooledTxsRequestor,
             IGossipPolicy gossipPolicy,
             ForkInfo forkInfo,
-            ILogManager logManager)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager)
+            ILogManager logManager,
+            ITxGossipPolicy? transactionsGossipPolicy = null)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
         {
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, BlockHeader[]>(Send);
-            _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, BlockBody[]>(Send);
+            _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
             _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]>(Send);
-            _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, TxReceipt[][]>(Send);
+            _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, (TxReceipt[][], long)>(Send);
             _pooledTxsRequestor = pooledTxsRequestor;
             // Capture Action once rather than per call
             _sendAction = Send;
@@ -99,11 +99,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     Handle(getPooledTxMsg);
                     break;
                 case Eth66MessageCode.PooledTransactions:
-                    PooledTransactionsMessage pooledTxMsg
-                        = Deserialize<PooledTransactionsMessage>(message.Content);
-                    Metrics.Eth66PooledTransactionsReceived++;
-                    ReportIn(pooledTxMsg, size);
-                    Handle(pooledTxMsg.EthMessage);
+                    if (CanReceiveTransactions)
+                    {
+                        PooledTransactionsMessage pooledTxMsg
+                            = Deserialize<PooledTransactionsMessage>(message.Content);
+                        Metrics.Eth66PooledTransactionsReceived++;
+                        ReportIn(pooledTxMsg, size);
+                        Handle(pooledTxMsg.EthMessage);
+                    }
+                    else
+                    {
+                        const string ignored = $"{nameof(PooledTransactionsMessage)} ignored, syncing";
+                        ReportIn(ignored, size);
+                    }
+
                     break;
                 case Eth66MessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
@@ -178,7 +187,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         private void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
         {
-            _bodiesRequests66.Handle(blockBodiesMessage.RequestId, blockBodiesMessage.EthMessage.Bodies, size);
+            _bodiesRequests66.Handle(blockBodiesMessage.RequestId, (blockBodiesMessage.EthMessage.Bodies, size), size);
         }
 
         private void Handle(NodeDataMessage msg, int size)
@@ -188,7 +197,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         private void Handle(ReceiptsMessage msg, long size)
         {
-            _receiptsRequests66.Handle(msg.RequestId, msg.EthMessage.TxReceipts, size);
+            _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
         }
 
         protected override void Handle(NewPooledTransactionHashesMessage msg)
@@ -226,7 +235,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 token);
         }
 
-        protected override async Task<BlockBody[]> SendRequest(V62.Messages.GetBlockBodiesMessage message, CancellationToken token)
+        protected override async Task<(OwnedBlockBodies, long)> SendRequest(V62.Messages.GetBlockBodiesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -260,7 +269,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 token);
         }
 
-        protected override async Task<TxReceipt[][]> SendRequest(V63.Messages.GetReceiptsMessage message, CancellationToken token)
+        protected override async Task<(TxReceipt[][], long)> SendRequest(V63.Messages.GetReceiptsMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

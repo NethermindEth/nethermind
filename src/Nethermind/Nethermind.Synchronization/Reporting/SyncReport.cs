@@ -3,7 +3,6 @@
 
 using System;
 using System.Text;
-using System.Timers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
@@ -24,7 +23,7 @@ namespace Nethermind.Synchronization.Reporting
         private readonly IPivot _pivot;
         private readonly ILogger _logger;
 
-        private SyncPeersReport _syncPeersReport;
+        private readonly SyncPeersReport _syncPeersReport;
         private int _reportId;
         private const int SyncReportFrequency = 1;
         private const int PeerCountFrequency = 15;
@@ -120,7 +119,7 @@ namespace Nethermind.Synchronization.Reporting
 
         private static string Pad(decimal value, int length)
         {
-            string valueString = $"{value:N2}";
+            string valueString = $"{value:N0}";
             return valueString.PadLeft(length + 3, ' ');
         }
 

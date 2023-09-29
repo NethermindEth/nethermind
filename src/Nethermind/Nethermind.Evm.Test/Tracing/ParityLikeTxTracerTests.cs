@@ -6,7 +6,6 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -570,7 +569,7 @@ namespace Nethermind.Evm.Test.Tracing
         public void Can_trace_precompile_calls()
         {
             byte[] code = Prepare.EvmCode
-                .Call(IdentityPrecompile.Instance.Address, 50000)
+                .Call(IdentityPrecompile.Address, 50000)
                 .Op(Instruction.STOP)
                 .Done;
 
@@ -583,16 +582,15 @@ namespace Nethermind.Evm.Test.Tracing
                 1, // STOP
             };
 
-            Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[0] type");
-            Assert.That(trace.Action.Subtraces[0].To, Is.EqualTo(IdentityPrecompile.Instance.Address), "[0] to");
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(0), "Should ignore precompile");
         }
 
         [Test]
         public void Can_ignore_precompile_calls_in_contract()
         {
             byte[] deployedCode = Prepare.EvmCode
-                .Call(IdentityPrecompile.Instance.Address, 50000)
-                .CallWithValue(IdentityPrecompile.Instance.Address, 50000, 1.Ether())
+                .Call(IdentityPrecompile.Address, 50000)
+                .CallWithValue(IdentityPrecompile.Address, 50000, 1.Ether())
                 .Op(Instruction.STOP)
                 .Done;
 
@@ -600,35 +598,25 @@ namespace Nethermind.Evm.Test.Tracing
             TestState.InsertCode(TestItem.AddressC, deployedCode, Spec);
 
             byte[] code = Prepare.EvmCode
-                .Call(IdentityPrecompile.Instance.Address, 50000)
+                .Call(IdentityPrecompile.Address, 50000)
                 .Call(TestItem.AddressC, 40000)
                 .Op(Instruction.STOP)
                 .Done;
 
             (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
 
-            // One call to precompile and the other call to AddressC
-            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(2), "[] subtraces");
+            // call to AddressC and should ignore precompile
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "[] subtraces");
             Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
 
-            // Precompile call
-            Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0] subtraces");
-            Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[0] type");
-            Assert.That(trace.Action.Subtraces[0].To, Is.EqualTo(IdentityPrecompile.Instance.Address), "[0] to");
-
             // AddressC call - only one call
-            Assert.That(trace.Action.Subtraces[1].Subtraces.Count, Is.EqualTo(2), "[1] subtraces");
-            Assert.That(trace.Action.Subtraces[1].CallType, Is.EqualTo("call"), "[1] type");
-
-            // Check the 1st subtrace - a precompile call
-            Assert.That(trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 0] subtraces");
-            Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("call"), "[1, 0] type");
-            Assert.That(trace.Action.Subtraces[1].Subtraces[0].IncludeInTrace, Is.EqualTo(false), "[1, 0] type");
+            Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
+            Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[1] type");
 
             // Check the 2nd subtrace - a precompile call with value - must be included
-            Assert.That(trace.Action.Subtraces[1].Subtraces[1].Subtraces.Count, Is.EqualTo(0), "[1, 1] subtraces");
-            Assert.That(trace.Action.Subtraces[1].Subtraces[1].CallType, Is.EqualTo("call"), "[1, 1] type");
-            Assert.That(trace.Action.Subtraces[1].Subtraces[1].IncludeInTrace, Is.EqualTo(true), "[1, 1] type");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 1] subtraces");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].CallType, Is.EqualTo("call"), "[1, 1] type");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].IncludeInTrace, Is.EqualTo(true), "[1, 1] type");
         }
 
         [Test]
@@ -826,7 +814,7 @@ namespace Nethermind.Evm.Test.Tracing
 
         private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteInitAndTraceParityCall(params byte[] code)
         {
-            (Block block, Transaction transaction) = PrepareInitTx(BlockNumber, 100000, code);
+            (Block block, Transaction transaction) = PrepareInitTx((BlockNumber, Timestamp), 100000, code);
             ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);

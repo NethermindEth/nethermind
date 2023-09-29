@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -23,17 +24,7 @@ namespace Nethermind.TxPool
     {
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly IChainHeadInfoProvider _headInfo;
-
-        /// <summary>
-        /// Notification threshold randomizer seed
-        /// </summary>
-        private static int _seed = Environment.TickCount;
-
-        /// <summary>
-        /// Random number generator for peer notification threshold - no need to be securely random.
-        /// </summary>
-        private static readonly ThreadLocal<Random> Random =
-            new(() => new Random(Interlocked.Increment(ref _seed)));
+        private readonly ITxGossipPolicy _txGossipPolicy;
 
         /// <summary>
         /// Timer for rebroadcasting pending own transactions.
@@ -73,10 +64,12 @@ namespace Nethermind.TxPool
             ITimerFactory timerFactory,
             ITxPoolConfig txPoolConfig,
             IChainHeadInfoProvider chainHeadInfoProvider,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            ITxGossipPolicy? transactionsGossipPolicy = null)
         {
             _txPoolConfig = txPoolConfig;
             _headInfo = chainHeadInfoProvider;
+            _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _persistentTxs = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
             _accumulatedTemporaryTxs = new ResettableList<Transaction>(512, 4);
@@ -106,7 +99,9 @@ namespace Nethermind.TxPool
         {
             NotifyPeersAboutLocalTx(tx);
             if (tx.Hash is not null)
+            {
                 _persistentTxs.TryInsert(tx.Hash, tx);
+            }
         }
 
         private void BroadcastOnce(Transaction tx)
@@ -183,7 +178,12 @@ namespace Nethermind.TxPool
             List<Transaction>? persistentTxsToSend = null;
             List<Transaction>? persistentHashesToSend = null;
 
-            foreach (Transaction tx in _persistentTxs.GetFirsts())
+            bool broadcastAllTxs = _txPoolConfig.PeerNotificationThreshold == 100;
+            IEnumerable<Transaction> txsToPickFrom = broadcastAllTxs
+                ? _persistentTxs.GetSnapshot()
+                : _persistentTxs.GetFirsts();
+
+            foreach (Transaction tx in txsToPickFrom)
             {
                 if (numberOfPersistentTxsToBroadcast > 0)
                 {
@@ -259,19 +259,25 @@ namespace Nethermind.TxPool
 
         private void Notify(ITxPoolPeer peer, IEnumerable<Transaction> txs, bool sendFullTx)
         {
-            try
+            if (_txGossipPolicy.CanGossipTransactions)
             {
-                peer.SendNewTransactions(txs, sendFullTx);
-                if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transactions.");
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error($"Failed to notify {peer} about transactions.", e);
+                try
+                {
+
+                    peer.SendNewTransactions(txs.Where(t => _txGossipPolicy.ShouldGossipTransaction(t)), sendFullTx);
+                    if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transactions.");
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error($"Failed to notify {peer} about transactions.", e);
+                }
             }
         }
 
         private void NotifyPeersAboutLocalTx(Transaction tx)
         {
+            if (!_txGossipPolicy.CanGossipTransactions || !_txGossipPolicy.ShouldGossipTransaction(tx)) return;
+
             if (_logger.IsDebug) _logger.Debug($"Broadcasting new local transaction {tx.Hash} to all peers");
 
             foreach ((_, ITxPoolPeer peer) in _peers)

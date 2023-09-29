@@ -22,7 +22,7 @@ public class GethLikeTxTrace
 
     public bool Failed { get; set; }
 
-    public byte[] ReturnValue { get; set; }
+    public byte[] ReturnValue { get; set; } = Array.Empty<byte>();
 
     [JsonPropertyName("structLogs")]
     public List<GethTxTraceEntry> Entries { get; set; }

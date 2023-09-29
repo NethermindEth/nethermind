@@ -144,7 +144,8 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
                 _api.EngineSigner,
                 _api.SpecProvider,
                 _api.GasPriceOracle,
-                _api.ReportingContractValidatorCache, chainSpecAuRa.PosdaoTransition, false)
+                _api.ReportingContractValidatorCache,
+                chainSpecAuRa.PosdaoTransition)
             .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);
 
         if (validator is IDisposable disposableValidator)
@@ -278,6 +279,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.TxValidator,
             _api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
+            _api.TxGossipPolicy,
             new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager),
             txPriorityContract is not null || localDataSource is not null);
     }

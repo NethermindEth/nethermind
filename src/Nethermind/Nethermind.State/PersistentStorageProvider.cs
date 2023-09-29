@@ -23,20 +23,26 @@ namespace Nethermind.State
         private readonly ITrieStore _trieStore;
         private readonly StateProvider _stateProvider;
         private readonly ILogManager? _logManager;
+        internal readonly IStorageTreeFactory _storageTreeFactory;
         private readonly ResettableDictionary<Address, StorageTree> _storages = new();
+
         /// <summary>
         /// EIP-1283
         /// </summary>
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
+
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
-        public PersistentStorageProvider(ITrieStore? trieStore, StateProvider? stateProvider, ILogManager? logManager)
+        public PersistentStorageProvider(ITrieStore? trieStore, StateProvider? stateProvider, ILogManager? logManager, IStorageTreeFactory? storageTreeFactory = null)
             : base(logManager)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _storageTreeFactory = storageTreeFactory ?? new StorageTreeFactory();
         }
+
+        public Keccak StateRoot { get; set; } = null!;
 
         /// <summary>
         /// Reset the storage state
@@ -220,7 +226,7 @@ namespace Nethermind.State
         {
             if (!_storages.ContainsKey(address))
             {
-                StorageTree storageTree = new(_trieStore, _stateProvider.GetStorageRoot(address), _logManager);
+                StorageTree storageTree = _storageTreeFactory.Create(address, _trieStore, _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
                 return _storages[address] = storageTree;
             }
 
@@ -280,6 +286,12 @@ namespace Nethermind.State
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
             _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
+        }
+
+        private class StorageTreeFactory : IStorageTreeFactory
+        {
+            public StorageTree Create(Address address, ITrieStore trieStore, Keccak storageRoot, Keccak stateRoot, ILogManager? logManager)
+                => new(trieStore, storageRoot, logManager);
         }
     }
 }
