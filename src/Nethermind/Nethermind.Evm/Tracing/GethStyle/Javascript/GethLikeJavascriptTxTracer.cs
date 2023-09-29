@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -33,8 +34,22 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
 
     private string LoadJavascriptCodeFromFile(string tracerFileName)
     {
-        // TODO; load from file
-        return "{}";
+        try
+        {
+            if (!tracerFileName.EndsWith(".js", StringComparison.OrdinalIgnoreCase))
+            {
+                tracerFileName += ".js";
+            }
+            string jsCode = File.ReadAllText("/Volumes/ethereum/ethereum/execution/nethermind/src/Nethermind/Nethermind.Evm/bin/Debug/net7.0/Tracing/GethStyle/Javascript/" + tracerFileName);
+            Console.WriteLine("this is the js code {0}", jsCode);
+            return jsCode;
+        }
+        catch (IOException e)
+        {
+            Console.WriteLine("An error occurred while reading the file: " + e.Message);
+            return null;
+        }
+
     }
 
     public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
@@ -64,8 +79,8 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
         }
 
         dynamic? result = _tracer.result(null, null);
-        Console.WriteLine("this is the result {0}", JArray.FromObject(result));
         Trace.CustomTracerResult.Add(result);
+
     }
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType,
@@ -105,4 +120,5 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
         base.ReportRefund(refund);
         _customTraceEntry.refund = refund;
     }
+
 }

@@ -123,12 +123,12 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
     [Test]
     public void Js_traces_simple_filter()
     {
-        string userTracer = @"{
-                    retVal: [],
-                    step: function(log, db) { this.retVal.push(log.getPC() + ':' + log.op.toString()) },
-                    fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)) },
-                    result: function(ctx, db) { return this.retVal }
-                }";
+        string userTracer = "{" +
+                            "retVal: []," +
+                            "step: function(log, db) { this.retVal.push(log.getPC() + ':' + log.op.toString()) }," +
+                            "fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)) }," +
+                            "result: function(ctx, db) { return this.retVal }" +
+                            "}";;
 
         GethLikeTxTrace traces = Execute(
             new GethLikeJavascriptTxTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer  }),
@@ -325,6 +325,44 @@ public class GethLikeJavascriptTracerTests :VirtualMachineTestsBase
             Assert.That(arrayRet[2], Is.EqualTo("Result: 0xa01234"));
 
         }
+    }
+
+    [Test]
+    public void JS_tracers_builtIns_opcount_tracer()
+    {
+        string userTracer = "opcount_tracer";
+        GethLikeTxTrace traces = Execute(
+                new GethLikeJavascriptTxTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer  }),
+                GetBytecode(),
+                MainnetSpecProvider.CancunActivation)
+            .BuildResult();
+        int[] expectedValues = { 1, 2, 3, 4, 5, 6, 7 };
+        var actualValues = traces.CustomTracerResult.Select(item => (int)item);
+        Assert.That(actualValues, Is.EqualTo(expectedValues));
+    }
+
+    [Test]
+    public void JS_tracers_builtIns_noop_tracer_legacy()
+    {
+        string userTracer = "noop_tracer_legacy";
+        GethLikeTxTrace traces = Execute(
+                new GethLikeJavascriptTxTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer  }),
+                GetBytecode(),
+                MainnetSpecProvider.CancunActivation)
+            .BuildResult();
+       Assert.That(traces.CustomTracerResult, Has.All.Empty);
+    }
+
+    [Test]
+    public void JS_tracers_builtIns_trigram_tracer()
+    {
+        string userTracer = "trigram_tracer";
+        GethLikeTxTrace traces = Execute(
+                new GethLikeJavascriptTxTracer(GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer  }),
+                GetBytecode(),
+                MainnetSpecProvider.CancunActivation)
+            .BuildResult();
+        // Assert.That(traces.CustomTracerResult, Has.All.Empty);
     }
     private static byte[] GetBytecode()
     {
