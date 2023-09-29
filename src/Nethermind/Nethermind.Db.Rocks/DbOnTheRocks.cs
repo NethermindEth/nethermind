@@ -788,20 +788,15 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     internal class RocksDbBatch : IBatch
     {
-        private const int InitialBatchSize = 300;
-        private static readonly int MaxCached = Environment.ProcessorCount;
-
-        private static ConcurrentQueue<SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)>> s_cache = new();
-
         private readonly DbOnTheRocks _dbOnTheRocks;
+        private readonly WriteBatch _rocksBatch;
         private WriteFlags _writeFlags = WriteFlags.None;
         private bool _isDisposed;
-
-        private SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> _batchData = CreateOrGetFromCache();
 
         public RocksDbBatch(DbOnTheRocks dbOnTheRocks)
         {
             _dbOnTheRocks = dbOnTheRocks;
+            _rocksBatch = new WriteBatch();
 
             if (_dbOnTheRocks._isDisposing)
             {
@@ -822,37 +817,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             }
             _isDisposed = true;
 
-            SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> batchData = _batchData;
-            // Clear the _batchData reference so is null if Get is called.
-            _batchData = null!;
-            if (batchData.Count == 0)
-            {
-                // No data to write, skip empty batches
-                ReturnToCache(batchData);
-                _dbOnTheRocks._currentBatches.TryRemove(this);
-                return;
-            }
-
             try
             {
-                WriteBatch rocksBatch = new();
-                // Sort the batch by key
-                foreach (var kv in batchData.OrderBy(i => i.Key, Bytes.Comparer))
-                {
-                    if (kv.Value.data is null)
-                    {
-                        rocksBatch.Delete(kv.Key, kv.Value.cf);
-                    }
-                    else
-                    {
-                        rocksBatch.Put(kv.Key, kv.Value.data, kv.Value.cf);
-                    }
-                }
-                ReturnToCache(batchData);
-
-                _dbOnTheRocks._db.Write(rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+                _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
                 _dbOnTheRocks._currentBatches.TryRemove(this);
-                rocksBatch.Dispose();
+                _rocksBatch.Dispose();
             }
             catch (RocksDbSharpException e)
             {
@@ -864,7 +833,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             // Not checking _isDisposing here as for some reason, sometimes is is read after dispose
-            return _batchData?.TryGetValue(key, out var value) ?? false ? value.data : _dbOnTheRocks.Get(key, flags);
+            // Note: The batch itself is not checked. Will need to use WriteBatchWithIndex to do that, but that will
+            // hurt perf.
+            return _dbOnTheRocks.Get(key, flags);
         }
 
         public void Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null)
@@ -874,17 +845,18 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
             }
 
-            _batchData[key] = (null, cf);
+            _rocksBatch.Delete(key, cf);
         }
 
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, ColumnFamilyHandle? cf = null)
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, ColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
         {
             if (_isDisposed)
             {
                 throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
             }
 
-            _batchData[key] = (value, cf);
+            _rocksBatch.Put(key, value, cf);
+            _writeFlags = flags;
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -894,28 +866,8 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
             }
 
-            _batchData[key] = (value, null);
-
+            _rocksBatch.Put(key, value);
             _writeFlags = flags;
-        }
-
-        private static SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> CreateOrGetFromCache()
-        {
-            if (s_cache.TryDequeue(out SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)>? batchData))
-            {
-                return batchData;
-            }
-
-            return new(InitialBatchSize, Bytes.SpanEqualityComparer);
-        }
-
-        private static void ReturnToCache(SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> batchData)
-        {
-            if (s_cache.Count >= MaxCached) return;
-
-            batchData.Clear();
-            batchData.TrimExcess(capacity: InitialBatchSize);
-            s_cache.Enqueue(batchData);
         }
     }
 
