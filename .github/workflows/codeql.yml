@@ -31,7 +31,7 @@ jobs:
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: 7
+        dotnet-version: 8
     - name: Build Nethermind
       working-directory: src/Nethermind
       run: dotnet build Nethermind.sln -c release

@@ -18,7 +18,7 @@ on:
 
 env:
   COLLECT_COVERAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event.inputs.coverage }}
-  DOTNET_VERSION: 7
+  DOTNET_VERSION: 8
   RETENTION: 1
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm

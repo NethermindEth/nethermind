@@ -17,7 +17,7 @@ jobs:
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: 7
+        dotnet-version: 8
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -38,7 +38,7 @@ jobs:
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: 7
+        dotnet-version: 8
     - name: Update submodules
       run: git submodule update --init
     - name: Ethereum.Blockchain.Legacy

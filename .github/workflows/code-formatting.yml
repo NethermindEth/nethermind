@@ -1,15 +1,8 @@
-name: 'Code formatting'
+name: Code formatting
 
 on:
   pull_request:
   workflow_dispatch:
-
-env:
-  BUILD_CONFIG: release
-  DOTNET_VERSION: 7
-  DOTNET_INSTALL_DIR: '~/.dotnet'
-  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
-  TERM: xterm
 
 jobs:
   spacing-check:
@@ -18,22 +11,11 @@ jobs:
     permissions:
       contents: read
     steps:
-    - name: Cache dotnet
-      id: cache-dotnet
-      uses: actions/cache@v3
-      with:
-          path: ${{ env.DOTNET_INSTALL_DIR }}
-          key: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-          restore-keys: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
-    - name: Set up .NET
-      if: ${{ steps.cache-dotnet.outputs.cache-hit != 'true' }}
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-    - name: Check out repository
-      uses: actions/checkout@v3
-      with:
-        submodules: true
-    - name: Format
-      run: |
-        dotnet format whitespace src/Nethermind/ --folder --verify-no-changes
+      - name: Check out repository
+        uses: actions/checkout@v3
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 8
+      - name: Format
+        run: dotnet format whitespace src/Nethermind/ --folder --verify-no-changes
