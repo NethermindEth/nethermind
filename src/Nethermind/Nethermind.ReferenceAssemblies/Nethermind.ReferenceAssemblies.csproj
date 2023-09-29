@@ -21,7 +21,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="ref/**/*.dll" Pack="true" PackagePath="ref/net7.0">
+    <Content Include="ref/**/*.dll" Pack="true" PackagePath="ref/net8.0">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
