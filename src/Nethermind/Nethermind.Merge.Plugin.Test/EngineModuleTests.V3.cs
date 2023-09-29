@@ -160,6 +160,30 @@ public partial class EngineModuleTests
         result.Data.Status.Should().Be(expectedPayloadStatus);
     }
 
+    [TestCase(false, PayloadStatus.Syncing)]
+    [TestCase(true, PayloadStatus.Invalid)]
+    public virtual async Task NewPayloadV3_should_decline_incorrect_blobgasused(bool isBlobGasUsedBroken, string expectedPayloadStatus)
+    {
+        (IEngineRpcModule prevRpcModule, string payloadId, Transaction[] transactions) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+
+        if (isBlobGasUsedBroken)
+        {
+            payload.BlobGasUsed += 1;
+        }
+
+        payload.ParentHash = TestItem.KeccakA;
+        payload.BlockNumber = 2;
+        payload.TryGetBlock(out Block? b);
+        payload.BlockHash = b!.CalculateHash();
+
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
+        ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be(expectedPayloadStatus);
+    }
+
     [Test]
     public async Task NewPayloadV3_should_decline_null_blobversionedhashes()
     {
@@ -173,7 +197,7 @@ public partial class EngineModuleTests
             executionPayloadString, null!);
         JsonRpcErrorResponse? response = (await jsonRpcService.SendRequestAsync(request, context)) as JsonRpcErrorResponse;
         Assert.That(response?.Error, Is.Not.Null);
-        Assert.That(response.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
     private async Task<(JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 correctExecutionPayload)>
@@ -222,7 +246,7 @@ public partial class EngineModuleTests
                serializer.Serialize(executionPayloadAsJObject), blobsString);
             JsonRpcErrorResponse? response = (await jsonRpcService.SendRequestAsync(request, context)) as JsonRpcErrorResponse;
             Assert.That(response?.Error, Is.Not.Null);
-            Assert.That(response.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
         }
 
         foreach (string prop in props)
@@ -234,7 +258,7 @@ public partial class EngineModuleTests
                serializer.Serialize(executionPayloadAsJObject), blobsString);
             JsonRpcErrorResponse? response = (await jsonRpcService.SendRequestAsync(request, context)) as JsonRpcErrorResponse;
             Assert.That(response?.Error, Is.Not.Null);
-            Assert.That(response.Error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
         }
     }
 

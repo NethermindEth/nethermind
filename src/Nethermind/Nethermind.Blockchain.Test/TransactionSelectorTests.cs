@@ -181,7 +181,7 @@ namespace Nethermind.Blockchain.Test
                 expectedSelectedTransactions[1].BlobVersionedHashes = new byte[1][];
                 expectedSelectedTransactions[1].MaxFeePerBlobGas = 1;
                 enoughTransactionsSelected.ExpectedSelectedTransactions.AddRange(
-                    expectedSelectedTransactions.Where((tx, index) => index != 1));
+                    expectedSelectedTransactions.Where((_, index) => index != 1));
                 yield return new TestCaseData(enoughTransactionsSelected).SetName(
                     "Enough shard blob transactions and others selected");
             }
@@ -197,8 +197,7 @@ namespace Nethermind.Blockchain.Test
             MemDb codeDb = new();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
-            StateReader stateReader =
-                new(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
+            StateReader _ = new(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)
@@ -232,7 +231,7 @@ namespace Nethermind.Blockchain.Test
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
             Dictionary<Address, Transaction[]> transactions = testCase.Transactions
-                .Where(t => t?.SenderAddress is not null)
+                .Where(t => t.SenderAddress is not null)
                 .Where(t => !t.SupportsBlobs)
                 .GroupBy(t => t.SenderAddress)
                 .ToDictionary(
@@ -292,7 +291,7 @@ namespace Nethermind.Blockchain.Test
             public List<Transaction> ExpectedSelectedTransactions { get; } = new();
             public UInt256 MinGasPriceForMining { get; set; } = 1;
 
-            public IReleaseSpec ReleaseSpec { get; set; }
+            public required IReleaseSpec ReleaseSpec { get; set; }
 
             public UInt256 BaseFee { get; set; }
 
