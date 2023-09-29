@@ -58,14 +58,21 @@
     },
     "OP Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "-c op-goerli -dd %NETHERMIND_DATA_DIR%",
+      "commandLineArgs": "-c op-goerli -dd %NETHERMIND_DATA_DIR% --JsonRpc.UnsecureDevNoRpcAuthentication=true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Base Mainnet": {
+      "commandName": "Project",
+      "commandLineArgs": "-c base-mainnet -dd %NETHERMIND_DATA_DIR% --JsonRpc.UnsecureDevNoRpcAuthentication=true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "Base Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "-c base-goerli -dd %NETHERMIND_DATA_DIR%",
+      "commandLineArgs": "-c base-goerli -dd %NETHERMIND_DATA_DIR% --JsonRpc.UnsecureDevNoRpcAuthentication=true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
