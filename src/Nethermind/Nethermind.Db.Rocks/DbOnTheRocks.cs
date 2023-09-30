@@ -401,36 +401,6 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
 
-        //            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
-        WriteOptions = new WriteOptions();
-        WriteOptions.SetSync(dbConfig
-            .WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
-
-        _noWalWrite = new WriteOptions();
-        _noWalWrite.SetSync(dbConfig.WriteAheadLogSync);
-        _noWalWrite.DisableWal(1);
-
-        _lowPriorityWriteOptions = new WriteOptions();
-        _lowPriorityWriteOptions.SetSync(dbConfig.WriteAheadLogSync);
-        Native.Instance.rocksdb_writeoptions_set_low_pri(_lowPriorityWriteOptions.Handle, true);
-
-        _lowPriorityAndNoWalWrite = new WriteOptions();
-        _lowPriorityAndNoWalWrite.SetSync(dbConfig.WriteAheadLogSync);
-        _lowPriorityAndNoWalWrite.DisableWal(1);
-        Native.Instance.rocksdb_writeoptions_set_low_pri(_lowPriorityAndNoWalWrite.Handle, true);
-
-        // When readahead flag is on, the next keys are expected to be after the current key. Increasing this value,
-        // will increase the chances that the next keys will be in the cache, which reduces iops and latency. This
-        // increases throughput, however, if a lot of the keys are not close to the current key, it will increase read
-        // bandwidth requirement, since each read must be at least this size. This value is tuned for a batched trie
-        // visitor on mainnet with 4GB memory budget and 4Gbps read bandwidth.
-        if (dbConfig.ReadAheadSize != 0)
-        {
-            _readAheadReadOptions = new ReadOptions();
-            _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong)256.KiB());
-            _readAheadReadOptions.SetTailing(true);
-        }
-
         if (dbConfig.CompactionReadAhead != null && dbConfig.CompactionReadAhead != 0)
         {
             options.SetCompactionReadaheadSize(dbConfig.CompactionReadAhead.Value);
@@ -446,6 +416,41 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             options.EnableStatistics();
         }
         options.SetStatsDumpPeriodSec(dbConfig.StatsDumpPeriodSec);
+
+        WriteOptions = CreateWriteOptions(dbConfig);
+
+        _noWalWrite = CreateWriteOptions(dbConfig);
+        _noWalWrite.DisableWal(1);
+
+        _lowPriorityWriteOptions = CreateWriteOptions(dbConfig);
+        Native.Instance.rocksdb_writeoptions_set_low_pri(_lowPriorityWriteOptions.Handle, true);
+
+        _lowPriorityAndNoWalWrite = CreateWriteOptions(dbConfig);
+        _lowPriorityAndNoWalWrite.DisableWal(1);
+        Native.Instance.rocksdb_writeoptions_set_low_pri(_lowPriorityAndNoWalWrite.Handle, true);
+
+        // When readahead flag is on, the next keys are expected to be after the current key. Increasing this value,
+        // will increase the chances that the next keys will be in the cache, which reduces iops and latency. This
+        // increases throughput, however, if a lot of the keys are not close to the current key, it will increase read
+        // bandwidth requirement, since each read must be at least this size. This value is tuned for a batched trie
+        // visitor on mainnet with 4GB memory budget and 4Gbps read bandwidth.
+        if (dbConfig.ReadAheadSize != 0)
+        {
+            _readAheadReadOptions = new ReadOptions();
+            _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong)256.KiB());
+            _readAheadReadOptions.SetTailing(true);
+        }
+    }
+
+    private WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig) {
+        WriteOptions options = new();
+
+        // potential fix for corruption on hard process termination, may cause performance degradation
+        options.SetSync(dbConfig.WriteAheadLogSync);
+
+        // On concurrent writes, the `hint` here is the node within the skiplist. Makes concurrent sorted writes faster.
+        _rocksDbNative.rocksdb_writeoptions_set_memtable_insert_hint_per_batch(options.Handle, true);
+        return options;
     }
 
     public byte[]? this[ReadOnlySpan<byte> key]
