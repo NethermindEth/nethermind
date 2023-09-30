@@ -22,7 +22,7 @@ public static class ConcurrentDictionaryLock<TKey, TValue> where TKey : notnull
     /// <summary>
     /// Delegate that is equivalent of <see cref="ConcurrentDictionary{TKey,TValue}.ReleaseLocks"/>
     /// </summary>
-    private delegate void ReleaseLocks(ConcurrentDictionary<TKey, TValue> dictionary, int fromInclusive, int toExclusive);
+    private delegate void ReleaseLocks(ConcurrentDictionary<TKey, TValue> dictionary, int locksAcquired);
 
     /// <summary>
     /// Cached delegate of <see cref="ConcurrentDictionary{TKey,TValue}.AcquireLocks"/> to neglect reflection performance impact.
@@ -90,7 +90,7 @@ public static class ConcurrentDictionaryLock<TKey, TValue> where TKey : notnull
         // Duck typing
         public void Dispose()
         {
-            _releaseLocksMethod(_dictionary, 0, _locksAcquired);
+            _releaseLocksMethod(_dictionary, _locksAcquired);
         }
     }
 }
