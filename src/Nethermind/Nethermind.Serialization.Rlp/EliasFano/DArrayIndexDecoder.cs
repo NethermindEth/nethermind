@@ -6,22 +6,11 @@ using Nethermind.Core.Collections.EliasFano;
 
 namespace Nethermind.Serialization.Rlp.EliasFano;
 
-public class DArrayIndexDecoder: IRlpStreamDecoder<DArrayIndex>
+public class DArrayIndexDecoder : IRlpStreamDecoder<DArrayIndex>
 {
     public int GetLength(DArrayIndex item, RlpBehaviors rlpBehaviors)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
-
-    public int GetContentLength(DArrayIndex item, RlpBehaviors rlpBehaviors)
-    {
-        int length = 0;
-        length += Rlp.LengthOf(MemoryMarshal.Cast<int, byte>(item._blockInventory));
-        length += Rlp.LengthOf(MemoryMarshal.Cast<ushort, byte>(item._subBlockInventory));
-        length += Rlp.LengthOf(MemoryMarshal.Cast<int, byte>(item._overflowPositions));
-        length += Rlp.LengthOf(item.NumPositions);
-        length += Rlp.LengthOf(item.OverOne);
-        return length;
     }
 
     public DArrayIndex Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -45,5 +34,16 @@ public class DArrayIndexDecoder: IRlpStreamDecoder<DArrayIndex>
         stream.Encode(MemoryMarshal.Cast<int, byte>(item._overflowPositions));
         stream.Encode(item.NumPositions);
         stream.Encode(item.OverOne);
+    }
+
+    public int GetContentLength(DArrayIndex item, RlpBehaviors rlpBehaviors)
+    {
+        int length = 0;
+        length += Rlp.LengthOf(MemoryMarshal.Cast<int, byte>(item._blockInventory));
+        length += Rlp.LengthOf(MemoryMarshal.Cast<ushort, byte>(item._subBlockInventory));
+        length += Rlp.LengthOf(MemoryMarshal.Cast<int, byte>(item._overflowPositions));
+        length += Rlp.LengthOf(item.NumPositions);
+        length += Rlp.LengthOf(item.OverOne);
+        return length;
     }
 }

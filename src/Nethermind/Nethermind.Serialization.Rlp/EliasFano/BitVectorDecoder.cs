@@ -8,18 +8,11 @@ using Nethermind.Core.Collections.EliasFano;
 
 namespace Nethermind.Serialization.Rlp.EliasFano;
 
-public class BitVectorDecoder: IRlpStreamDecoder<BitVector>
+public class BitVectorDecoder : IRlpStreamDecoder<BitVector>
 {
     public int GetLength(BitVector item, RlpBehaviors rlpBehaviors)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
-    public int GetContentLength(BitVector item, RlpBehaviors rlpBehaviors)
-    {
-        int length = 0;
-        length += Rlp.LengthOf(item.Length);
-        length += Rlp.LengthOf(MemoryMarshal.Cast<ulong, byte>(CollectionsMarshal.AsSpan(item.Words)));
-        return length;
     }
 
     public BitVector Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -36,5 +29,13 @@ public class BitVectorDecoder: IRlpStreamDecoder<BitVector>
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Length);
         stream.Encode(MemoryMarshal.Cast<ulong, byte>(CollectionsMarshal.AsSpan(item.Words)));
+    }
+
+    public int GetContentLength(BitVector item, RlpBehaviors rlpBehaviors)
+    {
+        int length = 0;
+        length += Rlp.LengthOf(item.Length);
+        length += Rlp.LengthOf(MemoryMarshal.Cast<ulong, byte>(CollectionsMarshal.AsSpan(item.Words)));
+        return length;
     }
 }

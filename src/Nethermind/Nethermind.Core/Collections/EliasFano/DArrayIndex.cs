@@ -8,18 +8,16 @@ namespace Nethermind.Core.Collections.EliasFano;
 
 public class DArrayIndex
 {
-    const int BlockLen = 1024;
-    const int MaxInBlockDistance = 1 << 16;
-    const int SubBlockLen = 32;
+    private const int BlockLen = 1024;
+    private const int MaxInBlockDistance = 1 << 16;
+    private const int SubBlockLen = 32;
 
     public readonly int[] _blockInventory;
-    public readonly ushort[] _subBlockInventory;
     public readonly int[] _overflowPositions;
-    public int NumPositions { get; }
-    public int NumOnes => NumPositions;
-    public bool OverOne { get; }
+    public readonly ushort[] _subBlockInventory;
 
-    public DArrayIndex(int[] blockInventory, ushort[] subBlockInventory, int[] overflowPositions, int numPositions, bool overOne)
+    public DArrayIndex(int[] blockInventory, ushort[] subBlockInventory, int[] overflowPositions, int numPositions,
+        bool overOne)
     {
         _blockInventory = blockInventory;
         _subBlockInventory = subBlockInventory;
@@ -44,16 +42,14 @@ public class DArrayIndex
 
             while (true)
             {
-                int l = NumberOfTrailingZeros(currWord);
+                int l = BitOperations.TrailingZeroCount(currWord);
                 currPos += l;
                 currWord >>= l;
                 if (currPos >= bv.Length) break;
 
                 curBlockPositions.Add(currPos);
                 if (curBlockPositions.Count == BlockLen)
-                {
                     FlushCurBlock(curBlockPositions, blockInventory, subBlockInventory, overflowPositions);
-                }
 
                 currWord >>= 1;
                 currPos += 1;
@@ -69,6 +65,10 @@ public class DArrayIndex
         _overflowPositions = overflowPositions.ToArray();
         NumPositions = numPositions;
     }
+
+    public int NumPositions { get; }
+    public int NumOnes => NumPositions;
+    public bool OverOne { get; }
 
     public int? Select(BitVector bv, int k)
     {
@@ -90,9 +90,7 @@ public class DArrayIndex
 
         int sel;
         if (remainder == 0)
-        {
             sel = startPos;
-        }
         else
         {
             int wordIdx = startPos / 64;
@@ -109,7 +107,7 @@ public class DArrayIndex
                 word = OverOne ? GetWordOverOne(bv, wordIdx) : GetWordOverZero(bv, wordIdx);
             }
 
-            sel = 64 * wordIdx + SelectInWord(word, remainder)!.Value;
+            sel = (64 * wordIdx) + SelectInWord(word, remainder)!.Value;
         }
 
         return sel;
@@ -129,28 +127,28 @@ public class DArrayIndex
         {
             blockInventory.Add(first);
             for (int i = 0; i < curBlockPositions.Count; i += SubBlockLen)
-            {
                 subBlockInventory.Add((ushort)(curBlockPositions[i] - first));
-            }
         }
         else
         {
             blockInventory.Add(-(overflowPositions.Count + 1));
             overflowPositions.AddRange(curBlockPositions);
 
-            for (int i = 0; i < curBlockPositions.Count; i += SubBlockLen)
-            {
-                subBlockInventory.Add(ushort.MaxValue);
-            }
+            for (int i = 0; i < curBlockPositions.Count; i += SubBlockLen) subBlockInventory.Add(ushort.MaxValue);
         }
+
         curBlockPositions.Clear();
     }
 
-    private static ulong GetWordOverZero(BitVector bv, int wordIdx) => ~bv.Words[wordIdx];
+    private static ulong GetWordOverZero(BitVector bv, int wordIdx)
+    {
+        return ~bv.Words[wordIdx];
+    }
 
-    private static ulong GetWordOverOne(BitVector bv, int wordIdx) => bv.Words[wordIdx];
-
-    private static int NumberOfTrailingZeros(ulong i) => BitOperations.TrailingZeroCount(i);
+    private static ulong GetWordOverOne(BitVector bv, int wordIdx)
+    {
+        return bv.Words[wordIdx];
+    }
 
     private static int? SelectInWord(ulong x, int k)
     {
@@ -162,6 +160,7 @@ public class DArrayIndex
             index++;
             x >>= 1;
         }
+
         return -1;
     }
 }

@@ -1,55 +1,60 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Numerics;
-using System.Runtime.InteropServices;
-using Nethermind.Core.Collections.EliasFano;
 
 namespace Nethermind.Core.Collections.EliasFano;
 
 public class DArray
 {
+    public readonly DArrayIndex _indexSet;
+    public readonly DArrayIndex _indexUnSet;
     public BitVector _data;
-    public DArrayIndex _indexS1;
-    public DArrayIndex? _indexS0;
-
-    public int NumOnes => _indexS1.NumOnes;
-    public int NumBits => _data.Length;
 
     public DArray(BitVector bv)
     {
         _data = new BitVector(bv);
-        _indexS1 = new DArrayIndex(_data, true);
+        _indexSet = new DArrayIndex(_data, true);
+        _indexUnSet = new DArrayIndex(_data, false);
     }
 
-    public DArray(BitVector bv, DArrayIndex indexS0, DArrayIndex indexS1)
+    public DArray(BitVector bv, DArrayIndex indexUnSet, DArrayIndex indexSet)
     {
         _data = bv;
-        _indexS1 = indexS1;
-        _indexS0 = indexS0;
+        _indexSet = indexSet;
+        _indexUnSet = indexUnSet;
     }
+
+    // Returns the number of bits set
+    public int NumOnes => _indexSet.NumOnes;
+
+    // Returns the number of bits stored
+    public int NumBits => _data.Length;
 
     public static DArray FromBits(IEnumerable<bool> bits)
     {
-        BitVector data = new ();
+        BitVector data = new();
         foreach (bool bit in bits) data.PushBit(bit);
         return new DArray(data);
     }
 
-    public void EnableSelect0()
+    /// <summary>
+    ///     Searches the position of the `k`-th bit unset
+    /// </summary>
+    /// <param name="k"></param>
+    /// <returns></returns>
+    public int? SelectUnSet(int k)
     {
-        _indexS0 = new DArrayIndex(_data, false);
+        return _indexUnSet.Select(_data, k);
     }
 
-    public int? Select0(int k)
+    /// <summary>
+    ///     Searches the position of the `k`-th bit set
+    /// </summary>
+    /// <param name="k"></param>
+    /// <returns></returns>
+    public int? SelectSet(int k)
     {
-        return _indexS0?.Select(_data, k);
-    }
-
-    public int? Select1(int k)
-    {
-        return _indexS1.Select(_data, k);
+        return _indexSet.Select(_data, k);
     }
 }

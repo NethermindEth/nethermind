@@ -13,7 +13,9 @@ namespace Nethermind.Core.Test.Collections;
 
 public class EliasFanoTests
 {
-    private readonly ulong[] _efCase1 = new ulong[] { 1, 3, 3, 7, 10, 25, 98, 205, 206, 207, 807, 850, 899, 999 };
+    private readonly ulong[] _efCase0 = { 1, 3, 3, 7 };
+    private readonly ulong[] _efCase1 = { 1, 3, 3, 7, 10, 25, 98, 205, 206, 207, 807, 850, 899, 999 };
+    private readonly ulong[] _efCase2 = { 1, 3, 3, 6, 7, 10 };
 
     [Test]
     public void TestBuilder()
@@ -21,11 +23,10 @@ public class EliasFanoTests
         UIntPtr[] data = new UIntPtr[200];
         for (uint i = 0; i < 200; i++) data[i] = i * 20000;
 
-        EliasFanoBuilder efb = new (data[^1], data.Length);
+        EliasFanoBuilder efb = new(data[^1], data.Length);
 
         foreach (UIntPtr val in data) efb.Push(val);
         EliasFano ef = efb.Build();
-        ef._highBits.EnableSelect0();
 
         ef.Rank(300000).Should().Be(15);
     }
@@ -33,18 +34,17 @@ public class EliasFanoTests
     [Test]
     public void TestEncoding()
     {
-        EliasFanoBuilder efb = new (1000, 14);
+        EliasFanoBuilder efb = new(1000, 14);
         efb.Extend(_efCase1);
 
         EliasFano ef = efb.Build();
-        ef._highBits.EnableSelect0();
 
         AssertEfForCase1(ef);
 
         EliasFanoDecoder decoder = new();
 
         RlpStream stream = new(decoder.GetLength(ef, RlpBehaviors.None));
-        decoder.Encode(stream, ef, RlpBehaviors.None);
+        decoder.Encode(stream, ef);
 
         EliasFano efDecoded = decoder.Decode(new RlpStream(stream.Data!));
         AssertEfForCase1(efDecoded);
@@ -53,14 +53,13 @@ public class EliasFanoTests
     [Test]
     public void TestCase()
     {
-        EliasFanoBuilder efb = new (8, 4);
+        EliasFanoBuilder efb = new(8, 4);
         efb.Push(1);
         efb.Push(3);
         efb.Push(3);
         efb.Push(7);
 
         EliasFano ef = efb.Build();
-        ef._highBits.EnableSelect0();
         ef.Rank(3).Should().Be(1);
         ef.Rank(4).Should().Be(3);
         ef.Rank(8).Should().Be(4);
@@ -70,18 +69,17 @@ public class EliasFanoTests
     [Test]
     public void TestCaseBlocks()
     {
-        EliasFanoBuilder efb = new (1000, 14);
+        EliasFanoBuilder efb = new(1000, 14);
         efb.Extend(_efCase1);
 
         EliasFano ef = efb.Build();
-        ef._highBits.EnableSelect0();
         AssertEfForCase1(ef);
     }
 
     [Test]
     public void TestIteration()
     {
-        EliasFanoBuilder efb = new (1000, 14);
+        EliasFanoBuilder efb = new(1000, 14);
         efb.Extend(_efCase1);
         EliasFano ef = efb.Build();
         ef.GetEnumerator(0).ToArray().Should().BeEquivalentTo(_efCase1);
@@ -115,5 +113,85 @@ public class EliasFanoTests
         ef.Rank(905).Should().Be(13);
         ef.Rank(1000).Should().Be(14);
         Assert.Throws<ArgumentException>(() => ef.Rank(1001));
+    }
+
+    [Test]
+    public void TestDelta()
+    {
+        EliasFanoBuilder efb = new(8, 4);
+        efb.Extend(_efCase0);
+
+        EliasFano ef = efb.Build();
+        ef.Delta(0).Should().Be(1);
+        ef.Delta(1).Should().Be(2);
+        ef.Delta(2).Should().Be(0);
+        ef.Delta(3).Should().Be(4);
+        ef.Delta(4).Should().BeNull();
+    }
+
+    [Test]
+    public void TestBinSearch()
+    {
+        EliasFanoBuilder efb = new(11, 6);
+        efb.Extend(_efCase2);
+
+        EliasFano ef = efb.Build();
+
+        ef.BinSearchRange(0, ef.Length, 6).Should().Be(3);
+        ef.BinSearchRange(0, ef.Length, 10).Should().Be(5);
+        ef.BinSearchRange(0, ef.Length, 9).Should().BeNull();
+    }
+
+    [Test]
+    public void TestBinSearchRange()
+    {
+        EliasFanoBuilder efb = new(11, 6);
+        efb.Extend(_efCase2);
+
+        EliasFano ef = efb.Build();
+
+        ef.BinSearchRange(1, 4, 6).Should().Be(3);
+        ef.BinSearchRange(5, 6, 10).Should().Be(5);
+        ef.BinSearchRange(1, 3, 9).Should().BeNull();
+    }
+
+    [Test]
+    public void TestSelect()
+    {
+        EliasFanoBuilder efb = new(8, 4);
+        efb.Extend(_efCase0);
+
+        EliasFano ef = efb.Build();
+        ef.Select(0).Should().Be(1);
+        ef.Select(1).Should().Be(3);
+        ef.Select(2).Should().Be(3);
+        ef.Select(3).Should().Be(7);
+        ef.Select(4).Should().BeNull();
+    }
+
+    [Test]
+    public void TestPredecessor()
+    {
+        EliasFanoBuilder efb = new(8, 4);
+        efb.Extend(_efCase0);
+
+        EliasFano ef = efb.Build();
+        ef.Predecessor(4).Should().Be(3);
+        ef.Predecessor(3).Should().Be(3);
+        ef.Predecessor(2).Should().Be(1);
+        ef.Predecessor(0).Should().BeNull();
+    }
+
+    [Test]
+    public void TestSuccessor()
+    {
+        EliasFanoBuilder efb = new(8, 4);
+        efb.Extend(_efCase0);
+
+        EliasFano ef = efb.Build();
+        ef.Successor(0).Should().Be(1);
+        ef.Successor(2).Should().Be(3);
+        ef.Successor(3).Should().Be(3);
+        ef.Successor(8).Should().BeNull();
     }
 }

@@ -5,23 +5,14 @@ using Nethermind.Core.Collections.EliasFano;
 
 namespace Nethermind.Serialization.Rlp.EliasFano;
 
-public class DArrayDecoder: IRlpStreamDecoder<DArray>
+public class DArrayDecoder : IRlpStreamDecoder<DArray>
 {
-    private readonly DArrayIndexDecoder _indexDecoder = new ();
-    private readonly BitVectorDecoder _bitVecDecoder = new ();
+    private readonly BitVectorDecoder _bitVecDecoder = new();
+    private readonly DArrayIndexDecoder _indexDecoder = new();
 
     public int GetLength(DArray item, RlpBehaviors rlpBehaviors)
     {
         return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
-
-    private int GetContentLength(DArray item, RlpBehaviors rlpBehaviors)
-    {
-        int length = 0;
-        length += _bitVecDecoder.GetLength(item._data, rlpBehaviors);
-        length += _indexDecoder.GetLength(item._indexS0, rlpBehaviors);
-        length += _indexDecoder.GetLength(item._indexS1, rlpBehaviors);
-        return length;
     }
 
     public DArray Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -39,7 +30,16 @@ public class DArrayDecoder: IRlpStreamDecoder<DArray>
         int contentLength = GetContentLength(item, rlpBehaviors);
         stream.StartSequence(contentLength);
         _bitVecDecoder.Encode(stream, item._data);
-        _indexDecoder.Encode(stream, item._indexS0);
-        _indexDecoder.Encode(stream, item._indexS1);
+        _indexDecoder.Encode(stream, item._indexUnSet);
+        _indexDecoder.Encode(stream, item._indexSet);
+    }
+
+    private int GetContentLength(DArray item, RlpBehaviors rlpBehaviors)
+    {
+        int length = 0;
+        length += _bitVecDecoder.GetLength(item._data, rlpBehaviors);
+        length += _indexDecoder.GetLength(item._indexUnSet, rlpBehaviors);
+        length += _indexDecoder.GetLength(item._indexSet, rlpBehaviors);
+        return length;
     }
 }

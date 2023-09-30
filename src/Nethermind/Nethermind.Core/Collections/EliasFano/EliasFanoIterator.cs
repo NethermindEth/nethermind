@@ -4,20 +4,19 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Net.Mail;
 using System.Numerics;
 
 namespace Nethermind.Core.Collections.EliasFano;
 
-public class EliasFanoIterator: IEnumerator<ulong>
+public class EliasFanoIterator : IEnumerator<ulong>
 {
-    private EliasFano _ef;
-    private int _k;
-    private UnaryIter? _highIter;
-    private ulong _lowBuf;
-    private ulong _lowMask;
-    private int _chunksInWord;
+    private readonly int _chunksInWord;
+    private readonly ulong _lowMask;
     private int _chunksAvail;
+    private EliasFano _ef;
+    private UnaryIter? _highIter;
+    private int _k;
+    private ulong _lowBuf;
 
     public EliasFanoIterator(EliasFano ef, int k)
     {
@@ -34,13 +33,13 @@ public class EliasFanoIterator: IEnumerator<ulong>
         else
         {
             _chunksInWord = 0;
-            _chunksAvail = ef._lowLen;
+            _chunksAvail = ef.Length;
         }
 
         _highIter = null;
-        if (k < _ef._lowLen)
+        if (k < _ef.Length)
         {
-            int pos = _ef._highBits.Select1(k)!.Value;
+            int pos = _ef._highBits.SelectSet(k)!.Value;
             _highIter = new UnaryIter(ef._highBits._data, pos);
         }
     }
@@ -62,9 +61,7 @@ public class EliasFanoIterator: IEnumerator<ulong>
                 _chunksAvail = _chunksInWord - 1;
             }
             else
-            {
                 _chunksAvail -= 1;
-            }
 
             _highIter.MoveNext();
             int high = _highIter.Current;
@@ -89,20 +86,21 @@ public class EliasFanoIterator: IEnumerator<ulong>
     object IEnumerator.Current => Current;
 }
 
-public class UnaryIter: IEnumerator<int>
+public class UnaryIter : IEnumerator<int>
 {
-    private int _startingPos;
-    private BitVector _bv;
-    public int _pos;
+    private readonly BitVector _bv;
+    private readonly int _startingPos;
     private ulong _buf;
-    public int Current => _pos;
+    public int _pos;
 
     public UnaryIter(BitVector bv, int pos)
     {
         _bv = bv;
         _startingPos = _pos = pos;
-        _buf = _bv.Words[(int)_pos / BitVector.WordLen] & (ulong.MaxValue << (int)(_pos % BitVector.WordLen));
+        _buf = _bv.Words[_pos / BitVector.WordLen] & (ulong.MaxValue << (_pos % BitVector.WordLen));
     }
+
+    public int Current => _pos;
 
     public void Dispose()
     {
@@ -112,10 +110,10 @@ public class UnaryIter: IEnumerator<int>
     public bool MoveNext()
     {
         ulong buf = _buf;
-        while (buf ==0)
+        while (buf == 0)
         {
             _pos += BitVector.WordLen;
-            int wordPos = (int) _pos / BitVector.WordLen;
+            int wordPos = _pos / BitVector.WordLen;
             if (_bv.Words.Count <= wordPos) return false;
             buf = _bv.Words[wordPos];
         }
@@ -129,7 +127,7 @@ public class UnaryIter: IEnumerator<int>
     public void Reset()
     {
         _pos = _startingPos;
-        _buf = _bv.Words[(int)_pos / BitVector.WordLen] & (ulong.MaxValue << (int)(_pos % BitVector.WordLen));
+        _buf = _bv.Words[_pos / BitVector.WordLen] & (ulong.MaxValue << (_pos % BitVector.WordLen));
     }
 
     object IEnumerator.Current => Current;
