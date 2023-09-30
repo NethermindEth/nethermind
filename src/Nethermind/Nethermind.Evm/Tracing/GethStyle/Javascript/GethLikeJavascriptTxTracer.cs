@@ -6,10 +6,13 @@ using System.IO;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.V8;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.State;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
@@ -19,9 +22,10 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
     private readonly V8ScriptEngine _engine = new();
     private readonly dynamic _tracer;
     private readonly GethJavascriptStyleLog _customTraceEntry;
+    private readonly List<byte> _memory = new List<byte>();
 
     [SuppressMessage("ReSharper", "VirtualMemberCallInConstructor")]
-    public GethLikeJavascriptTxTracer(GethTraceOptions options) : base(options)
+    public GethLikeJavascriptTxTracer(IWorldState worldState, GethTraceOptions options) : base(options)
     {
         _customTraceEntry = new(_engine);
         _engine.Execute(LoadJavascriptCode(options.Tracer));
@@ -34,22 +38,14 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
 
     private string LoadJavascriptCodeFromFile(string tracerFileName)
     {
-        try
+        if (!tracerFileName.EndsWith(".js", StringComparison.OrdinalIgnoreCase))
         {
-            if (!tracerFileName.EndsWith(".js", StringComparison.OrdinalIgnoreCase))
-            {
-                tracerFileName += ".js";
-            }
-            string jsCode = File.ReadAllText("/Volumes/ethereum/ethereum/execution/nethermind/src/Nethermind/Nethermind.Evm/bin/Debug/net7.0/Tracing/GethStyle/Javascript/" + tracerFileName);
-            Console.WriteLine("this is the js code {0}", jsCode);
-            return jsCode;
-        }
-        catch (IOException e)
-        {
-            Console.WriteLine("An error occurred while reading the file: " + e.Message);
-            return null;
+            tracerFileName += ".js";
         }
 
+        tracerFileName = "Data/JSTracers/" + tracerFileName;
+        string jsCode = File.ReadAllText(tracerFileName.GetApplicationResourcePath());
+        return jsCode;
     }
 
     public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
@@ -77,10 +73,13 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
         {
             _tracer.fault(log, db);
         }
+    }
 
-        dynamic? result = _tracer.result(null, null);
-        Trace.CustomTracerResult.Add(result);
-
+    public override GethLikeTxTrace BuildResult()
+    {
+        GethLikeTxTrace trace = base.BuildResult();
+        trace.CustomTracerResult = _tracer.result(null, null);
+        return trace;
     }
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType,
@@ -102,8 +101,15 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
             Console.WriteLine("item at index {0} : {1}", item, _customTraceEntry.memory.getItem(item));
             //Console.WriteLine("this is a slice : {0}",  CustomTraceEntry.memory.slice(0,1));
         }
-
     }
+
+    public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
+    {
+        _memory.EnsureCapacity((int)(offset + data.Length));
+        data.CopyTo(CollectionsMarshal.AsSpan(_memory).Slice((int)offset, data.Length));
+        base.ReportMemoryChange(offset, in data);
+    }
+
     public override void SetOperationStack(List<string> stackTrace)
     {
         base.SetOperationStack(stackTrace);

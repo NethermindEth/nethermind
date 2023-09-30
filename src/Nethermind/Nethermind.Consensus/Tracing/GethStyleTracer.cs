@@ -18,6 +18,7 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Javascript;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Tracing;
 
@@ -26,17 +27,19 @@ public class GethStyleTracer : IGethStyleTracer
     private readonly IBlockTree _blockTree;
     private readonly ChangeableTransactionProcessorAdapter _transactionProcessorAdapter;
     private readonly IBlockchainProcessor _processor;
+    private readonly IWorldState _worldState;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IFileSystem _fileSystem;
 
-    public GethStyleTracer(
-        IBlockchainProcessor processor,
+    public GethStyleTracer(IBlockchainProcessor processor,
+        IWorldState worldState,
         IReceiptStorage receiptStorage,
         IBlockTree blockTree,
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter,
         IFileSystem fileSystem)
     {
         _processor = processor ?? throw new ArgumentNullException(nameof(processor));
+        _worldState = worldState;
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _transactionProcessorAdapter = transactionProcessorAdapter;
@@ -160,9 +163,9 @@ public class GethStyleTracer : IGethStyleTracer
         return tracer.BuildResult().SingleOrDefault();
     }
 
-    private static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(GethTraceOptions options) =>
+    private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(GethTraceOptions options) =>
         !string.IsNullOrEmpty(options.Tracer)
-            ? new GethLikeBlockJavascriptTracer(options)
+            ? new GethLikeBlockJavascriptTracer(_worldState, options)
             : new GethLikeBlockMemoryTracer(options);
 
     private GethLikeTxTrace[] TraceBlock(Block? block, GethTraceOptions options, CancellationToken cancellationToken)

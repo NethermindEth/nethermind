@@ -51,7 +51,7 @@ public class DebugRpcModule : IDebugRpcModule
     {
         using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
         CancellationToken cancellationToken = cancellationTokenSource.Token;
-        dynamic? transactionTrace = _debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
+        GethLikeTxTrace? transactionTrace = _debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {transactionHash}", ErrorCodes.ResourceNotFound);
