@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -110,7 +111,7 @@ public class EthStatsPlugin : INethermindPlugin
                 getFromAPi.GasPriceOracle!,
                 getFromAPi.EthSyncingInfo!,
                 initConfig.IsMining,
-                _ethStatsConfig.SendInterval,
+                TimeSpan.FromSeconds(_ethStatsConfig.SendInterval),
                 getFromAPi.LogManager);
 
             await _ethStatsIntegration.InitAsync();
