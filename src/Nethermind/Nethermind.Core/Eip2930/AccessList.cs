@@ -23,9 +23,7 @@ public class AccessList
         _items = items;
     }
 
-    public static AccessList Empty() => new AccessList(new List<AccessListItem>());
-
-    public IReadOnlyCollection<AccessListItem> Raw => _items;
+    public static AccessList Empty() => new(new List<AccessListItem>());
 
     public IEnumerable<(Address Address, IEnumerable<UInt256> StorageKeys)> AsEnumerable()
     {
