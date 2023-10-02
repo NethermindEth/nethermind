@@ -62,7 +62,7 @@ namespace Nethermind.Store.Test
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
             tree.Commit(0);
-            Assert.That(db.WritesCount, Is.EqualTo(6), "writes"); // extension, branch, leaf, extension, branch, 2x same leaf
+            Assert.That(db.WritesCount, Is.EqualTo(7), "writes"); // extension, branch, leaf, extension, branch, 2x same leaf
             Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(7), "hashes");
             Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(7), "encodings");
         }
