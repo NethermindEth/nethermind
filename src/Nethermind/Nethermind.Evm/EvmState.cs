@@ -275,7 +275,7 @@ namespace Nethermind.Evm
         {
             if (accessList is not null)
             {
-                foreach ((Address address, IEnumerable<UInt256> storages) in accessList)
+                foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
                 {
                     WarmUp(address);
                     foreach (UInt256 storage in storages)

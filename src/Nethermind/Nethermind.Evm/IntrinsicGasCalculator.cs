@@ -67,10 +67,10 @@ public static class IntrinsicGasCalculator
                     $"Transaction with an access list received within the context of {releaseSpec.Name}. Eip-2930 is not enabled.");
             }
 
-            foreach ((Address Address, IEnumerable<UInt256> StorageKeys) entry in accessList)
+            foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) entry in accessList)
             {
                 accessListCost += GasCostOf.AccessAccountListEntry;
-                foreach (UInt256 _ in entry.StorageKeys)
+                foreach (UInt256 _ in entry.storageKeys)
                 {
                     accessListCost += GasCostOf.AccessStorageListEntry;
                 }

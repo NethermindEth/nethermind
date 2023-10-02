@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.Eip2930;
 
-public class AccessList : IEnumerable<(Address Address, IEnumerable<UInt256> StorageKeys)>
+public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEnumerable StorageKeys)>
 {
     private readonly List<object> _items;
 
@@ -50,10 +50,10 @@ public class AccessList : IEnumerable<(Address Address, IEnumerable<UInt256> Sto
     }
 
     public Enumerator GetEnumerator() => new(_items);
-    IEnumerator<(Address Address, IEnumerable<UInt256> StorageKeys)> IEnumerable<(Address Address, IEnumerable<UInt256> StorageKeys)>.GetEnumerator() => GetEnumerator();
+    IEnumerator<(Address Address, StorageKeysEnumerable StorageKeys)> IEnumerable<(Address Address, StorageKeysEnumerable StorageKeys)>.GetEnumerator() => GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    public struct Enumerator : IEnumerator<(Address Address, IEnumerable<UInt256> StorageKeys)>
+    public struct Enumerator : IEnumerator<(Address Address, StorageKeysEnumerable StorageKeys)>, IEnumerator<(Address Address, IEnumerable<UInt256> StorageKeys)>
     {
         private readonly List<object> _items;
         private int _index = -1;
@@ -70,12 +70,9 @@ public class AccessList : IEnumerable<(Address Address, IEnumerable<UInt256> Sto
         }
 
         public void Reset() => _index = -1;
-
-        public (Address Address, IEnumerable<UInt256> StorageKeys) Current =>
-            ((Address)_items[_index], new StorageKeysEnumerable(_items, _index));
-
+        public (Address Address, StorageKeysEnumerable StorageKeys) Current => ((Address)_items[_index], new StorageKeysEnumerable(_items, _index));
+        (Address Address, IEnumerable<UInt256> StorageKeys) IEnumerator<(Address Address, IEnumerable<UInt256> StorageKeys)>.Current => Current;
         object IEnumerator.Current => Current;
-
         public void Dispose() { }
     }
 
