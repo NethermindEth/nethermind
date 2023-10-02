@@ -891,8 +891,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         {
             if (Interlocked.Increment(ref _writeCount) % MaxWritesOnNoWal != 0) return;
 
-            WriteBatch currentBatch = _rocksBatch;
-            _rocksBatch = new WriteBatch();
+            WriteBatch currentBatch = Interlocked.Exchange(ref _rocksBatch, new WriteBatch());
 
             try
             {
