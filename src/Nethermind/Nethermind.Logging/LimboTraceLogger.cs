@@ -26,27 +26,22 @@ namespace Nethermind.Logging
 
         public void Info(string text)
         {
-            System.Diagnostics.Debugger.Log(4, "LOG", $"LOG: {text}\n");
         }
 
         public void Warn(string text)
         {
-            System.Diagnostics.Debugger.Log(4, "LOG", $"LOG: {text}\n");
         }
 
         public void Debug(string text)
         {
-            System.Diagnostics.Debugger.Log(4, "LOG", $"LOG: {text}\n");
         }
 
         public void Trace(string text)
         {
-            System.Diagnostics.Debugger.Log(4, "LOG", $"LOG: {text}\n");
         }
 
         public void Error(string text, Exception ex = null)
         {
-            System.Diagnostics.Debugger.Log(4, "LOG", $"LOG: {text}\n");
         }
 
         public bool IsInfo => true;

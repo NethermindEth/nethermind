@@ -3,9 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -21,7 +19,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
-using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -35,7 +32,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
-using NLog;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -141,52 +137,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
 
-        //private (BlocksConfig blocksConfig, BlockProducerEnvFactory blockProducerEnvFactory) F(ITransactionComparerProvider transactionComparerProvider)
-        //{
-        //    BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
-        //    AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
-        //           _api!,
-        //           new AuRaConfig(),
-        //           new DisposableStack(),
-        //           DbProvider,
-        //           BlockTree,
-        //           ReadOnlyTrieStore,
-        //           SpecProvider,
-        //           BlockValidator,
-        //           NoBlockRewards.Instance,
-        //           ReceiptStorage,
-        //           BlockPreprocessorStep,
-        //           TxPool,
-        //           transactionComparerProvider,
-        //           blocksConfig,
-        //           LogManager);
-        //    return (blocksConfig, blockProducerEnvFactory);
-        //}
-
 
         protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
-            //var (blocksConfig, blockProducerEnvFactory) = F(transactionComparerProvider);
-            BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
-            AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
-                   _api!,
-                   new AuRaConfig(),
-                   new DisposableStack(),
-                   DbProvider,
-                   BlockTree,
-                   ReadOnlyTrieStore,
-                   SpecProvider,
-                   BlockValidator,
-                   NoBlockRewards.Instance,
-                   ReceiptStorage,
-                   BlockPreprocessorStep,
-                   TxPool,
-                   transactionComparerProvider,
-                   blocksConfig,
-                   LogManager);
-
-
             SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator!, LogManager);
+            BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             ISyncConfig syncConfig = new SyncConfig();
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
             EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, new StaticSelector(SyncMode.All), LogManager);
@@ -198,6 +153,22 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
+            AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
+                _api!,
+                new AuRaConfig(),
+                new DisposableStack(),
+                DbProvider,
+                BlockTree,
+                ReadOnlyTrieStore,
+                SpecProvider,
+                BlockValidator,
+                NoBlockRewards.Instance,
+                ReceiptStorage,
+                BlockPreprocessorStep,
+                TxPool,
+                transactionComparerProvider,
+                blocksConfig,
+                LogManager);
 
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
