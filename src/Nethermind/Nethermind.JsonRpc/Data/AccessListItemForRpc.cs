@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -11,7 +13,7 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
-    public struct AccessListItemForRpc
+    public struct AccessListItemForRpc : IEquatable<AccessListItemForRpc>
     {
         public AccessListItemForRpc(Address address, IEnumerable<UInt256>? storageKeys)
         {
@@ -41,7 +43,12 @@ namespace Nethermind.JsonRpc.Data
                     }
                 }
             }
+
             return builder.Build();
         }
+
+        public bool Equals(AccessListItemForRpc other) => Equals(Address, other.Address) && StorageKeys.NullableSequenceEqual(other.StorageKeys);
+        public override bool Equals(object? obj) => obj is AccessListItemForRpc other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(Address, StorageKeys);
     }
 }
