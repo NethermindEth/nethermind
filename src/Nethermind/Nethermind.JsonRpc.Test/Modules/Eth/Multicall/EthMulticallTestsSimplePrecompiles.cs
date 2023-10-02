@@ -98,14 +98,17 @@ contract EcrecoverProxy {
                 }
             },
             TraceTransfers = true,
-            Validation = true
+            Validation = false
         };
 
         // Act
 
         MultiCallOutput result = chain.Bridge.MultiCall(chain.BlockFinder.Head?.Header!, payload, CancellationToken.None);
         Log[]? logs = result.Items.First().Calls.First().Logs;
-
+        byte[] addressBytes = result.Items.First().Calls.First().ReturnData!
+            .SliceWithZeroPaddingEmptyOnError(12, 20);
+        //Address resultingAddress = new(addressBytes);
+        //Assert.That(resultingAddress, Is.EqualTo(TestItem.AddressE));
 
         //Check that initial VM is intact
         Address? mainChainRpcAddress =

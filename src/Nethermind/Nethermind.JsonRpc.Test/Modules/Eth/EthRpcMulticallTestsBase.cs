@@ -152,8 +152,8 @@ public class EthRpcMulticallTestsBase
 
             await chain1.AddBlock(true, txs);
 
-            TxReceipt createContractTxReceipt = new();
-            while (createContractTxReceipt.Equals(default(TxReceipt)))
+            TxReceipt? createContractTxReceipt = null;
+            while (createContractTxReceipt == null)
             {
                 await Task.Delay(100); // wait... todo enforce!
                 createContractTxReceipt = chain1.Bridge.GetReceipt(tx.Hash!);

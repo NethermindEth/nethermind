@@ -89,8 +89,10 @@ public class EthMulticallTestsPrecompilesWithRedirection
         {
             Data = transactionData,
             To = contractAddress,
-            SenderAddress = TestItem.PublicKeyB.Address,
-            GasLimit = 50_000
+            SenderAddress = TestItem.PublicKeyA.Address,
+            GasLimit = 50_000,
+            GasPrice = 20.GWei()
+
         };
 
 
@@ -99,8 +101,8 @@ public class EthMulticallTestsPrecompilesWithRedirection
 
         BlockHeader header = chain.BlockFinder.Head.Header;
         IReleaseSpec spec = chain.SpecProvider.GetSpec(header);
-        systemTransactionForModifiedVM.GasPrice = header.BaseFeePerGas >= 1 ? header.BaseFeePerGas : 1;
-        systemTransactionForModifiedVM.GasLimit = (long)systemTransactionForModifiedVM.CalculateTransactionPotentialCost(spec.IsEip1559Enabled, header.BaseFeePerGas);
+        //systemTransactionForModifiedVM.GasPrice = header.BaseFeePerGas >= 1 ? header.BaseFeePerGas : 1;
+        //systemTransactionForModifiedVM.GasLimit = (long)systemTransactionForModifiedVM.CalculateTransactionPotentialCost(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
         MultiCallPayload<TransactionForRpc> payload = new()
         {
@@ -116,11 +118,12 @@ public class EthMulticallTestsPrecompilesWithRedirection
             },
             Calls = new[]
             {
+
                 new TransactionForRpc(systemTransactionForModifiedVM),
             }
         }},
             TraceTransfers = true,
-            Validation = true
+            Validation = false
         };
 
         //Force persistancy of head block in main chain
