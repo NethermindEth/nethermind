@@ -436,7 +436,8 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         }
     }
 
-    private WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig) {
+    private WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig)
+    {
         WriteOptions options = new();
         // potential fix for corruption on hard process termination, may cause performance degradation
         options.SetSync(dbConfig.WriteAheadLogSync);
@@ -822,7 +823,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         private static void ReturnWriteBatch(WriteBatch batch)
         {
             Native.Instance.rocksdb_writebatch_data(batch.Handle, out UIntPtr size);
-            if (size > (uint) 16.KiB() || _reusableWriteBatch != null)
+            if (size > (uint)16.KiB() || _reusableWriteBatch != null)
             {
                 batch.Dispose();
                 return;
