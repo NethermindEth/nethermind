@@ -50,11 +50,11 @@ public class DebugModuleTests
     [Test]
     public async Task Get_from_db_null_value()
     {
-        byte[] key = [1, 2, 3];
         debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns((byte[])null!);
 
         IConfigProvider configProvider = Substitute.For<IConfigProvider>();
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+        byte[] key = new byte[] { 1, 2, 3 };
         JsonRpcSuccessResponse? response =
             await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key.ToHexString(true)) as
                 JsonRpcSuccessResponse;
