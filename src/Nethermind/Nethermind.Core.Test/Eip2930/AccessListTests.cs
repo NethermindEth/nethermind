@@ -33,7 +33,7 @@ public class AccessListTests
             (address, new[] { storageKey1, storageKey2, storageKey3 })
         };
 
-        accessList.AsEnumerable().Should().BeEquivalentTo(expected);
+        accessList.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -57,7 +57,7 @@ public class AccessListTests
             (address, new[] { storageKey1, storageKey2, storageKey3, storageKey1 })
         };
 
-        accessList.AsEnumerable().Should().BeEquivalentTo(expected);
+        accessList.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -82,7 +82,7 @@ public class AccessListTests
             (address, new[] { storageKey3 })
         };
 
-        accessList.AsEnumerable().Should().BeEquivalentTo(expected);
+        accessList.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -108,7 +108,7 @@ public class AccessListTests
             (address, new[] { storageKey1, storageKey3 })
         };
 
-        accessList.AsEnumerable().Should().BeEquivalentTo(expected);
+        accessList.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -128,7 +128,7 @@ public class AccessListTests
             (address2, new UInt256[] { })
         };
 
-        accessList.AsEnumerable().Should().BeEquivalentTo(expected);
+        accessList.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -154,7 +154,7 @@ public class AccessListTests
             (address2, new[] { storageKey3 })
         };
 
-        accessList.AsEnumerable().Should().BeEquivalentTo(expected);
+        accessList.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -185,7 +185,7 @@ public class AccessListTests
             (address2, new UInt256[] { }),
         };
 
-        accessList.AsEnumerable().Should().BeEquivalentTo(expected);
+        accessList.Should().BeEquivalentTo(expected);
     }
 
     [Test]

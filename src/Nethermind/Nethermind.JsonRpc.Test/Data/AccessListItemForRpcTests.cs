@@ -29,12 +29,9 @@ public class AccessListItemForRpcTests
             .AddStorage(storageKey3)
             .Build();
 
-        AccessListItemForRpc[] forRpc = AccessListItemForRpc.FromAccessList(accessList);
-
-        forRpc.Length.Should().Be(1);
-        forRpc[0].Address.Should().Be(address);
-        List<UInt256> expectedKeys = new() { storageKey1, storageKey2, storageKey3 };
-        forRpc[0].StorageKeys.Should().BeEquivalentTo(expectedKeys);
+        IEnumerable<AccessListItemForRpc> forRpc = AccessListItemForRpc.FromAccessList(accessList);
+        AccessListItemForRpc[] expected = { new(address, new[] { storageKey1, storageKey2, storageKey3 }) };
+        forRpc.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -53,12 +50,10 @@ public class AccessListItemForRpcTests
             .AddStorage(storageKey1)
             .Build();
 
-        AccessListItemForRpc[] forRpc = AccessListItemForRpc.FromAccessList(accessList);
+        IEnumerable<AccessListItemForRpc> forRpc = AccessListItemForRpc.FromAccessList(accessList);
 
-        forRpc.Length.Should().Be(1);
-        forRpc[0].Address.Should().Be(address);
-        List<UInt256> expectedKeys = new() { storageKey1, storageKey2, storageKey3, storageKey1 };
-        forRpc[0].StorageKeys.Should().BeEquivalentTo(expectedKeys);
+        AccessListItemForRpc[] expected = { new(address, new[] { storageKey1, storageKey2, storageKey3, storageKey1 }) };
+        forRpc.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -77,19 +72,10 @@ public class AccessListItemForRpcTests
             .AddStorage(storageKey3)
             .Build();
 
-        AccessListItemForRpc[] forRpc = AccessListItemForRpc.FromAccessList(accessList);
+        IEnumerable<AccessListItemForRpc> forRpc = AccessListItemForRpc.FromAccessList(accessList);
 
-        forRpc.Length.Should().Be(2);
-        {
-            forRpc[0].Address.Should().Be(address);
-            List<UInt256> expectedKeys = new() { storageKey1, storageKey2 };
-            forRpc[0].StorageKeys.Should().BeEquivalentTo(expectedKeys);
-        }
-        {
-            forRpc[1].Address.Should().Be(address);
-            List<UInt256> expectedKeys = new() { storageKey3 };
-            forRpc[1].StorageKeys.Should().BeEquivalentTo(expectedKeys);
-        }
+        AccessListItemForRpc[] expected = { new(address, new[] { storageKey1, storageKey2 }), new(address, new[] { storageKey3 }) };
+        forRpc.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -109,18 +95,8 @@ public class AccessListItemForRpcTests
             .AddStorage(storageKey3)
             .Build();
 
-        AccessListItemForRpc[] forRpc = AccessListItemForRpc.FromAccessList(accessList);
-
-        forRpc.Length.Should().Be(2);
-        {
-            forRpc[0].Address.Should().Be(address);
-            List<UInt256> expectedKeys = new() { storageKey1, storageKey2 };
-            forRpc[0].StorageKeys.Should().BeEquivalentTo(expectedKeys);
-        }
-        {
-            forRpc[1].Address.Should().Be(address);
-            List<UInt256> expectedKeys = new() { storageKey1, storageKey3 };
-            forRpc[1].StorageKeys.Should().BeEquivalentTo(expectedKeys);
-        }
+        IEnumerable<AccessListItemForRpc> forRpc = AccessListItemForRpc.FromAccessList(accessList);
+        AccessListItemForRpc[] expected = { new(address, new[] { storageKey1, storageKey2 }), new(address, new[] { storageKey1, storageKey3 }) };
+        forRpc.Should().BeEquivalentTo(expected);
     }
 }

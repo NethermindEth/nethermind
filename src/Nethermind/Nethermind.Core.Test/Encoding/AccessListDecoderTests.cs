@@ -98,7 +98,7 @@ namespace Nethermind.Core.Test.Encoding
             }
             else
             {
-                decoded.AsEnumerable().Should().BeEquivalentTo(testCase.AccessList.AsEnumerable(), testCase.TestName);
+                decoded.Should().BeEquivalentTo(testCase.AccessList, testCase.TestName);
             }
         }
 
@@ -116,7 +116,7 @@ namespace Nethermind.Core.Test.Encoding
             }
             else
             {
-                decoded.AsEnumerable().Should().BeEquivalentTo(testCase.AccessList.AsEnumerable(), testCase.TestName);
+                decoded.Should().BeEquivalentTo(testCase.AccessList, testCase.TestName);
             }
         }
 

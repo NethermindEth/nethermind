@@ -11,27 +11,23 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
-    public class AccessListItemForRpc
+    public struct AccessListItemForRpc
     {
-        public AccessListItemForRpc(Address address, IReadOnlyCollection<UInt256>? storageKeys)
+        public AccessListItemForRpc(Address address, IEnumerable<UInt256>? storageKeys)
         {
             Address = address;
-            StorageKeys = storageKeys?.ToList() ?? new List<UInt256>();
+            StorageKeys = storageKeys;
         }
 
         public Address Address { get; set; }
 
         [JsonProperty(ItemConverterType = typeof(StorageCellIndexConverter))]
-        public List<UInt256>? StorageKeys { get; set; }
+        public IEnumerable<UInt256>? StorageKeys { get; set; }
 
-        public static AccessListItemForRpc[] FromAccessList(AccessList accessList)
-        {
-            return accessList.AsEnumerable()
-                .Select(tuple => new AccessListItemForRpc(tuple.Address, tuple.StorageKeys.ToList()))
-                .ToArray();
-        }
+        public static IEnumerable<AccessListItemForRpc> FromAccessList(AccessList accessList) =>
+            accessList.Select(tuple => new AccessListItemForRpc(tuple.Address, tuple.StorageKeys));
 
-        public static AccessList ToAccessList(AccessListItemForRpc[] accessList)
+        public static AccessList ToAccessList(IEnumerable<AccessListItemForRpc> accessList)
         {
             AccessList.Builder builder = new();
             foreach (AccessListItemForRpc accessListItem in accessList)

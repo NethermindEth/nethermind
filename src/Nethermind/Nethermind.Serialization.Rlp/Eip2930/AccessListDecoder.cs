@@ -150,7 +150,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
 
             int contentLength = GetContentLength(item);
             stream.StartSequence(contentLength);
-            foreach ((Address Address, IEnumerable<UInt256> StorageKeys) entry in item.AsEnumerable())
+            foreach ((Address Address, IEnumerable<UInt256> StorageKeys) entry in item)
             {
                 List<UInt256> storageKeys = entry.StorageKeys.ToList();
                 Address address = entry.Address;
@@ -209,7 +209,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
 
         private static int GetContentLength(AccessList accessList)
         {
-            return accessList.AsEnumerable()
+            return accessList
                 .Select(entry => new AccessItemLengths(entry.StorageKeys.Count()))
                 .Sum(lengths => lengths.SequenceLength);
         }
