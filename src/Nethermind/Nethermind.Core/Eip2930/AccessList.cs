@@ -88,7 +88,7 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
         }
 
         StorageKeysEnumerator GetEnumerator() => new(_items, _index);
-        IEnumerator<UInt256> IEnumerable<UInt256>.GetEnumerator()  => GetEnumerator();
+        IEnumerator<UInt256> IEnumerable<UInt256>.GetEnumerator() => GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
