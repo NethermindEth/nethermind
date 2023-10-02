@@ -27,6 +27,31 @@ public class AccessList
 
     public IReadOnlyCollection<AccessListItem> Raw => _items;
 
+    public IEnumerable<(Address Address, IEnumerable<UInt256> StorageKeys)> AsEnumerable()
+    {
+        IEnumerable<UInt256> GetStorageKeys(int i)
+        {
+            while (i < _items.Count && _items[i] is AccessListItem.StorageKey storageKey)
+            {
+                yield return storageKey.Value;
+                i++;
+            }
+        }
+
+        for (int i = 0; i < _items.Count; i++)
+        {
+            AccessListItem item = _items[i];
+            switch (item)
+            {
+                case AccessListItem.Address address:
+                {
+                    yield return (address.Value, GetStorageKeys(i + 1));
+                    break;
+                }
+            }
+        }
+    }
+
     public IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> AsDictionary()
     {
         Dictionary<Address, IReadOnlySet<UInt256>> result = new();
