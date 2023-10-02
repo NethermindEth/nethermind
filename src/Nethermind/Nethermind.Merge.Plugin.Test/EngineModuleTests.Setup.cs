@@ -141,7 +141,7 @@ public partial class EngineModuleTests
 
         public BeaconSync? BeaconSync { get; set; }
 
-        private int _blockProcessingThrottle = 0;
+        protected int _blockProcessingThrottle = 0;
 
         public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
         {
@@ -229,7 +229,7 @@ public partial class EngineModuleTests
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
 
-        private IBlockValidator CreateBlockValidator()
+        protected IBlockValidator CreateBlockValidator()
         {
             IBlockCacheService blockCacheService = new BlockCacheService();
             PoSSwitcher = new PoSSwitcher(MergeConfig, SyncConfig.Default, new MemDb(), BlockTree, SpecProvider, LogManager);
@@ -258,7 +258,7 @@ public partial class EngineModuleTests
     }
 }
 
-internal class TestBlockProcessorInterceptor : IBlockProcessor
+public class TestBlockProcessorInterceptor : IBlockProcessor
 {
     private readonly IBlockProcessor _blockProcessorImplementation;
     public int DelayMs { get; set; }

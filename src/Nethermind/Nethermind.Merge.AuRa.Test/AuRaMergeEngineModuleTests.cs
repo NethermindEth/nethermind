@@ -3,23 +3,29 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
+using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
@@ -27,7 +33,9 @@ using Nethermind.Merge.Plugin.Test;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
+using NLog;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -77,60 +85,128 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override Task forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http(string blockHash, string parentHash)
         => base.forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http(blockHash, parentHash);
 
-    [Ignore("engine_newPayloadV2 fails")]
-    public override Task Can_apply_withdrawals_correctly((Withdrawal[][] Withdrawals, (Address Account, UInt256 BalanceIncrease)[] ExpectedAccountIncrease) input)
-    {
-        return base.Can_apply_withdrawals_correctly(input);
-    }
+    //[Ignore("engine_newPayloadV2 fails")]
+    //public override Task Can_apply_withdrawals_correctly((Withdrawal[][] Withdrawals, (Address Account, UInt256 BalanceIncrease)[] ExpectedAccountIncrease) input)
+    //{
+    //    return base.Can_apply_withdrawals_correctly(input);
+    //}
 
-    [Ignore("engine_newPayloadV2 fails")]
-    public override Task Empty_block_is_valid_with_withdrawals_V2()
-    {
-        return base.Empty_block_is_valid_with_withdrawals_V2();
-    }
+    //[Ignore("engine_newPayloadV2 fails")]
+    //public override Task Empty_block_is_valid_with_withdrawals_V2()
+    //{
+    //    return base.Empty_block_is_valid_with_withdrawals_V2();
+    //}
 
-    [Ignore("engine_newPayloadV2 fails")]
-    public override Task Should_handle_withdrawals_transition_when_Shanghai_fork_activated()
-    {
-        return base.Should_handle_withdrawals_transition_when_Shanghai_fork_activated();
-    }
+    //[Ignore("engine_newPayloadV2 fails")]
+    //public override Task Should_handle_withdrawals_transition_when_Shanghai_fork_activated()
+    //{
+    //    return base.Should_handle_withdrawals_transition_when_Shanghai_fork_activated();
+    //}
 
-    [Ignore("engine_newPayloadV2 fails")]
-    public override Task getPayloadBodiesByHashV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes(IList<Withdrawal> withdrawals)
-    {
-        return base.getPayloadBodiesByHashV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes(withdrawals);
-    }
+    //[Ignore("engine_newPayloadV2 fails")]
+    //public override Task getPayloadBodiesByHashV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes(IList<Withdrawal> withdrawals)
+    //{
+    //    return base.getPayloadBodiesByHashV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes(withdrawals);
+    //}
 
-    [Ignore("engine_newPayloadV2 fails")]
-    public override Task getPayloadBodiesByRangeV1_should_return_canonical(IList<Withdrawal> withdrawals)
-    {
-        return base.getPayloadBodiesByRangeV1_should_return_canonical(withdrawals);
-    }
+    //[Ignore("engine_newPayloadV2 fails")]
+    //public override Task getPayloadBodiesByRangeV1_should_return_canonical(IList<Withdrawal> withdrawals)
+    //{
+    //    return base.getPayloadBodiesByRangeV1_should_return_canonical(withdrawals);
+    //}
 
-    [Ignore("engine_newPayloadV2 fails")]
-    public override Task getPayloadBodiesByRangeV1_should_return_payload_bodies_in_order_of_request_range_and_null_for_unknown_indexes(IList<Withdrawal> withdrawals)
-    {
-        return base.getPayloadBodiesByRangeV1_should_return_payload_bodies_in_order_of_request_range_and_null_for_unknown_indexes(withdrawals);
-    }
+    //[Ignore("engine_newPayloadV2 fails")]
+    //public override Task getPayloadBodiesByRangeV1_should_return_payload_bodies_in_order_of_request_range_and_null_for_unknown_indexes(IList<Withdrawal> withdrawals)
+    //{
+    //    return base.getPayloadBodiesByRangeV1_should_return_payload_bodies_in_order_of_request_range_and_null_for_unknown_indexes(withdrawals);
+    //}
 
-    [Ignore("engine_newPayloadV3 fails")]
-    public override Task NewPayloadV3_should_decline_mempool_encoding(bool inMempoolForm, string expectedPayloadStatus)
-    {
-        return base.NewPayloadV3_should_decline_mempool_encoding(inMempoolForm, expectedPayloadStatus);
-    }
+    //[Ignore("engine_newPayloadV3 fails")]
+    //public override Task NewPayloadV3_should_decline_mempool_encoding(bool inMempoolForm, string expectedPayloadStatus)
+    //{
+    //    return base.NewPayloadV3_should_decline_mempool_encoding(inMempoolForm, expectedPayloadStatus);
+    //}
 
     class MergeAuRaTestBlockchain : MergeTestBlockchain
     {
+        private AuRaNethermindApi? _api;
+
         public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
             : base(mergeConfig, mockedPayloadPreparationService)
         {
             SealEngineType = Core.SealEngineType.AuRa;
         }
 
+        protected override IBlockProcessor CreateBlockProcessor()
+        {
+            _api = new(new ConfigProvider(), new EthereumJsonSerializer(), LogManager,
+                    new ChainSpec
+                    {
+                        AuRa = new()
+                        {
+                            WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
+                        },
+                        Parameters = new()
+                    })
+            {
+                BlockTree = BlockTree,
+                DbProvider = DbProvider,
+                ReadOnlyTrieStore = ReadOnlyTrieStore,
+                SpecProvider = SpecProvider,
+                TransactionComparerProvider = TransactionComparerProvider,
+                TxPool = TxPool
+            };
+
+            WithdrawalContractFactory withdrawalContractFactory = new(_api.ChainSpec!.AuRa, _api.AbiEncoder);
+
+            var dd = new ReadOnlyTxProcessingEnv(DbProvider.AsReadOnly(false), ReadOnlyTrieStore, BlockTree.AsReadOnly(), SpecProvider, LogManager); ;
+            BlockValidator = CreateBlockValidator();
+            BlockProcessor processor =
+            new(
+                SpecProvider,
+                BlockValidator,
+                NoBlockRewards.Instance,
+                new BlockProducerTransactionsExecutorFactory(SpecProvider, LogManager).Create(dd),
+                State,
+                ReceiptStorage,
+                NullWitnessCollector.Instance,
+                LogManager,
+                new AuraWithdrawalProcessor(
+                    withdrawalContractFactory.Create(dd.TransactionProcessor),
+                    LogManager
+            ));
+
+            return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
+        }
+
+        private (BlocksConfig blocksConfig, BlockProducerEnvFactory blockProducerEnvFactory) F(ITransactionComparerProvider transactionComparerProvider)
+        {
+            BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
+            AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
+                   _api!,
+                   new AuRaConfig(),
+                   new DisposableStack(),
+                   DbProvider,
+                   BlockTree,
+                   ReadOnlyTrieStore,
+                   SpecProvider,
+                   BlockValidator,
+                   NoBlockRewards.Instance,
+                   ReceiptStorage,
+                   BlockPreprocessorStep,
+                   TxPool,
+                   transactionComparerProvider,
+                   blocksConfig,
+                   LogManager);
+            return (blocksConfig, blockProducerEnvFactory);
+        }
+
+
         protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
+            var (blocksConfig, blockProducerEnvFactory) = F(transactionComparerProvider);
+
             SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator!, LogManager);
-            BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             ISyncConfig syncConfig = new SyncConfig();
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
             EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, new StaticSelector(SyncMode.All), LogManager);
@@ -142,38 +218,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
-            AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
-                new(new ConfigProvider(), new EthereumJsonSerializer(), LogManager,
-                    new ChainSpec
-                    {
-                        AuRa = new()
-                        {
-                            WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
-                        },
-                        Parameters = new()
-                    })
-                {
-                    BlockTree = BlockTree,
-                    DbProvider = DbProvider,
-                    ReadOnlyTrieStore = ReadOnlyTrieStore,
-                    SpecProvider = SpecProvider,
-                    TransactionComparerProvider = TransactionComparerProvider,
-                    TxPool = TxPool
-                },
-                new AuRaConfig(),
-                new DisposableStack(),
-                DbProvider,
-                BlockTree,
-                ReadOnlyTrieStore,
-                SpecProvider,
-                BlockValidator,
-                NoBlockRewards.Instance,
-                ReceiptStorage,
-                BlockPreprocessorStep,
-                TxPool,
-                transactionComparerProvider,
-                blocksConfig,
-                LogManager);
 
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
@@ -213,4 +257,3 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         }
     }
 }
-
