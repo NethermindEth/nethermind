@@ -108,7 +108,7 @@ public class TransactionForRpc
     // Required for compatibility with some CLs like Prysm
     // Accept during deserialization, ignore during serialization
     // See: https://github.com/NethermindEth/nethermind/pull/6067
-    [JsonProperty(nameof(Data))]
+    [JsonPropertyName(nameof(Data))]
     private byte[]? Data { set { Input = value; } }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -121,7 +121,7 @@ public class TransactionForRpc
     public AccessListItemForRpc[]? AccessList { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public UInt256? MaxFeePerDataGas { get; set; } // eip4844
+    public UInt256? MaxFeePerBlobGas { get; set; } // eip4844
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte[][]? BlobVersionedHashes { get; set; } // eip4844

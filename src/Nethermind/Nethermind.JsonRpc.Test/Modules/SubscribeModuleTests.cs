@@ -1073,3 +1073,4 @@ namespace Nethermind.JsonRpc.Test.Modules
             expectedResult.Should().Be(serialized);
         }
     }
+}

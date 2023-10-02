@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.JsonRpc.Data;
@@ -218,211 +219,215 @@ public class JsonRpcService : IJsonRpcService
             : GetSuccessResponse(methodName, resultWrapper.Data, request.Id, returnAction);
     }
 
-        return GetSuccessResponse(methodName, resultWrapper.GetData(), request.Id, returnAction);
-}
-
-private void LogRequest(string methodName, JsonElement providedParameters, ParameterInfo[] expectedParameters)
-{
-    if (_logger.IsDebug && !_methodsLoggingFiltering.Contains(methodName))
+    private void LogRequest(string methodName, JsonElement providedParameters, ParameterInfo[] expectedParameters)
     {
-        StringBuilder builder = new StringBuilder();
-        builder.Append("Executing JSON RPC call ");
-        builder.Append(methodName);
-        builder.Append(" with params [");
-
-        int paramsLength = 0;
-        int paramsCount = 0;
-        const string separator = ", ";
-
-        if (providedParameters.ValueKind != JsonValueKind.Undefined && providedParameters.ValueKind != JsonValueKind.Null)
+        if (_logger.IsDebug && !_methodsLoggingFiltering.Contains(methodName))
         {
-            foreach (JsonElement param in providedParameters.EnumerateArray())
+            StringBuilder builder = new StringBuilder();
+            builder.Append("Executing JSON RPC call ");
+            builder.Append(methodName);
+            builder.Append(" with params [");
+
+            int paramsLength = 0;
+            int paramsCount = 0;
+            const string separator = ", ";
+
+            if (providedParameters.ValueKind != JsonValueKind.Undefined && providedParameters.ValueKind != JsonValueKind.Null)
             {
-                string? parameter = expectedParameters.ElementAtOrDefault(paramsCount)?.Name == "passphrase"
-                    ? "{passphrase}"
-                    : param.GetRawText();
-
-                if (paramsLength > _maxLoggedRequestParametersCharacters)
+                foreach (JsonElement param in providedParameters.EnumerateArray())
                 {
-                    int toRemove = paramsLength - _maxLoggedRequestParametersCharacters;
-                    builder.Remove(builder.Length - toRemove, toRemove);
-                    builder.Append("...");
-                    break;
-                }
+                    string? parameter = expectedParameters.ElementAtOrDefault(paramsCount)?.Name == "passphrase"
+                        ? "{passphrase}"
+                        : param.GetRawText();
 
-                if (paramsCount != 0)
-                {
-                    builder.Append(separator);
-                    paramsLength += separator.Length;
-                }
+                    if (paramsLength > _maxLoggedRequestParametersCharacters)
+                    {
+                        int toRemove = paramsLength - _maxLoggedRequestParametersCharacters;
+                        builder.Remove(builder.Length - toRemove, toRemove);
+                        builder.Append("...");
+                        break;
+                    }
 
-                builder.Append(parameter);
-                paramsLength += (parameter?.Length ?? 0);
-                paramsCount++;
+                    if (paramsCount != 0)
+                    {
+                        builder.Append(separator);
+                        paramsLength += separator.Length;
+                    }
+
+                    builder.Append(parameter);
+                    paramsLength += (parameter?.Length ?? 0);
+                    paramsCount++;
+                }
             }
+            builder.Append(']');
+            string log = builder.ToString();
+            _logger.Debug(log);
         }
-        builder.Append(']');
-        string log = builder.ToString();
-        _logger.Debug(log);
     }
-}
 
-private object[]? DeserializeParameters(ParameterInfo[] expectedParameters, JsonElement providedParameters, int missingParamsCount)
-{
-    try
+    private object[]? DeserializeParameters(ParameterInfo[] expectedParameters, JsonElement providedParameters, int missingParamsCount)
     {
-        List<object> executionParameters = new List<object>();
-        int i = 0;
-        foreach (JsonElement providedParameter in providedParameters.EnumerateArray())
+        try
         {
-            ParameterInfo expectedParameter = expectedParameters[i];
-            i++;
-
-            Type paramType = expectedParameter.ParameterType;
-            if (paramType.IsByRef)
+            List<object> executionParameters = new List<object>();
+            int i = 0;
+            foreach (JsonElement providedParameter in providedParameters.EnumerateArray())
             {
-                paramType = paramType.GetElementType();
-            }
+                ParameterInfo expectedParameter = expectedParameters[i];
+                i++;
 
-            if (providedParameter.ValueKind == JsonValueKind.Null || (providedParameter.ValueKind == JsonValueKind.String && providedParameter.ValueEquals(ReadOnlySpan<byte>.Empty)))
-            {
-                if (providedParameter.ValueKind == JsonValueKind.Null && IsNullableParameter(expectedParameter))
+                Type paramType = expectedParameter.ParameterType;
+                if (paramType.IsByRef)
                 {
-                    executionParameters.Add(null);
+                    paramType = paramType.GetElementType();
+                }
+
+                if (providedParameter.ValueKind == JsonValueKind.Null || (providedParameter.ValueKind == JsonValueKind.String && providedParameter.ValueEquals(ReadOnlySpan<byte>.Empty)))
+                {
+                    if (providedParameter.ValueKind == JsonValueKind.Null && IsNullableParameter(expectedParameter))
+                    {
+                        executionParameters.Add(null);
+                    }
+                    else
+                    {
+                        executionParameters.Add(Type.Missing);
+                    }
+                    continue;
+                }
+
+                object? executionParam;
+                if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
+                {
+                    IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
+                    jsonRpcParam!.ReadJson(providedParameter, EthereumJsonSerializer.JsonOptions);
+                    executionParam = jsonRpcParam;
+                }
+                else if (paramType == typeof(string))
+                {
+                    executionParam = providedParameter.GetString();
                 }
                 else
                 {
-                    executionParameters.Add(Type.Missing);
-                }
-                continue;
-            }
-
-            object? executionParam;
-            if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
-            {
-                IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
-                jsonRpcParam!.ReadJson(providedParameter, EthereumJsonSerializer.JsonOptions);
-                executionParam = jsonRpcParam;
-            }
-            else if (paramType == typeof(string))
-            {
-                executionParam = providedParameter.GetString();
-            }
-            else
-            {
-                if (providedParameter.ValueKind == JsonValueKind.String)
-                {
-                    JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
-                    if (converter.GetType().FullName.StartsWith("System."))
+                    if (providedParameter.ValueKind == JsonValueKind.String)
                     {
-                        executionParam = JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions);
+                        JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
+                        if (converter.GetType().FullName.StartsWith("System."))
+                        {
+                            executionParam = JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions);
+                        }
+                        else
+                        {
+                            executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+                        }
                     }
                     else
                     {
                         executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
                     }
                 }
-                else
-                {
-                    executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
-                }
+
+                executionParameters.Add(executionParam);
             }
 
-            executionParameters.Add(executionParam);
+            for (i = 0; i < missingParamsCount; i++)
+            {
+                executionParameters.Add(Type.Missing);
+            }
+
+            return executionParameters.ToArray();
         }
-
-        for (i = 0; i < missingParamsCount; i++)
+        catch (Exception e)
         {
-            executionParameters.Add(Type.Missing);
-        }
-
-        return executionParameters.ToArray();
-    }
-    catch (Exception e)
-    {
-        if (_logger.IsWarn) _logger.Warn("Error while parsing JSON RPC request parameters " + e);
-        return null;
-    }
-}
-
-private bool IsNullableParameter(ParameterInfo parameterInfo)
-{
-    Type parameterType = parameterInfo.ParameterType;
-    if (parameterType.IsValueType)
-    {
-        return Nullable.GetUnderlyingType(parameterType) is not null;
-    }
-
-    CustomAttributeData nullableAttribute = parameterInfo.CustomAttributes
-        .FirstOrDefault(x => x.AttributeType.FullName == "System.Runtime.CompilerServices.NullableAttribute");
-    if (nullableAttribute is not null)
-    {
-        CustomAttributeTypedArgument attributeArgument = nullableAttribute.ConstructorArguments.FirstOrDefault();
-        if (attributeArgument.ArgumentType == typeof(byte))
-        {
-            return (byte)attributeArgument.Value! == 2;
+            if (_logger.IsWarn) _logger.Warn("Error while parsing JSON RPC request parameters " + e);
+            return null;
         }
     }
-    return false;
-}
 
-private JsonRpcResponse GetSuccessResponse(string methodName, object result, object id, Action? disposableAction)
-{
-    JsonRpcResponse response = new JsonRpcSuccessResponse(disposableAction)
+    private bool IsNullableParameter(ParameterInfo parameterInfo)
     {
-        Result = result,
-        Id = id,
-        MethodName = methodName
-    };
-
-    return response;
-}
-
-public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, object? id = null, string? methodName = null) =>
-    GetErrorResponse(methodName ?? string.Empty, errorCode, errorMessage, null, id);
-
-private JsonRpcErrorResponse GetErrorResponse(string? methodName, int errorCode, string? errorMessage, object? errorData, object? id, Action? disposableAction = null)
-{
-    if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {(string.IsNullOrEmpty(methodName) ? "none" : methodName)}, id: {id}, errorType: {errorCode}, message: {errorMessage}, errorData: {errorData}");
-    JsonRpcErrorResponse response = new(disposableAction)
-    {
-        Error = new Error
+        Type parameterType = parameterInfo.ParameterType;
+        if (parameterType.IsValueType)
         {
-            Code = errorCode,
-            Message = errorMessage,
-            Data = errorData,
-            SuppressWarning = suppressWarning
-        },
-        Id = id,
-        MethodName = methodName
-    };
+            return Nullable.GetUnderlyingType(parameterType) is not null;
+        }
 
-    return response;
-}
-
-private (int? ErrorType, string ErrorMessage) Validate(JsonRpcRequest? rpcRequest, JsonRpcContext context)
-{
-    if (rpcRequest is null)
-    {
-        return (ErrorCodes.InvalidRequest, "Invalid request");
+        CustomAttributeData nullableAttribute = parameterInfo.CustomAttributes
+            .FirstOrDefault(x => x.AttributeType.FullName == "System.Runtime.CompilerServices.NullableAttribute");
+        if (nullableAttribute is not null)
+        {
+            CustomAttributeTypedArgument attributeArgument = nullableAttribute.ConstructorArguments.FirstOrDefault();
+            if (attributeArgument.ArgumentType == typeof(byte))
+            {
+                return (byte)attributeArgument.Value! == 2;
+            }
+        }
+        return false;
     }
 
-    string methodName = rpcRequest.Method;
-    if (string.IsNullOrWhiteSpace(methodName))
+    private JsonRpcResponse GetSuccessResponse(string methodName, object result, object id, Action? disposableAction)
     {
-        return (ErrorCodes.InvalidRequest, "Method is required");
+        JsonRpcResponse response = new JsonRpcSuccessResponse(disposableAction)
+        {
+            Result = result,
+            Id = id,
+            MethodName = methodName
+        };
+
+        return response;
     }
 
-    methodName = methodName.Trim();
+    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, object? id = null, string? methodName = null) =>
+        GetErrorResponse(methodName ?? string.Empty, errorCode, errorMessage, null, id);
 
-    ModuleResolution result = _rpcModuleProvider.Check(methodName, context);
-    return result switch
+    private JsonRpcErrorResponse GetErrorResponse(
+        string methodName,
+        int errorCode,
+        string? errorMessage,
+        object? errorData,
+        object? id,
+        Action? disposableAction = null,
+        bool suppressWarning = false)
     {
-        ModuleResolution.Unknown => ((int?)ErrorCodes.MethodNotFound, $"Method {methodName} is not supported"),
-        ModuleResolution.Disabled => (ErrorCodes.InvalidRequest, $"{methodName} found but the containing module is disabled for the url '{context.Url?.ToString() ?? string.Empty}', consider adding module in JsonRpcConfig.AdditionalRpcUrls for additional url, or to JsonRpcConfig.EnabledModules for default url"),
-        ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest, $"{methodName} found for the url '{context.Url?.ToString() ?? string.Empty}' but is disabled for {context.RpcEndpoint}"),
-        ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"Method {methodName} should be authenticated"),
-        _ => (null, null)
-    };
-}
+        if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {(string.IsNullOrEmpty(methodName) ? "none" : methodName)}, id: {id}, errorType: {errorCode}, message: {errorMessage}, errorData: {errorData}");
+        JsonRpcErrorResponse response = new(disposableAction)
+        {
+            Error = new Error
+            {
+                Code = errorCode,
+                Message = errorMessage,
+                Data = errorData,
+                SuppressWarning = suppressWarning
+            },
+            Id = id,
+            MethodName = methodName
+        };
+
+        return response;
+    }
+
+    private (int? ErrorType, string ErrorMessage) Validate(JsonRpcRequest? rpcRequest, JsonRpcContext context)
+    {
+        if (rpcRequest is null)
+        {
+            return (ErrorCodes.InvalidRequest, "Invalid request");
+        }
+
+        string methodName = rpcRequest.Method;
+        if (string.IsNullOrWhiteSpace(methodName))
+        {
+            return (ErrorCodes.InvalidRequest, "Method is required");
+        }
+
+        methodName = methodName.Trim();
+
+        ModuleResolution result = _rpcModuleProvider.Check(methodName, context);
+        return result switch
+        {
+            ModuleResolution.Unknown => ((int?)ErrorCodes.MethodNotFound, $"Method {methodName} is not supported"),
+            ModuleResolution.Disabled => (ErrorCodes.InvalidRequest, $"{methodName} found but the containing module is disabled for the url '{context.Url?.ToString() ?? string.Empty}', consider adding module in JsonRpcConfig.AdditionalRpcUrls for additional url, or to JsonRpcConfig.EnabledModules for default url"),
+            ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest, $"{methodName} found for the url '{context.Url?.ToString() ?? string.Empty}' but is disabled for {context.RpcEndpoint}"),
+            ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"Method {methodName} should be authenticated"),
+            _ => (null, null)
+        };
+    }
 }

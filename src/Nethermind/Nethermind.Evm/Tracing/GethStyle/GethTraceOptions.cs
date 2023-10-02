@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
@@ -15,7 +18,7 @@ public record GethTraceOptions
     [JsonPropertyName("disableStorage")]
     public bool DisableStorage { get; init; }
 
-    [JsonProperty("enableMemory")]
+    [JsonPropertyName("enableMemory")]
     public bool EnableMemory { get; init; }
 
     [JsonPropertyName("disableStack")]
@@ -27,7 +30,7 @@ public record GethTraceOptions
     [JsonPropertyName("tracer")]
     public string Tracer { get; init; }
 
-    [JsonProperty("txHash")]
+    [JsonPropertyName("txHash")]
     public Keccak? TxHash { get; init; }
 
     public static GethTraceOptions Default { get; } = new();

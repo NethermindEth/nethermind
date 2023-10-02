@@ -270,10 +270,10 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             JsonRpcResult.Entry response = enumerator.IsStopped
                 ? new JsonRpcResult.Entry(
                     _jsonRpcService.GetErrorResponse(
-                        jsonRpcRequest.Method,
                         ErrorCodes.LimitExceeded,
-                        $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB()}KB exceeded",
-                        jsonRpcRequest.Id),
+                        jsonRpcRequest.Method,
+                        jsonRpcRequest.Id,
+                        $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB()}KB exceeded"),
                     RpcReport.Error)
                 : await HandleSingleRequest(jsonRpcRequest, context);
 

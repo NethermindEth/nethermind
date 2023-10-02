@@ -19,6 +19,6 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
 
     public override void Write(Utf8JsonWriter writer, TxReceipt value, JsonSerializerOptions options)
     {
-        JsonSerializer.Serialize(writer, new ReceiptForRpc(value.TxHash!, value, UInt256.Zero), options);
+        JsonSerializer.Serialize(writer, new ReceiptForRpc(value.TxHash!, value, default), options);
     }
 }

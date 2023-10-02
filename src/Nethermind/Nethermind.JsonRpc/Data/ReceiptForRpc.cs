@@ -46,10 +46,10 @@ namespace Nethermind.JsonRpc.Data
         public long CumulativeGasUsed { get; set; }
         public long GasUsed { get; set; }
 
-        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ulong? BlobGasUsed { get; set; }
 
-        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public UInt256? BlobGasPrice { get; set; }
 
         public UInt256? EffectiveGasPrice { get; set; }

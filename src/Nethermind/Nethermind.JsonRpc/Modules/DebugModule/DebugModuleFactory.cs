@@ -37,24 +37,6 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly IReadOnlyDbProvider _dbProvider;
     private readonly IReadOnlyBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
-    private ILogger _logger;
-namespace Nethermind.JsonRpc.Modules.DebugModule;
-
-public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
-{
-    private readonly IJsonRpcConfig _jsonRpcConfig;
-    private readonly IBlockValidator _blockValidator;
-    private readonly IRewardCalculatorSource _rewardCalculatorSource;
-    private readonly IReceiptStorage _receiptStorage;
-    private readonly IReceiptsMigration _receiptsMigration;
-    private readonly IReadOnlyTrieStore _trieStore;
-    private readonly IConfigProvider _configProvider;
-    private readonly ISpecProvider _specProvider;
-    private readonly ILogManager _logManager;
-    private readonly IBlockPreprocessorStep _recoveryStep;
-    private readonly IReadOnlyDbProvider _dbProvider;
-    private readonly IReadOnlyBlockTree _blockTree;
-    private readonly ISyncModeSelector _syncModeSelector;
     private readonly IFileSystem _fileSystem;
     private ILogger _logger;
 

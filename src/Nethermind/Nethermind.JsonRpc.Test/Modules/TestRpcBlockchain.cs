@@ -158,10 +158,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             return this;
         }
 
-        public Task<string> TestEthRpc(string method, params string[] parameters) =>
-            RpcTest.TestSerializedRequest(EthModuleFactory.Converters, EthRpcModule, method, parameters);
+        public string TestEthRpc(string method, params string[] parameters) =>
+            RpcTest.TestSerializedRequest(EthRpcModule, method, parameters);
 
-        public Task<string> TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule =>
-            RpcTest.TestSerializedRequest(Array.Empty<JsonConverter>(), module, method, parameters);
+        public string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule =>
+            RpcTest.TestSerializedRequest(module, method, parameters);
     }
 }
