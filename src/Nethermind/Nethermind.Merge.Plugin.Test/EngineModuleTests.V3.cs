@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -26,7 +28,6 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
-using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -227,19 +228,19 @@ public partial class EngineModuleTests
         string parentBeaconBlockRootString = serializer.Serialize(TestItem.KeccakA.BytesToArray());
 
         {
-            JObject executionPayloadAsJObject = serializer.Deserialize<JObject>(executionPayloadString);
+            JsonObject executionPayloadAsJObject = serializer.Deserialize<JsonObject>(executionPayloadString);
             JsonRpcRequest request = RpcTest.GetJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3),
                 serializer.Serialize(executionPayloadAsJObject), blobsString, parentBeaconBlockRootString);
             JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
             Assert.That(response is JsonRpcSuccessResponse);
         }
 
-        string[] props = serializer.Deserialize<JObject>(serializer.Serialize(new ExecutionPayload()))
-            .Properties().Select(prop => prop.Name).ToArray();
+        string[] props = serializer.Deserialize<JsonObject>(serializer.Serialize(new ExecutionPayload()))
+            .Select(prop => prop.Key).ToArray();
 
         foreach (string prop in props)
         {
-            JObject executionPayloadAsJObject = serializer.Deserialize<JObject>(executionPayloadString);
+            JsonObject executionPayloadAsJObject = serializer.Deserialize<JsonObject>(executionPayloadString);
             executionPayloadAsJObject[prop] = null;
 
             JsonRpcRequest request = RpcTest.GetJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3),
@@ -251,7 +252,7 @@ public partial class EngineModuleTests
 
         foreach (string prop in props)
         {
-            JObject executionPayloadAsJObject = serializer.Deserialize<JObject>(executionPayloadString);
+            JsonObject executionPayloadAsJObject = serializer.Deserialize<JsonObject>(executionPayloadString);
             executionPayloadAsJObject.Remove(prop);
 
             JsonRpcRequest request = RpcTest.GetJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3),
