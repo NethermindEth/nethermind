@@ -55,7 +55,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.IsNotEmpty(accessedData);
             accessedData.Should().BeEquivalentTo(
-                new []
+                new[]
                 {
                     (SenderRecipientAndMiner.Default.Sender, new UInt256[] { }),
                     (SenderRecipientAndMiner.Default.Recipient, new UInt256[] { 105 })

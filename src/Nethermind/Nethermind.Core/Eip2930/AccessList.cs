@@ -35,10 +35,10 @@ public class AccessList
             switch (item)
             {
                 case Address address:
-                {
-                    yield return (address, GetStorageKeys(i + 1));
-                    break;
-                }
+                    {
+                        yield return (address, GetStorageKeys(i + 1));
+                        break;
+                    }
             }
         }
     }
