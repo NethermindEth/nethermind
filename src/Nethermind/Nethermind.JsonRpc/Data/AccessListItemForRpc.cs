@@ -26,34 +26,9 @@ namespace Nethermind.JsonRpc.Data
 
         public static AccessListItemForRpc[] FromAccessList(AccessList accessList)
         {
-            List<AccessListItemForRpc> result = new();
-            AccessListItemForRpc? current = null;
-            foreach (AccessListItem element in accessList.Raw)
-            {
-                switch (element)
-                {
-                    case AccessListItem.Address address:
-                        {
-                            if (current is not null)
-                            {
-                                result.Add(current);
-                            }
-                            current = new AccessListItemForRpc(address.Value, new UInt256[] { });
-                            break;
-                        }
-                    case AccessListItem.StorageKey storageKey:
-                        {
-                            current!.StorageKeys!.Add(storageKey.Value);
-                            break;
-                        }
-                }
-            }
-            if (current is not null)
-            {
-                result.Add(current);
-            }
-
-            return result.ToArray();
+            return accessList.AsEnumerable()
+                .Select(tuple => new AccessListItemForRpc(tuple.Address, tuple.StorageKeys.ToList()))
+                .ToArray();
         }
 
         public static AccessList ToAccessList(AccessListItemForRpc[] accessList)
