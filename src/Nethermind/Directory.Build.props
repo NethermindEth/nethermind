@@ -10,7 +10,7 @@
     <Product>Nethermind</Product>
     <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit.Substring(0, 8))</SourceRevisionId>
     <VersionPrefix>1.21.0</VersionPrefix>
-    <VersionSuffix>unstable</VersionSuffix>
+    <VersionSuffix></VersionSuffix>
   </PropertyGroup>
 
   <ItemGroup Label="AssemblyCustomMetadata">
