@@ -15,7 +15,5 @@ jobs:
         uses: actions/checkout@v3
       - name: Set up .NET
         uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: 8
       - name: Format
         run: dotnet format whitespace src/Nethermind/ --folder --verify-no-changes

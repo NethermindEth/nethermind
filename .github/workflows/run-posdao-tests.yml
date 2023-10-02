@@ -1,9 +1,8 @@
-name: '[RUN] POSDAO tests'
+name: POSDAO tests
 
 on:
   push:
-    tags:
-    - '*'
+    tags: ['*']
   workflow_dispatch:
     inputs:
       branch:
@@ -34,8 +33,6 @@ jobs:
         path: posdao-test-setup
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: 8
     - name: Build Nethermind
       run: |
         cd nethermind

@@ -12,7 +12,7 @@ defaults:
 
 env:
   BUILD_CONFIG: release
-  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
 
 jobs:
@@ -30,8 +30,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install libsnappy-dev
       - name: Set up .NET
         uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: 8
       - name: Install dependencies
         run: |
           dotnet restore Nethermind.sln
