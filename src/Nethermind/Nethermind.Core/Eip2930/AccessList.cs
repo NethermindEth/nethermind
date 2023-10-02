@@ -7,43 +7,36 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.Eip2930;
 
-public abstract record AccessListItem
-{
-    public record Address(Core.Address Value) : AccessListItem;
-
-    public record StorageKey(UInt256 Value) : AccessListItem;
-}
-
 public class AccessList
 {
-    private readonly List<AccessListItem> _items;
+    private readonly List<object> _items;
 
-    private AccessList(List<AccessListItem> items)
+    private AccessList(List<object> items)
     {
         _items = items;
     }
 
-    public static AccessList Empty() => new(new List<AccessListItem>());
+    public static AccessList Empty() => new(new List<object>());
 
     public IEnumerable<(Address Address, IEnumerable<UInt256> StorageKeys)> AsEnumerable()
     {
         IEnumerable<UInt256> GetStorageKeys(int i)
         {
-            while (i < _items.Count && _items[i] is AccessListItem.StorageKey storageKey)
+            while (i < _items.Count && _items[i] is UInt256 storageKey)
             {
-                yield return storageKey.Value;
+                yield return storageKey;
                 i++;
             }
         }
 
         for (int i = 0; i < _items.Count; i++)
         {
-            AccessListItem item = _items[i];
+            object item = _items[i];
             switch (item)
             {
-                case AccessListItem.Address address:
+                case Address address:
                 {
-                    yield return (address.Value, GetStorageKeys(i + 1));
+                    yield return (address, GetStorageKeys(i + 1));
                     break;
                 }
             }
@@ -52,12 +45,12 @@ public class AccessList
 
     public class Builder
     {
-        private readonly List<AccessListItem> _items = new();
+        private readonly List<object> _items = new();
         private Address? _currentAddress;
 
         public Builder AddAddress(Address address)
         {
-            _items.Add(new AccessListItem.Address(address));
+            _items.Add(address);
             _currentAddress = address;
 
             return this;
@@ -69,7 +62,7 @@ public class AccessList
             {
                 throw new InvalidOperationException("No address known when adding index to the access list");
             }
-            _items.Add(new AccessListItem.StorageKey(index));
+            _items.Add(index);
 
             return this;
         }
