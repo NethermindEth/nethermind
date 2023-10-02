@@ -28,17 +28,12 @@ public class AccessListTests
             .AddStorage(storageKey3)
             .Build();
 
-        IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> expectedDict = new Dictionary<Address, IReadOnlySet<UInt256>>
-        {
-            { address, new HashSet<UInt256> { storageKey1, storageKey2, storageKey3 } }
-        };
-        IEnumerable<(Address, IEnumerable<UInt256>)> expectedEnumerable = new List<(Address, IEnumerable<UInt256>)>
+        IEnumerable<(Address, IEnumerable<UInt256>)> expected = new List<(Address, IEnumerable<UInt256>)>
         {
             (address, new[] { storageKey1, storageKey2, storageKey3 })
         };
 
-        accessList.AsDictionary().Should().BeEquivalentTo(expectedDict);
-        accessList.AsEnumerable().Should().BeEquivalentTo(expectedEnumerable);
+        accessList.AsEnumerable().Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -57,18 +52,12 @@ public class AccessListTests
             .AddStorage(storageKey1)
             .Build();
 
-        IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> expectedDict = new Dictionary<Address, IReadOnlySet<UInt256>>
-        {
-            { address, new HashSet<UInt256> { storageKey1, storageKey2, storageKey3 } }
-        };
-
-        IEnumerable<(Address, IEnumerable<UInt256>)> expectedEnumerable = new List<(Address, IEnumerable<UInt256>)>
+        IEnumerable<(Address, IEnumerable<UInt256>)> expected = new List<(Address, IEnumerable<UInt256>)>
         {
             (address, new[] { storageKey1, storageKey2, storageKey3, storageKey1 })
         };
 
-        accessList.AsDictionary().Should().BeEquivalentTo(expectedDict);
-        accessList.AsEnumerable().Should().BeEquivalentTo(expectedEnumerable);
+        accessList.AsEnumerable().Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -87,19 +76,13 @@ public class AccessListTests
             .AddStorage(storageKey3)
             .Build();
 
-        IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> expectedDict = new Dictionary<Address, IReadOnlySet<UInt256>>
-        {
-            { address, new HashSet<UInt256> { storageKey1, storageKey2, storageKey3 } }
-        };
-
-        IEnumerable<(Address, IEnumerable<UInt256>)> expectedEnumerable = new List<(Address, IEnumerable<UInt256>)>
+        IEnumerable<(Address, IEnumerable<UInt256>)> expected = new List<(Address, IEnumerable<UInt256>)>
         {
             (address, new[] { storageKey1, storageKey2 }),
             (address, new[] { storageKey3 })
         };
 
-        accessList.AsDictionary().Should().BeEquivalentTo(expectedDict);
-        accessList.AsEnumerable().Should().BeEquivalentTo(expectedEnumerable);
+        accessList.AsEnumerable().Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -119,19 +102,13 @@ public class AccessListTests
             .AddStorage(storageKey3)
             .Build();
 
-        IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> expectedDict = new Dictionary<Address, IReadOnlySet<UInt256>>
-        {
-            { address, new HashSet<UInt256> { storageKey1, storageKey2, storageKey3 } }
-        };
-
-        IEnumerable<(Address, IEnumerable<UInt256>)> expectedEnumerable = new List<(Address, IEnumerable<UInt256>)>
+        IEnumerable<(Address, IEnumerable<UInt256>)> expected = new List<(Address, IEnumerable<UInt256>)>
         {
             (address, new[] { storageKey1, storageKey2 }),
             (address, new[] { storageKey1, storageKey3 })
         };
 
-        accessList.AsDictionary().Should().BeEquivalentTo(expectedDict);
-        accessList.AsEnumerable().Should().BeEquivalentTo(expectedEnumerable);
+        accessList.AsEnumerable().Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -145,20 +122,13 @@ public class AccessListTests
             .AddAddress(address2)
             .Build();
 
-        IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> expectedDict = new Dictionary<Address, IReadOnlySet<UInt256>>
-        {
-            { address1, new HashSet<UInt256>() },
-            { address2, new HashSet<UInt256>() }
-        };
-
-        IEnumerable<(Address, IEnumerable<UInt256>)> expectedEnumerable = new List<(Address, IEnumerable<UInt256>)>
+        IEnumerable<(Address, IEnumerable<UInt256>)> expected = new List<(Address, IEnumerable<UInt256>)>
         {
             (address1, new UInt256[] { }),
             (address2, new UInt256[] { })
         };
 
-        accessList.AsDictionary().Should().BeEquivalentTo(expectedDict);
-        accessList.AsEnumerable().Should().BeEquivalentTo(expectedEnumerable);
+        accessList.AsEnumerable().Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -178,20 +148,13 @@ public class AccessListTests
             .AddStorage(storageKey3)
             .Build();
 
-        IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> expectedDict = new Dictionary<Address, IReadOnlySet<UInt256>>
-        {
-            { address1, new HashSet<UInt256> { storageKey1, storageKey2} },
-            { address2, new HashSet<UInt256> { storageKey3 } }
-        };
-
-        IEnumerable<(Address, IEnumerable<UInt256>)> expectedEnumerable = new List<(Address, IEnumerable<UInt256>)>
+        IEnumerable<(Address, IEnumerable<UInt256>)> expected = new List<(Address, IEnumerable<UInt256>)>
         {
             (address1, new[] { storageKey1, storageKey2 }),
             (address2, new[] { storageKey3 })
         };
 
-        accessList.AsDictionary().Should().BeEquivalentTo(expectedDict);
-        accessList.AsEnumerable().Should().BeEquivalentTo(expectedEnumerable);
+        accessList.AsEnumerable().Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -214,13 +177,7 @@ public class AccessListTests
             .AddAddress(address2)
             .Build();
 
-        IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> expectedDict = new Dictionary<Address, IReadOnlySet<UInt256>>
-        {
-            { address1, new HashSet<UInt256> { storageKey1, storageKey2} },
-            { address2, new HashSet<UInt256> { storageKey3 } }
-        };
-
-        IEnumerable<(Address, IEnumerable<UInt256>)> expectedEnumerable = new List<(Address, IEnumerable<UInt256>)>
+        IEnumerable<(Address, IEnumerable<UInt256>)> expected = new List<(Address, IEnumerable<UInt256>)>
         {
             (address1, new[] { storageKey1, storageKey2 }),
             (address2, new[] { storageKey3 }),
@@ -228,8 +185,7 @@ public class AccessListTests
             (address2, new UInt256[] { }),
         };
 
-        accessList.AsDictionary().Should().BeEquivalentTo(expectedDict);
-        accessList.AsEnumerable().Should().BeEquivalentTo(expectedEnumerable);
+        accessList.AsEnumerable().Should().BeEquivalentTo(expected);
     }
 
     [Test]

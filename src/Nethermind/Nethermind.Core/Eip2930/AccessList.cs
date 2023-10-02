@@ -52,56 +52,6 @@ public class AccessList
         }
     }
 
-    public IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> AsDictionary()
-    {
-        Dictionary<Address, IReadOnlySet<UInt256>> result = new();
-
-        Address? currentAddress = null;
-        HashSet<UInt256> currentStorageKeys = new();
-
-        foreach (AccessListItem item in _items)
-        {
-            switch (item)
-            {
-                case AccessListItem.Address address:
-                    {
-                        if (currentAddress is not null)
-                        {
-                            if (result.TryGetValue(currentAddress, out IReadOnlySet<UInt256>? existingStorageKeys))
-                            {
-                                ((HashSet<UInt256>)existingStorageKeys).UnionWith(currentStorageKeys);
-                            }
-                            else
-                            {
-                                result[currentAddress] = currentStorageKeys;
-                            }
-                        }
-                        currentAddress = address.Value;
-                        currentStorageKeys = new HashSet<UInt256>();
-                        break;
-                    }
-                case AccessListItem.StorageKey storageKey:
-                    {
-                        currentStorageKeys.Add(storageKey.Value);
-                        break;
-                    }
-            }
-        }
-        if (currentAddress is not null)
-        {
-            if (result.TryGetValue(currentAddress, out IReadOnlySet<UInt256>? existingStorageKeys))
-            {
-                ((HashSet<UInt256>)existingStorageKeys).UnionWith(currentStorageKeys);
-            }
-            else
-            {
-                result[currentAddress] = currentStorageKeys;
-            }
-        }
-
-        return result;
-    }
-
     public class Builder
     {
         private readonly List<AccessListItem> _items = new();

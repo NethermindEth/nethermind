@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
-            IEnumerable<Address> addressesAccessed = tracer.AccessList!.AsDictionary().Keys.ToArray();
+            IEnumerable<Address> addressesAccessed = tracer.AccessList!.AsEnumerable().Select(tuples => tuples.Address).ToArray();
             IEnumerable<Address> expected = new[] {
                 SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, TestItem.AddressC
             };
@@ -51,13 +51,15 @@ namespace Nethermind.Evm.Test.Tracing
 
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
-            IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> accessedData = tracer.AccessList!.AsDictionary();
+            IEnumerable<(Address, IEnumerable<UInt256>)> accessedData = tracer.AccessList!.AsEnumerable().ToArray();
 
             Assert.IsNotEmpty(accessedData);
             accessedData.Should().BeEquivalentTo(
-                new Dictionary<Address, IReadOnlySet<UInt256>>{
-                    {SenderRecipientAndMiner.Default.Sender, ImmutableHashSet<UInt256>.Empty},
-                    {SenderRecipientAndMiner.Default.Recipient, new HashSet<UInt256>{105}}});
+                new []
+                {
+                    (SenderRecipientAndMiner.Default.Sender, new UInt256[] { }),
+                    (SenderRecipientAndMiner.Default.Recipient, new UInt256[] { 105 })
+                });
         }
 
         protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);
