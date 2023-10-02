@@ -142,7 +142,7 @@ namespace Ethereum.Test.Base
                 : transactionJson.AccessList, builder);
             transaction.AccessList = builder.Build();
 
-            if (transaction.AccessList.Raw.Count != 0)
+            if (transaction.AccessList.AsEnumerable().Count() != 0)
                 transaction.Type = TxType.AccessList;
             else
                 transaction.AccessList = null;
