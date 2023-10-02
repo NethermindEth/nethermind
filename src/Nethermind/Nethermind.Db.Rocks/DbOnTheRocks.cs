@@ -370,12 +370,6 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         int writeBufferNumber = (int)dbConfig.WriteBufferNumber;
         options.SetMaxWriteBufferNumber(writeBufferNumber);
 
-        // Memtable is slower to writes the bigger it gets, but small memtable means small l0 file size, which means
-        // higher write amp for l0->l1 compaction. This allows multiple memtable to go into one l0 file so that it is
-        // not too small so it helps with write amp when setting small write buffer. AFAIK that is its only use compared
-        // to just specifying large write buffer. Sadly, this setting can't dynamically change.
-        options.SetMinWriteBufferNumberToMerge(2);
-
         lock (_dbsByPath)
         {
             _maxThisDbSize += (long)writeBufferSize * writeBufferNumber;
@@ -444,12 +438,8 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     private WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig) {
         WriteOptions options = new();
-
         // potential fix for corruption on hard process termination, may cause performance degradation
         options.SetSync(dbConfig.WriteAheadLogSync);
-
-        // On concurrent writes, the `hint` here is the node within the skiplist. Makes concurrent sorted writes faster.
-        _rocksDbNative.rocksdb_writeoptions_set_memtable_insert_hint_per_batch(options.Handle, true);
         return options;
     }
 
@@ -1196,18 +1186,13 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         // but no io, only cpu.
         // bufferSize*maxBufferNumber = 128MB, which is the max memory used, which tend to be the case as its now
         // stalled by compaction instead of flush.
-        // The skiplist (memtable) have a branching factor of 4, so I assume it slows down a little as num of record
-        // grows by 4x. So we are looking at 1,4,16,64,256,1k,4k,16k,64k and so on num of keys. Assuming average size of
-        // 120 bytes per key for state db, we are targeting between 4k to 16k of keys per memtable.
-        // A small memtable however, have the drawback of making l0 files smaller. Causing more compaction overhead.
-        ulong bufferSize = (ulong)4.MiB();
-        ulong writeBufferToMerge = 2;
-        ulong maxBufferNumber = 16 * writeBufferToMerge;
+        ulong bufferSize = (ulong)16.MiB();
+        ulong maxBufferNumber = 8;
 
         // Guide recommend to have l0 and l1 to be the same size. They have to be compacted together so if l1 is larger,
         // the extra size in l1 is basically extra rewrites. If l0 is larger... then I don't know why not. Even so, it seems to
         // always get triggered when l0 size exceed max_bytes_for_level_base even if file num is less than l0FileNumTarget.
-        ulong l1SizeTarget = l0FileNumTarget * bufferSize * writeBufferToMerge;
+        ulong l1SizeTarget = l0FileNumTarget * bufferSize;
 
         return new Dictionary<string, string>()
         {
@@ -1237,7 +1222,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         // the memtable a little bit. So if you are not write limited, you'll get memtable limited instead.
         // This does increase the total memory buffer size, but counterintuitively, this reduces overall memory usage
         // as it ran out of bloom filter cache so it need to do actual IO.
-        heavyWriteOption["write_buffer_size"] = 16.MiB().ToString();
+        heavyWriteOption["write_buffer_size"] = 64.MiB().ToString();
 
         return heavyWriteOption;
     }
