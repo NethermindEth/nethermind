@@ -798,6 +798,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         private WriteFlags _writeFlags = WriteFlags.None;
         private bool _isDisposed;
 
+        [ThreadStatic]
+        private static WriteBatch? _reusableWriteBatch;
+
         /// <summary>
         /// Because of how rocksdb parallelize writes, a large write batch can stall other new concurrent writes, so
         /// we writes the batch in smaller batches. This removes atomicity so its only turned on when NoWAL flag is on.
@@ -809,12 +812,34 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         public RocksDbBatch(DbOnTheRocks dbOnTheRocks)
         {
             _dbOnTheRocks = dbOnTheRocks;
-            _rocksBatch = new WriteBatch();
+            _rocksBatch = CreateWriteBatch();
 
             if (_dbOnTheRocks._isDisposing)
             {
                 throw new ObjectDisposedException($"Attempted to create a batch on a disposed database {_dbOnTheRocks.Name}");
             }
+        }
+
+        private static WriteBatch CreateWriteBatch()
+        {
+            if (_reusableWriteBatch == null) return new WriteBatch();
+
+            WriteBatch batch = _reusableWriteBatch;
+            _reusableWriteBatch = null;
+            return batch;
+        }
+
+        private static void ReturnWriteBatch(WriteBatch batch)
+        {
+            Native.Instance.rocksdb_writebatch_data(batch.Handle, out UIntPtr size);
+            if (size > (uint) 16.KiB() || _reusableWriteBatch != null)
+            {
+                batch.Dispose();
+                return;
+            }
+
+            batch.Clear();
+            _reusableWriteBatch = batch;
         }
 
         public void Dispose()
@@ -834,7 +859,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             {
                 _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
                 _dbOnTheRocks._currentBatches.TryRemove(this);
-                _rocksBatch.Dispose();
+                ReturnWriteBatch(_rocksBatch);
             }
             catch (RocksDbSharpException e)
             {
@@ -891,12 +916,12 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         {
             if (Interlocked.Increment(ref _writeCount) % MaxWritesOnNoWal != 0) return;
 
-            WriteBatch currentBatch = Interlocked.Exchange(ref _rocksBatch, new WriteBatch());
+            WriteBatch currentBatch = Interlocked.Exchange(ref _rocksBatch, CreateWriteBatch());
 
             try
             {
                 _dbOnTheRocks._db.Write(currentBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
-                currentBatch.Dispose();
+                ReturnWriteBatch(currentBatch);
             }
             catch (RocksDbSharpException e)
             {
