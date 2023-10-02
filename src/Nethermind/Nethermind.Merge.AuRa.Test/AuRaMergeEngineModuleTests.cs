@@ -59,12 +59,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         ) input)
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
-    [Ignore("engine_newPayloadV2 fails")]
     [TestCase(
         "0xe168b70ac8a6f7d90734010030801fbb2dcce03a657155c4024b36ba8d1e3926",
         "0x3e604e45a9a74b66a7e03f828cc2597f0cb5f5e7dc50c9211be3a62fbcd6396d",
         "0xdbd87b98a6be7d4e3f11ff8500c38a0736d9a5e7a47b5cb25628d37187a98cb9",
-        "0x78ecfec08729d895")]
+        "0x80ac487e132512b1")]
     public override Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V2(latestValidHash, blockHash, stateRoot, payloadId);
 
@@ -85,47 +84,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override Task forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http(string blockHash, string parentHash)
         => base.forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http(blockHash, parentHash);
 
-    //[Ignore("engine_newPayloadV2 fails")]
-    //public override Task Can_apply_withdrawals_correctly((Withdrawal[][] Withdrawals, (Address Account, UInt256 BalanceIncrease)[] ExpectedAccountIncrease) input)
-    //{
-    //    return base.Can_apply_withdrawals_correctly(input);
-    //}
-
-    //[Ignore("engine_newPayloadV2 fails")]
-    //public override Task Empty_block_is_valid_with_withdrawals_V2()
-    //{
-    //    return base.Empty_block_is_valid_with_withdrawals_V2();
-    //}
-
-    //[Ignore("engine_newPayloadV2 fails")]
-    //public override Task Should_handle_withdrawals_transition_when_Shanghai_fork_activated()
-    //{
-    //    return base.Should_handle_withdrawals_transition_when_Shanghai_fork_activated();
-    //}
-
-    //[Ignore("engine_newPayloadV2 fails")]
-    //public override Task getPayloadBodiesByHashV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes(IList<Withdrawal> withdrawals)
-    //{
-    //    return base.getPayloadBodiesByHashV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes(withdrawals);
-    //}
-
-    //[Ignore("engine_newPayloadV2 fails")]
-    //public override Task getPayloadBodiesByRangeV1_should_return_canonical(IList<Withdrawal> withdrawals)
-    //{
-    //    return base.getPayloadBodiesByRangeV1_should_return_canonical(withdrawals);
-    //}
-
-    //[Ignore("engine_newPayloadV2 fails")]
-    //public override Task getPayloadBodiesByRangeV1_should_return_payload_bodies_in_order_of_request_range_and_null_for_unknown_indexes(IList<Withdrawal> withdrawals)
-    //{
-    //    return base.getPayloadBodiesByRangeV1_should_return_payload_bodies_in_order_of_request_range_and_null_for_unknown_indexes(withdrawals);
-    //}
-
-    //[Ignore("engine_newPayloadV3 fails")]
-    //public override Task NewPayloadV3_should_decline_mempool_encoding(bool inMempoolForm, string expectedPayloadStatus)
-    //{
-    //    return base.NewPayloadV3_should_decline_mempool_encoding(inMempoolForm, expectedPayloadStatus);
-    //}
+    [Ignore("Withdrawals are not withdrawan due to lack of Aura contract in tests")]
+    public override Task Can_apply_withdrawals_correctly((Withdrawal[][] Withdrawals, (Address Account, UInt256 BalanceIncrease)[] ExpectedAccountIncrease) input)
+    {
+        return base.Can_apply_withdrawals_correctly(input);
+    }
 
     class MergeAuRaTestBlockchain : MergeTestBlockchain
     {
@@ -158,29 +121,52 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             };
 
             WithdrawalContractFactory withdrawalContractFactory = new(_api.ChainSpec!.AuRa, _api.AbiEncoder);
+            WithdrawalProcessor = new AuraWithdrawalProcessor(
+                    withdrawalContractFactory.Create(TxProcessor),
+                    LogManager
+            );
 
-            var dd = new ReadOnlyTxProcessingEnv(DbProvider.AsReadOnly(false), ReadOnlyTrieStore, BlockTree.AsReadOnly(), SpecProvider, LogManager); ;
             BlockValidator = CreateBlockValidator();
-            BlockProcessor processor =
-            new(
+            IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProducerTransactionsExecutorFactory(SpecProvider, LogManager).Create(dd),
+                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
                 LogManager,
-                new AuraWithdrawalProcessor(
-                    withdrawalContractFactory.Create(dd.TransactionProcessor),
-                    LogManager
-            ));
+                WithdrawalProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
 
-        private (BlocksConfig blocksConfig, BlockProducerEnvFactory blockProducerEnvFactory) F(ITransactionComparerProvider transactionComparerProvider)
+        //private (BlocksConfig blocksConfig, BlockProducerEnvFactory blockProducerEnvFactory) F(ITransactionComparerProvider transactionComparerProvider)
+        //{
+        //    BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
+        //    AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
+        //           _api!,
+        //           new AuRaConfig(),
+        //           new DisposableStack(),
+        //           DbProvider,
+        //           BlockTree,
+        //           ReadOnlyTrieStore,
+        //           SpecProvider,
+        //           BlockValidator,
+        //           NoBlockRewards.Instance,
+        //           ReceiptStorage,
+        //           BlockPreprocessorStep,
+        //           TxPool,
+        //           transactionComparerProvider,
+        //           blocksConfig,
+        //           LogManager);
+        //    return (blocksConfig, blockProducerEnvFactory);
+        //}
+
+
+        protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
+            //var (blocksConfig, blockProducerEnvFactory) = F(transactionComparerProvider);
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
                    _api!,
@@ -198,13 +184,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                    transactionComparerProvider,
                    blocksConfig,
                    LogManager);
-            return (blocksConfig, blockProducerEnvFactory);
-        }
 
-
-        protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
-        {
-            var (blocksConfig, blockProducerEnvFactory) = F(transactionComparerProvider);
 
             SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator!, LogManager);
             ISyncConfig syncConfig = new SyncConfig();

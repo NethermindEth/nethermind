@@ -240,12 +240,9 @@ public partial class BlockProcessor : IBlockProcessor
         ApplyMinerRewards(block, blockTracer, spec);
 
 
-        //_stateProvider.Commit(spec);
-        //_stateProvider.RecalculateStateRoot();
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
-        //_stateProvider.Commit(spec);
-        //_stateProvider.RecalculateStateRoot();
-
+        _stateProvider.Commit(spec);
+        _stateProvider.RecalculateStateRoot();
 
         _receiptsTracer.EndBlockTrace();
 

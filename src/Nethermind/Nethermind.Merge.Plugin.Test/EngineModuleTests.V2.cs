@@ -638,7 +638,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(input.ReleaseSpec);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload executionPayload = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State, CreateParentBlockRequestOnHead(chain.BlockTree),
-            TestItem.AddressD, input.Withdrawals);
+            TestItem.AddressD, input.Withdrawals, withdrawalProcessor: chain.WithdrawalProcessor);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
 
         if (input.IsValid)
@@ -873,7 +873,7 @@ public partial class EngineModuleTests
         IList<Withdrawal>? withdrawals)
     {
         ExecutionPayload executionPayload = CreateBlockRequest(chain.SpecProvider.GenesisSpec, chain.State,
-            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals);
+            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, withdrawalProcessor: chain.WithdrawalProcessor);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV2(executionPayload);
 
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);

@@ -22,6 +22,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Core.Specs;
 using Nethermind.Consensus.BeaconBlockRoot;
+using Nethermind.Consensus.Withdrawals;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -87,21 +88,39 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         private static ExecutionPayload CreateBlockRequest(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
-                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null)
-            => CreateBlockRequestInternal<ExecutionPayload>(spec, state, parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
+                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null, IWithdrawalProcessor? withdrawalProcessor = null)
+        {
+            ExecutionPayload blockRequest = CreateBlockRequestInternal<ExecutionPayload>(spec, state, parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
+            blockRequest.TryGetBlock(out Block? block);
+
+            var before = state.TakeSnapshot();
+            withdrawalProcessor?.ProcessWithdrawals(block!, spec);
+
+            state.Commit(spec);
+            state.RecalculateStateRoot();
+            blockRequest.StateRoot = state.StateRoot;
+            state.Restore(before);
+
+            TryCalculateHash(blockRequest, out Keccak? hash);
+            blockRequest.BlockHash = hash;
+            return blockRequest;
+        }
 
         private static ExecutionPayloadV3 CreateBlockRequestV3(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
-                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null)
+                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null, IWithdrawalProcessor? withdrawalProcessor = null)
         {
             ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(spec, state, parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             blockRequestV3.TryGetBlock(out Block? block);
+
+            var before = state.TakeSnapshot();
             _beaconBlockRootHandler.ApplyContractStateChanges(block!, spec, state);
+            withdrawalProcessor?.ProcessWithdrawals(block!, spec);
 
             state.Commit(spec);
-            state.CommitTree(blockRequestV3.BlockNumber);
-
             state.RecalculateStateRoot();
             blockRequestV3.StateRoot = state.StateRoot;
+            state.Restore(before);
+
             TryCalculateHash(blockRequestV3, out Keccak? hash);
             blockRequestV3.BlockHash = hash;
             return blockRequestV3;
@@ -133,13 +152,13 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequest;
         }
 
-        private static ExecutionPayload[] CreateBlockRequestBranch(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, int count)
+        private static ExecutionPayload[] CreateBlockRequestBranch(IReleaseSpec spec, IWorldState state, ExecutionPayload parent, Address miner, int count, IWithdrawalProcessor? withdrawalProcessor = null)
         {
             ExecutionPayload currentBlock = parent;
             ExecutionPayload[] blockRequests = new ExecutionPayload[count];
             for (int i = 0; i < count; i++)
             {
-                currentBlock = CreateBlockRequest(spec, state, currentBlock, miner);
+                currentBlock = CreateBlockRequest(spec, state, currentBlock, miner, withdrawalProcessor: withdrawalProcessor);
                 blockRequests[i] = currentBlock;
             }
 
