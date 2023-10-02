@@ -37,7 +37,7 @@ public class JsonRpcProcessorTests
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
         service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(ci => _returnErrors ? new JsonRpcErrorResponse { Id = ci.Arg<JsonRpcRequest>().Id } : new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
         service.GetErrorResponse(0, null!).ReturnsForAnyArgs(_errorResponse);
-        service.GetErrorResponse(null!, 0, null!, null!).ReturnsForAnyArgs(_errorResponse);
+        service.GetErrorResponse(0, null!, null!, null!).ReturnsForAnyArgs(_errorResponse);
 
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
 
@@ -389,6 +389,6 @@ public class JsonRpcProcessorTests
     {
         Assert.Throws<ArgumentNullException>(() => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
             Substitute.For<IJsonRpcConfig>(),
-            null, LimboLogs.Instance));
+            null!, LimboLogs.Instance));
     }
 }

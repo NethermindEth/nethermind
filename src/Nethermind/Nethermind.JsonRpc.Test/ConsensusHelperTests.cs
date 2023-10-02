@@ -168,7 +168,7 @@ namespace Nethermind.JsonRpc.Test
                 JsonNode data = JsonHelper.ParseNormalize(await source1.GetJsonData());
                 JsonNode expectation = JsonHelper.ParseNormalize(await source2.GetJsonData());
                 data.Should().BeEquivalentTo(expectation);
-                data["error"].Should().BeNull(data["error"].ToString());
+                data["error"].Should().BeNull(data["error"]!.ToString());
             }
             else
             {
@@ -198,7 +198,7 @@ namespace Nethermind.JsonRpc.Test
                 JsonNode data = JsonHelper.ParseNormalize(await source1.GetJsonData());
                 JsonNode expectation = JsonHelper.ParseNormalize(await source2.GetJsonData());
                 data.Should().BeEquivalentTo(expectation);
-                data["error"].Should().BeNull(data["error"].ToString());
+                data["error"].Should().BeNull(data["error"]!.ToString());
             }
             else
             {
@@ -249,14 +249,14 @@ namespace Nethermind.JsonRpc.Test
         {
             public static JsonNode ParseNormalize(string json) => Normalize(JsonNode.Parse(json));
 
-            public static JsonNode Normalize(JsonNode token)
+            public static JsonNode Normalize(JsonNode? token)
             {
                 if (token is JsonObject jObject)
                 {
                     JsonObject copy = new JsonObject();
                     foreach (var prop in jObject)
                     {
-                        JsonNode child = prop.Value;
+                        JsonNode? child = prop.Value;
                         if (child is JsonObject || child is JsonArray)
                         {
                             child = Normalize(child);
@@ -271,9 +271,9 @@ namespace Nethermind.JsonRpc.Test
                 else if (token is JsonArray jArray)
                 {
                     JsonArray copy = new JsonArray();
-                    foreach (JsonNode item in jArray)
+                    foreach (JsonNode? item in jArray)
                     {
-                        JsonNode child = item;
+                        JsonNode? child = item;
                         if (child is JsonObject || child is JsonArray)
                         {
                             child = Normalize(child);
@@ -285,10 +285,10 @@ namespace Nethermind.JsonRpc.Test
                     }
                     return copy;
                 }
-                return token;
+                return token!;
             }
 
-            public static bool IsEmpty(JsonNode token)
+            public static bool IsEmpty(JsonNode? token)
             {
                 return (token is null);
             }

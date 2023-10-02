@@ -37,7 +37,7 @@ namespace Nethermind.Core.Test.Json
         public void Can_read_0x0()
         {
             long result = JsonSerializer.Deserialize<long>("\"0x0\"", options);
-            Assert.AreEqual(long.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(long.Parse("0")));
         }
 
         [Test]
@@ -51,14 +51,14 @@ namespace Nethermind.Core.Test.Json
         public void Can_read_0()
         {
             long result = JsonSerializer.Deserialize<long>("0", options);
-            Assert.AreEqual(long.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(long.Parse("0")));
         }
 
         [Test]
         public void Can_read_1()
         {
             long result = JsonSerializer.Deserialize<long>("1", options);
-            Assert.AreEqual(long.Parse("1"), result);
+            Assert.That(result, Is.EqualTo(long.Parse("1")));
         }
 
         [Test]

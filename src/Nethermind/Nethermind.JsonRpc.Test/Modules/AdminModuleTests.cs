@@ -87,7 +87,7 @@ public class AdminModuleTests
     {
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_dataDir");
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
-        response.Result.ToString().Should().Be(_exampleDataDir);
+        response.Result!.ToString().Should().Be(_exampleDataDir);
     }
 
     [Test]

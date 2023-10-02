@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.Test.Data
             IJsonSerializer serializer = BuildSerializer();
 
             string result = serializer.Serialize(item);
-            Assert.AreEqual(expectedResult.Replace("+", "\\u002B"), result, result.Replace("\"", "\\\""));
+            Assert.That(result, Is.EqualTo(expectedResult.Replace("+", "\\u002B")), result.Replace("\"", "\\\""));
         }
 
         protected void TestToJson<T>(T item, string expectedResult)

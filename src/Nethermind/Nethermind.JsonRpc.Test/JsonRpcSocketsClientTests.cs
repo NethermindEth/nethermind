@@ -49,7 +49,7 @@ public class JsonRpcSocketsClientTests
                     jsonRpcProcessor: null!,
                     jsonRpcService: null!,
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
-                    jsonSerializer: new EthereumJsonSerializer(converters: new GethLikeTxTraceConverter())
+                    jsonSerializer: new EthereumJsonSerializer()
                 );
                 JsonRpcResult result = JsonRpcResult.Single(bigObject, default);
 
@@ -88,7 +88,7 @@ public class JsonRpcSocketsClientTests
                     jsonRpcProcessor: null!,
                     jsonRpcService: null!,
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
-                    jsonSerializer: new EthereumJsonSerializer(converters: new GethLikeTxTraceConverter())
+                    jsonSerializer: new EthereumJsonSerializer()
                 );
                 JsonRpcResult result = JsonRpcResult.Single(RandomSuccessResponse(1_000), default);
 
@@ -132,7 +132,7 @@ public class JsonRpcSocketsClientTests
                     jsonRpcProcessor: null!,
                     jsonRpcService: null!,
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
-                    jsonSerializer: new EthereumJsonSerializer(converters: new GethLikeTxTraceConverter())
+                    jsonSerializer: new EthereumJsonSerializer()
                 );
                 JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
 

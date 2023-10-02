@@ -31,42 +31,42 @@ namespace Nethermind.Core.Test.Json
         public void Regression_0xa00000()
         {
             UInt256 result = JsonSerializer.Deserialize<UInt256>("\"0xa00000\"", options);
-            Assert.AreEqual(UInt256.Parse("10485760"), result);
+            Assert.That(result, Is.EqualTo(UInt256.Parse("10485760")));
         }
 
         [Test]
         public void Can_read_0x0()
         {
             UInt256 result = JsonSerializer.Deserialize<UInt256>("\"0x0\"", options);
-            Assert.AreEqual(UInt256.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(UInt256.Parse("0")));
         }
 
         [Test]
         public void Can_read_0x000()
         {
             UInt256 result = JsonSerializer.Deserialize<UInt256>("\"0x0000\"", options);
-            Assert.AreEqual(UInt256.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(UInt256.Parse("0")));
         }
 
         [Test]
         public void Can_read_0()
         {
             UInt256 result = JsonSerializer.Deserialize<UInt256>("0", options);
-            Assert.AreEqual(UInt256.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(UInt256.Parse("0")));
         }
 
         [Test]
         public void Can_read_1()
         {
             UInt256 result = JsonSerializer.Deserialize<UInt256>("1", options);
-            Assert.AreEqual(UInt256.Parse("1"), result);
+            Assert.That(result, Is.EqualTo(UInt256.Parse("1")));
         }
 
         [Test]
         public void Can_read_unmarked_hex()
         {
             UInt256 result = JsonSerializer.Deserialize<UInt256>("\"de\"", options);
-            Assert.AreEqual(UInt256.Parse("de", NumberStyles.HexNumber), result);
+            Assert.That(result, Is.EqualTo(UInt256.Parse("de", NumberStyles.HexNumber)));
         }
 
         [Test]

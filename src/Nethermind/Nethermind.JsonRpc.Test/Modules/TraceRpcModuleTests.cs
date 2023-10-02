@@ -97,7 +97,7 @@ public class TraceRpcModuleTests
     {
         Context context = new();
         await context.Build();
-        string serialized = RpcTest.TestSerializedRequest(
+        string serialized = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule,
             "trace_block", "latest");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0xa1e0e640b433d5a8931881b8eee7b1a125474b04e430c0bf8afff52584c53273\",\"transactionPosition\":0,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0x5cf5d4a0a93000beb1cfb373508ce4c0153ab491be99b3c927f482346c86a0e1\",\"transactionPosition\":1,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0x02d2cde9120e37722f607771ebaa0d4e98c5d99a8a9e7df6872e8c8c9f5c0bc5\",\"transactionPosition\":2,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0xe50a2a2d170011b1f9ee080c3810bed0c63dbb1b2b2c541c78ada5b222cc3fd2\",\"transactionPosition\":3,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0xff0d4524d379fc15c41a9b0444b943e1a530779b7d09c8863858267c5ef92b24\",\"transactionPosition\":4,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0xf9b69366c82084e3799dc4a7ad87dc173ef4923d853bc250de86b81786f2972a\",\"transactionPosition\":5,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0x28171c29b23cd96f032fe43f444402af4555ee5f074d5d0d0a1089d940f136e7\",\"transactionPosition\":6,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0x09b01caf4b7ecfe9d02251b2e478f2da0fdf08412e3fa1ff963fa80635dab031\",\"transactionPosition\":7,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x0\",\"input\":\"0x\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"transactionHash\":\"0xd82382905afbe4ca4c2b8e54cea43818c91e0014c3827e3020fbd82b732b8239\",\"transactionPosition\":8,\"type\":\"call\"},{\"action\":{\"author\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"rewardType\":\"block\",\"value\":\"0x1bc16d674ec80000\"},\"blockHash\":\"0xcd3d2c10309822aec4cbbfa80ba905ba1de62834a3b40f8012520734db2763ca\",\"blockNumber\":15,\"subtraces\":0,\"traceAddress\":[],\"type\":\"reward\"}],\"id\":67}"));
@@ -109,7 +109,7 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         string request = "{\"fromBlock\":\"0x154\",\"after\":0}";
-        string serialized = RpcTest.TestSerializedRequest(
+        string serialized = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule,
             "trace_filter", request);
         Assert.That(
@@ -122,7 +122,7 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         string request = "{\"fromBlock\":\"0x8\",\"toBlock\":\"0x6\"}";
-        string serialized = RpcTest.TestSerializedRequest(
+        string serialized = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule,
             "trace_filter", request);
         Assert.That(
@@ -135,7 +135,7 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         string request = "{\"count\":\"0x0\", \"fromBlock\":\"0x3\",\"toBlock\":\"0x3\"}";
-        string serialized = RpcTest.TestSerializedRequest(
+        string serialized = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule,
             "trace_filter", request);
         Assert.That(
@@ -148,7 +148,7 @@ public class TraceRpcModuleTests
         Context context = new();
         await context.Build();
         TraceFilterForRpc traceFilterRequest = new();
-        string serialized = RpcTest.TestSerializedRequest(
+        string serialized = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule,
             "trace_filter", new EthereumJsonSerializer().Serialize(traceFilterRequest));
 
@@ -534,7 +534,7 @@ public class TraceRpcModuleTests
         traces.Data.ElementAt(0).TransactionHash.Should().Be(transaction2.Hash!);
         string serialized = new EthereumJsonSerializer().Serialize(traces.Data);
 
-        Assert.AreEqual("[{\"action\":{\"creationMethod\":\"create\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x9a6c\",\"input\":\"0x60006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f160006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f1fd\",\"to\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"value\":\"0x1\"},\"blockHash\":\"0xfa74e932520ee416ecb12171c115b3ad14112ffd2d612646ceaff69e54e06a94\",\"blockNumber\":18,\"subtraces\":2,\"traceAddress\":[],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"create\",\"error\":\"Reverted\"},{\"action\":{\"callType\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"gas\":\"0x2dcd\",\"input\":\"0x\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"value\":\"0x0\"},\"blockHash\":\"0xfa74e932520ee416ecb12171c115b3ad14112ffd2d612646ceaff69e54e06a94\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[0],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"gas\":\"0x2d56\",\"input\":\"0x\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"value\":\"0x0\"},\"blockHash\":\"0xfa74e932520ee416ecb12171c115b3ad14112ffd2d612646ceaff69e54e06a94\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[1],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"}]", serialized, serialized.Replace("\"", "\\\""));
+        Assert.That(serialized, Is.EqualTo("[{\"action\":{\"creationMethod\":\"create\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x9a6c\",\"input\":\"0x60006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f160006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f1fd\",\"to\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"value\":\"0x1\"},\"blockHash\":\"0xfa74e932520ee416ecb12171c115b3ad14112ffd2d612646ceaff69e54e06a94\",\"blockNumber\":18,\"subtraces\":2,\"traceAddress\":[],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"create\",\"error\":\"Reverted\"},{\"action\":{\"callType\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"gas\":\"0x2dcd\",\"input\":\"0x\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"value\":\"0x0\"},\"blockHash\":\"0xfa74e932520ee416ecb12171c115b3ad14112ffd2d612646ceaff69e54e06a94\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[0],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"gas\":\"0x2d56\",\"input\":\"0x\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"value\":\"0x0\"},\"blockHash\":\"0xfa74e932520ee416ecb12171c115b3ad14112ffd2d612646ceaff69e54e06a94\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[1],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"}]"), serialized.Replace("\"", "\\\""));
     }
     [Test]
     public async Task trace_timeout_is_separate_for_rpc_calls()
@@ -581,7 +581,7 @@ public class TraceRpcModuleTests
         Assert.That(traces.Data.Action!.From, Is.EqualTo(TestItem.AddressB));
         Assert.That(traces.Data.Action.To, Is.EqualTo(TestItem.AddressC));
         Assert.That(traces.Data.Action.CallType, Is.EqualTo("call"));
-        Assert.IsTrue(traces.GetResult().ResultType == ResultType.Success);
+        Assert.IsTrue(traces.Result.ResultType == ResultType.Success);
     }
 
     [Test]
@@ -609,7 +609,7 @@ public class TraceRpcModuleTests
         ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
         Assert.That(traces.Data.Action!.CallType, Is.EqualTo("reward"));
         Assert.That(traces.Data.Action.Value, Is.EqualTo(UInt256.Parse("2000000000000000000")));
-        Assert.IsTrue(traces.GetResult().ResultType == ResultType.Success);
+        Assert.IsTrue(traces.Result.ResultType == ResultType.Success);
     }
 
     [Test]
@@ -684,7 +684,7 @@ public class TraceRpcModuleTests
         string blockParameter = "latest";
         string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"callType\":\"call\",\"from\":\"0xaaaaaaaa8583de65cc752fe3fad5098643244d22\",\"gas\":\"0x5f58ef8\",\"input\":\"0x\",\"to\":\"0xd6a8d04cb9846759416457e2c593c99390092df6\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}],\"vmTrace\":null},\"id\":67}";
 
-        string serialized = RpcTest.TestSerializedRequest(
+        string serialized = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule,
             "trace_call", transaction, traceTypes, blockParameter);
 
@@ -697,7 +697,7 @@ public class TraceRpcModuleTests
     {
         Context context = new();
         await context.Build();
-        string serialized = RpcTest.TestSerializedRequest(
+        string serialized = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule,
             "trace_call", transaction, traceTypes);
 
@@ -746,11 +746,11 @@ public class TraceRpcModuleTests
         await context.Build();
         string calls = "[[{\"from\":\"0xfe35e70599578efef562e1f1cdc9ef693b865e9d\",\"to\":\"0x8cf85548ae57a91f8132d0831634c0fcef06e505\"},[\"trace\"]],[{\"from\":\"0x2a6ae6f33729384a00b4ffbd25e3f1bf1b9f5b8d\",\"to\":\"0xab736519b5433974059da38da74b8db5376942cd\",\"gasPrice\":\"0xb2b29a6dc\"},[\"trace\"]]]";
 
-        string serialized = RpcTest.TestSerializedRequest(
+        string serialized = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule,
             "trace_callMany", calls, "latest");
 
-        string serialized_without_blockParameter_param = RpcTest.TestSerializedRequest(
+        string serialized_without_blockParameter_param = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule,
             "trace_callMany", calls);
 
@@ -766,7 +766,7 @@ public class TraceRpcModuleTests
 
         string calls = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"1\"}},[\"statediff\"]],[{{\"from\":\"{TestItem.AddressA}\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"1\"}},[\"statediff\"]]]";
 
-        string serialized = RpcTest.TestSerializedRequest(
+        string serialized = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule,
             "trace_callMany", calls);
 
@@ -807,7 +807,7 @@ public class TraceRpcModuleTests
         traces.Data.Should().HaveCount(2);
         traces.Data.ElementAt(0).Action!.From.Should().BeEquivalentTo(traces.Data.ElementAt(1).Action!.From);
         string serialized = new EthereumJsonSerializer().Serialize(traces.Data);
-        Assert.AreEqual("[{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"creationMethod\":\"create\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"gas\":\"0x9c70\",\"input\":\"0x60006000600060006000730ffd3e46594919c04bcfd4e146203c825567082861c350f1\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"value\":\"0x1\"},\"result\":{\"address\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"code\":\"0x\",\"gasUsed\":\"0x79\"},\"subtraces\":1,\"traceAddress\":[],\"type\":\"create\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"gas\":\"0x9988\",\"input\":\"0x\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[0],\"type\":\"call\"}],\"transactionHash\":\"0x8513c9083ec27fa8e3ca7e3ffa732d61562e2d17e2e1af6e773bc810dc4c3452\",\"vmTrace\":null},{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"creationMethod\":\"create\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"gas\":\"0x9c70\",\"input\":\"0x60006000600060006000730ffd3e46594919c04bcfd4e146203c825567082861c350f1\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"value\":\"0x1\"},\"result\":{\"address\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"code\":\"0x\",\"gasUsed\":\"0xa3d\"},\"subtraces\":1,\"traceAddress\":[],\"type\":\"create\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"gas\":\"0x8feb\",\"input\":\"0x\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[0],\"type\":\"call\"}],\"transactionHash\":\"0xa6a56c7927deae778a749bcdab7bbf409c0d8a5d2420021a3ba328240ae832d8\",\"vmTrace\":null}]", serialized);
+        Assert.That(serialized, Is.EqualTo("[{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"creationMethod\":\"create\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"gas\":\"0x9c70\",\"input\":\"0x60006000600060006000730ffd3e46594919c04bcfd4e146203c825567082861c350f1\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"value\":\"0x1\"},\"result\":{\"address\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"code\":\"0x\",\"gasUsed\":\"0x79\"},\"subtraces\":1,\"traceAddress\":[],\"type\":\"create\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"gas\":\"0x9988\",\"input\":\"0x\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[0],\"type\":\"call\"}],\"transactionHash\":\"0x8513c9083ec27fa8e3ca7e3ffa732d61562e2d17e2e1af6e773bc810dc4c3452\",\"vmTrace\":null},{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"creationMethod\":\"create\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"gas\":\"0x9c70\",\"input\":\"0x60006000600060006000730ffd3e46594919c04bcfd4e146203c825567082861c350f1\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"value\":\"0x1\"},\"result\":{\"address\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"code\":\"0x\",\"gasUsed\":\"0xa3d\"},\"subtraces\":1,\"traceAddress\":[],\"type\":\"create\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"gas\":\"0x8feb\",\"input\":\"0x\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[0],\"type\":\"call\"}],\"transactionHash\":\"0xa6a56c7927deae778a749bcdab7bbf409c0d8a5d2420021a3ba328240ae832d8\",\"vmTrace\":null}]"));
     }
 
     [Test]
@@ -835,17 +835,17 @@ public class TraceRpcModuleTests
 
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(new BlockParameter(blockchain.BlockFinder.FindLatestBlock()!.Number), traceTypes);
         traces.Data.Should().HaveCount(1);
-        var state = traces.Data.ElementAt(0).StateChanges;
+        var state = traces.Data.ElementAt(0).StateChanges!;
 
         state.Count.Should().Be(3);
-        state[TestItem.AddressA].Nonce.Before.Should().Be(accountA.Nonce);
-        state[TestItem.AddressD].Balance.Before.Should().Be(accountD.Balance);
-        state[TestItem.AddressA].Balance.Before.Should().Be(accountA.Balance);
-        state[TestItem.AddressF].Balance.Before.Should().Be(null);
+        state[TestItem.AddressA].Nonce!.Before.Should().Be(accountA.Nonce);
+        state[TestItem.AddressD].Balance!.Before.Should().Be(accountD.Balance);
+        state[TestItem.AddressA].Balance!.Before.Should().Be(accountA.Balance);
+        state[TestItem.AddressF].Balance!.Before.Should().Be(null);
 
-        state[TestItem.AddressA].Nonce.After.Should().Be(accountA.Nonce + 1);
-        state[TestItem.AddressD].Balance.After.Should().Be(accountD.Balance + 21000 * tx.GasPrice);
-        state[TestItem.AddressA].Balance.After.Should().Be(accountA.Balance - 21000 * tx.GasPrice - tx.Value);
-        state[TestItem.AddressF].Balance.After.Should().Be(accountF.Balance + tx.Value);
+        state[TestItem.AddressA].Nonce!.After.Should().Be(accountA.Nonce + 1);
+        state[TestItem.AddressD].Balance!.After.Should().Be(accountD.Balance + 21000 * tx.GasPrice);
+        state[TestItem.AddressA].Balance!.After.Should().Be(accountA.Balance - 21000 * tx.GasPrice - tx.Value);
+        state[TestItem.AddressF].Balance!.After.Should().Be(accountF.Balance + tx.Value);
     }
 }

@@ -30,49 +30,49 @@ namespace Nethermind.Core.Test.Json
         public void Regression_0xa00000()
         {
             long? result = JsonSerializer.Deserialize<long?>("\"0xa00000\"", options);
-            Assert.AreEqual(10485760, result);
+            Assert.That(result, Is.EqualTo(10485760));
         }
 
         [Test]
         public void Can_read_0x0()
         {
             long? result = JsonSerializer.Deserialize<long?>("\"0x0\"", options);
-            Assert.AreEqual(long.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(long.Parse("0")));
         }
 
         [Test]
         public void Can_read_0x000()
         {
             long? result = JsonSerializer.Deserialize<long?>("\"0x0000\"", options);
-            Assert.AreEqual(long.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(long.Parse("0")));
         }
 
         [Test]
         public void Can_read_0()
         {
             long? result = JsonSerializer.Deserialize<long?>("0", options);
-            Assert.AreEqual(long.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(long.Parse("0")));
         }
 
         [Test]
         public void Can_read_1()
         {
             long? result = JsonSerializer.Deserialize<long?>("1", options);
-            Assert.AreEqual(long.Parse("1"), result);
+            Assert.That(result, Is.EqualTo(long.Parse("1")));
         }
 
         [Test]
         public void Can_read_null()
         {
             long? result = JsonSerializer.Deserialize<long?>("null", options);
-            Assert.AreEqual(null, result);
+            Assert.That(result, Is.EqualTo(null));
         }
 
         [Test]
         public void Can_read_negative_numbers()
         {
             long? result = JsonSerializer.Deserialize<long?>("-1", options);
-            Assert.AreEqual(long.Parse("-1"), result);
+            Assert.That(result, Is.EqualTo(long.Parse("-1")));
         }
     }
 }

@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 
 using FluentAssertions;
 using Nethermind.JsonRpc.Modules;
@@ -20,14 +21,14 @@ namespace Nethermind.JsonRpc.Test;
 
 public static class RpcTest
 {
-    public static JsonRpcResponse TestRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
+    public static async Task<JsonRpcResponse> TestRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
     {
         IJsonRpcService service = BuildRpcService(module);
         JsonRpcRequest request = GetJsonRequest(method, parameters);
-        return service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http)).Result;
+        return await service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http));
     }
 
-    public static string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
+    public static async Task<string> TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
     {
         IJsonRpcService service = BuildRpcService(module);
         JsonRpcRequest request = GetJsonRequest(method, parameters);
@@ -38,7 +39,7 @@ public static class RpcTest
         {
             context = contextAwareModule.Context;
         }
-        JsonRpcResponse response = service.SendRequestAsync(request, context).Result;
+        JsonRpcResponse response = await service.SendRequestAsync(request, context);
 
         EthereumJsonSerializer serializer = new();
 

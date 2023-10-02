@@ -57,7 +57,7 @@ public partial class ConsensusHelperTests
         {
             [JsonPropertyOrder(1)]
             [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-            public new T Result { get { return (T)base.Result; } set { base.Result = value; } }
+            public new T Result { get { return (T)base.Result!; } set { base.Result = value; } }
         }
 
         public virtual async Task<(T2, string)> GetData()

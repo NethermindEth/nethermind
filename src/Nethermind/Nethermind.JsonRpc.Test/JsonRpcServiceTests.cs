@@ -122,7 +122,7 @@ public class JsonRpcServiceTests
         };
 
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_newFilter", JsonSerializer.Serialize(parameters)) as JsonRpcSuccessResponse;
-        Assert.AreEqual(UInt256.One, response?.Result);
+        Assert.That(response?.Result, Is.EqualTo(UInt256.One));
     }
 
     [Test]
@@ -168,16 +168,6 @@ public class JsonRpcServiceTests
             .Error.Should().NotBeNull();
         Error error = (response as JsonRpcErrorResponse)!.Error!;
         error.Code.Should().Be(ErrorCodes.InvalidParams);
-    }
-    [Test]
-    public void GetWorkTest()
-    {
-        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_getWork().ReturnsForAnyArgs(x => ResultWrapper<IEnumerable<byte[]>>.Success(new[] { Bytes.FromHexString("aa"), Bytes.FromHexString("01") }));
-        JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_getWork") as JsonRpcSuccessResponse;
-        byte[][]? dataList = response?.Result as byte[][];
-        Assert.NotNull(dataList?.SingleOrDefault(d => d.ToHexString(true) == "0xaa"));
-        Assert.NotNull(dataList?.SingleOrDefault(d => d.ToHexString(true) == "0x01"));
     }
 
     [Test]

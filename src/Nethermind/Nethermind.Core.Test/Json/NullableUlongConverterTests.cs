@@ -29,42 +29,42 @@ namespace Nethermind.Core.Test.Json
         public void Regression_0xa00000()
         {
             ulong? result = JsonSerializer.Deserialize<ulong?>("\"0xa00000\"", options);
-            Assert.AreEqual(10485760, result);
+            Assert.That(result, Is.EqualTo(10485760));
         }
 
         [Test]
         public void Can_read_0x0()
         {
             ulong? result = JsonSerializer.Deserialize<ulong?>("\"0x0\"", options);
-            Assert.AreEqual(ulong.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(ulong.Parse("0")));
         }
 
         [Test]
         public void Can_read_0x000()
         {
             ulong? result = JsonSerializer.Deserialize<ulong?>("\"0x000\"", options);
-            Assert.AreEqual(ulong.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(ulong.Parse("0")));
         }
 
         [Test]
         public void Can_read_0()
         {
             ulong? result = JsonSerializer.Deserialize<ulong?>("0", options);
-            Assert.AreEqual(ulong.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(ulong.Parse("0")));
         }
 
         [Test]
         public void Can_read_1()
         {
             ulong? result = JsonSerializer.Deserialize<ulong?>("1", options);
-            Assert.AreEqual(ulong.Parse("1"), result);
+            Assert.That(result, Is.EqualTo(ulong.Parse("1")));
         }
 
         [Test]
         public void Can_read_null()
         {
             ulong? result = JsonSerializer.Deserialize<ulong?>("null", options);
-            Assert.AreEqual(null, result);
+            Assert.That(result, Is.EqualTo(null));
         }
 
         [Test]

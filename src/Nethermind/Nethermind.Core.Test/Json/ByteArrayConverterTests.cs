@@ -26,7 +26,7 @@ namespace Nethermind.Core.Test.Json
         public void Direct_null()
         {
             IJsonSerializer serializer = new EthereumJsonSerializer();
-            var result = serializer.Serialize<byte[]>(null);
+            var result = serializer.Serialize<byte[]?>(null);
             result.Should().Be("null");
         }
     }

@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             var result = serializer.Serialize(blockParameter);
 
-            Assert.AreEqual(output, result);
+            Assert.That(result, Is.EqualTo(output));
         }
 
         [TestCase("\"0x0\"", 0)]
@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             var result = serializer.Serialize(blockParameter);
 
-            Assert.AreEqual(output, result);
+            Assert.That(result, Is.EqualTo(output));
         }
 
         [Test]
