@@ -314,16 +314,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.Value);
             stream.Encode(item.Data);
             _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
-            if(item.MaxFeePerDataGas.Value == 42_000_000_000)
-            {
-                byte[] brokenDataGas = new byte[33];
-                Array.Fill(brokenDataGas, (byte)0xff);
-                stream.Encode(brokenDataGas);
-            }
-            else
-            {
-                stream.Encode(item.MaxFeePerDataGas.Value);
-            }
+            stream.Encode(item.MaxFeePerDataGas.Value);
             stream.Encode(item.BlobVersionedHashes);
         }
 
