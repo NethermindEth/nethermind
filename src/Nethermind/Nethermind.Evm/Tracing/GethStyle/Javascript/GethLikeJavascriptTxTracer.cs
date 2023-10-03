@@ -21,6 +21,7 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
 {
     private readonly V8ScriptEngine _engine = new();
     private readonly dynamic _tracer;
+    private readonly IWorldState _worldState;
     private readonly GethJavascriptStyleLog _customTraceEntry;
     private readonly List<byte> _memory = new List<byte>();
 
@@ -30,6 +31,7 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
         _customTraceEntry = new(_engine);
         _engine.Execute(LoadJavascriptCode(options.Tracer));
         _tracer = _engine.Script.tracer;
+        _worldState = worldState;
         IsTracingRefunds = true;
         IsTracingActions = true;
     }
@@ -58,8 +60,9 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
             _customTraceEntry.gas = CurrentTraceEntry.Gas;
             _customTraceEntry.gasCost = CurrentTraceEntry.GasCost;
             _customTraceEntry.depth = CurrentTraceEntry.Depth;
-            Step(_customTraceEntry, null);
-            Console.WriteLine("this is it {0}", _customTraceEntry.op.isPush());
+            Step(_customTraceEntry, _worldState);
+            Console.WriteLine("this isPush {0}", _customTraceEntry.op.isPush());
+            // Console.WriteLine("this is the current result", JArray.FromObject(Trace.CustomTracerResult.ToString()));
         }
     }
 
@@ -79,6 +82,7 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
     {
         GethLikeTxTrace trace = base.BuildResult();
         trace.CustomTracerResult = _tracer.result(null, null);
+        // Console.WriteLine("this is the result {0}", JArray.FromObject(trace.CustomTracerResult));
         return trace;
     }
 
@@ -103,12 +107,12 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
         }
     }
 
-    public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
-    {
-        _memory.EnsureCapacity((int)(offset + data.Length));
-        data.CopyTo(CollectionsMarshal.AsSpan(_memory).Slice((int)offset, data.Length));
-        base.ReportMemoryChange(offset, in data);
-    }
+    // public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
+    // {
+    //     _memory.EnsureCapacity((int)(offset + data.Length));
+    //     data.CopyTo(CollectionsMarshal.AsSpan(_memory).Slice((int)offset, data.Length));
+    //     base.ReportMemoryChange(offset, in data);
+    // }
 
     public override void SetOperationStack(List<string> stackTrace)
     {
@@ -126,5 +130,4 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
         base.ReportRefund(refund);
         _customTraceEntry.refund = refund;
     }
-
 }
