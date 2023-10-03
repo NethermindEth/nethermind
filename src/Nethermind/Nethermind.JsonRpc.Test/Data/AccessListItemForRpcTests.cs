@@ -15,6 +15,19 @@ namespace Nethermind.JsonRpc.Test.Data;
 public class AccessListItemForRpcTests
 {
     [Test]
+    public void Single_address_with_no_storage()
+    {
+        Address address = TestItem.AddressA;
+        AccessList accessList = new AccessList.Builder()
+            .AddAddress(address)
+            .Build();
+
+        IEnumerable<AccessListItemForRpc> forRpc = AccessListItemForRpc.FromAccessList(accessList);
+        AccessListItemForRpc[] expected = { new(address, new UInt256[] { }) };
+        forRpc.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
     public void Single_address_with_multiple_storage_keys()
     {
         Address address = TestItem.AddressA;
