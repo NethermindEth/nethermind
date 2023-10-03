@@ -315,7 +315,7 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool ContainsTx(Keccak hash) => _persistentTxs.ContainsValue(hash);
+        public bool ContainsTx(Keccak hash) => _persistentTxs.ContainsKey(hash);
 
         public bool AddPeer(ITxPoolPeer peer)
         {

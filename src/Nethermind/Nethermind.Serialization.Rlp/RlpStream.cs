@@ -1409,7 +1409,7 @@ namespace Nethermind.Serialization.Rlp
             return $"[{nameof(RlpStream)}|{Position}/{Length}]";
         }
 
-        internal byte[][] DecodeByteArrays()
+        public byte[][] DecodeByteArrays()
         {
             int length = ReadSequenceLength();
             if (length is 0)

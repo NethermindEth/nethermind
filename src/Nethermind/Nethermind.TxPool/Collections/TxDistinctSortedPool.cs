@@ -130,7 +130,7 @@ namespace Nethermind.TxPool.Collections
             }
         }
 
-        public virtual void EnsureCapacity()
+        public virtual void VerifyCapacity()
         {
             if (Count > _poolCapacity && _logger.IsWarn)
                 _logger.Warn($"TxPool exceeds the config size {Count}/{_poolCapacity}");

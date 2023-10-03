@@ -28,13 +28,13 @@ namespace Nethermind.Blockchain.Test.Validators
     [TestFixture]
     public class HeaderValidatorTests
     {
-        private IHeaderValidator _validator;
-        private ISealValidator _ethash;
-        private TestLogger _testLogger;
-        private Block _parentBlock;
-        private Block _block;
-        private IBlockTree _blockTree;
-        private ISpecProvider _specProvider;
+        private IHeaderValidator _validator = null!;
+        private ISealValidator _ethash = null!;
+        private TestLogger _testLogger = null!;
+        private Block _parentBlock = null!;
+        private Block _block = null!;
+        private IBlockTree _blockTree = null!;
+        private ISpecProvider _specProvider = null!;
 
         [SetUp]
         public void Setup()

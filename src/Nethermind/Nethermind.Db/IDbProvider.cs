@@ -32,7 +32,7 @@ namespace Nethermind.Db
 
         public IDb MetadataDb => GetDb<IDb>(DbNames.Metadata);
 
-        public IDb BlobTransactionsDb => GetDb<IDb>(DbNames.BlobTransactions);
+        public IColumnsDb<BlobTxsColumns> BlobTransactionsDb => GetDb<IColumnsDb<BlobTxsColumns>>(DbNames.BlobTransactions);
 
         T GetDb<T>(string dbName) where T : class, IDb;
 

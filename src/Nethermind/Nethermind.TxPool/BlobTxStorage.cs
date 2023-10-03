@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -14,44 +15,37 @@ namespace Nethermind.TxPool;
 
 public class BlobTxStorage : ITxStorage
 {
-    private readonly IDb _database;
+    private readonly IDb _fullBlobTxsDb;
+    private readonly IDb _lightBlobTxsDb;
     private static readonly TxDecoder _txDecoder = new();
+    private static readonly LightTxDecoder _lightTxDecoder = new();
 
     public BlobTxStorage()
     {
-        _database = new MemDb();
+        _fullBlobTxsDb = new MemDb();
+        _lightBlobTxsDb = new MemDb();
     }
 
-    public BlobTxStorage(IDb database)
+    public BlobTxStorage(IColumnsDb<BlobTxsColumns> database)
     {
-        _database = database ?? throw new ArgumentNullException(nameof(database));
+        _fullBlobTxsDb = database.GetColumnDb(BlobTxsColumns.FullBlobTxs);
+        _lightBlobTxsDb = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
     }
 
-    public bool TryGet(ValueKeccak hash, [NotNullWhen(true)] out Transaction? transaction)
-        => TryDecode(_database.Get(hash.Bytes), out transaction);
-
-    private static bool TryDecode(byte[]? txBytes, out Transaction? transaction)
+    public bool TryGet(ValueKeccak hash, Address sender, UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
     {
-        if (txBytes is not null)
+        Span<byte> txHashPrefixed = stackalloc byte[64];
+        GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
+
+        byte[]? txBytes = _fullBlobTxsDb.Get(txHashPrefixed);
+        return TryDecodeFullTx(txBytes, sender, out transaction);
+    }
+
+    public IEnumerable<LightTransaction> GetAll()
+    {
+        foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())
         {
-            RlpStream rlpStream = new(txBytes);
-            Address sender = rlpStream.DecodeAddress()!;
-            UInt256 timestamp = rlpStream.DecodeUInt256();
-            transaction = Rlp.Decode<Transaction>(rlpStream, RlpBehaviors.InMempoolForm);
-            transaction.SenderAddress = sender;
-            transaction.Timestamp = timestamp;
-            return true;
-        }
-
-        transaction = default;
-        return false;
-    }
-
-    public IEnumerable<Transaction> GetAll()
-    {
-        foreach (byte[] txBytes in _database.GetAllValues())
-        {
-            if (TryDecode(txBytes, out Transaction? transaction))
+            if (TryDecodeLightTx(txBytes, out LightTransaction? transaction))
             {
                 yield return transaction!;
             }
@@ -65,18 +59,66 @@ public class BlobTxStorage : ITxStorage
             throw new ArgumentNullException(nameof(transaction));
         }
 
-        int length = Rlp.LengthOf(transaction.SenderAddress);
-        length += Rlp.LengthOf(transaction.Timestamp);
-        length += _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
+        Span<byte> txHashPrefixed = stackalloc byte[64];
+        GetHashPrefixedByTimestamp(transaction.Timestamp, transaction.Hash, txHashPrefixed);
 
+        int length = _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
         RlpStream rlpStream = new(length);
-        rlpStream.Encode(transaction.SenderAddress);
-        rlpStream.Encode(transaction.Timestamp);
         rlpStream.Encode(transaction, RlpBehaviors.InMempoolForm);
 
-        _database.Set(transaction.Hash, rlpStream.Data!);
+        _fullBlobTxsDb.Set(txHashPrefixed, rlpStream.Data!);
+        _lightBlobTxsDb.Set(transaction.Hash, _lightTxDecoder.Encode(transaction));
     }
 
-    public void Delete(ValueKeccak hash)
-        => _database.Remove(hash.Bytes);
+    public void Delete(ValueKeccak hash, UInt256 timestamp)
+    {
+        Span<byte> txHashPrefixed = stackalloc byte[64];
+        GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
+
+        _fullBlobTxsDb.Remove(txHashPrefixed);
+        _lightBlobTxsDb.Remove(hash.BytesAsSpan);
+    }
+
+    private static bool TryDecodeFullTx(byte[]? txBytes, Address sender, out Transaction? transaction)
+    {
+        if (txBytes is not null)
+        {
+            RlpStream rlpStream = new(txBytes);
+            transaction = Rlp.Decode<Transaction>(rlpStream, RlpBehaviors.InMempoolForm);
+            transaction.SenderAddress = sender;
+            return true;
+        }
+
+        transaction = default;
+        return false;
+    }
+
+    private static bool TryDecodeLightTx(byte[]? txBytes, out LightTransaction? lightTx)
+    {
+        if (txBytes is not null)
+        {
+            lightTx = _lightTxDecoder.Decode(txBytes);
+            return true;
+        }
+
+        lightTx = default;
+        return false;
+    }
+
+    private void GetHashPrefixedByTimestamp(UInt256 timestamp, ValueKeccak hash, Span<byte> txHashPrefixed)
+    {
+        timestamp.WriteBigEndian(txHashPrefixed);
+        hash.Bytes.CopyTo(txHashPrefixed[32..]);
+    }
+}
+
+internal static class UInt256Extensions
+{
+    public static void WriteBigEndian(in this UInt256 value, Span<byte> output)
+    {
+        BinaryPrimitives.WriteUInt64BigEndian(output.Slice(0, 8), value.u3);
+        BinaryPrimitives.WriteUInt64BigEndian(output.Slice(8, 8), value.u2);
+        BinaryPrimitives.WriteUInt64BigEndian(output.Slice(16, 8), value.u1);
+        BinaryPrimitives.WriteUInt64BigEndian(output.Slice(24, 8), value.u0);
+    }
 }

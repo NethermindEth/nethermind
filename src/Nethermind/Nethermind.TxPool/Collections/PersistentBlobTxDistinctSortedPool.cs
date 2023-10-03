@@ -33,15 +33,13 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         if (_logger.IsDebug) _logger.Debug("Recreating light collection of blob transactions and cache");
         int numberOfTxsInDb = 0;
         int numberOfBlobsInDb = 0;
-        Stopwatch stopwatch = new();
-        stopwatch.Start();
-        foreach (Transaction fullBlobTx in blobTxStorage.GetAll())
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        foreach (LightTransaction lightBlobTx in blobTxStorage.GetAll())
         {
-            if (base.TryInsert(fullBlobTx.Hash, new LightTransaction(fullBlobTx), out _))
+            if (base.TryInsert(lightBlobTx.Hash, lightBlobTx, out _))
             {
-                _blobTxCache.Set(fullBlobTx.Hash, fullBlobTx);
                 numberOfTxsInDb++;
-                numberOfBlobsInDb += fullBlobTx.BlobVersionedHashes?.Length ?? 0;
+                numberOfBlobsInDb += lightBlobTx.BlobVersionedHashes?.Length ?? 0;
             }
         }
 
@@ -67,14 +65,14 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
 
     public override bool TryGetValue(ValueKeccak hash, [NotNullWhen(true)] out Transaction? fullBlobTx)
     {
-        if (base.ContainsValue(hash))
+        if (base.TryGetValue(hash, out Transaction? lightTx))
         {
             if (_blobTxCache.TryGet(hash, out fullBlobTx))
             {
                 return true;
             }
 
-            if (_blobTxStorage.TryGet(hash, out fullBlobTx))
+            if (_blobTxStorage.TryGet(hash, lightTx.SenderAddress!, lightTx.Timestamp, out fullBlobTx))
             {
                 _blobTxCache.Set(hash, fullBlobTx);
                 return true;
@@ -88,13 +86,13 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
     protected override bool Remove(ValueKeccak hash, Transaction tx)
     {
         _blobTxCache.Delete(hash);
-        _blobTxStorage.Delete(hash);
+        _blobTxStorage.Delete(hash, tx.Timestamp);
         return base.Remove(hash, tx);
     }
 
-    public override void EnsureCapacity()
+    public override void VerifyCapacity()
     {
-        base.EnsureCapacity();
+        base.VerifyCapacity();
 
         if (_logger.IsDebug && Count == _poolCapacity)
             _logger.Debug($"Blob persistent storage has reached max size of {_poolCapacity}, blob txs can be evicted now");
