@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -17,13 +18,13 @@ namespace Nethermind.JsonRpc.Data
         public AccessListItemForRpc(Address address, IEnumerable<UInt256>? storageKeys)
         {
             Address = address;
-            StorageKeys = storageKeys ?? Enumerable.Empty<UInt256>();
+            StorageKeys = storageKeys;
         }
 
         public Address Address { get; set; }
 
         [JsonProperty(ItemConverterType = typeof(StorageCellIndexConverter))]
-        public IEnumerable<UInt256> StorageKeys { get; set; }
+        public IEnumerable<UInt256>? StorageKeys { get; set; }
 
         public static IEnumerable<AccessListItemForRpc> FromAccessList(AccessList accessList) =>
             accessList.Select(tuple => new AccessListItemForRpc(tuple.Address, tuple.StorageKeys));
@@ -34,16 +35,19 @@ namespace Nethermind.JsonRpc.Data
             foreach (AccessListItemForRpc accessListItem in accessList)
             {
                 builder.AddAddress(accessListItem.Address);
-                foreach (UInt256 index in accessListItem.StorageKeys)
+                if (accessListItem.StorageKeys is not null)
                 {
-                    builder.AddStorage(index);
+                    foreach (UInt256 index in accessListItem.StorageKeys)
+                    {
+                        builder.AddStorage(index);
+                    }
                 }
             }
 
             return builder.Build();
         }
 
-        public bool Equals(AccessListItemForRpc other) => Equals(Address, other.Address) && StorageKeys.SequenceEqual(other.StorageKeys);
+        public bool Equals(AccessListItemForRpc other) => Equals(Address, other.Address) && StorageKeys.NullableSequenceEqual(other.StorageKeys);
         public override bool Equals(object? obj) => obj is AccessListItemForRpc other && Equals(other);
         public override int GetHashCode() => HashCode.Combine(Address, StorageKeys);
     }
