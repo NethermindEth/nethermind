@@ -612,7 +612,7 @@ namespace Nethermind.Trie.Pruning
 
             try
             {
-                _currentBatch ??= _keyValueStore.StartBatch().ToSortedBatch();
+                _currentBatch ??= _keyValueStore.StartBatch();
                 if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
@@ -637,7 +637,7 @@ namespace Nethermind.Trie.Pruning
 
         private void Persist(TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None)
         {
-            _currentBatch ??= _keyValueStore.StartBatch().ToSortedBatch();
+            _currentBatch ??= _keyValueStore.StartBatch();
             if (currentNode is null)
             {
                 throw new ArgumentNullException(nameof(currentNode));
