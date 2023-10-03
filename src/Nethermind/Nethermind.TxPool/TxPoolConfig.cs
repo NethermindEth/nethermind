@@ -18,6 +18,6 @@ namespace Nethermind.TxPool
         public int MaxPendingBlobTxsPerSender { get; set; } = 16;
         public int HashCacheSize { get; set; } = 512 * 1024;
         public long? GasLimit { get; set; } = null;
-        public int? ReportMinutes { get; set; } = null;
+        public int? ReportMinutes { get; set; } = 5;
     }
 }
