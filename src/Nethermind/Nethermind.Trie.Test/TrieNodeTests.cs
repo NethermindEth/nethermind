@@ -908,6 +908,7 @@ namespace Nethermind.Trie.Test
             leaf2.ResolveKey(trieStore, false);
             leaf2.Seal();
             trieStore.CommitNode(0, new NodeCommitInfo(leaf2));
+            trieStore.FinishBlockCommit(TrieType.State, 0, leaf2);
 
             TrieNode trieNode = new(NodeType.Branch);
             trieNode.SetChild(1, leaf1);
