@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.AuRa.Config
             DefaultValue = "null")]
         string TxPriorityConfigFilePath { get; set; }
 
-        [ConfigItem(Description = "Whether to enable shuttering.")]
+        [ConfigItem(Description = "Whether to enable shuttering.", DefaultValue = "false")]
         bool UseShutter { get; set; }
     }
 }
