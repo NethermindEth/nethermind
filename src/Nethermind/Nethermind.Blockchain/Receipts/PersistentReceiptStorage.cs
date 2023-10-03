@@ -342,7 +342,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public void EnsureCanonical(Block block)
         {
-            using IBatch batch = _transactionDb.StartBatch().ToSortedBatch();
+            using IBatch batch = _transactionDb.StartBatch();
 
             long headNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
 
