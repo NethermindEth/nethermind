@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Int256;
-using Nethermind.TxPool;
+using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Serialization.Rlp;
+namespace Nethermind.TxPool;
 
 public class LightTxDecoder : TxDecoder<Transaction>
 {
@@ -62,11 +61,5 @@ public class LightTxDecoder : TxDecoder<Transaction>
             rlpStream.DecodeByteArrays(),
             rlpStream.DecodeUlong(),
             rlpStream.DecodeInt());
-    }
-
-    public UInt256 DecodeTimestamp(byte[] data)
-    {
-        RlpStream rlpStream = new(data);
-        return rlpStream.DecodeUInt256();
     }
 }

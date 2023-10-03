@@ -32,14 +32,13 @@ public class BlobTxStorage : ITxStorage
         _lightBlobTxsDb = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
     }
 
-    public bool TryGet(ValueKeccak hash, [NotNullWhen(true)] out Transaction? transaction)
+    public bool TryGet(ValueKeccak hash, Address sender, UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
     {
-        DecodeTimestamp(_lightBlobTxsDb.Get(hash.Bytes), out UInt256 timestamp);
         Span<byte> txHashPrefixed = stackalloc byte[64];
         GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
 
         byte[]? txBytes = _fullBlobTxsDb.Get(txHashPrefixed);
-        return TryDecodeFullTx(txBytes, out transaction);
+        return TryDecodeFullTx(txBytes, sender, out transaction);
     }
 
     public IEnumerable<LightTransaction> GetAll()
@@ -71,10 +70,8 @@ public class BlobTxStorage : ITxStorage
         _lightBlobTxsDb.Set(transaction.Hash, _lightTxDecoder.Encode(transaction));
     }
 
-    public void Delete(ValueKeccak hash)
+    public void Delete(ValueKeccak hash, UInt256 timestamp)
     {
-        DecodeTimestamp(_lightBlobTxsDb.Get(hash.Bytes), out UInt256 timestamp);
-
         Span<byte> txHashPrefixed = stackalloc byte[64];
         GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
 
@@ -82,12 +79,13 @@ public class BlobTxStorage : ITxStorage
         _lightBlobTxsDb.Remove(hash.BytesAsSpan);
     }
 
-    private static bool TryDecodeFullTx(byte[]? txBytes, out Transaction? transaction)
+    private static bool TryDecodeFullTx(byte[]? txBytes, Address sender, out Transaction? transaction)
     {
         if (txBytes is not null)
         {
             RlpStream rlpStream = new(txBytes);
             transaction = Rlp.Decode<Transaction>(rlpStream, RlpBehaviors.InMempoolForm);
+            transaction.SenderAddress = sender;
             return true;
         }
 
@@ -105,11 +103,6 @@ public class BlobTxStorage : ITxStorage
 
         lightTx = default;
         return false;
-    }
-
-    private static void DecodeTimestamp(byte[]? txBytes, out UInt256 timestamp)
-    {
-        timestamp = txBytes is not null ? _lightTxDecoder.DecodeTimestamp(txBytes) : default;
     }
 
     private void GetHashPrefixedByTimestamp(UInt256 timestamp, ValueKeccak hash, Span<byte> txHashPrefixed)

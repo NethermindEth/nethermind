@@ -65,14 +65,14 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
 
     public override bool TryGetValue(ValueKeccak hash, [NotNullWhen(true)] out Transaction? fullBlobTx)
     {
-        if (base.ContainsKey(hash))
+        if (base.TryGetValue(hash, out Transaction? lightTx))
         {
             if (_blobTxCache.TryGet(hash, out fullBlobTx))
             {
                 return true;
             }
 
-            if (_blobTxStorage.TryGet(hash, out fullBlobTx))
+            if (_blobTxStorage.TryGet(hash, lightTx.SenderAddress!, lightTx.Timestamp, out fullBlobTx))
             {
                 _blobTxCache.Set(hash, fullBlobTx);
                 return true;
@@ -86,7 +86,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
     protected override bool Remove(ValueKeccak hash, Transaction tx)
     {
         _blobTxCache.Delete(hash);
-        _blobTxStorage.Delete(hash);
+        _blobTxStorage.Delete(hash, tx.Timestamp);
         return base.Remove(hash, tx);
     }
 

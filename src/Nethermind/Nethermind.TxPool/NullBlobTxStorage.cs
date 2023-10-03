@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 
@@ -13,7 +14,7 @@ public class NullBlobTxStorage : ITxStorage
 {
     public static NullBlobTxStorage Instance { get; } = new();
 
-    public bool TryGet(ValueKeccak hash, [NotNullWhen(true)] out Transaction? transaction)
+    public bool TryGet(ValueKeccak hash, Address sender, UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
     {
         transaction = default;
         return false;
@@ -23,5 +24,5 @@ public class NullBlobTxStorage : ITxStorage
 
     public void Add(Transaction transaction) { }
 
-    public void Delete(ValueKeccak hash) { }
+    public void Delete(ValueKeccak hash, UInt256 timestamp) { }
 }
