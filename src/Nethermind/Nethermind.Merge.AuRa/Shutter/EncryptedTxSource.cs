@@ -15,6 +15,6 @@ public class EncryptedTxSource : ITxSource
 {
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
     {
-        return Enumerable.Empty<Transaction>();
+        return Enumerable.Repeat(new Transaction(), 10);
     }
 }
