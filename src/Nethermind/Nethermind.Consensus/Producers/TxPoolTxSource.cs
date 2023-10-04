@@ -175,26 +175,17 @@ namespace Nethermind.Consensus.Producers
 
         private IEnumerable<Transaction> PickBlobTxsBetterThanCurrentTx(ArrayPoolList<Transaction> selectedBlobTxs, Transaction tx, IComparer<Transaction> comparer)
         {
-            if (selectedBlobTxs.Count > 0)
+            while (selectedBlobTxs.Count > 0)
             {
-                using ArrayPoolList<Transaction> txsToRemove = new(selectedBlobTxs.Count);
-
-                foreach (Transaction blobTx in selectedBlobTxs)
+                Transaction blobTx = selectedBlobTxs[0];
+                if (comparer.Compare(blobTx, tx) > 0)
                 {
-                    if (comparer.Compare(blobTx, tx) > 0)
-                    {
-                        yield return blobTx;
-                        txsToRemove.Add(blobTx);
-                    }
-                    else
-                    {
-                        break;
-                    }
+                    yield return blobTx;
+                    selectedBlobTxs.Remove(blobTx);
                 }
-
-                foreach (Transaction txToRemove in txsToRemove)
+                else
                 {
-                    selectedBlobTxs.Remove(txToRemove);
+                    break;
                 }
             }
         }
