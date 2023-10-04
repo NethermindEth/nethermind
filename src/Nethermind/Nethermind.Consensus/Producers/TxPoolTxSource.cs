@@ -58,59 +58,15 @@ namespace Nethermind.Consensus.Producers
             IEnumerable<Transaction> blobTransactions = GetOrderedTransactions(pendingBlobTransactionsEquivalences, comparer);
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
+            int checkedTransactions = 0;
             int selectedTransactions = 0;
-            int i = 0;
-            int blobsCounter = 0;
-            UInt256 blobGasPrice = UInt256.Zero;
             using ArrayPoolList<Transaction> selectedBlobTxs = new(Eip4844Constants.MaxBlobsPerBlock);
 
-            foreach (Transaction blobTx in blobTransactions)
-            {
-                if (blobsCounter == Eip4844Constants.MaxBlobsPerBlock)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, no more blob space. Block already have {blobsCounter} which is max value allowed.");
-                    break;
-                }
-
-                if (!TryGetFullBlobTx(blobTx, out Transaction fullBlobTx))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
-                    continue;
-                }
-
-                i++;
-
-                bool success = _txFilterPipeline.Execute(fullBlobTx, parent);
-                if (!success) continue;
-
-                if (blobGasPrice.IsZero && !TryUpdateBlobGasPrice(fullBlobTx, parent, out blobGasPrice))
-                {
-                    continue;
-                }
-
-                if (blobGasPrice > fullBlobTx.MaxFeePerBlobGas)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {fullBlobTx.ToShortString()}, data gas fee is too low.");
-                    continue;
-                }
-
-                int txAmountOfBlobs = fullBlobTx.BlobVersionedHashes?.Length ?? 0;
-                if (blobsCounter + txAmountOfBlobs > Eip4844Constants.MaxBlobsPerBlock)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {fullBlobTx.ToShortString()}, not enough blob space.");
-                    continue;
-                }
-
-                blobsCounter += txAmountOfBlobs;
-                if (_logger.IsTrace) _logger.Trace($"Selected shard blob tx {fullBlobTx.ToShortString()} to be potentially included in block, total blobs included: {blobsCounter}.");
-
-                selectedTransactions++;
-                selectedBlobTxs.Add(fullBlobTx);
-            }
+            SelectBlobTransactions(blobTransactions, parent, selectedBlobTxs);
 
             foreach (Transaction tx in transactions)
             {
-                i++;
+                checkedTransactions++;
 
                 if (tx.SenderAddress is null)
                 {
@@ -141,7 +97,78 @@ namespace Nethermind.Consensus.Producers
                 }
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Potentially selected {selectedTransactions} out of {i} pending transactions checked.");
+            if (_logger.IsDebug) _logger.Debug($"Potentially selected {selectedTransactions} out of {checkedTransactions} pending transactions checked.");
+        }
+
+        private IEnumerable<Transaction> PickBlobTxsBetterThanCurrentTx(ArrayPoolList<Transaction> selectedBlobTxs, Transaction tx, IComparer<Transaction> comparer)
+        {
+            while (selectedBlobTxs.Count > 0)
+            {
+                Transaction blobTx = selectedBlobTxs[0];
+                if (comparer.Compare(blobTx, tx) > 0)
+                {
+                    yield return blobTx;
+                    selectedBlobTxs.Remove(blobTx);
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, ArrayPoolList<Transaction> selectedBlobTxs)
+        {
+            int checkedBlobTransactions = 0;
+            int selectedBlobTransactions = 0;
+            int blobsCounter = 0;
+            UInt256 blobGasPrice = UInt256.Zero;
+
+            foreach (Transaction blobTx in blobTransactions)
+            {
+                if (blobsCounter == Eip4844Constants.MaxBlobsPerBlock)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, no more blob space. Block already have {blobsCounter} which is max value allowed.");
+                    break;
+                }
+
+                checkedBlobTransactions++;
+
+                int txAmountOfBlobs = blobTx.BlobVersionedHashes?.Length ?? 0;
+                if (blobsCounter + txAmountOfBlobs > Eip4844Constants.MaxBlobsPerBlock)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
+                    continue;
+                }
+
+                if (!TryGetFullBlobTx(blobTx, out Transaction fullBlobTx))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
+                    continue;
+                }
+
+                bool success = _txFilterPipeline.Execute(fullBlobTx, parent);
+                if (!success) continue;
+
+                if (blobGasPrice.IsZero && !TryUpdateBlobGasPrice(fullBlobTx, parent, out blobGasPrice))
+                {
+                    continue;
+                }
+
+                if (blobGasPrice > fullBlobTx.MaxFeePerBlobGas)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {fullBlobTx.ToShortString()}, data gas fee is too low.");
+                    continue;
+                }
+
+                blobsCounter += txAmountOfBlobs;
+                if (_logger.IsTrace) _logger.Trace($"Selected shard blob tx {fullBlobTx.ToShortString()} to be potentially included in block, total blobs included: {blobsCounter}.");
+
+                selectedBlobTransactions++;
+                selectedBlobTxs.Add(fullBlobTx);
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"Potentially selected {selectedBlobTransactions} out of {checkedBlobTransactions} pending blob transactions checked.");
         }
 
         private bool TryGetFullBlobTx(Transaction blobTx, [NotNullWhen(true)] out Transaction? fullBlobTx)
@@ -171,23 +198,6 @@ namespace Nethermind.Consensus.Producers
                 return false;
             }
             return true;
-        }
-
-        private IEnumerable<Transaction> PickBlobTxsBetterThanCurrentTx(ArrayPoolList<Transaction> selectedBlobTxs, Transaction tx, IComparer<Transaction> comparer)
-        {
-            while (selectedBlobTxs.Count > 0)
-            {
-                Transaction blobTx = selectedBlobTxs[0];
-                if (comparer.Compare(blobTx, tx) > 0)
-                {
-                    yield return blobTx;
-                    selectedBlobTxs.Remove(blobTx);
-                }
-                else
-                {
-                    break;
-                }
-            }
         }
 
         protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<Address, Transaction[]> pendingTransactions, IComparer<Transaction> comparer) =>
