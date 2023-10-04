@@ -168,9 +168,8 @@ namespace Nethermind.TxPool.Test
             if (isPersistentStorage)
             {
                 blobTxFromDb.Should().BeEquivalentTo(blobTxAdded, options => options
-                    .Excluding(t => t.SenderAddress) // sender is not encoded/decoded...
-                    .Excluding(t => t.GasBottleneck) // ...as well as GasBottleneck...
-                    .Excluding(t => t.PoolIndex));   // ...and PoolIndex
+                    .Excluding(t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
+                    .Excluding(t => t.PoolIndex));   // ...as well as PoolIndex
             }
         }
 
@@ -292,9 +291,8 @@ namespace Nethermind.TxPool.Test
             blobTxReturned.Should().BeEquivalentTo(oldTx);
             blobTxStorage.TryGet(oldTx.Hash, oldTx.SenderAddress!, oldTx.Timestamp, out Transaction blobTxFromDb).Should().BeTrue();
             blobTxFromDb.Should().BeEquivalentTo(oldTx, options => options
-                .Excluding(t => t.SenderAddress) // sender is not encoded/decoded...
-                .Excluding(t => t.GasBottleneck) // ...as well as GasBottleneck...
-                .Excluding(t => t.PoolIndex));   // ...and PoolIndex
+                .Excluding(t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
+                .Excluding(t => t.PoolIndex));   // ...as well as PoolIndex
 
             _txPool.SubmitTx(newTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             _txPool.GetPendingBlobTransactionsCount().Should().Be(1);
@@ -303,9 +301,8 @@ namespace Nethermind.TxPool.Test
             blobTxStorage.TryGet(oldTx.Hash, oldTx.SenderAddress, oldTx.Timestamp, out blobTxFromDb).Should().BeFalse();
             blobTxStorage.TryGet(newTx.Hash, newTx.SenderAddress!, newTx.Timestamp, out blobTxFromDb).Should().BeTrue();
             blobTxFromDb.Should().BeEquivalentTo(newTx, options => options
-                .Excluding(t => t.SenderAddress) // sender is not encoded/decoded...
-                .Excluding(t => t.GasBottleneck) // ...as well as GasBottleneck...
-                .Excluding(t => t.PoolIndex));   // ...and PoolIndex
+                .Excluding(t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
+                .Excluding(t => t.PoolIndex));   // ...as well as PoolIndex
         }
 
         [Test]
