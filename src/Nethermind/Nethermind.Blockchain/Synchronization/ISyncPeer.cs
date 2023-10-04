@@ -25,7 +25,6 @@ namespace Nethermind.Blockchain.Synchronization
         string ClientId => Node?.ClientId;
         NodeClientType ClientType => Node?.ClientType ?? NodeClientType.Unknown;
         Keccak HeadHash { get; set; }
-        long HeadNumber { get; set; }
         UInt256 TotalDifficulty { get; set; }
         bool IsInitialized { get; set; }
         bool IsPriority { get; set; }

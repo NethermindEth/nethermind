@@ -14,6 +14,8 @@ namespace Nethermind.TxPool
 
         IAccountStateProvider AccountStateProvider { get; }
 
+        public long BestKnownBlockNumber { get; }
+
         public long? BlockGasLimit { get; }
 
         public UInt256 CurrentBaseFee { get; }
