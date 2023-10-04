@@ -240,7 +240,7 @@ async static Task SendBlobs(
                     blobs[0][31] += 1;
                     break;
                 case "7": maxFeePerDataGas = UInt256.MaxValue; break;
-                case "8": maxFeePerDataGas = 42_000_000_000; break;
+                //case "8": maxFeePerDataGas = 42_000_000_000; break;
                 case "9": proofs = proofs.Skip(1).ToArray(); break;
                 case "10": commitments = commitments.Skip(1).ToArray(); break;
                 case "11": maxFeePerDataGas = UInt256.MaxValue / Eip4844Constants.DataGasPerBlob + 1; break;

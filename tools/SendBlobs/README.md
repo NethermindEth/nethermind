@@ -93,7 +93,7 @@ Issues/Options that can be intentionally added:
   5    = 1st blob's wrong commitment
   6    = 1st blob with a modulo correct, but > modulo value
   7    = max fee per blob gas = max value
-  8    = max fee per blob gas > max value
+  
   9    = 1st proof removed
   10   = 1st commitment removed
   11   = max fee per blob gas = max value / blobgasperblob + 1
