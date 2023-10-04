@@ -21,6 +21,9 @@ public class MultiCallBlockValidatorProxy : IBlockValidator
     public bool ValidateWithdrawals(Block block, out string? error) =>
         _baseBlockValidator.ValidateWithdrawals(block, out error);
 
+    public bool ValidateOrphanedBlock(Block block, out string? error) =>
+        return _baseBlockValidator.ValidateOrphanedBlock(block, out error);
+
     public bool ValidateSuggestedBlock(Block block) =>
         _baseBlockValidator.ValidateSuggestedBlock(block);
 

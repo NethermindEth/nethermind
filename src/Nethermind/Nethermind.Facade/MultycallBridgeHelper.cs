@@ -52,12 +52,18 @@ public class MultycallBridgeHelper
         IBlockTracer tracer)
     {
         using MultiCallReadOnlyBlocksProcessingEnv? env = _multiCallProcessingEnv.Clone(payload.TraceTransfers);
+        Block? parentBlock = env.BlockTree.FindBlock(parent.Number);
+        if (parentBlock != null)
+        {
+            env.BlockTree.UpdateMainChain(new[] { parentBlock }, true, true);
+            env.BlockTree.UpdateHeadBlock(parentBlock.Hash);
+        }
 
         IBlockProcessor? processor = env.GetProcessor();
         BlockStateCall<Transaction>? firstBlock = payload.BlockStateCalls.FirstOrDefault();
         if (firstBlock?.BlockOverrides?.Number != null
             && firstBlock?.BlockOverrides?.Number > UInt256.Zero
-            && firstBlock?.BlockOverrides?.Number < (ulong)long.MaxValue)
+            && firstBlock?.BlockOverrides?.Number < long.MaxValue)
         {
             BlockHeader? searchResult =
                 env.BlockTree.FindHeader((long)firstBlock?.BlockOverrides.Number);
@@ -73,8 +79,6 @@ public class MultycallBridgeHelper
 
         foreach (BlockStateCall<Transaction>? callInputBlock in payload.BlockStateCalls)
         {
-            env.StateProvider.StateRoot = parent.StateRoot!;
-
             BlockHeader callHeader = callInputBlock.BlockOverrides is not null
                 ? callInputBlock.BlockOverrides.GetBlockHeader(parent, _blocksConfig)
                 : new BlockHeader(
@@ -211,7 +215,6 @@ public class MultycallBridgeHelper
             UpdateCode(stateProvider, currentSpec, accountOverride, address);
             UpdateState(stateProvider, accountOverride, address);
         }
-        stateProvider.Commit(currentSpec);
     }
 
     private static void UpdateState(IWorldState? stateProvider, AccountOverride? accountOverride, Address address)

@@ -26,6 +26,7 @@ public class DbConfig : IDbConfig
     public bool? DisableCompression { get; set; } = false;
     public ulong? CompactionReadAhead { get; set; }
     public IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
+    public ulong? MaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
 
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint ReceiptsDbWriteBufferNumber { get; set; } = 4;
@@ -62,6 +63,7 @@ public class DbConfig : IDbConfig
     public bool? HeadersDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? HeadersDbCompactionReadAhead { get; set; }
     public IDictionary<string, string>? HeadersDbAdditionalRocksDbOptions { get; set; }
+    public ulong? HeadersDbMaxBytesForLevelBase { get; set; } = (ulong)128.MiB();
 
     public ulong BlockInfosDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint BlockInfosDbWriteBufferNumber { get; set; } = 4;

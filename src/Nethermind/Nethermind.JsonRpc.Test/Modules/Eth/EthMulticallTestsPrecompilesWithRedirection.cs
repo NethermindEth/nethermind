@@ -10,7 +10,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -90,18 +89,20 @@ public class EthMulticallTestsPrecompilesWithRedirection
         {
             Data = transactionData,
             To = contractAddress,
-            SenderAddress = TestItem.PublicKeyB.Address,
-            GasLimit = 50_000
+            SenderAddress = TestItem.PublicKeyA.Address,
+            GasLimit = 50_000,
+            GasPrice = 20.GWei()
+
         };
 
 
-        chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
+        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         BlockHeader header = chain.BlockFinder.Head.Header;
         IReleaseSpec spec = chain.SpecProvider.GetSpec(header);
-        systemTransactionForModifiedVM.GasPrice = header.BaseFeePerGas >= 1 ? header.BaseFeePerGas : 1;
-        systemTransactionForModifiedVM.GasLimit = (long)systemTransactionForModifiedVM.CalculateTransactionPotentialCost(spec.IsEip1559Enabled, header.BaseFeePerGas);
+        //systemTransactionForModifiedVM.GasPrice = header.BaseFeePerGas >= 1 ? header.BaseFeePerGas : 1;
+        //systemTransactionForModifiedVM.GasLimit = (long)systemTransactionForModifiedVM.CalculateTransactionPotentialCost(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
         MultiCallPayload<TransactionForRpc> payload = new()
         {
@@ -117,16 +118,17 @@ public class EthMulticallTestsPrecompilesWithRedirection
             },
             Calls = new[]
             {
+
                 new TransactionForRpc(systemTransactionForModifiedVM),
             }
         }},
             TraceTransfers = true,
-            Validation = true
+            Validation = false
         };
 
         //Force persistancy of head block in main chain
         chain.BlockTree.UpdateMainChain(new[] { chain.BlockFinder.Head }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash);
+        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
@@ -135,10 +137,10 @@ public class EthMulticallTestsPrecompilesWithRedirection
             executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
-        byte[] addressBytes = result.Data[0].Calls[0].ReturnData
+        byte[] addressBytes = result.Data[0].Calls[0].ReturnData!
                .SliceWithZeroPaddingEmptyOnError(12, 20);
         Address resultingAddress = new(addressBytes);
-        Assert.AreEqual(realSenderAccount, resultingAddress);
+        Assert.That(resultingAddress, Is.EqualTo(realSenderAccount));
 
     }
 }

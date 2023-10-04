@@ -139,7 +139,7 @@ public class EthRpcMulticallTestsBase
         //createContractTxReceipt2.ContractAddress
         //    .Should().NotBeNull($"Contract transaction {tx.Hash} was not deployed.");
 
-        Address contractAddress1;
+        Address? contractAddress1;
         using (SecureStringWrapper pass = new("testB"))
         {
             wallet.Import(fromPrivateKey.KeyBytes, pass.SecureData);
@@ -147,20 +147,20 @@ public class EthRpcMulticallTestsBase
             (Keccak hash, AcceptTxResult? code) = await txSender.SendTransaction(tx,
                 TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
 
-            code.Value.Should().Be(AcceptTxResult.Accepted);
+            code?.Should().Be(AcceptTxResult.Accepted);
             Transaction[] txs = chain1.TxPool.GetPendingTransactions();
 
             await chain1.AddBlock(true, txs);
 
-            TxReceipt createContractTxReceipt = null;
+            TxReceipt? createContractTxReceipt = null;
             while (createContractTxReceipt == null)
             {
                 await Task.Delay(100); // wait... todo enforce!
-                createContractTxReceipt = chain1.Bridge.GetReceipt(tx.Hash);
+                createContractTxReceipt = chain1.Bridge.GetReceipt(tx.Hash!);
             }
 
             createContractTxReceipt.ContractAddress.Should()
-                .NotBeNull($"Contract transaction {tx.Hash} was not deployed.");
+                .NotBeNull($"Contract transaction {tx.Hash!} was not deployed.");
             contractAddress1 = createContractTxReceipt.ContractAddress;
         }
 
