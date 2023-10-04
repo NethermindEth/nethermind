@@ -174,22 +174,14 @@ namespace Nethermind.Api
         private ISealEngine? _sealEngine;
         public ISealEngine SealEngine
         {
-            get
-            {
-                return _sealEngine ??= new SealEngine(Sealer, SealValidator);
-            }
-
-            set
-            {
-                _sealEngine = value;
-            }
+            get => _sealEngine ??= new SealEngine(Sealer, SealValidator);
+            init => _sealEngine = value;
         }
 
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
         public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
         public ISyncModeSelector? SyncModeSelector { get; set; }
-
         public ISyncProgressResolver? SyncProgressResolver { get; set; }
         public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         public IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
@@ -202,8 +194,8 @@ namespace Nethermind.Api
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         public IStateReader? StateReader { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }
-        public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
-        public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
+        public ITimestamper Timestamper => Core.Timestamper.Default;
+        public ITimerFactory TimerFactory => Core.Timers.TimerFactory.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }
         public ITrieStore? TrieStore { get; set; }
         public IReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }

@@ -51,7 +51,7 @@ namespace Nethermind.Api
         IPoSSwitcher PoSSwitcher { get; set; }
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
-        ISealEngine SealEngine { get; set; }
+        ISealEngine SealEngine { get; init; }
         /// <summary>
         /// Can be used only for processing blocks, on all other contexts use <see cref="StateReader"/> or <see cref="ChainHeadStateProvider"/>.
         /// </summary>

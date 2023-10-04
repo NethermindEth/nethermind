@@ -10,6 +10,10 @@ namespace Nethermind.Evm;
 
 public interface IMultiCallVirtualMachine : IVirtualMachine
 {
-    public void SetCodeOverwrite(IWorldState worldState, IReleaseSpec vmSpec, Address key, CodeInfo value,
+    public void SetCodeOverwrite(
+        IWorldState worldState,
+        IReleaseSpec vmSpec,
+        Address key,
+        CodeInfo value,
         Address? redirectAddress = null);
 }

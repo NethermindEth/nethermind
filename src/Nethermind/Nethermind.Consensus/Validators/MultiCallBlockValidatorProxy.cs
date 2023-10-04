@@ -9,33 +9,20 @@ public class MultiCallBlockValidatorProxy : IBlockValidator
 {
     private readonly IBlockValidator _baseBlockValidator;
 
-    public MultiCallBlockValidatorProxy(IBlockValidator baseBlockValidator)
-    {
+    public MultiCallBlockValidatorProxy(IBlockValidator baseBlockValidator) =>
         _baseBlockValidator = baseBlockValidator;
-    }
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
-    {
-        return _baseBlockValidator.Validate(header, parent, isUncle);
-    }
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false) =>
+        _baseBlockValidator.Validate(header, parent, isUncle);
 
-    public bool Validate(BlockHeader header, bool isUncle = false)
-    {
-        return _baseBlockValidator.Validate(header, isUncle);
-    }
+    public bool Validate(BlockHeader header, bool isUncle = false) =>
+        _baseBlockValidator.Validate(header, isUncle);
 
-    public bool ValidateWithdrawals(Block block, out string? error)
-    {
-        return _baseBlockValidator.ValidateWithdrawals(block, out error);
-    }
+    public bool ValidateWithdrawals(Block block, out string? error) =>
+        _baseBlockValidator.ValidateWithdrawals(block, out error);
 
-    public bool ValidateSuggestedBlock(Block block)
-    {
-        return _baseBlockValidator.ValidateSuggestedBlock(block);
-    }
+    public bool ValidateSuggestedBlock(Block block) =>
+        _baseBlockValidator.ValidateSuggestedBlock(block);
 
-    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
-    {
-        return true;
-    }
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock) => true;
 }
