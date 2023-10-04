@@ -25,12 +25,26 @@ public class BlockStoreTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         store.Insert(block);
 
-        Block? retrieved = store.Get(block.Hash!, cached);
+        Block? retrieved = store.Get(block.Number, block.Hash!, cached);
         retrieved.Should().BeEquivalentTo(block);
 
-        store.Delete(block.Hash!);
+        store.Delete(block.Number, block.Hash!);
 
-        store.Get(block.Hash!, cached).Should().BeNull();
+        store.Get(block.Number, block.Hash!, cached).Should().BeNull();
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Test_can_get_block_that_was_stored_with_hash(bool cached)
+    {
+        TestMemDb db = new TestMemDb();
+        BlockStore store = new BlockStore(db);
+
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        db[block.Hash!.Bytes] = (new BlockDecoder()).Encode(block).Bytes;
+
+        Block? retrieved = store.Get(block.Number, block.Hash!, cached);
+        retrieved.Should().BeEquivalentTo(block);
     }
 
     [Test]
@@ -55,12 +69,12 @@ public class BlockStoreTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         store.Insert(block);
 
-        Block? retrieved = store.Get(block.Hash!, true);
+        Block? retrieved = store.Get(block.Number, block.Hash!, true);
         retrieved.Should().BeEquivalentTo(block);
 
         db.Clear();
 
-        retrieved = store.Get(block.Hash!, true);
+        retrieved = store.Get(block.Number, block.Hash!, true);
         retrieved.Should().BeEquivalentTo(block);
     }
 
@@ -76,7 +90,7 @@ public class BlockStoreTests
 
         store.Insert(block);
 
-        ReceiptRecoveryBlock retrieved = store.GetReceiptRecoveryBlock(block.Hash!)!.Value;
+        ReceiptRecoveryBlock retrieved = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
 
         retrieved.Header.Should().BeEquivalentTo(block.Header);
         retrieved.TransactionCount.Should().Be(block.Transactions.Length);
