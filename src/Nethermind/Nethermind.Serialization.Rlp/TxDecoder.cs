@@ -510,7 +510,6 @@ namespace Nethermind.Serialization.Rlp
             ReadOnlySpan<byte> sBytes = rlpStream.DecodeByteArraySpan();
             if (!(vBytes.IsEmpty && rBytes.IsEmpty && sBytes.IsEmpty))
             {
-                // TODO: Optimism No signature in system transactions.
                 ApplySignature(transaction, vBytes, rBytes, sBytes, rlpBehaviors);
             }
         }
@@ -525,7 +524,6 @@ namespace Nethermind.Serialization.Rlp
             ReadOnlySpan<byte> sBytes = decoderContext.DecodeByteArraySpan();
             if (!(vBytes.IsEmpty && rBytes.IsEmpty && sBytes.IsEmpty))
             {
-                // TODO: Optimism No signature in system transactions.
                 ApplySignature(transaction, vBytes, rBytes, sBytes, rlpBehaviors);
             }
         }
