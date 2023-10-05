@@ -139,6 +139,70 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
+        public void Nibbles_encoding_decoding_for_path_based_tree_fuzz()
+        {
+            int numberOfKeys = 1000;
+            Random r = new Random(Environment.TickCount);
+
+            SortedList<byte[], int> nibblesList = new SortedList<byte[], int>(Bytes.Comparer);
+            SortedList<byte[], int> encodedList = new SortedList<byte[], int>(Bytes.Comparer);
+
+            byte[] GenShortNibblePath(Random r)
+            {
+                return GenNibblePath(r).Slice(0, r.Next(1, 64));
+            }
+
+            byte[] GenNibblePath(Random r)
+            {
+                Span<byte> buffer = stackalloc byte[32];
+                r.NextBytes(buffer);
+                return Nibbles.BytesToNibbleBytes(buffer);
+            }
+
+            for (int i = 0; i < numberOfKeys / 2; i++)
+            {
+                byte[] newValue = GenShortNibblePath(r);
+                if (!nibblesList.ContainsKey(newValue))
+                    nibblesList.Add(newValue, i);
+            }
+
+            //simulate longer paths for storage - all prefixed with account path
+            byte[][] accountPaths = new byte[numberOfKeys/100][];
+            for (int i = 0; i < numberOfKeys / 100; i++)
+                accountPaths[i] = GenNibblePath(r);
+
+            for (int i = numberOfKeys / 2; i < numberOfKeys; i++)
+            {
+                int accountIndex = r.Next(accountPaths.Length);
+                byte[] newValue = GenShortNibblePath(r);
+                byte[] newFullKey = Bytes.Concat(accountPaths[accountIndex], newValue);
+
+                if (!nibblesList.ContainsKey(newFullKey))
+                    nibblesList.Add(newFullKey, i);
+            }
+
+            foreach (var kvp in nibblesList)
+            {
+                byte[] encodedBytes = Nibbles.NibblesToByteStorage(kvp.Key);
+                byte[] decodedNibbles = Nibbles.BytesToNibblesStorage(encodedBytes);
+
+                bool isEqual = Bytes.Comparer.Compare(decodedNibbles, kvp.Key) == 0;
+
+                Assert.That(isEqual, Is.True);
+
+                encodedList.Add(encodedBytes, kvp.Value);
+            }
+
+            var valuesInNibbleList = nibblesList.Values;
+            var valuesInByteList = nibblesList.Values;
+
+            for (int i = 0; i < valuesInNibbleList.Count; i++)
+            {
+                Assert.That(valuesInByteList[i], Is.EqualTo(valuesInNibbleList[i]));
+            }
+        }
+
+        [Test]
         public void Nibbles_to_byte_and_reverse()
         {
             List<byte[]> keys = new List<byte[]>

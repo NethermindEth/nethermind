@@ -890,6 +890,7 @@ public class TrieByPathTests
     [TestCase("0x0a010b02", new byte[] { 5 }, new byte[] { 0, 15 })]
     [TestCase("0x0a010b02", new byte[] { 0, 15 }, new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 })]
     [TestCase("0x", new byte[] { 0, 3, 6 }, new byte[] { 1, 4, 10 })]
+    [TestCase("0x00", new byte[] { 3, 6 }, new byte[] { 1, 4, 10 })]
     public void Request_deletion_for_branch_2(string branchPath, byte[] existingChildren, byte[] deletedChildren)
     {
         ByPathStateMemDb stateDb = new ByPathStateMemDb();

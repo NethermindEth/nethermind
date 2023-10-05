@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
@@ -154,9 +155,10 @@ namespace Nethermind.Trie
             return bytes;
         }
 
+        [SkipLocalsInit]
         public static byte[] NibblesToByteStorage(Span<byte> nibbles)
         {
-            Span<byte> bytes = stackalloc byte[nibbles.Length];
+            Span<byte> bytes = stackalloc byte[130];
 
             int ni = 0;
             int bi = 0;
