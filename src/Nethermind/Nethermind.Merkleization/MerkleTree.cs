@@ -144,7 +144,6 @@ public abstract class MerkleTree : IMerkleList
 
     public MerkleTree(IKeyValueStore<ulong, byte[]> keyValueStore)
     {
-        Root = new Root();
         _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
 
         byte[]? countBytes = _keyValueStore[_countKey];
