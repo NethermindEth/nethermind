@@ -141,23 +141,24 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                if (!TryGetFullBlobTx(blobTx, out Transaction fullBlobTx))
+                if (blobGasPrice.IsZero && !TryUpdateBlobGasPrice(blobTx, parent, out blobGasPrice))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
                     continue;
                 }
 
-                bool success = _txFilterPipeline.Execute(fullBlobTx, parent);
-                if (!success) continue;
-
-                if (blobGasPrice.IsZero && !TryUpdateBlobGasPrice(fullBlobTx, parent, out blobGasPrice))
+                if (blobGasPrice > blobTx.MaxFeePerBlobGas)
                 {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, data gas fee is too low.");
                     continue;
                 }
 
-                if (blobGasPrice > fullBlobTx.MaxFeePerBlobGas)
+                bool success = _txFilterPipeline.Execute(blobTx, parent);
+                if (!success) continue;
+
+                if (!TryGetFullBlobTx(blobTx, out Transaction fullBlobTx))
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {fullBlobTx.ToShortString()}, data gas fee is too low.");
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
                     continue;
                 }
 
@@ -182,18 +183,18 @@ namespace Nethermind.Consensus.Producers
             return blobTx.Hash is not null && _transactionPool.TryGetPendingBlobTransaction(blobTx.Hash, out fullBlobTx);
         }
 
-        private bool TryUpdateBlobGasPrice(Transaction fullBlobTx, BlockHeader parent, out UInt256 blobGasPrice)
+        private bool TryUpdateBlobGasPrice(Transaction lightBlobTx, BlockHeader parent, out UInt256 blobGasPrice)
         {
             ulong? excessDataGas = BlobGasCalculator.CalculateExcessBlobGas(parent, _specProvider.GetSpec(parent));
             if (excessDataGas is null)
             {
-                if (_logger.IsTrace) _logger.Trace($"Declining {fullBlobTx.ToShortString()}, the specification is not configured to handle shard blob transactions.");
+                if (_logger.IsTrace) _logger.Trace($"Declining {lightBlobTx.ToShortString()}, the specification is not configured to handle shard blob transactions.");
                 blobGasPrice = UInt256.Zero;
                 return false;
             }
             if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(excessDataGas.Value, out blobGasPrice))
             {
-                if (_logger.IsTrace) _logger.Trace($"Declining {fullBlobTx.ToShortString()}, failed to calculate data gas price.");
+                if (_logger.IsTrace) _logger.Trace($"Declining {lightBlobTx.ToShortString()}, failed to calculate data gas price.");
                 blobGasPrice = UInt256.Zero;
                 return false;
             }
