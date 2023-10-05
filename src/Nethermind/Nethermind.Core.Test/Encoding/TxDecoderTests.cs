@@ -34,11 +34,10 @@ namespace Nethermind.Core.Test.Encoding
                 .WithType(TxType.AccessList)
                 .WithChainId(TestBlockchainIds.ChainId)
                 .WithAccessList(
-                    new AccessList(
-                        new Dictionary<Address, IReadOnlySet<UInt256>>
-                        {
-                            { Address.Zero, new HashSet<UInt256> { (UInt256)1 } }
-                        }, new Queue<object>(new List<object> { Address.Zero, (UInt256)1 })))
+                    new AccessList.Builder()
+                        .AddAddress(Address.Zero)
+                        .AddStorage(1)
+                        .Build())
                 .SignedAndResolved(), "access list");
             yield return (Build.A.Transaction
                 .WithData(new byte[] { 1, 2, 3 })
@@ -46,11 +45,10 @@ namespace Nethermind.Core.Test.Encoding
                 .WithMaxFeePerGas(30)
                 .WithChainId(TestBlockchainIds.ChainId)
                 .WithAccessList(
-                    new AccessList(
-                        new Dictionary<Address, IReadOnlySet<UInt256>>
-                        {
-                            { Address.Zero, new HashSet<UInt256> { (UInt256)1 } }
-                        }, new Queue<object>(new List<object> { Address.Zero, (UInt256)1 })))
+                    new AccessList.Builder()
+                        .AddAddress(Address.Zero)
+                        .AddStorage(1)
+                        .Build())
                 .SignedAndResolved(), "EIP1559 - access list");
             yield return (Build.A.Transaction
                 .WithType(TxType.EIP1559)
@@ -80,7 +78,7 @@ namespace Nethermind.Core.Test.Encoding
 
             Keccak expectedHash = Keccak.Compute(rlp.Bytes);
 
-            Transaction decodedTx = decoder.Decode(new RlpStream(rlp.Bytes));
+            Transaction decodedTx = decoder.Decode(new RlpStream(rlp.Bytes))!;
 
             decodedTx.SetPreHash(rlp.Bytes);
 
@@ -123,13 +121,47 @@ namespace Nethermind.Core.Test.Encoding
             decoded.EqualToTransaction(testCase.Tx);
         }
 
+        [TestCaseSource(nameof(TestCaseSource))]
+        public void Roundtrip_ValueDecoderContext_WithMemorySlice((Transaction Tx, string Description) testCase)
+        {
+            RlpStream rlpStream = new(10000);
+            _txDecoder.Encode(rlpStream, testCase.Tx);
+
+            Rlp.ValueDecoderContext decoderContext = new(rlpStream.Data, true);
+            rlpStream.Position = 0;
+            Transaction? decoded = _txDecoder.Decode(ref decoderContext);
+            decoded!.SenderAddress =
+                new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
+            decoded.Hash = decoded.CalculateHash();
+            decoded.EqualToTransaction(testCase.Tx);
+        }
+
+        [TestCaseSource(nameof(TestCaseSource))]
+        public void ValueDecoderContext_DecodeWithMemorySlice_ShouldUseSameBuffer((Transaction Tx, string Description) testCase)
+        {
+            if (!testCase.Tx.Data.HasValue || testCase.Tx.Data.Value.Length == 0) return;
+
+            RlpStream rlpStream = new(10000);
+            _txDecoder.Encode(rlpStream, testCase.Tx);
+
+            Rlp.ValueDecoderContext decoderContext = new(rlpStream.Data, true);
+            rlpStream.Position = 0;
+            Transaction? decoded = _txDecoder.Decode(ref decoderContext);
+
+            byte[] data1 = decoded!.Data!.Value.ToArray();
+            data1.AsSpan().Fill(1);
+            rlpStream.Data.AsSpan().Fill(1);
+
+            decoded.Data.Value.ToArray().Should().BeEquivalentTo(data1);
+        }
+
         [TestCaseSource(nameof(YoloV3TestCases))]
         public void Roundtrip_yolo_v3((string IncomingRlpHex, Keccak Hash) testCase)
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
 
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp);
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp)!;
             decoded.CalculateHash().Should().Be(testCase.Hash);
 
             RlpStream ourRlpOutput = new(incomingTxRlp.Length * 2);
@@ -145,10 +177,10 @@ namespace Nethermind.Core.Test.Encoding
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp);
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp)!;
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
 
-            decoded.CalculateHash().Should().Be(decoded.Hash);
+            decoded.CalculateHash().Should().Be(decoded.Hash!);
             decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
         }
 
@@ -157,7 +189,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp);
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp)!;
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
             decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
         }
@@ -167,7 +199,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp);
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp)!;
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
             decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
         }
@@ -193,14 +225,12 @@ namespace Nethermind.Core.Test.Encoding
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
             Span<byte> spanIncomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsSpan();
             Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp);
-            Transaction decodedByValueDecoderContext = _txDecoder.Decode(ref decoderContext,
-                wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None);
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp,
-                wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None);
-            Rlp encoded = _txDecoder.Encode(decoded!);
-            Rlp encodedWithDecodedByValueDecoderContext = _txDecoder.Encode(decodedByValueDecoderContext!);
-            decoded!.Hash.Should().Be(testCase.Hash);
-            decoded!.Hash.Should().Be(decodedByValueDecoderContext!.Hash);
+            Transaction decodedByValueDecoderContext = _txDecoder.Decode(ref decoderContext, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None)!;
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None)!;
+            Rlp encoded = _txDecoder.Encode(decoded);
+            Rlp encodedWithDecodedByValueDecoderContext = _txDecoder.Encode(decodedByValueDecoderContext);
+            decoded.Hash.Should().Be(testCase.Hash);
+            decoded.Hash.Should().Be(decodedByValueDecoderContext.Hash!);
             Assert.That(encodedWithDecodedByValueDecoderContext.Bytes, Is.EqualTo(encoded.Bytes));
         }
 
@@ -211,6 +241,35 @@ namespace Nethermind.Core.Test.Encoding
             Rlp rlpStreamResult = _txDecoder.Encode(testCase.Tx, RlpBehaviors.SkipTypedWrapping);
             Rlp rlpResult = Rlp.Encode(testCase.Tx, false, true, testCase.Tx.ChainId ?? 0);
             Assert.That(rlpStreamResult.Bytes, Is.EqualTo(rlpResult.Bytes));
+        }
+
+        [Test]
+        public void Duplicate_storage_keys_result_in_different_hashes()
+        {
+            Transaction noDuplicates = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithChainId(TestBlockchainIds.ChainId)
+                .WithAccessList(
+                    new AccessList.Builder()
+                        .AddAddress(Address.Zero)
+                        .AddStorage(1)
+                        .Build())
+                .SignedAndResolved()
+                .TestObject;
+
+            Transaction duplicates = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithChainId(TestBlockchainIds.ChainId)
+                .WithAccessList(
+                    new AccessList.Builder()
+                        .AddAddress(Address.Zero)
+                        .AddStorage(1)
+                        .AddStorage(1)
+                        .Build())
+                .SignedAndResolved()
+                .TestObject;
+
+            duplicates.CalculateHash().Should().NotBe(noDuplicates.CalculateHash());
         }
 
         public static IEnumerable<(string, Keccak)> SkipTypedWrappingTestCases()

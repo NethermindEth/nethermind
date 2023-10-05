@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Test.Visitors
     [TestFixture]
     public class DbBlocksLoaderTests
     {
-        private int _dbLoadTimeout = 5000;
+        private readonly int _dbLoadTimeout = 5000;
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Can_load_blocks_from_db()
@@ -37,23 +37,23 @@ namespace Nethermind.Blockchain.Test.Visitors
                 MemDb headersDb = new();
 
                 BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
-                for (int i = 0; i < testTree.Head.Number + 1; i++)
+                for (int i = 0; i < testTree.Head!.Number + 1; i++)
                 {
-                    Block ithBlock = testTree.FindBlock(i, BlockTreeLookupOptions.None);
-                    blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
+                    Block ithBlock = testTree.FindBlock(i, BlockTreeLookupOptions.None)!;
+                    blocksDb.Set(ithBlock.Hash!, Rlp.Encode(ithBlock).Bytes);
 
-                    headersDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock.Header).Bytes);
+                    headersDb.Set(ithBlock.Hash!, Rlp.Encode(ithBlock.Header).Bytes);
 
                     ChainLevelInfo ithLevel = new(
                         true,
-                        new BlockInfo[]
+                        blockInfos: new[]
                         {
-                            new(ithBlock.Hash, ithBlock.TotalDifficulty.Value) {WasProcessed = true}
+                            new BlockInfo(ithBlock.Hash!, ithBlock.TotalDifficulty!.Value) {WasProcessed = true}
                         });
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
-                blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
+                blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash!.Bytes);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
                 BlockTree blockTree = new(
@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                 DbBlocksLoader loader = new(blockTree, LimboNoErrorLogger.Instance);
                 await blockTree.Accept(loader, CancellationToken.None);
 
-                Assert.That(blockTree.BestSuggestedHeader.Hash, Is.EqualTo(testTree.Head.Hash), $"head {chainLength}");
+                Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(testTree.Head.Hash), $"head {chainLength}");
             }
         }
 
@@ -84,22 +84,22 @@ namespace Nethermind.Blockchain.Test.Visitors
                 MemDb headersDb = new();
 
                 BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
-                for (int i = 0; i < testTree.Head.Number + 1; i++)
+                for (int i = 0; i < testTree.Head!.Number + 1; i++)
                 {
-                    Block ithBlock = testTree.FindBlock(i, BlockTreeLookupOptions.None);
-                    blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
+                    Block ithBlock = testTree.FindBlock(i, BlockTreeLookupOptions.None)!;
+                    blocksDb.Set(ithBlock.Hash!, Rlp.Encode(ithBlock).Bytes);
 
-                    headersDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock.Header).Bytes);
+                    headersDb.Set(ithBlock.Hash!, Rlp.Encode(ithBlock.Header).Bytes);
 
-                    ChainLevelInfo ithLevel = new(true, new BlockInfo[1]
+                    ChainLevelInfo ithLevel = new(true, blockInfos: new[]
                     {
-                        new(ithBlock.Hash, ithBlock.TotalDifficulty.Value)
+                        new BlockInfo(ithBlock.Hash!, ithBlock.TotalDifficulty!.Value)
                     });
 
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
-                blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
+                blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash!.Bytes);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
                 BlockTree blockTree = new(
@@ -114,7 +114,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                 DbBlocksLoader loader = new(blockTree, LimboNoErrorLogger.Instance);
                 await blockTree.Accept(loader, CancellationToken.None);
 
-                Assert.That(blockTree.BestSuggestedHeader.Hash, Is.EqualTo(testTree.Head.Hash), $"head {chainLength}");
+                Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(testTree.Head.Hash), $"head {chainLength}");
             }
         }
 
@@ -164,11 +164,9 @@ namespace Nethermind.Blockchain.Test.Visitors
                 LimboLogs.Instance);
 
             CancellationTokenSource tokenSource = new();
-#pragma warning disable 4014
-            Task.Delay(_dbLoadTimeout).ContinueWith(t => tokenSource.Cancel());
-#pragma warning restore 4014
+            tokenSource.CancelAfter(_dbLoadTimeout);
 
-            tree2.NewBestSuggestedBlock += (sender, args) =>
+            tree2.NewBestSuggestedBlock += (_, args) =>
             {
                 if (args.Block.Hash == block1.Hash)
                 {
@@ -184,12 +182,12 @@ namespace Nethermind.Blockchain.Test.Visitors
             await tree2.Accept(loader, tokenSource.Token);
 
             Assert.That(tree2.BestKnownNumber, Is.EqualTo(3L), "best known");
-            tree2.Head.Header.Should().BeEquivalentTo(block3B.Header, options => { return options.Excluding(t => t.MaybeParent); });
+            tree2.Head!.Header.Should().BeEquivalentTo(block3B.Header, options => { return options.Excluding(t => t.MaybeParent); });
             tree2.BestSuggestedHeader.Should().BeEquivalentTo(block3B.Header, options => { return options.Excluding(t => t.MaybeParent); });
 
-            Assert.IsNull(blocksDb.Get(block1.Hash), "block 1");
-            Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
-            Assert.IsNull(blocksDb.Get(block3.Hash), "block 3");
+            Assert.IsNull(blocksDb.Get(block1.Hash!), "block 1");
+            Assert.IsNull(blocksDb.Get(block2.Hash!), "block 2");
+            Assert.IsNull(blocksDb.Get(block3.Hash!), "block 3");
 
             Assert.NotNull(blockInfosDb.Get(1), "level 1");
             Assert.NotNull(blockInfosDb.Get(2), "level 2");
@@ -234,11 +232,9 @@ namespace Nethermind.Blockchain.Test.Visitors
                 LimboLogs.Instance);
 
             CancellationTokenSource tokenSource = new();
-#pragma warning disable 4014
-            Task.Delay(_dbLoadTimeout).ContinueWith(t => tokenSource.Cancel());
-#pragma warning restore 4014
+            tokenSource.CancelAfter(_dbLoadTimeout);
 
-            tree2.NewBestSuggestedBlock += (sender, args) =>
+            tree2.NewBestSuggestedBlock += (_, args) =>
             {
                 if (args.Block.Hash == block1.Hash)
                 {
@@ -256,12 +252,12 @@ namespace Nethermind.Blockchain.Test.Visitors
             /* note the block tree historically loads one less block than it could */
 
             Assert.That(tree2.BestKnownNumber, Is.EqualTo(0L), "best known");
-            Assert.That(tree2.Head.Hash, Is.EqualTo(block0.Hash), "head");
-            Assert.That(tree2.BestSuggestedHeader.Hash, Is.EqualTo(block0.Hash), "suggested");
+            Assert.That(tree2.Head!.Hash, Is.EqualTo(block0.Hash), "head");
+            Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block0.Hash), "suggested");
 
-            Assert.IsNull(blocksDb.Get(block1.Hash), "block 1");
-            Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
-            Assert.IsNull(blocksDb.Get(block3.Hash), "block 3");
+            Assert.IsNull(blocksDb.Get(block1.Hash!), "block 1");
+            Assert.IsNull(blocksDb.Get(block2.Hash!), "block 2");
+            Assert.IsNull(blocksDb.Get(block3.Hash!), "block 3");
 
             Assert.IsNull(blockInfosDb.Get(1), "level 1");
             Assert.IsNull(blockInfosDb.Get(2), "level 2");

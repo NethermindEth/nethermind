@@ -74,7 +74,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                 StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, bytesPerMillisecond);
 
-                return task.Result;
+                return await task;
             }
 
             StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);

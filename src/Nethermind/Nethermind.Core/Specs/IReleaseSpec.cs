@@ -340,5 +340,10 @@ namespace Nethermind.Core.Specs
         public bool TransientStorageEnabled => IsEip1153Enabled;
 
         public bool WithdrawalsEnabled => IsEip4895Enabled;
+        public bool SelfdestructOnlyOnSameTransaction => IsEip6780Enabled;
+
+        public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
+        public bool MCopyIncluded => IsEip5656Enabled;
+        public bool BlobBaseFeeEnabled => IsEip4844Enabled;
     }
 }

@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
 
             for (int i = 0; i < times; i++)
             {
-                await _downloader.Dispatch(allocation.Current, batch, CancellationToken.None);
+                await _downloader.Dispatch(allocation.Current!, batch, CancellationToken.None);
             }
         }
     }

@@ -49,7 +49,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public ReceiptBuilder WithTransactionHash(Keccak hash)
+        public ReceiptBuilder WithTransactionHash(Keccak? hash)
         {
             TestObject.TxHash = hash;
             return this;
@@ -61,7 +61,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public ReceiptBuilder WithBlockHash(Keccak hash)
+        public ReceiptBuilder WithBlockHash(Keccak? hash)
         {
             TestObject.BlockHash = hash;
             return this;
@@ -85,7 +85,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public ReceiptBuilder WithError(string error)
+        public ReceiptBuilder WithError(string? error)
         {
             TestObjectInternal.Error = error;
             return this;
@@ -103,13 +103,13 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public ReceiptBuilder WithContractAddress(Address contractAddress)
+        public ReceiptBuilder WithContractAddress(Address? contractAddress)
         {
             TestObjectInternal.ContractAddress = contractAddress;
             return this;
         }
 
-        public ReceiptBuilder WithRecipient(Address recipient)
+        public ReceiptBuilder WithRecipient(Address? recipient)
         {
             TestObjectInternal.Recipient = recipient;
             return this;

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -30,12 +31,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
-            IEnumerable<Address> addressesAccessed = tracer.AccessList.Data.Keys;
+            IEnumerable<Address> addressesAccessed = tracer.AccessList!.Select(tuples => tuples.Address);
             IEnumerable<Address> expected = new[] {
                 SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, TestItem.AddressC
             };
 
-            Assert.IsNotEmpty(addressesAccessed);
             addressesAccessed.Should().BeEquivalentTo(expected);
         }
 
@@ -50,13 +50,12 @@ namespace Nethermind.Evm.Test.Tracing
 
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
-            IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> accessedData = tracer.AccessList.Data;
-
-            Assert.IsNotEmpty(accessedData);
-            accessedData.Should().BeEquivalentTo(
-                new Dictionary<Address, IReadOnlySet<UInt256>>{
-                    {SenderRecipientAndMiner.Default.Sender, ImmutableHashSet<UInt256>.Empty},
-                    {SenderRecipientAndMiner.Default.Recipient, new HashSet<UInt256>{105}}});
+            tracer.AccessList!.Should().BeEquivalentTo(
+                new[]
+                {
+                    (SenderRecipientAndMiner.Default.Sender, new UInt256[] { }),
+                    (SenderRecipientAndMiner.Default.Recipient, new UInt256[] { 105 })
+                });
         }
 
         protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);

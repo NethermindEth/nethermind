@@ -41,7 +41,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.BALANCE)
                 .Op(Instruction.POP)
                 .Done;
-            TestAllTracerWithOutput result = Execute(BlockNumber, 100000, code, timestamp: Timestamp - 1);
+            TestAllTracerWithOutput result = Execute((BlockNumber, Timestamp - 1), 100000, code);
             result.StatusCode.Should().Be(1);
             AssertGas(result, GasCostOf.Transaction + 2605);
         }

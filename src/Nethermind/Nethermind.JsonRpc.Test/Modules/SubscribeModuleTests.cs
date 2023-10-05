@@ -40,18 +40,18 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class SubscribeModuleTests
     {
-        private ISubscribeRpcModule _subscribeRpcModule;
-        private ILogManager _logManager;
-        private IBlockTree _blockTree;
-        private ITxPool _txPool;
-        private IReceiptStorage _receiptStorage;
-        private IFilterStore _filterStore;
-        private ISubscriptionManager _subscriptionManager;
-        private IJsonRpcDuplexClient _jsonRpcDuplexClient;
-        private IJsonSerializer _jsonSerializer;
-        private ISpecProvider _specProvider;
-        private IReceiptMonitor _receiptCanonicalityMonitor;
-        private ISyncConfig _syncConfig;
+        private ISubscribeRpcModule _subscribeRpcModule = null!;
+        private ILogManager _logManager = null!;
+        private IBlockTree _blockTree = null!;
+        private ITxPool _txPool = null!;
+        private IReceiptStorage _receiptStorage = null!;
+        private IFilterStore _filterStore = null!;
+        private ISubscriptionManager _subscriptionManager = null!;
+        private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
+        private IJsonSerializer _jsonSerializer = null!;
+        private ISpecProvider _specProvider = null!;
+        private IReceiptMonitor _receiptCanonicalityMonitor = null!;
+        private ISyncConfig _syncConfig = null!;
 
         [SetUp]
         public void Setup()
@@ -283,7 +283,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void NewHeadSubscription_on_BlockAddedToMain_event_with_null_block()
         {
-            BlockReplacementEventArgs blockReplacementEventArgs = new(null);
+            BlockReplacementEventArgs blockReplacementEventArgs = new(null!);
 
             JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out _, shouldReceiveResult: false);
 
@@ -437,7 +437,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event()
         {
             int blockNumber = 55555;
-            Filter filter = null;
+            Filter filter = Substitute.For<Filter>();
 
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
             TxReceipt[] txReceipts = { Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject };
@@ -458,7 +458,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void LogsSubscription_with_not_matching_block_on_NewHeadBlock_event()
         {
             int blockNumber = 22222;
-            Filter filter = null;
+            Filter filter = Substitute.For<Filter>();
 
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
             TxReceipt[] txReceipts = { Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject };
@@ -476,7 +476,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event_with_one_TxReceipt_with_few_logs()
         {
             int blockNumber = 77777;
-            Filter filter = null;
+            Filter filter = Substitute.For<Filter>();
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
             LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakB).TestObject;
@@ -508,7 +508,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs()
         {
             int blockNumber = 55555;
-            Filter filter = null;
+            Filter filter = Substitute.For<Filter>();
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
             LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakB).TestObject;
@@ -698,7 +698,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void LogsSubscription_should_not_send_logs_of_new_txs_on_ReceiptsInserted_event_but_on_NewHeadBlock_event()
         {
             int blockNumber = 55555;
-            Filter filter = null;
+            Filter filter = Substitute.For<Filter>();
 
             LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
 
@@ -777,7 +777,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void NewPendingTransactionsSubscription_on_NewPending_event_with_null_transaction()
         {
-            TxEventArgs txEventArgs = new(null);
+            TxEventArgs txEventArgs = new(null!);
 
             JsonRpcResult jsonRpcResult = GetNewPendingTransactionsResult(txEventArgs, out _);
 
@@ -815,7 +815,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"type\":\"0x0\"}}}");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"input\":\"0x\",\"type\":\"0x0\"}}}");
             expectedResult.Should().Be(serialized);
         }
 
@@ -862,7 +862,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void DroppedPendingTransactionsSubscription_on_EvictedPending_event_with_null_transaction()
         {
-            TxEventArgs txEventArgs = new(null);
+            TxEventArgs txEventArgs = new(null!);
 
             JsonRpcResult jsonRpcResult = GetDroppedPendingTransactionsResult(txEventArgs, out _);
 
@@ -1047,7 +1047,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void LogsSubscription_can_send_logs_with_removed_txs_when_inserted()
         {
             int blockNumber = 55555;
-            Filter filter = null;
+            Filter filter = Substitute.For<Filter>();
 
             LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
 

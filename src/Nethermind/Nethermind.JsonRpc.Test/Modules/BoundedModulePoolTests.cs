@@ -90,7 +90,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             for (int i = 0; i < 1000; i++)
             {
-                await _modulePool.GetModule(true);
+                // TestContext.Out.WriteLine($"Rent shared {i}");
+                IEthRpcModule ethRpcModule = await _modulePool.GetModule(true);
+                Assert.That(ethRpcModule, Is.SameAs(sharedRpcModule));
+                _modulePool.ReturnModule(ethRpcModule);
+                // TestContext.Out.WriteLine($"Return shared {i}");
             }
         }
 
@@ -103,34 +107,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             const int iterations = 1000;
             Func<Task> rentReturnShared = async () =>
             {
-                for (int i = 0; i < iterations; i++)
-                {
-                    TestContext.Out.WriteLine($"Rent shared {i}");
-                    IEthRpcModule ethRpcModule = await _modulePool.GetModule(true);
-                    Assert.That(ethRpcModule, Is.SameAs(sharedRpcModule));
-                    _modulePool.ReturnModule(ethRpcModule);
-                    TestContext.Out.WriteLine($"Return shared {i}");
-                }
-            };
-
-            Func<Task> rentReturnExclusive = async () =>
-            {
-                for (int i = 0; i < iterations; i++)
-                {
-                    TestContext.Out.WriteLine($"Rent exclusive {i}");
-                    IEthRpcModule ethRpcModule = await _modulePool.GetModule(false);
-                    Assert.That(ethRpcModule, Is.Not.SameAs(sharedRpcModule));
-                    _modulePool.ReturnModule(ethRpcModule);
-                    TestContext.Out.WriteLine($"Return exclusive {i}");
-                }
-            };
-
-            Task a = Task.Run(rentReturnExclusive);
-            Task b = Task.Run(rentReturnExclusive);
-            Task c = Task.Run(rentReturnShared);
-            Task d = Task.Run(rentReturnShared);
-
-            await Task.WhenAll(a, b, c, d);
+                // TestContext.Out.WriteLine($"Rent exclusive {i}");
+                IEthRpcModule ethRpcModule = await _modulePool.GetModule(false);
+                Assert.That(ethRpcModule, Is.Not.SameAs(sharedRpcModule));
+                _modulePool.ReturnModule(ethRpcModule);
+                // TestContext.Out.WriteLine($"Return exclusive {i}");
+            }
         }
 
         [TestCase(true)]

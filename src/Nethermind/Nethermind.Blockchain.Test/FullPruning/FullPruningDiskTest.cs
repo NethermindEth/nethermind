@@ -34,10 +34,10 @@ namespace Nethermind.Blockchain.Test.FullPruning
     {
         public class PruningTestBlockchain : TestBlockchain
         {
-            public IFullPruningDb PruningDb { get; private set; }
+            public IFullPruningDb PruningDb { get; private set; } = null!;
             public TempPath TempDirectory { get; }
             public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();
-            public FullTestPruner FullPruner { get; private set; }
+            public FullTestPruner FullPruner { get; private set; } = null!;
             public IPruningConfig PruningConfig { get; set; } = new PruningConfig();
             public IDriveInfo DriveInfo { get; set; } = Substitute.For<IDriveInfo>();
             public IChainEstimations _chainEstimations = Substitute.For<IChainEstimations>();
@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
             protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
-                TestBlockchain chain = await base.Build(specProvider, initialValues);
+                TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart);
                 PruningDb = (IFullPruningDb)DbProvider.StateDb;
                 DriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
                 _chainEstimations.StateSize.Returns((long?)null);
@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-            public static async Task<PruningTestBlockchain> Create(IPruningConfig pruningConfig = null)
+            public static async Task<PruningTestBlockchain> Create(IPruningConfig? pruningConfig = null)
             {
                 PruningTestBlockchain chain = new() { PruningConfig = pruningConfig ?? new PruningConfig() };
                 await chain.Build();

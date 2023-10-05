@@ -340,8 +340,7 @@ public partial class EngineModuleTests
         };
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByHashV1(blockHashes).Result.Data;
-        ExecutionPayloadBodyV1Result[] expected = new ExecutionPayloadBodyV1Result?[]
-        {
+        ExecutionPayloadBodyV1Result?[] expected = {
             new(Array.Empty<Transaction>(), withdrawals), null, new(txs, withdrawals)
         };
 
@@ -369,7 +368,7 @@ public partial class EngineModuleTests
 
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
-        ExecutionPayloadBodyV1Result[] expected = new ExecutionPayloadBodyV1Result?[] { new(txs, withdrawals) };
+        ExecutionPayloadBodyV1Result?[] expected = { new(txs, withdrawals) };
 
         payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
     }
@@ -381,7 +380,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 1).Result.Data;
-        ExecutionPayloadBodyV1Result[] expected = Array.Empty<ExecutionPayloadBodyV1Result?>();
+        ExecutionPayloadBodyV1Result?[] expected = Array.Empty<ExecutionPayloadBodyV1Result?>();
 
         payloadBodies.Should().BeEquivalentTo(expected);
     }
@@ -638,7 +637,8 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(input.ReleaseSpec);
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree),
+        ExecutionPayload executionPayload = CreateBlockRequest(chain,
+            CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressD, input.Withdrawals);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
 
@@ -707,7 +707,7 @@ public partial class EngineModuleTests
 
         // Block without withdrawals, Timestamp = 2
         ExecutionPayload executionPayload =
-            CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+            CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
 
@@ -873,8 +873,7 @@ public partial class EngineModuleTests
     private async Task<ExecutionPayload> SendNewBlockV2(IEngineRpcModule rpc, MergeTestBlockchain chain,
         IList<Withdrawal>? withdrawals)
     {
-        ExecutionPayload executionPayload = CreateBlockRequest(
-            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals);
+        ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV2(executionPayload);
 
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);

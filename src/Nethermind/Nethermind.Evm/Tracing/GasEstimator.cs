@@ -89,8 +89,16 @@ namespace Nethermind.Evm.Tracing
         private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit)
         {
             OutOfGasTracer tracer = new();
-            transaction.GasLimit = (long)gasLimit;
-            _transactionProcessor.CallAndRestore(transaction, block, tracer);
+
+            // TODO: Workaround to not mutate the original Tx
+            long originalGasLimit = transaction.GasLimit;
+
+            transaction.GasLimit = gasLimit;
+
+            BlockExecutionContext blCtx = new(block);
+            _transactionProcessor.CallAndRestore(transaction, blCtx, tracer.WithCancellation(token));
+
+            transaction.GasLimit = originalGasLimit;
 
             return !tracer.OutOfGas;
         }

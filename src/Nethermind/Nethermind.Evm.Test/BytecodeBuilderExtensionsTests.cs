@@ -112,8 +112,6 @@ namespace Nethermind.Evm.Test
                     Instruction.PC,
                     Instruction.JUMPDEST,
                     Instruction.MSIZE,
-                    Instruction.BEGINSUB,
-                    Instruction.RETURNSUB,
                     Instruction.INVALID,
 
                     Instruction.SWAP1, Instruction.SWAP5, Instruction.SWAP9 , Instruction.SWAP13,
@@ -172,8 +170,7 @@ namespace Nethermind.Evm.Test
                     Instruction.JUMP,
                     Instruction.SLOAD,
                     Instruction.TLOAD,
-                    Instruction.MLOAD,
-                    Instruction.JUMPSUB,
+                    Instruction.MLOAD
                 };
 
             foreach (Instruction opcode in address_opcodes)
@@ -226,7 +223,6 @@ namespace Nethermind.Evm.Test
                         Instruction.MSTORE,
                         Instruction.BYTE,
                         Instruction.MSTORE8,
-                        Instruction.TSTORE,
                         Instruction.SSTORE,
                         Instruction.JUMPI
             };

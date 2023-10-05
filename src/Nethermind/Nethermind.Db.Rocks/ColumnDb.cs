@@ -91,7 +91,7 @@ public class ColumnDb : IDbWithSpan
             }
             else
             {
-                _underlyingBatch.Set(key, value, _columnDb._columnFamily);
+                _underlyingBatch.Set(key, value, _columnDb._columnFamily, flags);
             }
         }
     }
@@ -119,10 +119,15 @@ public class ColumnDb : IDbWithSpan
     public long GetIndexSize() => _mainDb.GetIndexSize();
     public long GetMemtableSize() => _mainDb.GetMemtableSize();
 
-    public Span<byte> GetSpan(ReadOnlySpan<byte> key) => _rocksDb.GetSpan(key, _columnFamily);
+    public Span<byte> GetSpan(ReadOnlySpan<byte> key)
+    {
+        _mainDb.UpdateReadMetrics();
+        return _rocksDb.GetSpan(key, _columnFamily);
+    }
 
     public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
     {
+        _mainDb.UpdateWriteMetrics();
         _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteOptions);
     }
 

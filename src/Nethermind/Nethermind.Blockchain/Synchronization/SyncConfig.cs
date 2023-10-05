@@ -60,9 +60,13 @@ namespace Nethermind.Blockchain.Synchronization
         public bool StrictMode { get; set; } = false;
         public bool BlockGossipEnabled { get; set; } = true;
         public bool NonValidatorNode { get; set; } = false;
-        public ITunableDb.TuneType TuneDbMode { get; set; } = ITunableDb.TuneType.Default;
+        public ITunableDb.TuneType TuneDbMode { get; set; } = ITunableDb.TuneType.HeavyWrite;
         public ITunableDb.TuneType BlocksDbTuneDbMode { get; set; } = ITunableDb.TuneType.EnableBlobFiles;
         public int MaxProcessingThreads { get; set; }
+        public bool ExitOnSynced { get; set; } = false;
+        public int ExitOnSyncedWaitTimeSec { get; set; } = 60;
+        public int MallocTrimIntervalSec { get; set; } = 300;
+        public bool TrieHealing { get; set; } = true;
 
         public override string ToString()
         {
