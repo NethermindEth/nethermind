@@ -734,40 +734,46 @@ public class TrieByPathTests
         checkTree.Get(key3).Should().BeEquivalentTo(smallLeafValue2);
     }
 
-    [Test]
-    public void Request_deletion_for_leaf()
+    [TestCase("0x0a010b02", "0x0a010b020c030e06", "0x0a010b020c030d04", new string[] { "0x0a010b020c", "0x0a010b020c03" })] //Leaf a1b2 -> a1b2c3e6 | Leaf: a1b2 -> a1b2c3d4
+    [TestCase("0x0a010b02", "0x0a010b020c030e06", "0x0a010b0200000000", new string[] { "0x0a010b020c", "0x0a010b020c03" })] //Leaf a1b2 -> a1b2c3e6 | Leaf: a1b2 -> a1b20000
+    [TestCase("0x0a010b02", "0x0a010b020c030e06", "0x0a010b020f0f0f0f", new string[] { "0x0a010b020c", "0x0a010b020c03" })] //Leaf a1b2 -> a1b2c3e6 | Leaf: a1b2 -> a1b2ffff
+    public void Request_deletion_for_leaf(string leafPointer, string oldLeaf, string newLeaf, string[] oldData)
     {
         ByPathStateMemDb stateDb = new ByPathStateMemDb();
         using TrieStoreByPath trieStore = new(stateDb, _logManager);
+        IDbWithSpan db = stateDb.GetColumnDb(StateColumns.State);
 
         byte[] data = new byte[4] { 1, 2, 3, 4 };
 
-        byte[] replacedPath =   Bytes.FromHexString("0x0a010b02");
-        byte[] oldPath1 =       Bytes.FromHexString("0x0a010b020c");
-        byte[] oldPath2 =       Bytes.FromHexString("0x0a010b020c03");
-        byte[] oldLeaf =        Bytes.FromHexString("0x0a010b020c030e06");
-        byte[] newLeaf =        Bytes.FromHexString("0x0a010b020c030d04");
+        byte[][] scrapData = new byte[oldData.Length][];
+        for (int i = 0; i < oldData.Length; i++)
+        {
+            scrapData[i] = Bytes.FromHexString(oldData[i]);
+            db.Set(Nibbles.NibblesToByteStorage(scrapData[i]), data);
+        }
 
-        IDbWithSpan db = stateDb.GetColumnDb(StateColumns.State);
-        db.Set(Nibbles.NibblesToByteStorage(oldPath1), data);
-        db.Set(Nibbles.NibblesToByteStorage(oldPath2), data);
-        db.Set(Nibbles.NibblesToByteStorage(oldLeaf), data);
+        byte[] replacedPath = Bytes.FromHexString(leafPointer);
+        byte[] oldLeafKey = Bytes.FromHexString(oldLeaf);
+        byte[] newLeafKey = Bytes.FromHexString(newLeaf);
 
         db.Set(Nibbles.NibblesToByteStorage(replacedPath), data);
-        db.Set(Nibbles.NibblesToByteStorage(newLeaf), data);
+        db.Set(Nibbles.NibblesToByteStorage(oldLeafKey), data);
+        db.Set(Nibbles.NibblesToByteStorage(newLeafKey), data);
 
         stateDb.StartPrunning();
-        trieStore.RequestDeletionForLeaf(replacedPath, newLeaf);
+        trieStore.RequestDeletionForLeaf(replacedPath, newLeafKey);
 
         stateDb.EndOfCleanupRequests();
         stateDb.WaitForPrunning();
 
-        Assert.That(db.Get(Nibbles.NibblesToByteStorage(oldPath1)), Is.Null);
-        Assert.That(db.Get(Nibbles.NibblesToByteStorage(oldPath2)), Is.Null);
-        Assert.That(db.Get(Nibbles.NibblesToByteStorage(oldLeaf)), Is.Null);
+        Assert.That(db.Get(Nibbles.NibblesToByteStorage(oldLeafKey)), Is.Null);
+        for (int i = 0; i < scrapData.Length; i++)
+        {
+            Assert.That(db.Get(Nibbles.NibblesToByteStorage(scrapData[i])), Is.Null);
+        }
 
         var rpd = db.Get(Nibbles.NibblesToByteStorage(replacedPath));
-        var nld = db.Get(Nibbles.NibblesToByteStorage(newLeaf));
+        var nld = db.Get(Nibbles.NibblesToByteStorage(newLeafKey));
         Assert.That(rpd, Is.Not.Null);
         Assert.That(nld, Is.Not.Null);
 
@@ -782,12 +788,12 @@ public class TrieByPathTests
 
         byte[] data = new byte[4] { 1, 2, 3, 4 };
 
-        byte[] replacedPath =   Bytes.FromHexString("0x0a010b02");
-        byte[] extensionKey =   Bytes.FromHexString("0x040f05");
+        byte[] replacedPath = Bytes.FromHexString("0x0a010b02");
+        byte[] extensionKey = Bytes.FromHexString("0x040f05");
 
-        byte[] oldPath1 =       Bytes.FromHexString("0x0a010b020c");
-        byte[] oldPath2 =       Bytes.FromHexString("0x0a010b020c03");
-        byte[] oldLeaf =        Bytes.FromHexString("0x0a010b020c030e06");
+        byte[] oldPath1 = Bytes.FromHexString("0x0a010b020c");
+        byte[] oldPath2 = Bytes.FromHexString("0x0a010b020c03");
+        byte[] oldLeaf = Bytes.FromHexString("0x0a010b020c030e06");
 
         byte[] newExtensionChild = Bytes.FromHexString("0x0a010b02040f05");
 
@@ -828,10 +834,10 @@ public class TrieByPathTests
 
         byte[] data = new byte[4] { 1, 2, 3, 4 };
 
-        byte[] replacedPath =   Bytes.FromHexString("0x0a010b02");
-        byte[] child0Path =     Bytes.FromHexString("0x0a010b0200");
-        byte[] child3Path =     Bytes.FromHexString("0x0a010b0203");
-        byte[] child6Path =     Bytes.FromHexString("0x0a010b0206");
+        byte[] replacedPath = Bytes.FromHexString("0x0a010b02");
+        byte[] child0Path = Bytes.FromHexString("0x0a010b0200");
+        byte[] child3Path = Bytes.FromHexString("0x0a010b0203");
+        byte[] child6Path = Bytes.FromHexString("0x0a010b0206");
 
         TrieNode branch = TrieNodeFactory.CreateBranch(replacedPath, Array.Empty<byte>());
         TrieNode child0 = TrieNodeFactory.CreateLeaf(child0Path, Array.Empty<byte>());
@@ -841,10 +847,10 @@ public class TrieByPathTests
         branch.SetChild(3, child3);
         branch.SetChild(6, child6);
 
-        byte[] oldPath1 =   Bytes.FromHexString("0x0a010b0201");
-        byte[] oldPath4 =   Bytes.FromHexString("0x0a010b0204");
-        byte[] oldPathc =   Bytes.FromHexString("0x0a010b020c");
-        byte[] oldPathc3 =  Bytes.FromHexString("0x0a010b020c03");
+        byte[] oldPath1 = Bytes.FromHexString("0x0a010b0201");
+        byte[] oldPath4 = Bytes.FromHexString("0x0a010b0204");
+        byte[] oldPathc = Bytes.FromHexString("0x0a010b020c");
+        byte[] oldPathc3 = Bytes.FromHexString("0x0a010b020c03");
 
         IDbWithSpan db = stateDb.GetColumnDb(StateColumns.State);
         db.Set(Nibbles.NibblesToByteStorage(oldPath1), data);
@@ -878,6 +884,71 @@ public class TrieByPathTests
         Assert.That(c6d, Is.Not.Null);
 
         Assert.That(db.GetAllValues().Count, Is.EqualTo(4));
+    }
+
+    [TestCase("0x0a010b02", new byte[] { 0, 3, 6 }, new byte[] { 1, 4, 10})]
+    [TestCase("0x0a010b02", new byte[] { 5 }, new byte[] { 0, 15 })]
+    [TestCase("0x0a010b02", new byte[] { 0, 15 }, new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 })]
+    [TestCase("0x", new byte[] { 0, 3, 6 }, new byte[] { 1, 4, 10 })]
+    public void Request_deletion_for_branch_2(string branchPath, byte[] existingChildren, byte[] deletedChildren)
+    {
+        ByPathStateMemDb stateDb = new ByPathStateMemDb();
+        using TrieStoreByPath trieStore = new(stateDb, _logManager);
+        IDbWithSpan db = stateDb.GetColumnDb(StateColumns.State);
+
+        byte[] data = new byte[4] { 1, 2, 3, 4 };
+
+        byte[] replacedPath =   Bytes.FromHexString(branchPath);
+        TrieNode branch = TrieNodeFactory.CreateBranch(replacedPath, Array.Empty<byte>());
+        db.Set(Nibbles.NibblesToByteStorage(replacedPath), data);
+
+        for (int i = 0; i < existingChildren.Length; i++)
+        {
+            byte[] childPath = new byte[replacedPath.Length + 1];
+            replacedPath.CopyTo(childPath, 0);
+            childPath[^1] = existingChildren[i];
+            TrieNode childNode = TrieNodeFactory.CreateLeaf(childPath, Array.Empty<byte>());
+            branch.SetChild(existingChildren[i], childNode);
+            
+            db.Set(Nibbles.NibblesToByteStorage(childPath), data);
+        }
+
+        for (int i = 0; i < deletedChildren.Length; i++)
+        {
+            byte[] childPath = new byte[replacedPath.Length + 1];
+            replacedPath.CopyTo(childPath, 0);
+            childPath[^1] = deletedChildren[i];
+
+            db.Set(Nibbles.NibblesToByteStorage(childPath), data);
+        }
+
+        stateDb.StartPrunning();
+        trieStore.RequestDeletionForBranch(branch);
+
+        stateDb.EndOfCleanupRequests();
+        stateDb.WaitForPrunning();
+
+        //check old paths are deleted
+        for (int i = 0; i < deletedChildren.Length; i++)
+        {
+            byte[] childPath = new byte[replacedPath.Length + 1];
+            replacedPath.CopyTo(childPath, 0);
+            childPath[^1] = deletedChildren[i];
+
+            Assert.That(db.Get(Nibbles.NibblesToByteStorage(childPath)), Is.Null);
+        }
+
+        //check new ones are not deleted
+        for (int i = 0; i < existingChildren.Length; i++)
+        {
+            byte[] childPath = new byte[replacedPath.Length + 1];
+            replacedPath.CopyTo(childPath, 0);
+            childPath[^1] = existingChildren[i];
+
+            Assert.That(db.Get(Nibbles.NibblesToByteStorage(childPath)), Is.Not.Null);
+        }
+
+        Assert.That(db.GetAllValues().Count, Is.EqualTo(existingChildren.Length + 1));
     }
 
     [TestCase(256, 128, 128, 32)]
