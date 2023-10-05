@@ -24,31 +24,31 @@
     <PackageReference Include="Nethermind.Gmp" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="Data\JSTracers\4byte_tracer_legacy.js">
+    <None Update="Data\JSTracers\4byteTracer.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Data\JSTracers\bigram_tracer.js">
+    <None Update="Data\JSTracers\bigramTracer.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Data\JSTracers\call_tracer_legacy.js">
+    <None Update="Data\JSTracers\callTracer.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Data\JSTracers\evmdis_tracer.js">
+    <None Update="Data\JSTracers\evmdisTracer.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Data\JSTracers\noop_tracer_legacy.js">
+    <None Update="Data\JSTracers\noopTracer.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Data\JSTracers\opcount_tracer.js">
+    <None Update="Data\JSTracers\opcountTracer.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Data\JSTracers\prestate_tracer_legacy.js">
+    <None Update="Data\JSTracers\prestateTracer.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Data\JSTracers\trigram_tracer.js">
+    <None Update="Data\JSTracers\trigramTracer.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="Data\JSTracers\unigram_tracer.js">
+    <None Update="Data\JSTracers\unigramTracer.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

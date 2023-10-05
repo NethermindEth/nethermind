@@ -23,17 +23,20 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
     private readonly dynamic _tracer;
     private readonly IWorldState _worldState;
     private readonly GethJavascriptStyleLog _customTraceEntry;
+    private readonly GethJavascriptStyleCTX _ctx;
     private readonly List<byte> _memory = new List<byte>();
 
     [SuppressMessage("ReSharper", "VirtualMemberCallInConstructor")]
     public GethLikeJavascriptTxTracer(IWorldState worldState, GethTraceOptions options) : base(options)
     {
         _customTraceEntry = new(_engine);
+        _ctx = new(_engine);
         _engine.Execute(LoadJavascriptCode(options.Tracer));
         _tracer = _engine.Script.tracer;
         _worldState = worldState;
         IsTracingRefunds = true;
         IsTracingActions = true;
+        IsTracingMemory = true;
     }
 
     private string LoadJavascriptCode(string tracer) => "tracer = " + (tracer.StartsWith("{") && tracer.EndsWith("}") ? tracer : LoadJavascriptCodeFromFile(tracer));
@@ -61,8 +64,6 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
             _customTraceEntry.gasCost = CurrentTraceEntry.GasCost;
             _customTraceEntry.depth = CurrentTraceEntry.Depth;
             Step(_customTraceEntry, _worldState);
-            Console.WriteLine("this isPush {0}", _customTraceEntry.op.isPush());
-            // Console.WriteLine("this is the current result", JArray.FromObject(Trace.CustomTracerResult.ToString()));
         }
     }
 
@@ -81,8 +82,9 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace trace = base.BuildResult();
-        trace.CustomTracerResult = _tracer.result(null, null);
-        // Console.WriteLine("this is the result {0}", JArray.FromObject(trace.CustomTracerResult));
+        trace.CustomTracerResult = _tracer.result(_customTraceEntry.ctx, _worldState);
+        dynamic result = trace.CustomTracerResult;
+        // Console.WriteLine("this is the result {0}", JArray.FromObject(result ));
         return trace;
     }
 
@@ -91,34 +93,43 @@ public class GethLikeJavascriptTxTracer: GethLikeTxTracer<GethTxTraceEntry>
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         _customTraceEntry.contract = new GethJavascriptStyleLog.Contract(_engine, from, to, value, input);
-        Console.WriteLine("this is it {0}", _customTraceEntry.contract.getValue());
+        _customTraceEntry.ctx = new GethJavascriptStyleLog.CTX(_engine, callType.ToString(), from, to, input, value, gas,0,0,0,0 , new byte[0], DateTime.Now.ToString());
     }
 
     public override void SetOperationMemory(IEnumerable<string> memoryTrace)
     {
         List<string> memoryTraceList = memoryTrace.ToList();
         base.SetOperationMemory(memoryTraceList);
-        _customTraceEntry.memory = new GethJavascriptStyleLog.JSMemory(memoryTraceList);
-        Console.WriteLine("this is the lenght of the memory :{0}", _customTraceEntry.memory.length());
-        for(int item =0;  item < _customTraceEntry.memory.getCount(); item++)
+        string continuousMemory = "";
+        for (int item = 0; item < memoryTraceList.Count; item++)
         {
-            Console.WriteLine("item at index {0} : {1}", item, _customTraceEntry.memory.getItem(item));
-            //Console.WriteLine("this is a slice : {0}",  CustomTraceEntry.memory.slice(0,1));
+            continuousMemory += memoryTraceList[item] ;
         }
+        Console.WriteLine("Continuous Memory:");
+        Console.WriteLine(continuousMemory);
+        _customTraceEntry.memory = new GethJavascriptStyleLog.JSMemory(continuousMemory);
     }
 
     // public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
     // {
     //     _memory.EnsureCapacity((int)(offset + data.Length));
-    //     data.CopyTo(CollectionsMarshal.AsSpan(_memory).Slice((int)offset, data.Length));
+    //     if (offset < 0 || offset + data.Length > _memory.Capacity)
+    //     {
+    //         Console.WriteLine("this is the offset :{0}", offset);
+    //         Console.WriteLine("this is the length of the data :{0}", data.Length);
+    //         Console.WriteLine("this is the capacity of the memory :{0}", _memory.Capacity);
+    //         // Handle the error condition, e.g., throw an exception or log an error.
+    //         throw new ArgumentOutOfRangeException("offset", "Invalid memory access");
+    //     }
+    //     data.CopyTo(CollectionsMarshal.AsSpan(_memory).Slice((int)offset, (int)data.Length));
     //     base.ReportMemoryChange(offset, in data);
     // }
 
     public override void SetOperationStack(List<string> stackTrace)
     {
         base.SetOperationStack(stackTrace);
-        _customTraceEntry.stack = new GethJavascriptStyleLog.JSStack(stackTrace);
-        Console.WriteLine("this is the lenght of the stack :{0}", _customTraceEntry.stack.length());
+        _customTraceEntry.stack = new GethJavascriptStyleLog.JSStack(_engine,stackTrace);
+        Console.WriteLine("this is the length of the stack :{0}", _customTraceEntry.stack.length());
         for(int item =0;  item < _customTraceEntry.stack.getCount(); item++)
         {
             Console.WriteLine("item at index {0} : {1}", item, _customTraceEntry.stack.getItem(item));

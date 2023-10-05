@@ -17,17 +17,31 @@
 // prestateTracer outputs sufficient information to create a local execution of
 // the transaction from a custom assembled genesis block.
 {
+    byte2Hex: function(byte) {
+        if (byte < 0x10) {
+            return "0" + byte.toString(16);
+        }
+        return byte.toString(16);
+    },
+
+    toHex: function(arr) {
+        var retVal = "";
+        for (var i = 0; i < arr.length; i++) {
+            retVal += this.byte2Hex(arr[i]);
+        }
+        return retVal;
+    },
 	// prestate is the genesis that we're building.
 	prestate: null,
 
 	// lookupAccount injects the specified account into the prestate object.
 	lookupAccount: function(addr, db){
-		var acc = toHex(addr);
+		var acc = this.toHex(addr);
 		if (this.prestate[acc] === undefined) {
 			this.prestate[acc] = {
 				balance: '0x' + db.getBalance(addr).toString(16),
 				nonce:   db.getNonce(addr),
-				code:    toHex(db.getCode(addr)),
+				code:    this.toHex(db.getCode(addr)),
 				storage: {}
 			};
 		}
@@ -36,11 +50,11 @@
 	// lookupStorage injects the specified storage entry of the given account into
 	// the prestate object.
 	lookupStorage: function(addr, key, db){
-		var acc = toHex(addr);
-		var idx = toHex(key);
+		var acc = this.toHex(addr);
+		var idx = this.toHex(key);
 
 		if (this.prestate[acc].storage[idx] === undefined) {
-			this.prestate[acc].storage[idx] = toHex(db.getState(addr, key));
+			this.prestate[acc].storage[idx] = this.toHex(db.getState(addr, key));
 		}
 	},
 
@@ -58,18 +72,18 @@
 		// outer transaction, and move it back to the origin
 		this.lookupAccount(ctx.from, db);
 
-		var fromBal = bigInt(this.prestate[toHex(ctx.from)].balance.slice(2), 16);
-		var toBal   = bigInt(this.prestate[toHex(ctx.to)].balance.slice(2), 16);
+		var fromBal = bigInt(this.prestate[this.toHex(ctx.from)].balance.slice(2), 16);
+		var toBal   = bigInt(this.prestate[this.toHex(ctx.to)].balance.slice(2), 16);
 
-		this.prestate[toHex(ctx.to)].balance   = '0x'+toBal.subtract(ctx.value).toString(16);
-		this.prestate[toHex(ctx.from)].balance = '0x'+fromBal.add(ctx.value).add(ctx.gasUsed * ctx.gasPrice).toString(16);
+		this.prestate[this.toHex(ctx.to)].balance   = '0x'+toBal.subtract(ctx.value).toString(16);
+		this.prestate[this.toHex(ctx.from)].balance = '0x'+fromBal.add(ctx.value).add(ctx.gasUsed * ctx.gasPrice).toString(16);
 
 		// Decrement the caller's nonce, and remove empty create targets
-		this.prestate[toHex(ctx.from)].nonce--;
+		this.prestate[this.toHex(ctx.from)].nonce--;
 		if (ctx.type == 'CREATE') {
 			// We can blibdly delete the contract prestate, as any existing state would
 			// have caused the transaction to be rejected as invalid in the first place.
-			delete this.prestate[toHex(ctx.to)];
+			delete this.prestate[this.toHex(ctx.to)];
 		}
 		// Return the assembled allocations (prestate)
 		return this.prestate;
