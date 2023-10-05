@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.Test.AllocationStrategies;
 
 public class BySpeedStrategyTests
 {
-    private static PublicKey TestPublicKey { get; } = new(Bytes.FromHexString(
+    private static PublicKey TestPublicKey = new(Bytes.FromHexString(
         "0x13a1107b6f78a4977222d2d5a4cd05a8a042b75222c8ec99129b83793eda3d214208d4e835617512fc8d148d3d1b4d89530861644f531675b1fb64b785c6c152"));
 
     [TestCase(1, 0, 0, 2)]
@@ -33,7 +33,7 @@ public class BySpeedStrategyTests
     [TestCase(1, 0.1, 0, 2)]
     public void TestShouldSelectHighestSpeed(int? currentPeerIdx, decimal minDiffPercentageForSpeedSwitch, int minDiffSpeed, int expectedSelectedPeerIdx)
     {
-        long[] peerSpeeds =
+        long[] peerSpeeds = new long[]
         {
             100,
             90,
@@ -43,16 +43,19 @@ public class BySpeedStrategyTests
 
         INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
 
-        List<PeerInfo> peers = peerSpeeds
-            .Select(peerSpeed => CreatePeerInfoWithSpeed(peerSpeed, nodeStatsManager))
-            .ToList();
+        List<PeerInfo> peers = new();
+        for (int i = 0; i < peerSpeeds.Length; i++)
+        {
+            PeerInfo pInfo = CreatePeerInfoWithSpeed(peerSpeeds[i], nodeStatsManager);
+            peers.Add(pInfo);
+        }
 
         BySpeedStrategy strategy = new(TransferSpeedType.Bodies, true, minDiffPercentageForSpeedSwitch, minDiffSpeed, 0, 0);
 
         PeerInfo? currentPeer = null;
         if (currentPeerIdx is not null) currentPeer = peers[currentPeerIdx.Value];
 
-        PeerInfo selectedPeer = strategy.Allocate(currentPeer, peers, nodeStatsManager, Build.A.BlockTree().TestObject)!;
+        PeerInfo? selectedPeer = strategy.Allocate(currentPeer, peers, nodeStatsManager, Build.A.BlockTree().TestObject);
 
         int selectedPeerIdx = peers.IndexOf(selectedPeer);
         selectedPeerIdx.Should().Be(expectedSelectedPeerIdx);
@@ -73,13 +76,16 @@ public class BySpeedStrategyTests
 
         INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
 
-        List<PeerInfo> peers = peerSpeeds
-            .Select(peerSpeed => CreatePeerInfoWithSpeed(peerSpeed, nodeStatsManager))
-            .ToList();
+        List<PeerInfo> peers = new();
+        for (int i = 0; i < peerSpeeds.Length; i++)
+        {
+            PeerInfo pInfo = CreatePeerInfoWithSpeed(peerSpeeds[i], nodeStatsManager);
+            peers.Add(pInfo);
+        }
 
         BySpeedStrategy strategy = new(TransferSpeedType.Bodies, true, 0, 0, 0, desiredKnownPeer);
 
-        PeerInfo selectedPeer = strategy.Allocate(null, peers, nodeStatsManager, Build.A.BlockTree().TestObject)!;
+        PeerInfo? selectedPeer = strategy.Allocate(null, peers, nodeStatsManager, Build.A.BlockTree().TestObject);
 
         int selectedPeerIdx = peers.IndexOf(selectedPeer);
         if (pickedNewPeer)
@@ -104,7 +110,7 @@ public class BySpeedStrategyTests
 
         BySpeedStrategy strategy = new(TransferSpeedType.Bodies, true, 0, 0, 0, 0);
 
-        PeerInfo selectedPeer = strategy.Allocate(null, peers, nodeStatsManager, Build.A.BlockTree().TestObject)!;
+        PeerInfo? selectedPeer = strategy.Allocate(null, peers, nodeStatsManager, Build.A.BlockTree().TestObject);
         int selectedPeerIdx = peers.IndexOf(selectedPeer);
         selectedPeerIdx.Should().BeGreaterThan(50);
     }
@@ -122,9 +128,12 @@ public class BySpeedStrategyTests
 
         INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
 
-        List<PeerInfo> peers = peerSpeeds
-            .Select(peerSpeed => CreatePeerInfoWithSpeed(peerSpeed, nodeStatsManager))
-            .ToList();
+        List<PeerInfo> peers = new();
+        for (int i = 0; i < peerSpeeds.Length; i++)
+        {
+            PeerInfo pInfo = CreatePeerInfoWithSpeed(peerSpeeds[i], nodeStatsManager);
+            peers.Add(pInfo);
+        }
 
         BySpeedStrategy strategy = new(TransferSpeedType.Bodies, true, 0, 0, recalculateSpeedProbability, 0);
 
@@ -133,7 +142,7 @@ public class BySpeedStrategyTests
 
         for (int i = 0; i < 100; i++)
         {
-            PeerInfo selectedPeer = strategy.Allocate(null, peers, nodeStatsManager, Build.A.BlockTree().TestObject)!;
+            PeerInfo? selectedPeer = strategy.Allocate(null, peers, nodeStatsManager, Build.A.BlockTree().TestObject);
             int selectedPeerIdx = peers.IndexOf(selectedPeer);
             if (peerSpeeds[selectedPeerIdx] is null)
             {

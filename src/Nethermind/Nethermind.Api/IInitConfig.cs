@@ -73,9 +73,6 @@ namespace Nethermind.Api
 
         [ConfigItem(Description = "A hint for the max memory that will allow us to configure the DB and Netty memory allocations.", DefaultValue = "null")]
         long? MemoryHint { get; set; }
-
-        [ConfigItem(Description = "[TECHNICAL] Disable setting malloc options. Set to true if using different memory allocator or manually setting malloc opts.", DefaultValue = "false", HiddenFromDocs = true)]
-        bool DisableMallocOpts { get; set; }
     }
 
     public enum DiagnosticMode

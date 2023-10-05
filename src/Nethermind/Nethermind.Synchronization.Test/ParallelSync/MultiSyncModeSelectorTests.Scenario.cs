@@ -27,33 +27,17 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             public const long FastSyncCatchUpHeightDelta = 64;
 
-            public static BlockHeader Pivot { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty((UInt256)1024)
-                .WithNumber(1024)
-                .TestObject.Header;
+            public static BlockHeader Pivot { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty((UInt256)1024).WithNumber(1024).TestObject.Header;
 
-            public static BlockHeader MidWayToPivot { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty((UInt256)512)
-                .WithNumber(512)
-                .TestObject.Header;
+            public static BlockHeader MidWayToPivot { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty((UInt256)512).WithNumber(512).TestObject.Header;
 
-            public static BlockHeader ChainHead { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty(Pivot.TotalDifficulty + 2048)
-                .WithNumber(Pivot.Number + 2048)
-                .TestObject.Header;
+            public static BlockHeader ChainHead { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048).WithNumber(Pivot.Number + 2048).TestObject.Header;
 
             public static BlockHeader ChainHeadWrongDifficulty
             {
                 get
                 {
-                    BlockHeader header = Build.A.Block
-                        .WithDifficulty(1)
-                        .WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128)
-                        .WithNumber(Pivot.Number + 2048)
-                        .TestObject.Header;
+                    BlockHeader header = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048).TestObject.Header;
                     header.Hash = ChainHead.Hash;
                     return header;
                 }
@@ -69,53 +53,21 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 }
             }
 
-            public static BlockHeader FutureHead { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128)
-                .WithNumber(Pivot.Number + 2048 + 128)
-                .TestObject.Header;
+            public static BlockHeader FutureHead { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048 + 128).TestObject.Header;
 
-            public static BlockHeader SlightlyFutureHead { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4)
-                .WithNumber(Pivot.Number + 2048 + 4)
-                .TestObject.Header;
+            public static BlockHeader SlightlyFutureHead { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4).WithNumber(Pivot.Number + 2048 + 4).TestObject.Header;
 
-            public static BlockHeader SlightlyFutureHeadWithFastSyncLag { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4)
-                .WithNumber(ChainHead.Number + MultiSyncModeSelector.FastSyncLag + 1)
-                .TestObject.Header;
+            public static BlockHeader SlightlyFutureHeadWithFastSyncLag { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4).WithNumber(ChainHead.Number + MultiSyncModeSelector.FastSyncLag + 1).TestObject.Header;
 
-            public static BlockHeader MaliciousPrePivot { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty((UInt256)1000000)
-                .WithNumber(512)
-                .TestObject.Header;
+            public static BlockHeader MaliciousPrePivot { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty((UInt256)1000000).WithNumber(512).TestObject.Header;
 
-            public static BlockHeader NewBetterBranchWithLowerNumber { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty((UInt256)1000000)
-                .WithNumber(ChainHead.Number - 16)
-                .TestObject.Header;
+            public static BlockHeader NewBetterBranchWithLowerNumber { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty((UInt256)1000000).WithNumber(ChainHead.Number - 16).TestObject.Header;
 
-            public static BlockHeader ValidGenesis { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty(UInt256.One)
-                .Genesis
-                .TestObject.Header;
+            public static BlockHeader ValidGenesis { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(UInt256.One).Genesis.TestObject.Header;
 
-            public static BlockHeader InvalidGenesis { get; } = Build.A.Block
-                .WithDifficulty(1)
-                .WithTotalDifficulty(UInt256.One)
-                .Genesis
-                .TestObject.Header;
+            public static BlockHeader InvalidGenesis { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(UInt256.One).Genesis.TestObject.Header;
 
-            public static BlockHeader InvalidGenesisWithHighTotalDifficulty { get; } = Build.A.Block
-                .Genesis
-                .WithDifficulty((UInt256)1000000)
-                .WithTotalDifficulty((UInt256)1000000)
-                .TestObject.Header;
+            public static BlockHeader InvalidGenesisWithHighTotalDifficulty { get; set; } = Build.A.Block.Genesis.WithDifficulty((UInt256)1000000).WithTotalDifficulty((UInt256)1000000).TestObject.Header;
 
             public static IEnumerable<BlockHeader> ScenarioHeaders
             {
@@ -149,19 +101,20 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 private readonly List<ISyncPeer> _peers = new();
                 private bool _needToWaitForHeaders;
 
-                public ISyncPeerPool SyncPeerPool { get; set; } = null!;
+                public ISyncPeerPool SyncPeerPool { get; set; }
 
-                public ISyncProgressResolver SyncProgressResolver { get; set; } = null!;
+                public ISyncProgressResolver SyncProgressResolver { get; set; }
 
-                public ISyncConfig SyncConfig { get; } = new SyncConfig();
+                public ISyncConfig SyncConfig { get; set; } = new SyncConfig();
 
                 public IBeaconSyncStrategy BeaconSyncStrategy { get; set; } = No.BeaconSync;
 
                 private void SetDefaults()
                 {
                     SyncPeerPool = Substitute.For<ISyncPeerPool>();
-                    SyncPeerPool.InitializedPeers.Returns(_peers.Select(p => new PeerInfo(p)));
-                    SyncPeerPool.AllPeers.Returns(_peers.Select(p => new PeerInfo(p)));
+                    var peerInfos = _peers.Select(p => new PeerInfo(p));
+                    SyncPeerPool.InitializedPeers.Returns(peerInfos);
+                    SyncPeerPool.AllPeers.Returns(peerInfos);
 
                     SyncProgressResolver = Substitute.For<ISyncProgressResolver>();
                     SyncProgressResolver.ChainDifficulty.Returns(ValidGenesis.TotalDifficulty ?? 0);
@@ -863,11 +816,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             foreach (Func<string> configSetups in _configActions)
                             {
-                                syncProgressSetup.Invoke();
-                                peeringSetup.Invoke();
-                                configSetups.Invoke();
+                                string syncProgressSetupName = syncProgressSetup.Invoke();
+                                string peeringSetupName = peeringSetup.Invoke();
+                                string configSetupName = configSetups.Invoke();
 
+                                // Console.WriteLine("=====================");
+                                // Console.WriteLine(syncProgressSetupName);
+                                // Console.WriteLine(peeringSetupName);
+                                // Console.WriteLine(configSetupName);
                                 Test();
+                                // Console.WriteLine("=====================");
                             }
                         }
                     }

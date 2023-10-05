@@ -134,41 +134,11 @@ namespace Nethermind.Init.Steps
             }
             else
             {
-                pruningStrategy = No.Pruning;
-                persistenceStrategy = Persist.EveryBlock;
-            }
-
-            TrieStore trieStore = syncConfig.TrieHealing
-                ? new HealingTrieStore(
+                setApi.TrieStore = trieStore = new TrieStore(
                     stateWitnessedBy,
-                    pruningStrategy,
-                    persistenceStrategy,
-                    getApi.LogManager)
-                : new TrieStore(
-                    stateWitnessedBy,
-                    pruningStrategy,
-                    persistenceStrategy,
+                    No.Pruning,
+                    Persist.EveryBlock,
                     getApi.LogManager);
-            setApi.TrieStore = trieStore;
-
-            IWorldState worldState = setApi.WorldState = syncConfig.TrieHealing
-                ? new HealingWorldState(
-                    trieStore,
-                    codeDb,
-                    getApi.LogManager)
-                : new WorldState(
-                    trieStore,
-                    codeDb,
-                    getApi.LogManager);
-
-            if (pruningConfig.Mode.IsFull())
-            {
-                IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
-                fullPruningDb.PruningStarted += (_, args) =>
-                {
-                    cachedStateDb.PersistCache(args.Context);
-                    trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
-                };
             }
 
             TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);

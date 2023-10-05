@@ -13,7 +13,4 @@ public static class EnuberableExtensions
     {
         list.ToList().ForEach(action);
     }
-
-    public static bool NullableSequenceEqual<T>(this IEnumerable<T>? first, IEnumerable<T>? second) =>
-        first is not null ? second is not null && first.SequenceEqual(second) : second is null;
 }

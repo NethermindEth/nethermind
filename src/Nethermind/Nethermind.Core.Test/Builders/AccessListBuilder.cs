@@ -9,12 +9,12 @@ public class TestAccessListBuilder : BuilderBase<AccessList>
 {
     public TestAccessListBuilder()
     {
-        AccessList.Builder accessListBuilder = new();
+        AccessListBuilder accessListBuilder = new();
         foreach (Address address in TestItem.Addresses.Take(5))
         {
             accessListBuilder.AddAddress(address);
         }
 
-        TestObjectInternal = accessListBuilder.Build();
+        TestObjectInternal = accessListBuilder.ToAccessList();
     }
 }

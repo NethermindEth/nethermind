@@ -38,9 +38,9 @@ namespace Nethermind.Synchronization.Test
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
 
-            PeerInfo syncPeer = BuildPeer(false);
+            var syncPeer = BuildPeer(false);
 
-            PeerInfo[] peers = { syncPeer };
+            var peers = new[] { syncPeer };
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
@@ -52,10 +52,10 @@ namespace Nethermind.Synchronization.Test
         public void Can_write_one_uninitialized_one_initialized()
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            PeerInfo syncPeer = BuildPeer(false);
-            PeerInfo syncPeer2 = BuildPeer(true);
+            var syncPeer = BuildPeer(false);
+            var syncPeer2 = BuildPeer(true);
 
-            PeerInfo[] peers = { syncPeer, syncPeer2 };
+            var peers = new[] { syncPeer, syncPeer2 };
 
             syncPeerPool.PeerCount.Returns(peers.Length);
 
@@ -70,9 +70,9 @@ namespace Nethermind.Synchronization.Test
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
 
             (PeerInfo syncPeer, StubSyncPeer syncPeerSyncPeer) = BuildPeerWithStubSyncPeer(false);
-            PeerInfo syncPeer2 = BuildPeer(true);
+            var syncPeer2 = BuildPeer(true);
 
-            PeerInfo[] peers = { syncPeer, syncPeer2 };
+            var peers = new[] { syncPeer, syncPeer2 };
 
             syncPeerPool.PeerCount.Returns(peers.Length);
 
@@ -130,9 +130,9 @@ namespace Nethermind.Synchronization.Test
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             (PeerInfo syncPeer, StubSyncPeer syncPeerSyncPeer) = BuildPeerWithStubSyncPeer(false);
-            PeerInfo syncPeer2 = BuildPeer(true);
+            var syncPeer2 = BuildPeer(true);
 
-            PeerInfo[] peers = { syncPeer, syncPeer2 };
+            var peers = new[] { syncPeer, syncPeer2 };
             syncPeerPool.PeerCount.Returns(peers.Length);
             syncPeerPool.AllPeers.Returns(peers);
 
@@ -148,13 +148,13 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void PeerFormatIsCorrect()
         {
-            PeerInfo syncPeer = BuildPeer(false);
+            var syncPeer = BuildPeer(false);
             syncPeer.TryAllocate(AllocationContexts.All);
 
-            PeerInfo syncPeer2 = BuildPeer(true, direction: ConnectionDirection.In);
+            var syncPeer2 = BuildPeer(true, direction: ConnectionDirection.In);
             syncPeer2.PutToSleep(AllocationContexts.All, DateTime.Now);
 
-            PeerInfo[] peers = { syncPeer, syncPeer2 };
+            var peers = new[] { syncPeer, syncPeer2 };
 
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             syncPeerPool.PeerCount.Returns(peers.Length);
@@ -188,24 +188,27 @@ namespace Nethermind.Synchronization.Test
             }
 
             public override string Name { get; }
-            public override byte ProtocolVersion { get; } = default;
-            public override string ProtocolCode { get; } = default!;
-            public override int MessageIdSpaceSize { get; } = default;
-            protected override TimeSpan InitTimeout { get; } = default;
-            public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized = delegate { };
-            public override event EventHandler<ProtocolEventArgs> SubprotocolRequested = delegate { };
+            public override byte ProtocolVersion { get; }
+            public override string ProtocolCode { get; }
+            public override int MessageIdSpaceSize { get; }
             public override void Init()
             {
                 throw new NotImplementedException();
             }
+
+            public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+            public override event EventHandler<ProtocolEventArgs> SubprotocolRequested;
+            protected override TimeSpan InitTimeout { get; }
             public override void HandleMessage(ZeroPacket message)
             {
                 throw new NotImplementedException();
             }
+
             public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
             {
                 throw new NotImplementedException();
             }
+
             protected override void OnDisposed()
             {
                 throw new NotImplementedException();

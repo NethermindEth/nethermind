@@ -48,19 +48,19 @@ namespace Nethermind.JsonRpc.Test
 
             public void Dispose()
             {
-                _httpClient.Dispose();
+                _httpClient?.Dispose();
             }
 
             protected class JsonRpcSuccessResponse<T> : JsonRpcSuccessResponse
             {
                 [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Include, Order = 1)]
-                public new T Result { get { return (T)base.Result!; } set { base.Result = value; } }
+                public new T Result { get { return (T)base.Result; } set { base.Result = value; } }
             }
 
             public virtual async Task<(T2, string)> GetData()
             {
                 string jsonData = await GetJsonData();
-                return (_serializer.Deserialize<JsonRpcSuccessResponse<T2>>(jsonData).Result!, jsonData);
+                return (_serializer.Deserialize<JsonRpcSuccessResponse<T2>>(jsonData).Result, jsonData);
             }
 
             public abstract Task<string> GetJsonData();

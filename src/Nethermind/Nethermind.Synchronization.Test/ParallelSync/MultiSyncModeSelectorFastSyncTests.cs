@@ -606,7 +606,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             syncPeers.Add(syncPeer);
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            IEnumerable<PeerInfo> peerInfos = syncPeers.Select(p => new PeerInfo(p)).ToArray();
+            IEnumerable<PeerInfo> peerInfos = syncPeers.Select(p => new PeerInfo(p));
             syncPeerPool.InitializedPeers.Returns(peerInfos);
             syncPeerPool.AllPeers.Returns(peerInfos);
 
@@ -624,7 +624,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
                 long number = header.Number + i;
                 syncPeer.HeadNumber.Returns(number);
-                syncPeer.TotalDifficulty.Returns(header.TotalDifficulty!.Value + i);
+                syncPeer.TotalDifficulty.Returns(header.TotalDifficulty.Value + i);
                 syncProgressResolver.FindBestHeader().Returns(number);
                 syncProgressResolver.FindBestFullBlock().Returns(number);
                 selector.Update();

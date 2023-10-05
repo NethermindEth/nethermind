@@ -20,7 +20,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Evm;
 
 namespace Nethermind.AuRa.Test.Reward
 {
@@ -199,7 +198,7 @@ namespace Nethermind.AuRa.Test.Reward
         {
             _transactionProcessor.When(x => x.Execute(
                     Arg.Is<Transaction>(t => CheckTransaction(t, rewards.Keys, _rewardData)),
-                    Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(_block.Header)),
+                    _block.Header,
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer)))
                 .Do(args =>
                 {

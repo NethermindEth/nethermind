@@ -17,7 +17,7 @@ namespace Nethermind.Blockchain.Test.Producers
         {
             public partial class ScenarioBuilder
             {
-                private Address _eip1559FeeCollector = null!;
+                private Address _eip1559FeeCollector;
 
                 public ScenarioBuilder WithEip1559FeeCollector(Address address)
                 {
@@ -34,6 +34,10 @@ namespace Nethermind.Blockchain.Test.Producers
                 private async Task<ScenarioBuilder> AssertNewBlockFeeCollectedAsync(UInt256 expectedFeeCollected, params Transaction[] transactions)
                 {
                     await ExecuteAntecedentIfNeeded();
+                    if (_eip1559FeeCollector is null)
+                    {
+                        Assert.Fail($"{nameof(IReleaseSpec.Eip1559FeeCollector)} not set");
+                    }
                     UInt256 balanceBefore = _testRpcBlockchain.State.GetBalance(_eip1559FeeCollector);
                     await _testRpcBlockchain.AddBlock(transactions);
                     UInt256 balanceAfter = _testRpcBlockchain.State.GetBalance(_eip1559FeeCollector);

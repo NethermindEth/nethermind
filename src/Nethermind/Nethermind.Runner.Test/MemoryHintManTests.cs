@@ -6,13 +6,11 @@ using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Memory;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.TxPool;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test
@@ -29,7 +27,6 @@ namespace Nethermind.Runner.Test
         private ITxPoolConfig _txPoolConfig;
         private INetworkConfig _networkConfig;
         private MemoryHintMan _memoryHintMan;
-        private MallocHelper _mallocHelper;
 
         [SetUp]
         public void Setup()
@@ -39,8 +36,7 @@ namespace Nethermind.Runner.Test
             _initConfig = new InitConfig();
             _txPoolConfig = new TxPoolConfig();
             _networkConfig = new NetworkConfig();
-            _mallocHelper = Substitute.For<MallocHelper>();
-            _memoryHintMan = new MemoryHintMan(LimboLogs.Instance, _mallocHelper);
+            _memoryHintMan = new MemoryHintMan(LimboLogs.Instance);
         }
 
         private void SetMemoryAllowances(uint cpuCount)
@@ -169,23 +165,6 @@ namespace Nethermind.Runner.Test
             _initConfig.MemoryHint = memoryHint;
             SetMemoryAllowances(1);
             Trie.MemoryAllowance.TrieNodeCacheCount.Should().BeGreaterThan(0);
-        }
-
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Big_value_at_memory_hint(bool shouldSetMallocOpts)
-        {
-            _initConfig.DisableMallocOpts = !shouldSetMallocOpts;
-            SetMemoryAllowances(1);
-
-            if (shouldSetMallocOpts)
-            {
-                _mallocHelper.Received().MallOpt(Arg.Any<MallocHelper.Option>(), Arg.Any<int>());
-            }
-            else
-            {
-                _mallocHelper.DidNotReceive().MallOpt(Arg.Any<MallocHelper.Option>(), Arg.Any<int>());
-            }
         }
     }
 }

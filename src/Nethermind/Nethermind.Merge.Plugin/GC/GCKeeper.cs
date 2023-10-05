@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Memory;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.GC;
@@ -180,8 +179,6 @@ public class GCKeeper
                 }
 
                 System.GC.Collect((int)generation, mode, blocking: true, compacting: compacting > 0);
-
-                MallocHelper.Instance.MallocTrim((uint)1.MiB());
             }
         }
     }

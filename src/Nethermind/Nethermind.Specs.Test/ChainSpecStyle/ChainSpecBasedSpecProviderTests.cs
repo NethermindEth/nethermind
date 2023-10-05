@@ -140,37 +140,6 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(long.MaxValue));
         Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Sepolia));
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Sepolia));
-
-        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, SepoliaSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
-    }
-
-    [Test]
-    public void Holesky_loads_properly()
-    {
-        ChainSpec chainSpec = LoadChainSpecFromChainFolder("holesky");
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-        ISpecProvider hardCodedSpec = HoleskySpecProvider.Instance;
-
-        List<ForkActivation> forkActivationsToTest = new()
-        {
-            new ForkActivation(0, HoleskySpecProvider.GenesisTimestamp),
-            new ForkActivation(1, HoleskySpecProvider.ShanghaiTimestamp),
-            new ForkActivation(3, HoleskySpecProvider.ShanghaiTimestamp + 24),
-            //new ForkActivation(4, HoleskySpecProvider.CancunTimestamp),
-            //new ForkActivation(5, HoleskySpecProvider.CancunTimestamp + 12),
-        };
-
-        CompareSpecProviders(hardCodedSpec, provider, forkActivationsToTest);
-        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(hardCodedSpec.TerminalTotalDifficulty));
-        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(0));
-        Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(0));
-        Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Holesky));
-        Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Holesky));
-
-        // because genesis time for holesky is set 5 minutes before the launch of the chain. this test fails.
-        //GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-        //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
     }
 
     [Test]

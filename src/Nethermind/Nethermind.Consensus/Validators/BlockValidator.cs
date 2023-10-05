@@ -49,24 +49,6 @@ public class BlockValidator : IBlockValidator
     }
 
     /// <summary>
-    /// Applies to blocks without parent
-    /// </summary>
-    /// <param name="block">A block to validate</param>
-    /// <param name="error">Error description in case of failed validation</param>
-    /// <returns>Validation result</returns>
-    /// <remarks>
-    /// Parent may be absent during BeaconSync
-    /// </remarks>
-    public bool ValidateOrphanedBlock(Block block, out string? error)
-    {
-        if (!ValidateEip4844Fields(block, _specProvider.GetSpec(block.Header), out error))
-            return false;
-
-        error = null;
-        return true;
-    }
-
-    /// <summary>
     /// Suggested block validation runs basic checks that can be executed before going through the expensive EVM processing.
     /// </summary>
     /// <param name="block">A block to validate</param>
@@ -78,27 +60,30 @@ public class BlockValidator : IBlockValidator
         Transaction[] txs = block.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        if (!ValidateTransactions(block, spec))
-            return false;
-
-        if (!ValidateEip4844Fields(block, spec, out _))
-            return false;
+        for (int i = 0; i < txs.Length; i++)
+        {
+            if (!_txValidator.IsWellFormed(txs[i], spec))
+            {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction {txs[i].Hash}");
+                return false;
+            }
+        }
 
         if (spec.MaximumUncleCount < block.Uncles.Length)
         {
-            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Uncle count of {block.Uncles.Length} exceeds the max limit of {spec.MaximumUncleCount}");
+            _logger.Debug($"{Invalid(block)} Uncle count of {block.Uncles.Length} exceeds the max limit of {spec.MaximumUncleCount}");
             return false;
         }
 
-        if (!ValidateUnclesHashMatches(block, out Keccak unclesHash))
+        if (!ValidateUnclesHashMatches(block, out var unclesHash))
         {
-            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Uncles hash mismatch: expected {block.Header.UnclesHash}, got {unclesHash}");
+            _logger.Debug($"{Invalid(block)} Uncles hash mismatch: expected {block.Header.UnclesHash}, got {unclesHash}");
             return false;
         }
 
         if (!_unclesValidator.Validate(block.Header, block.Uncles))
         {
-            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid uncles");
+            _logger.Debug($"{Invalid(block)} Invalid uncles");
             return false;
         }
 
@@ -221,25 +206,7 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
-    private bool ValidateTransactions(Block block, IReleaseSpec spec)
-    {
-        Transaction[] transactions = block.Transactions;
-
-        for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
-        {
-            Transaction transaction = transactions[txIndex];
-
-            if (!_txValidator.IsWellFormed(transaction, spec))
-            {
-                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction {transaction.Hash}");
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private bool ValidateEip4844Fields(Block block, IReleaseSpec spec, out string? error)
+    private bool ValidateTransactionsDataGas(Block block, IReleaseSpec spec, out string? error)
     {
         if (!spec.IsEip4844Enabled)
         {
@@ -259,18 +226,8 @@ public class BlockValidator : IBlockValidator
 
             if (transaction.MaxFeePerDataGas < (dataGasPrice ??= DataGasCalculator.CalculateDataGasPricePerUnit(block.Header)))
             {
-                if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block.Header, out blobGasPrice))
-                {
-                    error = "{nameof(blobGasPrice)} overflow";
-                    if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
-                    return false;
-                }
-            }
-
-            if (transaction.MaxFeePerBlobGas < blobGasPrice)
-            {
-                error = $"A transaction has unsufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {blobGasPrice}";
-                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
+                error = $"A transaction has unsufficient MaxFeePerDataGas {transaction.MaxFeePerDataGas} < {dataGasPrice}.";
+                if (_logger.IsWarn) _logger.Warn(error);
                 return false;
             }
 
@@ -280,15 +237,15 @@ public class BlockValidator : IBlockValidator
         ulong dataGasUsed = DataGasCalculator.CalculateDataGas(blobsInBlock);
         if (dataGasUsed > Eip4844Constants.MaxDataGasPerBlock)
         {
-            error = $"A block cannot have more than {Eip4844Constants.MaxBlobGasPerBlock} blob gas.";
-            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
+            error = $"A block cannot have more than {Eip4844Constants.MaxDataGasPerBlock} data gas.";
+            if (_logger.IsWarn) _logger.Warn(error);
             return false;
         }
 
         if (dataGasUsed != block.Header.DataGasUsed)
         {
-            error = $"{Invalid(block)} {nameof(BlockHeader.BlobGasUsed)} declared in the block header does not match actual blob gas used: {block.Header.BlobGasUsed} != {blobGasUsed}.";
-            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
+            error = $"DataGasUsed does not match actual data gas used: {block.Header.DataGasUsed} != {dataGasUsed}.";
+            if (_logger.IsWarn) _logger.Warn(error);
             return false;
         }
 

@@ -24,8 +24,6 @@ public class InvalidBlockInterceptor : IBlockValidator
         _logger = logManager.GetClassLogger(typeof(InvalidBlockInterceptor));
     }
 
-    public bool ValidateOrphanedBlock(Block block, out string? error) => _baseValidator.ValidateOrphanedBlock(block, out error);
-
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
     {
         bool result = _baseValidator.Validate(header, parent, isUncle);

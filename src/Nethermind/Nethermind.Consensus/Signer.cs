@@ -21,10 +21,10 @@ namespace Nethermind.Consensus
 
         public bool CanSign => _key is not null;
 
-        public Signer(ulong chainId, PrivateKey? key, ILogManager logManager)
+        public Signer(ulong chainId, PrivateKey key, ILogManager logManager)
         {
             _chainId = chainId;
-            _logger = logManager.GetClassLogger<Signer>();
+            _logger = logManager?.GetClassLogger<Signer>() ?? throw new ArgumentNullException(nameof(logManager));
             SetSigner(key);
         }
 

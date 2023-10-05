@@ -19,7 +19,6 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 
-#nullable enable
 namespace Nethermind.JsonRpc
 {
     public class JsonRpcProcessor : IJsonRpcProcessor
@@ -30,14 +29,16 @@ namespace Nethermind.JsonRpc
         private readonly JsonSerializer _obsoleteBasicJsonSerializer = new();
         private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonSerializer _jsonSerializer;
-        private readonly Recorder? _recorder;
+        private readonly Recorder _recorder;
 
         public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger();
-            _jsonRpcService = jsonRpcService;
-            _jsonRpcConfig = jsonRpcConfig;
-            _jsonSerializer = jsonSerializer;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            if (fileSystem is null) throw new ArgumentNullException(nameof(fileSystem));
+
+            _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
+            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+            _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
 
             if (_jsonRpcConfig.RpcRecorderState != RpcRecorderState.None)
             {
@@ -68,7 +69,7 @@ namespace Nethermind.JsonRpc
             _traceSerializer = JsonSerializer.Create(jsonSettings);
         }
 
-        private IEnumerable<(JsonRpcRequest? Model, List<JsonRpcRequest>? Collection)> DeserializeObjectOrArray(TextReader json)
+        private IEnumerable<(JsonRpcRequest Model, List<JsonRpcRequest> Collection)> DeserializeObjectOrArray(TextReader json)
         {
             IEnumerable<JToken> parsedJson = JTokenUtils.ParseMulticontent(json);
 
@@ -113,7 +114,7 @@ namespace Nethermind.JsonRpc
             {
                 if (arrayToken[i].Type == JTokenType.Array || arrayToken[i].Type == JTokenType.Object)
                 {
-                    arrayToken[i].Replace(JToken.Parse(_jsonSerializer.Serialize(arrayToken[i].Value<object>()!.ToString())));
+                    arrayToken[i].Replace(JToken.Parse(_jsonSerializer.Serialize(arrayToken[i].Value<object>().ToString())));
                 }
             }
         }
@@ -122,9 +123,9 @@ namespace Nethermind.JsonRpc
         {
             request = await RecordRequest(request);
             Stopwatch stopwatch = Stopwatch.StartNew();
-            IEnumerable<(JsonRpcRequest? Model, List<JsonRpcRequest>? Collection)> rpcRequests = DeserializeObjectOrArray(request);
+            IEnumerable<(JsonRpcRequest Model, List<JsonRpcRequest> Collection)> rpcRequests = DeserializeObjectOrArray(request);
 
-            using IEnumerator<(JsonRpcRequest? Model, List<JsonRpcRequest>? Collection)> enumerator = rpcRequests.GetEnumerator();
+            using IEnumerator<(JsonRpcRequest Model, List<JsonRpcRequest> Collection)> enumerator = rpcRequests.GetEnumerator();
 
             bool moveNext = true;
 
@@ -159,7 +160,7 @@ namespace Nethermind.JsonRpc
                 }
                 else if (moveNext)
                 {
-                    (JsonRpcRequest? Model, List<JsonRpcRequest>? Collection) rpcRequest = enumerator.Current;
+                    (JsonRpcRequest Model, List<JsonRpcRequest> Collection) rpcRequest = enumerator.Current;
 
                     if (rpcRequest.Model is not null)
                     {
@@ -177,7 +178,7 @@ namespace Nethermind.JsonRpc
                         if (!context.IsAuthenticated && rpcRequest.Collection.Count > _jsonRpcConfig.MaxBatchSize)
                         {
                             if (_logger.IsWarn) _logger.Warn($"The batch size limit was exceeded. The requested batch size {rpcRequest.Collection.Count}, and the current config setting is JsonRpc.{nameof(_jsonRpcConfig.MaxBatchSize)} = {_jsonRpcConfig.MaxBatchSize}.");
-                            JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded, "Batch size limit exceeded");
+                            JsonRpcErrorResponse? response = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded, "Batch size limit exceeded");
 
                             yield return JsonRpcResult.Single(RecordResponse(response, RpcReport.Error));
                             continue;
@@ -236,15 +237,11 @@ namespace Nethermind.JsonRpc
             Stopwatch stopwatch = Stopwatch.StartNew();
 
             JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(request, context);
-            JsonRpcErrorResponse? localErrorResponse = response as JsonRpcErrorResponse;
+            JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
             bool isSuccess = localErrorResponse is null;
             if (!isSuccess)
             {
-                if (localErrorResponse?.Error?.SuppressWarning == false)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Error when handling {request} | {_jsonSerializer.Serialize(localErrorResponse)}");
-                }
-
+                if (_logger.IsWarn) _logger.Warn($"Error when handling {request} | {_jsonSerializer.Serialize(localErrorResponse)}");
                 Metrics.JsonRpcErrors++;
             }
             else
@@ -269,7 +266,7 @@ namespace Nethermind.JsonRpc
         {
             if ((_jsonRpcConfig.RpcRecorderState & RpcRecorderState.Response) != 0)
             {
-                _recorder!.RecordResponse(_jsonSerializer.Serialize(result));
+                _recorder.RecordResponse(_jsonSerializer.Serialize(result));
             }
 
             return result;
@@ -280,7 +277,7 @@ namespace Nethermind.JsonRpc
             if ((_jsonRpcConfig.RpcRecorderState & RpcRecorderState.Request) != 0)
             {
                 string requestString = await request.ReadToEndAsync();
-                _recorder!.RecordRequest(requestString);
+                _recorder.RecordRequest(requestString);
                 return new StringReader(requestString);
             }
 

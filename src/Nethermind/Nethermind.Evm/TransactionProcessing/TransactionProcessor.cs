@@ -69,136 +69,31 @@ namespace Nethermind.Evm.TransactionProcessing
             _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
-        public void CallAndRestore(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer)
+        public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            Execute(transaction, blCtx, txTracer, ExecutionOptions.CommitAndRestore);
+            Execute(transaction, block, txTracer, ExecutionOptions.CommitAndRestore);
         }
 
-        public void BuildUp(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer)
+        public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
             // we need to treat the result of previous transaction as the original value of next transaction
             // when we do not commit
             _worldState.TakeSnapshot(true);
-            Execute(transaction, blCtx, txTracer, ExecutionOptions.None);
+            Execute(transaction, block, txTracer, ExecutionOptions.None);
         }
 
-        public void Execute(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer)
+        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            Execute(transaction, blCtx, txTracer, ExecutionOptions.Commit);
+            Execute(transaction, block, txTracer, ExecutionOptions.Commit);
         }
 
-        public void Trace(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer)
+        public void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            Execute(transaction, blCtx, txTracer, ExecutionOptions.NoValidation);
+            Execute(transaction, block, txTracer, ExecutionOptions.NoValidation);
         }
 
-        protected virtual void Execute(Transaction tx, BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
-        {
-            BlockHeader header = blCtx.Header;
-            IReleaseSpec spec = _specProvider.GetSpec(header);
-            if (tx.IsSystem())
-                spec = new SystemTransactionReleaseSpec(spec);
-
-            // restore is CallAndRestore - previous call, we will restore state after the execution
-            bool restore = opts.HasFlag(ExecutionOptions.Restore);
-            // commit - is for standard execute, we will commit thee state after execution
-            // !commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
-            // we commit only after all block is constructed
-            bool commit = opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled;
-
-            if (!ValidateStatic(tx, header, spec, tracer, opts, out long intrinsicGas))
-                return;
-
-            UInt256 effectiveGasPrice =
-                tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
-
-            if (opts == ExecutionOptions.Commit || opts == ExecutionOptions.None)
-            {
-                decimal gasPrice = (decimal)effectiveGasPrice / 1_000_000_000m;
-                Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
-                Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
-
-                Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
-                Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
-
-                Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
-                Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.EstMedianGasPrice);
-                Metrics.Transactions++;
-
-                Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
-                Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
-                Metrics.BlockTransactions++;
-            }
-
-            bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
-
-            if (!ValidateSender(tx, header, spec, tracer, opts))
-                return;
-
-            if (!BuyGas(tx, header, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment))
-                return;
-
-            if (!IncrementNonce(tx, header, spec, tracer, opts))
-                return;
-
-            if (commit)
-                _worldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
-
-            ExecutionEnvironment env = BuildExecutionEnvironmnet(tx, blCtx, spec, tracer, opts, effectiveGasPrice);
-
-            long gasAvailable = tx.GasLimit - intrinsicGas;
-            if (!ExecuteEVMCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode))
-                return;
-
-            if (!PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode))
-                return;
-
-            // Finalize
-            if (restore)
-            {
-                _worldState.Reset();
-                if (deleteCallerAccount)
-                {
-                    _worldState.DeleteAccount(tx.SenderAddress);
-                }
-                else
-                {
-                    if (!opts.HasFlag(ExecutionOptions.NoValidation))
-                        _worldState.AddToBalance(tx.SenderAddress, senderReservedGasPayment, spec);
-                    if (!tx.IsSystem())
-                        _worldState.DecrementNonce(tx.SenderAddress);
-
-                    _worldState.Commit(spec);
-                }
-            }
-            else if (commit)
-            {
-                _worldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance);
-            }
-
-            if (tracer.IsTracingReceipt)
-            {
-                Keccak stateRoot = null;
-                if (!spec.IsEip658Enabled)
-                {
-                    _worldState.RecalculateStateRoot();
-                    stateRoot = _worldState.StateRoot;
-                }
-
-                if (statusCode == StatusCode.Failure)
-                {
-                    byte[] output = (substate?.ShouldRevert ?? false) ? substate.Output.ToArray() : Array.Empty<byte>();
-                    tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate?.Error, stateRoot);
-                }
-                else
-                {
-                    LogEntry[] logs = substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>();
-                    tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
-                }
-            }
-        }
-
-        private void QuickFail(Transaction tx, BlockHeader block, IReleaseSpec spec, ITxTracer txTracer, string? reason)
+        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled,
+            string? reason)
         {
             block.GasUsed += tx.GasLimit;
 
@@ -391,69 +286,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 _worldState.Commit(spec, txTracer.IsTracingState ? txTracer : NullTxTracer.Instance);
             }
 
-            if (validate)
-                _worldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
-
-            return true;
-        }
-
-        protected virtual bool IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
-        {
-            if (tx.IsSystem())
-                return true;
-
-            if (tx.Nonce != _worldState.GetNonce(tx.SenderAddress))
-            {
-                TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {_worldState.GetNonce(tx.SenderAddress)})");
-                QuickFail(tx, header, spec, tracer, "wrong transaction nonce");
-                return false;
-            }
-
-            _worldState.IncrementNonce(tx.SenderAddress);
-            return true;
-        }
-
-        protected virtual ExecutionEnvironment BuildExecutionEnvironmnet(
-            Transaction tx, BlockExecutionContext blCtx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
-            in UInt256 effectiveGasPrice)
-        {
-            Address recipient = tx.GetRecipient(tx.IsContractCreation ? _worldState.GetNonce(tx.SenderAddress) : 0) ??
-                // this transaction is not a contract creation so it should have the recipient known and not null
-                throw new InvalidDataException("Recipient has not been resolved properly before tx execution");
-
-            TxExecutionContext executionContext =
-                new(blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes);
-
-            CodeInfo codeInfo = tx.IsContractCreation ? new(tx.Data.AsArray())
-                                    : _virtualMachine.GetCachedCodeInfo(_worldState, recipient, spec);
-
-            byte[] inputData = tx.IsMessageCall ? tx.Data.AsArray() ?? Array.Empty<byte>() : Array.Empty<byte>();
-
-            return new ExecutionEnvironment
-            (
-                txExecutionContext: executionContext,
-                value: tx.Value,
-                transferValue: tx.Value,
-                caller: tx.SenderAddress,
-                codeSource: recipient,
-                executingAccount: recipient,
-                inputData: inputData,
-                codeInfo: codeInfo
-            );
-        }
-
-        protected virtual bool ExecuteEVMCall(
-            Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
-            in long gasAvailable, in ExecutionEnvironment env,
-            out TransactionSubstate? substate, out long spentGas, out byte statusCode)
-        {
-            bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
-
-            substate = null;
-            spentGas = tx.GasLimit;
-            statusCode = StatusCode.Failure;
-
-            long unspentGas = gasAvailable;
+            long unspentGas = gasLimit - intrinsicGas;
+            long spentGas = gasLimit;
 
             Snapshot snapshot = _worldState.TakeSnapshot();
             // Fixes eth_estimateGas. If sender is systemUser subtracting value will cause InsufficientBalanceException

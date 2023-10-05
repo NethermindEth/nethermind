@@ -10,9 +10,9 @@ namespace Nethermind.Consensus
 {
     public class NullSigner : ISigner, ISignerStore
     {
-        public static NullSigner Instance { get; } = new();
+        public static readonly NullSigner Instance = new();
 
-        public Address Address { get; } = Address.Zero; // TODO: why zero address
+        public Address Address { get; } = Address.Zero; // TODO: why zero address 
 
         public ValueTask Sign(Transaction tx) => default;
 
@@ -20,7 +20,7 @@ namespace Nethermind.Consensus
 
         public bool CanSign { get; } = true; // TODO: why true?
 
-        public PrivateKey? Key { get; } = null;
+        public PrivateKey Key { get; }
 
         public void SetSigner(PrivateKey key) { }
 

@@ -52,6 +52,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             int pathPoolCount = 100_000;
             Keccak[] pathPool = new Keccak[pathPoolCount];
             SortedDictionary<Keccak, Account> accounts = new();
+            int updatesCount = 0;
+            int deletionsCount = 0;
 
             for (int i = 0; i < pathPoolCount; i++)
             {
@@ -74,7 +76,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.RemoteStateTree.Commit(0);
 
             int startingHashIndex = 0;
-            int endHashIndex;
+            int endHashIndex = 0;
             int blockJumps = 5;
             for (int blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
             {
@@ -99,11 +101,13 @@ namespace Nethermind.Synchronization.Test.FastSync
                         {
                             dbContext.RemoteStateTree.Set(path, account);
                             accounts[path] = account;
+                            updatesCount++;
                         }
                         else
                         {
                             dbContext.RemoteStateTree.Set(path, null);
                             accounts.Remove(path);
+                            deletionsCount++;
                         }
 
 
@@ -155,12 +159,12 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             AccountProofCollector accountProofCollector = new(startingHash.Bytes);
             remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
-            byte[][] firstProof = accountProofCollector.BuildResult().Proof!;
+            byte[][] firstProof = accountProofCollector.BuildResult().Proof;
             accountProofCollector = new(endHash.Bytes);
             remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
-            byte[][] lastProof = accountProofCollector.BuildResult().Proof!;
+            byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            _ = SnapProviderHelper.AddAccountRange(localStateTree, blockNumber, rootHash, startingHash, limitHash, accounts, firstProof.Concat(lastProof).ToArray());
+            (_, _, _, _) = SnapProviderHelper.AddAccountRange(localStateTree, blockNumber, rootHash, startingHash, limitHash, accounts, firstProof!.Concat(lastProof!).ToArray());
         }
     }
 }

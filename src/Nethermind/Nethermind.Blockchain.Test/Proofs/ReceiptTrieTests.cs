@@ -11,8 +11,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Proofs
@@ -51,7 +49,7 @@ namespace Nethermind.Blockchain.Test.Proofs
         private static void VerifyProof(byte[][] proof, Keccak receiptRoot)
         {
             TrieNode node = new(NodeType.Unknown, proof.Last());
-            node.ResolveNode(Substitute.For<ITrieNodeResolver>());
+            node.ResolveNode(null);
             TxReceipt receipt = new ReceiptMessageDecoder().Decode(node.Value.AsRlpStream());
             Assert.NotNull(receipt.Bloom);
 

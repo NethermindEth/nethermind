@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
@@ -61,19 +61,33 @@ public static class IntrinsicGasCalculator
         long accessListCost = 0;
         if (accessList is not null)
         {
-            if (!releaseSpec.UseTxAccessLists)
+            if (releaseSpec.UseTxAccessLists)
+            {
+                if (accessList.IsNormalized)
+                {
+                    accessListCost += accessList.Data.Count * GasCostOf.AccessAccountListEntry;
+                    accessListCost += accessList.Data.Sum(d => d.Value.Count) *
+                                        GasCostOf.AccessStorageListEntry;
+                }
+                else
+                {
+                    foreach (object o in accessList.OrderQueue!)
+                    {
+                        if (o is Address)
+                        {
+                            accessListCost += GasCostOf.AccessAccountListEntry;
+                        }
+                        else
+                        {
+                            accessListCost += GasCostOf.AccessStorageListEntry;
+                        }
+                    }
+                }
+            }
+            else
             {
                 throw new InvalidDataException(
                     $"Transaction with an access list received within the context of {releaseSpec.Name}. Eip-2930 is not enabled.");
-            }
-
-            foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) entry in accessList)
-            {
-                accessListCost += GasCostOf.AccessAccountListEntry;
-                foreach (UInt256 _ in entry.storageKeys)
-                {
-                    accessListCost += GasCostOf.AccessStorageListEntry;
-                }
             }
         }
 

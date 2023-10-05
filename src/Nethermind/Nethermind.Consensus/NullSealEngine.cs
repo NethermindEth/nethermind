@@ -18,22 +18,22 @@ namespace Nethermind.Consensus
 
         public Address Address => Address.Zero;
 
-        public Task<Block> SealBlock(Block? block, CancellationToken cancellationToken)
+        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
             return Task.FromResult(block);
         }
 
-        public bool CanSeal(long blockNumber, Keccak? parentHash)
+        public bool CanSeal(long blockNumber, Keccak parentHash)
         {
             return true;
         }
 
-        public bool ValidateParams(BlockHeader? parent, BlockHeader? header, bool isUncle = false)
+        public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
             return true;
         }
 
-        public bool ValidateSeal(BlockHeader? header, bool force)
+        public bool ValidateSeal(BlockHeader header, bool force)
         {
             return true;
         }

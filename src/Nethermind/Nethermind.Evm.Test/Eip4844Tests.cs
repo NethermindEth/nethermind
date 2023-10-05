@@ -44,7 +44,7 @@ public class Eip4844Tests : VirtualMachineTestsBase
             .Return(32, 0)
             .Done;
 
-        TestAllTracerWithOutput result = Execute(Activation, 50000, code, blobVersionedHashes: hashes);
+        TestAllTracerWithOutput result = Execute(BlockNumber, 50000, code, blobVersionedHashes: hashes, timestamp: Timestamp);
 
         result.StatusCode.Should().Be(StatusCode.Success);
         result.ReturnValue.SequenceEqual(expectedOutput);

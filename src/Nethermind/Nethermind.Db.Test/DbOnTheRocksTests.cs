@@ -236,24 +236,6 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Smoke_test_large_writes_with_nowal()
-        {
-            IBatch batch = _db.StartBatch();
-
-            for (int i = 0; i < 1000; i++)
-            {
-                batch.Set(i.ToBigEndianByteArray(), i.ToBigEndianByteArray(), WriteFlags.DisableWAL);
-            }
-
-            batch.Dispose();
-
-            for (int i = 0; i < 1000; i++)
-            {
-                _db[i.ToBigEndianByteArray()].Should().BeEquivalentTo(i.ToBigEndianByteArray());
-            }
-        }
-
-        [Test]
         public void Smoke_test_readahead()
         {
             _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };

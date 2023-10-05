@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Threading;
@@ -19,7 +18,7 @@ namespace Nethermind.Sockets
         public WebSocketHandler(WebSocket webSocket, ILogManager logManager)
         {
             _webSocket = webSocket;
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public Task SendRawAsync(ArraySegment<byte> data, bool endOfMessage = true) =>
@@ -109,14 +108,9 @@ namespace Nethermind.Sockets
             return Task.CompletedTask;
         }
 
-        public Stream SendUsingStream()
-        {
-            return new WebSocketStream(_webSocket, WebSocketMessageType.Text);
-        }
-
         public void Dispose()
         {
-            _webSocket.Dispose();
+            _webSocket?.Dispose();
         }
     }
 }

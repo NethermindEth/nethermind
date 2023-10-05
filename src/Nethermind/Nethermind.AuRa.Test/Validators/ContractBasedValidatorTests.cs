@@ -30,7 +30,7 @@ using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
-using Nethermind.Evm;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.AuRa.Test.Validators
 {
@@ -177,13 +177,13 @@ namespace Nethermind.AuRa.Test.Validators
             _transactionProcessor.Received()
                 .CallAndRestore(
                     Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
-                    Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(_parentHeader)),
+                    _parentHeader,
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
             // finalizeChange should be called
             _transactionProcessor.Received(finalizeChangeCalled ? 1 : 0)
                 .Execute(Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
-                    Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(block.Header)),
+                    block.Header,
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
             // initial validator should be true
@@ -596,7 +596,7 @@ namespace Nethermind.AuRa.Test.Validators
             // finalizeChange should be called or not based on test spec
             _transactionProcessor.Received(chain.ExpectedFinalizationCount)
                 .Execute(Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
-                    Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(_block.Header)),
+                    _block.Header,
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
             _transactionProcessor.ClearReceivedCalls();
@@ -627,7 +627,7 @@ namespace Nethermind.AuRa.Test.Validators
 
             _transactionProcessor.When(x => x.CallAndRestore(
                     Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
-                    Arg.Any<BlockExecutionContext>(),
+                    Arg.Any<BlockHeader>(),
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer)))
                 .Do(args =>
                     args.Arg<ITxTracer>().MarkAsSuccess(

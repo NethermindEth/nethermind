@@ -26,12 +26,12 @@ public class BlockStoreTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         store.Insert(block);
 
-        Block? retrieved = store.Get(block.Hash!, cached);
+        Block? retrieved = store.Get(block.Hash, cached);
         retrieved.Should().BeEquivalentTo(block);
 
-        store.Delete(block.Hash!);
+        store.Delete(block.Hash);
 
-        store.Get(block.Hash!, cached).Should().BeNull();
+        store.Get(block.Hash, cached).Should().BeNull();
     }
 
     [Test]
@@ -56,12 +56,12 @@ public class BlockStoreTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         store.Insert(block);
 
-        Block? retrieved = store.Get(block.Hash!, true);
+        Block? retrieved = store.Get(block.Hash, true);
         retrieved.Should().BeEquivalentTo(block);
 
         db.Clear();
 
-        retrieved = store.Get(block.Hash!, true);
+        retrieved = store.Get(block.Hash, true);
         retrieved.Should().BeEquivalentTo(block);
     }
 
@@ -77,7 +77,8 @@ public class BlockStoreTests
 
         store.Insert(block);
 
-        ReceiptRecoveryBlock retrieved = store.GetReceiptRecoveryBlock(block.Hash!)!.Value;
+        ReceiptRecoveryBlock retrieved = store.GetReceiptRecoveryBlock(block.Hash).Value;
+        retrieved.Should().NotBeNull();
 
         retrieved.Header.Should().BeEquivalentTo(block.Header);
         retrieved.TransactionCount.Should().Be(block.Transactions.Length);

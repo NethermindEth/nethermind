@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -26,13 +27,12 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
     [Parallelizable(ParallelScope.Self)]
     public class StateSyncDispatcherTests
     {
-        private static IBlockTree _blockTree = null!;
+        private static IBlockTree _blockTree;
+        private ILogManager _logManager;
+        SyncPeerPool _pool;
+        StateSyncDispatcherTester _dispatcher;
 
-        private ILogManager _logManager = null!;
-        private SyncPeerPool _pool = null!;
-        private StateSyncDispatcherTester _dispatcher = null!;
-
-        private readonly PublicKey _publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        private PublicKey _publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
 
         private static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
 
@@ -46,7 +46,7 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
             _pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
             _pool.Start();
 
-            ISyncFeed<StateSyncBatch>? feed = Substitute.For<ISyncFeed<StateSyncBatch>>();
+            var feed = Substitute.For<ISyncFeed<StateSyncBatch>>();
             _dispatcher =
                 new StateSyncDispatcherTester(feed, new StateSyncDownloader(_logManager), _pool, new StateSyncAllocationStrategyFactory(), _logManager);
         }
@@ -61,14 +61,12 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
             peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
             _pool.AddPeer(peer);
 
-            StateSyncBatch batch = new(
-                Keccak.OfAnEmptyString,
-                NodeDataType.State,
-                new[] { new StateSyncItem(Keccak.EmptyTreeHash, Array.Empty<byte>(), Array.Empty<byte>(), NodeDataType.State) });
+            StateSyncBatch batch = new StateSyncBatch(Keccak.OfAnEmptyString, NodeDataType.State,
+                new StateSyncItem[] { new StateSyncItem(Keccak.EmptyTreeHash, Array.Empty<byte>(), Array.Empty<byte>(), NodeDataType.State) });
 
             await _dispatcher.ExecuteDispatch(batch, 1);
 
-            await peer.ReceivedWithAnyArgs(1).GetNodeData(default!, default);
+            await peer.ReceivedWithAnyArgs(1).GetNodeData(default, default);
         }
 
         [Test]
@@ -88,22 +86,20 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
                 });
             _pool.AddPeer(peer);
 
-            StateSyncItem item01 = new(Keccak.EmptyTreeHash, null, new byte[] { 3 }, NodeDataType.State);
-            StateSyncItem item02 = new(Keccak.EmptyTreeHash, new byte[] { 11 }, new byte[] { 2 }, NodeDataType.State);
-            StateSyncItem item03 = new(Keccak.EmptyTreeHash, null, new byte[] { 1 }, NodeDataType.State);
-            StateSyncItem item04 = new(Keccak.EmptyTreeHash, new byte[] { 22 }, new byte[] { 21 }, NodeDataType.State);
-            StateSyncItem item05 = new(Keccak.EmptyTreeHash, new byte[] { 11 }, new byte[] { 1 }, NodeDataType.State);
-            StateSyncItem item06 = new(Keccak.EmptyTreeHash, new byte[] { 22 }, new byte[] { 22 }, NodeDataType.State);
+            var item01 = new StateSyncItem(Keccak.EmptyTreeHash, null, new byte[] { 3 }, NodeDataType.State);
+            var item02 = new StateSyncItem(Keccak.EmptyTreeHash, new byte[] { 11 }, new byte[] { 2 }, NodeDataType.State);
+            var item03 = new StateSyncItem(Keccak.EmptyTreeHash, null, new byte[] { 1 }, NodeDataType.State);
+            var item04 = new StateSyncItem(Keccak.EmptyTreeHash, new byte[] { 22 }, new byte[] { 21 }, NodeDataType.State);
+            var item05 = new StateSyncItem(Keccak.EmptyTreeHash, new byte[] { 11 }, new byte[] { 1 }, NodeDataType.State);
+            var item06 = new StateSyncItem(Keccak.EmptyTreeHash, new byte[] { 22 }, new byte[] { 22 }, NodeDataType.State);
 
-            StateSyncBatch batch = new(
-                Keccak.OfAnEmptyString,
-                NodeDataType.State,
-                new[] { item01, item02, item03, item04, item05, item06 });
+            StateSyncBatch batch = new StateSyncBatch(Keccak.OfAnEmptyString, NodeDataType.State, new StateSyncItem[] {
+                item01, item02, item03, item04, item05, item06
+            });
 
             await _dispatcher.ExecuteDispatch(batch, 1);
 
-            batch.RequestedNodes.Should().NotBeNull();
-            batch.RequestedNodes!.Count.Should().Be(6);
+            batch.RequestedNodes.Count().Should().Be(6);
             batch.RequestedNodes[0].Should().Be(item01);
             batch.RequestedNodes[1].Should().Be(item03);
             batch.RequestedNodes[2].Should().Be(item02);

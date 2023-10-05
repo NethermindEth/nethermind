@@ -423,9 +423,9 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.TLOAD)
                 .Done;
 
-        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp), 100000, code);
-        Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 1 + GasCostOf.TLoad), "gas");
-    }
+            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, 100000, code, timestamp: MainnetSpecProvider.CancunBlockTimestamp);
+            Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 1 + GasCostOf.TLoad), "gas");
+        }
 
         /// <summary>
         /// TStore gas cost check
@@ -443,117 +443,76 @@ namespace Nethermind.Evm.Test
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.TStore), "gas");
         }
 
-    [Test]
-    public void MCopy_exclusive_areas()
-    {
-        byte[] data = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-        byte[] bytecode = Prepare.EvmCode
-            .MSTORE(0, data)
-            .MCOPY(32, 0, 32)
-            .STOP()
-            .Done;
-        GethLikeTxTrace traces = Execute(
-            new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
-            bytecode,
-            MainnetSpecProvider.CancunActivation)
-            .BuildResult();
-
-        var copied = traces.Entries.Last().Memory[0];
-        var origin = traces.Entries.Last().Memory[1];
-
-        Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32) + GasCostOf.Memory * 1), "gas");
-        Assert.That(origin, Is.EqualTo(copied));
-    }
-
-
-    [Test]
-    public void MCopy_Overwrite_areas_copy_right()
-    {
-        int SLICE_SIZE = 8;
-        byte[] data = Bytes.FromHexString("0102030405060708000000000000000000000000000000000000000000000000");
-        byte[] bytecode = Prepare.EvmCode
-            .MSTORE(0, data)
-            .MCOPY(1, 0, (UInt256)SLICE_SIZE)
-            .STOP()
-            .Done;
-        GethLikeTxTrace traces = Execute(
-            new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
-            bytecode,
-            MainnetSpecProvider.CancunActivation)
-            .BuildResult();
-
-        var result = traces.Entries.Last().Memory[0];
-
-        Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
-        Assert.That(result, Is.EqualTo("0101020304050607080000000000000000000000000000000000000000000000"), "memory state");
-    }
-
-    [Test]
-    public void MCopy_twice_same_location()
-    {
-        byte[] data = Bytes.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-        byte[] bytecode = Prepare.EvmCode
-            .MSTORE(0, data)
-            .MCOPY(0, 0, 32)
-            .STOP()
-            .Done;
-        GethLikeTxTrace traces = Execute(
-            new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
-            bytecode,
-            MainnetSpecProvider.CancunActivation)
-            .BuildResult();
-
-        Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32)), "gas");
-        Assert.That(traces.Entries.Last().Memory.Count, Is.EqualTo(1));
-    }
-
-    [Test]
-    public void MCopy_Overwrite_areas_copy_left()
-    {
-        int SLICE_SIZE = 8;
-        byte[] data = Bytes.FromHexString("0001020304050607080000000000000000000000000000000000000000000000");
-        byte[] bytecode = Prepare.EvmCode
-            .MSTORE(0, data)
-            .MCOPY(0, 1, (UInt256)SLICE_SIZE)
-            .STOP()
-            .Done;
-        GethLikeTxTrace traces = Execute(
-            new GethLikeTxMemoryTracer(GethTraceOptions.Default with { EnableMemory = true }),
-            bytecode,
-            MainnetSpecProvider.CancunActivation)
-            .BuildResult();
-
-        var result = traces.Entries.Last().Memory[0];
-
-        Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
-        Assert.That(result, Is.EqualTo("0102030405060708080000000000000000000000000000000000000000000000"), "memory state");
-    }
-
-    /// <summary>
-    /// TStore gas cost check
-    /// </summary>
-    [Test]
-    public void Tstore()
-    {
-        byte[] code = Prepare.EvmCode
-            .PushData(96)
-            .PushData(64)
-            .Op(Instruction.TSTORE)
-            .Done;
-
-        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp), 100000, code);
-        Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.TStore), "gas");
-    }
-
-    [Test]
-    public void Revert()
-    {
-        // See: https://eips.ethereum.org/EIPS/eip-140
-
-        byte[] code = Bytes.FromHexString("0x6c726576657274656420646174616000557f726576657274206d657373616765000000000000000000000000000000000000600052600e6000fd");
-        TestAllTracerWithOutput receipt = Execute(blockNumber: MainnetSpecProvider.ByzantiumBlockNumber, 100_000, code);
-
-        Assert.That(receipt.Error, Is.EqualTo("Reverted 0x726576657274206d657373616765"));
-        Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 20024));
+        [Test]
+        [Ignore("Not yet implemented")]
+        public void Ropsten_attack_contract_test()
+        {
+            //PUSH1 0x60
+            //PUSH1 0x40
+            //MSTORE
+            //PUSH4 0xffffffff
+            //PUSH1 0xe0
+            //PUSH1 0x02
+            //EXP
+            //PUSH1 0x00
+            //CALLDATALOAD
+            //DIV
+            //AND
+            //PUSH4 0x9fe12a6a
+            //DUP2
+            //EQ
+            //PUSH1 0x22
+            //JUMPI
+            //JUMPDEST
+            //PUSH1 0x00
+            //JUMP
+            //JUMPDEST
+            //CALLVALUE
+            //PUSH1 0x00
+            //JUMPI
+            //PUSH1 0x38
+            //PUSH1 0x04
+            //CALLDATALOAD
+            //PUSH1 0x24
+            //CALLDATALOAD
+            //PUSH1 0xff
+            //PUSH1 0x44
+            //CALLDATALOAD
+            //AND
+            //PUSH1 0x3a
+            //JUMP
+            //JUMPDEST
+            //STOP
+            //JUMPDEST
+            //PUSH1 0x40
+            //DUP1
+            //MLOAD
+            //PUSH1 0xff
+            //DUP4
+            //AND
+            //DUP2
+            //MSTORE
+            //SWAP1
+            //MLOAD
+            //DUP4
+            //SWAP2
+            //DUP6
+            //SWAP2
+            //PUSH32 0x2f554056349a3530a4cabe3891d711b94a109411500421e48fc5256d660d7a79
+            //SWAP2
+            //DUP2
+            //SWAP1
+            //SUB
+            //PUSH1 0x20
+            //ADD
+            //SWAP1
+            //LOG3
+            //JUMPDEST
+            //POP
+            //POP
+            //POP
+            //JUMP
+            //STOP
+        }
     }
 }

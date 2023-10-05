@@ -23,11 +23,11 @@ namespace Nethermind.Blockchain.Test
             parent.TotalDifficulty.Should().BeNull(); // just to avoid the testing rig change without this test being updated
 
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.FindHeader(child.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(parent);
-            blockFinder.FindHeader(child.ParentHash!, BlockTreeLookupOptions.None).Returns(parentWithTotalDiff);
+            blockFinder.FindHeader(child.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(parent);
+            blockFinder.FindHeader(child.ParentHash, BlockTreeLookupOptions.None).Returns(parentWithTotalDiff);
 
             blockFinder.FindParentHeader(child, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().Be(parent);
-            blockFinder.FindParentHeader(child, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be((UInt256?)UInt256.One);
+            blockFinder.FindParentHeader(child, BlockTreeLookupOptions.None).TotalDifficulty.Should().Be((UInt256?)UInt256.One);
         }
     }
 }

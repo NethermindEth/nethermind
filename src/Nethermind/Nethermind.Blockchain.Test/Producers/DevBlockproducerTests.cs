@@ -99,18 +99,18 @@ namespace Nethermind.Blockchain.Test.Producers
 
             blockchainProcessor.Start();
             devBlockProducer.Start();
-            ProducedBlockSuggester _ = new ProducedBlockSuggester(blockTree, devBlockProducer);
+            ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, devBlockProducer);
 
             AutoResetEvent autoResetEvent = new(false);
 
-            blockTree.NewHeadBlock += (_, _) => autoResetEvent.Set();
+            blockTree.NewHeadBlock += (s, e) => autoResetEvent.Set();
             blockTree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             autoResetEvent.WaitOne(1000).Should().BeTrue("genesis");
 
             trigger.BuildBlock();
             autoResetEvent.WaitOne(1000).Should().BeTrue("1");
-            blockTree.Head!.Number.Should().Be(1);
+            blockTree.Head.Number.Should().Be(1);
         }
     }
 }

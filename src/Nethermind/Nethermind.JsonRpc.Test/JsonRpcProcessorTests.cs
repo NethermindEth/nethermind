@@ -381,5 +381,14 @@ namespace Nethermind.JsonRpc.Test
             result[0].BatchedResponses.Should().BeNull();
             result[0].Response.Should().BeSameAs(_errorResponse);
         }
+
+        [Test]
+        public void Cannot_accept_null_file_system()
+        {
+            Assert.Throws<ArgumentNullException>(() => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
+                Substitute.For<IJsonSerializer>(),
+                Substitute.For<IJsonRpcConfig>(),
+                null, LimboLogs.Instance));
+        }
     }
 }

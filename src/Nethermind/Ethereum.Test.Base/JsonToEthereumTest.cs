@@ -35,11 +35,6 @@ namespace Ethereum.Test.Base
             network = network.Replace("Merge+3540+3670", "Shanghai");
             network = network.Replace("Shanghai+3855", "Shanghai");
             network = network.Replace("Shanghai+3860", "Shanghai");
-            network = network.Replace("GrayGlacier+1153", "Cancun");
-            network = network.Replace("Merge+1153", "Cancun");
-            network = network.Replace("Shanghai+6780", "Cancun");
-            network = network.Replace("GrayGlacier+1153", "Cancun");
-            network = network.Replace("Merge+1153", "Cancun");
             return network switch
             {
                 "Frontier" => Frontier.Instance,
@@ -136,13 +131,13 @@ namespace Ethereum.Test.Base
             transaction.Signature = new Signature(1, 1, 27);
             transaction.Hash = transaction.CalculateHash();
 
-            AccessList.Builder builder = new();
+            AccessListBuilder builder = new();
             ProcessAccessList(transactionJson.AccessLists is not null
                 ? transactionJson.AccessLists[postStateJson.Indexes.Data]
                 : transactionJson.AccessList, builder);
-            transaction.AccessList = builder.Build();
+            transaction.AccessList = builder.ToAccessList();
 
-            if (transaction.AccessList.AsEnumerable().Count() != 0)
+            if (transaction.AccessList.Data.Count != 0)
                 transaction.Type = TxType.AccessList;
             else
                 transaction.AccessList = null;
@@ -153,7 +148,7 @@ namespace Ethereum.Test.Base
             return transaction;
         }
 
-        private static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)
+        private static void ProcessAccessList(AccessListItemJson[]? accessList, AccessListBuilder builder)
         {
             foreach (AccessListItemJson accessListItemJson in accessList ?? Array.Empty<AccessListItemJson>())
             {

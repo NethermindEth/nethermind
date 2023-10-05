@@ -826,7 +826,7 @@ namespace Nethermind.Evm.Test.Tracing
 
         private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteInitAndTraceParityCall(params byte[] code)
         {
-            (Block block, Transaction transaction) = PrepareInitTx((BlockNumber, Timestamp), 100000, code);
+            (Block block, Transaction transaction) = PrepareInitTx(BlockNumber, 100000, code);
             ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);

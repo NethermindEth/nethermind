@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -54,7 +53,7 @@ namespace Nethermind.Mev
             LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
             List<BundleTransaction> bundleTransactions = new();
             Keccak? bundleHash = null;
-            BlockExecutionContext blkCtx = new(block.Header);
+
             foreach (Transaction currentTx in transactions)
             {
                 // if we don't accumulate bundle yet
@@ -70,7 +69,7 @@ namespace Nethermind.Mev
                     else
                     {
                         // otherwise process transaction as usual
-                        TxAction action = ProcessTransaction(block, blkCtx, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions, transactionsInBlock);
+                        TxAction action = ProcessTransaction(block, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions, transactionsInBlock);
                         if (action == TxAction.Stop) break;
                     }
                 }
@@ -90,7 +89,7 @@ namespace Nethermind.Mev
                         else
                         {
                             // process accumulated bundle
-                            TxAction action = ProcessBundle(block, blkCtx, bundleTransactions, transactionsInBlock, receiptsTracer, processingOptions);
+                            TxAction action = ProcessBundle(block, bundleTransactions, transactionsInBlock, receiptsTracer, processingOptions);
                             if (action == TxAction.Stop) break;
 
                             // start accumulating new bundle
@@ -103,11 +102,11 @@ namespace Nethermind.Mev
                     {
                         // process the bundle and stop accumulating it
                         bundleHash = null;
-                        TxAction action = ProcessBundle(block, blkCtx, bundleTransactions, transactionsInBlock, receiptsTracer, processingOptions);
+                        TxAction action = ProcessBundle(block, bundleTransactions, transactionsInBlock, receiptsTracer, processingOptions);
                         if (action == TxAction.Stop) break;
 
                         // process normal transaction
-                        action = ProcessTransaction(block, blkCtx, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions, transactionsInBlock);
+                        action = ProcessTransaction(block, currentTx, transactionsInBlock.Count, receiptsTracer, processingOptions, transactionsInBlock);
                         if (action == TxAction.Stop) break;
                     }
                 }
@@ -115,7 +114,7 @@ namespace Nethermind.Mev
             // if we ended with accumulated bundle, lets process it
             if (bundleTransactions.Count > 0)
             {
-                ProcessBundle(block, blkCtx, bundleTransactions, transactionsInBlock, receiptsTracer, processingOptions);
+                ProcessBundle(block, bundleTransactions, transactionsInBlock, receiptsTracer, processingOptions);
             }
 
             _stateProvider.Commit(spec, receiptsTracer);
@@ -125,7 +124,6 @@ namespace Nethermind.Mev
         }
 
         private TxAction ProcessBundle(Block block,
-            BlockExecutionContext blkCtx,
             List<BundleTransaction> bundleTransactions,
             LinkedHashSet<Transaction> transactionsInBlock,
             BlockReceiptsTracer receiptsTracer,
@@ -149,7 +147,7 @@ namespace Nethermind.Mev
             TxAction txAction = TxAction.Skip;
             for (int index = 0; index < bundleTransactions.Count && bundleSucceeded; index++)
             {
-                txAction = ProcessBundleTransaction(block, blkCtx, bundleTransactions[index], index, receiptsTracer, processingOptions, transactionsInBlock);
+                txAction = ProcessBundleTransaction(block, bundleTransactions[index], index, receiptsTracer, processingOptions, transactionsInBlock);
                 bundleSucceeded &= txAction == TxAction.Add;
 
                 // if we need to stop on not first tx in the bundle, we actually want to skip the bundle
@@ -188,14 +186,13 @@ namespace Nethermind.Mev
 
         private TxAction ProcessBundleTransaction(
             Block block,
-            BlockExecutionContext blkCtx,
             BundleTransaction currentTx,
             int index,
             BlockReceiptsTracer receiptsTracer,
             ProcessingOptions processingOptions,
             LinkedHashSet<Transaction> transactionsInBlock)
         {
-            TxAction action = ProcessTransaction(block, blkCtx, currentTx, index, receiptsTracer, processingOptions, transactionsInBlock, false);
+            TxAction action = ProcessTransaction(block, currentTx, index, receiptsTracer, processingOptions, transactionsInBlock, false);
             if (action == TxAction.Add)
             {
                 string? error = receiptsTracer.LastReceipt.Error;

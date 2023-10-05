@@ -63,15 +63,15 @@ namespace Nethermind.Synchronization.Test
 
         public Node Node { get; }
 
-        private Node LocalNode { get; }
-        public byte ProtocolVersion { get; } = default;
-        public string ProtocolCode { get; } = null!;
+        public Node LocalNode { get; }
         public string ClientId => Node.ClientId;
         public Keccak HeadHash { get; set; }
         public long HeadNumber { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
+        public byte ProtocolVersion { get; }
+        public string ProtocolCode { get; }
 
         public void Disconnect(InitiateDisconnectReason reason, string details)
         {

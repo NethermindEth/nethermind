@@ -154,7 +154,7 @@ public class TxValidatorTests
             .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
             .WithChainId(TestBlockchainIds.ChainId)
             .WithAccessList(txType == TxType.AccessList
-                ? AccessList.Empty()
+                ? new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>())
                 : null)
             .WithSignature(signature).TestObject;
 
@@ -185,7 +185,7 @@ public class TxValidatorTests
             .WithMaxPriorityFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
             .WithMaxFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
             .WithAccessList(txType == TxType.AccessList || txType == TxType.EIP1559
-                ? AccessList.Empty()
+                ? new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>())
                 : null)
             .WithSignature(signature).TestObject;
 
@@ -210,7 +210,7 @@ public class TxValidatorTests
         Transaction tx = Build.A.Transaction
             .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
             .WithAccessList(txType == TxType.AccessList
-                ? AccessList.Empty()
+                ? new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>())
                 : null)
             .WithSignature(signature).TestObject;
 
@@ -240,7 +240,7 @@ public class TxValidatorTests
             .WithMaxPriorityFeePerGas((UInt256)maxPriorityFeePerGas)
             .WithMaxFeePerGas((UInt256)maxFeePerGas)
             .WithAccessList(txType == TxType.AccessList
-                ? AccessList.Empty()
+                ? new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>())
                 : null)
             .WithChainId(TestBlockchainIds.ChainId)
             .WithSignature(signature).TestObject;

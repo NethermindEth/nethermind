@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -34,11 +35,11 @@ namespace Nethermind.Synchronization.Test.FastSync
     {
         private const int TimeoutLength = 5000;
 
-        private static IBlockTree? _blockTree;
+        protected static IBlockTree _blockTree;
         protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
 
-        protected ILogger _logger = null!;
-        protected ILogManager _logManager = null!;
+        protected ILogger _logger;
+        protected ILogManager _logManager;
 
         private readonly int _defaultPeerCount;
         private readonly int _defaultPeerMaxRandomLatency;
@@ -93,38 +94,35 @@ namespace Nethermind.Synchronization.Test.FastSync
             return ctx;
         }
 
-        protected SafeContext PrepareDownloaderWithPeer(DbContext dbContext, IEnumerable<ISyncPeer> syncPeers)
+        protected SafeContext PrepareDownloaderWithPeer(DbContext dbContext, params ISyncPeer[] syncPeers)
         {
-            SafeContext ctx = new();
-            BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
+            SafeContext ctx = new SafeContext();
+            ctx = new SafeContext();
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader.Number).TestObject;
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             ctx.Pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
             ctx.Pool.Start();
 
-            foreach (ISyncPeer syncPeer in syncPeers)
+            for (int i = 0; i < syncPeers.Length; i++)
             {
-                ctx.Pool.AddPeer(syncPeer);
+                ctx.Pool.AddPeer(syncPeers[i]);
             }
 
+            SyncConfig syncConfig = new SyncConfig();
+            syncConfig.FastSync = true;
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
             ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
             ctx.Downloader = new StateSyncDownloader(_logManager);
-            ctx.StateSyncDispatcher = new SyncDispatcher<StateSyncBatch>(
-                0,
-                ctx.Feed!,
-                ctx.Downloader,
-                ctx.Pool,
-                new StateSyncAllocationStrategyFactory(),
-                _logManager);
-            Task _ = ctx.StateSyncDispatcher.Start(CancellationToken.None);
+            ctx.StateSyncDispatcher = new SyncDispatcher<StateSyncBatch>(0, ctx.Feed, ctx.Downloader, ctx.Pool, new StateSyncAllocationStrategyFactory(), _logManager);
+            ctx.StateSyncDispatcher.Start(CancellationToken.None);
             return ctx;
         }
 
         protected async Task ActivateAndWait(SafeContext safeContext, DbContext dbContext, long blockNumber, int timeout = TimeoutLength)
         {
-            DotNetty.Common.Concurrency.TaskCompletionSource dormantAgainSource = new();
-            safeContext.Feed.StateChanged += (_, e) =>
+            DotNetty.Common.Concurrency.TaskCompletionSource dormantAgainSource = new DotNetty.Common.Concurrency.TaskCompletionSource();
+            safeContext.Feed.StateChanged += (s, e) =>
             {
                 if (e.NewState == SyncFeedState.Dormant)
                 {
@@ -134,7 +132,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             safeContext.TreeFeed.ResetStateRoot(blockNumber, dbContext.RemoteStateTree.RootHash, safeContext.Feed.CurrentState);
             safeContext.Feed.Activate();
-
+            var watch = Stopwatch.StartNew();
             await Task.WhenAny(
                 dormantAgainSource.Task,
                 Task.Delay(timeout));
@@ -142,13 +140,13 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         protected class SafeContext
         {
-            public ISyncModeSelector SyncModeSelector { get; set; } = null!;
-            public SyncPeerMock[] SyncPeerMocks { get; set; } = null!;
-            public ISyncPeerPool Pool { get; set; } = null!;
-            public TreeSync TreeFeed { get; set; } = null!;
-            public StateSyncFeed Feed { get; set; } = null!;
-            public StateSyncDownloader Downloader { get; set; } = null!;
-            public SyncDispatcher<StateSyncBatch> StateSyncDispatcher { get; set; } = null!;
+            public ISyncModeSelector SyncModeSelector;
+            public SyncPeerMock[] SyncPeerMocks;
+            public ISyncPeerPool Pool;
+            public TreeSync TreeFeed;
+            public StateSyncFeed Feed;
+            public StateSyncDownloader Downloader;
+            public SyncDispatcher<StateSyncBatch> StateSyncDispatcher;
         }
 
         protected class DbContext
@@ -204,88 +202,83 @@ namespace Nethermind.Synchronization.Test.FastSync
                     Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
                     Assert.That(collector.Stats.MissingCode, Is.EqualTo(0));
                 }
+
+                //            Assert.AreEqual(dbContext._remoteCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), dbContext._localCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
+                //            Assert.AreEqual(dbContext._remoteCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), dbContext._localCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
+                //
+                //            Assert.AreEqual(dbContext._remoteDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
+                //            Assert.AreEqual(dbContext._remoteDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
+            }
+
+            public void CompareCodeDbs()
+            {
+                //            Assert.AreEqual(dbContext._remoteCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), dbContext._localCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
+                //            Assert.AreEqual(dbContext._remoteCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), dbContext._localCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
+
+                //            Assert.AreEqual(dbContext._remoteDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
+                //            Assert.AreEqual(dbContext._remoteDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
             }
         }
 
         protected class SyncPeerMock : ISyncPeer
         {
-            public string Name => "Mock";
+            public static Func<IList<Keccak>, Task<byte[][]>> NotPreimage = request =>
+            {
+                var result = new byte[request.Count][];
+
+                int i = 0;
+                foreach (Keccak _ in request) result[i++] = new byte[] { 1, 2, 3 };
+
+                return Task.FromResult(result);
+            };
+
+            public static Func<IList<Keccak>, Task<byte[][]>> EmptyArraysInResponses = request =>
+            {
+                var result = new byte[request.Count][];
+
+                int i = 0;
+                foreach (Keccak _ in request) result[i++] = new byte[0];
+
+                return Task.FromResult(result);
+            };
 
             private readonly IDb _codeDb;
             private readonly IDb _stateDb;
 
-            private Keccak[]? _filter;
-            private readonly Func<IReadOnlyList<Keccak>, Task<byte[][]>>? _executorResultFunction;
+            private Func<IReadOnlyList<Keccak>, Task<byte[][]>> _executorResultFunction;
+
+            private Keccak[] _filter;
+
             private readonly long _maxRandomizedLatencyMs;
 
             public SyncPeerMock(
                 IDb stateDb,
                 IDb codeDb,
-                Func<IReadOnlyList<Keccak>, Task<byte[][]>>? executorResultFunction = null,
+                Func<IReadOnlyList<Keccak>, Task<byte[][]>> executorResultFunction = null,
                 long? maxRandomizedLatencyMs = null,
                 Node? node = null
             )
             {
                 _stateDb = stateDb;
                 _codeDb = codeDb;
-                _executorResultFunction = executorResultFunction;
+
+                if (executorResultFunction is not null) _executorResultFunction = executorResultFunction;
 
                 Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth66" };
                 _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
             }
 
             public int MaxResponseLength { get; set; } = int.MaxValue;
-            public Keccak HeadHash { get; set; } = null!;
-            public string ProtocolCode { get; } = null!;
-            public byte ProtocolVersion { get; } = default;
-            public string ClientId => "executorMock";
+
             public Node Node { get; }
+            public string ClientId => "executorMock";
+            public Keccak HeadHash { get; set; }
             public long HeadNumber { get; set; }
             public UInt256 TotalDifficulty { get; set; }
             public bool IsInitialized { get; set; }
             public bool IsPriority { get; set; }
-
-            public PublicKey Id => Node.Id;
-
-            public async Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
-            {
-                if (_maxRandomizedLatencyMs != 0)
-                {
-                    await Task.Delay(TimeSpan.FromMilliseconds(TestContext.CurrentContext.Random.NextLong() % _maxRandomizedLatencyMs));
-                }
-
-                if (_executorResultFunction is not null) return await _executorResultFunction(hashes);
-
-                byte[][] responses = new byte[hashes.Count][];
-
-                int i = 0;
-                foreach (Keccak item in hashes)
-                {
-                    if (i >= MaxResponseLength) break;
-
-                    if (_filter is null || _filter.Contains(item)) responses[i] = _stateDb[item.Bytes] ?? _codeDb[item.Bytes]!;
-
-                    i++;
-                }
-
-                return responses;
-            }
-
-            public void SetFilter(Keccak[]? availableHashes)
-            {
-                _filter = availableHashes;
-            }
-
-            public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
-            {
-                protocolHandler = null!;
-                return false;
-            }
-
-            public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
-            {
-                throw new NotImplementedException();
-            }
+            public byte ProtocolVersion { get; }
+            public string ProtocolCode { get; }
 
             public void Disconnect(InitiateDisconnectReason reason, string details)
             {
@@ -317,6 +310,8 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
+            public PublicKey Id => Node.Id;
+
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
             {
                 throw new NotImplementedException();
@@ -327,6 +322,45 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
+            public async Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
+            {
+                if (_maxRandomizedLatencyMs != 0)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(TestContext.CurrentContext.Random.NextLong() % _maxRandomizedLatencyMs));
+                }
+
+                if (_executorResultFunction is not null) return await _executorResultFunction(hashes);
+
+                var responses = new byte[hashes.Count][];
+
+                int i = 0;
+                foreach (Keccak item in hashes)
+                {
+                    if (i >= MaxResponseLength) break;
+
+                    if (_filter is null || _filter.Contains(item)) responses[i] = _stateDb[item.Bytes] ?? _codeDb[item.Bytes];
+
+                    i++;
+                }
+
+                return responses;
+            }
+
+            public void SetFilter(Keccak[] availableHashes)
+            {
+                _filter = availableHashes;
+            }
+
+            public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
+            {
+                protocolHandler = null!;
+                return false;
+            }
         }
     }
 }

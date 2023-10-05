@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Test.Receipts;
 
 public class ReceiptsRecoveryTests
 {
-    private IReceiptsRecovery _receiptsRecovery = null!;
+    private IReceiptsRecovery _receiptsRecovery;
 
     [SetUp]
     public void Setup()

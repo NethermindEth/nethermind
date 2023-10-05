@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -14,10 +13,6 @@ namespace Nethermind.JsonRpc.Data;
 
 public class TransactionForRpc
 {
-    // HACK: To ensure that serialized Txs always have a `ChainId` we keep the last loaded `ChainSpec`.
-    // See: https://github.com/NethermindEth/nethermind/pull/6061#discussion_r1321634914
-    public static UInt256? DefaultChainId { get; set; }
-
     public TransactionForRpc(Transaction transaction) : this(null, null, null, transaction) { }
 
     public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction, UInt256? baseFee = null)
@@ -41,16 +36,7 @@ public class TransactionForRpc
             MaxFeePerGas = transaction.MaxFeePerGas;
             MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
         }
-        if (transaction.Type > TxType.Legacy)
-        {
-            ChainId = transaction.ChainId
-                      ?? DefaultChainId
-                      ?? BlockchainIds.Mainnet;
-        }
-        else
-        {
-            ChainId = transaction.ChainId;
-        }
+        ChainId = transaction.ChainId;
         Type = transaction.Type;
         AccessList = transaction.AccessList is null ? null : AccessListItemForRpc.FromAccessList(transaction.AccessList);
         MaxFeePerDataGas = transaction.MaxFeePerDataGas;
@@ -96,12 +82,7 @@ public class TransactionForRpc
 
     public UInt256? MaxFeePerGas { get; set; }
     public long? Gas { get; set; }
-
-    // Required for compatibility with some CLs like Prysm
-    // Accept during deserialization, ignore during serialization
-    // See: https://github.com/NethermindEth/nethermind/pull/6067
-    [JsonProperty(nameof(Data))]
-    private byte[]? Data { set { Input = value; } }
+    public byte[]? Data { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
     public byte[]? Input { get; set; }
@@ -110,7 +91,7 @@ public class TransactionForRpc
 
     public TxType Type { get; set; }
 
-    public IEnumerable<AccessListItemForRpc>? AccessList { get; set; }
+    public AccessListItemForRpc[]? AccessList { get; set; }
 
 
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
@@ -140,7 +121,7 @@ public class TransactionForRpc
             To = To,
             SenderAddress = From,
             Value = Value ?? 0,
-            Data = Input,
+            Data = Data ?? Input,
             Type = Type,
             AccessList = TryGetAccessList(),
             ChainId = chainId,
@@ -166,7 +147,7 @@ public class TransactionForRpc
 
     public T ToTransaction<T>(ulong? chainId = null) where T : Transaction, new()
     {
-        byte[]? data = Input;
+        byte[]? data = Data ?? Input;
 
         T tx = new()
         {

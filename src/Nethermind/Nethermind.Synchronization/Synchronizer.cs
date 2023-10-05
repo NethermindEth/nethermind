@@ -87,8 +87,6 @@ namespace Nethermind.Synchronization
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
-
-            new MallocTrimmer(syncModeSelector, TimeSpan.FromSeconds(syncConfig.MallocTrimIntervalSec), _logManager);
         }
 
         public virtual void Start()

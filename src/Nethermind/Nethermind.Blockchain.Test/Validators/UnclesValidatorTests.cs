@@ -19,7 +19,7 @@ namespace Nethermind.Blockchain.Test.Validators
         private readonly Block _parent;
         private readonly Block _block;
         private readonly IBlockTree _blockTree;
-        private IHeaderValidator _headerValidator = null!;
+        private IHeaderValidator _headerValidator;
 
         private readonly Block _duplicateUncle;
 
@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Test.Validators
         public UnclesValidatorTests()
         {
             _blockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
-            _grandgrandparent = _blockTree.FindBlock(0, BlockTreeLookupOptions.None)!;
+            _grandgrandparent = _blockTree.FindBlock(0, BlockTreeLookupOptions.None);
             _grandparent = Build.A.Block.WithParent(_grandgrandparent).TestObject;
             _duplicateUncle = Build.A.Block.WithParent(_grandgrandparent).TestObject;
             _parent = Build.A.Block.WithParent(_grandparent).WithUncles(_duplicateUncle).TestObject;

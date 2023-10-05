@@ -145,7 +145,7 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        internal string MakeReportForPeers(IEnumerable<PeerInfo> peers, string header)
+        internal string? MakeReportForPeer(IEnumerable<PeerInfo> peers, string header)
         {
             _stringBuilder.Append(header);
             bool headerAdded = false;
