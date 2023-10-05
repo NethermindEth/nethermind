@@ -243,7 +243,6 @@ public partial class BlockProcessor : IBlockProcessor
 
         _stateProvider.Commit(spec);
 
-        // TODO: optimism
         if (!block.IsGenesis || !_specProvider.GenesisStateUnavailable)
         {
             _stateProvider.RecalculateStateRoot();
@@ -295,7 +294,6 @@ public partial class BlockProcessor : IBlockProcessor
             ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
         };
 
-        // TODO: Optimism
         if (bh.IsGenesis && _specProvider.GenesisStateUnavailable)
         {
             headerForProcessing.StateRoot = bh.StateRoot;

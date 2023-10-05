@@ -36,7 +36,6 @@ namespace Nethermind.Consensus.Processing
         {
         }
 
-        // TODO Optimism. Remove default value of txProcessorFactory
         public ReadOnlyTxProcessingEnv(
             IReadOnlyDbProvider? readOnlyDbProvider,
             IReadOnlyTrieStore? readOnlyTrieStore,

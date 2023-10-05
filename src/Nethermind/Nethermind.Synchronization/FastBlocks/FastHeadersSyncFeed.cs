@@ -720,8 +720,6 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             else
             {
-                // TODO: optimism
-                // TD for block 4061224 is 0, but previous is not
                 _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
             }
         }
