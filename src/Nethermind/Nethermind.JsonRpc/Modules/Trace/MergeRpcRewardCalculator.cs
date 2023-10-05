@@ -4,6 +4,7 @@
 using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
@@ -27,5 +28,15 @@ public class MergeRpcRewardCalculator : IRewardCalculator
         }
 
         return _beforeTheMerge.CalculateRewards(block);
+    }
+
+    public BlockReward[] CalculateRewards(Block block, IBlockTracer tracer)
+    {
+        if (_poSSwitcher.IsPostMerge(block.Header))
+        {
+            return new[] { new BlockReward(block.Beneficiary!, UInt256.Zero) };
+        }
+
+        return _beforeTheMerge.CalculateRewards(block, tracer);
     }
 }

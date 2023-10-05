@@ -61,9 +61,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             ReadOnlyTxProcessingEnv txProcessingEnv =
                 new(_dbProvider, _trieNodeResolver, _blockTree, _specProvider, _logManager);
 
-            IRewardCalculator rewardCalculator =
-                new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor),
-                    _poSSwitcher);
+            IRewardCalculator rewardCalculator = _rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor);
 
             RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.StateProvider);
             BlockProcessor.BlockValidationTransactionsExecutor executeBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor,

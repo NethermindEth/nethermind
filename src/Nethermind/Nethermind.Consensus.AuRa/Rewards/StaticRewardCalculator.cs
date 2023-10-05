@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Rewards
@@ -23,6 +24,8 @@ namespace Nethermind.Consensus.AuRa.Rewards
             _blockRewards.TryGetForActivation(block.Number, out var blockReward);
             return new[] { new BlockReward(block.Beneficiary, blockReward.Reward) };
         }
+
+        public BlockReward[] CalculateRewards(Block block, IBlockTracer tracer) => CalculateRewards(block);
 
         private IList<BlockRewardInfo> CreateBlockRewards(IDictionary<long, UInt256>? blockRewards)
         {

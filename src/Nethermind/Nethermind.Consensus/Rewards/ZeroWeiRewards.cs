@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.Rewards
 {
@@ -18,5 +19,7 @@ namespace Nethermind.Consensus.Rewards
         {
             return new[] { new BlockReward(block.Beneficiary, 0) };
         }
+
+        public BlockReward[] CalculateRewards(Block block, IBlockTracer tracer) => CalculateRewards(block);
     }
 }
