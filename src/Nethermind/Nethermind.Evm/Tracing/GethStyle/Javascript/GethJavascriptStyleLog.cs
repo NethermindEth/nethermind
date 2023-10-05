@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 
 
 // ReSharper disable InconsistentNaming
@@ -88,37 +89,33 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
                 BigInteger bigIntValue = new BigInteger(byteArray);
                 return bigIntValue;
             }
+
             public string? getItem(int index) => index >= 0 && index < _items.Count ? _items[index] : null;
         }
 
         public class JSMemory
         {
-            private readonly string _memoryTrace;
-            public JSMemory(string memoryTrace)
+            private readonly V8ScriptEngine _engine;
+            private readonly List<byte> _memory;
+
+            public JSMemory(V8ScriptEngine engine, List<byte> memory)
             {
-                _memoryTrace = memoryTrace;
+                _engine = engine;
+                _memory = memory;
             }
 
-            public int? length() => _memoryTrace?.Length ?? 0;
+            public int length() => _memory.Count; // / EvmPooledMemory.WordSize?
 
-            public byte[]? slice(int start, int end) // needs looking into
+            public dynamic slice(int start, int end) // needs looking into
             {
-
-                if (start < 0 || end < start || end > _memoryTrace.Length)
+                if (start < 0 || end < start || end > _memory.Count)
                 {
                     throw new ArgumentOutOfRangeException("Invalid start or end values.");
                 }
 
                 int length = end - start;
-                string memorySlice = _memoryTrace.Substring(start * 2, length * 2);
-
-                byte[] byteArray = new byte[length];
-                for (int i = 0; i < length * 2; i += 2)
-                {
-                    byteArray[i / 2] = Convert.ToByte(memorySlice.Substring(i, 2), 16);
-                }
-
-                return byteArray;
+                Span<byte> slice = CollectionsMarshal.AsSpan(_memory).Slice(start, length);
+                return slice.ToArray().ToScriptArray(_engine);
             }
 
             public byte[]? getUint(int offset) // needs looking into
@@ -143,12 +140,16 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
         public class Contract
         {
             private readonly V8ScriptEngine _engine;
+            private readonly UInt256 _value;
             private readonly Address _caller;
             private readonly Address _address;
-            private readonly UInt256 _value;
             private readonly ReadOnlyMemory<byte> _input;
+            private object? _callerConverted;
+            private object? _addressConverted;
+            private object? _inputConverted;
 
-            public Contract(V8ScriptEngine engine, Address caller, Address address,UInt256 value, ReadOnlyMemory<byte> input)
+
+            public Contract(V8ScriptEngine engine, Address caller, Address address, UInt256 value, ReadOnlyMemory<byte> input)
             {
                 _engine = engine;
                 _caller = caller;
@@ -157,9 +158,9 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
                 _input = input;
             }
 
-            public dynamic getAddress() => _engine.Script.Array.from(_address.Bytes);
-            public dynamic getCaller() => _engine.Script.Array.from(_caller.Bytes);
-            public dynamic getInput() => _engine.Script.Array.from(_input.ToArray());
+            public dynamic getAddress() => _addressConverted ??= _address.Bytes.ToScriptArray(_engine);
+            public dynamic getCaller() => _callerConverted ??= _caller.Bytes.ToScriptArray(_engine);
+            public dynamic getInput() => _inputConverted ??= _input.ToArray().ToScriptArray(_engine);
             public UInt256 getValue() => _value;
         }
 
@@ -179,7 +180,14 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             private readonly ReadOnlyMemory<byte> _output;
             private readonly string _time;
 
-            public CTX(V8ScriptEngine engine, string type, Address from, Address to, ReadOnlyMemory<byte> input, UInt256 value, long gas, UInt256 gasUsed, UInt256 gasPrice, UInt256 intrinsicGas, UInt256 block, ReadOnlyMemory<byte> output, string time)
+            private object? _fromConverted;
+            private object? _toConverted;
+            private object? _inputConverted;
+            private object? _outputConverted;
+
+
+            public CTX(V8ScriptEngine engine, string type, Address from, Address to, ReadOnlyMemory<byte> input, UInt256 value, long gas, UInt256 gasUsed, UInt256 gasPrice, UInt256 intrinsicGas, UInt256 block, ReadOnlyMemory<byte> output,
+                string time)
             {
                 _engine = engine;
                 _type = type;
@@ -197,16 +205,16 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             }
 
             public string type => _type;
-            public dynamic from => _engine.Script.Array.from(_from.Bytes);
-            public dynamic to => _engine.Script.Array.from(_to.Bytes);
-            public dynamic input => _engine.Script.Array.from(_input.ToArray());
+            public dynamic from => _fromConverted ??= _from.Bytes.ToScriptArray(_engine);
+            public dynamic to => _toConverted ??= _to.Bytes.ToScriptArray(_engine);
+            public dynamic input => _inputConverted ??= _input.ToArray().ToScriptArray(_engine);
             public UInt256 value => _value;
             public long gas => _gas;
             public UInt256 gasUsed => _gasUsed;
             public UInt256 gasPrice => _gasPrice;
             public UInt256 intrinsicGas => _intrinsicGas;
             public UInt256 block => _block;
-            public dynamic output => _engine.Script.Array.from(_output.ToArray());
+            public dynamic output => _outputConverted ??= _output.ToArray().ToScriptArray(_engine);
             public string time => _time;
         }
     }
