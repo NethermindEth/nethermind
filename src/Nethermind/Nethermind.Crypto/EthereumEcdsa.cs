@@ -83,7 +83,6 @@ namespace Nethermind.Crypto
             {
                 // TODO: Optimism. No signature in system transactions
                 return Address.Zero;
-                //throw new InvalidDataException("Cannot recover sender address from a transaction without a signature.");
             }
 
             useSignatureChainId &= tx.Signature.ChainId.HasValue;

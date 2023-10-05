@@ -8,7 +8,6 @@ namespace Nethermind.Core
 {
     public static class TransactionExtensions
     {
-        // TODO: Optimism. Should we add tx.IsOPSystemTransaction here?
         public static bool IsSystem(this Transaction tx) =>
             tx is SystemTransaction || tx.SenderAddress == Address.SystemUser || tx.IsOPSystemTransaction;
 
