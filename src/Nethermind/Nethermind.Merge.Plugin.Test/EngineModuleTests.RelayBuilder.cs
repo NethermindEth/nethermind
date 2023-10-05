@@ -44,7 +44,7 @@ public partial class EngineModuleTests
                     SuggestedFeeRecipient = TestItem.AddressA,
                     PrevRandao = TestItem.KeccakA,
                     Timestamp = payloadAttributes.Timestamp + 1,
-                    GasLimit  = 10_000_000L,
+                    GasLimit = 10_000_000L,
                 };
             });
 

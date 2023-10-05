@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Logging;
