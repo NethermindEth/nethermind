@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus.Producers;
@@ -15,7 +14,7 @@ namespace Nethermind.Consensus.Transactions
 
         public SinglePendingTxSelector(ITxSource innerSource)
         {
-            _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
+            _innerSource = innerSource;
         }
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null) =>

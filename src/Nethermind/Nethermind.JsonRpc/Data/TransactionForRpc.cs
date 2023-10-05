@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -128,7 +129,7 @@ public class TransactionForRpc
 
     public TxType Type { get; set; }
 
-    public AccessListItemForRpc[]? AccessList { get; set; }
+    public IEnumerable<AccessListItemForRpc>? AccessList { get; set; }
 
 
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]

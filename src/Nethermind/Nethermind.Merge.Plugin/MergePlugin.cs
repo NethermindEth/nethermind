@@ -333,6 +333,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _beaconSync,
                     _beaconPivot,
                     _peerRefresher,
+                    _api.SpecProvider,
                     _api.LogManager),
                 new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
                 new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
