@@ -84,7 +84,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         );
     }
 
-    public ResultWrapper<ForkchoiceUpdatedV1Result>? ApplyForkchoiceUpdate(Block? newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
+    private ResultWrapper<ForkchoiceUpdatedV1Result>? ApplyForkchoiceUpdate(Block? newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
     {
         if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Keccak? lastValidHash))
         {
@@ -240,7 +240,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         return null;
     }
 
-    public ResultWrapper<ForkchoiceUpdatedV1Result> StartBuildingPayload(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
+    private ResultWrapper<ForkchoiceUpdatedV1Result> StartBuildingPayload(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
     {
         string? payloadId = null;
         if (payloadAttributes is not null)
