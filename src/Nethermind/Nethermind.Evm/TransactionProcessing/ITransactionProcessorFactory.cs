@@ -7,6 +7,7 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
+// TODO Optimism: made to pass OptimismTransactionProcessor into ReadOnlyTxProcessingEnv. Maybe we can find better solution
 public interface ITransactionProcessorFactory
 {
     ITransactionProcessor Create(
