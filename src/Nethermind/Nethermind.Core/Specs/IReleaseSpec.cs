@@ -360,7 +360,21 @@ namespace Nethermind.Core.Specs
         public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
 
-        public bool AuRaSystemCalls { get; } // ToDo add comment
+        /// <summary>
+        /// AuRaSystemCalls - true
+        /// GethStyleSystemCalls - false
+        /// </summary>
+        /// <remarks>
+        /// We support two types of system calls in Nethermind:
+        /// 1. Geth-style:
+        /// - We don't create a system account if it doesn't exist.
+        /// - We adhere to geth behavior for State clearing - no state touch for subtraction.
+        /// - We don't use a custom release spec for those transactions.
+        /// 2. AuRa (Parity-style):
+        /// - We create a system account if it doesn't exist.
+        /// - We use a custom release spec with EIP158 disabled.
+        /// </remarks>
+        public bool AuRaSystemCalls { get; }
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
     }
 }
