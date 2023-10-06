@@ -466,6 +466,14 @@ namespace Nethermind.Trie
             if (node is null)
                 return null;
 
+            if (RootRef?.NodeType == NodeType.Unknown)
+            {
+                RootRef.ResolveNode(TrieStore);
+                RootRef.ResolveKey(TrieStore, true);
+                if (rootHash != RootRef.Keccak)
+                    return null;
+            }
+
             if (node.NodeType != NodeType.Leaf)
             {
                 // if not in cached nodes - then check persisted nodes`

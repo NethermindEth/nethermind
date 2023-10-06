@@ -247,7 +247,7 @@ public partial class EngineModuleTests
 
         public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, bool usePathStateDb = false)
         {
             TestBlockchain chain = await base.Build(specProvider, initialValues);
             return chain;

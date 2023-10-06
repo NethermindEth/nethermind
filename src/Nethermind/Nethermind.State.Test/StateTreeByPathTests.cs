@@ -74,7 +74,7 @@ namespace Nethermind.Store.Test
             tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0")).Should().BeEquivalentTo(_account0);
             tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1")).Should().BeEquivalentTo(_account0);
             Assert.That(db.WritesCount, Is.EqualTo(8), "writes"); // extension, branch, leaf, extension, branch, 2x same leaf
-            Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(7), "hashes");
+            Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(8), "hashes");
             Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(7), "encodings");
         }
 
@@ -89,7 +89,7 @@ namespace Nethermind.Store.Test
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
             tree.Commit(0);
-            Assert.That(db.WritesCount, Is.EqualTo(8), "writes"); // extension, branch, 2x leaf (each node is 2 writes) + deletion writes (2)
+            Assert.That(db.WritesCount, Is.EqualTo(12), "writes"); // extension, branch, 2x leaf (each node is 2 writes) + deletion writes (2)
             Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(4), "hashes");
             Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(4), "encodings");
         }
@@ -106,7 +106,7 @@ namespace Nethermind.Store.Test
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
             tree.Commit(0);
-            Assert.That(db.WritesCount, Is.EqualTo(6), "writes"); // extension, branch, 2x leaf
+            Assert.That(db.WritesCount, Is.EqualTo(14), "writes"); // extension, branch, 2x leaf
             Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(1), "hashes");
             Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(1), "encodings");
         }

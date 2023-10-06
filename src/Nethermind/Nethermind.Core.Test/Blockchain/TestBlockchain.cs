@@ -109,16 +109,15 @@ public class TestBlockchain : IDisposable
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
-    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, bool usePathStateDb = false)
     {
         Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
         JsonSerializer = new EthereumJsonSerializer();
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
         DbProvider = await CreateDbProvider();
-        //TODO - make this configurable / overridable
-        //TrieStore = new TrieStore(StateDb, LogManager);
-        TrieStore = new TrieStoreByPath(PathStateDb, LogManager);
+        TrieStore = usePathStateDb ? new TrieStoreByPath(PathStateDb, LogManager) : new TrieStore(StateDb, LogManager);
+
         State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
 
         // Eip4788 precompile state account

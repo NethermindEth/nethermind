@@ -199,11 +199,12 @@ public class TrieByPathFuzzTesting
         Queue<Keccak> rootQueue = new();
 
         MemColumnsDb<StateColumns> memDb = new();
+        MemDb codeDb = new MemDb();
 
         using TrieStoreByPath pathTrieStore = new(memDb, Persist.IfBlockOlderThan(lookupLimit), _logManager);
         WorldState pathStateProvider = new(pathTrieStore, new MemDb(), _logManager);
 
-        using TrieStoreByPath trieStore = new(memDb, Persist.IfBlockOlderThan(lookupLimit), _logManager);
+        using TrieStore trieStore = new(memDb, Nethermind.Trie.Pruning.No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager);
         WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
 
         Account[] accounts = new Account[accountsCount];
@@ -316,17 +317,29 @@ public class TrieByPathFuzzTesting
         {
             try
             {
+                stateProvider.Reset();
+                pathStateProvider.Reset();
                 stateProvider.StateRoot = currentRoot;
                 pathStateProvider.StateRoot = currentRoot;
-                for (int i = 0; i < addresses.Length; i++)
+
+                if (rootQueue.Count + 1 <= lookupLimit)
                 {
-                    if (stateProvider.AccountExists(addresses[i]))
+                    TrieStats? stats = pathStateProvider.CollectStats(codeDb, LimboLogs.Instance);
+                    Assert.IsTrue(stats.MissingCode == 0);
+                    Assert.IsTrue(stats.MissingState == 0);
+                    Assert.IsTrue(stats.MissingStorage == 0);
+                    Assert.IsTrue(stats.MissingNodes == 0);
+
+                    for (int i = 0; i < addresses.Length; i++)
                     {
-                        for (int j = 0; j < 256; j++)
+                        if (stateProvider.AccountExists(addresses[i]))
                         {
-                            byte[] value = stateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
-                            byte[] pathValue = pathStateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
-                            Assert.That(pathValue, Is.EqualTo(value).Using(Bytes.EqualityComparer));
+                            for (int j = 0; j < 256; j++)
+                            {
+                                byte[] value = stateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
+                                byte[] pathValue = pathStateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
+                                Assert.That(pathValue, Is.EqualTo(value).Using(Bytes.EqualityComparer));
+                            }
                         }
                     }
                 }
@@ -387,8 +400,6 @@ public class TrieByPathFuzzTesting
         using TrieStoreByPath trieStore = new(memDb, Persist.IfBlockOlderThan(blocksCount + 1), _logManager);
         var codeDb = new MemDb();
         WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
-        //StateProvider stateProvider = new StateProvider(trieStore, storageTrieStore, codeDb, _logManager);
-        //StorageProvider storageProvider = new StorageProvider(storageTrieStore, stateProvider, _logManager);
 
         Account[] accounts = new Account[accountsCount];
         Address[] addresses = new Address[accountsCount];
@@ -482,6 +493,14 @@ public class TrieByPathFuzzTesting
         _logger.Info($"DB size: {memDb.Keys.Count}");
 
         int verifiedBlocks = 0;
+
+        int ignore = blocksCount - 1;
+        do
+        {
+            rootQueue.TryDequeue(out Keccak _);
+            ignore--;
+
+        } while (ignore > 0);
 
         while (rootQueue.TryDequeue(out Keccak currentRoot))
         {

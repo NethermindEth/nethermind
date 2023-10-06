@@ -37,7 +37,8 @@ namespace Nethermind.Blockchain.Test.Producers
             dbProvider.RegisterDb(DbNames.BlockInfos, new MemDb());
             dbProvider.RegisterDb(DbNames.Blocks, new MemDb());
             dbProvider.RegisterDb(DbNames.Headers, new MemDb());
-            dbProvider.RegisterDb(DbNames.State, new MemColumnsDb<StateColumns>());
+            dbProvider.RegisterDb(DbNames.State, new MemDb());
+            dbProvider.RegisterDb(DbNames.PathState, new MemColumnsDb<StateColumns>());
             dbProvider.RegisterDb(DbNames.Code, new MemDb());
             dbProvider.RegisterDb(DbNames.Metadata, new MemDb());
 

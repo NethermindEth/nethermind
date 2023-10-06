@@ -527,7 +527,7 @@ namespace Nethermind.Trie.Pruning
                 trieNode.PathToNode.CopyTo(pathToNodeSlice);
                 byte[] pathToNodeBytes = Nibbles.NibblesToByteStorage(pathToNodeNibbles);
 
-                if (_logger.IsDebug) _logger.Trace($"Saving node {trieNode.NodeType} path to nibbles {pathToNodeNibbles.ToHexString()}, bytes: {pathToNodeBytes.ToHexString()}, full: {pathBytes.ToHexString()}");
+                if (_logger.IsTrace) _logger.Trace($"Saving node {trieNode.NodeType} path to nibbles {pathToNodeNibbles.ToHexString()}, bytes: {pathToNodeBytes.ToHexString()}, full: {pathBytes.ToHexString()}");
 
                 if (trieNode.FullRlp.IsNull)
                 {
@@ -549,7 +549,7 @@ namespace Nethermind.Trie.Pruning
             }
             else
             {
-                if (_logger.IsDebug) _logger.Trace($"Saving node {trieNode.NodeType} full nibbles {fullPath.ToHexString()} full: {pathBytes.ToHexString()}");
+                if (_logger.IsTrace) _logger.Trace($"Saving node {trieNode.NodeType} full nibbles {fullPath.ToHexString()} full: {pathBytes.ToHexString()}");
             }
             if (withDelete)
             {
@@ -727,9 +727,11 @@ namespace Nethermind.Trie.Pruning
             if (!keySlice.IsZero())
             {
                 (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathNibbles, 0);
+                if (_logger.IsTrace) _logger.Trace($"Leaf deletion for {pathToNodeNibbles.ToHexString()} | from: {from.ToHexString()} to: {to.ToHexString()}");
                 _pathStateDb?.EnqueueDeleteRange(column, from, to);
 
                 (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathNibbles, 1);
+                if (_logger.IsTrace) _logger.Trace($"Leaf deletion for {pathToNodeNibbles.ToHexString()} | from: {from.ToHexString()} to: {to.ToHexString()}");
                 _pathStateDb?.EnqueueDeleteRange(column, from, to);
             }
 
@@ -739,9 +741,11 @@ namespace Nethermind.Trie.Pruning
                 fullPathNibbles.CopyTo(fullPathIncremented);
                 Span<byte> endNibbles = fromNibblesKey.Slice(0, pathToNodeNibbles.Length).IncrementNibble(true);
                 (from, to) = GetDeleteKeyFromNibbles(fullPathIncremented.IncrementNibble(), endNibbles, 0);
+                if (_logger.IsTrace) _logger.Trace($"Leaf deletion for {pathToNodeNibbles.ToHexString()} | from: {from.ToHexString()} to: {to.ToHexString()}");
                 _pathStateDb?.EnqueueDeleteRange(column, from, to);
 
                 (from, to) = GetDeleteKeyFromNibbles(fullPathIncremented, endNibbles, 1);
+                if (_logger.IsTrace) _logger.Trace($"Leaf deletion for {pathToNodeNibbles.ToHexString()} | from: {from.ToHexString()} to: {to.ToHexString()}");
                 _pathStateDb?.EnqueueDeleteRange(column, from, to);
             }
         }
@@ -780,6 +784,7 @@ namespace Nethermind.Trie.Pruning
 
                 for (int i = 0; i < 4; i+=2)
                 {
+                    if (_logger.IsTrace) _logger.Trace($"Branch deletion for {branchNode.FullPath.ToHexString()} | from: {keyRanges[i].ToHexString()} to: {keyRanges[i + 1].ToHexString()}");
                     _pathStateDb?.EnqueueDeleteRange(fullKeyLength == 66 ? StateColumns.Storage : StateColumns.State, keyRanges[i], keyRanges[i + 1]);
                 }
             }
