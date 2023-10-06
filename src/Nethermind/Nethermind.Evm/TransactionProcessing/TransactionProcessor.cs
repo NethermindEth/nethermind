@@ -308,7 +308,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             bool deleteCallerAccount = false;
 
-            if (!_worldState.AccountExists(tx.SenderAddress) && !tx.IsGethStyleSystemCall(spec)) // ToDo add comment
+            if (!_worldState.AccountExists(tx.SenderAddress) && !tx.IsGethStyleSystemCall(spec))
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"TX sender account does not exist {tx.SenderAddress} - trying to recover it");
