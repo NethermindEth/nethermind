@@ -242,7 +242,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip4788Enabled = (chainSpec.Parameters.Eip4788TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip4788ContractAddress = chainSpec.Parameters.Eip4788ContractAddress;
             releaseSpec.AuRaSystemCalls = chainSpec.SealEngineType == SealEngineType.AuRa;
-            
+
             return releaseSpec;
         }
 
