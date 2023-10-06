@@ -1256,7 +1256,13 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         {
             { "enable_blob_files", "true" },
             { "blob_compression_type", "kSnappyCompression" },
-            { "write_buffer_size", 64.MiB().ToString() },
+
+            // Make file size big, so we have less of them.
+            { "write_buffer_size", 256.MiB().ToString() },
+            // Current memtable + 2 concurrent writes. Can't have too many of these as it take up RAM.
+            { "max_write_buffer_number", 3.ToString() },
+
+            // These two are SST files instead of the blobs, which are now much smaller.
             { "max_bytes_for_level_base", 4.MiB().ToString() },
             { "target_file_size_base", 1.MiB().ToString() },
         };
