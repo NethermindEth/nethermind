@@ -369,7 +369,6 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         options.SetWriteBufferSize(writeBufferSize);
         int writeBufferNumber = (int)dbConfig.WriteBufferNumber;
         options.SetMaxWriteBufferNumber(writeBufferNumber);
-        options.SetMinWriteBufferNumberToMerge(2);
 
         lock (_dbsByPath)
         {
@@ -389,41 +388,12 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         options.SetRecycleLogFileNum(dbConfig
             .RecycleLogFileNum); // potential optimization for reusing allocated log files
 
+        options.SetMaxBytesForLevelBase(dbConfig.MaxBytesForLevelBase);
         options.SetUseDirectReads(dbConfig.UseDirectReads.GetValueOrDefault());
         options.SetUseDirectIoForFlushAndCompaction(dbConfig.UseDirectIoForFlushAndCompactions.GetValueOrDefault());
 
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
-
-        //            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
-        WriteOptions = new WriteOptions();
-        WriteOptions.SetSync(dbConfig
-            .WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
-
-        _noWalWrite = new WriteOptions();
-        _noWalWrite.SetSync(dbConfig.WriteAheadLogSync);
-        _noWalWrite.DisableWal(1);
-
-        _lowPriorityWriteOptions = new WriteOptions();
-        _lowPriorityWriteOptions.SetSync(dbConfig.WriteAheadLogSync);
-        Native.Instance.rocksdb_writeoptions_set_low_pri(_lowPriorityWriteOptions.Handle, true);
-
-        _lowPriorityAndNoWalWrite = new WriteOptions();
-        _lowPriorityAndNoWalWrite.SetSync(dbConfig.WriteAheadLogSync);
-        _lowPriorityAndNoWalWrite.DisableWal(1);
-        Native.Instance.rocksdb_writeoptions_set_low_pri(_lowPriorityAndNoWalWrite.Handle, true);
-
-        // When readahead flag is on, the next keys are expected to be after the current key. Increasing this value,
-        // will increase the chances that the next keys will be in the cache, which reduces iops and latency. This
-        // increases throughput, however, if a lot of the keys are not close to the current key, it will increase read
-        // bandwidth requirement, since each read must be at least this size. This value is tuned for a batched trie
-        // visitor on mainnet with 4GB memory budget and 4Gbps read bandwidth.
-        if (dbConfig.ReadAheadSize != 0)
-        {
-            _readAheadReadOptions = new ReadOptions();
-            _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong)256.KiB());
-            _readAheadReadOptions.SetTailing(true);
-        }
 
         if (dbConfig.CompactionReadAhead != null && dbConfig.CompactionReadAhead != 0)
         {
@@ -440,6 +410,38 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             options.EnableStatistics();
         }
         options.SetStatsDumpPeriodSec(dbConfig.StatsDumpPeriodSec);
+
+        WriteOptions = CreateWriteOptions(dbConfig);
+
+        _noWalWrite = CreateWriteOptions(dbConfig);
+        _noWalWrite.DisableWal(1);
+
+        _lowPriorityWriteOptions = CreateWriteOptions(dbConfig);
+        Native.Instance.rocksdb_writeoptions_set_low_pri(_lowPriorityWriteOptions.Handle, true);
+
+        _lowPriorityAndNoWalWrite = CreateWriteOptions(dbConfig);
+        _lowPriorityAndNoWalWrite.DisableWal(1);
+        Native.Instance.rocksdb_writeoptions_set_low_pri(_lowPriorityAndNoWalWrite.Handle, true);
+
+        // When readahead flag is on, the next keys are expected to be after the current key. Increasing this value,
+        // will increase the chances that the next keys will be in the cache, which reduces iops and latency. This
+        // increases throughput, however, if a lot of the keys are not close to the current key, it will increase read
+        // bandwidth requirement, since each read must be at least this size. This value is tuned for a batched trie
+        // visitor on mainnet with 4GB memory budget and 4Gbps read bandwidth.
+        if (dbConfig.ReadAheadSize != 0)
+        {
+            _readAheadReadOptions = new ReadOptions();
+            _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong)256.KiB());
+            _readAheadReadOptions.SetTailing(true);
+        }
+    }
+
+    private WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig)
+    {
+        WriteOptions options = new();
+        // potential fix for corruption on hard process termination, may cause performance degradation
+        options.SetSync(dbConfig.WriteAheadLogSync);
+        return options;
     }
 
     public byte[]? this[ReadOnlySpan<byte> key]
@@ -782,25 +784,53 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     internal class RocksDbBatch : IBatch
     {
-        private const int InitialBatchSize = 300;
-        private static readonly int MaxCached = Environment.ProcessorCount;
-
-        private static ConcurrentQueue<SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)>> s_cache = new();
-
         private readonly DbOnTheRocks _dbOnTheRocks;
+        private WriteBatch _rocksBatch;
         private WriteFlags _writeFlags = WriteFlags.None;
         private bool _isDisposed;
 
-        private SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> _batchData = CreateOrGetFromCache();
+        [ThreadStatic]
+        private static WriteBatch? _reusableWriteBatch;
+
+        /// <summary>
+        /// Because of how rocksdb parallelize writes, a large write batch can stall other new concurrent writes, so
+        /// we writes the batch in smaller batches. This removes atomicity so its only turned on when NoWAL flag is on.
+        /// It does not work as well as just turning on unordered_write, but Snapshot and Iterator can still works.
+        /// </summary>
+        private const int MaxWritesOnNoWal = 128;
+        private int _writeCount;
 
         public RocksDbBatch(DbOnTheRocks dbOnTheRocks)
         {
             _dbOnTheRocks = dbOnTheRocks;
+            _rocksBatch = CreateWriteBatch();
 
             if (_dbOnTheRocks._isDisposing)
             {
                 throw new ObjectDisposedException($"Attempted to create a batch on a disposed database {_dbOnTheRocks.Name}");
             }
+        }
+
+        private static WriteBatch CreateWriteBatch()
+        {
+            if (_reusableWriteBatch == null) return new WriteBatch();
+
+            WriteBatch batch = _reusableWriteBatch;
+            _reusableWriteBatch = null;
+            return batch;
+        }
+
+        private static void ReturnWriteBatch(WriteBatch batch)
+        {
+            Native.Instance.rocksdb_writebatch_data(batch.Handle, out UIntPtr size);
+            if (size > (uint)16.KiB() || _reusableWriteBatch != null)
+            {
+                batch.Dispose();
+                return;
+            }
+
+            batch.Clear();
+            _reusableWriteBatch = batch;
         }
 
         public void Dispose()
@@ -816,37 +846,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             }
             _isDisposed = true;
 
-            SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> batchData = _batchData;
-            // Clear the _batchData reference so is null if Get is called.
-            _batchData = null!;
-            if (batchData.Count == 0)
-            {
-                // No data to write, skip empty batches
-                ReturnToCache(batchData);
-                _dbOnTheRocks._currentBatches.TryRemove(this);
-                return;
-            }
-
             try
             {
-                WriteBatch rocksBatch = new();
-                // Sort the batch by key
-                foreach (var kv in batchData.OrderBy(i => i.Key, Bytes.Comparer))
-                {
-                    if (kv.Value.data is null)
-                    {
-                        rocksBatch.Delete(kv.Key, kv.Value.cf);
-                    }
-                    else
-                    {
-                        rocksBatch.Put(kv.Key, kv.Value.data, kv.Value.cf);
-                    }
-                }
-                ReturnToCache(batchData);
-
-                _dbOnTheRocks._db.Write(rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+                _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
                 _dbOnTheRocks._currentBatches.TryRemove(this);
-                rocksBatch.Dispose();
+                ReturnWriteBatch(_rocksBatch);
             }
             catch (RocksDbSharpException e)
             {
@@ -858,7 +862,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             // Not checking _isDisposing here as for some reason, sometimes is is read after dispose
-            return _batchData?.TryGetValue(key, out var value) ?? false ? value.data : _dbOnTheRocks.Get(key, flags);
+            // Note: The batch itself is not checked. Will need to use WriteBatchWithIndex to do that, but that will
+            // hurt perf.
+            return _dbOnTheRocks.Get(key, flags);
         }
 
         public void Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null)
@@ -868,17 +874,20 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
             }
 
-            _batchData[key] = (null, cf);
+            _rocksBatch.Delete(key, cf);
         }
 
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, ColumnFamilyHandle? cf = null)
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, ColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
         {
             if (_isDisposed)
             {
                 throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
             }
 
-            _batchData[key] = (value, cf);
+            _rocksBatch.Put(key, value, cf);
+            _writeFlags = flags;
+
+            if ((flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -888,28 +897,28 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
             }
 
-            _batchData[key] = (value, null);
-
+            _rocksBatch.Put(key, value);
             _writeFlags = flags;
+
+            if ((flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
         }
 
-        private static SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> CreateOrGetFromCache()
+        private void FlushOnTooManyWrites()
         {
-            if (s_cache.TryDequeue(out SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)>? batchData))
+            if (Interlocked.Increment(ref _writeCount) % MaxWritesOnNoWal != 0) return;
+
+            WriteBatch currentBatch = Interlocked.Exchange(ref _rocksBatch, CreateWriteBatch());
+
+            try
             {
-                return batchData;
+                _dbOnTheRocks._db.Write(currentBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+                ReturnWriteBatch(currentBatch);
             }
-
-            return new(InitialBatchSize, Bytes.SpanEqualityComparer);
-        }
-
-        private static void ReturnToCache(SpanDictionary<byte, (byte[]? data, ColumnFamilyHandle? cf)> batchData)
-        {
-            if (s_cache.Count >= MaxCached) return;
-
-            batchData.Clear();
-            batchData.TrimExcess(capacity: InitialBatchSize);
-            s_cache.Enqueue(batchData);
+            catch (RocksDbSharpException e)
+            {
+                _dbOnTheRocks.CreateMarkerIfCorrupt(e);
+                throw;
+            }
         }
     }
 
@@ -1067,25 +1076,25 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             // smoothens this spike somewhat by not blocking writes while allowing compaction to happen in background
             // at 1/10th the specified speed (if rate limited).
             //
-            // Read and writes written on different tune during mainnet sync in TB.
-            // +-----------------------------+----------------+--------------+---------------+---------------+--------------+----------------+---------------------+
-            // | L0FileNumTarget             | Total (R/W)    | State        | Code          | Header        | Blocks       | Receipts_Blocks | Receipt_Transactions |
-            // +-----------------------------+----------------+--------------+---------------+---------------+--------------+----------------+---------------------+
-            // | 4 (Default)                 | 7.853 / 8.41   | 2.58 / 2.78  | 0.104 / 0.107 | 0.133 / 0.141 | 4.34 / 4.58  | 0.502 / 0.593  | 0.194 / 0.209       |
-            // | 4 (8GB memory hint)         | 7.875 / 8.393  | 2.40 / 2.56  | 0.103 / 0.106 | 0.114 / 0.122 | 4.51 / 4.75  | 0.556 / 0.648  | 0.192 / 0.207       |
-            // | 14                          | 7.001 / 7.514  | 2.38 / 2.54  | 0.029 / 0.032 | 0.132 / 0.141 | 4.04 / 4.27  | 0.287 / 0.378  | 0.138 / 0.153       |
-            // | 64 (WriteBias)              | 5.986 / 6.493  | 1.63 / 1.79  | 0.023 / 0.026 | 0.120 / 0.128 | 3.82 / 4.05  | 0.280 / 0.371  | 0.113 / 0.128       |
-            // | 256 (HeavyWrite)            | 4.386 / 4.895  | 1.12 / 1.28  | 0.013 / 0.016 | 0.131 / 0.140 | 2.89 / 3.12  | 0.178 / 0.270  | 0.054 / 0.069       |
-            // | 1024 (AggressiveHeavyWrite) | 2.942 / 3.452  | 0.60 / 0.76  | 0.006 / 0.009 | 0.133 / 0.142 | 2.01 / 2.24  | 0.171 / 0.263  | 0.022 / 0.038       |
-            // +-----------------------------+-----------------+--------------+---------------+--------------+--------------+----------------+---------------------+
+            // Total writes written on different tune during mainnet sync in TB.
+            // +-----------------------+-------+-------+-------+-------+-------+---------+
+            // | L0FileNumTarget       | Total | State | Code  | Header| Blocks| Receipts |
+            // +-----------------------+-------+-------+-------+-------+-------+---------+
+            // | Default               | 5.055 | 2.27  | 0.242 | 0.123 | 1.14  | 1.280   |
+            // | WriteBias             | 4.962 | 2.12  | 0.049 | 0.132 | 1.14  | 1.080   |
+            // | HeavyWrite            | 3.592 | 1.32  | 0.032 | 0.116 | 1.14  | 0.984   |
+            // | AggressiveHeavyWrite  | 3.029 | 0.92  | 0.024 | 0.118 | 1.14  | 0.827   |
+            // | DisableCompaction     | 2.215 | 0.36  | 0.031 | 0.137 | 1.14  | 0.547   |
+            // +-----------------------+-------+-------+-------+-------+-------+---------+
             // Note, in practice on my machine, the reads does not reach the SSD. Read measured from SSD is much lower
             // than read measured from process. It is likely that most files are cached as I have 128GB of RAM.
             // Also notice that the heavier the tune, the higher the reads.
             case ITunableDb.TuneType.WriteBias:
-                // The default l1SizeTarget is 256MB, so the compaction is fairly light. But the default options is not very
-                // efficient for write amplification to conserve memory, so the write amplification reduction is noticeable.
-                // Does not seems to impact sync performance, might improve sync time slightly if user is IO limited.
-                ApplyOptions(GetHeavyWriteOptions(64));
+                // Keep the same l1 size but apply other adjustment which should increase buffer number and make
+                // l0 the same size as l1, but keep the LSM the same. This improve flush parallelization, and
+                // write amplification due to mismatch of l0 and l1 size, but does not reduce compaction from other
+                // levels.
+                ApplyOptions(GetHeavyWriteOptions(_perTableDbConfig.MaxBytesForLevelBase / (ulong)8.MiB()));
                 break;
             case ITunableDb.TuneType.HeavyWrite:
                 // Compaction spikes are clear at this point. Will definitely affect attestation performance.
@@ -1118,9 +1127,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 // user config may not be able to handle this.
                 // With all those cons, this result in the minimum write amplification possible via tweaking compaction
                 // without changing memory budget. Not recommended for mainnet, unless you are very desperate.
-                IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(2048);
-                heavyWriteOption["disable_auto_compactions"] = "true";
-                ApplyOptions(heavyWriteOption);
+                ApplyOptions(GetDisableCompactionOptions());
                 break;
             case ITunableDb.TuneType.EnableBlobFiles:
                 ApplyOptions(GetBlobFilesOptions());
@@ -1144,15 +1151,17 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         // Defaults are from rocksdb source code
         return new Dictionary<string, string>()
         {
+            { "write_buffer_size", _perTableDbConfig.WriteBufferSize.ToString() },
+            { "max_write_buffer_number", _perTableDbConfig.WriteBufferNumber.ToString() },
+
             { "level0_file_num_compaction_trigger", 4.ToString() },
             { "level0_slowdown_writes_trigger", 20.ToString() },
             { "level0_stop_writes_trigger", 36.ToString() },
 
-            { "max_bytes_for_level_base", 256.MiB().ToString() },
+            { "max_bytes_for_level_base", _perTableDbConfig.MaxBytesForLevelBase.ToString() },
             { "target_file_size_base", 64.MiB().ToString() },
             { "disable_auto_compactions", "false" },
 
-            { "write_buffer_size", _perTableDbConfig.WriteBufferSize.ToString() },
             { "enable_blob_files", "false" },
 
             { "soft_pending_compaction_bytes_limit", 64.GiB().ToString() },
@@ -1173,17 +1182,25 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     /// <returns></returns>
     private IDictionary<string, string> GetHeavyWriteOptions(ulong l0FileNumTarget)
     {
+        // Make buffer (probably) smaller so that it does not take too much memory to have many of them.
+        // More buffer means more parallel flush, but each read have to go through all buffer one by one much like l0
+        // but no io, only cpu.
+        // bufferSize*maxBufferNumber = 128MB, which is the max memory used, which tend to be the case as its now
+        // stalled by compaction instead of flush.
+        ulong bufferSize = (ulong)16.MiB();
+        ulong maxBufferNumber = 8;
+
         // Guide recommend to have l0 and l1 to be the same size. They have to be compacted together so if l1 is larger,
         // the extra size in l1 is basically extra rewrites. If l0 is larger... then I don't know why not. Even so, it seems to
         // always get triggered when l0 size exceed max_bytes_for_level_base even if file num is less than l0FileNumTarget.
-        // The 2 here is MinWriteBufferToMerge. Note, that this does highly depends on the WriteBufferSize as do standard
-        // config.
-        ulong l1SizeTarget = l0FileNumTarget * _perTableDbConfig.WriteBufferSize * 2;
+        ulong l1SizeTarget = l0FileNumTarget * bufferSize;
 
         return new Dictionary<string, string>()
         {
-            { "max_bytes_for_level_base", l1SizeTarget.ToString() },
+            { "write_buffer_size", bufferSize.ToString() },
+            { "max_write_buffer_number", maxBufferNumber.ToString() },
 
+            { "max_bytes_for_level_base", l1SizeTarget.ToString() },
             { "level0_file_num_compaction_trigger", l0FileNumTarget.ToString() },
 
             // Note: If ratelimiter is not specified and if delayed_write_rate is not specified, the default is 16MBps.
@@ -1196,6 +1213,21 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             { "hard_pending_compaction_bytes_limit", 100000.GiB().ToString() },
         };
     }
+
+    private IDictionary<string, string> GetDisableCompactionOptions()
+    {
+        IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(2048);
+
+        heavyWriteOption["disable_auto_compactions"] = "true";
+        // Increase the size of the write buffer, which reduces the number of l0 file by 4x. This does slows down
+        // the memtable a little bit. So if you are not write limited, you'll get memtable limited instead.
+        // This does increase the total memory buffer size, but counterintuitively, this reduces overall memory usage
+        // as it ran out of bloom filter cache so it need to do actual IO.
+        heavyWriteOption["write_buffer_size"] = 64.MiB().ToString();
+
+        return heavyWriteOption;
+    }
+
 
     private IDictionary<string, string> GetBlobFilesOptions()
     {
