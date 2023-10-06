@@ -95,7 +95,8 @@ public class BlockStore : IBlockStore
         {
 
             memoryOwner = _blockDbAsSpan.GetOwnedMemory(keyWithBlockNumber);
-            if (memoryOwner == null) {
+            if (memoryOwner == null)
+            {
                 memoryOwner = _blockDbAsSpan.GetOwnedMemory(blockHash.Bytes);
             }
 
@@ -105,7 +106,8 @@ public class BlockStore : IBlockStore
         else
         {
             byte[]? data = _blockDb.Get(keyWithBlockNumber);
-            if (data == null) {
+            if (data == null)
+            {
                 data = _blockDb.Get(blockHash.Bytes);
             }
 
