@@ -40,7 +40,7 @@ public class DbConfig : IDbConfig
     public bool? ReceiptsDbUseDirectReads { get; set; }
     public bool? ReceiptsDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? ReceiptsDbCompactionReadAhead { get; set; }
-    public ulong ReceiptsDbTargetFileSizeBase { get; set; } = (ulong) 256.MiB();
+    public ulong ReceiptsDbTargetFileSizeBase { get; set; } = (ulong)256.MiB();
     public IDictionary<string, string>? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
     public ulong BlocksDbWriteBufferSize { get; set; } = (ulong)8.MiB();
