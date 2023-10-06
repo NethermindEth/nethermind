@@ -3,13 +3,26 @@
 
 using FluentAssertions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using Nethermind.Core;
+using System.Collections;
 using System.Collections.Generic;
+using Nethermind.Evm;
+using System.Runtime.ConstrainedExecution;
+using Nethermind.Core.Test;
+using FluentAssertions.Execution;
 using System.Reflection;
 using System.Linq;
+using System.Reflection.Emit;
 using Nethermind.Int256;
+using System.Reflection.Metadata;
+using FastEnumUtility;
+using System;
+using System.Text.RegularExpressions;
+using Microsoft.VisualStudio.TestPlatform.CommunicationUtilities;
 
 namespace Nethermind.Evm.Test
 {
@@ -99,6 +112,8 @@ namespace Nethermind.Evm.Test
                     Instruction.PC,
                     Instruction.JUMPDEST,
                     Instruction.MSIZE,
+                    Instruction.BEGINSUB,
+                    Instruction.RETURNSUB,
                     Instruction.INVALID,
 
                     Instruction.SWAP1, Instruction.SWAP5, Instruction.SWAP9 , Instruction.SWAP13,
@@ -157,7 +172,8 @@ namespace Nethermind.Evm.Test
                     Instruction.JUMP,
                     Instruction.SLOAD,
                     Instruction.TLOAD,
-                    Instruction.MLOAD
+                    Instruction.MLOAD,
+                    Instruction.JUMPSUB,
                 };
 
             foreach (Instruction opcode in address_opcodes)
@@ -210,6 +226,7 @@ namespace Nethermind.Evm.Test
                         Instruction.MSTORE,
                         Instruction.BYTE,
                         Instruction.MSTORE8,
+                        Instruction.TSTORE,
                         Instruction.SSTORE,
                         Instruction.JUMPI
             };

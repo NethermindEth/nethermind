@@ -6,6 +6,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Resettables;
 using Nethermind.Core.Test.Builders;
 using Nethermind.State;
 using NUnit.Framework;

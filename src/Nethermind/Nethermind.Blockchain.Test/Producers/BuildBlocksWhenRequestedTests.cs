@@ -3,6 +3,7 @@
 
 using FluentAssertions;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Producers

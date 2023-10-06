@@ -16,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;

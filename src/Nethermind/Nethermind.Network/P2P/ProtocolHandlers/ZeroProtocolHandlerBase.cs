@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common.Utilities;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 

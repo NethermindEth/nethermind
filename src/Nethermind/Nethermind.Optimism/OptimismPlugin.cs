@@ -222,7 +222,6 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _api.PoSSwitcher,
             _mergeConfig,
             _invalidChainTracker,
-            _api.ProcessExit!,
             _api.LogManager,
             syncReport);
 

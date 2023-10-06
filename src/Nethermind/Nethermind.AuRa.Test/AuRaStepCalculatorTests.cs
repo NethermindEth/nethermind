@@ -5,11 +5,15 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using NUnit.Framework;
+using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.AuRa.Test
 {

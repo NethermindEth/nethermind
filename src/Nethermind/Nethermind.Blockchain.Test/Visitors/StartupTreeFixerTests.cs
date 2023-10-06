@@ -4,6 +4,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Consensus.Processing;
@@ -14,8 +15,14 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm;
 using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State;
+using Nethermind.Trie.Pruning;
+using Nethermind.TxPool;
 using NUnit.Framework;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Blockchain.Test.Visitors
 {

@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Producers
 {

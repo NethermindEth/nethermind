@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Config;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 

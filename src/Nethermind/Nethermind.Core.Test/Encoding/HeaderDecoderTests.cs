@@ -162,16 +162,15 @@ public class HeaderDecoderTests
         blockHeader.GasLimit.Should().Be(negativeLong);
     }
 
-    [TestCaseSource(nameof(CancunFieldsSource))]
-    public void Can_encode_decode_with_cancun_fields(ulong? blobGasUsed, ulong? excessBlobGas, Keccak? parentBeaconBlockRoot)
+    [TestCaseSource(nameof(ExcessBlobGasCaseSource))]
+    public void Can_encode_decode_with_excessBlobGas(ulong? blobGasUsed, ulong? excessBlobGas)
     {
         BlockHeader header = Build.A.BlockHeader
             .WithTimestamp(ulong.MaxValue)
             .WithBaseFee(1)
             .WithWithdrawalsRoot(Keccak.Zero)
             .WithBlobGasUsed(blobGasUsed)
-            .WithExcessBlobGas(excessBlobGas)
-            .WithParentBeaconBlockRoot(parentBeaconBlockRoot).TestObject;
+            .WithExcessBlobGas(excessBlobGas).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
@@ -180,12 +179,12 @@ public class HeaderDecoderTests
         blockHeader.ExcessBlobGas.Should().Be(excessBlobGas);
     }
 
-    public static IEnumerable<object?[]> CancunFieldsSource()
+    public static IEnumerable<object?[]> ExcessBlobGasCaseSource()
     {
-        yield return new object?[] { null, null, null };
-        yield return new object?[] { 0ul, 0ul, TestItem.KeccakA };
-        yield return new object?[] { 1ul, 2ul, TestItem.KeccakB };
-        yield return new object?[] { ulong.MaxValue / 2, ulong.MaxValue, null };
-        yield return new object?[] { ulong.MaxValue, ulong.MaxValue / 2, null };
+        yield return new object?[] { null, null };
+        yield return new object?[] { 0ul, 0ul };
+        yield return new object?[] { 1ul, 2ul };
+        yield return new object?[] { ulong.MaxValue / 2, ulong.MaxValue };
+        yield return new object?[] { ulong.MaxValue, ulong.MaxValue / 2 };
     }
 }

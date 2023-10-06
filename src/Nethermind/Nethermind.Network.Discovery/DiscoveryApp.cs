@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
@@ -179,12 +182,8 @@ public class DiscoveryApp : IDiscoveryApp
     {
         if (_logger.IsDebug) _logger.Debug("Activated discovery channel.");
 
-        // Make sure this is non blocking code, otherwise netty will not process messages
-        // Explicitly use TaskScheduler.Default, otherwise it will use dotnetty's task scheduler which have a habit of
-        // not working sometimes.
-        Task.Factory
-            .StartNew(() => OnChannelActivated(_appShutdownSource.Token), _appShutdownSource.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default)
-            .ContinueWith
+        //Make sure this is non blocking code, otherwise netty will not process messages
+        Task.Run(() => OnChannelActivated(_appShutdownSource.Token)).ContinueWith
         (
             t =>
             {

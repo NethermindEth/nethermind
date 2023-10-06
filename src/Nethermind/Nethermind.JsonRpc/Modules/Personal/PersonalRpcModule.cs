@@ -6,9 +6,12 @@ using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Data;
 using Nethermind.KeyStore;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Personal

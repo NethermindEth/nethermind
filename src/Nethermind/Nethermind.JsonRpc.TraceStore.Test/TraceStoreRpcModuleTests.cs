@@ -3,9 +3,11 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using FastEnumUtility;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;

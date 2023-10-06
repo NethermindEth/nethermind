@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Jint.Native;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Cli.Modules
 {

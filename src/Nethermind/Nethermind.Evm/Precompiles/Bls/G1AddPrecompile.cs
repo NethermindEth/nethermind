@@ -11,9 +11,9 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-2537
 /// </summary>
-public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
+public class G1AddPrecompile : IPrecompile
 {
-    public static G1AddPrecompile Instance = new G1AddPrecompile();
+    public static IPrecompile Instance = new G1AddPrecompile();
 
     private G1AddPrecompile()
     {

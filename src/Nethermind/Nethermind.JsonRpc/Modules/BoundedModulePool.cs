@@ -5,6 +5,8 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Exceptions;
+using Nethermind.Logging;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.JsonRpc.Modules
 {

@@ -479,7 +479,7 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(result);
         }
 
-        public static int StartSequence(Span<byte> buffer, int position, int sequenceLength)
+        public static int StartSequence(byte[] buffer, int position, int sequenceLength)
         {
             byte prefix;
             int beforeLength = position + 1;
@@ -567,8 +567,6 @@ namespace Nethermind.Serialization.Rlp
             public int Position { get; set; }
 
             public int Length => Data.Length;
-
-            public bool ShouldSliceMemory => _sliceMemory;
 
             public bool IsSequenceNext()
             {
@@ -1401,36 +1399,6 @@ namespace Nethermind.Serialization.Rlp
                 for (int i = 0; i < itemsCount; i++)
                 {
                     result[i] = DecodeByteArray();
-                }
-
-                return result;
-            }
-
-            public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true,
-                T defaultElement = default)
-            {
-                if (decoder == null)
-                {
-                    decoder = GetValueDecoder<T>();
-                    if (decoder == null)
-                    {
-                        throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
-                    }
-                }
-                int positionCheck = ReadSequenceLength() + Position;
-                int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
-                T[] result = new T[count];
-                for (int i = 0; i < result.Length; i++)
-                {
-                    if (PeekByte() == Rlp.OfEmptySequence[0])
-                    {
-                        result[i] = defaultElement;
-                        Position++;
-                    }
-                    else
-                    {
-                        result[i] = decoder.Decode(ref this);
-                    }
                 }
 
                 return result;

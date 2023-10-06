@@ -3,6 +3,8 @@
 
 using System;
 using System.IO.Abstractions;
+using FluentAssertions;
+using MathGmp.Native;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core.Timers;
 using NSubstitute;

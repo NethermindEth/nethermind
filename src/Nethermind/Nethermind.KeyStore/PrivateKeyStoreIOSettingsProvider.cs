@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using Nethermind.Core;
 using Nethermind.KeyStore.Config;
+using Nethermind.Logging;
 
 namespace Nethermind.KeyStore
 {

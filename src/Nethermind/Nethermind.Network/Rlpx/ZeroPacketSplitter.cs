@@ -8,6 +8,7 @@ using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Attributes;
 using Nethermind.Logging;
+using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx

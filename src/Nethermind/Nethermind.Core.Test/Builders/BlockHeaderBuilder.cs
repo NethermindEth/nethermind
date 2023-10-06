@@ -189,10 +189,4 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         TestObjectInternal.ExcessBlobGas = excessBlobGas;
         return this;
     }
-
-    public BlockHeaderBuilder WithParentBeaconBlockRoot(Keccak? parentBeaconBlockRoot)
-    {
-        TestObjectInternal.ParentBeaconBlockRoot = parentBeaconBlockRoot;
-        return this;
-    }
 }

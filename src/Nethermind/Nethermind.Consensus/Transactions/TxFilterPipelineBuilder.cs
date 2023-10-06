@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Transactions

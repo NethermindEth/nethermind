@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Wallet;
 
 namespace Nethermind.Consensus.AuRa
 {

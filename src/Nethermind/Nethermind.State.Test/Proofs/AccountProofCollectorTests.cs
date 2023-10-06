@@ -3,10 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -747,7 +747,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                         }
                     }
 
-                    node.Value.ToArray().Should().BeEquivalentTo(new byte[] { 1 });
+                    node.Value.Should().BeEquivalentTo(new byte[] { 1 });
                 }
             }
         }

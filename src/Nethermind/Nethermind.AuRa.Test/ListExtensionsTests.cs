@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Core.Collections;
 using NUnit.Framework;
 

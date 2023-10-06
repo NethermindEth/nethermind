@@ -122,6 +122,8 @@ namespace Nethermind.Blockchain
 
         public bool WasProcessed(long number, Keccak blockHash) => _wrapped.WasProcessed(number, blockHash);
 
+        public void LoadLowestInsertedBeaconHeader() => _wrapped.LoadLowestInsertedBeaconHeader();
+
         public event EventHandler<BlockEventArgs> NewBestSuggestedBlock
         {
             add { }

@@ -7,6 +7,7 @@ using System.IO;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Ethereum.Test.Base.Interfaces;
+using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 
 namespace Nethermind.Blockchain.Test.Runner

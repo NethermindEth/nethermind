@@ -104,11 +104,11 @@ public class BoundedModulePoolTests
         {
             for (int i = 0; i < iterations; i++)
             {
-                // TestContext.Out.WriteLine($"Rent shared {i}");
+                TestContext.Out.WriteLine($"Rent shared {i}");
                 IEthRpcModule ethRpcModule = await _modulePool.GetModule(true);
                 Assert.That(ethRpcModule, Is.SameAs(sharedRpcModule));
                 _modulePool.ReturnModule(ethRpcModule);
-                // TestContext.Out.WriteLine($"Return shared {i}");
+                TestContext.Out.WriteLine($"Return shared {i}");
             }
         }
 
@@ -116,11 +116,11 @@ public class BoundedModulePoolTests
         {
             for (int i = 0; i < iterations; i++)
             {
-                // TestContext.Out.WriteLine($"Rent exclusive {i}");
+                TestContext.Out.WriteLine($"Rent exclusive {i}");
                 IEthRpcModule ethRpcModule = await _modulePool.GetModule(false);
                 Assert.That(ethRpcModule, Is.Not.SameAs(sharedRpcModule));
                 _modulePool.ReturnModule(ethRpcModule);
-                // TestContext.Out.WriteLine($"Return exclusive {i}");
+                TestContext.Out.WriteLine($"Return exclusive {i}");
             }
         }
 

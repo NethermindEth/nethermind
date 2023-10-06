@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 

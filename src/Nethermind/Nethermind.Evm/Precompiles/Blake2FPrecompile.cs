@@ -9,13 +9,13 @@ using Nethermind.Crypto.Blake2;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
+    public class Blake2FPrecompile : IPrecompile
     {
         private const int RequiredInputLength = 213;
 
         private Blake2Compression _blake = new();
 
-        public static readonly Blake2FPrecompile Instance = new Blake2FPrecompile();
+        public static readonly IPrecompile Instance = new Blake2FPrecompile();
 
         public static Address Address { get; } = Address.FromNumber(9);
 

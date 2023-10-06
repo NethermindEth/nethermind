@@ -3,6 +3,7 @@
 
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
+using Nethermind.Int256;
 
 namespace Nethermind.Mev
 {

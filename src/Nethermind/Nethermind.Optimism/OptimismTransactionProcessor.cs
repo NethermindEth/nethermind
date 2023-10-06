@@ -28,11 +28,11 @@ public class OptimismTransactionProcessor : TransactionProcessor
         _opConfigHelper = opConfigHelper;
     }
 
-    protected override void Execute(Transaction tx, BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+    protected override void Execute(Transaction tx, BlockHeader header, ITxTracer tracer, ExecutionOptions opts)
     {
         if (tx.IsDeposit())
         {
-            IReleaseSpec spec = SpecProvider.GetSpec(blCtx.Header);
+            IReleaseSpec spec = SpecProvider.GetSpec(header);
 
             WorldState.AddToBalanceAndCreateIfNotExists(tx.SenderAddress!, tx.Mint, spec);
 
@@ -40,7 +40,7 @@ public class OptimismTransactionProcessor : TransactionProcessor
                 WorldState.Commit(spec);
         }
 
-        base.Execute(tx, blCtx, tracer, opts);
+        base.Execute(tx, header, tracer, opts);
     }
 
     protected override bool ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,

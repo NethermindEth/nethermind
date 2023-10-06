@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -274,12 +275,6 @@ namespace Nethermind.Core.Test.Builders
                 ? null
                 : new WithdrawalTrie(withdrawals).RootHash;
 
-            return this;
-        }
-
-        public BlockBuilder WithParentBeaconBlockRoot(Keccak? parentBeaconBlockRoot)
-        {
-            TestObjectInternal.Header.ParentBeaconBlockRoot = parentBeaconBlockRoot;
             return this;
         }
     }

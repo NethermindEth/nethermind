@@ -8,7 +8,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -51,17 +50,16 @@ namespace Nethermind.AccountAbstraction.Executor
 
             int i = 0;
             LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
-            BlockExecutionContext blkCtx = new(block.Header);
             foreach (Transaction transaction in transactions)
             {
                 if (IsAccountAbstractionTransaction(transaction))
                 {
-                    BlockProcessor.TxAction action = ProcessAccountAbstractionTransaction(block, blkCtx, transaction, i++, receiptsTracer, processingOptions, transactionsInBlock);
+                    BlockProcessor.TxAction action = ProcessAccountAbstractionTransaction(block, transaction, i++, receiptsTracer, processingOptions, transactionsInBlock);
                     if (action == BlockProcessor.TxAction.Stop) break;
                 }
                 else
                 {
-                    BlockProcessor.TxAction action = ProcessTransaction(block, blkCtx, transaction, i++, receiptsTracer, processingOptions, transactionsInBlock);
+                    BlockProcessor.TxAction action = ProcessTransaction(block, transaction, i++, receiptsTracer, processingOptions, transactionsInBlock);
                     if (action == BlockProcessor.TxAction.Stop) break;
                 }
             }
@@ -81,7 +79,6 @@ namespace Nethermind.AccountAbstraction.Executor
 
         private BlockProcessor.TxAction ProcessAccountAbstractionTransaction(
             Block block,
-            BlockExecutionContext blkCtx,
             Transaction currentTx,
             int index,
             BlockReceiptsTracer receiptsTracer,
@@ -90,7 +87,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             int snapshot = receiptsTracer.TakeSnapshot();
 
-            BlockProcessor.TxAction action = ProcessTransaction(block, blkCtx, currentTx, index, receiptsTracer, processingOptions, transactionsInBlock, false);
+            BlockProcessor.TxAction action = ProcessTransaction(block, currentTx, index, receiptsTracer, processingOptions, transactionsInBlock, false);
             if (action != BlockProcessor.TxAction.Add)
             {
                 return action;

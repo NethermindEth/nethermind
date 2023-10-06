@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
+using System.Reflection;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -34,6 +35,7 @@ namespace Nethermind.JsonRpc.Test
         [SetUp]
         public void Initialize()
         {
+            Assembly jConfig = typeof(JsonRpcConfig).Assembly;
             _configurationProvider = new ConfigProvider();
             _logManager = LimboLogs.Instance;
             _context = new JsonRpcContext(RpcEndpoint.Http);
@@ -47,7 +49,7 @@ namespace Nethermind.JsonRpc.Test
         private JsonRpcResponse TestRequest<T>(T module, string method, params string[] parameters) where T : IRpcModule
         {
             RpcModuleProvider moduleProvider = new(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), LimboLogs.Instance);
-            moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module), allowExclusive: true));
+            moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));
             _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
             JsonRpcRequest request = RpcTest.GetJsonRequest(method, parameters);
             JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
@@ -60,7 +62,7 @@ namespace Nethermind.JsonRpc.Test
         {
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(_ => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
+            ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
             JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", "true") as JsonRpcSuccessResponse;
             Assert.That((response?.Result as BlockForRpc)?.Number, Is.EqualTo(2L));
         }
@@ -70,7 +72,7 @@ namespace Nethermind.JsonRpc.Test
         {
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(_ => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
+            ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
             JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", "true") as JsonRpcSuccessResponse;
             Assert.That((response?.Result as BlockForRpc)?.Size, Is.EqualTo(513L));
         }
@@ -81,7 +83,7 @@ namespace Nethermind.JsonRpc.Test
             EthereumJsonSerializer serializer = new();
             string serialized = serializer.Serialize(new TransactionForRpc());
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-            ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<string>.Success("0x1"));
+            ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x1"));
             JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", serialized) as JsonRpcSuccessResponse;
             Assert.That(response?.Result, Is.EqualTo("0x1"));
         }
@@ -99,7 +101,7 @@ namespace Nethermind.JsonRpc.Test
         public void GetNewFilterTest()
         {
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-            ethRpcModule.eth_newFilter(Arg.Any<Filter>()).ReturnsForAnyArgs(_ => ResultWrapper<UInt256?>.Success(1));
+            ethRpcModule.eth_newFilter(Arg.Any<Filter>()).ReturnsForAnyArgs(x => ResultWrapper<UInt256?>.Success(1));
 
             var parameters = new
             {
@@ -126,7 +128,7 @@ namespace Nethermind.JsonRpc.Test
         {
             EthereumJsonSerializer serializer = new();
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-            ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(_ => ResultWrapper<string>.Success("0x"));
+            ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x"));
 
             string serialized = serializer.Serialize(new TransactionForRpc());
 
@@ -140,7 +142,7 @@ namespace Nethermind.JsonRpc.Test
         {
             EthereumJsonSerializer serializer = new();
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-            ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(_ => ResultWrapper<string>.Success("0x"));
+            ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x"));
 
             string serialized = serializer.Serialize(new TransactionForRpc());
 
@@ -149,21 +151,14 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [Test]
-        public void Eth_getTransactionReceipt_properly_fails_given_wrong_parameters()
+        public void GetWorkTest()
         {
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-
-            string[] parameters = {
-                """["0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71"]"""
-            };
-            JsonRpcResponse response = TestRequest(ethRpcModule, "eth_getTransactionReceipt", parameters);
-
-            response.Should()
-                .BeAssignableTo<JsonRpcErrorResponse>()
-                .Which
-                .Error.Should().NotBeNull();
-            Error error = (response as JsonRpcErrorResponse)!.Error!;
-            error.Code.Should().Be(ErrorCodes.InvalidParams);
+            ethRpcModule.eth_getWork().ReturnsForAnyArgs(x => ResultWrapper<IEnumerable<byte[]>>.Success(new[] { Bytes.FromHexString("aa"), Bytes.FromHexString("01") }));
+            JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_getWork") as JsonRpcSuccessResponse;
+            byte[][]? dataList = response?.Result as byte[][];
+            Assert.NotNull(dataList?.SingleOrDefault(d => d.ToHexString(true) == "0xaa"));
+            Assert.NotNull(dataList?.SingleOrDefault(d => d.ToHexString(true) == "0x01"));
         }
 
         [Test]
@@ -177,7 +172,7 @@ namespace Nethermind.JsonRpc.Test
         public void NetVersionTest()
         {
             INetRpcModule netRpcModule = Substitute.For<INetRpcModule>();
-            netRpcModule.net_version().ReturnsForAnyArgs(_ => ResultWrapper<string>.Success("1"));
+            netRpcModule.net_version().ReturnsForAnyArgs(x => ResultWrapper<string>.Success("1"));
             JsonRpcSuccessResponse? response = TestRequest(netRpcModule, "net_version") as JsonRpcSuccessResponse;
             Assert.That(response?.Result, Is.EqualTo("1"));
             Assert.IsNotInstanceOf<JsonRpcErrorResponse>(response);
@@ -187,7 +182,7 @@ namespace Nethermind.JsonRpc.Test
         public void Web3ShaTest()
         {
             IWeb3RpcModule web3RpcModule = Substitute.For<IWeb3RpcModule>();
-            web3RpcModule.web3_sha3(Arg.Any<byte[]>()).ReturnsForAnyArgs(_ => ResultWrapper<Keccak>.Success(TestItem.KeccakA));
+            web3RpcModule.web3_sha3(Arg.Any<byte[]>()).ReturnsForAnyArgs(x => ResultWrapper<Keccak>.Success(TestItem.KeccakA));
             JsonRpcSuccessResponse? response = TestRequest(web3RpcModule, "web3_sha3", "0x68656c6c6f20776f726c64") as JsonRpcSuccessResponse;
             Assert.That(response?.Result, Is.EqualTo(TestItem.KeccakA));
         }
@@ -195,13 +190,13 @@ namespace Nethermind.JsonRpc.Test
         [TestCaseSource(nameof(BlockForRpcTestSource))]
         public void BlockForRpc_should_expose_withdrawals_if_any((bool Expected, Block Block) item)
         {
-            ISpecProvider? specProvider = Substitute.For<ISpecProvider>();
-            BlockForRpc rpcBlock = new(item.Block, false, specProvider);
+            var specProvider = Substitute.For<ISpecProvider>();
+            var rpcBlock = new BlockForRpc(item.Block, false, specProvider);
 
             rpcBlock.WithdrawalsRoot.Should().BeEquivalentTo(item.Block.WithdrawalsRoot);
             rpcBlock.Withdrawals.Should().BeEquivalentTo(item.Block.Withdrawals);
 
-            string? json = new EthereumJsonSerializer().Serialize(rpcBlock);
+            var json = new EthereumJsonSerializer().Serialize(rpcBlock);
 
             json.Contains("withdrawals\"", StringComparison.Ordinal).Should().Be(item.Expected);
             json.Contains("withdrawalsRoot", StringComparison.Ordinal).Should().Be(item.Expected);

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -242,13 +241,13 @@ namespace Nethermind.State.Proofs
                 {
                     foreach (int storageIndex in value.StorageIndices)
                     {
-                        _storageProofItems[storageIndex].Add(node.FullRlp.ToArray());
+                        _storageProofItems[storageIndex].Add(node.FullRlp);
                     }
                 }
             }
             else
             {
-                _accountProofItems.Add(node.FullRlp.ToArray());
+                _accountProofItems.Add(node.FullRlp);
             }
         }
 
@@ -283,13 +282,13 @@ namespace Nethermind.State.Proofs
                     bool isPathMatched = IsPathMatched(node, thisStoragePath);
                     if (isPathMatched)
                     {
-                        _accountProof.StorageProofs[storageIndex].Value = new RlpStream(node.Value.ToArray()).DecodeByteArray();
+                        _accountProof.StorageProofs[storageIndex].Value = new RlpStream(node.Value).DecodeByteArray();
                     }
                 }
             }
             else
             {
-                Account account = _accountDecoder.Decode(new RlpStream(node.Value.ToArray()));
+                Account account = _accountDecoder.Decode(new RlpStream(node.Value));
                 bool isPathMatched = IsPathMatched(node, _fullAccountPath);
                 if (isPathMatched)
                 {

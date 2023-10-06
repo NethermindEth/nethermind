@@ -19,9 +19,9 @@ namespace Nethermind.Db
             return new(db, createInMemoryWriteStore);
         }
 
-        public static void Set(this IDb db, Keccak key, byte[] value, WriteFlags writeFlags = WriteFlags.None)
+        public static void Set(this IDb db, Keccak key, byte[] value)
         {
-            db.Set(key.Bytes, value, writeFlags);
+            db[key.Bytes] = value;
         }
 
         public static byte[]? Get(this IDb db, Keccak key)

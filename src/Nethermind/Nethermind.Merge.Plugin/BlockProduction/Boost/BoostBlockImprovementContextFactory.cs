@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net.Http;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Facade.Proxy;
 using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.BlockProduction.Boost;

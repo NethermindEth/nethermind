@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -14,7 +15,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
-using Nethermind.Consensus.BeaconBlockRoot;
 
 namespace Nethermind.Blockchain
 {
@@ -24,7 +24,6 @@ namespace Nethermind.Blockchain
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _stateProvider;
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly BeaconBlockRootHandler _beaconBlockRootHandler;
 
         public GenesisLoader(
             ChainSpec chainSpec,
@@ -36,7 +35,6 @@ namespace Nethermind.Blockchain
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-            _beaconBlockRootHandler = new BeaconBlockRootHandler();
         }
 
         public Block Load()
@@ -91,7 +89,7 @@ namespace Nethermind.Blockchain
                     };
 
                     CallOutputTracer outputTracer = new();
-                    _transactionProcessor.Execute(constructorTransaction, new BlockExecutionContext(genesis.Header), outputTracer);
+                    _transactionProcessor.Execute(constructorTransaction, genesis.Header, outputTracer);
 
                     if (outputTracer.StatusCode != StatusCode.Success)
                     {

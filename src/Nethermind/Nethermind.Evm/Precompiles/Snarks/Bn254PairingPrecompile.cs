@@ -11,11 +11,11 @@ namespace Nethermind.Evm.Precompiles.Snarks;
 /// <summary>
 /// https://github.com/herumi/mcl/blob/master/api.md
 /// </summary>
-public class Bn254PairingPrecompile : IPrecompile<Bn254PairingPrecompile>
+public class Bn254PairingPrecompile : IPrecompile
 {
     private const int PairSize = 192;
 
-    public static Bn254PairingPrecompile Instance = new Bn254PairingPrecompile();
+    public static IPrecompile Instance = new Bn254PairingPrecompile();
 
     public static Address Address { get; } = Address.FromNumber(8);
 

@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
@@ -23,13 +22,11 @@ public class ExecutionPayloadV3Params : IExecutionPayloadParams
 {
     private readonly ExecutionPayloadV3 _executionPayload;
     private readonly byte[]?[] _blobVersionedHashes;
-    private readonly Keccak? _parentBeaconBlockRoot;
 
-    public ExecutionPayloadV3Params(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Keccak? parentBeaconBlockRoot)
+    public ExecutionPayloadV3Params(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes)
     {
         _executionPayload = executionPayload;
         _blobVersionedHashes = blobVersionedHashes;
-        _parentBeaconBlockRoot = parentBeaconBlockRoot;
     }
 
     public ExecutionPayload ExecutionPayload => _executionPayload;
@@ -52,21 +49,13 @@ public class ExecutionPayloadV3Params : IExecutionPayloadParams
                 .Where(t => t.BlobVersionedHashes is not null)
                 .SelectMany(t => t.BlobVersionedHashes!);
 
-        if (!FlattenHashesFromTransactions(transactions).SequenceEqual(_blobVersionedHashes, Bytes.NullableEqualityComparer))
+        if (FlattenHashesFromTransactions(transactions).SequenceEqual(_blobVersionedHashes, Bytes.NullableEqualityComparer))
         {
-            error = "Blob versioned hashes do not match";
-            return ValidationResult.Invalid;
+            error = null;
+            return ValidationResult.Success;
         }
 
-        if (_parentBeaconBlockRoot is null)
-        {
-            error = "Parent beacon block root must be set";
-            return ValidationResult.Fail;
-        }
-
-        _executionPayload.ParentBeaconBlockRoot = new Keccak(_parentBeaconBlockRoot);
-
-        error = null;
-        return ValidationResult.Success;
+        error = "Blob versioned hashes do not match";
+        return ValidationResult.Invalid;
     }
 }

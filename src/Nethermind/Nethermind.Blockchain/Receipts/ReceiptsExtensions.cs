@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.State.Proofs;
-using Nethermind.Trie;
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -30,7 +29,7 @@ namespace Nethermind.Blockchain.Receipts
                 txReceipts.SetSkipStateAndStatusInRlp(true);
                 try
                 {
-                    return ReceiptTrie.CalculateRoot(receiptSpec, txReceipts);
+                    return new ReceiptTrie(receiptSpec, txReceipts).RootHash;
                 }
                 finally
                 {
@@ -38,7 +37,7 @@ namespace Nethermind.Blockchain.Receipts
                 }
             }
 
-            Keccak receiptsRoot = ReceiptTrie.CalculateRoot(receiptSpec, txReceipts);
+            Keccak receiptsRoot = new ReceiptTrie(receiptSpec, txReceipts).RootHash;
             if (!receiptSpec.ValidateReceipts && receiptsRoot != suggestedRoot)
             {
                 var skipStateAndStatusReceiptsRoot = SkipStateAndStatusReceiptsRoot();

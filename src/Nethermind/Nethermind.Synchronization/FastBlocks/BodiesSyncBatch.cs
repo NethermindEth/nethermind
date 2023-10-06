@@ -13,6 +13,6 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         public BlockInfo?[] Infos { get; }
-        public OwnedBlockBodies? Response { get; set; }
+        public BlockBody?[]? Response { get; set; }
     }
 }

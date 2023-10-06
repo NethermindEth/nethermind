@@ -9,6 +9,7 @@ using NUnit.Framework;
 using Nethermind.Core.Extensions;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using NSubstitute.ReceivedExtensions;
 
 namespace Nethermind.HealthChecks.Test
 {

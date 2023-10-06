@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {
@@ -157,6 +158,8 @@ namespace Nethermind.Blockchain
         void DeleteInvalidBlock(Block invalidBlock);
 
         void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash);
+
+        void LoadLowestInsertedBeaconHeader();
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;

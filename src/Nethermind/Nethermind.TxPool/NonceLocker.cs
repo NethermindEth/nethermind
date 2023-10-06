@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 

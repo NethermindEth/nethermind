@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Threading.Tasks;
+using System.Linq;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc.Modules;

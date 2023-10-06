@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;

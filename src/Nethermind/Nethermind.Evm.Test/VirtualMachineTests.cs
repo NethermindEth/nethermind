@@ -423,7 +423,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .Op(Instruction.TLOAD)
             .Done;
 
-        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp), 100000, code);
+        TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, 100000, code, timestamp: MainnetSpecProvider.CancunBlockTimestamp);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 1 + GasCostOf.TLoad), "gas");
     }
 
@@ -542,19 +542,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .Op(Instruction.TSTORE)
             .Done;
 
-        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp), 100000, code);
+        TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, 100000, code, timestamp: MainnetSpecProvider.CancunBlockTimestamp);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.TStore), "gas");
-    }
-
-    [Test]
-    public void Revert()
-    {
-        // See: https://eips.ethereum.org/EIPS/eip-140
-
-        byte[] code = Bytes.FromHexString("0x6c726576657274656420646174616000557f726576657274206d657373616765000000000000000000000000000000000000600052600e6000fd");
-        TestAllTracerWithOutput receipt = Execute(blockNumber: MainnetSpecProvider.ByzantiumBlockNumber, 100_000, code);
-
-        Assert.That(receipt.Error, Is.EqualTo("Reverted 0x726576657274206d657373616765"));
-        Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 20024));
     }
 }

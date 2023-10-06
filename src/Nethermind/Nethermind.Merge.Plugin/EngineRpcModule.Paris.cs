@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -29,23 +28,20 @@ public partial class EngineRpcModule : IEngineRpcModule
         TransitionConfigurationV1 beaconTransitionConfiguration) => _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => await ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Paris);
+        => await ForkchoiceUpdated(forkchoiceState, payloadAttributes, 1);
 
     public Task<ResultWrapper<ExecutionPayload?>> engine_getPayloadV1(byte[] payloadId) =>
         _getPayloadHandlerV1.HandleAsync(payloadId);
 
     public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
-        => await NewPayload(executionPayload, EngineApiVersions.Paris);
+        => await NewPayload(executionPayload, 1);
 
     protected async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
-        string? error = null;
-        switch (payloadAttributes?.Validate(_specProvider, version, out error))
+        if (payloadAttributes?.Validate(_specProvider, version, out string? error) == false)
         {
-            case PayloadAttributesValidationResult.InvalidParams:
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.InvalidParams);
-            case PayloadAttributesValidationResult.UnsupportedFork:
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.UnsupportedFork);
+            if (_logger.IsWarn) _logger.Warn(error);
+            return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error, ErrorCodes.InvalidParams);
         }
 
         if (await _locker.WaitAsync(_timeout))

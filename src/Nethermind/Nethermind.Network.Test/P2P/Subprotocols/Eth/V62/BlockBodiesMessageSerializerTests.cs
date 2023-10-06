@@ -20,7 +20,7 @@ public class BlockBodiesMessageSerializerTests
     [TestCaseSource(nameof(GetBlockBodyValues))]
     public void Should_pass_roundtrip(BlockBody[] bodies) => SerializerTester.TestZero(
         new BlockBodiesMessageSerializer(),
-        new BlockBodiesMessage(bodies),
+        new BlockBodiesMessage { Bodies = bodies },
         additionallyExcluding: (o) =>
             o.Excluding(c => c.Name == nameof(Transaction.SenderAddress))
                 .Excluding(c => c.Name == nameof(Transaction.NetworkWrapper)));
@@ -30,9 +30,9 @@ public class BlockBodiesMessageSerializerTests
     {
         IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
         BlockBodiesMessageSerializer serializer = new();
-        serializer.Serialize(buffer, new BlockBodiesMessage(bodies));
+        serializer.Serialize(buffer, new BlockBodiesMessage { Bodies = bodies });
         BlockBodiesMessage deserializedMessage = serializer.Deserialize(buffer);
-        foreach (BlockBody? body in deserializedMessage.Bodies.Bodies)
+        foreach (BlockBody? body in deserializedMessage.Bodies)
         {
             if (body is null) continue;
             foreach (Transaction tx in body.Transactions.Where(t => t.SupportsBlobs))

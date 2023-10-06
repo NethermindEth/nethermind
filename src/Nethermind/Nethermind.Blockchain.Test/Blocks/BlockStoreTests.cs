@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices.JavaScript;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 
 namespace Nethermind.Core.Test.Builders

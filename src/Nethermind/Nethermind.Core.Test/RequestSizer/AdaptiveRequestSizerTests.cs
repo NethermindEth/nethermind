@@ -22,7 +22,7 @@ public class AdaptiveRequestSizerTests
     {
         AdaptiveRequestSizer sizer = new(minSize, maxSize, startingSize);
 
-        await sizer.Run((requestSize => Task.FromResult((requestSize, direction))));
+        await sizer.Run((async requestSize => (requestSize, direction)));
 
         sizer.RequestSize.Should().Be(afterRequestSize);
     }

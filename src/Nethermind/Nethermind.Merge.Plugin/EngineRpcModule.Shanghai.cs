@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -19,7 +18,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly IAsyncHandler<byte[], GetPayloadV2Result?> _getPayloadHandlerV2;
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Shanghai);
+        => ForkchoiceUpdated(forkchoiceState, payloadAttributes, 2);
 
     public Task<ResultWrapper<GetPayloadV2Result?>> engine_getPayloadV2(byte[] payloadId)
         => _getPayloadHandlerV2.HandleAsync(payloadId);
@@ -31,5 +30,5 @@ public partial class EngineRpcModule : IEngineRpcModule
         => _executionGetPayloadBodiesByRangeV1Handler.Handle(start, count);
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayload executionPayload)
-        => NewPayload(executionPayload, EngineApiVersions.Shanghai);
+        => NewPayload(executionPayload, 2);
 }

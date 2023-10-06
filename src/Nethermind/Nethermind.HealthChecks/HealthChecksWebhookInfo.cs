@@ -2,6 +2,7 @@
 
 using System.Net;
 using System;
+using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network;
 

@@ -23,6 +23,7 @@ using Nethermind.TxPool.Comparison;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Test
 {

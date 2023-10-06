@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Ethereum.Difficulty.Test

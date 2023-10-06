@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using Ethereum.Test.Base;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;

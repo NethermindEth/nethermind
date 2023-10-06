@@ -4,11 +4,13 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
@@ -42,7 +44,6 @@ public class MergeSynchronizer : Synchronizer
         IPoSSwitcher poSSwitcher,
         IMergeConfig mergeConfig,
         IInvalidChainTracker invalidChainTracker,
-        IProcessExitSource exitSource,
         ILogManager logManager,
         ISyncReport syncReport)
         : base(
@@ -58,7 +59,6 @@ public class MergeSynchronizer : Synchronizer
             blockDownloaderFactory,
             pivot,
             syncReport,
-            exitSource,
             logManager)
     {
         _invalidChainTracker = invalidChainTracker;

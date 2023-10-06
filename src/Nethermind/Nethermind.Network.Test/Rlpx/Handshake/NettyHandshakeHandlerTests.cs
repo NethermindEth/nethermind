@@ -5,6 +5,7 @@ using System;
 using System.Net;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Codecs;
 using DotNetty.Common.Concurrency;
 using DotNetty.Transport.Channels;
 using FluentAssertions;

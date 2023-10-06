@@ -5,6 +5,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Synchronization.DbTuner;
 using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
 using NSubstitute;

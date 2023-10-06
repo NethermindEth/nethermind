@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace

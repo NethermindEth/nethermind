@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
+using System.Threading;
 using Nethermind.Core.Attributes;
 
 namespace Nethermind.JsonRpc

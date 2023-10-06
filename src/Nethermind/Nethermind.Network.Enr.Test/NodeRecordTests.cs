@@ -4,6 +4,7 @@
 using System;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Enr.Test;

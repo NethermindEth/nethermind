@@ -4,6 +4,7 @@
 using System;
 using System.Numerics;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
 namespace Nethermind.Abi
 {

@@ -3,105 +3,97 @@
 
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm;
-
-public class TransactionSubstate
+namespace Nethermind.Evm
 {
-    private static readonly List<Address> _emptyDestroyList = new(0);
-    private static readonly List<LogEntry> _emptyLogs = new(0);
-
-    private const string SomeError = "error";
-    private const string Revert = "revert";
-
-    private const int RevertPrefix = 4;
-
-    private const string RevertedErrorMessagePrefix = "Reverted ";
-
-    public bool IsError => Error is not null && !ShouldRevert;
-    public string? Error { get; }
-    public ReadOnlyMemory<byte> Output { get; }
-    public bool ShouldRevert { get; }
-    public long Refund { get; }
-    public IReadOnlyCollection<LogEntry> Logs { get; }
-    public IReadOnlyCollection<Address> DestroyList { get; }
-
-    public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected)
+    public class TransactionSubstate
     {
-        Error = isTracerConnected ? exceptionType.ToString() : SomeError;
-        Refund = 0;
-        DestroyList = _emptyDestroyList;
-        Logs = _emptyLogs;
-        ShouldRevert = false;
-    }
+        private static List<Address> _emptyDestroyList = new(0);
+        private static List<LogEntry> _emptyLogs = new(0);
 
-    public TransactionSubstate(
-        ReadOnlyMemory<byte> output,
-        long refund,
-        IReadOnlyCollection<Address> destroyList,
-        IReadOnlyCollection<LogEntry> logs,
-        bool shouldRevert,
-        bool isTracerConnected)
-    {
-        Output = output;
-        Refund = refund;
-        DestroyList = destroyList;
-        Logs = logs;
-        ShouldRevert = shouldRevert;
+        private const string SomeError = "error";
+        private const string Revert = "revert";
 
-        if (!ShouldRevert)
+        public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected)
         {
-            Error = null;
-            return;
+            Error = isTracerConnected ? exceptionType.ToString() : SomeError;
+            Refund = 0;
+            DestroyList = _emptyDestroyList;
+            Logs = _emptyLogs;
+            ShouldRevert = false;
         }
 
-        Error = Revert;
-
-        if (!isTracerConnected)
-            return;
-
-        if (Output.Length <= 0)
-            return;
-
-        ReadOnlySpan<byte> span = Output.Span;
-        Error = TryGetErrorMessage(span)
-                ?? DefaultErrorMessage(span);
-    }
-
-    private string DefaultErrorMessage(ReadOnlySpan<byte> span)
-    {
-        return string.Concat(RevertedErrorMessagePrefix, span.ToHexString(true));
-    }
-
-    private unsafe string? TryGetErrorMessage(ReadOnlySpan<byte> span)
-    {
-        if (span.Length < RevertPrefix + sizeof(UInt256) * 2)
+        public unsafe TransactionSubstate(
+            ReadOnlyMemory<byte> output,
+            long refund,
+            IReadOnlyCollection<Address> destroyList,
+            IReadOnlyCollection<LogEntry> logs,
+            bool shouldRevert,
+            bool isTracerConnected)
         {
-            return null;
-        }
+            const int revertPrefix = 4;
 
-        try
-        {
-            int start = (int)new UInt256(span.Slice(RevertPrefix, sizeof(UInt256)), isBigEndian: true);
-            if (checked(RevertPrefix + start + sizeof(UInt256)) > span.Length)
+            Output = output;
+            Refund = refund;
+            DestroyList = destroyList;
+            Logs = logs;
+            ShouldRevert = shouldRevert;
+            if (ShouldRevert)
             {
-                return null;
-            }
+                Error = Revert;
+                if (isTracerConnected)
+                {
+                    if (Output.Length > 0)
+                    {
+                        ReadOnlySpan<byte> span = Output.Span;
+                        if (span.Length >= sizeof(UInt256) * 2 + revertPrefix)
+                        {
+                            try
+                            {
+                                int start = (int)(new UInt256(span.Slice(revertPrefix, sizeof(UInt256)), isBigEndian: true));
+                                if (start + revertPrefix + sizeof(UInt256) <= span.Length)
+                                {
+                                    int length = (int)new UInt256(span.Slice(start + revertPrefix, sizeof(UInt256)), isBigEndian: true);
+                                    if (checked(start + revertPrefix + sizeof(UInt256) + length) <= span.Length)
+                                    {
+                                        Error = string.Concat("Reverted ",
+                                            span.Slice(start + sizeof(UInt256) + revertPrefix, length).ToHexString(true));
+                                        return;
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // ignore
+                            }
+                        }
 
-            int length = (int)new UInt256(span.Slice(RevertPrefix + start, sizeof(UInt256)), isBigEndian: true);
-            if (checked(RevertPrefix + start + sizeof(UInt256) + length) != span.Length)
+                        Error = string.Concat("Reverted ", span.ToHexString(true));
+                    }
+                }
+            }
+            else
             {
-                return null;
+                Error = null;
             }
+        }
 
-            return string.Concat(RevertedErrorMessagePrefix, span.Slice(RevertPrefix + start + sizeof(UInt256), length).ToHexString(true));
-        }
-        catch (OverflowException)
-        {
-            return null;
-        }
+        public bool IsError => Error is not null && !ShouldRevert;
+
+        public string Error { get; }
+
+        public ReadOnlyMemory<byte> Output { get; }
+
+        public bool ShouldRevert { get; }
+
+        public long Refund { get; }
+
+        public IReadOnlyCollection<LogEntry> Logs { get; }
+
+        public IReadOnlyCollection<Address> DestroyList { get; }
     }
 }

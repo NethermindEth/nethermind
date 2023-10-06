@@ -102,7 +102,7 @@ namespace Nethermind.Core.Test.Encoding
                 stream.Encode(item.IsFinalized);
             }
 
-            return new Rlp(stream.Data!);
+            return new Rlp(stream.Data);
         }
     }
 }

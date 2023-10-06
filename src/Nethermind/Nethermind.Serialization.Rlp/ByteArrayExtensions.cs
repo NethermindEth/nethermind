@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core.Buffers;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -11,11 +10,6 @@ namespace Nethermind.Serialization.Rlp
         public static RlpStream AsRlpStream(this byte[]? bytes)
         {
             return new(bytes ?? Array.Empty<byte>());
-        }
-
-        public static RlpStream AsRlpStream(this CappedArray<byte> bytes)
-        {
-            return new(bytes.Array ?? Array.Empty<byte>());
         }
 
         public static Rlp.ValueDecoderContext AsRlpValueContext(this byte[]? bytes)

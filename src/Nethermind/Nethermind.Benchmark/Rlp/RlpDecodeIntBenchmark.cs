@@ -3,6 +3,7 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Benchmarks.Rlp

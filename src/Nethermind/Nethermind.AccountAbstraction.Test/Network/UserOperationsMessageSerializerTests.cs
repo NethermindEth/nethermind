@@ -6,7 +6,9 @@ using FluentAssertions;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Network;
 using Nethermind.Core;
+using Nethermind.Network;
 using Nethermind.Network.Test.P2P;
+using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 

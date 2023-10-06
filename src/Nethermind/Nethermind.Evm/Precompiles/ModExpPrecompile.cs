@@ -15,9 +15,9 @@ namespace Nethermind.Evm.Precompiles
     /// <summary>
     ///     https://github.com/ethereum/EIPs/blob/vbuterin-patch-2/EIPS/bigint_modexp.md
     /// </summary>
-    public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
+    public class ModExpPrecompile : IPrecompile
     {
-        public static readonly ModExpPrecompile Instance = new ModExpPrecompile();
+        public static readonly IPrecompile Instance = new ModExpPrecompile();
 
         private ModExpPrecompile()
         {

@@ -3,6 +3,7 @@
 
 using System.Text;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core.Exceptions;
 using NUnit.Framework;
 

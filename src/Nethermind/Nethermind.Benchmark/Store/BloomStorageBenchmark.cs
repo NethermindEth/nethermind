@@ -6,6 +6,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;

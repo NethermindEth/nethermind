@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -19,8 +20,10 @@ using Nethermind.Network.P2P.Subprotocols.Les.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.TxPool;
 using CancellationToken = System.Threading.CancellationToken;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les

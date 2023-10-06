@@ -255,13 +255,10 @@ namespace Nethermind.Synchronization.Test
 
                     if (blockHashes.Count == 0)
                     {
-                        return new OwnedBlockBodies(Array.Empty<BlockBody>());
+                        return Array.Empty<BlockBody>();
                     }
 
-                    BlockBody?[] response = ctx.ResponseBuilder
-                        .BuildBlocksResponse(blockHashes, Response.AllCorrect | Response.WithTransactions & ~Response.AllKnown)
-                        .Result
-                        .Bodies;
+                    BlockBody[] response = ctx.ResponseBuilder.BuildBlocksResponse(blockHashes, Response.AllCorrect | Response.WithTransactions & ~Response.AllKnown).Result;
 
                     if (response.Length < minResponseLength)
                     {
@@ -273,7 +270,7 @@ namespace Nethermind.Synchronization.Test
                         response = nullPaddedResponse;
                     }
 
-                    return new OwnedBlockBodies(response);
+                    return response;
                 });
 
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
@@ -473,13 +470,6 @@ namespace Nethermind.Synchronization.Test
                 error = string.Empty;
                 return true;
             }
-
-            public bool ValidateOrphanedBlock(Block block, out string? error)
-            {
-                Thread.Sleep(1000);
-                error = null;
-                return true;
-            }
         }
 
         [Test, MaxTime(7000)]
@@ -597,7 +587,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+            public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -676,7 +666,7 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => buildHeadersResponse = ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
 
             syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(Task.FromException<OwnedBlockBodies>(new TimeoutException()));
+                .Returns(Task.FromException<BlockBody[]>(new TimeoutException()));
 
             syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
@@ -707,7 +697,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildHeadersResponse = ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
 
-            Task<OwnedBlockBodies>? buildBlocksResponse = null;
+            Task<BlockBody[]>? buildBlocksResponse = null;
             syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildBlocksResponse = ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
 
@@ -807,7 +797,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildHeadersResponse = ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
 
-            Task<OwnedBlockBodies>? buildBlocksResponse = null;
+            Task<BlockBody[]>? buildBlocksResponse = null;
             syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildBlocksResponse = ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
 
@@ -837,7 +827,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildHeadersResponse = ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
 
-            Task<OwnedBlockBodies>? buildBlocksResponse = null;
+            Task<BlockBody[]>? buildBlocksResponse = null;
             syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildBlocksResponse = ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
 
@@ -869,7 +859,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildHeadersResponse = ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.IncorrectReceiptRoot));
 
-            Task<OwnedBlockBodies>? buildBlocksResponse = null;
+            Task<BlockBody[]>? buildBlocksResponse = null;
             syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildBlocksResponse = ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
 
@@ -1107,7 +1097,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public async Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+            public async Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
             {
                 bool consistent = Flags.HasFlag(Response.Consistent);
                 bool justFirst = Flags.HasFlag(Response.JustFirst);
@@ -1275,7 +1265,7 @@ namespace Nethermind.Synchronization.Test
             private Dictionary<Keccak, BlockHeader> _headers = new();
             private Dictionary<Keccak, BlockBody> _bodies = new();
 
-            public async Task<OwnedBlockBodies> BuildBlocksResponse(IList<Keccak> blockHashes, Response flags)
+            public async Task<BlockBody?[]> BuildBlocksResponse(IList<Keccak> blockHashes, Response flags)
             {
                 bool consistent = flags.HasFlag(Response.Consistent);
                 bool justFirst = flags.HasFlag(Response.JustFirst);
@@ -1339,7 +1329,7 @@ namespace Nethermind.Synchronization.Test
 
                 BlockBodiesMessage message = new(blockBodies);
                 byte[] messageSerialized = _bodiesSerializer.Serialize(message);
-                return await Task.FromResult<OwnedBlockBodies>(_bodiesSerializer.Deserialize(messageSerialized).Bodies);
+                return await Task.FromResult<BlockBody?[]>(_bodiesSerializer.Deserialize(messageSerialized).Bodies);
             }
 
             public async Task<TxReceipt[]?[]> BuildReceiptsResponse(IList<Keccak> blockHashes, Response flags = Response.AllCorrect)

@@ -3,7 +3,6 @@
 
 using System.Diagnostics;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -20,8 +19,8 @@ namespace Nethermind.State
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]
-        public StateTree(ICappedArrayPool? bufferPool = null)
-            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool: bufferPool)
+        public StateTree()
+            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance)
         {
             TrieType = TrieType.State;
         }

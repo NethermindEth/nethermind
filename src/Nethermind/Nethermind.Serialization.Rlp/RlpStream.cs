@@ -146,7 +146,7 @@ namespace Nethermind.Serialization.Rlp
 
         public virtual void WriteByte(byte byteToWrite)
         {
-            Data[_position++] = byteToWrite;
+            Data[Position++] = byteToWrite;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -157,15 +157,15 @@ namespace Nethermind.Serialization.Rlp
 
         public virtual void Write(ReadOnlySpan<byte> bytesToWrite)
         {
-            bytesToWrite.CopyTo(Data.AsSpan(_position, bytesToWrite.Length));
-            _position += bytesToWrite.Length;
+            bytesToWrite.CopyTo(Data.AsSpan(Position, bytesToWrite.Length));
+            Position += bytesToWrite.Length;
         }
 
         public virtual void Write(IReadOnlyList<byte> bytesToWrite)
         {
             for (int i = 0; i < bytesToWrite.Count; ++i)
             {
-                Data![_position + i] = bytesToWrite[i];
+                Data![Position + i] = bytesToWrite[i];
             }
             Position += bytesToWrite.Count;
         }
@@ -175,19 +175,7 @@ namespace Nethermind.Serialization.Rlp
 
         public byte[]? Data { get; }
 
-        private int _position = 0;
-
-        public virtual int Position
-        {
-            get
-            {
-                return _position;
-            }
-            set
-            {
-                _position = value;
-            }
-        }
+        public virtual int Position { get; set; }
 
         public virtual int Length => Data!.Length;
 
@@ -684,15 +672,8 @@ namespace Nethermind.Serialization.Rlp
 
         public (int PrefixLength, int ContentLength) ReadPrefixAndContentLength()
         {
-            (int prefixLength, int contentLength) result = PeekPrefixAndContentLength();
-            Position += result.prefixLength;
-            return result;
-        }
-
-        public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
-        {
             (int prefixLength, int contentLength) result;
-            int prefix = PeekByte();
+            int prefix = ReadByte();
             if (prefix <= 128)
             {
                 result = (0, 1);
@@ -710,7 +691,7 @@ namespace Nethermind.Serialization.Rlp
                     throw new RlpException("Expected length of length less or equal 4");
                 }
 
-                int length = PeekDeserializeLength(1, lengthOfLength);
+                int length = DeserializeLength(lengthOfLength);
                 if (length < 56)
                 {
                     throw new RlpException($"Expected length greater or equal 56 and was {length}");
@@ -725,7 +706,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 int lengthOfContentLength = prefix - 247;
-                int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
+                int contentLength = DeserializeLength(lengthOfContentLength);
                 if (contentLength < 56)
                 {
                     throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
@@ -735,6 +716,15 @@ namespace Nethermind.Serialization.Rlp
                 result = (lengthOfContentLength + 1, contentLength);
             }
 
+            return result;
+        }
+
+        public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
+        {
+            int memorizedPosition = Position;
+            (int PrefixLength, int ContentLength) result = ReadPrefixAndContentLength();
+
+            Position = memorizedPosition;
             return result;
         }
 
@@ -774,26 +764,6 @@ namespace Nethermind.Serialization.Rlp
             // additional bounds checking from BinaryPrimitives.ReadUInt16BigEndian etc
             ref byte firstElement = ref MemoryMarshal.GetReference(Read(lengthOfLength));
 
-            return DeserializeLengthRef(ref firstElement, lengthOfLength);
-        }
-
-        private int PeekDeserializeLength(int offset, int lengthOfLength)
-        {
-            if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
-            {
-                ThrowArgumentOutOfRangeException(lengthOfLength);
-            }
-
-            // Will use Unsafe.ReadUnaligned as we know the length of the span is same
-            // as what we asked for and then explicitly check lengths, so can skip the
-            // additional bounds checking from BinaryPrimitives.ReadUInt16BigEndian etc
-            ref byte firstElement = ref MemoryMarshal.GetReference(Peek(offset, lengthOfLength));
-
-            return DeserializeLengthRef(ref firstElement, lengthOfLength);
-        }
-
-        private static int DeserializeLengthRef(ref byte firstElement, int lengthOfLength)
-        {
             int result = firstElement;
             if (result == 0)
             {
@@ -848,38 +818,38 @@ namespace Nethermind.Serialization.Rlp
             {
                 throw new RlpException("Length starts with 0");
             }
-        }
 
-        [DoesNotReturn]
-        static void ThrowArgumentOutOfRangeException(int lengthOfLength)
-        {
-            throw new InvalidOperationException($"Invalid length of length = {lengthOfLength}");
+            [DoesNotReturn]
+            static void ThrowArgumentOutOfRangeException(int lengthOfLength)
+            {
+                throw new InvalidOperationException($"Invalid length of length = {lengthOfLength}");
+            }
         }
 
         public virtual byte ReadByte()
         {
-            return Data![_position++];
+            return Data![Position++];
         }
 
         public virtual byte PeekByte()
         {
-            return Data![_position];
+            return Data![Position];
         }
 
         protected virtual byte PeekByte(int offset)
         {
-            return Data![_position + offset];
+            return Data![Position + offset];
         }
 
         protected virtual void SkipBytes(int length)
         {
-            _position += length;
+            Position += length;
         }
 
         public virtual Span<byte> Read(int length)
         {
-            Span<byte> data = Data.AsSpan(_position, length);
-            _position += length;
+            Span<byte> data = Data.AsSpan(Position, length);
+            Position += length;
             return data;
         }
 
@@ -1059,12 +1029,9 @@ namespace Nethermind.Serialization.Rlp
 
         public Span<byte> Peek(int length)
         {
-            return Peek(0, length);
-        }
-
-        public virtual Span<byte> Peek(int offset, int length)
-        {
-            return Data.AsSpan(_position + offset, length);
+            Span<byte> item = Read(length);
+            Position -= item.Length;
+            return item;
         }
 
         public bool IsNextItemEmptyArray()

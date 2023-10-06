@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Overseer.Test.JsonRpc;
 using NUnit.Framework;

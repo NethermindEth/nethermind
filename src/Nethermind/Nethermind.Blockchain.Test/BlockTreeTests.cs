@@ -1230,62 +1230,6 @@ namespace Nethermind.Blockchain.Test
             Assert.That(loadedTree.BestKnownNumber, Is.EqualTo(expectedResult), "loaded tree");
         }
 
-        [Test]
-        public void Loads_best_head_up_to_best_persisted_state()
-        {
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            MemDb metadataDb = new();
-
-            metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(51).Bytes);
-
-            SyncConfig syncConfig = new();
-            syncConfig.PivotNumber = "0";
-            syncConfig.FastSync = true;
-
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
-            Block genesis = Build.A.Block.Genesis.TestObject;
-            tree.SuggestBlock(genesis);
-            Block parent = genesis;
-
-            List<Block> blocks = new() { genesis };
-
-            for (long i = 1; i < 100; i++)
-            {
-                Block block = Build.A.Block
-                    .WithNumber(i)
-                    .WithParent(parent)
-                    .WithTotalDifficulty(i).TestObject;
-                blocks.Add(block);
-                parent = block;
-                if (i <= 50)
-                {
-                    // tree.Insert(block.Header);
-                    tree.SuggestBlock(block);
-                }
-                else
-                {
-                    tree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBodyMetadata);
-                }
-            }
-            tree.UpdateMainChain(blocks.ToArray(), true);
-            tree.BestPersistedState = 50;
-
-            BlockTree loadedTree = new(
-                blocksDb,
-                headersDb,
-                blockInfosDb,
-                metadataDb,
-                new ChainLevelInfoRepository(blockInfosDb),
-                MainnetSpecProvider.Instance,
-                NullBloomStorage.Instance,
-                syncConfig,
-                LimboLogs.Instance);
-
-            Assert.That(loadedTree.Head?.Number, Is.EqualTo(50));
-        }
-
         [Timeout(Timeout.MaxTestTime)]
         [TestCase(1L)]
         [TestCase(2L)]

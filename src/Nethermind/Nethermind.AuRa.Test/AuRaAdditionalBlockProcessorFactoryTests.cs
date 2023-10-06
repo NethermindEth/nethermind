@@ -13,6 +13,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;

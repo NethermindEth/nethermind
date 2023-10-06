@@ -3,10 +3,12 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.State;
+using Nethermind.Db.Blooms;
 
 namespace Nethermind.Benchmarks.Store
 {

@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Benchmarks.Rlp

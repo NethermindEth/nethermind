@@ -3,6 +3,7 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake

@@ -132,8 +132,8 @@ namespace Nethermind.Facade.Test
 
             _transactionProcessor.Received().CallAndRestore(
                 tx,
-                Arg.Is<BlockExecutionContext>(blkCtx =>
-                    blkCtx.Header.Number == 11 && blkCtx.Header.Timestamp == ((ITimestamper)_timestamper).UnixTime.Seconds),
+                Arg.Is<BlockHeader>(bh =>
+                    bh.Number == 11 && bh.Timestamp == ((ITimestamper)_timestamper).UnixTime.Seconds),
                 Arg.Is<CancellationTxTracer>(t => t.InnerTracer is EstimateGasTracer));
         }
 
@@ -150,8 +150,7 @@ namespace Nethermind.Facade.Test
             _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
-                Arg.Is<BlockExecutionContext>(blkCtx =>
-                blkCtx.Header.IsPostMerge && blkCtx.Header.Random == TestItem.KeccakA),
+                Arg.Is<BlockHeader>(header => header.IsPostMerge && header.Random == TestItem.KeccakA),
                 Arg.Any<ITxTracer>());
         }
 
@@ -166,7 +165,7 @@ namespace Nethermind.Facade.Test
             _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
-                Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Number == 10),
+                Arg.Is<BlockHeader>(bh => bh.Number == 10),
                 Arg.Any<ITxTracer>());
         }
 
@@ -181,7 +180,7 @@ namespace Nethermind.Facade.Test
             _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
-                Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.MixHash == TestItem.KeccakA),
+                Arg.Is<BlockHeader>(bh => bh.MixHash == TestItem.KeccakA),
                 Arg.Any<ITxTracer>());
         }
 
@@ -196,7 +195,7 @@ namespace Nethermind.Facade.Test
             _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
-                Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),
+                Arg.Is<BlockHeader>(bh => bh.Beneficiary == TestItem.AddressB),
                 Arg.Any<ITxTracer>());
         }
 

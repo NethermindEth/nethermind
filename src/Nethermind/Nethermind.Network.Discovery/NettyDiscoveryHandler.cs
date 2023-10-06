@@ -153,13 +153,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
             if (!ValidateMsg(msg, type, address, ctx, packet, size))
                 return;
 
-            // Explicitly run it on the default scheduler to prevent something down the line hanging netty task scheduler.
-            Task.Factory.StartNew(
-                () => _discoveryManager.OnIncomingMsg(msg),
-                CancellationToken.None,
-                TaskCreationOptions.RunContinuationsAsynchronously,
-                TaskScheduler.Default
-            );
+            _discoveryManager.OnIncomingMsg(msg);
         }
         catch (Exception e)
         {

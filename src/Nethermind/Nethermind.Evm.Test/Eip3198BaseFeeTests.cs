@@ -3,6 +3,9 @@
 
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -34,7 +37,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             long blockNumber = eip3198Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
-            (Block block, Transaction transaction) = PrepareTx((blockNumber, 0), 100000, code);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, code);
             block.Header.BaseFeePerGas = (UInt256)baseFee;
             if (send1559Tx)
             {

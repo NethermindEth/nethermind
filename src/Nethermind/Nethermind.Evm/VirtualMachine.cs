@@ -185,7 +185,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         _state = worldState;
         _worldState = worldState;
 
-        IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.BlockExecutionContext.Header.Number, state.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp);
+        IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number, state.Env.TxExecutionContext.Header.Timestamp);
         EvmState currentState = state;
         byte[] previousCallResult = null;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
@@ -777,7 +777,6 @@ OutOfGas:
         int programCounter = vmState.ProgramCounter;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
-        ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
         Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
         EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
@@ -1438,7 +1437,7 @@ OutOfGas:
 
                         stack.PopUInt256(out a);
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
-                        Keccak blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
+                        Keccak blockHash = _blockhashProvider.GetBlockhash(txCtx.Header, number);
                         stack.PushBytes(blockHash != null ? blockHash.Bytes : BytesZero32);
 
                         if (typeof(TLogger) == typeof(IsTracing))
@@ -1455,20 +1454,20 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Base;
 
-                        stack.PushBytes(blkCtx.Header.GasBeneficiary.Bytes);
+                        stack.PushBytes(txCtx.Header.GasBeneficiary.Bytes);
                         break;
                     }
                 case Instruction.PREVRANDAO:
                     {
                         gasAvailable -= GasCostOf.Base;
 
-                        if (blkCtx.Header.IsPostMerge)
+                        if (txCtx.Header.IsPostMerge)
                         {
-                            stack.PushBytes(blkCtx.Header.Random.Bytes);
+                            stack.PushBytes(txCtx.Header.Random.Bytes);
                         }
                         else
                         {
-                            result = blkCtx.Header.Difficulty;
+                            result = txCtx.Header.Difficulty;
                             stack.PushUInt256(in result);
                         }
                         break;
@@ -1477,7 +1476,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Base;
 
-                        result = blkCtx.Header.Timestamp;
+                        result = txCtx.Header.Timestamp;
                         stack.PushUInt256(in result);
                         break;
                     }
@@ -1485,7 +1484,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Base;
 
-                        result = (UInt256)blkCtx.Header.Number;
+                        result = (UInt256)txCtx.Header.Number;
                         stack.PushUInt256(in result);
                         break;
                     }
@@ -1493,7 +1492,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Base;
 
-                        result = (UInt256)blkCtx.Header.GasLimit;
+                        result = (UInt256)txCtx.Header.GasLimit;
                         stack.PushUInt256(in result);
                         break;
                     }
@@ -1522,7 +1521,7 @@ OutOfGas:
 
                         gasAvailable -= GasCostOf.Base;
 
-                        result = blkCtx.Header.BaseFeePerGas;
+                        result = txCtx.Header.BaseFeePerGas;
                         stack.PushUInt256(in result);
                         break;
                     }
@@ -1542,16 +1541,6 @@ OutOfGas:
                         {
                             stack.PushZero();
                         }
-                        break;
-                    }
-                case Instruction.BLOBBASEFEE:
-                    {
-                        if (!spec.BlobBaseFeeEnabled || !blkCtx.BlobBaseFee.HasValue) goto InvalidInstruction;
-
-                        gasAvailable -= GasCostOf.Base;
-
-                        result = blkCtx.BlobBaseFee.Value;
-                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.POP:
@@ -2289,7 +2278,7 @@ ReturnFailure:
             outputOffset = 0;
         }
 
-        ExecutionType executionType = GetCallExecutionType(instruction, env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge);
+        ExecutionType executionType = GetCallExecutionType(instruction, env.TxExecutionContext.Header.IsPostMerge);
         returnData = new EvmState(
             gasLimitUl,
             callEnv,
@@ -2351,8 +2340,7 @@ ReturnFailure:
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false)) return false;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
-        bool createInSameTx = vmState.CreateList.Contains(executingAccount);
-        if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
+        if (!spec.SelfdestructOnlyOnSameTransaction || vmState.CreateList.Contains(executingAccount))
             vmState.DestroyList.Add(executingAccount);
 
         UInt256 result = _state.GetBalance(executingAccount);
@@ -2376,9 +2364,6 @@ ReturnFailure:
         {
             _state.AddToBalance(inheritor, result, spec);
         }
-
-        if (spec.SelfdestructOnlyOnSameTransaction && !createInSameTx && inheritor.Equals(executingAccount))
-            return true; // dont burn eth when contract is not destroyed per EIP clarification
 
         _state.SubtractFromBalance(executingAccount, result, spec);
         return true;
@@ -2782,7 +2767,7 @@ ReturnFailure:
     private void StartInstructionTrace<TIsTracing>(Instruction instruction, EvmState vmState, long gasAvailable, int programCounter, in EvmStack<TIsTracing> stackValue)
         where TIsTracing : struct, IIsTracing
     {
-        _txTracer.StartOperation(vmState.Env.CallDepth + 1, gasAvailable, instruction, programCounter, vmState.Env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge);
+        _txTracer.StartOperation(vmState.Env.CallDepth + 1, gasAvailable, instruction, programCounter, vmState.Env.TxExecutionContext.Header.IsPostMerge);
         if (_txTracer.IsTracingMemory)
         {
             _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? Enumerable.Empty<string>());

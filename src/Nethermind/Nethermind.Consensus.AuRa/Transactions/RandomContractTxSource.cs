@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Producers;
@@ -13,7 +14,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Evm;
 using Nethermind.Logging;
+using Nethermind.State;
 using Org.BouncyCastle.Crypto;
 
 namespace Nethermind.Consensus.AuRa.Transactions

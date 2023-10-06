@@ -51,12 +51,12 @@ namespace Nethermind.Trie
         {
             if (trieVisitContext.IsStorage)
             {
-                Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._storageSize, node.FullRlp?.Length ?? 0);
                 Interlocked.Increment(ref Stats._storageBranchCount);
             }
             else
             {
-                Interlocked.Add(ref Stats._stateSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
                 Interlocked.Increment(ref Stats._stateBranchCount);
             }
 
@@ -67,12 +67,12 @@ namespace Nethermind.Trie
         {
             if (trieVisitContext.IsStorage)
             {
-                Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._storageSize, node.FullRlp?.Length ?? 0);
                 Interlocked.Increment(ref Stats._storageExtensionCount);
             }
             else
             {
-                Interlocked.Add(ref Stats._stateSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
                 Interlocked.Increment(ref Stats._stateExtensionCount);
             }
 
@@ -89,12 +89,12 @@ namespace Nethermind.Trie
 
             if (trieVisitContext.IsStorage)
             {
-                Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._storageSize, node.FullRlp?.Length ?? 0);
                 Interlocked.Increment(ref Stats._storageLeafCount);
             }
             else
             {
-                Interlocked.Add(ref Stats._stateSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
                 Interlocked.Increment(ref Stats._accountCount);
             }
 

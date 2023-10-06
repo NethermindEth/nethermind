@@ -3,14 +3,19 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
+using System.Runtime.Serialization.Formatters;
 using FluentAssertions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Validators

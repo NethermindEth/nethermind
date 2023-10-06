@@ -7,6 +7,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
 
 namespace Nethermind.Consensus.Ethash
 {

@@ -4,6 +4,7 @@
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;

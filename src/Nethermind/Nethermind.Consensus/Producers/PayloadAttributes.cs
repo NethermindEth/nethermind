@@ -26,8 +26,6 @@ public class PayloadAttributes
 
     public IList<Withdrawal>? Withdrawals { get; set; }
 
-    public Keccak? ParentBeaconBlockRoot { get; set; }
-
     public virtual long? GetGasLimit() => null;
 
     public override string ToString() => ToString(string.Empty);
@@ -44,11 +42,6 @@ public class PayloadAttributes
             sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Count}");
         }
 
-        if (ParentBeaconBlockRoot is not null)
-        {
-            sb.Append($", {nameof(ParentBeaconBlockRoot)} : {ParentBeaconBlockRoot}");
-        }
-
         sb.Append('}');
 
         return sb.ToString();
@@ -62,19 +55,16 @@ public class PayloadAttributes
     [SkipLocalsInit]
     protected virtual string ComputePayloadId(BlockHeader parentHeader)
     {
-        int size = ComputePayloadIdMembersSize();
-        Span<byte> inputSpan = stackalloc byte[size];
+        Span<byte> inputSpan = stackalloc byte[
+            Keccak.Size + // parent hash
+            sizeof(long) + // timestamp
+            Keccak.Size + // prev randao
+            Address.Size + // suggested fee recipient
+            Keccak.Size]; // withdrawals root hash
+
         WritePayloadIdMembers(parentHeader, inputSpan);
         return ComputePayloadId(inputSpan);
     }
-
-    protected virtual int ComputePayloadIdMembersSize() =>
-        Keccak.Size // parent hash
-        + sizeof(ulong) // timestamp
-        + Keccak.Size // prev randao
-        + Address.Size // suggested fee recipient
-        + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
-        + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size); // parent beacon block root
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -84,117 +74,45 @@ public class PayloadAttributes
 
     protected virtual int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
-        int position = 0;
-
-        parentHeader.Hash!.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
-        position += Keccak.Size;
-
-        BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(position, sizeof(ulong)), Timestamp);
-        position += sizeof(ulong);
-
-        PrevRandao.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
-        position += Keccak.Size;
-
+        parentHeader.Hash!.Bytes.CopyTo(inputSpan.Slice(0, Keccak.Size));
+        BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(Keccak.Size, sizeof(ulong)), Timestamp);
+        PrevRandao.Bytes.CopyTo(inputSpan.Slice(Keccak.Size + sizeof(ulong), Keccak.Size));
         SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(Keccak.Size + sizeof(ulong) + Keccak.Size, Address.Size));
-        position += Keccak.Size;
-
-        if (Withdrawals is not null)
-        {
-            Keccak withdrawalsRootHash = Withdrawals.Count == 0
-                ? PatriciaTree.EmptyTreeHash
-                : new WithdrawalTrie(Withdrawals).RootHash;
-            withdrawalsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
-            position += Keccak.Size;
-        }
-
-        if (ParentBeaconBlockRoot is not null)
-        {
-            ParentBeaconBlockRoot.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
-            position += Keccak.Size;
-        }
-
-        return position;
+        Keccak withdrawalsRootHash = (Withdrawals?.Count ?? 0) == 0 ? PatriciaTree.EmptyTreeHash : new WithdrawalTrie(Withdrawals).RootHash;
+        withdrawalsRootHash.Bytes.CopyTo(inputSpan.Slice(Keccak.Size + sizeof(ulong) + Keccak.Size + Address.Size, Keccak.Size));
+        return Keccak.Size + sizeof(ulong) + Keccak.Size + Address.Size + Keccak.Size;
     }
 }
-
-public enum PayloadAttributesValidationResult : byte { Success, InvalidParams, UnsupportedFork };
 
 public static class PayloadAttributesExtensions
 {
     public static int GetVersion(this PayloadAttributes executionPayload) =>
-        executionPayload switch
-        {
-            { ParentBeaconBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
-            { Withdrawals: not null } => EngineApiVersions.Shanghai,
-            _ => EngineApiVersions.Paris
-        };
+        executionPayload.Withdrawals is null ? 1 : 2;
 
-    public static int ExpectedEngineSpecVersion(this IReleaseSpec spec) =>
-        spec switch
-        {
-            { IsEip4844Enabled: true } => EngineApiVersions.Cancun,
-            { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
-            _ => EngineApiVersions.Paris
-        };
-
-    public static PayloadAttributesValidationResult Validate(
-       this PayloadAttributes payloadAttributes,
-       ISpecProvider specProvider,
-       int apiVersion,
-       [NotNullWhen(false)] out string? error) =>
-        Validate(
-            apiVersion: apiVersion,
-            actualVersion: payloadAttributes.GetVersion(),
-            expectedVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp))
-                                         .ExpectedEngineSpecVersion(),
-            "PayloadAttributesV",
-            out error);
-
-    public static PayloadAttributesValidationResult Validate(
-        int apiVersion,
-        int actualVersion,
-        int expectedVersion,
-        string methodName,
+    public static bool Validate(
+        this PayloadAttributes payloadAttributes,
+        IReleaseSpec spec,
+        int version,
         [NotNullWhen(false)] out string? error)
     {
-        if (apiVersion >= EngineApiVersions.Cancun)
-        {
-            if (actualVersion == apiVersion && expectedVersion != apiVersion)
-            {
-                error = $"{methodName}{expectedVersion} expected";
-                return PayloadAttributesValidationResult.UnsupportedFork;
-            }
-        }
-        else if (apiVersion == EngineApiVersions.Shanghai)
-        {
-            if (actualVersion == apiVersion && expectedVersion >= EngineApiVersions.Cancun)
-            {
-                error = $"{methodName}{expectedVersion} expected";
-                return PayloadAttributesValidationResult.UnsupportedFork;
-            }
-        }
+        int actualVersion = payloadAttributes.GetVersion();
 
-        if (actualVersion == expectedVersion)
+        error = actualVersion switch
         {
-            if (apiVersion >= EngineApiVersions.Cancun)
-            {
-                if (actualVersion == apiVersion)
-                {
-                    error = null;
-                    return PayloadAttributesValidationResult.Success;
-                }
-            }
-            else
-            {
-                if (apiVersion >= actualVersion)
-                {
-                    error = null;
-                    return PayloadAttributesValidationResult.Success;
-                }
-            }
-        }
+            1 when spec.WithdrawalsEnabled => "PayloadAttributesV2 expected",
+            > 1 when !spec.WithdrawalsEnabled => "PayloadAttributesV1 expected",
+            _ => actualVersion > version ? $"PayloadAttributesV{version} expected" : null
+        };
 
-        error = $"{methodName}{expectedVersion} expected";
-        return PayloadAttributesValidationResult.InvalidParams;
+        return error is null;
     }
+
+    public static bool Validate(this PayloadAttributes payloadAttributes,
+        ISpecProvider specProvider,
+        int version,
+        [NotNullWhen(false)] out string? error) =>
+        payloadAttributes.Validate(
+            specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp)),
+            version,
+            out error);
 }

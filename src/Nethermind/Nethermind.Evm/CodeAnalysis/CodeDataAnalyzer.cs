@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 
 namespace Nethermind.Evm.CodeAnalysis
 {

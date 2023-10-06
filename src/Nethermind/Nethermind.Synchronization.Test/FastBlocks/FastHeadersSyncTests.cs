@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -341,81 +339,6 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             feed.InitializeFeed();
             var result = await feed.PrepareRequest();
             result.EndNumber.Should().Be(499);
-        }
-
-        [Test]
-        public async Task Will_never_lose_batch_on_invalid_batch()
-        {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1000).TestObject);
-            ISyncReport report = Substitute.For<ISyncReport>();
-            report.HeadersInQueue.Returns(new MeasuredProgress());
-            MeasuredProgress measuredProgress = new();
-            report.FastBlocksHeaders.Returns(measuredProgress);
-            HeadersSyncFeed feed = new(
-                Substitute.For<ISyncModeSelector>(),
-                blockTree,
-                Substitute.For<ISyncPeerPool>(),
-                new SyncConfig
-                {
-                    FastSync = true,
-                    FastBlocks = true,
-                    PivotNumber = "1000",
-                    PivotHash = Keccak.Zero.ToString(),
-                    PivotTotalDifficulty = "1000"
-                }, report, LimboLogs.Instance);
-            feed.InitializeFeed();
-
-            List<HeadersSyncBatch> batches = new();
-            while (true)
-            {
-                HeadersSyncBatch? batch = await feed.PrepareRequest();
-                if (batch == null) break;
-                batches.Add(batch);
-            }
-            int totalBatchCount = batches.Count;
-
-            Channel<HeadersSyncBatch> batchToProcess = Channel.CreateBounded<HeadersSyncBatch>(batches.Count);
-            foreach (HeadersSyncBatch headersSyncBatch in batches)
-            {
-                await batchToProcess.Writer.WriteAsync(headersSyncBatch);
-            }
-            batches.Clear();
-
-            Task requestTasks = Task.Run(async () =>
-            {
-                for (int i = 0; i < 100000; i++)
-                {
-                    var batch = await feed.PrepareRequest();
-                    if (batch == null)
-                    {
-                        await Task.Delay(1);
-                        continue;
-                    }
-
-                    await batchToProcess.Writer.WriteAsync(batch);
-                }
-
-                batchToProcess.Writer.Complete();
-            });
-
-            BlockHeader randomBlockHeader = Build.A.BlockHeader.WithNumber(999999).TestObject;
-            await foreach (HeadersSyncBatch headersSyncBatch in batchToProcess.Reader.ReadAllAsync())
-            {
-                headersSyncBatch.Response = new[] { randomBlockHeader };
-                feed.HandleResponse(headersSyncBatch);
-            }
-
-            await requestTasks;
-
-            while (true)
-            {
-                HeadersSyncBatch? batch = await feed.PrepareRequest();
-                if (batch == null) break;
-                batches.Add(batch);
-            }
-
-            batches.Count().Should().Be(totalBatchCount);
         }
 
         private class ResettableHeaderSyncFeed : HeadersSyncFeed

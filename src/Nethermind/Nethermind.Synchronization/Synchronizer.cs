@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Config;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -58,7 +57,6 @@ namespace Nethermind.Synchronization
         private HeadersSyncFeed? _headersFeed;
         private BodiesSyncFeed? _bodiesFeed;
         private ReceiptsSyncFeed? _receiptsFeed;
-        private IProcessExitSource _exitSource;
 
         public Synchronizer(
             IDbProvider dbProvider,
@@ -73,7 +71,6 @@ namespace Nethermind.Synchronization
             IBlockDownloaderFactory blockDownloaderFactory,
             IPivot pivot,
             ISyncReport syncReport,
-            IProcessExitSource processExitSource,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -88,7 +85,6 @@ namespace Nethermind.Synchronization
             _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-            _exitSource = processExitSource ?? throw new ArgumentNullException(nameof(processExitSource));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
         }
@@ -119,14 +115,9 @@ namespace Nethermind.Synchronization
                 StartStateSyncComponents();
             }
 
-            if (_syncConfig.TuneDbMode != ITunableDb.TuneType.Default || _syncConfig.BlocksDbTuneDbMode != ITunableDb.TuneType.Default)
+            if (_syncConfig.TuneDbMode != ITunableDb.TuneType.Default)
             {
                 SetupDbOptimizer();
-            }
-
-            if (_syncConfig.ExitOnSynced)
-            {
-                _exitSource.WatchForExit(_syncMode, _logManager, TimeSpan.FromSeconds(_syncConfig.ExitOnSyncedWaitTimeSec));
             }
         }
 

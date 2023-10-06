@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.KeyStore.Config;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 

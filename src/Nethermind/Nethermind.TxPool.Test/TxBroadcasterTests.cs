@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -536,28 +535,5 @@ public class TxBroadcasterTests
         _broadcaster.Broadcast(localTx, true);
 
         session.Received(received).DeliverMessage(Arg.Any<TransactionsMessage>());
-    }
-
-    [Test]
-    public void should_rebroadcast_all_persistent_transactions_if_PeerNotificationThreshold_is_100([Values(true, false)] bool shouldBroadcastAll)
-    {
-        _txPoolConfig = new TxPoolConfig() { Size = 100, PeerNotificationThreshold = shouldBroadcastAll ? 100 : 5 };
-        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-
-        for (int i = 0; i < _txPoolConfig.Size; i++)
-        {
-            Transaction tx = Build.A.Transaction
-                .WithNonce((UInt256)i)
-                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            _broadcaster.Broadcast(tx, true);
-        }
-
-        Transaction[] pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend.ToArray();
-        pickedTxs.Length.Should().Be(shouldBroadcastAll ? 100 : 1);
-
-        for (int i = 0; i < pickedTxs.Length; i++)
-        {
-            pickedTxs[i].Nonce.Should().Be((UInt256)i);
-        }
     }
 }

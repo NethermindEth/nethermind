@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Services;

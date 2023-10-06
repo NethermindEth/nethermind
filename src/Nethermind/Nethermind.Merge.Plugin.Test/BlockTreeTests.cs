@@ -11,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
@@ -199,7 +198,7 @@ public partial class BlockTreeTests
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
         BlockTreeInsertHeaderOptions insertHeaderOption = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
-        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock!, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOption);
+        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOption);
 
         Assert.That(insertResult, Is.EqualTo(AddBlockResult.Added));
         Assert.That(notSyncedTree.BestKnownNumber, Is.EqualTo(9));
@@ -218,7 +217,7 @@ public partial class BlockTreeTests
 
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
-        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock!, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
+        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
         for (int i = 13; i > 9; --i)
         {
             BlockHeader? beaconHeader = syncedTree.FindHeader(i, BlockTreeLookupOptions.None);
@@ -232,7 +231,7 @@ public partial class BlockTreeTests
     {
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
 
-        Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None)!;
+        Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
         AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
 
@@ -258,16 +257,16 @@ public partial class BlockTreeTests
     {
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
 
-        Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None)!;
+        Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
         AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
         BlockHeader? beaconHeader = syncedTree.FindHeader(13, BlockTreeLookupOptions.None);
-        beaconHeader!.TotalDifficulty = null;
+        beaconHeader.TotalDifficulty = null;
         AddBlockResult insertOutcome = notSyncedTree.Insert(beaconHeader!, headerOptions);
         Assert.That(insertResult, Is.EqualTo(insertOutcome));
 
         BlockHeader? headerToCheck = notSyncedTree.FindHeader(beaconHeader.Hash, BlockTreeLookupOptions.None);
-        Assert.IsNull(headerToCheck!.TotalDifficulty);
+        Assert.IsNull(headerToCheck.TotalDifficulty);
     }
 
     [Test]
@@ -275,16 +274,16 @@ public partial class BlockTreeTests
     {
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
 
-        Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None)!;
+        Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
         AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
         Block? beaconBlock2 = syncedTree.FindBlock(13, BlockTreeLookupOptions.None);
-        beaconBlock2!.Header.TotalDifficulty = null;
+        beaconBlock2.Header.TotalDifficulty = null;
         AddBlockResult insertOutcome = notSyncedTree.Insert(beaconBlock2, BlockTreeInsertBlockOptions.None);
         Assert.That(insertResult, Is.EqualTo(insertOutcome));
 
         Block? blockToCheck = notSyncedTree.FindBlock(beaconBlock2.Hash, BlockTreeLookupOptions.None);
-        Assert.IsNull(blockToCheck!.TotalDifficulty);
+        Assert.IsNull(blockToCheck.TotalDifficulty);
     }
 
 
@@ -294,7 +293,7 @@ public partial class BlockTreeTests
         {
             private BlockTreeBuilder? _syncedTreeBuilder;
             private IChainLevelHelper? _chainLevelHelper;
-            private IBeaconPivot? _beaconPivot;
+            private IBeaconPivot _beaconPivot;
 
             public ScenarioBuilder WithBlockTrees(
                 int notSyncedTreeSize,
@@ -362,7 +361,7 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder SetProcessDestination(long num)
             {
-                _beaconPivot!.ProcessDestination = SyncedTree.FindHeader(num, BlockTreeLookupOptions.None);
+                _beaconPivot.ProcessDestination = SyncedTree.FindHeader(num, BlockTreeLookupOptions.None);
                 return this;
             }
 
@@ -387,7 +386,7 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder SuggestBlocksUsingChainLevels(int maxCount = 2, long maxHeaderNumber = long.MaxValue)
             {
-                BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber, 0)!;
+                BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber, 0);
                 while (headers is not null && headers.Length > 1)
                 {
                     BlockDownloadContext blockDownloadContext = new(
@@ -411,14 +410,14 @@ public partial class BlockTreeTests
                         {
                             beaconBlock =
                                 SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
-                            beaconBlock!.Header.TotalDifficulty = null;
+                            beaconBlock.Header.TotalDifficulty = null;
                         }
 
                         AddBlockResult insertResult = NotSyncedTree.SuggestBlock(beaconBlock, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock | BlockTreeSuggestOptions.ForceSetAsMain);
                         Assert.True(AddBlockResult.Added == insertResult, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)} result {insertResult}");
                     }
 
-                    headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber, 0)!;
+                    headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber, 0);
                 }
 
                 return this;
@@ -438,10 +437,10 @@ public partial class BlockTreeTests
                     headerOptions |= BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
                 for (long i = high; i >= low; --i)
                 {
-                    BlockHeader? beaconHeader = SyncedTree!.FindHeader(i, BlockTreeLookupOptions.None)!;
+                    BlockHeader? beaconHeader = SyncedTree!.FindHeader(i, BlockTreeLookupOptions.None);
 
                     if (tdMode == TotalDifficultyMode.Null)
-                        beaconHeader.TotalDifficulty = null;
+                        beaconHeader!.TotalDifficulty = null;
                     else if (tdMode == TotalDifficultyMode.Zero)
                         beaconHeader.TotalDifficulty = 0;
                     AddBlockResult insertResult = NotSyncedTree!.Insert(beaconHeader!, headerOptions);
@@ -482,7 +481,7 @@ public partial class BlockTreeTests
                     NotSyncedTree.Insert(blockToInsert, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
                     SyncedTree.Insert(blockToInsert, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.NotOnMainChain);
 
-                    BlockInfo newBlockInfo = new(blockToInsert.GetOrCalculateHash(), UInt256.Zero, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
+                    BlockInfo newBlockInfo = new(blockToInsert.Hash, UInt256.Zero, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
                     newBlockInfo.BlockNumber = blockToInsert.Number;
                     blockInfos.Add(newBlockInfo);
                     blocks.Add(blockToInsert);
@@ -511,7 +510,7 @@ public partial class BlockTreeTests
                     blockTree.Insert(blockToInsert, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
                     newBlocks.Add(blockToInsert);
 
-                    BlockInfo newBlockInfo = new(blockToInsert.GetOrCalculateHash(), UInt256.Zero, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
+                    BlockInfo newBlockInfo = new(blockToInsert.Hash, UInt256.Zero, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
                     newBlockInfo.BlockNumber = blockToInsert.Number;
                     parent = blockToInsert;
                 }
@@ -533,7 +532,7 @@ public partial class BlockTreeTests
                     NullBloomStorage.Instance,
                     new SyncConfig(),
                     LimboLogs.Instance);
-                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot!, new SyncConfig(), LimboLogs.Instance);
+                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot, new SyncConfig(), LimboLogs.Instance);
                 return this;
             }
 
@@ -589,7 +588,7 @@ public partial class BlockTreeTests
             {
                 BlockDecoder blockDecoder = new();
                 Rlp newRlp = blockDecoder.Encode(block);
-                NotSyncedTreeBuilder.BlocksDb.Set(block.GetOrCalculateHash(), newRlp.Bytes);
+                NotSyncedTreeBuilder.BlocksDb.Set(block.Hash, newRlp.Bytes);
 
                 return this;
             }
@@ -614,13 +613,13 @@ public partial class BlockTreeTests
             {
                 for (int i = startNumber; i < finalNumber; ++i)
                 {
-                    ChainLevelInfo? level = NotSyncedTree.FindLevel(i)!;
+                    ChainLevelInfo? level = NotSyncedTree.FindLevel(i);
                     BlockInfo? blockInfo = level.MainChainBlock;
                     blockInfo.Should().NotBe(null, $"Current block number: {i}");
-                    blockInfo!.TotalDifficulty.Should().NotBe(0, $"Current block number: {i}");
+                    blockInfo.TotalDifficulty.Should().NotBe(0, $"Current block number: {i}");
 
                     ChainLevelInfo? syncedLevel = SyncedTree.FindLevel(i);
-                    blockInfo.BlockHash.Should().Be(syncedLevel?.MainChainBlock!.BlockHash!, $"Current block number: {i}");
+                    blockInfo.BlockHash.Should().Be(syncedLevel?.MainChainBlock.BlockHash, $"Current block number: {i}");
                 }
 
                 return this;
@@ -628,14 +627,14 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder AssertForceNewBeaconSync()
             {
-                _beaconPivot!.ShouldForceStartNewSync.Should().BeTrue();
+                _beaconPivot.ShouldForceStartNewSync.Should().BeTrue();
 
                 return this;
             }
 
             public ScenarioBuilder AssertNotForceNewBeaconSync()
             {
-                _beaconPivot!.ShouldForceStartNewSync.Should().BeFalse();
+                _beaconPivot.ShouldForceStartNewSync.Should().BeFalse();
 
                 return this;
             }
@@ -644,19 +643,19 @@ public partial class BlockTreeTests
             {
                 // Console.WriteLine("LowestInsertedBeaconHeader:"+_notSyncedTree!.LowestInsertedBeaconHeader.Number);
                 Console.WriteLine("Head:" + NotSyncedTree!.Head!.Number);
-                Console.WriteLine("BestSuggestedHeader:" + NotSyncedTree!.BestSuggestedHeader!.Number);
-                Console.WriteLine("BestSuggestedBody:" + NotSyncedTree!.BestSuggestedBody!.Number);
+                Console.WriteLine("BestSuggestedHeader:" + NotSyncedTree!.BestSuggestedHeader.Number);
+                Console.WriteLine("BestSuggestedBody:" + NotSyncedTree!.BestSuggestedBody.Number);
                 // Console.WriteLine("LowestInsertedHeader:"+_notSyncedTree!.LowestInsertedHeader.Number);
                 Console.WriteLine("BestKnownNumber:" + NotSyncedTree!.BestKnownNumber);
                 Console.WriteLine("BestKnownBeaconNumber:" + NotSyncedTree!.BestKnownBeaconNumber);
                 return this;
             }
 
-            public BlockTree SyncedTree { get; private set; } = null!;
+            public BlockTree SyncedTree { get; private set; }
 
-            public BlockTree NotSyncedTree { get; private set; } = null!;
+            public BlockTree NotSyncedTree { get; private set; }
 
-            public BlockTreeBuilder NotSyncedTreeBuilder { get; private set; } = null!;
+            public BlockTreeBuilder NotSyncedTreeBuilder { get; private set; }
         }
 
         public static ScenarioBuilder GoesLikeThis()
@@ -672,7 +671,7 @@ public partial class BlockTreeTests
             .WithBlockTrees(10, 20);
 
         Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None);
-        scenario.InsertToHeaderDb(beaconBlock!.Header);
+        scenario.InsertToHeaderDb(beaconBlock.Header);
         Assert.Throws<InvalidOperationException>(() => scenario.NotSyncedTree.FindHeader(beaconBlock.Header.Hash, BlockTreeLookupOptions.None));
     }
 
@@ -682,7 +681,7 @@ public partial class BlockTreeTests
         BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(10, 20);
 
-        Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None)!;
+        Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None);
         scenario.InsertToBlockDb(beaconBlock);
         Assert.Throws<InvalidOperationException>(() => scenario.NotSyncedTree.FindBlock(beaconBlock.Header.Hash, BlockTreeLookupOptions.None));
     }
@@ -695,7 +694,7 @@ public partial class BlockTreeTests
             .InsertBeaconBlocks(18, 19);
 
         Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None);
-        scenario.InsertToHeaderDb(beaconBlock!.Header);
+        scenario.InsertToHeaderDb(beaconBlock.Header);
         Assert.DoesNotThrow(() => scenario.NotSyncedTree.FindHeader(beaconBlock.Header.Hash, BlockTreeLookupOptions.None));
     }
 
@@ -706,7 +705,7 @@ public partial class BlockTreeTests
             .WithBlockTrees(10, 20)
             .InsertBeaconBlocks(18, 19);
 
-        Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None)!;
+        Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None);
         scenario.InsertToBlockDb(beaconBlock);
         Assert.DoesNotThrow(() => scenario.NotSyncedTree.FindBlock(beaconBlock.Header.Hash, BlockTreeLookupOptions.None));
     }
@@ -717,7 +716,7 @@ public partial class BlockTreeTests
         BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(10, 20);
 
-        Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None)!;
+        Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None);
         scenario.InsertToHeaderDb(beaconBlock.Header);
         Assert.DoesNotThrow(() => scenario.NotSyncedTree.FindHeader(beaconBlock.Header.Hash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing));
     }
@@ -728,7 +727,7 @@ public partial class BlockTreeTests
         BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(10, 20);
 
-        Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None)!;
+        Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None);
         scenario.InsertToBlockDb(beaconBlock!);
         Assert.DoesNotThrow(() => scenario.NotSyncedTree.FindBlock(beaconBlock.Header.Hash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing));
     }
@@ -872,13 +871,13 @@ public partial class BlockTreeTests
             .WithBlockTrees(4, 10)
             .InsertBeaconBlocks(5, 9);
 
-        ChainLevelInfo? level6 = scenario.NotSyncedTree.FindLevel(6)!;
-        Keccak previousBlockHash = level6.BeaconMainChainBlock!.BlockHash;
+        ChainLevelInfo? level6 = scenario.NotSyncedTree.FindLevel(6);
+        Keccak previousBlockHash = level6.BeaconMainChainBlock.BlockHash;
 
         scenario.InsertFork(6, 8);
         level6 = scenario.NotSyncedTree.FindLevel(6);
-        level6!.BlockInfos.Length.Should().Be(2);
-        level6.BeaconMainChainBlock!.BlockHash.Should().Be(previousBlockHash);
+        level6.BlockInfos.Length.Should().Be(2);
+        level6.BeaconMainChainBlock.BlockHash.Should().Be(previousBlockHash);
     }
 
     [Test]
@@ -900,9 +899,9 @@ public partial class BlockTreeTests
             .InsertBeaconPivot(7)
             .InsertBeaconBlocks(8, 9, BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Zero);
 
-        Block block = scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None)!;
+        Block? block = scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None);
         AddBlockResult result = scenario.NotSyncedTree.SuggestBlock(block);
         result.Should().Be(AddBlockResult.Added);
-        scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().NotBe((UInt256)0);
+        scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None).TotalDifficulty.Should().NotBe((UInt256)0);
     }
 }

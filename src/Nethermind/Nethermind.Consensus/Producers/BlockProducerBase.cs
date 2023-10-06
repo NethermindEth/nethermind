@@ -12,6 +12,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -291,7 +292,6 @@ namespace Nethermind.Consensus.Producers
             {
                 Author = blockAuthor,
                 MixHash = payloadAttributes?.PrevRandao,
-                ParentBeaconBlockRoot = payloadAttributes?.ParentBeaconBlockRoot
             };
 
             UInt256 difficulty = _difficultyCalculator.Calculate(header, parent);

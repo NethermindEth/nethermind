@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain.Find;
+using Nethermind.Int256;
 
 namespace Nethermind.Mev.Data
 {

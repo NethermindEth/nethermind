@@ -15,7 +15,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
@@ -128,7 +127,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 _logger
             );
 
-            transactionProcessor.Trace(transaction, new BlockExecutionContext(parent), txTracer);
+            transactionProcessor.Trace(transaction, parent, txTracer);
 
             FailedOp? failedOp = _userOperationTxBuilder.DecodeEntryPointOutputError(txTracer.Output);
 
@@ -259,7 +258,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 : blockHeader.BaseFeePerGas;
 
             transaction.Hash = transaction.CalculateHash();
-            transactionProcessor.CallAndRestore(transaction, new BlockExecutionContext(callHeader), tracer);
+            transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
         }
     }
 }

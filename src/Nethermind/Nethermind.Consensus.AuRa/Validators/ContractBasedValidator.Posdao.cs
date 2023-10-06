@@ -6,6 +6,7 @@ using Nethermind.Abi;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {

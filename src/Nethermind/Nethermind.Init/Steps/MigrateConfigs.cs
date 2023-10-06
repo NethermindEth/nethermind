@@ -4,6 +4,7 @@
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Google.Protobuf.WellKnownTypes;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;

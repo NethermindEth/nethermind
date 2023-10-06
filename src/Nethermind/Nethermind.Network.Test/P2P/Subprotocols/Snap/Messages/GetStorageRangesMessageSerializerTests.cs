@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;

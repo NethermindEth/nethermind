@@ -7,6 +7,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using Nethermind.Blockchain.Data;
 using Nethermind.Core;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 

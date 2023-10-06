@@ -31,6 +31,7 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using NSubstitute;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
