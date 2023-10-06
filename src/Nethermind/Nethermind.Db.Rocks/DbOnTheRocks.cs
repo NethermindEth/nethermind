@@ -358,6 +358,13 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             options.SetMaxOpenFiles(dbConfig.MaxOpenFiles.Value);
         }
 
+        // Target size of each SST file.
+        options.SetTargetFileSizeBase(dbConfig.TargetFileSizeBase);
+
+        // Multiply the target size of SST file by this much every level down. Does not have much downside on
+        // hash based DB, but might disable some move optimization on db with blocknumber key.
+        options.SetTargetFileSizeMultiplier(dbConfig.TargetFileSizeMultiplier);
+
         if (dbConfig.MaxBytesPerSec.HasValue)
         {
             _rateLimiter =
@@ -1159,7 +1166,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             { "level0_stop_writes_trigger", 36.ToString() },
 
             { "max_bytes_for_level_base", _perTableDbConfig.MaxBytesForLevelBase.ToString() },
-            { "target_file_size_base", 64.MiB().ToString() },
+            { "target_file_size_base", _perTableDbConfig.TargetFileSizeBase.ToString() },
             { "disable_auto_compactions", "false" },
 
             { "enable_blob_files", "false" },
