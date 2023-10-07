@@ -65,6 +65,13 @@ public class BlockStore : IBlockStore
         blockHash!.Bytes.CopyTo(output[8..]);
     }
 
+    public static byte[] GetBlockNumPrefixedKey(long blockNumber, Keccak blockHash)
+    {
+        byte[] output = new byte[40];
+        GetBlockNumPrefixedKey(blockNumber, blockHash,output);
+        return output;
+    }
+
     public void Delete(long blockNumber, Keccak blockHash)
     {
         _blockDb.Remove(blockHash.Bytes);

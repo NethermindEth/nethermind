@@ -248,9 +248,9 @@ namespace Nethermind.Blockchain.Test
             Assert.That(tree2.Head, Is.EqualTo(null), "head");
             Assert.That(tree2.BestSuggestedHeader!.Number, Is.EqualTo(0L), "suggested");
 
-            Assert.IsNull(blockStore.Get(block2.Hash!), "block 1");
-            Assert.IsNull(blockStore.Get(block2.Hash!), "block 2");
-            Assert.IsNull(blockStore.Get(block3.Hash!), "block 3");
+            Assert.IsNull(blockStore.Get(block2.Number, block2.Hash!), "block 1");
+            Assert.IsNull(blockStore.Get(block2.Number, block2.Hash!), "block 2");
+            Assert.IsNull(blockStore.Get(block3.Number, block3.Hash!), "block 3");
 
             Assert.IsNull(blockInfosDb.Get(2), "level 1");
             Assert.IsNull(blockInfosDb.Get(2), "level 2");
@@ -295,9 +295,9 @@ namespace Nethermind.Blockchain.Test
             Assert.That(tree2.Head, Is.EqualTo(null), "head");
             Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block3B.Hash), "suggested");
 
-            blockStore.Get(block1.Hash!).Should().BeNull("block 1");
-            blockStore.Get(block2.Hash!).Should().BeNull("block 2");
-            blockStore.Get(block3.Hash!).Should().BeNull("block 3");
+            blockStore.Get(block1.Number, block1.Hash!).Should().BeNull("block 1");
+            blockStore.Get(block2.Number, block2.Hash!).Should().BeNull("block 2");
+            blockStore.Get(block3.Number, block3.Hash!).Should().BeNull("block 3");
 
             Assert.NotNull(blockInfosDb.Get(1), "level 1");
             Assert.NotNull(blockInfosDb.Get(2), "level 2");
@@ -986,9 +986,9 @@ namespace Nethermind.Blockchain.Test
             Assert.That(tree.Head!.Number, Is.EqualTo(1L), "head");
             Assert.That(tree.BestSuggestedHeader!.Number, Is.EqualTo(1L), "suggested");
 
-            Assert.NotNull(blockStore.Get(block1.Hash!), "block 1");
-            Assert.IsNull(blockStore.Get(block2.Hash!), "block 2");
-            Assert.IsNull(blockStore.Get(block3.Hash!), "block 3");
+            Assert.NotNull(blockStore.Get(block1.Number, block1.Hash!), "block 1");
+            Assert.IsNull(blockStore.Get(block2.Number, block2.Hash!), "block 2");
+            Assert.IsNull(blockStore.Get(block3.Number, block3.Hash!), "block 3");
 
             Assert.NotNull(blockInfosDb.Get(1), "level 1");
             Assert.IsNull(blockInfosDb.Get(2), "level 2");
@@ -1034,12 +1034,12 @@ namespace Nethermind.Blockchain.Test
             Assert.That(tree.Head!.Number, Is.EqualTo(1L), "head");
             Assert.That(tree.BestSuggestedHeader!.Number, Is.EqualTo(1L), "suggested");
 
-            Assert.NotNull(blockStore.Get(block1.Hash!), "block 1");
-            Assert.NotNull(blockStore.Get(block2.Hash!), "block 2");
-            Assert.NotNull(blockStore.Get(block3.Hash!), "block 3");
-            Assert.Null(blockStore.Get(block1b.Hash!), "block 1b");
-            Assert.Null(blockStore.Get(block2b.Hash!), "block 2b");
-            Assert.Null(blockStore.Get(block3b.Hash!), "block 3b");
+            Assert.NotNull(blockStore.Get(block1.Number, block1.Hash!), "block 1");
+            Assert.NotNull(blockStore.Get(block2.Number, block2.Hash!), "block 2");
+            Assert.NotNull(blockStore.Get(block3.Number, block3.Hash!), "block 3");
+            Assert.Null(blockStore.Get(block1b.Number, block1b.Hash!), "block 1b");
+            Assert.Null(blockStore.Get(block2b.Number, block2b.Hash!), "block 2b");
+            Assert.Null(blockStore.Get(block3b.Number, block3b.Hash!), "block 3b");
 
             Assert.NotNull(blockInfosDb.Get(1), "level 1");
             Assert.NotNull(blockInfosDb.Get(2), "level 2");
