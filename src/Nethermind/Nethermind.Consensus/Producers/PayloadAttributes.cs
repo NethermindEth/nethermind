@@ -95,8 +95,8 @@ public class PayloadAttributes
         PrevRandao.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
         position += Keccak.Size;
 
-        SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(Keccak.Size + sizeof(ulong) + Keccak.Size, Address.Size));
-        position += Keccak.Size;
+        SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(position, Address.Size));
+        position += Address.Size;
 
         if (Withdrawals is not null)
         {
