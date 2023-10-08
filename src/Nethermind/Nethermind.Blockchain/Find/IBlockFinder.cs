@@ -25,6 +25,7 @@ namespace Nethermind.Blockchain.Find
 
         Block? FindBlock(long blockNumber, BlockTreeLookupOptions options);
 
+        /// Find a header. blockNumber is optional, but specifying it can improve performance.
         BlockHeader? FindHeader(Keccak blockHash, BlockTreeLookupOptions options, long? blockNumber = null);
 
         BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options);

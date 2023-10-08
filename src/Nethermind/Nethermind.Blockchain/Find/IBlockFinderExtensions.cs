@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain.Find
                         $"Cannot find parent when parent hash is null on block with hash {header.Hash}.");
                 }
 
-                BlockHeader parent = finder.FindHeader(header.ParentHash, options, blockNumber: header.Number-1);
+                BlockHeader parent = finder.FindHeader(header.ParentHash, options, blockNumber: header.Number - 1);
                 header.MaybeParent = new WeakReference<BlockHeader>(parent);
                 return parent;
             }
@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Find
                         $"Cannot find parent when parent hash is null on block with hash {header.Hash}.");
                 }
 
-                BlockHeader parent = finder.FindHeader(header.ParentHash, options, blockNumber: header.Number-1);
+                BlockHeader parent = finder.FindHeader(header.ParentHash, options, blockNumber: header.Number - 1);
                 header.MaybeParent.SetTarget(parent);
                 return parent;
             }
@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Find
                         $"Cannot find parent when parent hash is null on block with hash {header.Hash}.");
                 }
 
-                BlockHeader? fromDb = finder.FindHeader(header.ParentHash, options, blockNumber: header.Number-1);
+                BlockHeader? fromDb = finder.FindHeader(header.ParentHash, options, blockNumber: header.Number - 1);
                 maybeParent.TotalDifficulty = fromDb?.TotalDifficulty;
             }
 

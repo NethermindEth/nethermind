@@ -12,7 +12,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Headers;
 
-public class HeaderStore: IHeaderStore
+public class HeaderStore : IHeaderStore
 {
     // SyncProgressResolver MaxLookupBack is 128, add 16 wiggle room
     private const int CacheSize = 128 + 16;

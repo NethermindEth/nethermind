@@ -193,7 +193,8 @@ namespace Nethermind.Db
             IRlpStreamDecoder<TItem> decoder,
             LruCache<TCacheKey, TItem> cache = null,
             bool shouldCache = true
-        ) where TItem : class {
+        ) where TItem : class
+        {
             TItem item = cache?.Get(cacheKey);
             if (item is null)
             {
