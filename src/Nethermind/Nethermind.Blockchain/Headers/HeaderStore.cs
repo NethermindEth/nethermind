@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
@@ -14,15 +17,16 @@ public class HeaderStore: IHeaderStore
     // SyncProgressResolver MaxLookupBack is 128, add 16 wiggle room
     private const int CacheSize = 128 + 16;
 
-    private readonly IDb _db;
+    private readonly IDb _headerDb;
+    private readonly IDb _blockNumberDb;
     private readonly HeaderDecoder _headerDecoder = new();
     private readonly LruCache<ValueKeccak, BlockHeader> _headerCache =
         new(CacheSize, CacheSize, "headers");
 
-
-    public HeaderStore(IDb db)
+    public HeaderStore(IDb headerDb, IDb blockNumberDb)
     {
-        _db = db;
+        _headerDb = headerDb;
+        _blockNumberDb = blockNumberDb;
     }
 
     public void Store(BlockHeader header)
@@ -31,12 +35,29 @@ public class HeaderStore: IHeaderStore
         // using previously received header RLPs would allows us to save 2GB allocations on a sample
         // 3M Goerli blocks fast sync
         using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
-        _db.Set(header.Hash, newRlp.AsSpan());
+        Span<byte> blockNumberSpan = stackalloc byte[8];
+        header.Number.WriteBigEndian(blockNumberSpan);
+        _blockNumberDb.Set(header.Hash, blockNumberSpan);
+        _headerDb.Set(header.Number, header.Hash, newRlp.AsSpan());
     }
 
-    public BlockHeader Get(Keccak blockHash, bool shouldCache)
+    public BlockHeader? Get(Keccak blockHash, bool shouldCache = false, long? blockNumber = null)
     {
-        return _db.Get(blockHash, _headerDecoder, _headerCache, shouldCache: false);
+        if (blockNumber == null)
+        {
+            blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
+        }
+
+        if (blockNumber != null)
+        {
+            BlockHeader? withNumber = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+            if (withNumber != null)
+            {
+                return withNumber;
+            }
+        }
+
+        return _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
     }
 
     public void Cache(BlockHeader header)
@@ -46,7 +67,22 @@ public class HeaderStore: IHeaderStore
 
     public void Delete(Keccak blockHash)
     {
-        _db.Delete(blockHash);
+        long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
+        if (blockNumber != null) _headerDb.Delete(blockNumber.Value, blockHash);
+        _headerDb.Delete(blockHash);
+        _blockNumberDb.Delete(blockHash);
         _headerCache.Delete(blockHash);
+    }
+
+    private long? GetBlockNumberFromBlockNumberDb(Keccak blockHash)
+    {
+        Span<byte> numberSpan = _blockNumberDb.Get(blockHash);
+        if (numberSpan.IsNullOrEmpty()) return null;
+        if (numberSpan.Length != 8)
+        {
+            throw new Exception($"Unexpected number span length: {numberSpan.Length}");
+        }
+
+        return BinaryPrimitives.ReadInt64BigEndian(numberSpan);
     }
 }

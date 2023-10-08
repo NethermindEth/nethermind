@@ -9,7 +9,7 @@ namespace Nethermind.Blockchain.Headers;
 public interface IHeaderStore
 {
     void Store(BlockHeader header);
-    BlockHeader Get(Keccak blockHash, bool shouldCache);
+    BlockHeader? Get(Keccak blockHash, bool shouldCache, long? blockNumber = null);
     void Cache(BlockHeader header);
     void Delete(Keccak blockHash);
 }

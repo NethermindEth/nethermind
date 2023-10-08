@@ -44,6 +44,7 @@ namespace Nethermind.Core.Test.Builders
         {
             BlocksDb = new TestMemDb();
             HeadersDb = new TestMemDb();
+            BlockNumbersDb = new TestMemDb();
             BlockInfoDb = new TestMemDb();
             MetadataDb = new TestMemDb();
 
@@ -119,13 +120,14 @@ namespace Nethermind.Core.Test.Builders
         }
 
         public IDb HeadersDb { get; set; }
+        public IDb BlockNumbersDb { get; set; }
 
         private IHeaderStore? _headerStore;
         public IHeaderStore HeaderStore
         {
             get
             {
-                return _headerStore ??= new HeaderStore(HeadersDb);
+                return _headerStore ??= new HeaderStore(HeadersDb, BlockNumbersDb);
             }
             set
             {
@@ -369,7 +371,7 @@ namespace Nethermind.Core.Test.Builders
         public BlockTreeBuilder WithDatabaseFrom(BlockTreeBuilder otherBuilder)
         {
             BlockStore = otherBuilder.BlockStore;
-            HeadersDb = otherBuilder.HeadersDb;
+            HeaderStore = otherBuilder.HeaderStore;
             BlockInfoDb = otherBuilder.BlockInfoDb;
             MetadataDb = otherBuilder.MetadataDb;
 

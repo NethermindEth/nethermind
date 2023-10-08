@@ -51,7 +51,7 @@ namespace Nethermind.Init.Steps
                 _set.ChainLevelInfoRepository = new ChainLevelInfoRepository(_get.DbProvider!.BlockInfosDb);
 
             IBlockStore blockStore = new BlockStore(_get.DbProvider.BlocksDb);
-            IHeaderStore headerStore = new HeaderStore(_get.DbProvider.HeadersDb);
+            IHeaderStore headerStore = new HeaderStore(_get.DbProvider.HeadersDb, _get.DbProvider.BlockNumbersDb);
 
             IBlockTree blockTree = _set.BlockTree = new BlockTree(
                 blockStore,

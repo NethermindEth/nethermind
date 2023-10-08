@@ -48,6 +48,19 @@ namespace Nethermind.Db
             }
         }
 
+        public static void Set(this IDb db, long blockNumber, Keccak key, Span<byte> value)
+        {
+            Span<byte> blockNumberPrefixedKey = stackalloc byte[40];
+            GetBlockNumPrefixedKey(blockNumber, key, blockNumberPrefixedKey);
+            db.Set(blockNumberPrefixedKey, value);
+        }
+
+        private static void GetBlockNumPrefixedKey(long blockNumber, ValueKeccak blockHash, Span<byte> output)
+        {
+            blockNumber.WriteBigEndian(output);
+            blockHash!.Bytes.CopyTo(output[8..]);
+        }
+
         public static void Set(this IDb db, in ValueKeccak key, Span<byte> value)
         {
             if (db is IDbWithSpan dbWithSpan)
@@ -119,6 +132,13 @@ namespace Nethermind.Db
             db.Remove(key.Bytes);
         }
 
+        public static void Delete(this IDb db, long blockNumber, Keccak hash)
+        {
+            Span<byte> key = stackalloc byte[40];
+            GetBlockNumPrefixedKey(blockNumber, hash, key);
+            db.Remove(key);
+        }
+
         public static void Set(this IDb db, byte[] key, byte[] value)
         {
             db[key] = value;
@@ -147,57 +167,34 @@ namespace Nethermind.Db
             db.Remove(key.ToBigEndianByteArrayWithoutLeadingZeros());
         }
 
+        public static TItem? Get<TItem>(this IDb db, long blockNumber, ValueKeccak hash, IRlpStreamDecoder<TItem> decoder,
+            LruCache<ValueKeccak, TItem> cache = null, bool shouldCache = true) where TItem : class
+        {
+            Span<byte> dbKey = stackalloc byte[40];
+            GetBlockNumPrefixedKey(blockNumber, hash, dbKey);
+            return Get(db, hash, dbKey, decoder, cache, shouldCache);
+        }
+
         public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, LruCache<ValueKeccak, TItem> cache = null, bool shouldCache = true) where TItem : class
         {
-            TItem item = cache?.Get(key);
-            if (item is null)
-            {
-                if (db is IDbWithSpan spanDb && decoder is IRlpValueDecoder<TItem> valueDecoder)
-                {
-                    Span<byte> data = spanDb.GetSpan(key);
-                    if (data.IsNull())
-                    {
-                        return null;
-                    }
-
-                    try
-                    {
-                        if (data.Length == 0)
-                        {
-                            return null;
-                        }
-
-                        var rlpValueContext = data.AsRlpValueContext();
-                        item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
-                    }
-                    finally
-                    {
-                        spanDb.DangerousReleaseMemory(data);
-                    }
-                }
-                else
-                {
-                    byte[]? data = db.Get(key);
-                    if (data is null)
-                    {
-                        return null;
-                    }
-
-                    item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraBytes);
-                }
-            }
-
-            if (shouldCache && cache is not null && item is not null)
-            {
-                cache.Set(key, item);
-            }
-
-            return item;
+            return Get(db, key, key.Bytes, decoder, cache, shouldCache);
         }
 
         public static TItem? Get<TItem>(this IDb db, long key, IRlpStreamDecoder<TItem>? decoder, LruCache<long, TItem>? cache = null, bool shouldCache = true) where TItem : class
         {
-            TItem? item = cache?.Get(key);
+            byte[] keyDb = key.ToBigEndianByteArrayWithoutLeadingZeros();
+            return Get(db, key, keyDb, decoder, cache, shouldCache);
+        }
+
+        public static TItem? Get<TCacheKey, TItem>(
+            this IDb db,
+            TCacheKey cacheKey,
+            Span<byte> key,
+            IRlpStreamDecoder<TItem> decoder,
+            LruCache<TCacheKey, TItem> cache = null,
+            bool shouldCache = true
+        ) where TItem : class {
+            TItem item = cache?.Get(cacheKey);
             if (item is null)
             {
                 if (db is IDbWithSpan spanDb && decoder is IRlpValueDecoder<TItem> valueDecoder)
@@ -237,7 +234,7 @@ namespace Nethermind.Db
 
             if (shouldCache && cache is not null && item is not null)
             {
-                cache.Set(key, item);
+                cache.Set(cacheKey, item);
             }
 
             return item;
