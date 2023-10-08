@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
@@ -74,7 +75,7 @@ namespace Nethermind.Core.Test.Builders
 
                     _blockTree = new BlockTree(
                         BlockStore,
-                        HeadersDb,
+                        HeaderStore,
                         BlockInfoDb,
                         MetadataDb,
                         ChainLevelInfoRepository,
@@ -118,6 +119,19 @@ namespace Nethermind.Core.Test.Builders
         }
 
         public IDb HeadersDb { get; set; }
+
+        private IHeaderStore? _headerStore;
+        public IHeaderStore HeaderStore
+        {
+            get
+            {
+                return _headerStore ??= new HeaderStore(HeadersDb);
+            }
+            set
+            {
+                _headerStore = value;
+            }
+        }
 
         public IDb BlockInfoDb { get; set; }
 
