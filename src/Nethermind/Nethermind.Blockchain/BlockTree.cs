@@ -124,33 +124,6 @@ namespace Nethermind.Blockchain
         }
 
         public BlockTree(
-            IDbProvider? dbProvider,
-            IChainLevelInfoRepository? chainLevelInfoRepository,
-            ISpecProvider? specProvider,
-            IBloomStorage? bloomStorage,
-            ISyncConfig? syncConfig,
-            ILogManager? logManager)
-            : this(new BlockStore(dbProvider?.BlocksDb), dbProvider?.HeadersDb, dbProvider?.BlockInfosDb, dbProvider?.MetadataDb,
-                chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager)
-        {
-        }
-
-        /*
-        public BlockTree(
-            IDb? blockDb,
-            IDb? headerDb,
-            IDb? blockInfoDb,
-            IChainLevelInfoRepository? chainLevelInfoRepository,
-            ISpecProvider? specProvider,
-            IBloomStorage? bloomStorage,
-            ILogManager? logManager)
-            : this(new BlockStore(blockDb), headerDb, blockInfoDb, new MemDb(), chainLevelInfoRepository, specProvider, bloomStorage,
-                new SyncConfig(), logManager)
-        {
-        }
-        */
-
-        public BlockTree(
             IDb? blockDb,
             IDb? headerDb,
             IDb? blockInfoDb,

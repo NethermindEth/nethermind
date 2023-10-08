@@ -158,6 +158,15 @@ namespace Nethermind.Core.Test.Builders
 
         public bool PostMergeBlockTree { get; set; }
 
+        public BlockTreeBuilder WithRealBloom
+        {
+            get
+            {
+                BloomStorage = new BloomStorage(new BloomConfig(), HeadersDb, new InMemoryDictionaryFileStoreFactory());
+                return this;
+            }
+        }
+
 
         public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
