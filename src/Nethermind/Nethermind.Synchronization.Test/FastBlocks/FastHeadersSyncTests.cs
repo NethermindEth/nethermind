@@ -14,11 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Logging;
-using Nethermind.Specs;
-using Nethermind.State.Repositories;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -35,17 +31,9 @@ namespace Nethermind.Synchronization.Test.FastBlocks
     public class FastHeadersSyncTests
     {
         [Test]
-        public async Task Will_fail_if_launched_without_fast_blocks_enabled()
+        public Task Will_fail_if_launched_without_fast_blocks_enabled()
         {
-            IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
-            BlockTree blockTree = new(
-                blockDb: memDbProvider.BlocksDb,
-                headerDb: memDbProvider.HeadersDb,
-                blockInfoDb: memDbProvider.BlockInfosDb,
-                chainLevelInfoRepository: new ChainLevelInfoRepository(memDbProvider.BlockInfosDb),
-                specProvider: MainnetSpecProvider.Instance,
-                bloomStorage: NullBloomStorage.Instance,
-                logManager: LimboLogs.Instance);
+            BlockTree blockTree = Build.A.BlockTree().WithNoHead.TestObject;
 
             Assert.Throws<InvalidOperationException>(() =>
             {
@@ -57,20 +45,15 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     syncReport: Substitute.For<ISyncReport>(),
                     logManager: LimboLogs.Instance);
             });
+
+            return Task.CompletedTask;
         }
 
         [Test]
         public async Task Can_prepare_3_requests_in_a_row()
         {
-            IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
-            BlockTree blockTree = new(
-                blockDb: memDbProvider.BlocksDb,
-                headerDb: memDbProvider.HeadersDb,
-                blockInfoDb: memDbProvider.BlockInfosDb,
-                chainLevelInfoRepository: new ChainLevelInfoRepository(memDbProvider.BlockInfosDb),
-                specProvider: MainnetSpecProvider.Instance,
-                bloomStorage: NullBloomStorage.Instance,
-                logManager: LimboLogs.Instance);
+            BlockTree blockTree = Build.A.BlockTree().WithNoHead.TestObject;
+
             HeadersSyncFeed feed = new(
                 syncModeSelector: Substitute.For<ISyncModeSelector>(),
                 blockTree: blockTree,
@@ -94,10 +77,8 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         [Test]
         public async Task When_next_header_hash_update_is_delayed_do_not_drop_peer()
         {
-            IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(1001).TestObject;
-
-            BlockTree blockTree = new(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree blockTree = Build.A.BlockTree().WithNoHead.TestObject;
 
             ISyncReport syncReport = Substitute.For<ISyncReport>();
             syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
@@ -162,10 +143,8 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         [Test]
         public async Task Can_prepare_several_request_and_ignore_request_from_previous_sequence()
         {
-            IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(501).TestObject;
-
-            BlockTree blockTree = new(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree blockTree = Build.A.BlockTree().WithNoHead.TestObject;
 
             ISyncReport syncReport = Substitute.For<ISyncReport>();
             syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
@@ -213,17 +192,8 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         [Test]
         public async Task Will_dispatch_when_only_partially_processed_dependency()
         {
-            IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(2001).TestObject;
-
-            BlockTree blockTree = new(
-                blockDb: memDbProvider.BlocksDb,
-                headerDb: memDbProvider.HeadersDb,
-                blockInfoDb: memDbProvider.BlockInfosDb,
-                chainLevelInfoRepository: new ChainLevelInfoRepository(memDbProvider.BlockInfosDb),
-                specProvider: MainnetSpecProvider.Instance,
-                bloomStorage: NullBloomStorage.Instance,
-                logManager: LimboLogs.Instance);
+            BlockTree blockTree = Build.A.BlockTree().WithNoHead.TestObject;
 
             ISyncReport syncReport = Substitute.For<ISyncReport>();
             syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
@@ -291,17 +261,9 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         [Test]
         public async Task Can_reset_and_not_hang_when_a_batch_is_processing()
         {
-            IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(501).TestObject;
 
-            BlockTree blockTree = new(
-                blockDb: memDbProvider.BlocksDb,
-                headerDb: memDbProvider.HeadersDb,
-                blockInfoDb: memDbProvider.BlockInfosDb,
-                chainLevelInfoRepository: new ChainLevelInfoRepository(memDbProvider.BlockInfosDb),
-                specProvider: MainnetSpecProvider.Instance,
-                bloomStorage: NullBloomStorage.Instance,
-                logManager: LimboLogs.Instance);
+            BlockTree blockTree = Build.A.BlockTree().WithNoHead.TestObject;
 
             ISyncReport syncReport = Substitute.For<ISyncReport>();
             syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
@@ -365,15 +327,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         [Test]
         public async Task Can_keep_returning_nulls_after_all_batches_were_prepared()
         {
-            IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
-            BlockTree blockTree = new(
-                blockDb: memDbProvider.BlocksDb,
-                headerDb: memDbProvider.HeadersDb,
-                blockInfoDb: memDbProvider.BlockInfosDb,
-                chainLevelInfoRepository: new ChainLevelInfoRepository(memDbProvider.BlockInfosDb),
-                specProvider: MainnetSpecProvider.Instance,
-                bloomStorage: NullBloomStorage.Instance,
-                logManager: LimboLogs.Instance);
+            BlockTree blockTree = Build.A.BlockTree().WithNoHead.TestObject;
             HeadersSyncFeed feed = new(
                 syncModeSelector: Substitute.For<ISyncModeSelector>(),
                 blockTree: blockTree,

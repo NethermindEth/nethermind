@@ -43,9 +43,10 @@ public class BeaconHeadersSyncTests
             {
                 if (_blockTree is null)
                 {
-                    IDb blockInfoDb = new MemDb();
                     Block genesis = Build.A.Block.Genesis.TestObject;
-                    _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+                    _blockTree = Build.A.BlockTree()
+                        .WithNoHead
+                        .TestObject;
                     _blockTree.SuggestBlock(genesis);
                     _blockTree.UpdateMainChain(new[] { genesis }, true); // MSMS do validity check on this
                 }

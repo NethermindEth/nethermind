@@ -135,6 +135,7 @@ namespace Nethermind.Blockchain
         {
         }
 
+        /*
         public BlockTree(
             IDb? blockDb,
             IDb? headerDb,
@@ -147,6 +148,7 @@ namespace Nethermind.Blockchain
                 new SyncConfig(), logManager)
         {
         }
+        */
 
         public BlockTree(
             IDb? blockDb,

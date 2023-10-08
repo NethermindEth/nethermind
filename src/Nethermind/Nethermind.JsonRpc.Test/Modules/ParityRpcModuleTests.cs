@@ -68,10 +68,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             WorldState stateProvider = new(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
 
-            IDb blockDb = new MemDb();
-            IDb headerDb = new MemDb();
-            IDb blockInfoDb = new MemDb();
-            _blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, logger);
+            _blockTree = Build.A.BlockTree()
+                .WithNoHead
+                .WithSpecProvider(specProvider)
+                .TestObject;
 
             _txPool = new TxPool.TxPool(_ethereumEcdsa,
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider),

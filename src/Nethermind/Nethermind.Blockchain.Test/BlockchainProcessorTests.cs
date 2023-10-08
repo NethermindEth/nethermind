@@ -189,13 +189,11 @@ namespace Nethermind.Blockchain.Test
             public ProcessingTestContext(bool startProcessor)
             {
                 _logger = _logManager.GetClassLogger();
-                MemDb blockDb = new();
-                MemDb blockInfoDb = new();
-                MemDb headersDb = new();
-
                 IStateReader stateReader = Substitute.For<IStateReader>();
 
-                _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+                _blockTree = Build.A.BlockTree()
+                    .WithNoHead
+                    .TestObject;
                 _blockProcessor = new BlockProcessorMock(_logManager, stateReader);
                 _recoveryStep = new RecoveryStepMock(_logManager);
                 _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);

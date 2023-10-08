@@ -27,9 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.State.Repositories;
 using Nethermind.Stats;
-using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -248,9 +246,6 @@ namespace Nethermind.Synchronization.Test
                 new(ConstantinopleFix.Instance, MainnetSpecProvider.Instance.NetworkId, MainnetSpecProvider.Instance.ChainId);
 
             IDbProvider dbProvider = TestMemDbProvider.Init();
-            IDb blockDb = dbProvider.BlocksDb;
-            IDb headerDb = dbProvider.HeadersDb;
-            IDb blockInfoDb = dbProvider.BlockInfosDb;
             IDb codeDb = dbProvider.CodeDb;
             IDb stateDb = dbProvider.StateDb;
 
@@ -265,8 +260,7 @@ namespace Nethermind.Synchronization.Test
             InMemoryReceiptStorage receiptStorage = new();
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId, logManager);
-            BlockTree tree = new(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb),
-                specProvider, NullBloomStorage.Instance, logManager);
+            BlockTree tree = Build.A.BlockTree().WithNoHead.TestObject;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, tree);
 
