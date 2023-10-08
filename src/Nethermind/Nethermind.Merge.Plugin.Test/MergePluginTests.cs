@@ -58,6 +58,7 @@ namespace Nethermind.Merge.Plugin.Test
                 miningConfig,
                 _context.LogManager!);
             _context.ProcessExit = Substitute.For<IProcessExitSource>();
+            _context.ChainSpec.SealEngineType = SealEngineType.Clique;
             _context.ChainSpec!.Clique = new CliqueParameters()
             {
                 Epoch = CliqueConfig.Default.Epoch,
