@@ -46,7 +46,7 @@ public partial class EngineModuleTests
     [TestCase(
         "0xb1b3b07ef3832bd409a04fdea9bf2bfa83d7af0f537ff25f4a3d2eb632ebfb0f",
         "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133",
-        "0x6454408c425ddd96")]
+        "0x5adf9b330b6c3fe0")]
     public virtual async Task processing_block_should_serialize_valid_responses(string blockHash, string latestValidHash, string payloadId)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig()

@@ -34,7 +34,7 @@ public partial class EngineModuleTests
         "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133",
         "0x6d8a107ccab7a785de89f58db49064ee091df5d2b6306fe55db666e75a0e9f68",
         "0x03e662d795ee2234c492ca4a08de03b1d7e3e0297af81a76582e16de75cdfc51",
-        "0x5009aaf2fdcd600e")]
+        "0xabd41416f2618ad0")]
     public virtual async Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
@@ -923,8 +923,8 @@ public partial class EngineModuleTests
         string payloadId
         )> PayloadIdTestCases()
     {
-        yield return (null, "0xd0666188af58eb6f");
-        yield return (Array.Empty<Withdrawal>(), "0xb5f89745e4cfaec0");
-        yield return (new[] { Build.A.Withdrawal.TestObject }, "0x0628b8a79468163e");
+        yield return (null, "0xe3b6f7433feedc38");
+        yield return (Array.Empty<Withdrawal>(), "0xf74921b673b2e08e");
+        yield return (new[] { Build.A.Withdrawal.TestObject }, "0xe0d0b996245ec3a6");
     }
 }
