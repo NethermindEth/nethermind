@@ -435,7 +435,7 @@ namespace Nethermind.Blockchain
         public BlockHeader? FindHeader(long number, BlockTreeLookupOptions options)
         {
             Keccak blockHash = GetBlockHashOnMainOrBestDifficultyHash(number);
-            return blockHash is null ? null : FindHeader(blockHash, options);
+            return blockHash is null ? null : FindHeader(blockHash, options, blockNumber: number);
         }
 
         public Keccak? FindBlockHash(long blockNumber) => GetBlockHashOnMainOrBestDifficultyHash(blockNumber);
