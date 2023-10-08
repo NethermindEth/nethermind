@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             MemDb blockInfosDb = new();
             BlockTreeBuilder builder = Build.A.BlockTree();
             BlockTree tree = builder
-                .WithNoHead
+                .WithoutSettingHead
                 .WithBlockInfoDb(blockInfosDb)
                 .TestObject;
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             blockInfosDb.Delete(3);
 
             tree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithDatabaseFrom(builder)
                 .TestObject;
 
@@ -193,7 +193,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             MemDb blockInfosDb = new();
 
             BlockTree tree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithBlockInfoDb(blockInfosDb)
                 .TestObject;
 

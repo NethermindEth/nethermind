@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Test
                 .WithBlocksDb(_blocksDb)
                 .WithHeadersDb(_headersDb)
                 .WithBlockInfoDb(_blocksInfosDb)
-                .WithNoHead;
+                .WithoutSettingHead;
             return builder.TestObject;
         }
 
@@ -224,7 +224,7 @@ namespace Nethermind.Blockchain.Test
             MemDb blockInfosDb = new MemDb();
             BlockTreeBuilder builder = Build.A.BlockTree()
                 .WithBlockInfoDb(blockInfosDb)
-                .WithNoHead;
+                .WithoutSettingHead;
             IBlockStore blockStore = builder.BlockStore;
             BlockTree tree = builder.TestObject;
 
@@ -240,7 +240,7 @@ namespace Nethermind.Blockchain.Test
 
             blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash!.Bytes);
             BlockTree tree2 = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithDatabaseFrom(builder)
                 .TestObject;
 
@@ -263,7 +263,7 @@ namespace Nethermind.Blockchain.Test
             MemDb blockInfosDb = new();
             BlockTreeBuilder builder = Build.A.BlockTree()
                 .WithBlockInfoDb(blockInfosDb)
-                .WithNoHead;
+                .WithoutSettingHead;
             IBlockStore blockStore = builder.BlockStore;
             BlockTree tree = builder.TestObject;
 
@@ -287,7 +287,7 @@ namespace Nethermind.Blockchain.Test
 
             blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash!.Bytes);
             BlockTree tree2 = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithDatabaseFrom(builder)
                 .TestObject;
 
@@ -323,7 +323,7 @@ namespace Nethermind.Blockchain.Test
             };
 
             BlockTree blockTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithBlocksDb(_blocksDb)
                 .WithHeadersDb(_headersDb)
                 .WithBlockInfoDb(blocksInfosDb)
@@ -798,7 +798,7 @@ namespace Nethermind.Blockchain.Test
             blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
 
             BlockTree blockTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithBlockStore(blockStore)
                 .WithHeadersDb(headersDb)
                 .WithBlockInfoDb(blockInfosDb)
@@ -814,7 +814,7 @@ namespace Nethermind.Blockchain.Test
             TestMemDb blockInfosDb = new();
 
             BlockTree blockTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithBlockInfoDb(blockInfosDb)
                 .TestObject;
 
@@ -918,7 +918,7 @@ namespace Nethermind.Blockchain.Test
             TestMemDb blockInfosDb = new();
 
             BlockTree blockTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithBlockInfoDb(blockInfosDb)
                 .TestObject;
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -964,7 +964,7 @@ namespace Nethermind.Blockchain.Test
             BlockStore blockStore = new(new MemDb());
             MemDb blockInfosDb = new();
             BlockTree tree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithBlockInfoDb(blockInfosDb)
                 .WithBlockStore(blockStore)
                 .TestObject;
@@ -1003,7 +1003,7 @@ namespace Nethermind.Blockchain.Test
             ChainLevelInfoRepository repository = new(blockInfosDb);
 
             BlockTree tree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithBlockInfoDb(blockInfosDb)
                 .WithBlockStore(blockStore)
                 .TestObject;
@@ -1058,7 +1058,7 @@ namespace Nethermind.Blockchain.Test
         public void After_removing_invalid_block_will_not_accept_it_again()
         {
             BlockTree tree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .TestObject;
 
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -1080,7 +1080,7 @@ namespace Nethermind.Blockchain.Test
         public void After_deleting_invalid_block_will_accept_other_blocks()
         {
             BlockTree tree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .TestObject;
 
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -1104,7 +1104,7 @@ namespace Nethermind.Blockchain.Test
         public void When_deleting_invalid_block_does_not_delete_blocks_that_are_not_its_descendants()
         {
             BlockTree tree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .TestObject;
 
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -1147,7 +1147,7 @@ namespace Nethermind.Blockchain.Test
             BlockTreeBuilder builder = Build.A
                 .BlockTree()
                 .WithSyncConfig(syncConfig)
-                .WithNoHead;
+                .WithoutSettingHead;
             BlockTree tree = builder.TestObject;
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
@@ -1182,7 +1182,7 @@ namespace Nethermind.Blockchain.Test
             BlockTreeBuilder builder = Build.A.BlockTree()
                 .WithBlocksDb(blocksDb)
                 .WithSyncConfig(syncConfig)
-                .WithNoHead;
+                .WithoutSettingHead;
 
             BlockTree tree = builder.TestObject;
 
@@ -1196,7 +1196,7 @@ namespace Nethermind.Blockchain.Test
             }
 
             BlockTree loadedTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithDatabaseFrom(builder)
                 .WithSyncConfig(syncConfig)
                 .TestObject;
@@ -1244,7 +1244,7 @@ namespace Nethermind.Blockchain.Test
             };
 
             BlockTreeBuilder builder = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithSyncConfig(syncConfig);
 
             BlockTree tree = builder.TestObject;
@@ -1259,7 +1259,7 @@ namespace Nethermind.Blockchain.Test
             }
 
             BlockTree loadedTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithDatabaseFrom(builder)
                 .WithSyncConfig(syncConfig)
                 .TestObject;
@@ -1281,7 +1281,7 @@ namespace Nethermind.Blockchain.Test
             };
 
             BlockTreeBuilder builder = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithMetadataDb(metadataDb)
                 .WithSyncConfig(syncConfig);
 
@@ -1314,7 +1314,7 @@ namespace Nethermind.Blockchain.Test
             tree.BestPersistedState = 50;
 
             BlockTree loadedTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithDatabaseFrom(builder)
                 .WithSyncConfig(syncConfig)
                 .TestObject;
@@ -1333,7 +1333,7 @@ namespace Nethermind.Blockchain.Test
                 PivotNumber = pivotNumber.ToString(),
             };
             BlockTreeBuilder builder = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithSyncConfig(syncConfig);
 
             BlockTree tree = builder.TestObject;
@@ -1350,7 +1350,7 @@ namespace Nethermind.Blockchain.Test
             tree.SuggestHeader(Build.A.BlockHeader.WithNumber(pivotNumber + 1).WithParent(pivotBlock!.Header).TestObject);
 
             BlockTree loadedTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithDatabaseFrom(builder)
                 .WithSyncConfig(syncConfig)
                 .TestObject;
@@ -1374,7 +1374,7 @@ namespace Nethermind.Blockchain.Test
             BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(head + 1);
 
             BlockTree loadedTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithDatabaseFrom(treeBuilder)
                 .WithSyncConfig(syncConfig)
                 .TestObject;
@@ -1393,7 +1393,7 @@ namespace Nethermind.Blockchain.Test
             };
 
             BlockTree tree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithSyncConfig(syncConfig)
                 .TestObject;
 
@@ -1417,7 +1417,7 @@ namespace Nethermind.Blockchain.Test
             specProvider.UpdateMergeTransitionInfo(null, 0);
 
             BlockTree tree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithSyncConfig(syncConfig)
                 .WithSpecProvider(specProvider)
                 .TestObject;
@@ -1491,7 +1491,7 @@ namespace Nethermind.Blockchain.Test
             Block lastBlock = previousBlock;
 
             BlockTree loadedTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithSyncConfig(syncConfig)
                 .WithDatabaseFrom(builder)
                 .TestObject;
@@ -1506,7 +1506,7 @@ namespace Nethermind.Blockchain.Test
 
             IBloomStorage bloomStorage = Substitute.For<IBloomStorage>();
             BlockTree blockTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithBloomStorage(bloomStorage)
                 .TestObject;
                 // new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, bloomStorage, LimboLogs.Instance);

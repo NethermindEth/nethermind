@@ -296,7 +296,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
             BlockTree blockTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithSpecProvider(specProvider)
                 .TestObject;
 
@@ -346,7 +346,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
 
             BlockTree blockTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithSpecProvider(specProvider)
                 .TestObject;
 

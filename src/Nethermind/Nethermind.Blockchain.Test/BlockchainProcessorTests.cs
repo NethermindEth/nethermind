@@ -192,7 +192,7 @@ namespace Nethermind.Blockchain.Test
                 IStateReader stateReader = Substitute.For<IStateReader>();
 
                 _blockTree = Build.A.BlockTree()
-                    .WithNoHead
+                    .WithoutSettingHead
                     .TestObject;
                 _blockProcessor = new BlockProcessorMock(_logManager, stateReader);
                 _recoveryStep = new RecoveryStepMock(_logManager);

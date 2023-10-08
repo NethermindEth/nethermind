@@ -929,7 +929,7 @@ namespace Nethermind.Synchronization.Test
                     if (_blockTree is null)
                     {
                         _blockTree = Build.A.BlockTree()
-                            .WithNoHead
+                            .WithoutSettingHead
                             .WithSpecProvider(SpecProvider)
                             .WithBlockInfoDb(_blockInfoDb)
                             .TestObject;

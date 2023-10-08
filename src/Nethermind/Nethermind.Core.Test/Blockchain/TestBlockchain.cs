@@ -143,7 +143,7 @@ public class TestBlockchain : IDisposable
 
         BlockTree = Builders.Build.A.BlockTree()
             .WithSpecProvider(SpecProvider)
-            .WithNoHead
+            .WithoutSettingHead
             .TestObject;
 
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);

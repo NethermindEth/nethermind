@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Test
                 new TransactionComparerProvider(specProvider, _blockTree);
 
             _blockTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithSpecProvider(specProvider)
                 .TestObject;
 

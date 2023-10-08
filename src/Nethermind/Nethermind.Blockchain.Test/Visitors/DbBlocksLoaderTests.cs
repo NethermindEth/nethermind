@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
                 BlockTree blockTree = Build.A.BlockTree()
-                    .WithNoHead
+                    .WithoutSettingHead
                     .WithBlockStore(blockStore)
                     .WithHeadersDb(headersDb)
                     .WithBlockInfoDb(blockInfosDb)
@@ -101,7 +101,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
                 BlockTree blockTree = Build.A.BlockTree()
-                    .WithNoHead
+                    .WithoutSettingHead
                     .WithBlockStore(blockStore)
                     .WithHeadersDb(headersDb)
                     .WithBlockInfoDb(blockInfosDb)
@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             MemDb blockInfosDb = new();
 
             BlockTreeBuilder builder = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithBlockInfoDb(blockInfosDb)
                 .WithBlockStore(blockStore);
 
@@ -150,7 +150,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             BlockTree tree2 = Build.A.BlockTree()
                 .WithDatabaseFrom(builder)
-                .WithNoHead
+                .WithoutSettingHead
                 .TestObject;
 
             CancellationTokenSource tokenSource = new();
@@ -191,7 +191,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             MemDb blockInfosDb = new();
 
             BlockTreeBuilder builder = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithBlockInfoDb(blockInfosDb)
                 .WithBlockStore(blockStore);
             BlockTree tree1 = builder.TestObject;
@@ -209,7 +209,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree1.UpdateMainChain(block0);
 
             BlockTree tree2 = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithDatabaseFrom(builder)
                 .TestObject;
 

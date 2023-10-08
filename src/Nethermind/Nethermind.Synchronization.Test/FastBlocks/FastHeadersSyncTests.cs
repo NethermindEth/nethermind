@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         [Test]
         public Task Will_fail_if_launched_without_fast_blocks_enabled()
         {
-            BlockTree blockTree = Build.A.BlockTree().WithNoHead.TestObject;
+            BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
 
             Assert.Throws<InvalidOperationException>(() =>
             {
@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         [Test]
         public async Task Can_prepare_3_requests_in_a_row()
         {
-            BlockTree blockTree = Build.A.BlockTree().WithNoHead.TestObject;
+            BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
 
             HeadersSyncFeed feed = new(
                 syncModeSelector: Substitute.For<ISyncModeSelector>(),
@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         public async Task When_next_header_hash_update_is_delayed_do_not_drop_peer()
         {
             BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(1001).TestObject;
-            BlockTree blockTree = Build.A.BlockTree().WithNoHead.TestObject;
+            BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
 
             ISyncReport syncReport = Substitute.For<ISyncReport>();
             syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
@@ -144,7 +144,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         public async Task Can_prepare_several_request_and_ignore_request_from_previous_sequence()
         {
             BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(501).TestObject;
-            BlockTree blockTree = Build.A.BlockTree().WithNoHead.TestObject;
+            BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
 
             ISyncReport syncReport = Substitute.For<ISyncReport>();
             syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
@@ -193,7 +193,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         public async Task Will_dispatch_when_only_partially_processed_dependency()
         {
             BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(2001).TestObject;
-            BlockTree blockTree = Build.A.BlockTree().WithNoHead.TestObject;
+            BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
 
             ISyncReport syncReport = Substitute.For<ISyncReport>();
             syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
@@ -263,7 +263,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         {
             BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(501).TestObject;
 
-            BlockTree blockTree = Build.A.BlockTree().WithNoHead.TestObject;
+            BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
 
             ISyncReport syncReport = Substitute.For<ISyncReport>();
             syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
@@ -327,7 +327,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         [Test]
         public async Task Can_keep_returning_nulls_after_all_batches_were_prepared()
         {
-            BlockTree blockTree = Build.A.BlockTree().WithNoHead.TestObject;
+            BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
             HeadersSyncFeed feed = new(
                 syncModeSelector: Substitute.For<ISyncModeSelector>(),
                 blockTree: blockTree,

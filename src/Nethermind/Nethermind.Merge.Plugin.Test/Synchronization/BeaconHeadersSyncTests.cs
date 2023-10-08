@@ -45,7 +45,7 @@ public class BeaconHeadersSyncTests
                 {
                     Block genesis = Build.A.Block.Genesis.TestObject;
                     _blockTree = Build.A.BlockTree()
-                        .WithNoHead
+                        .WithoutSettingHead
                         .TestObject;
                     _blockTree.SuggestBlock(genesis);
                     _blockTree.UpdateMainChain(new[] { genesis }, true); // MSMS do validity check on this

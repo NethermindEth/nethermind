@@ -260,7 +260,7 @@ namespace Nethermind.Synchronization.Test
             InMemoryReceiptStorage receiptStorage = new();
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId, logManager);
-            BlockTree tree = Build.A.BlockTree().WithNoHead.TestObject;
+            BlockTree tree = Build.A.BlockTree().WithoutSettingHead.TestObject;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, tree);
 

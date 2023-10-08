@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
 
             _blockTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .WithSpecProvider(specProvider)
                 .TestObject;
 

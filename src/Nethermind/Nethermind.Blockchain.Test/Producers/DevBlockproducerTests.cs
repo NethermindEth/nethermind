@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Test.Producers
             dbProvider.RegisterDb(DbNames.Metadata, new MemDb());
 
             BlockTree blockTree = Build.A.BlockTree()
-                .WithNoHead
+                .WithoutSettingHead
                 .TestObject;
 
             TrieStore trieStore = new(

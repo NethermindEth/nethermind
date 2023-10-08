@@ -50,7 +50,7 @@ namespace Nethermind.Core.Test.Builders
             _specProvider = specProvider;
         }
 
-        public BlockTreeBuilder WithNoHead
+        public BlockTreeBuilder WithoutSettingHead
         {
             get
             {

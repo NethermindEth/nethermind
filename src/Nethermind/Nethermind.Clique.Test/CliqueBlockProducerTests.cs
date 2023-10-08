@@ -100,7 +100,7 @@ namespace Nethermind.Clique.Test
 
                 BlockTree blockTree = Build.A.BlockTree()
                     .WithBlocksDb(blocksDb)
-                    .WithNoHead
+                    .WithoutSettingHead
                     .TestObject;
 
                 blockTree.NewHeadBlock += (sender, args) => { _blockEvents[privateKey].Set(); };

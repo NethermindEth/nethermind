@@ -43,7 +43,7 @@ public partial class BlockTreeTests
 
         BlockTree syncedTree = Build.A.BlockTree(genesisBlock, specProvider)
             .OfChainLength(syncedTreeSize)
-            .WithNoHead
+            .WithoutSettingHead
             .TestObject;
 
         return (notSyncedTree, syncedTree);
@@ -57,7 +57,7 @@ public partial class BlockTreeTests
         specProvider.TerminalTotalDifficulty = 0;
 
         BlockTreeBuilder treeBuilder = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(10);
-        BlockTree tree = Build.A.BlockTree().WithDatabaseFrom(treeBuilder).WithNoHead.BlockTree;
+        BlockTree tree = Build.A.BlockTree().WithDatabaseFrom(treeBuilder).WithoutSettingHead.BlockTree;
 
         Assert.That(tree.BestKnownNumber, Is.EqualTo(9));
         Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(9));
@@ -470,7 +470,7 @@ public partial class BlockTreeTests
             public ScenarioBuilder Restart()
             {
                 NotSyncedTree = Build.A.BlockTree()
-                    .WithNoHead
+                    .WithoutSettingHead
                     .WithDatabaseFrom(NotSyncedTreeBuilder)
                     .TestObject;
                 _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot!, new SyncConfig(), LimboLogs.Instance);

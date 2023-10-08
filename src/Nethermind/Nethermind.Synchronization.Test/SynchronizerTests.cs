@@ -309,7 +309,7 @@ namespace Nethermind.Synchronization.Test
                 IDbProvider dbProvider = TestMemDbProvider.Init();
                 IDb stateDb = new MemDb();
                 IDb codeDb = dbProvider.CodeDb;
-                BlockTree = Build.A.BlockTree().WithNoHead.TestObject;
+                BlockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
 
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 NodeStatsManager stats = new(timerFactory, _logManager);
