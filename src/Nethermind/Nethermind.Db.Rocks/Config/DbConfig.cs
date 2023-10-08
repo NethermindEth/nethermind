@@ -79,7 +79,7 @@ public class DbConfig : IDbConfig
     public bool? BlockNumbersDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? BlockNumbersDbCompactionReadAhead { get; set; }
     public IDictionary<string, string>? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
-    public ulong? BlockNumbersDbMaxBytesForLevelBase { get; set; } = (ulong)8.MiB();
+    public ulong? BlockNumbersDbMaxBytesForLevelBase { get; set; } = (ulong)16.MiB();
 
     public ulong BlockInfosDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint BlockInfosDbWriteBufferNumber { get; set; } = 4;
