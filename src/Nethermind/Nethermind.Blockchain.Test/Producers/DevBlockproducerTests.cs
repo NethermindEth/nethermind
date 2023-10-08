@@ -41,12 +41,10 @@ namespace Nethermind.Blockchain.Test.Producers
             dbProvider.RegisterDb(DbNames.Code, new MemDb());
             dbProvider.RegisterDb(DbNames.Metadata, new MemDb());
 
-            BlockTree blockTree = new(
-                dbProvider,
-                new ChainLevelInfoRepository(dbProvider),
-                specProvider,
-                NullBloomStorage.Instance,
-                LimboLogs.Instance);
+            BlockTree blockTree = Build.A.BlockTree()
+                .WithNoHead
+                .TestObject;
+
             TrieStore trieStore = new(
                 dbProvider.RegisteredDbs[DbNames.State],
                 NoPruning.Instance,

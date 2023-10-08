@@ -42,7 +42,6 @@ namespace Nethermind.Core.Test.Builders
         public BlockTreeBuilder(Block genesisBlock, ISpecProvider specProvider)
         {
             BlocksDb = new TestMemDb();
-            BlockStore = new BlockStore(BlocksDb);
             HeadersDb = new TestMemDb();
             BlockInfoDb = new TestMemDb();
             MetadataDb = new TestMemDb();
@@ -77,11 +76,11 @@ namespace Nethermind.Core.Test.Builders
                         BlockStore,
                         HeadersDb,
                         BlockInfoDb,
-                        new MemDb(),
+                        MetadataDb,
                         ChainLevelInfoRepository,
                         _specProvider,
                         BloomStorage,
-                        new SyncConfig(),
+                        SyncConfig,
                         LimboLogs.Instance);
                 }
 
@@ -100,6 +99,8 @@ namespace Nethermind.Core.Test.Builders
         }
 
         public IBloomStorage BloomStorage { get; set; } = Substitute.For<IBloomStorage>();
+
+        public ISyncConfig SyncConfig { get; set; } = new SyncConfig();
 
         public IDb BlocksDb { get; set; }
 
@@ -122,9 +123,9 @@ namespace Nethermind.Core.Test.Builders
 
         public IDb MetadataDb { get; set; }
 
-        private ChainLevelInfoRepository? _chainLevelInfoRepository;
+        private IChainLevelInfoRepository? _chainLevelInfoRepository;
 
-        public ChainLevelInfoRepository ChainLevelInfoRepository
+        public IChainLevelInfoRepository ChainLevelInfoRepository
         {
             get
             {
@@ -390,9 +391,27 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockTreeBuilder WithMetadataDb(IDb metadataDb)
+        {
+            MetadataDb = metadataDb;
+            return this;
+        }
+
         public BlockTreeBuilder WithBloomStorage(IBloomStorage bloomStorage)
         {
             BloomStorage = bloomStorage;
+            return this;
+        }
+
+        public BlockTreeBuilder WithSyncConfig(ISyncConfig syncConfig)
+        {
+            SyncConfig = syncConfig;
+            return this;
+        }
+
+        public BlockTreeBuilder WithChainLevelInfoRepository(IChainLevelInfoRepository chainLevelInfoRepository)
+        {
+            ChainLevelInfoRepository = chainLevelInfoRepository;
             return this;
         }
     }
