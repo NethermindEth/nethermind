@@ -105,6 +105,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                     .WithBlockStore(blockStore)
                     .WithHeadersDb(headersDb)
                     .WithBlockInfoDb(blockInfosDb)
+                    .WithSpecProvider(OlympicSpecProvider.Instance)
                     .TestObject;
 
                 DbBlocksLoader loader = new(blockTree, LimboNoErrorLogger.Instance);

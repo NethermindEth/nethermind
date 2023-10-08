@@ -129,12 +129,7 @@ namespace Nethermind.Core.Test.Builders
         {
             get
             {
-                if (_chainLevelInfoRepository == null)
-                {
-                    _chainLevelInfoRepository = new ChainLevelInfoRepository(BlockInfoDb);
-                }
-
-                return _chainLevelInfoRepository;
+                return _chainLevelInfoRepository ??= new ChainLevelInfoRepository(BlockInfoDb);
             }
             private set
             {

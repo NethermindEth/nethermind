@@ -39,6 +39,7 @@ namespace Nethermind.Blockchain.Test.Validators
             _ethash = new EthashSealValidator(LimboLogs.Instance, calculator, new CryptoRandom(), new Ethash(LimboLogs.Instance), Timestamper.Default);
             _testLogger = new TestLogger();
             _blockTree = Build.A.BlockTree()
+                .WithSpecProvider(FrontierSpecProvider.Instance)
                 .WithoutSettingHead
                 .TestObject;
             _specProvider = new TestSingleReleaseSpecProvider(Byzantium.Instance);
@@ -294,6 +295,7 @@ namespace Nethermind.Blockchain.Test.Validators
 
             {
                 _blockTree = Build.A.BlockTree()
+                    .WithSpecProvider(FrontierSpecProvider.Instance)
                     .WithoutSettingHead
                     .TestObject;
 

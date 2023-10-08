@@ -42,8 +42,8 @@ public partial class BlockTreeTests
             .TestObject;
 
         BlockTree syncedTree = Build.A.BlockTree(genesisBlock, specProvider)
-            .OfChainLength(syncedTreeSize)
             .WithoutSettingHead
+            .OfChainLength(syncedTreeSize)
             .TestObject;
 
         return (notSyncedTree, syncedTree);
@@ -71,8 +71,9 @@ public partial class BlockTreeTests
         TestSpecProvider specProvider = new(London.Instance);
         specProvider.TerminalTotalDifficulty = (UInt256)9999900;
 
-        BlockTree tree = Build.A.BlockTree().OfChainLength(10)
+        BlockTree tree = Build.A.BlockTree()
             .WithSpecProvider(specProvider)
+            .OfChainLength(10)
             .TestObject;
         PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, LimboLogs.Instance);
 
@@ -89,8 +90,9 @@ public partial class BlockTreeTests
     {
         TestSpecProvider specProvider = new(London.Instance);
         specProvider.TerminalTotalDifficulty = (UInt256)9999900;
-        BlockTree tree = Build.A.BlockTree().OfChainLength(10)
+        BlockTree tree = Build.A.BlockTree()
             .WithSpecProvider(specProvider)
+            .OfChainLength(10)
             .TestObject;
         PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, LimboLogs.Instance);
 
@@ -269,15 +271,15 @@ public partial class BlockTreeTests
                 if (ttd is not null) testSpecProvider.TerminalTotalDifficulty = ttd;
 
                 NotSyncedTreeBuilder = Build.A.BlockTree()
-                    .OfChainLength(notSyncedTreeSize, splitVariant: splitVariant, splitFrom: splitFrom)
-                    .WithSpecProvider(testSpecProvider);
+                    .WithSpecProvider(testSpecProvider)
+                    .OfChainLength(notSyncedTreeSize, splitVariant: splitVariant, splitFrom: splitFrom);
                 NotSyncedTree = NotSyncedTreeBuilder.TestObject;
 
                 if (syncedTreeSize > 0)
                 {
                     _syncedTreeBuilder = Build.A.BlockTree()
-                        .OfChainLength(syncedTreeSize, splitVariant: syncedSplitVariant, splitFrom: syncedSplitFrom)
-                        .WithSpecProvider(testSpecProvider);
+                        .WithSpecProvider(testSpecProvider)
+                        .OfChainLength(syncedTreeSize, splitVariant: syncedSplitVariant, splitFrom: syncedSplitFrom);
 
                     SyncedTree = _syncedTreeBuilder.TestObject;
                 }

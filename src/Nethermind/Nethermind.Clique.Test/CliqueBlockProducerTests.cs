@@ -99,6 +99,7 @@ namespace Nethermind.Clique.Test
                 stateProvider.CommitTree(0);
 
                 BlockTree blockTree = Build.A.BlockTree()
+                    .WithSpecProvider(goerliSpecProvider)
                     .WithBlocksDb(blocksDb)
                     .WithoutSettingHead
                     .TestObject;
