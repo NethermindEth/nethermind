@@ -71,7 +71,7 @@ internal class E2Store : IDisposable
 
         foreach (string file in entries)
         {
-            string[] parts = file.Split(new char[] { '-' });
+            string[] parts = Path.GetFileName(file).Split(new char[] { '-' });
             if (parts.Length != 3 || parts[0] != network)
             {
                 continue;
@@ -79,7 +79,7 @@ internal class E2Store : IDisposable
             uint epoch;
             if (!uint.TryParse(parts[1], out epoch))
                 throw new EraException($"Invalid era1 filename: {Path.GetFileName(file)}");
-            else if (epoch != 0)
+            else if (epoch != next)
                 throw new EraException($"Epoch {epoch} is missing.");
 
             next++;

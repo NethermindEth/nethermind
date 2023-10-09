@@ -18,14 +18,15 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
     private E2Store _store;
     private bool _disposedValue;
-    private int _currentBlockIndex;
+    private long _currentBlockIndex;
     private UInt256 _currentTotalDiffulty;
 
-    public int CurrentBlockIndex => _currentBlockIndex;
+    public long CurrentBlockIndex => _currentBlockIndex;
 
     private EraIterator(E2Store e2)
     {
         _store = e2;
+        _currentBlockIndex = e2.Metadata.Start;
     }
     public async IAsyncEnumerator<(Block, TxReceipt[])> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
@@ -102,7 +103,7 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         return new ReceiptDecoder().DecodeArray(b.AsRlpStream());
     }
 
-    private async Task<long> FindBlockOffset(int blockIndex, CancellationToken token = default)
+    private async Task<long> FindBlockOffset(long blockIndex, CancellationToken token = default)
     {
         long firstIndex = -8 - _store.Metadata.Count * 8;
         long indexOffset = (blockIndex - _store.Metadata.Start) * 8;
