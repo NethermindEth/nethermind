@@ -1,7 +1,7 @@
 ﻿using Nethermind.Api;
 using Nethermind.Api.Extensions;
 
-namespace Nethermind.Snapshot.Plugin;
+namespace Nethermind.Snapshot;
 
 public class SnapshotPlugin : IInitializationPlugin
 {

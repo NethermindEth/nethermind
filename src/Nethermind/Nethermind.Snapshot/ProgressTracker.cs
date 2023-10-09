@@ -5,7 +5,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 
-namespace Nethermind.Snapshot.Plugin;
+namespace Nethermind.Snapshot;
 
 public class ProgressTracker : IDisposable
 {

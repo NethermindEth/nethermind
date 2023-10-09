@@ -3,7 +3,7 @@
 
 using Nethermind.Config;
 
-namespace Nethermind.Snapshot.Plugin;
+namespace Nethermind.Snapshot;
 
 public interface ISnapshotConfig : IConfig
 {

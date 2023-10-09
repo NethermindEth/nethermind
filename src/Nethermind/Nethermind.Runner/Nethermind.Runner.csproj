@@ -68,7 +68,7 @@
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
     <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
     <ProjectReference Include="..\Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj" />
-    <ProjectReference Include="..\Nethermind.Snapshot.Plugin\Nethermind.Snapshot.Plugin.csproj" />
+    <ProjectReference Include="..\Nethermind.Snapshot\Nethermind.Snapshot.csproj" />
   </ItemGroup>
 
   <ItemGroup>
