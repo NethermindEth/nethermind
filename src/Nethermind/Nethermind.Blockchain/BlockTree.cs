@@ -205,7 +205,7 @@ namespace Nethermind.Blockchain
             }
 
             _bloomStorage.Store(header.Number, header.Bloom);
-            _headerStore.Store(header);
+            _headerStore.Insert(header);
 
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
             BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
@@ -365,7 +365,7 @@ namespace Nethermind.Blockchain
 
             if (!isKnown)
             {
-                _headerStore.Store(header);
+                _headerStore.Insert(header);
             }
 
             if (!isKnown || fillBeaconBlock)

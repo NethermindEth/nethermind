@@ -25,12 +25,12 @@ public class HeaderStoreTests
         store.Get(header.Hash!).Should().BeNull();
         store.Get(header2.Hash!).Should().BeNull();
 
-        store.Store(header);
+        store.Insert(header);
         store.Get(header.Hash!)!.Hash.Should().Be(header.Hash!);
         store.Get(header.Hash!, blockNumber: header.Number)!.Hash.Should().Be(header.Hash!);
         store.Get(header2.Hash!).Should().BeNull();
 
-        store.Store(header2);
+        store.Insert(header2);
         store.Get(header.Hash!)!.Hash.Should().Be(header.Hash!);
         store.Get(header2.Hash!, blockNumber: header2.Number)!.Hash.Should().Be(header2.Hash!);
     }
@@ -62,7 +62,7 @@ public class HeaderStoreTests
     {
         HeaderStore store = new(new MemDb(), new MemDb());
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
-        store.Store(header);
+        store.Insert(header);
         store.Delete(header.Hash!);
 
         store.Get(header.Hash!).Should().BeNull();

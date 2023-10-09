@@ -29,7 +29,7 @@ public class HeaderStore : IHeaderStore
         _blockNumberDb = blockNumberDb;
     }
 
-    public void Store(BlockHeader header)
+    public void Insert(BlockHeader header)
     {
         // validate hash here
         // using previously received header RLPs would allows us to save 2GB allocations on a sample
@@ -76,13 +76,13 @@ public class HeaderStore : IHeaderStore
 
     private long? GetBlockNumberFromBlockNumberDb(Keccak blockHash)
     {
-        Span<byte> numberSpan = _blockNumberDb.Get(blockHash);
-        if (numberSpan.IsNullOrEmpty()) return null;
-        if (numberSpan.Length != 8)
+        byte[] numberBytes = _blockNumberDb.Get(blockHash);
+        if (numberBytes == null) return null;
+        if (numberBytes.Length != 8)
         {
-            throw new Exception($"Unexpected number span length: {numberSpan.Length}");
+            throw new Exception($"Unexpected number span length: {numberBytes.Length}");
         }
 
-        return BinaryPrimitives.ReadInt64BigEndian(numberSpan);
+        return BinaryPrimitives.ReadInt64BigEndian(numberBytes);
     }
 }
