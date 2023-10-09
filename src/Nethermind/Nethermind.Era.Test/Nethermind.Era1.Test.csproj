@@ -26,7 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.History.Era1\Nethermind.Era1.csproj" />
+    <ProjectReference Include="..\Nethermind.Era1\Nethermind.Era1.csproj" />
   </ItemGroup>
 
   <ItemGroup>
