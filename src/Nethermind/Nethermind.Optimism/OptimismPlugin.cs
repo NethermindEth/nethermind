@@ -33,7 +33,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     public string Name => "Optimism";
     public string Description => "Optimism support for Nethermind";
 
-    private OptimismNethermindApi _api = null!;
+    private OptimismNethermindApi? _api;
     private ILogger _logger = null!;
     private IMergeConfig _mergeConfig = null!;
     private ISyncConfig _syncConfig = null!;
@@ -61,6 +61,8 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         if (blockProductionTrigger is not null || additionalTxSource is not null)
             throw new ArgumentException(
                 "Optimism does not support custom block production trigger or additional tx source");
+
+        if (_api is null) throw new NullReferenceException(nameof(_api));
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
@@ -154,7 +156,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public Task InitSynchronization()
     {
-        if (!ShouldRunSteps(_api))
+        if (_api is null || !ShouldRunSteps(_api))
             return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -231,7 +233,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public Task InitRpcModules()
     {
-        if (!ShouldRunSteps(_api))
+        if (_api is null || !ShouldRunSteps(_api))
             return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
