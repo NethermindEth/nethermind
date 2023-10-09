@@ -59,14 +59,14 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         "0xe168b70ac8a6f7d90734010030801fbb2dcce03a657155c4024b36ba8d1e3926",
         "0x3e604e45a9a74b66a7e03f828cc2597f0cb5f5e7dc50c9211be3a62fbcd6396d",
         "0xdbd87b98a6be7d4e3f11ff8500c38a0736d9a5e7a47b5cb25628d37187a98cb9",
-        "0x80ac487e132512b1")]
+        "0xcdd08163eccae523")]
     public override Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V2(latestValidHash, blockHash, stateRoot, payloadId);
 
     [TestCase(
         "0xe4333fcde906675e50500bf53a6c73bc51b2517509bc3cff2d24d0de9b8dd23e",
         "0xe168b70ac8a6f7d90734010030801fbb2dcce03a657155c4024b36ba8d1e3926",
-        "0x78ecfec08729d895")]
+        "0xb22228e153345f9b")]
     public override Task processing_block_should_serialize_valid_responses(string blockHash, string latestValidHash, string payloadId)
         => base.processing_block_should_serialize_valid_responses(blockHash, latestValidHash, payloadId);
 
