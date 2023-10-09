@@ -5,8 +5,9 @@ using System.Net.Http.Headers;
 using Nethermind.Api;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using System;
 using System.IO.Compression;
+using System.Security.Cryptography;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Snapshot.Plugin;
 
@@ -25,51 +26,63 @@ public class InitDatabaseSnapshot : InitDatabase
 
     public override async Task Execute(CancellationToken cancellationToken)
     {
-        string snapshotUrl = _api.Config<ISnapshotConfig>().DownloadUrl ??
-                             throw new InvalidOperationException("Snapshot download URL is not configured");
-
-        IInitConfig initConfig = _api.Config<IInitConfig>();
-        switch (initConfig.DiagnosticMode)
+        switch (_api.Config<IInitConfig>().DiagnosticMode)
         {
             case DiagnosticMode.RpcDb:
             case DiagnosticMode.ReadOnlyDb:
             case DiagnosticMode.MemDb:
                 break;
             default:
-                await InitDbFromSnapshot(snapshotUrl, initConfig.BaseDbPath, cancellationToken);
+                await InitDbFromSnapshot(cancellationToken);
                 break;
         }
 
         await base.Execute(cancellationToken);
     }
 
-    private async Task InitDbFromSnapshot(string snapshotUrl, string dbPath, CancellationToken cancellationToken)
+    private async Task InitDbFromSnapshot(CancellationToken cancellationToken)
     {
-        string snapshotFileName = Path.GetTempFileName();
+        string dbPath = _api.Config<IInitConfig>().BaseDbPath;
 
-        if (_logger.IsInfo)
-            _logger.Info($"Downloading snapshot from {snapshotUrl}");
+        ISnapshotConfig snapshotConfig = _api.Config<ISnapshotConfig>();
+        string snapshotUrl = snapshotConfig.DownloadUrl ??
+                             throw new InvalidOperationException("Snapshot download URL is not configured");
+        byte[]? snapshotChecksum =
+            snapshotConfig.Checksum is null ? null : Bytes.FromHexString(snapshotConfig.Checksum);
+
+        string snapshotFileName = Path.GetTempFileName();
 
         await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
 
+        if (snapshotChecksum is not null)
+        {
+            bool isChecksumValid = await VerifyChecksum(snapshotFileName, snapshotChecksum);
+            if (!isChecksumValid)
+            {
+                if (_logger.IsError)
+                    _logger.Error("Snapshot checksum verification failed. Aborting, but will continue running.");
+                return;
+            }
+
+            if (_logger.IsInfo)
+                _logger.Info("Snapshot checksum verified.");
+        }
+        else if (_logger.IsWarn)
+            _logger.Warn("Snapshot checksum is not configured");
+
+
+        await ExtractSnapshotTo(snapshotFileName, dbPath, cancellationToken);
+
         if (_logger.IsInfo)
-            _logger.Info($"Snapshot downloaded to {snapshotFileName}");
-
-        try
-        {
-            Directory.Delete(dbPath, true);
-        }
-        catch (DirectoryNotFoundException)
-        {
-            // ignore
-        }
-
-        await ExtractZipAsync(snapshotFileName, dbPath, cancellationToken);
+            _logger.Info("Database successfully initialized from snapshot.");
     }
 
     private async Task DownloadSnapshotTo(
         string snapshotUrl, string snapshotFileName, CancellationToken cancellationToken)
     {
+        if (_logger.IsInfo)
+            _logger.Info($"Downloading snapshot from {snapshotUrl}");
+
         using HttpClient httpClient = new();
 
         HttpRequestMessage request = new(HttpMethod.Get, snapshotUrl);
@@ -101,8 +114,38 @@ public class InitDatabaseSnapshot : InitDatabase
 
             progressTracker.AddProgress(bytesRead);
         }
+
+        if (_logger.IsInfo)
+            _logger.Info($"Snapshot downloaded to {snapshotFileName}.");
     }
 
-    private static Task ExtractZipAsync(string zipPath, string destinationPath, CancellationToken cancellationToken) =>
-        Task.Run(() => ZipFile.ExtractToDirectory(zipPath, destinationPath, true), cancellationToken);
+    private async Task<bool> VerifyChecksum(string snapshotFilePath, byte[] snapshotChecksum)
+    {
+        if (_logger.IsInfo)
+            _logger.Info($"Verifying snapshot checksum {snapshotChecksum}.");
+
+        await using FileStream fileStream = File.OpenRead(snapshotFilePath);
+        byte[] hash = await SHA256.HashDataAsync(fileStream);
+        return Bytes.AreEqual(hash, snapshotChecksum);
+    }
+
+    private Task ExtractSnapshotTo(string snapshotPath, string dbPath, CancellationToken cancellationToken) =>
+        Task.Run(() =>
+        {
+            try
+            {
+                if (_logger.IsInfo)
+                    _logger.Info($"Deleting existing database at {dbPath}.");
+                Directory.Delete(dbPath, true);
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // ignore
+            }
+
+            if (_logger.IsInfo)
+                _logger.Info($"Extracting snapshot to {dbPath}.");
+
+            ZipFile.ExtractToDirectory(snapshotPath, dbPath);
+        }, cancellationToken);
 }

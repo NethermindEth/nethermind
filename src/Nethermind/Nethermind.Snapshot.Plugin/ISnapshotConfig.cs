@@ -12,4 +12,7 @@ public interface ISnapshotConfig : IConfig
 
     [ConfigItem(Description = "URL to snapshot file. Ignored if not set.", DefaultValue = "null")]
     public string? DownloadUrl { get; set; }
+
+    [ConfigItem(Description = "SHA256 checksum for the snapshot file", DefaultValue = "null")]
+    public string? Checksum { get; set; }
 }

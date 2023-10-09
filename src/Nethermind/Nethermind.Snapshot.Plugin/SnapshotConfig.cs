@@ -6,5 +6,8 @@ namespace Nethermind.Snapshot.Plugin;
 public class SnapshotConfig : ISnapshotConfig
 {
     public bool Enabled { get; set; }
+
     public string? DownloadUrl { get; set; }
+
+    public string? Checksum { get; set; }
 }
