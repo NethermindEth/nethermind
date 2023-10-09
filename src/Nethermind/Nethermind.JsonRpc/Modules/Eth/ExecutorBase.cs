@@ -10,8 +10,8 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 
 public abstract class ExecutorBase<TResult, TRequest, TProcessing>
 {
+    private readonly IBlockFinder _blockFinder;
     protected readonly IBlockchainBridge _blockchainBridge;
-    protected readonly IBlockFinder _blockFinder;
     protected readonly IJsonRpcConfig _rpcConfig;
 
     protected ExecutorBase(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
@@ -34,8 +34,7 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
         BlockHeader header = searchResult.Object;
         if (!_blockchainBridge.HasStateForBlock(header!))
         {
-            return ResultWrapper<TResult>.Fail($"No state available for block {header.Hash}",
-                ErrorCodes.ResourceUnavailable);
+            return ResultWrapper<TResult>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
         }
 
         using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
@@ -47,6 +46,6 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
 
     protected abstract ResultWrapper<TResult> Execute(BlockHeader header, TProcessing tx, CancellationToken token);
 
-    protected ResultWrapper<TResult> GetInputError(CallOutput result) =>
-        ResultWrapper<TResult>.Fail(result.Error, ErrorCodes.InvalidInput);
+    protected ResultWrapper<TResult>? TryGetInputError(CallOutput result) =>
+        result.InputError ? ResultWrapper<TResult>.Fail(result.Error!, ErrorCodes.InvalidInput) : null;
 }

@@ -42,7 +42,6 @@ namespace Nethermind.HealthChecks.Test
             ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
             IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
             INethermindApi api = Substitute.For<INethermindApi>();
-            api.SpecProvider = Substitute.For<ISpecProvider>();
             blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
             blockProducer.IsProducingBlocks(Arg.Any<ulong?>()).Returns(test.IsProducingBlocks);
             syncServer.GetPeerCount().Returns(test.PeerCount);
@@ -112,8 +111,6 @@ namespace Nethermind.HealthChecks.Test
             drive.AvailableFreeSpace.Returns(_freeSpaceBytes);
             drive.TotalSize.Returns((long)(_freeSpaceBytes * 100.0 / test.AvailableDiskSpacePercent));
             drive.RootDirectory.FullName.Returns("C:/");
-
-            api.SpecProvider = Substitute.For<ISpecProvider>();
             api.SpecProvider.TerminalTotalDifficulty.Returns(UInt256.Zero);
 
             BlockHeaderBuilder GetBlockHeader(int blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);

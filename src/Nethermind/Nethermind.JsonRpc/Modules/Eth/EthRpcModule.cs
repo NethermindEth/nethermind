@@ -333,11 +333,9 @@ public partial class EthRpcModule : IEthRpcModule
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter);
 
-    public ResultWrapper<IReadOnlyList<MultiCallBlockResult>> eth_multicallV1(MultiCallPayload<TransactionForRpc> payload, BlockParameter? blockParameter = null)
-    {
-        return new MultiCallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
+    public ResultWrapper<IReadOnlyList<MultiCallBlockResult>> eth_multicallV1(MultiCallPayload<TransactionForRpc> payload, BlockParameter? blockParameter = null) =>
+        new MultiCallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .Execute(payload, blockParameter);
-    }
 
 
     public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter) =>

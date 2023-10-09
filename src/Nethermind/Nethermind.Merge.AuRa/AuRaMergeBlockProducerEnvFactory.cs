@@ -24,8 +24,6 @@ namespace Nethermind.Merge.AuRa;
 public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
 {
     private readonly AuRaNethermindApi _auraApi;
-    private readonly IAuraConfig _auraConfig;
-    private readonly DisposableStack _disposeStack;
 
     public AuRaMergeBlockProducerEnvFactory(
         AuRaNethermindApi auraApi,
@@ -57,8 +55,6 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             logManager)
     {
         _auraApi = auraApi;
-        _auraConfig = auraConfig;
-        _disposeStack = disposeStack;
     }
 
     protected override BlockProcessor CreateBlockProcessor(

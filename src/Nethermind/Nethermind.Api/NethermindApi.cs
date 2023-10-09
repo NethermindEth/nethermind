@@ -60,9 +60,14 @@ namespace Nethermind.Api
 {
     public class NethermindApi : INethermindApi
     {
-        public NethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager, ChainSpec chainSpec)
+        public NethermindApi(
+            IConfigProvider configProvider,
+            IJsonSerializer jsonSerializer,
+            ILogManager logManager,
+            ChainSpec chainSpec)
         {
             ConfigProvider = configProvider;
+            SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, logManager);
             EthereumJsonSerializer = jsonSerializer;
             LogManager = logManager;
             ChainSpec = chainSpec;
@@ -72,6 +77,8 @@ namespace Nethermind.Api
 
         private IReadOnlyDbProvider? _readOnlyDbProvider;
         private IReadOnlyDbProvider? _multiCallReadOnlyDbProvider;
+        private ISealEngine? _sealEngine;
+        private IGasLimitCalculator? _gasLimitCalculator;
 
         public IBlockchainBridge CreateBlockchainBridge()
         {
@@ -169,17 +176,16 @@ namespace Nethermind.Api
         public IRpcAuthentication? RpcAuthentication { get; set; }
         public IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
         public ISealer? Sealer { get; set; } = NullSealEngine.Instance;
-        public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.None;
         public ISealValidator? SealValidator { get; set; } = NullSealEngine.Instance;
-        private ISealEngine? _sealEngine;
+
         public ISealEngine SealEngine
         {
             get => _sealEngine ??= new SealEngine(Sealer, SealValidator);
-            init => _sealEngine = value;
+            set => _sealEngine = value;
         }
 
         public ISessionMonitor? SessionMonitor { get; set; }
-        public ISpecProvider? SpecProvider { get; set; }
+        public ISpecProvider SpecProvider { get; set; }
         public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
         public ISyncModeSelector? SyncModeSelector { get; set; }
         public ISyncProgressResolver? SyncProgressResolver { get; set; }
@@ -207,7 +213,12 @@ namespace Nethermind.Api
         public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
         public TxValidator? TxValidator { get; set; }
         public IBlockFinalizationManager? FinalizationManager { get; set; }
-        public IGasLimitCalculator? GasLimitCalculator { get; set; }
+
+        public IGasLimitCalculator? GasLimitCalculator
+        {
+            get => _gasLimitCalculator ??= new FollowOtherMiners(SpecProvider);
+            set => _gasLimitCalculator = value;
+        }
 
         public IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
         public IGasPriceOracle? GasPriceOracle { get; set; }

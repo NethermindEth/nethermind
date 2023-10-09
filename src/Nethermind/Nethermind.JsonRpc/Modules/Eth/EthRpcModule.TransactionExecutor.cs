@@ -22,19 +22,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
         // Single call executor
         private abstract class TxExecutor<TResult> : ExecutorBase<TResult, TransactionForRpc, Transaction>
         {
-            protected TxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig) :
-                base(blockchainBridge, blockFinder, rpcConfig)
-            { }
+            protected TxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
+                : base(blockchainBridge, blockFinder, rpcConfig) { }
 
-            protected override Transaction Prepare(TransactionForRpc call)
-            {
-                return call.ToTransaction(_blockchainBridge.GetChainId());
+            protected override Transaction Prepare(TransactionForRpc call) => call.ToTransaction(_blockchainBridge.GetChainId());
 
-            }
-            protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, CancellationToken token)
-            {
-                return ExecuteTx(header, tx, token);
-            }
+            protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, CancellationToken token) => ExecuteTx(header, tx, token);
 
             public override ResultWrapper<TResult> Execute(
                 TransactionForRpc transactionCall,
@@ -44,12 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return base.Execute(transactionCall, blockParameter);
             }
 
-            public ResultWrapper<TResult> ExecuteTx(
-                TransactionForRpc transactionCall,
-                BlockParameter? blockParameter)
-            {
-                return Execute(transactionCall, blockParameter);
-            }
+            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter) => Execute(transactionCall, blockParameter);
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token);
         }
@@ -65,14 +53,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.Call(header, tx, token);
 
-                if (result.Error is null)
-                {
-                    return ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
-                }
-
-                return result.InputError
-                    ? GetInputError(result)
-                    : ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
+                return result.Error is null
+                    ? ResultWrapper<string>.Success(result.OutputData.ToHexString(true))
+                    : TryGetInputError(result) ?? ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
             }
 
         }
@@ -88,14 +71,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.EstimateGas(header, tx, token);
 
-                if (result.Error is null)
-                {
-                    return ResultWrapper<UInt256?>.Success((UInt256)result.GasSpent);
-                }
-
-                return result.InputError
-                    ? GetInputError(result)
-                    : ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.ExecutionError);
+                return result.Error is null
+                    ? ResultWrapper<UInt256?>.Success((UInt256)result.GasSpent)
+                    : TryGetInputError(result) ?? ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.ExecutionError);
             }
         }
 
@@ -113,14 +91,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, _optimize);
 
-                if (result.Error is null)
-                {
-                    return ResultWrapper<AccessListForRpc>.Success(new(GetResultAccessList(tx, result), GetResultGas(tx, result)));
-                }
-
-                return result.InputError
-                    ? GetInputError(result)
-                    : ResultWrapper<AccessListForRpc>.Fail(result.Error, ErrorCodes.ExecutionError, new AccessListForRpc(GetResultAccessList(tx, result), GetResultGas(tx, result)));
+                return result.Error is null
+                    ? ResultWrapper<AccessListForRpc>.Success(new(GetResultAccessList(tx, result), GetResultGas(tx, result)))
+                    : TryGetInputError(result) ?? ResultWrapper<AccessListForRpc>.Fail(result.Error, ErrorCodes.ExecutionError, new AccessListForRpc(GetResultAccessList(tx, result), GetResultGas(tx, result)));
             }
 
             private static AccessListItemForRpc[] GetResultAccessList(Transaction tx, CallOutput result)

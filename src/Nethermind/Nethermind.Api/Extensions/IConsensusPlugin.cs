@@ -36,7 +36,7 @@ namespace Nethermind.Api.Extensions
         /// </remarks>
         IBlockProductionTrigger DefaultBlockProductionTrigger { get; }
 
-        INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
-            ILogManager logManager, ChainSpec chainSpec) => new NethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
+        INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager, ChainSpec chainSpec) =>
+            new NethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
     }
 }
