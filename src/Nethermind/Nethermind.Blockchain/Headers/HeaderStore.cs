@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -31,32 +32,23 @@ public class HeaderStore : IHeaderStore
 
     public void Insert(BlockHeader header)
     {
-        // validate hash here
-        // using previously received header RLPs would allows us to save 2GB allocations on a sample
-        // 3M Goerli blocks fast sync
         using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
         Span<byte> blockNumberSpan = stackalloc byte[8];
         header.Number.WriteBigEndian(blockNumberSpan);
-        _blockNumberDb.Set(header.Hash, blockNumberSpan);
         _headerDb.Set(header.Number, header.Hash, newRlp.AsSpan());
+        _blockNumberDb.Set(header.Hash, blockNumberSpan);
     }
 
     public BlockHeader? Get(Keccak blockHash, bool shouldCache = false, long? blockNumber = null)
     {
         blockNumber ??= GetBlockNumberFromBlockNumberDb(blockHash);
 
-        if (blockNumber == null)
+        BlockHeader? header = null;
+        if (blockNumber is not null)
         {
-            return _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+            header = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
         }
-
-        BlockHeader? withNumber = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
-        if (withNumber != null)
-        {
-            return withNumber;
-        }
-
-        return _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+        return header ?? _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
     }
 
     public void Cache(BlockHeader header)
@@ -68,18 +60,38 @@ public class HeaderStore : IHeaderStore
     {
         long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
         if (blockNumber != null) _headerDb.Delete(blockNumber.Value, blockHash);
-        _headerDb.Delete(blockHash);
         _blockNumberDb.Delete(blockHash);
+        _headerDb.Delete(blockHash);
         _headerCache.Delete(blockHash);
     }
 
     private long? GetBlockNumberFromBlockNumberDb(Keccak blockHash)
     {
+        if (_blockNumberDb is IDbWithSpan spanDb)
+        {
+            Span<byte> numberSpan = spanDb.GetSpan(blockHash);
+            if (numberSpan.IsNullOrEmpty()) return null;
+            try
+            {
+                if (numberSpan.Length != 8)
+                {
+                    throw new InvalidDataException($"Unexpected number span length: {numberSpan.Length}");
+                }
+
+                long num = BinaryPrimitives.ReadInt64BigEndian(numberSpan);
+                return num;
+            }
+            finally
+            {
+                spanDb.DangerousReleaseMemory(numberSpan);
+            }
+        }
+
         byte[] numberBytes = _blockNumberDb.Get(blockHash);
         if (numberBytes == null) return null;
         if (numberBytes.Length != 8)
         {
-            throw new Exception($"Unexpected number span length: {numberBytes.Length}");
+            throw new InvalidDataException($"Unexpected number span length: {numberBytes.Length}");
         }
 
         return BinaryPrimitives.ReadInt64BigEndian(numberBytes);
