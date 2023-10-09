@@ -61,7 +61,7 @@ public class DbConfig : IDbConfig
     public bool HeadersDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? HeadersDbMaxOpenFiles { get; set; }
     public long? HeadersDbMaxBytesPerSec { get; set; }
-    public int? HeadersDbBlockSize { get; set; }
+    public int? HeadersDbBlockSize { get; set; } = 32 * 1024;
     public bool? HeadersDbUseDirectReads { get; set; }
     public bool? HeadersDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? HeadersDbCompactionReadAhead { get; set; }
