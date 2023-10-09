@@ -49,7 +49,7 @@ public class LongRawJsonConverter : JsonConverter<long>
     public override long Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
-        JsonSerializerOptions options) => throw new NotImplementedException();
+        JsonSerializerOptions options) => reader.GetInt64();
 
     public override void Write(
         Utf8JsonWriter writer,
