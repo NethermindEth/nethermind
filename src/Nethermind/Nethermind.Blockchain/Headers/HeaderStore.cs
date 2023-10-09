@@ -43,18 +43,17 @@ public class HeaderStore : IHeaderStore
 
     public BlockHeader? Get(Keccak blockHash, bool shouldCache = false, long? blockNumber = null)
     {
+        blockNumber ??= GetBlockNumberFromBlockNumberDb(blockHash);
+
         if (blockNumber == null)
         {
-            blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
+            return _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
         }
 
-        if (blockNumber != null)
+        BlockHeader? withNumber = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+        if (withNumber != null)
         {
-            BlockHeader? withNumber = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
-            if (withNumber != null)
-            {
-                return withNumber;
-            }
+            return withNumber;
         }
 
         return _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
