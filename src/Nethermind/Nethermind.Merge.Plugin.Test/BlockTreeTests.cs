@@ -35,30 +35,16 @@ public partial class BlockTreeTests
         Block genesisBlock = Build.A.Block.WithNumber(0).TestObject;
         TestSpecProvider specProvider = new(London.Instance);
         specProvider.TerminalTotalDifficulty = 0;
-        ;
-        BlockTreeBuilder treeBuilder = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(notSyncedTreeSize);
-        BlockTree notSyncedTree = new(
-            treeBuilder.BlocksDb,
-            treeBuilder.HeadersDb,
-            treeBuilder.BlockInfoDb,
-            treeBuilder.MetadataDb,
-            treeBuilder.ChainLevelInfoRepository,
-            MainnetSpecProvider.Instance,
-            NullBloomStorage.Instance,
-            new SyncConfig(),
-            LimboLogs.Instance);
 
-        BlockTreeBuilder syncedTreeBuilder = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(syncedTreeSize);
-        BlockTree syncedTree = new(
-            syncedTreeBuilder.BlocksDb,
-            syncedTreeBuilder.HeadersDb,
-            syncedTreeBuilder.BlockInfoDb,
-            syncedTreeBuilder.MetadataDb,
-            syncedTreeBuilder.ChainLevelInfoRepository,
-            specProvider,
-            NullBloomStorage.Instance,
-            new SyncConfig(),
-            LimboLogs.Instance);
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(notSyncedTreeSize);
+        BlockTree notSyncedTree = Build.A.BlockTree()
+            .WithDatabaseFrom(treeBuilder)
+            .TestObject;
+
+        BlockTree syncedTree = Build.A.BlockTree(genesisBlock, specProvider)
+            .WithoutSettingHead
+            .OfChainLength(syncedTreeSize)
+            .TestObject;
 
         return (notSyncedTree, syncedTree);
     }
@@ -69,17 +55,9 @@ public partial class BlockTreeTests
         Block genesisBlock = Build.A.Block.WithNumber(0).TestObject;
         TestSpecProvider specProvider = new(London.Instance);
         specProvider.TerminalTotalDifficulty = 0;
+
         BlockTreeBuilder treeBuilder = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(10);
-        BlockTree tree = new(
-            treeBuilder.BlocksDb,
-            treeBuilder.HeadersDb,
-            treeBuilder.BlockInfoDb,
-            treeBuilder.MetadataDb,
-            treeBuilder.ChainLevelInfoRepository,
-            MainnetSpecProvider.Instance,
-            NullBloomStorage.Instance,
-            new SyncConfig(),
-            LimboLogs.Instance);
+        BlockTree tree = Build.A.BlockTree().WithDatabaseFrom(treeBuilder).WithoutSettingHead.BlockTree;
 
         Assert.That(tree.BestKnownNumber, Is.EqualTo(9));
         Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(9));
@@ -92,17 +70,11 @@ public partial class BlockTreeTests
         // every block has difficulty 1000000, block 9 TD: 10000000
         TestSpecProvider specProvider = new(London.Instance);
         specProvider.TerminalTotalDifficulty = (UInt256)9999900;
-        BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(10);
-        BlockTree tree = new(
-            treeBuilder.BlocksDb,
-            treeBuilder.HeadersDb,
-            treeBuilder.BlockInfoDb,
-            treeBuilder.MetadataDb,
-            treeBuilder.ChainLevelInfoRepository,
-            specProvider,
-            NullBloomStorage.Instance,
-            new SyncConfig(),
-            LimboLogs.Instance);
+
+        BlockTree tree = Build.A.BlockTree()
+            .WithSpecProvider(specProvider)
+            .OfChainLength(10)
+            .TestObject;
         PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, LimboLogs.Instance);
 
         Block? block8 = tree.FindBlock(8, BlockTreeLookupOptions.None);
@@ -118,17 +90,10 @@ public partial class BlockTreeTests
     {
         TestSpecProvider specProvider = new(London.Instance);
         specProvider.TerminalTotalDifficulty = (UInt256)9999900;
-        BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(10);
-        BlockTree tree = new(
-            treeBuilder.BlocksDb,
-            treeBuilder.HeadersDb,
-            treeBuilder.BlockInfoDb,
-            treeBuilder.MetadataDb,
-            treeBuilder.ChainLevelInfoRepository,
-            specProvider,
-            NullBloomStorage.Instance,
-            new SyncConfig(),
-            LimboLogs.Instance);
+        BlockTree tree = Build.A.BlockTree()
+            .WithSpecProvider(specProvider)
+            .OfChainLength(10)
+            .TestObject;
         PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, LimboLogs.Instance);
 
         Block? block7 = tree.FindBlock(7, BlockTreeLookupOptions.None);
@@ -152,17 +117,12 @@ public partial class BlockTreeTests
         // every block has difficulty 1000000, block 9 TD: 10000000
         TestSpecProvider specProvider = new(London.Instance);
         specProvider.TerminalTotalDifficulty = (UInt256)9999900;
-        BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(10);
-        BlockTree tree = new(
-            treeBuilder.BlocksDb,
-            treeBuilder.HeadersDb,
-            treeBuilder.BlockInfoDb,
-            treeBuilder.MetadataDb,
-            treeBuilder.ChainLevelInfoRepository,
-            specProvider,
-            NullBloomStorage.Instance,
-            new SyncConfig(),
-            LimboLogs.Instance);
+
+        BlockTree tree = Build.A.BlockTree()
+            .WithSpecProvider(specProvider)
+            .OfChainLength(10)
+            .TestObject;
+
         PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, LimboLogs.Instance);
 
         Block? block8 = tree.FindBlock(8, BlockTreeLookupOptions.None);
@@ -309,31 +269,19 @@ public partial class BlockTreeTests
             {
                 TestSpecProvider testSpecProvider = new TestSpecProvider(London.Instance);
                 if (ttd is not null) testSpecProvider.TerminalTotalDifficulty = ttd;
-                NotSyncedTreeBuilder = Build.A.BlockTree().OfChainLength(notSyncedTreeSize, splitVariant: splitVariant, splitFrom: splitFrom);
-                NotSyncedTree = new(
-                    NotSyncedTreeBuilder.BlocksDb,
-                    NotSyncedTreeBuilder.HeadersDb,
-                    NotSyncedTreeBuilder.BlockInfoDb,
-                    NotSyncedTreeBuilder.MetadataDb,
-                    NotSyncedTreeBuilder.ChainLevelInfoRepository,
-                    testSpecProvider,
-                    NullBloomStorage.Instance,
-                    new SyncConfig(),
-                    LimboLogs.Instance);
+
+                NotSyncedTreeBuilder = Build.A.BlockTree()
+                    .WithSpecProvider(testSpecProvider)
+                    .OfChainLength(notSyncedTreeSize, splitVariant: splitVariant, splitFrom: splitFrom);
+                NotSyncedTree = NotSyncedTreeBuilder.TestObject;
 
                 if (syncedTreeSize > 0)
                 {
-                    _syncedTreeBuilder = Build.A.BlockTree().OfChainLength(syncedTreeSize, splitVariant: syncedSplitVariant, splitFrom: syncedSplitFrom);
-                    SyncedTree = new(
-                        _syncedTreeBuilder.BlocksDb,
-                        _syncedTreeBuilder.HeadersDb,
-                        _syncedTreeBuilder.BlockInfoDb,
-                        _syncedTreeBuilder.MetadataDb,
-                        _syncedTreeBuilder.ChainLevelInfoRepository,
-                        testSpecProvider,
-                        NullBloomStorage.Instance,
-                        new SyncConfig(),
-                        LimboLogs.Instance);
+                    _syncedTreeBuilder = Build.A.BlockTree()
+                        .WithSpecProvider(testSpecProvider)
+                        .OfChainLength(syncedTreeSize, splitVariant: syncedSplitVariant, splitFrom: syncedSplitFrom);
+
+                    SyncedTree = _syncedTreeBuilder.TestObject;
                 }
 
                 _beaconPivot = new BeaconPivot(new SyncConfig(), new MemDb(), SyncedTree, LimboLogs.Instance);
@@ -523,16 +471,10 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder Restart()
             {
-                NotSyncedTree = new(
-                    NotSyncedTreeBuilder!.BlocksDb,
-                    NotSyncedTreeBuilder.HeadersDb,
-                    NotSyncedTreeBuilder.BlockInfoDb,
-                    NotSyncedTreeBuilder.MetadataDb,
-                    NotSyncedTreeBuilder.ChainLevelInfoRepository,
-                    MainnetSpecProvider.Instance,
-                    NullBloomStorage.Instance,
-                    new SyncConfig(),
-                    LimboLogs.Instance);
+                NotSyncedTree = Build.A.BlockTree()
+                    .WithoutSettingHead
+                    .WithDatabaseFrom(NotSyncedTreeBuilder)
+                    .TestObject;
                 _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot!, new SyncConfig(), LimboLogs.Instance);
                 return this;
             }
@@ -846,17 +788,9 @@ public partial class BlockTreeTests
     [Test]
     public void MarkChainAsProcessed_does_not_change_main_chain()
     {
-        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(9);
-        BlockTree blockTree = new(
-            blockTreeBuilder.BlocksDb,
-            blockTreeBuilder.HeadersDb,
-            blockTreeBuilder.BlockInfoDb,
-            blockTreeBuilder.MetadataDb,
-            blockTreeBuilder.ChainLevelInfoRepository,
-            MainnetSpecProvider.Instance,
-            NullBloomStorage.Instance,
-            new SyncConfig(),
-            LimboLogs.Instance);
+        BlockTree blockTree = Build.A.BlockTree()
+            .OfChainLength(9)
+            .TestObject;
         Block? parentBlock = blockTree.FindBlock(8, BlockTreeLookupOptions.None);
         Block newBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(parentBlock!.Header).TestObject).TestObject;
         AddBlockResult addBlockResult = blockTree.SuggestBlock(newBlock);

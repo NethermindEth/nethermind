@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -292,19 +293,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void NewHeadSubscription_should_send_notifications_when_adding_multiple_blocks_at_once_and_after_reorgs()
         {
-            MemDb blocksDb = new();
-            MemDb headersDb = new();
-            MemDb blocksInfosDb = new();
-            ChainLevelInfoRepository chainLevelInfoRepository = new(blocksInfosDb);
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
-            BlockTree blockTree = new(
-                blocksDb,
-                headersDb,
-                blocksInfosDb,
-                chainLevelInfoRepository,
-                specProvider,
-                NullBloomStorage.Instance,
-                LimboLogs.Instance);
+            BlockTree blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithSpecProvider(specProvider)
+                .TestObject;
 
             NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider);
             ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
@@ -349,19 +342,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void NewHeadSubscription_should_send_notifications_in_order()
         {
-            MemDb blocksDb = new();
-            MemDb headersDb = new();
-            MemDb blocksInfosDb = new();
-            ChainLevelInfoRepository chainLevelInfoRepository = new(blocksInfosDb);
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
-            BlockTree blockTree = new(
-                blocksDb,
-                headersDb,
-                blocksInfosDb,
-                chainLevelInfoRepository,
-                specProvider,
-                NullBloomStorage.Instance,
-                LimboLogs.Instance);
+
+            BlockTree blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithSpecProvider(specProvider)
+                .TestObject;
 
             NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider);
             ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();

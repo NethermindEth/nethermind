@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain
     public partial class BlockTree : IBlockTree
     {
         // there is not much logic in the addressing here
-        private static readonly byte[] LowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
+        public static readonly byte[] LowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
         private static byte[] StateHeadHashDbEntryAddress = new byte[16];
         internal static Keccak DeletePointerAddressInDb = new(new BitArray(32 * 8, true).ToBytes());
 
@@ -111,57 +111,6 @@ namespace Nethermind.Blockchain
         public bool CanAcceptNewBlocks => _canAcceptNewBlocksCounter == 0;
 
         private TaskCompletionSource<bool>? _taskCompletionSource;
-
-        public BlockTree(
-            IDbProvider? dbProvider,
-            IChainLevelInfoRepository? chainLevelInfoRepository,
-            ISpecProvider? specProvider,
-            IBloomStorage? bloomStorage,
-            ILogManager? logManager)
-            : this(new BlockStore(dbProvider?.BlocksDb), dbProvider?.HeadersDb, dbProvider?.BlockInfosDb, dbProvider?.MetadataDb,
-                chainLevelInfoRepository, specProvider, bloomStorage, new SyncConfig(), logManager)
-        {
-        }
-
-        public BlockTree(
-            IDbProvider? dbProvider,
-            IChainLevelInfoRepository? chainLevelInfoRepository,
-            ISpecProvider? specProvider,
-            IBloomStorage? bloomStorage,
-            ISyncConfig? syncConfig,
-            ILogManager? logManager)
-            : this(new BlockStore(dbProvider?.BlocksDb), dbProvider?.HeadersDb, dbProvider?.BlockInfosDb, dbProvider?.MetadataDb,
-                chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager)
-        {
-        }
-
-        public BlockTree(
-            IDb? blockDb,
-            IDb? headerDb,
-            IDb? blockInfoDb,
-            IChainLevelInfoRepository? chainLevelInfoRepository,
-            ISpecProvider? specProvider,
-            IBloomStorage? bloomStorage,
-            ILogManager? logManager)
-            : this(new BlockStore(blockDb), headerDb, blockInfoDb, new MemDb(), chainLevelInfoRepository, specProvider, bloomStorage,
-                new SyncConfig(), logManager)
-        {
-        }
-
-        public BlockTree(
-            IDb? blockDb,
-            IDb? headerDb,
-            IDb? blockInfoDb,
-            IDb? metadataDb,
-            IChainLevelInfoRepository? chainLevelInfoRepository,
-            ISpecProvider? specProvider,
-            IBloomStorage? bloomStorage,
-            ISyncConfig? syncConfig,
-            ILogManager? logManager)
-            : this(new BlockStore(blockDb), headerDb, blockInfoDb, metadataDb, chainLevelInfoRepository, specProvider, bloomStorage,
-                syncConfig, logManager)
-        {
-        }
 
         public BlockTree(
             IBlockStore? blockStore,

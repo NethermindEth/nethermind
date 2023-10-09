@@ -4,6 +4,7 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -118,7 +119,7 @@ public class TransactionForRpc
 
     public TxType Type { get; set; }
 
-    public AccessListItemForRpc[]? AccessList { get; set; }
+    public IEnumerable<AccessListItemForRpc>? AccessList { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UInt256? MaxFeePerBlobGas { get; set; } // eip4844
