@@ -41,6 +41,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             IBlockProductionTrigger blockProductionTrigger,
             ITxSource? txSource = null)
         {
+
             return new PostMergeBlockProducer(
                 txSource ?? producerEnv.TxSource,
                 producerEnv.ChainProcessor,

@@ -105,7 +105,7 @@ namespace Nethermind.Consensus.Processing
 
                 if (args.Action != TxAction.Add)
                 {
-                    _logger.Info($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
+                    if (_logger.IsInfo) _logger.Info($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
                 }
                 else
                 {

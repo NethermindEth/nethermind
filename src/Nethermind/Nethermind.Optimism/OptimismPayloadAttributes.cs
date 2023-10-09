@@ -110,27 +110,6 @@ public class OptimismPayloadAttributes : PayloadAttributes
         }
 
         sb.Append('}');
-        // sb.AppendLine();
-        //
-        // sb.AppendLine("--------");
-        // Transaction[] txs = GetTransactions()?.ToArray() ?? Array.Empty<Transaction>();
-        // for (int i =0; i<txs.Length; i++)
-        // {
-        //     Transaction tx = txs[i];
-        //     sb.AppendLine(Transactions?[i].ToHexString());
-        //     sb.AppendLine("[");
-        //     sb.AppendLine($"  {tx.SourceHash}");
-        //     sb.AppendLine($"  {tx.SenderAddress}");
-        //     sb.AppendLine($"  {tx.To}");
-        //     sb.AppendLine($"  {tx.Mint}");
-        //     sb.AppendLine($"  {tx.Value}");
-        //     sb.AppendLine($"  {tx.GasLimit}");
-        //     sb.AppendLine($"  {tx.IsOPSystemTransaction}");
-        //     sb.AppendLine($"  {tx.DataLength.ToHexString()}");
-        //     sb.AppendLine("]");
-        // }
-        // sb.AppendLine("--------");
-
         return sb.ToString();
     }
 }
