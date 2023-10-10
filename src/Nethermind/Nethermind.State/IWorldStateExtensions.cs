@@ -34,7 +34,9 @@ namespace Nethermind.State
             stateProvider.Accept(collector, stateProvider.StateRoot, new VisitingOptions
             {
                 MaxDegreeOfParallelism = Environment.ProcessorCount,
-                FullScanMemoryBudget = 16.GiB(), // Gonna guess that if you are running this, you have a decent setup.
+                //FullScanMemoryBudget = 16.GiB(), // Gonna guess that if you are running this, you have a decent setup.
+                //disable BatchedTrieVisitor as not compatible with path storage
+                FullScanMemoryBudget = 0
             });
             return collector.Stats;
         }

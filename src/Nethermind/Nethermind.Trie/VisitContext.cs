@@ -60,7 +60,13 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieVisitContext Clone() => (TrieVisitContext)MemberwiseClone();
+        public TrieVisitContext Clone()
+        {
+            TrieVisitContext cloned = (TrieVisitContext)MemberwiseClone();
+            if (_absolutePathNibbles is not null) 
+                cloned._absolutePathNibbles = new List<byte>(_absolutePathNibbles);
+            return cloned;
+        }
 
         public void Dispose()
         {
