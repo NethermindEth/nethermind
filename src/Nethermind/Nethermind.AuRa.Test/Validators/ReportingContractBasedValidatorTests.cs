@@ -77,7 +77,7 @@ namespace Nethermind.AuRa.Test.Validators
                 .ShouldValidatorReport(Arg.Is<BlockHeader>(h => h.Number == blockNumber - 1), NodeAddress, MaliciousMinerAddress, Arg.Any<UInt256>())
                 .Returns(0 < validatorsToReport, Enumerable.Range(1, 15).Select(i => i < validatorsToReport).ToArray());
 
-            context.ContractBasedValidator.BlockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.None)
+            context.ContractBasedValidator.BlockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.None, blockNumber: Arg.Any<long>())
                 .Returns(Build.A.BlockHeader.WithNumber(blockNumber - 1).TestObject);
 
             bool isPosDao = blockNumber >= context.PosdaoTransition;

@@ -162,7 +162,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, out Block? block)
         {
-            BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash);
+            BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
             Keccak rootHash = TxTrie.CalculateRoot(blockBody.Transactions);
             bool txRootIsValid = rootHash == header.TxRoot;
             bool unclesHashIsValid = UnclesHash.Calculate(blockBody.Uncles) == header.UnclesHash;

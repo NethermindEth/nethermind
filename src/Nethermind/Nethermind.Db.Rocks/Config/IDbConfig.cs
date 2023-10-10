@@ -69,6 +69,19 @@ public interface IDbConfig : IConfig
     IDictionary<string, string>? HeadersDbAdditionalRocksDbOptions { get; set; }
     ulong? HeadersDbMaxBytesForLevelBase { get; set; }
 
+    ulong BlockNumbersDbWriteBufferSize { get; set; }
+    uint BlockNumbersDbWriteBufferNumber { get; set; }
+    ulong BlockNumbersDbBlockCacheSize { get; set; }
+    bool BlockNumbersDbCacheIndexAndFilterBlocks { get; set; }
+    int? BlockNumbersDbMaxOpenFiles { get; set; }
+    long? BlockNumbersDbMaxBytesPerSec { get; set; }
+    int? BlockNumbersDbBlockSize { get; set; }
+    bool? BlockNumbersDbUseDirectReads { get; set; }
+    bool? BlockNumbersDbUseDirectIoForFlushAndCompactions { get; set; }
+    ulong? BlockNumbersDbCompactionReadAhead { get; set; }
+    IDictionary<string, string>? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
+    ulong? BlockNumbersDbMaxBytesForLevelBase { get; set; }
+
     ulong BlockInfosDbWriteBufferSize { get; set; }
     uint BlockInfosDbWriteBufferNumber { get; set; }
     ulong BlockInfosDbBlockCacheSize { get; set; }
