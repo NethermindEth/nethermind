@@ -236,8 +236,7 @@ namespace Nethermind.Consensus.Validators
             if (header.TotalDifficulty == 0)
             {
                 // Same as in BlockTree.SetTotalDifficulty
-                // TODO: Optimism validate td
-                if (!(_blockTree.Genesis!.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0) && (_specProvider.ChainId != 420 && _specProvider.ChainId != 10))
+                if (!(_blockTree.Genesis!.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0))
                 {
                     if (_logger.IsDebug)
                         _logger.Debug($"Invalid block header ({header.Hash}) - zero total difficulty when genesis or ttd is not zero");
