@@ -394,15 +394,19 @@ namespace Nethermind.TxPool
 
                 if (!inserted)
                 {
+                    // it means it failed on adding to the pool - it is possible when new tx has the same sender
+                    // and nonce as already existent tx and is not good enough to replace it
                     Metrics.PendingTransactionsPassedFiltersButCannotReplace++;
                     return AcceptTxResult.ReplacementNotAllowed;
                 }
 
                 if (tx.Hash == removed?.Hash)
                 {
+                    // it means it was added and immediately evicted - pool was full of better txs
                     if (isPersistentBroadcast)
                     {
-                        // it means it was added and immediately evicted - we are adding only to persistent broadcast
+                        // we are adding only to persistent broadcast - not good enough for standard pool,
+                        // but can be good enough for TxBroadcaster pool - for local txs only
                         _broadcaster.Broadcast(tx, isPersistentBroadcast);
                     }
                     Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
@@ -470,6 +474,7 @@ namespace Nethermind.TxPool
                     previousTxBottleneck ??= tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
 
+                    // it is not affecting non-blob txs - for them MaxFeePerBlobGas is null so check is skipped
                     if (tx.MaxFeePerBlobGas < _headInfo.CurrentPricePerBlobGas)
                     {
                         gasBottleneck = UInt256.Zero;
