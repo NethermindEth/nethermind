@@ -15,14 +15,17 @@ public class AccountOverride
     public byte[]? Code { get; set; }
     public Address? MovePrecompileToAddress { get; set; }
 
-
-    //Storage for AccountOverrideState
+    /// <summary>
+    /// Storage for AccountOverrideState
+    /// </summary>
     public Dictionary<UInt256, ValueKeccak>? State { get; set; }
 
-    //Storage difference for AccountOverrideStateDiff
+    /// <summary>
+    /// Storage difference for AccountOverrideStateDiff
+    /// </summary>
     public Dictionary<UInt256, ValueKeccak>? StateDiff { get; set; }
 
-    public AccountOverrideType Type => State != null
+    public AccountOverrideType Type => State is null
         ? AccountOverrideType.AccountOverrideState
         : AccountOverrideType.AccountOverrideStateDiff;
 }

@@ -4,7 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 
-namespace Nethermind.Facade;
+namespace Nethermind.Facade.Multicall;
 
 public class MultiCallOutput
 {

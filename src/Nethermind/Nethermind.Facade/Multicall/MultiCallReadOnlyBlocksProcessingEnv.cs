@@ -5,10 +5,9 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -19,7 +18,7 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Consensus.Processing;
+namespace Nethermind.Facade.Multicall;
 
 public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, IDisposable
 {
@@ -27,7 +26,8 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
     private readonly ILogManager? _logManager;
     private readonly IBlockValidator _blockValidator;
     public ISpecProvider SpecProvider { get; }
-    public IMultiCallVirtualMachine VirtualMachine { get; }
+    public IVirtualMachine VirtualMachine { get; }
+    public OverridableCodeInfoRepository CodeInfoRepository { get; }
 
     // We need ability to get many instances that do not conflict in terms of editable tmp storage - thus we implement env cloning
     public static MultiCallReadOnlyBlocksProcessingEnv Create(
@@ -70,9 +70,9 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
         _logManager = logManager;
         SpecProvider = specProvider;
 
-        VirtualMachine = traceTransfers
-            ? new MultiCallVirtualMachine<MultiCallDoTraceTransfers>(BlockhashProvider, specProvider, logManager)
-            : new MultiCallVirtualMachine<MultiCallDoNotTraceTransfers>(BlockhashProvider, specProvider, logManager);
+        CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
+
+        VirtualMachine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
 
         HeaderValidator headerValidator = new(
             BlockTree,
@@ -92,7 +92,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
 
     public IBlockProcessor GetProcessor()
     {
-        TransactionProcessor transactionProcessor = new(SpecProvider, StateProvider, VirtualMachine, _logManager);
+        TransactionProcessor transactionProcessor = new(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager);
 
         return new BlockProcessor(SpecProvider,
             _blockValidator,

@@ -8,6 +8,7 @@ namespace Nethermind.AccountAbstraction.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
+    [SetCulture("en-US")]
     public class StandardTests
     {
         [Test]

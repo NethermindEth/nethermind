@@ -224,6 +224,15 @@ namespace Nethermind.Core.Extensions
             return nonZeroIndex < 0 ? bytes[^1..] : bytes[nonZeroIndex..];
         }
 
+        public static ReadOnlySpan<byte> WithoutLeadingZeros(this ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length == 0) return new byte[] { 0 };
+
+            int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
+            // Keep one or it will be interpreted as null
+            return nonZeroIndex < 0 ? bytes[^1..] : bytes[nonZeroIndex..];
+        }
+
         public static byte[] Concat(byte prefix, byte[] bytes)
         {
             byte[] result = new byte[1 + bytes.Length];

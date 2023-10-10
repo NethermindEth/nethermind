@@ -8,6 +8,7 @@ namespace Nethermind.Mev.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
+    [SetCulture("en-US")]
     public class PluginTests
     {
         [Test]

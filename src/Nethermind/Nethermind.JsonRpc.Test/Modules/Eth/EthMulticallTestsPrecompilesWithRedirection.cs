@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -30,9 +31,9 @@ public class EthMulticallTestsPrecompilesWithRedirection
         /*
          function ecrecover(bytes32 hash, uint8 v, bytes32 r, bytes32 s) public  returns(address)
         {
-           
+
             address redirectedToAddress = 0x0000000000000000000000000000000000000666;
-                                            
+
             assembly {
                 // Copy msg.data. We take full control of memory in this inline assembly
                 // block because it will not return to Solidity code. We overwrite the
@@ -95,7 +96,6 @@ public class EthMulticallTestsPrecompilesWithRedirection
 
         };
 
-
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
@@ -133,12 +133,10 @@ public class EthMulticallTestsPrecompilesWithRedirection
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
-        ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result =
-            executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
-        byte[] addressBytes = result.Data[0].Calls[0].ReturnData!
-               .SliceWithZeroPaddingEmptyOnError(12, 20);
+        byte[] addressBytes = result.Data[0].Calls.First().ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);
         Address resultingAddress = new(addressBytes);
         Assert.That(resultingAddress, Is.EqualTo(realSenderAccount));
 

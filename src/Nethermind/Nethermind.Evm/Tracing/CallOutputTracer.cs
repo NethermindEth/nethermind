@@ -9,7 +9,7 @@ namespace Nethermind.Evm.Tracing
     public class CallOutputTracer : TxTracer
     {
         public override bool IsTracingReceipt => true;
-        public byte[]? ReturnValue { get; set; }
+        public byte[] ReturnValue { get; set; } = null!;
 
         public long GasSpent { get; set; }
 

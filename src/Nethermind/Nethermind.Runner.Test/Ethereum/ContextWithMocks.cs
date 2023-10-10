@@ -55,7 +55,8 @@ namespace Nethermind.Runner.Test.Ethereum
                 Substitute.For<IConfigProvider>(),
                 Substitute.For<IJsonSerializer>(),
                 LimboLogs.Instance,
-                new ChainSpec { SealEngineType = sealEngine })
+                new ChainSpec { SealEngineType = sealEngine },
+                Substitute.For<ISpecProvider>())
             {
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),

@@ -30,6 +30,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Multicall;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -64,10 +65,11 @@ namespace Nethermind.Api
             IConfigProvider configProvider,
             IJsonSerializer jsonSerializer,
             ILogManager logManager,
-            ChainSpec chainSpec)
+            ChainSpec chainSpec,
+            ISpecProvider? specProvider = null)
         {
             ConfigProvider = configProvider;
-            SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, logManager);
+            SpecProvider = specProvider ?? new ChainSpecBasedSpecProvider(chainSpec, logManager);
             EthereumJsonSerializer = jsonSerializer;
             LogManager = logManager;
             ChainSpec = chainSpec;

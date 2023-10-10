@@ -62,14 +62,17 @@ namespace Nethermind.Blockchain.Test
                 LimboLogs.Instance,
                 transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
+            CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 specProvider,
+                codeInfoRepository,
                 LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new(
                 specProvider,
                 stateProvider,
                 virtualMachine,
+                codeInfoRepository,
                 LimboLogs.Instance);
 
             BlockProcessor blockProcessor = new(

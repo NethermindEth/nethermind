@@ -37,13 +37,13 @@ public class BlockOverride
             _ => throw new OverflowException($"Block Number value is too large, max value {ulong.MaxValue}")
         };
 
-        Address newFeeRecipientAddress = FeeRecipient != null ? FeeRecipient : parent.Beneficiary;
-
+        Address newFeeRecipientAddress = FeeRecipient ?? parent.Beneficiary!;
+        UInt256 newDifficulty = parent.Difficulty == 0 ? 0 : parent.Difficulty + 1;
         BlockHeader? result = new(
-            parent.Hash,
+            parent.Hash!,
             Keccak.OfAnEmptySequenceRlp,
             newFeeRecipientAddress,
-            UInt256.Zero,
+            newDifficulty,
             newBlockNumber,
             newGasLimit,
             newTime,
@@ -51,12 +51,11 @@ public class BlockOverride
         {
             BaseFeePerGas = BaseFeePerGas ?? parent.BaseFeePerGas,
             MixHash = PrevRandao,
-            IsPostMerge = parent.Difficulty == 0
+            IsPostMerge = parent.Difficulty == 0,
+            TotalDifficulty = parent.TotalDifficulty + newDifficulty,
+            SealEngineType = parent.SealEngineType
         };
 
-        UInt256 difficulty = ConstantDifficulty.One.Calculate(result, parent);
-        result.Difficulty = difficulty;
-        result.TotalDifficulty = parent.TotalDifficulty + difficulty;
         return result;
     }
 }

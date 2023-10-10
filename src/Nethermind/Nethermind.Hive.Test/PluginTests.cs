@@ -8,6 +8,7 @@ namespace Nethermind.Hive.Tests
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
+    [SetCulture("en-US")]
     public class PluginTests
     {
         [Test]

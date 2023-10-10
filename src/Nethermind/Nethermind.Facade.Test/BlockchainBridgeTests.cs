@@ -29,6 +29,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
 using Nethermind.Evm;
+using Nethermind.Facade.Multicall;
 
 namespace Nethermind.Facade.Test
 {

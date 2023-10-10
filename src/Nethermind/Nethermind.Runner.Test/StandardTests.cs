@@ -8,6 +8,7 @@ namespace Nethermind.Runner.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
+    [SetCulture("en-US")]
     public class StandardTests
     {
         [Test]

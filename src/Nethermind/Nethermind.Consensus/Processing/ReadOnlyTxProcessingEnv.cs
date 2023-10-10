@@ -37,8 +37,9 @@ namespace Nethermind.Consensus.Processing
             ILogManager? logManager
             ) : base(readOnlyDbProvider, trieStore, blockTree, logManager)
         {
-            IVirtualMachine machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
-            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, machine, logManager);
+            CodeInfoRepository codeInfoRepository = new();
+            IVirtualMachine machine = new VirtualMachine(BlockhashProvider, specProvider, codeInfoRepository, logManager);
+            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, machine, codeInfoRepository, logManager);
         }
 
         public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);

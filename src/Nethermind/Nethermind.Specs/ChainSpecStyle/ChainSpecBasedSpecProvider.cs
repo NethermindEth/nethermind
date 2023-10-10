@@ -15,9 +15,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     public class ChainSpecBasedSpecProvider : ISpecProvider
     {
-        private (ForkActivation Activation, ReleaseSpec Spec)[] _transitions;
-        private ForkActivation? _firstTimestampActivation;
-
+        private readonly (ForkActivation Activation, ReleaseSpec Spec)[] _transitions;
+        private readonly ForkActivation? _firstTimestampActivation;
         private readonly ChainSpec _chainSpec;
         private readonly ILogger _logger;
 
@@ -25,10 +24,10 @@ namespace Nethermind.Specs.ChainSpecStyle
         {
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
             _logger = logManager?.GetClassLogger<ChainSpecBasedSpecProvider>() ?? LimboTraceLogger.Instance;
-            BuildTransitions();
+            (_transitions, TransitionActivations, _firstTimestampActivation) = BuildTransitions();
         }
 
-        private void BuildTransitions()
+        private ((ForkActivation, ReleaseSpec Spec)[], ForkActivation[], ForkActivation) BuildTransitions()
         {
             SortedSet<long> transitionBlockNumbers = new();
             SortedSet<ulong> transitionTimestamps = new();
@@ -93,16 +92,17 @@ namespace Nethermind.Specs.ChainSpecStyle
                 transitionBlockNumbers.Add(bombDelay.Key);
             }
 
-            TransitionActivations = CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps);
-            _transitions = CreateTransitions(_chainSpec, transitionBlockNumbers, transitionTimestamps);
-            _firstTimestampActivation = TransitionActivations.FirstOrDefault(t => t.Timestamp is not null);
-
             if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
                 MergeBlockNumber = (ForkActivation)(_chainSpec.Parameters.TerminalPoWBlockNumber + 1);
             }
 
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
+
+            ForkActivation[] transitionActivations = CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps);
+            return (CreateTransitions(_chainSpec, transitionBlockNumbers, transitionTimestamps),
+                transitionActivations,
+                transitionActivations.FirstOrDefault(t => t.Timestamp is not null));
         }
 
         private static (ForkActivation, ReleaseSpec Spec)[] CreateTransitions(

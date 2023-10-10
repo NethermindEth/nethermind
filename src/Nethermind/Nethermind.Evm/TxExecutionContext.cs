@@ -13,7 +13,7 @@ namespace Nethermind.Evm
         public UInt256 GasPrice { get; }
         public byte[][]? BlobVersionedHashes { get; }
 
-        public TxExecutionContext(BlockExecutionContext blockExecutionContext, Address origin, in UInt256 gasPrice, byte[][] blobVersionedHashes)
+        public TxExecutionContext(BlockExecutionContext blockExecutionContext, Address origin, in UInt256 gasPrice, byte[][]? blobVersionedHashes)
         {
             BlockExecutionContext = blockExecutionContext;
             Origin = origin;
