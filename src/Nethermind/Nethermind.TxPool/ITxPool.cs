@@ -26,7 +26,7 @@ namespace Nethermind.TxPool
         /// Blob txs light equivalences grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
         /// <returns></returns>
-        IDictionary<Address, Transaction[]> GetPendingBlobTransactionsEquivalencesBySender();
+        IDictionary<Address, Transaction[]> GetPendingLightBlobTransactionsBySender();
 
         /// <summary>
         /// from a specific sender, sorted by nonce and later tx pool sorting

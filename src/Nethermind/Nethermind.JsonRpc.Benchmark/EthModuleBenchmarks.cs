@@ -3,8 +3,10 @@
 
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -64,7 +66,16 @@ namespace Nethermind.JsonRpc.Benchmark
             StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
 
             ChainLevelInfoRepository chainLevelInfoRepository = new(blockInfoDb);
-            BlockTree blockTree = new(dbProvider, chainLevelInfoRepository, specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree blockTree = new(
+                new BlockStore(dbProvider.BlocksDb),
+                new HeaderStore(dbProvider.HeadersDb, dbProvider.BlockNumbersDb),
+                dbProvider.BlockInfosDb,
+                dbProvider.MetadataDb,
+                chainLevelInfoRepository,
+                specProvider,
+                NullBloomStorage.Instance,
+                new SyncConfig(),
+                LimboLogs.Instance);
             _blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
             _virtualMachine = new VirtualMachine(_blockhashProvider, specProvider, LimboLogs.Instance);
 

@@ -253,7 +253,7 @@ namespace Nethermind.TxPool.Test
             Transaction secondTx = GetTx(secondIsBlob, UInt256.One);
 
             _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-            _txPool.SubmitTx(secondTx, TxHandlingOptions.None).Should().Be(firstIsBlob ^ secondIsBlob ? AcceptTxResult.PendingTxsOfOtherType : AcceptTxResult.Accepted);
+            _txPool.SubmitTx(secondTx, TxHandlingOptions.None).Should().Be(firstIsBlob ^ secondIsBlob ? AcceptTxResult.PendingTxsOfConflictingType : AcceptTxResult.Accepted);
         }
 
         [Test]

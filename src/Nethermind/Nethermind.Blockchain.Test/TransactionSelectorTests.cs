@@ -245,7 +245,7 @@ namespace Nethermind.Blockchain.Test
                     g => g.Key!,
                     g => g.OrderBy(t => t, comparer).ToArray());
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
-            transactionPool.GetPendingBlobTransactionsEquivalencesBySender().Returns(blobTransactions);
+            transactionPool.GetPendingLightBlobTransactionsBySender().Returns(blobTransactions);
             foreach (KeyValuePair<Address, Transaction[]> keyValuePair in blobTransactions)
             {
                 foreach (Transaction blobTx in keyValuePair.Value)

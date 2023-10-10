@@ -41,19 +41,16 @@ namespace Nethermind.Blockchain.Test
             TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
             WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
             StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-            ChainLevelInfoRepository chainLevelInfoRepository = new(memDbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            IBloomStorage bloomStorage = NullBloomStorage.Instance;
             EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
-            _blockTree = new BlockTree(
-                memDbProvider,
-                chainLevelInfoRepository,
-                specProvider,
-                bloomStorage,
-                new SyncConfig(),
-                LimboLogs.Instance);
+
+            _blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithSpecProvider(specProvider)
+                .TestObject;
+
             TxPool.TxPool txPool = new(
                 ecdsa,
                 new BlobTxStorage(),

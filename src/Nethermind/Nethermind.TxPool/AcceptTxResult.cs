@@ -83,7 +83,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Ignores blob transactions if sender already have pending transactions of other types; ignore other types if has already pending blobs
         /// </summary>
-        public static readonly AcceptTxResult PendingTxsOfOtherType = new(14, nameof(PendingTxsOfOtherType));
+        public static readonly AcceptTxResult PendingTxsOfConflictingType = new(14, nameof(PendingTxsOfConflictingType));
 
         /// <summary>
         /// Ignores transactions if tx type is not supported

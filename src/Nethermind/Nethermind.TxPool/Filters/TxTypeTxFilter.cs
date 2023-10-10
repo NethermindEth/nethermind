@@ -26,7 +26,7 @@ public class TxTypeTxFilter : IIncomingTxFilter
         if (otherTxTypePool.ContainsBucket(tx.SenderAddress!)) // as unknownSenderFilter will run before this one
         {
             Metrics.PendingTransactionsConflictingTxType++;
-            return AcceptTxResult.PendingTxsOfOtherType;
+            return AcceptTxResult.PendingTxsOfConflictingType;
         }
         return AcceptTxResult.Accepted;
     }

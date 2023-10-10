@@ -25,7 +25,8 @@ namespace Nethermind.Blockchain.Find
 
         Block? FindBlock(long blockNumber, BlockTreeLookupOptions options);
 
-        BlockHeader? FindHeader(Keccak blockHash, BlockTreeLookupOptions options);
+        /// Find a header. blockNumber is optional, but specifying it can improve performance.
+        BlockHeader? FindHeader(Keccak blockHash, BlockTreeLookupOptions options, long? blockNumber = null);
 
         BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options);
 
@@ -63,7 +64,7 @@ namespace Nethermind.Blockchain.Find
 
         public Block? FindSafeBlock() => SafeHash is null ? null : FindBlock(SafeHash, BlockTreeLookupOptions.None);
 
-        public BlockHeader? FindHeader(Keccak blockHash) => FindHeader(blockHash, BlockTreeLookupOptions.None);
+        public BlockHeader? FindHeader(Keccak blockHash, long? blockNumber = null) => FindHeader(blockHash, BlockTreeLookupOptions.None, blockNumber: blockNumber);
 
         public BlockHeader? FindHeader(long blockNumber) => FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
 

@@ -38,8 +38,11 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsNonceGap { get; set; }
 
         [CounterMetric]
-        [Description(
-            "Number of pending transactions received that were ignored because of fee lower than the lowest fee in transaction pool.")]
+        [Description("Number of pending transactions received that were ignored because of priority fee lower than minimal requirement.")]
+        public static long PendingTransactionsTooLowPriorityFee { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending transactions received that were ignored because of fee lower than the lowest fee in transaction pool.")]
         public static long PendingTransactionsTooLowFee { get; set; }
 
         [CounterMetric]
