@@ -43,6 +43,12 @@ public class InitDatabaseSnapshot : InitDatabase
     private async Task InitDbFromSnapshot(CancellationToken cancellationToken)
     {
         string dbPath = _api.Config<IInitConfig>().BaseDbPath;
+        if (Path.Exists(dbPath))
+        {
+            if (_logger.IsInfo)
+                _logger.Info($"Database already exists at {dbPath}. Skipping snapshot initialization.");
+            return;
+        }
 
         ISnapshotConfig snapshotConfig = _api.Config<ISnapshotConfig>();
         string snapshotUrl = snapshotConfig.DownloadUrl ??
@@ -132,17 +138,6 @@ public class InitDatabaseSnapshot : InitDatabase
     private Task ExtractSnapshotTo(string snapshotPath, string dbPath, CancellationToken cancellationToken) =>
         Task.Run(() =>
         {
-            try
-            {
-                if (_logger.IsInfo)
-                    _logger.Info($"Deleting existing database at {dbPath}.");
-                Directory.Delete(dbPath, true);
-            }
-            catch (DirectoryNotFoundException)
-            {
-                // ignore
-            }
-
             if (_logger.IsInfo)
                 _logger.Info($"Extracting snapshot to {dbPath}.");
 
