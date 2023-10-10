@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.Producers
             IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(blockNumber);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, specFor1559);
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
-            IDictionary<Address, Transaction[]> pendingBlobTransactionsEquivalences = _transactionPool.GetPendingBlobTransactionsEquivalencesBySender();
+            IDictionary<Address, Transaction[]> pendingBlobTransactionsEquivalences = _transactionPool.GetPendingLightBlobTransactionsBySender();
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
