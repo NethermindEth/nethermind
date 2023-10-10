@@ -1,4 +1,4 @@
-﻿using Nethermind.Api;
+using Nethermind.Api;
 using Nethermind.Api.Extensions;
 
 namespace Nethermind.Snapshot;
