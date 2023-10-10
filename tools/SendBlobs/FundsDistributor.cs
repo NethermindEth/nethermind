@@ -16,42 +16,54 @@ using Org.BouncyCastle.Utilities.Encoders;
 namespace SendBlobs;
 internal class FundsDistributor
 {
+    private readonly INodeManager _nodeManager;
+    private readonly ulong _chainId;
+    private readonly string? _keyFilePath;
+    private readonly ILogManager _logManager;
+
+    public FundsDistributor(INodeManager nodeManager, ulong chainId, string? keyFilePath, ILogManager logManager)
+    {
+        _nodeManager = nodeManager ?? throw new ArgumentNullException(nameof(nodeManager));
+        _chainId = chainId;
+        _keyFilePath = keyFilePath;
+        _logManager = logManager;
+    }
+
     /// <summary>
     /// Distribute the available funds from an address to a number of newly generated private keys.
     /// </summary>
-    /// <param name="nodeManager"></param>
-    /// <param name="chainId"></param>
     /// <param name="distributeFrom"></param>
     /// <param name="keysToMake"></param>
-    /// <param name="keyFilePath">Path to a file </param>
+    /// <param name="maxFee"></param>
+    /// <param name="maxPriorityFee"></param>
     /// <returns><see cref="IEnumerable{string}"/> containing all the executed tx hashes.</returns>
-    /// <exception cref="Exception"></exception>
-    public async static Task<IEnumerable<string>> DitributeFunds(INodeManager nodeManager, ulong chainId, Signer distributeFrom, uint keysToMake, string keyFilePath, UInt256 maxFee, UInt256 maxPriorityFee)
+    /// <exception cref="AccountException"></exception>
+    public async Task<IEnumerable<string>> DitributeFunds(Signer distributeFrom, uint keysToMake, UInt256 maxFee, UInt256 maxPriorityFee)
     {
-        string? balanceString = await nodeManager.Post("eth_getBalance", distributeFrom.Address, "latest");
+        string? balanceString = await _nodeManager.Post("eth_getBalance", distributeFrom.Address, "latest");
         if (balanceString is null)
-            throw new Exception($"Unable to get balance for {distributeFrom.Address}");
-        string? nonceString = await nodeManager.Post<string>("eth_getTransactionCount", distributeFrom.Address, "latest");
+            throw new AccountException($"Unable to get balance for {distributeFrom.Address}");
+        string? nonceString = await _nodeManager.Post<string>("eth_getTransactionCount", distributeFrom.Address, "latest");
         if (nonceString is null)
-            throw new Exception($"Unable to get nonce for {distributeFrom.Address}");
+            throw new AccountException($"Unable to get nonce for {distributeFrom.Address}");
 
-        string? gasPriceRes = await nodeManager.Post<string>("eth_gasPrice") ?? "1";
-        UInt256 gasPrice = (UInt256)Convert.ToUInt64(gasPriceRes, gasPriceRes.StartsWith("0x") ? 16 : 10);
+        string? gasPriceRes = await _nodeManager.Post<string>("eth_gasPrice") ?? "1";
+        UInt256 gasPrice = HexConvert.ToUInt256(gasPriceRes);
 
         string? maxPriorityFeePerGasRes;
         UInt256 maxPriorityFeePerGas = maxPriorityFee;
         if (maxPriorityFee == 0)
         {
-            maxPriorityFeePerGasRes = await nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
-            maxPriorityFeePerGas = (UInt256)Convert.ToUInt64(maxPriorityFeePerGasRes, maxPriorityFeePerGasRes.StartsWith("0x") ? 16 : 10);
+            maxPriorityFeePerGasRes = await _nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
+            maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
         }
 
         UInt256 balance = new UInt256(Bytes.FromHexString(balanceString));
 
         if (balance == 0)
-            throw new Exception($"Balance on provided signer {distributeFrom.Address} is 0.");
+            throw new AccountException($"Balance on provided signer {distributeFrom.Address} is 0.");
 
-        ulong nonce = Convert.ToUInt64(nonceString, nonceString.StartsWith("0x") ? 16 : 10);
+        ulong nonce = HexConvert.ToUInt64(nonceString);
 
         UInt256 approxGasFee = (gasPrice + maxPriorityFeePerGas) * GasCostOf.Transaction;
 
@@ -60,7 +72,7 @@ internal class FundsDistributor
         UInt256 totalFee = approxGasFee * keysToMake;
 
         if (balanceMinusBuffer <= totalFee)
-            throw new Exception($"Not enough balance on {distributeFrom.Address} to distribute to {keysToMake} addresses");
+            throw new AccountException($"Not enough balance on {distributeFrom.Address} to distribute to {keysToMake} addresses");
 
         UInt256 balanceToDistribute = balanceMinusBuffer - totalFee;
 
@@ -72,78 +84,92 @@ internal class FundsDistributor
         List<string> txHash = new List<string>();
 
         TxDecoder txDecoder = new();
+        StreamWriter? keyWriter = null;
 
-        foreach (PrivateKey key in privateKeys)
+        if (!string.IsNullOrWhiteSpace(_keyFilePath))
         {
-            if (maxFee == 0)
-            {
-                gasPriceRes = await nodeManager.Post<string>("eth_gasPrice") ?? "1";
-                gasPrice = (UInt256)Convert.ToUInt64(gasPriceRes, gasPriceRes.StartsWith("0x") ? 16 : 10);
-
-                maxPriorityFeePerGasRes = await nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
-                maxPriorityFeePerGas = (UInt256)Convert.ToUInt64(maxPriorityFeePerGasRes, maxPriorityFeePerGasRes.StartsWith("0x") ? 16 : 10);
-            }
-
-            Transaction tx = CreateTx(chainId,
-                                      key.Address,
-                                      maxFee != 0 ? maxFee : gasPrice + maxPriorityFeePerGas,
-                                      nonce,
-                                      maxPriorityFeePerGas,
-                                      perKeyToSend);
-
-            await distributeFrom.Sign(tx);
-
-            string txRlp = Hex.ToHexString(txDecoder
-                .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
-
-            string? result = await nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
-            if (result != null)
-                txHash.Add(result);
-            nonce++;
+            if (File.Exists(_keyFilePath))
+                File.Delete(_keyFilePath);
+            keyWriter = File.AppendText(_keyFilePath);
         }
-        if (!string.IsNullOrWhiteSpace(keyFilePath))
-            File.WriteAllLines(keyFilePath, privateKeys.Select(k => k.ToString()), Encoding.ASCII);
+
+        using (keyWriter)
+        {
+            foreach (PrivateKey key in privateKeys)
+            {
+                if (maxFee == 0)
+                {
+                    gasPriceRes = await _nodeManager.Post<string>("eth_gasPrice") ?? "1";
+                    gasPrice = HexConvert.ToUInt256(gasPriceRes);
+
+                    maxPriorityFeePerGasRes = await _nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
+                    maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
+                }
+
+                Transaction tx = CreateTx(_chainId,
+                                          key.Address,
+                                          maxFee != 0 ? maxFee : gasPrice + maxPriorityFeePerGas,
+                                          nonce,
+                                          maxPriorityFeePerGas,
+                                          perKeyToSend);
+
+                await distributeFrom.Sign(tx);
+
+                string txRlp = Hex.ToHexString(txDecoder
+                    .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
+
+                string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
+                if (result != null)
+                    txHash.Add(result);
+
+                if (keyWriter != null)
+                    keyWriter.WriteLine(key.ToString());
+
+                nonce++;
+            }
+        }
 
         return txHash;
     }
+
     /// <summary>
     /// Send all available funds from a list of private keys contained in <paramref name="keyFilePath"/> to <paramref name="beneficiary"/>.
     /// </summary>
-    /// <param name="nodeManager"></param>
-    /// <param name="chainId"></param>
     /// <param name="beneficiary"></param>
-    /// <param name="keyFilePath"></param>
-    /// <param name="logManager"></param>
+    /// <param name="maxFee"></param>
+    /// <param name="maxPriorityFee"></param>
     /// <returns><see cref="IEnumerable{string}"/> containing all the executed tx hashes.</returns>
-    public async static Task<IEnumerable<string>> ReclaimFunds(INodeManager nodeManager, ulong chainId, Address beneficiary, string keyFilePath, ILogManager logManager, UInt256 maxFee, UInt256 maxPriorityFee)
+    public async Task<IEnumerable<string>> ReclaimFunds(Address beneficiary, UInt256 maxFee, UInt256 maxPriorityFee)
     {
         IEnumerable<Signer> privateSigners =
-            File.ReadAllLines(keyFilePath, Encoding.ASCII)
-            .Select(k => new Signer(chainId, new PrivateKey(k), logManager));
+            File.ReadAllLines(_keyFilePath)
+            .Select(k => new Signer(_chainId, new PrivateKey(k), _logManager));
 
-        ILogger log = logManager.GetClassLogger();
+        ILogger log = _logManager.GetClassLogger();
         List<string> txHashes = new List<string>();
+        TxDecoder txDecoder = new();
+
         foreach (var signer in privateSigners)
         {
-            string? balanceString = await nodeManager.Post("eth_getBalance", signer.Address, "latest");
+            string? balanceString = await _nodeManager.Post("eth_getBalance", signer.Address, "latest");
             if (balanceString is null)
                 continue;
-            string? nonceString = await nodeManager.Post<string>("eth_getTransactionCount", signer.Address, "latest");
+            string? nonceString = await _nodeManager.Post<string>("eth_getTransactionCount", signer.Address, "latest");
             if (nonceString is null)
                 continue;
 
             UInt256 balance = new UInt256(Bytes.FromHexString(balanceString));
 
-            ulong nonce = Convert.ToUInt64(nonceString, nonceString.StartsWith("0x") ? 16 : 10);
+            ulong nonce = HexConvert.ToUInt64(nonceString);
 
-            string? gasPriceRes = await nodeManager.Post<string>("eth_gasPrice") ?? "1";
-            UInt256 gasPrice = (UInt256)Convert.ToUInt64(gasPriceRes, gasPriceRes.StartsWith("0x") ? 16 : 10);
+            string? gasPriceRes = await _nodeManager.Post<string>("eth_gasPrice") ?? "1";
+            UInt256 gasPrice = HexConvert.ToUInt256(gasPriceRes);
 
             UInt256 maxPriorityFeePerGas = maxPriorityFee;
             if (maxPriorityFee == 0)
             {
-                string? maxPriorityFeePerGasRes = await nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
-                maxPriorityFeePerGas = (UInt256)Convert.ToUInt64(maxPriorityFeePerGasRes, maxPriorityFeePerGasRes.StartsWith("0x") ? 16 : 10);
+                string? maxPriorityFeePerGasRes = await _nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
+                maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
             }
 
             UInt256 approxGasFee = (gasPrice + maxPriorityFeePerGas) * GasCostOf.Transaction;
@@ -156,8 +182,7 @@ internal class FundsDistributor
 
             UInt256 toSend = balance - approxGasFee;
 
-            TxDecoder txDecoder = new();
-            Transaction tx = CreateTx(chainId,
+            Transaction tx = CreateTx(_chainId,
                                       beneficiary,
                                       maxFee != 0 ? maxFee : gasPrice + maxPriorityFeePerGas,
                                       nonce,
@@ -168,7 +193,7 @@ internal class FundsDistributor
             string txRlp = Hex.ToHexString(txDecoder
                 .Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes);
 
-            string? result = await nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
+            string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
             if (result != null)
                 txHashes.Add(result);
         }
