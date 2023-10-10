@@ -143,10 +143,11 @@ public class TestBlockchain : IDisposable
         ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
-        IDb blockDb = new MemDb();
-        IDb headerDb = new MemDb();
-        IDb blockInfoDb = new MemDb();
-        BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+        BlockTree = Builders.Build.A.BlockTree()
+            .WithSpecProvider(SpecProvider)
+            .WithoutSettingHead
+            .TestObject;
+
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
         TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
         TxPool = CreateTxPool();

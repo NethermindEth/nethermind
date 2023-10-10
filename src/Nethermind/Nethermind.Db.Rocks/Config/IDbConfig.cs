@@ -27,6 +27,9 @@ public interface IDbConfig : IConfig
     bool? DisableCompression { get; set; }
     ulong? CompactionReadAhead { get; set; }
     IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
+    ulong? MaxBytesForLevelBase { get; set; }
+    ulong TargetFileSizeBase { get; set; }
+    int TargetFileSizeMultiplier { get; set; }
 
     ulong ReceiptsDbWriteBufferSize { get; set; }
     uint ReceiptsDbWriteBufferNumber { get; set; }
@@ -38,6 +41,7 @@ public interface IDbConfig : IConfig
     bool? ReceiptsDbUseDirectReads { get; set; }
     bool? ReceiptsDbUseDirectIoForFlushAndCompactions { get; set; }
     ulong? ReceiptsDbCompactionReadAhead { get; set; }
+    ulong ReceiptsDbTargetFileSizeBase { get; set; }
     IDictionary<string, string>? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
     ulong BlocksDbWriteBufferSize { get; set; }
@@ -63,6 +67,7 @@ public interface IDbConfig : IConfig
     bool? HeadersDbUseDirectIoForFlushAndCompactions { get; set; }
     ulong? HeadersDbCompactionReadAhead { get; set; }
     IDictionary<string, string>? HeadersDbAdditionalRocksDbOptions { get; set; }
+    ulong? HeadersDbMaxBytesForLevelBase { get; set; }
 
     ulong BlockInfosDbWriteBufferSize { get; set; }
     uint BlockInfosDbWriteBufferNumber { get; set; }
@@ -155,6 +160,7 @@ public interface IDbConfig : IConfig
     bool? StateDbUseDirectIoForFlushAndCompactions { get; set; }
     ulong? StateDbCompactionReadAhead { get; set; }
     bool? StateDbDisableCompression { get; set; }
+    int StateDbTargetFileSizeMultiplier { get; set; }
     IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     /// <summary>
