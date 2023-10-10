@@ -233,6 +233,8 @@ namespace Nethermind.Serialization.Rlp
             }
 
             (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength) = GetContentLength(item, rlpBehaviors);
+            stream.StartSequence(contentLength);
+                
             stream.StartSequence(txsLength);
             for (int i = 0; i < item.Transactions.Length; i++)
             {

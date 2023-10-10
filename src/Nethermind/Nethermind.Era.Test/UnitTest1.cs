@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Era1;
 using Nethermind.Serialization.Rlp;
@@ -27,11 +28,25 @@ public class Tests
     [Test]
     public async Task TestHistoryImport()
     {
-        var sut = await EraIterator.Create("data/mainnet-00000-096013b1.era1");
+        var eraFiles = E2Store.GetAllEraFiles("data", "mainnet");
 
-        await foreach ((Block b, TxReceipt[] r) in sut)
+        foreach (var era in eraFiles)
         {
+            var sut = await EraIterator.Create(era);
+
+            await foreach ((Block b, TxReceipt[] r) in sut)
+            {
+                Debug.WriteLine($"Reencoding block");
+
+                Rlp encodedHeader = new HeaderDecoder().Encode(b.Header);
+                Debug.WriteLine($"Encoded header {BitConverter.ToString(encodedHeader.Bytes).Replace("-","")}");
+                Rlp encodedBody = new BlockBodyDecoder().Encode(b.Body);
+                Debug.WriteLine($"Encoded body {BitConverter.ToString(encodedBody.Bytes).Replace("-", "")}");
+
+                NettyRlpStream encodedReceipt = new ReceiptDecoder().EncodeToNewNettyStream(r);
+            }
         }
+        
     }
 
     [Test]  

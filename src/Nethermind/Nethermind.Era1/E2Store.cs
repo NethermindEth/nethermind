@@ -88,23 +88,33 @@ internal class E2Store : IDisposable
         return files;
     }
 
-    public int WriteEntry(UInt16 type, byte[] bytes)
+    public Task<int> WriteEntry(UInt16 type, byte[] bytes)
     {
-        var buf = new byte[HeaderSize];
-        buf[0] = (byte)type;
-        buf[1] = (byte)(type >> 8);
-        int length = bytes.Length;
-        buf[2] = (byte)(length);
-        buf[3] = (byte)(length >> 8);
-        buf[4] = (byte)(length >> 16);
-        buf[5] = (byte)(length >> 24);
-        var memStream = new MemoryStream();
-        var binaryWriter = new BinaryWriter(memStream);
-        binaryWriter.Write(buf);
-        binaryWriter.Write(bytes);
-        //TODO not correct
-        Debug.WriteLine(BitConverter.ToString(memStream.ToArray()));
-        return bytes.Length + HeaderSize;
+        return WriteEntry(type, bytes, bytes.Length); 
+    }
+    public async Task<int> WriteEntry(UInt16 type, byte[] bytes, int count)
+    {
+        var headerBuffer = ArrayPool<byte>.Shared.Rent(HeaderSize);
+        try
+        {
+            headerBuffer[0] = (byte)type;
+            headerBuffer[1] = (byte)(type >> 8);
+            int length = bytes.Length;
+            headerBuffer[2] = (byte)(length);
+            headerBuffer[3] = (byte)(length >> 8);
+            headerBuffer[4] = (byte)(length >> 16);
+            headerBuffer[5] = (byte)(length >> 24);
+            headerBuffer[6] = 0;
+            headerBuffer[7] = 0;
+
+            await _stream.WriteAsync(headerBuffer, 0, HeaderSize);
+            await _stream.WriteAsync(bytes, 0, count);
+            return bytes.Length + HeaderSize;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(headerBuffer);
+        }
     }
 
     private async Task<EraMetadata> ReadFileMetaData(CancellationToken token = default)
