@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -132,6 +133,7 @@ namespace Nethermind.Db
             db.Remove(key.Bytes);
         }
 
+        [SkipLocalsInit]
         public static void Delete(this IDb db, long blockNumber, Keccak hash)
         {
             Span<byte> key = stackalloc byte[40];
@@ -167,6 +169,7 @@ namespace Nethermind.Db
             db.Remove(key.ToBigEndianByteArrayWithoutLeadingZeros());
         }
 
+        [SkipLocalsInit]
         public static TItem? Get<TItem>(this IDb db, long blockNumber, ValueKeccak hash, IRlpStreamDecoder<TItem> decoder,
             LruCache<ValueKeccak, TItem> cache = null, bool shouldCache = true) where TItem : class
         {
