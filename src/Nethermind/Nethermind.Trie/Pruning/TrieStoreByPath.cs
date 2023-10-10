@@ -188,7 +188,11 @@ namespace Nethermind.Trie.Pruning
                     _ => throw new NotImplementedException()
                 };
 
-                if (_useCommittedCache) _committedNodes[column].SetRootHashForBlock(blockNumber, root?.Keccak);
+                if (_useCommittedCache)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Setting root hash {root?.Keccak} for block {blockNumber}");
+                    _committedNodes[column].SetRootHashForBlock(blockNumber, root?.Keccak);
+                }
 
                 if (trieType == TrieType.State) CurrentPackage = null;
             }

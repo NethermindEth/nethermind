@@ -426,8 +426,8 @@ namespace Nethermind.Trie
             //for diagnostics
             //if (Capability == TrieNodeResolverCapability.Path)
             //{
+            //    byte[] pathValue = TrieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash);
             //    byte[] internalValue = GetInternal(rawKey, rootHash);
-            //    byte[] pathValue = _trieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash);
             //    if (!Bytes.EqualityComparer.Equals(internalValue, pathValue))
             //        if (_logger.IsWarn) _logger.Warn($"Difference for key: {rawKey.ToHexString()} | ST prefix: {StoreNibblePathPrefix?.ToHexString()} | internal: {internalValue?.ToHexString()} | path value: {pathValue?.ToHexString()}");
             //    return pathValue;
@@ -453,6 +453,12 @@ namespace Nethermind.Trie
                 }
                 else
                 {
+                    //is it possible outside of unit tests?
+                    if (RootRef.Keccak is null)
+                    {
+                        RootRef.ResolveNode(TrieStore);
+                        RootRef.ResolveKey(TrieStore, true);
+                    }
                     rootHash = RootRef.Keccak;
                 }
             }
