@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -136,9 +137,8 @@ public class MulticallBridgeHelper
                     return transaction;
                 }
 
-                Transaction[]? transactions = callInputBlock.Calls?.Select(SetTxHashAndMissingDefaults).ToArray();
-
-                Block? currentBlock = new(callHeader, transactions ?? Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
+                IEnumerable<Transaction> transactions = callInputBlock.Calls?.Select(SetTxHashAndMissingDefaults) ?? Array.Empty<Transaction>();
+                Block? currentBlock = new(callHeader, transactions, Array.Empty<BlockHeader>());
                 currentBlock.Header.Hash = currentBlock.Header.CalculateHash();
 
                 ProcessingOptions processingFlags = _multicallProcessingOptions;
@@ -259,11 +259,17 @@ public class MulticallBridgeHelper
 
     private static void UpdateBalance(IWorldState stateProvider, IReleaseSpec currentSpec, Account acc, AccountOverride accountOverride, UInt256 balance, Address address)
     {
-        UInt256 accBalance = acc.Balance;
-        if (accountOverride.Balance != null && accBalance > balance)
-            stateProvider.SubtractFromBalance(address, accBalance - balance, currentSpec);
-
-        else if (accountOverride.Balance != null && accBalance < balance)
-            stateProvider.AddToBalance(address, balance - accBalance, currentSpec);
+        if (accountOverride.Balance is not null)
+        {
+            UInt256 accBalance = acc.Balance;
+            if (accBalance > balance)
+            {
+                stateProvider.SubtractFromBalance(address, accBalance - balance, currentSpec);
+            }
+            else if (accBalance < balance)
+            {
+                stateProvider.AddToBalance(address, balance - accBalance, currentSpec);
+            }
+        }
     }
 }

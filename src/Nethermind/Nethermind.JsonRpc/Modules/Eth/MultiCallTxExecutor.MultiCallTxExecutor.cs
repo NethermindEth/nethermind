@@ -44,7 +44,7 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResu
 
     protected override ResultWrapper<IReadOnlyList<MultiCallBlockResult>> Execute(BlockHeader header, MultiCallPayload<Transaction> tx, CancellationToken token)
     {
-        MultiCallOutput results = _blockchainBridge.MultiCall(header.Clone(), tx, token);
+        MultiCallOutput results = _blockchainBridge.MultiCall(header, tx, token);
 
         return results.Error is null
             ? ResultWrapper<IReadOnlyList<MultiCallBlockResult>>.Success(results.Items)

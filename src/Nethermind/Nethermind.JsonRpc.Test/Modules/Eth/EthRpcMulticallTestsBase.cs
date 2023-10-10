@@ -29,8 +29,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public class EthRpcMulticallTestsBase
 {
-    public static Task<TestRpcBlockchain> CreateChain(IReleaseSpec? releaseSpec = null,
-        UInt256? initialBaseFeePerGas = null)
+    public static Task<TestRpcBlockchain> CreateChain(IReleaseSpec? releaseSpec = null)
     {
         TestRpcBlockchain testMevRpcBlockchain = new();
         TestSpecProvider testSpecProvider = releaseSpec is not null
@@ -40,9 +39,10 @@ public class EthRpcMulticallTestsBase
     }
 
 
-    public static string getEcRecoverContractJsonAbi(string name = "recover")
+    private static string GetEcRecoverContractJsonAbi(string name = "recover")
     {
-        return $@"[
+        return $@"
+[
   {{
     ""payable"": false,
  	""inputs"": [
@@ -100,10 +100,9 @@ public class EthRpcMulticallTestsBase
         return transactionData;
     }
 
-    public static async Task<Address?> DeployEcRecoverContract(TestRpcBlockchain chain1, PrivateKey fromPrivateKey,
-        string ContractBytecode)
+    public static async Task<Address?> DeployEcRecoverContract(TestRpcBlockchain chain1, PrivateKey fromPrivateKey, string contractBytecode)
     {
-        byte[] bytecode = Bytes.FromHexString(ContractBytecode);
+        byte[] bytecode = Bytes.FromHexString(contractBytecode);
         Transaction tx = new()
         {
             Value = UInt256.Zero,
@@ -139,30 +138,27 @@ public class EthRpcMulticallTestsBase
         //createContractTxReceipt2.ContractAddress
         //    .Should().NotBeNull($"Contract transaction {tx.Hash} was not deployed.");
 
-        Address? contractAddress1;
-        using (SecureStringWrapper pass = new("testB"))
+        using SecureStringWrapper pass = new("testB");
+        wallet.Import(fromPrivateKey.KeyBytes, pass.SecureData);
+        wallet.UnlockAccount(fromPrivateKey.Address, pass.SecureData, TimeSpan.MaxValue);
+        (Keccak hash, AcceptTxResult? code) = await txSender.SendTransaction(tx,
+            TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
+
+        code?.Should().Be(AcceptTxResult.Accepted);
+        Transaction[] txs = chain1.TxPool.GetPendingTransactions();
+
+        await chain1.AddBlock(true, txs);
+
+        TxReceipt? createContractTxReceipt = null;
+        while (createContractTxReceipt == null)
         {
-            wallet.Import(fromPrivateKey.KeyBytes, pass.SecureData);
-            wallet.UnlockAccount(fromPrivateKey.Address, pass.SecureData, TimeSpan.MaxValue);
-            (Keccak hash, AcceptTxResult? code) = await txSender.SendTransaction(tx,
-                TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
-
-            code?.Should().Be(AcceptTxResult.Accepted);
-            Transaction[] txs = chain1.TxPool.GetPendingTransactions();
-
-            await chain1.AddBlock(true, txs);
-
-            TxReceipt? createContractTxReceipt = null;
-            while (createContractTxReceipt == null)
-            {
-                await Task.Delay(100); // wait... todo enforce!
-                createContractTxReceipt = chain1.Bridge.GetReceipt(tx.Hash!);
-            }
-
-            createContractTxReceipt.ContractAddress.Should()
-                .NotBeNull($"Contract transaction {tx.Hash!} was not deployed.");
-            contractAddress1 = createContractTxReceipt.ContractAddress;
+            await Task.Delay(100); // wait... todo enforce!
+            createContractTxReceipt = chain1.Bridge.GetReceipt(tx.Hash!);
         }
+
+        createContractTxReceipt.ContractAddress.Should()
+            .NotBeNull($"Contract transaction {tx.Hash!} was not deployed.");
+        Address? contractAddress1 = createContractTxReceipt.ContractAddress;
 
         return contractAddress1;
     }
@@ -171,7 +167,7 @@ public class EthRpcMulticallTestsBase
         string name = "recover")
     {
         AbiDefinitionParser parser = new();
-        AbiDefinition call = parser.Parse(getEcRecoverContractJsonAbi(name));
+        AbiDefinition call = parser.Parse(GetEcRecoverContractJsonAbi(name));
         AbiEncodingInfo functionInfo = call.GetFunction(name).GetCallInfo();
         byte[] transactionData1 = AbiEncoder.Instance.Encode(functionInfo.EncodingStyle,
             functionInfo.Signature,
@@ -179,10 +175,10 @@ public class EthRpcMulticallTestsBase
         return transactionData1;
     }
 
-    public static Address? GetTransactionResultFromEcRecover(byte[] data, string name = "recover")
+    private static Address? GetTransactionResultFromEcRecover(byte[] data, string name = "recover")
     {
         AbiDefinitionParser parser = new();
-        AbiDefinition call = parser.Parse(getEcRecoverContractJsonAbi(name));
+        AbiDefinition call = parser.Parse(GetEcRecoverContractJsonAbi(name));
         AbiEncodingInfo functionInfo = call.GetFunction("recover").GetReturnInfo();
         Address? transactionData1 = AbiEncoder.Instance.Decode(functionInfo.EncodingStyle,
             functionInfo.Signature, data).FirstOrDefault() as Address;
