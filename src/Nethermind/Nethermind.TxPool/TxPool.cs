@@ -112,6 +112,7 @@ namespace Nethermind.TxPool
             {
                 new NotSupportedTxFilter(txPoolConfig, _logger),
                 new GasLimitTxFilter(_headInfo, txPoolConfig, _logger),
+                new PriorityFeeTooLowFilter(_logger),
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
                 new MalformedTxFilter(_specProvider, validator, _logger)
             };
@@ -716,8 +717,9 @@ namespace Nethermind.TxPool
             if (float.IsNaN(receivedDiscarded)) receivedDiscarded = 0;
 
             logger.Info(@$"
-Txn Pool State ({Metrics.TransactionCount:N0} txns queued)
-Blob txs Pool ({Metrics.BlobTransactionCount:N0} txns queued)
+------------------------------------------------
+TxPool: {Metrics.TransactionCount:N0} txns queued
+BlobPool: {Metrics.BlobTransactionCount:N0} txns queued
 ------------------------------------------------
 Sent
 * Transactions:         {Metrics.PendingTransactionsSent,24:N0}
@@ -730,19 +732,20 @@ Received
 Discarded at Filter Stage:
 1.  NotSupportedTxType  {Metrics.PendingTransactionsNotSupportedTxType,24:N0}
 2.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,24:N0}
-3.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,24:N0}
-4.  Malformed           {Metrics.PendingTransactionsMalformed,24:N0}
-5.  Duplicate:          {Metrics.PendingTransactionsKnown,24:N0}
-6.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,24:N0}
-7.  Conflicting TxType  {Metrics.PendingTransactionsConflictingTxType,24:N0}
-8.  NonceTooFarInFuture {Metrics.PendingTransactionsNonceTooFarInFuture,24:N0}
-9.  Zero Balance:       {Metrics.PendingTransactionsZeroBalance,24:N0}
-10. Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,24:N0}
-11. Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,24:N0}
-12. Nonce used:         {Metrics.PendingTransactionsLowNonce,24:N0}
-13. Nonces skipped:     {Metrics.PendingTransactionsNonceGap,24:N0}
-14. Failed replacement  {Metrics.PendingTransactionsPassedFiltersButCannotReplace,24:N0}
-15. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,24:N0}
+3.  TooLow PriorityFee: {Metrics.PendingTransactionsTooLowPriorityFee,24:N0}
+4.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,24:N0}
+5.  Malformed           {Metrics.PendingTransactionsMalformed,24:N0}
+6.  Duplicate:          {Metrics.PendingTransactionsKnown,24:N0}
+7.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,24:N0}
+8.  Conflicting TxType  {Metrics.PendingTransactionsConflictingTxType,24:N0}
+9.  NonceTooFarInFuture {Metrics.PendingTransactionsNonceTooFarInFuture,24:N0}
+10. Zero Balance:       {Metrics.PendingTransactionsZeroBalance,24:N0}
+11. Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,24:N0}
+12. Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,24:N0}
+13. Nonce used:         {Metrics.PendingTransactionsLowNonce,24:N0}
+14. Nonces skipped:     {Metrics.PendingTransactionsNonceGap,24:N0}
+15. Failed replacement  {Metrics.PendingTransactionsPassedFiltersButCannotReplace,24:N0}
+16. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,24:N0}
 ------------------------------------------------
 Validated via State:    {Metrics.PendingTransactionsWithExpensiveFiltering,24:N0}
 ------------------------------------------------
