@@ -65,15 +65,20 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
 
     public override bool TryGetValue(ValueKeccak hash, [NotNullWhen(true)] out Transaction? fullBlobTx)
     {
+        // Firstly check if tx is present in in-memory collection of light blob txs (without actual blobs).
+        // If not, just return false
         if (base.TryGetValue(hash, out Transaction? lightTx))
         {
+            // tx is present in light collection. Try to get full blob tx from cache
             if (_blobTxCache.TryGet(hash, out fullBlobTx))
             {
                 return true;
             }
 
+            // tx is present, but not cached, at this point we need to load it from db...
             if (_blobTxStorage.TryGet(hash, lightTx.SenderAddress!, lightTx.Timestamp, out fullBlobTx))
             {
+                // ...and we are saving recently used blob tx to cache
                 _blobTxCache.Set(hash, fullBlobTx);
                 return true;
             }
