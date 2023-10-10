@@ -217,10 +217,12 @@ namespace Nethermind.Init.Steps
             BlockhashProvider blockhashProvider = new(
                 getApi.BlockTree, getApi.LogManager);
 
-            VirtualMachine virtualMachine = new(
-                blockhashProvider,
-                getApi.SpecProvider,
-                getApi.LogManager);
+            IVirtualMachine virtualMachine = _api.Plugins
+                .OfType<IVirtualMachine>()
+                .FirstOrDefault(new VirtualMachine(
+                    blockhashProvider,
+                    getApi.SpecProvider,
+                    getApi.LogManager));
 
             _api.TransactionProcessor = new TransactionProcessor(
                 getApi.SpecProvider,
