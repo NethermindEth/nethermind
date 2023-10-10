@@ -9,7 +9,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Snapshot;
+namespace Nethermind.Init.Snapshot;
 
 public class InitDatabaseSnapshot : InitDatabase
 {
