@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection.PortableExecutable;
 using System.Text;
@@ -37,11 +38,17 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
             (b, r) = await Next(cancellationToken);
         }
     }
-    internal static async Task<EraIterator> Create(string file, CancellationToken token = default)
+    internal static Task<EraIterator> Create(string file, CancellationToken token = default)
     {
         if (string.IsNullOrEmpty(file)) throw new ArgumentException("Cannot be null or empty.", nameof(file));
+        return Create(File.OpenRead(file), token);
+    }
+    internal static async Task<EraIterator> Create(Stream stream, CancellationToken token = default)
+    {
+        if (stream == null) throw new ArgumentNullException(nameof(stream));
+        if (!stream.CanRead) throw new ArgumentException("Provided stream is not readable.");
 
-        EraIterator e = new EraIterator(await E2Store.FromStream(File.OpenRead(file), token));
+        EraIterator e = new EraIterator(await E2Store.FromStream(stream, token));
         return e;
     }
     private async Task<(Block?, TxReceipt[]?)> Next(CancellationToken cancellationToken)
@@ -55,6 +62,7 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         byte[] buffer = ArrayPool<byte>.Shared.Rent(E2Store.ValueSizeLimit);
         try
         {
+            Debug.WriteLine($"Reading block entry at index {_currentBlockIndex}");
             (int read, Entry e) = await _store.ReadEntryAt(blockOffset, cancellationToken);
             CheckType(e, E2Store.TypeCompressedHeader);
             blockOffset += read;
@@ -67,16 +75,13 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
             BlockBody body = DecompressAndDecode<BlockBody>(buffer, e);
 
-            //item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
-
-
             (read, e) = await _store.ReadEntryAt(blockOffset, cancellationToken);
             CheckType(e, E2Store.TypeCompressedReceipts);
             blockOffset += read;
 
             read = Decompress(buffer, 0, e);
             TxReceipt[] receipts = DecodeReceipts(buffer, 0, read);
-            //TxReceipt[] receipts = DecompressAndDecode<TxReceipt[]>(buffer, e);
+            
 
             (read, e) = await _store.ReadEntryAt(blockOffset, cancellationToken);
             CheckType(e, E2Store.TypeTotalDifficulty);
@@ -133,18 +138,41 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         return bufferRead;
     }
 
-    private static T DecompressAndDecode<T>(byte[] buffer, Entry e)
+    private static T DecompressAndDecode<T>(byte[] buffer, Entry e) where T : class
     {
         using var decompressionStream = new SnappyStream(e.ValueAsStream(), System.IO.Compression.CompressionMode.Decompress);
         //TODO handle read more than buffer length
         var bufferRead = decompressionStream.Read(buffer, 0, buffer.Length);
         var section = new Span<byte>(buffer, 0, bufferRead);
-        return RlpDecode<T>(section);
+        T? decoded = RlpDecode<T>(section);
+        switch (typeof(T).Name)
+        {
+            case nameof(BlockHeader):
+                Rlp encodedHeader = new HeaderDecoder().Encode((BlockHeader)Convert.ChangeType(decoded, typeof(BlockHeader)));
+                if (!section.SequenceEqual(encodedHeader.Bytes))
+                {
+                    throw new Exception("not equal");
+                }
+                break;
+            case nameof(BlockBody):
+                Rlp encodedBody= new BlockBodyDecoder().Encode((BlockBody)Convert.ChangeType(decoded, typeof(BlockBody)));
+                if (!section.SequenceEqual(encodedBody.Bytes))
+                {
+                    throw new Exception("not equal");
+                }
+                break;
+            
+            default:
+                break;
+        }
+        return decoded;
     }
 
     private static T RlpDecode<T>(Span<byte> buffer)
     {
-        return Rlp.Decode<T>(buffer);
+        T? decoded = Rlp.Decode<T>(buffer);
+        Debug.WriteLine($"Rlp decoded {typeof(T).Name} {BitConverter.ToString(buffer.ToArray()).Replace("-","")}");
+        return decoded;
     }
 
     private bool IsValidFilename(string file)
