@@ -7,7 +7,7 @@ namespace Nethermind.Init.Snapshot;
 
 public interface ISnapshotConfig : IConfig
 {
-    [ConfigItem(Description = "Defines whether the Snapshot plugin is enabled.", DefaultValue = "true")]
+    [ConfigItem(Description = "Defines whether the Snapshot plugin is enabled.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
     [ConfigItem(Description = "URL to snapshot file. Ignored if not set.", DefaultValue = "null")]
