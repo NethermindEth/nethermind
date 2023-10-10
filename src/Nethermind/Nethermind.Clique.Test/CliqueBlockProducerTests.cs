@@ -85,9 +85,6 @@ namespace Nethermind.Clique.Test
                 _blockEvents.Add(privateKey, newHeadBlockEvent);
 
                 MemDb blocksDb = new();
-                MemDb headersDb = new();
-                MemDb blockInfoDb = new();
-
                 MemDb stateDb = new();
                 MemDb codeDb = new();
 
@@ -101,7 +98,11 @@ namespace Nethermind.Clique.Test
                 stateProvider.Commit(goerliSpecProvider.GenesisSpec);
                 stateProvider.CommitTree(0);
 
-                BlockTree blockTree = new(blocksDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), goerliSpecProvider, NullBloomStorage.Instance, nodeLogManager);
+                BlockTree blockTree = Build.A.BlockTree()
+                    .WithSpecProvider(goerliSpecProvider)
+                    .WithBlocksDb(blocksDb)
+                    .WithoutSettingHead
+                    .TestObject;
 
                 blockTree.NewHeadBlock += (sender, args) => { _blockEvents[privateKey].Set(); };
                 ITransactionComparerProvider transactionComparerProvider =
