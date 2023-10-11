@@ -75,8 +75,8 @@ public class HeaderStore : IHeaderStore
         long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
         if (blockNumber != null) return blockNumber.Value;
 
-        BlockHeader? header = Get(blockHash);
-        return header?.Number;
+        // Probably still hash based
+        return Get(blockHash)?.Number;
     }
 
     private long? GetBlockNumberFromBlockNumberDb(Keccak blockHash)
