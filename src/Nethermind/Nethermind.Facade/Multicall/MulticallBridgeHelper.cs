@@ -212,9 +212,9 @@ public class MulticallBridgeHelper
 
     private static void UpdateState(IWorldState stateProvider, AccountOverride accountOverride, Address address)
     {
-        //TODO: discuss if clean slate is a must
         if (accountOverride.State is not null)
         {
+            stateProvider.ClearStorage(address);
             foreach (KeyValuePair<UInt256, ValueKeccak> storage in accountOverride.State)
                 stateProvider.Set(new StorageCell(address, storage.Key), storage.Value.Bytes.WithoutLeadingZeros().ToArray());
         }
