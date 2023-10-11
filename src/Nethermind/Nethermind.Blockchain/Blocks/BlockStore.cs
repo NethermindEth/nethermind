@@ -53,10 +53,7 @@ public class BlockStore : IBlockStore
         // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
         using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
 
-        Span<byte> keyWithBlockNumber = stackalloc byte[40];
-        GetBlockNumPrefixedKey(block.Number, block.Hash, keyWithBlockNumber);
-
-        _blockDb.Set(keyWithBlockNumber, newRlp.AsSpan());
+        _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan());
     }
 
     private static void GetBlockNumPrefixedKey(long blockNumber, Keccak blockHash, Span<byte> output)
@@ -65,28 +62,16 @@ public class BlockStore : IBlockStore
         blockHash!.Bytes.CopyTo(output[8..]);
     }
 
-    public static byte[] GetBlockNumPrefixedKey(long blockNumber, Keccak blockHash)
-    {
-        byte[] output = new byte[40];
-        GetBlockNumPrefixedKey(blockNumber, blockHash,output);
-        return output;
-    }
-
     public void Delete(long blockNumber, Keccak blockHash)
     {
         _blockDb.Remove(blockHash.Bytes);
-        Span<byte> keyWithBlockNumber = stackalloc byte[40];
-        GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
-        _blockDb.Remove(keyWithBlockNumber);
+        _blockDb.Delete(blockNumber, blockHash);
         _blockCache.Delete(blockHash);
     }
 
     public Block? Get(long blockNumber, Keccak blockHash, bool shouldCache = false)
     {
-        Span<byte> keyWithBlockNumber = stackalloc byte[40];
-        GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
-
-        Block? b = _blockDb.Get(blockHash, keyWithBlockNumber, _blockDecoder, _blockCache, shouldCache);
+        Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, shouldCache);
         if (b != null) return b;
         return _blockDb.Get(blockHash, _blockDecoder, _blockCache, shouldCache);
     }

@@ -534,7 +534,8 @@ public partial class BlockTreeTests
                 BlockDecoder blockDecoder = new();
                 Rlp newRlp = blockDecoder.Encode(block);
                 NotSyncedTreeBuilder.BlocksDb.Set(
-                    BlockStore.GetBlockNumPrefixedKey(block.Number, block.GetOrCalculateHash()),
+                    block.Number,
+                    block.GetOrCalculateHash(),
                     newRlp.Bytes);
 
                 return this;
