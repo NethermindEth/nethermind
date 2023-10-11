@@ -7,6 +7,7 @@ using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using System.IO.Compression;
 using System.Security.Cryptography;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Init.Snapshot;
@@ -56,13 +57,22 @@ public class InitDatabaseSnapshot : InitDatabase
         byte[]? snapshotChecksum =
             snapshotConfig.Checksum is null ? null : Bytes.FromHexString(snapshotConfig.Checksum);
 
+        // TODO: use a deterministic temp file name here to allow resuming the download
         string snapshotFileName = Path.GetTempFileName();
 
         await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
+        // schedule the snapshot file deletion, but only if the download completed
+        // otherwise leave it to resume the download later
+        using Reactive.AnonymousDisposable deleteSnapshot = new(() =>
+        {
+            if (_logger.IsInfo)
+                _logger.Info($"Deleting snapshot file {snapshotFileName}.");
+            File.Delete(snapshotFileName);
+        });
 
         if (snapshotChecksum is not null)
         {
-            bool isChecksumValid = await VerifyChecksum(snapshotFileName, snapshotChecksum);
+            bool isChecksumValid = await VerifyChecksum(snapshotFileName, snapshotChecksum, cancellationToken);
             if (!isChecksumValid)
             {
                 if (_logger.IsError)
@@ -125,13 +135,14 @@ public class InitDatabaseSnapshot : InitDatabase
             _logger.Info($"Snapshot downloaded to {snapshotFileName}.");
     }
 
-    private async Task<bool> VerifyChecksum(string snapshotFilePath, byte[] snapshotChecksum)
+    private async Task<bool> VerifyChecksum(
+        string snapshotFilePath, byte[] snapshotChecksum, CancellationToken cancellationToken)
     {
         if (_logger.IsInfo)
             _logger.Info($"Verifying snapshot checksum {snapshotChecksum}.");
 
         await using FileStream fileStream = File.OpenRead(snapshotFilePath);
-        byte[] hash = await SHA256.HashDataAsync(fileStream);
+        byte[] hash = await SHA256.HashDataAsync(fileStream, cancellationToken);
         return Bytes.AreEqual(hash, snapshotChecksum);
     }
 
