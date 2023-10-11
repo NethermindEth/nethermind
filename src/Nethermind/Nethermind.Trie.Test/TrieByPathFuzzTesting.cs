@@ -31,7 +31,7 @@ public class TrieByPathFuzzTesting
     public void SetUp()
     {
         _logManager = LimboLogs.Instance;
-        // new NUnitLogManager(LogLevel.Trace);
+        //_logManager = new NUnitLogManager(LogLevel.Info);
         _logger = _logManager.GetClassLogger();
     }
 
@@ -182,12 +182,31 @@ public class TrieByPathFuzzTesting
         int? seed)
     {
         int usedSeed = seed ?? _random.Next(0, int.MaxValue);
+        FuzzTesting(accountsCount, blocksCount, lookupLimit, usedSeed);
+    }
+
+    [TestCase(1, null)]
+    public void Fuzz_accounts_with_storage_random(int repetition, int? seed)
+    {
+        for (int i = 0; i < repetition; i++)
+        {
+            int usedSeed = seed ?? _random.Next(1, int.MaxValue);
+            _random = new Random(usedSeed);
+            int accountsCount = _random.Next(50, 300);
+            int blocksCount = _random.Next(50, 300);
+            int lookupLimit = _random.Next(20, 25);
+            FuzzTesting(accountsCount, blocksCount, lookupLimit, usedSeed);
+        }
+    }
+
+    private void FuzzTesting(int accountsCount, int blocksCount, int lookupLimit, int usedSeed)
+    {
         _random = new Random(usedSeed);
+        Console.WriteLine($"RANDOM SEED {usedSeed}");
         _logger.Info($"RANDOM SEED {usedSeed}");
 
         string fileName = Path.GetTempFileName();
-        //string fileName = "C:\\Temp\\fuzz.txt";
-        _logger.Info(
+        Console.WriteLine(
             $"Fuzzing with accounts: {accountsCount}, " +
             $"blocks {blocksCount}, " +
             $"lookup: {lookupLimit} into file {fileName}");
@@ -199,16 +218,17 @@ public class TrieByPathFuzzTesting
         Queue<Keccak> rootQueue = new();
 
         MemColumnsDb<StateColumns> memDb = new();
-        MemDb codeDb = new MemDb();
 
+        var codeDb = new MemDb();
         using TrieStoreByPath pathTrieStore = new(memDb, Persist.IfBlockOlderThan(lookupLimit), _logManager);
         WorldState pathStateProvider = new(pathTrieStore, new MemDb(), _logManager);
 
-        using TrieStore trieStore = new(memDb, Nethermind.Trie.Pruning.No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager);
+        using TrieStore trieStore = new(memDb, No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager);
         WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
 
         Account[] accounts = new Account[accountsCount];
         Address[] addresses = new Address[accountsCount];
+        Dictionary<Address, List<int>> indexesPerAccount = new();
 
         for (int i = 0; i < accounts.Length; i++)
         {
@@ -244,6 +264,7 @@ public class TrieByPathFuzzTesting
                     Address address = addresses[randomAddressIndex];
                     Account account = accounts[randomAccountIndex];
                     streamWriter.WriteLine($"{address} {decoder.Encode(account)}");
+
                     bool insertStorage = false;
                     if (stateProvider.AccountExists(address))
                     {
@@ -253,17 +274,13 @@ public class TrieByPathFuzzTesting
                         {
                             if (account.Balance > existing.Balance)
                             {
-                                stateProvider.AddToBalance(
-                                    address, account.Balance - existing.Balance, MuirGlacier.Instance);
-                                pathStateProvider.AddToBalance(
-                                    address, account.Balance - existing.Balance, MuirGlacier.Instance);
+                                stateProvider.AddToBalance(address, account.Balance - existing.Balance, MuirGlacier.Instance);
+                                pathStateProvider.AddToBalance(address, account.Balance - existing.Balance, MuirGlacier.Instance);
                             }
                             else
                             {
-                                stateProvider.SubtractFromBalance(
-                                    address, existing.Balance - account.Balance, MuirGlacier.Instance);
-                                pathStateProvider.SubtractFromBalance(
-                                    address, existing.Balance - account.Balance, MuirGlacier.Instance);
+                                stateProvider.SubtractFromBalance(address, existing.Balance - account.Balance, MuirGlacier.Instance);
+                                pathStateProvider.SubtractFromBalance(address, existing.Balance - account.Balance, MuirGlacier.Instance);
                             }
 
                             stateProvider.IncrementNonce(address);
@@ -280,12 +297,16 @@ public class TrieByPathFuzzTesting
                     if (insertStorage)
                     {
                         streamWriter.WriteLine($"{address} {decoder.Encode(account)}");
-                        int noOfStorage = _random.Next(50);
+                        int noOfStorage = _random.Next(50, 50);
+                        if (!indexesPerAccount.ContainsKey(address))
+                            indexesPerAccount[address] = new List<int>(noOfStorage);
                         for (int j = 1; j < noOfStorage + 1; j++)
                         {
                             int index = _random.Next(1, 5000);
+                            indexesPerAccount[address].Add(index);
                             byte[] storage = new byte[_random.Next(1,32)];
                             _random.NextBytes(storage);
+
                             streamWriter.WriteLine($"{index} {storage.ToHexString()}");
                             stateProvider.Set(new StorageCell(address, (UInt256)index), storage);
                             pathStateProvider.Set(new StorageCell(address, (UInt256)index), storage);
@@ -295,11 +316,10 @@ public class TrieByPathFuzzTesting
             }
             stateProvider.Commit(MuirGlacier.Instance);
             stateProvider.CommitTree(blockNumber);
-
             pathStateProvider.Commit(MuirGlacier.Instance);
             pathStateProvider.CommitTree(blockNumber);
 
-            Assert.That(pathStateProvider.StateRoot, Is.EqualTo(stateProvider.StateRoot));
+            Assert.That(pathStateProvider.StateRoot, Is.EqualTo(stateProvider.StateRoot), $"State root different at block {blockNumber}");
 
             rootQueue.Enqueue(stateProvider.StateRoot);
             streamWriter.WriteLine("#");
@@ -308,237 +328,48 @@ public class TrieByPathFuzzTesting
         streamWriter.Flush();
         fileStream.Seek(0, SeekOrigin.Begin);
 
-        // streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
+        streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
+
         _logger.Info($"DB size: {memDb.Keys.Count}");
+        _logger.Info($"DB path size state: {((IFullDb)memDb.GetColumnDb(StateColumns.State)).Keys.Count}");
+        _logger.Info($"DB path size storage: {((IFullDb)memDb.GetColumnDb(StateColumns.Storage)).Keys.Count}");
 
+        //omit blocks until the last persisted block - otherwise cannot compare the history
+        int omitted = 0;
         int verifiedBlocks = 0;
-
-        while (rootQueue.TryDequeue(out Keccak currentRoot))
-        {
-            try
-            {
-                stateProvider.Reset();
-                pathStateProvider.Reset();
-                stateProvider.StateRoot = currentRoot;
-                pathStateProvider.StateRoot = currentRoot;
-
-                if (rootQueue.Count + 1 <= lookupLimit)
-                {
-                    TrieStats? stats = pathStateProvider.CollectStats(codeDb, LimboLogs.Instance);
-                    Assert.IsTrue(stats.MissingCode == 0);
-                    Assert.IsTrue(stats.MissingState == 0);
-                    Assert.IsTrue(stats.MissingStorage == 0);
-                    Assert.IsTrue(stats.MissingNodes == 0);
-
-                    for (int i = 0; i < addresses.Length; i++)
-                    {
-                        if (stateProvider.AccountExists(addresses[i]))
-                        {
-                            for (int j = 0; j < 256; j++)
-                            {
-                                byte[] value = stateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
-                                byte[] pathValue = pathStateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
-                                Assert.That(pathValue, Is.EqualTo(value).Using(Bytes.EqualityComparer));
-                            }
-                        }
-                    }
-                }
-
-                _logger.Info($"Verified positive {verifiedBlocks}");
-            }
-            catch (Exception ex)
-            {
-                if (verifiedBlocks % lookupLimit == 0)
-                {
-                    throw new InvalidDataException(ex.ToString());
-                }
-                else
-                {
-                    _logger.Info($"Verified negative {verifiedBlocks} which is ok here");
-                }
-            }
-
-            verifiedBlocks++;
-        }
-    }
-
-    [TestCase(1, null)]
-    public void Fuzz_accounts_with_storage_random(int repetition, int? seed)
-    {
-        for (int i = 0; i < repetition; i++)
-        {
-            int usedSeed = seed?? _random.Next(1, int.MaxValue);
-            FuzzTesting(usedSeed);
-        }
-    }
-
-    private void FuzzTesting(int usedSeed)
-    {
-        _random = new Random(usedSeed);
-        Console.WriteLine(usedSeed);
-        _logger.Info($"RANDOM SEED {usedSeed}");
-
-        int accountsCount = _random.Next(50, 500);
-        int blocksCount = _random.Next(50, 500);
-        int lookupLimit = _random.Next(500);
-
-        string fileName = Path.GetTempFileName();
-        //string fileName = "C:\\Temp\\fuzz.txt";
-        Console.WriteLine(
-            $"Fuzzing with accounts: {accountsCount}, " +
-            $"blocks {blocksCount}, " +
-            $"lookup: {lookupLimit} into file {fileName}");
-
-        AccountDecoder decoder = new AccountDecoder();
-        using FileStream fileStream = new(fileName, FileMode.Create);
-        using StreamWriter streamWriter = new(fileStream);
-
-        Queue<Keccak> rootQueue = new();
-
-        MemColumnsDb<StateColumns> memDb = new();
-
-        using TrieStoreByPath trieStore = new(memDb, Persist.IfBlockOlderThan(blocksCount + 1), _logManager);
-        var codeDb = new MemDb();
-        WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
-
-        Account[] accounts = new Account[accountsCount];
-        Address[] addresses = new Address[accountsCount];
-
-        for (int i = 0; i < accounts.Length; i++)
-        {
-            bool isEmptyValue = _random.Next(0, 2) == 0;
-            if (isEmptyValue)
-            {
-                accounts[i] = Account.TotallyEmpty;
-            }
-            else
-            {
-                accounts[i] = TestItem.GenerateRandomAccount();
-            }
-
-            addresses[i] = TestItem.GetRandomAddress(_random);
-        }
-
-        int BoolToInt(bool val)
-        {
-            return val ? 1 : 0;
-        }
-        streamWriter.WriteLine($"{lookupLimit}");
-        for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
-        {
-            bool isEmptyBlock = _random.Next(5) == 0;
-            streamWriter.WriteLine($"{blockNumber} {BoolToInt(isEmptyBlock)}");
-            if (!isEmptyBlock)
-            {
-                for (int i = 0; i < Math.Max(1, accountsCount / 8); i++)
-                {
-                    int randomAddressIndex = _random.Next(addresses.Length);
-                    int randomAccountIndex = _random.Next(accounts.Length);
-
-                    Address address = addresses[randomAddressIndex];
-                    Account account = accounts[randomAccountIndex];
-                    streamWriter.WriteLine($"{address} {decoder.Encode(account)}");
-                    bool insertStorage = false;
-                    if (stateProvider.AccountExists(address))
-                    {
-                        insertStorage = true;
-                        Account existing = stateProvider.GetAccount(address);
-                        if (existing.Balance != account.Balance)
-                        {
-                            if (account.Balance > existing.Balance)
-                            {
-                                stateProvider.AddToBalance(
-                                    address, account.Balance - existing.Balance, MuirGlacier.Instance);
-                            }
-                            else
-                            {
-                                stateProvider.SubtractFromBalance(
-                                    address, existing.Balance - account.Balance, MuirGlacier.Instance);
-                            }
-
-                            stateProvider.IncrementNonce(address);
-                        }
-                    }
-                    else if (!account.IsTotallyEmpty)
-                    {
-                        insertStorage = true;
-                        stateProvider.CreateAccount(address, account.Balance);
-                    }
-
-                    if (insertStorage)
-                    {
-                        streamWriter.WriteLine($"{address} {decoder.Encode(account)}");
-                        int noOfStorage = _random.Next(50);
-                        for (int j = 1; j < noOfStorage + 1; j++)
-                        {
-                            int index = _random.Next(1, 5000);
-                            byte[] storage = new byte[_random.Next(1,32)];
-                            _random.NextBytes(storage);
-                            streamWriter.WriteLine($"{index} {storage.ToHexString()}");
-                            stateProvider.Set(new StorageCell(address, (UInt256)index), storage);
-                        }
-                    }
-                }
-            }
-            stateProvider.Commit(MuirGlacier.Instance);
-            stateProvider.CommitTree(blockNumber);
-            rootQueue.Enqueue(stateProvider.StateRoot);
-            streamWriter.WriteLine("#");
-        }
-
-        streamWriter.Flush();
-        fileStream.Seek(0, SeekOrigin.Begin);
-
-        // streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
-        _logger.Info($"DB size: {memDb.Keys.Count}");
-
-        int verifiedBlocks = 0;
-
-        int ignore = blocksCount - 1;
         do
         {
             rootQueue.TryDequeue(out Keccak _);
-            ignore--;
-
-        } while (ignore > 0);
+            omitted++;
+        } while (omitted < pathTrieStore.LastPersistedBlockNumber);
 
         while (rootQueue.TryDequeue(out Keccak currentRoot))
         {
-            try
+
+            stateProvider.Reset();
+            pathStateProvider.Reset();
+            stateProvider.StateRoot = currentRoot;
+            pathStateProvider.StateRoot = currentRoot;
+
+            TrieStats? stats = pathStateProvider.CollectStats(codeDb, LimboLogs.Instance);
+            Assert.IsTrue(stats.MissingCode == 0);
+            Assert.IsTrue(stats.MissingState == 0);
+            Assert.IsTrue(stats.MissingStorage == 0);
+            Assert.IsTrue(stats.MissingNodes == 0);
+            foreach (Address t in addresses)
             {
-                stateProvider.StateRoot = currentRoot;
-                TrieStats? stats = stateProvider.CollectStats(codeDb, LimboLogs.Instance);
-                Assert.IsTrue(stats.MissingCode == 0);
-                Assert.IsTrue(stats.MissingState == 0);
-                Assert.IsTrue(stats.MissingStorage == 0);
-                Assert.IsTrue(stats.MissingNodes == 0);
-                foreach (Address t in addresses)
+                if (stateProvider.AccountExists(t))
                 {
-                    if (stateProvider.AccountExists(t))
+                    foreach (int index in indexesPerAccount[t])
                     {
-                        for (int j = 0; j < 256; j++)
-                        {
-                            stateProvider.Get(new StorageCell(t, (UInt256)j));
-                        }
+                        byte[] value = stateProvider.Get(new StorageCell(t, (UInt256)index));
+                        byte[] pathValue = pathStateProvider.Get(new StorageCell(t, (UInt256)index));
+                        Assert.That(pathValue, Is.EqualTo(value).Using(Bytes.EqualityComparer), $"Storage slot at {t}.{index} incorrect");
                     }
                 }
-
-                _logger.Info($"Verified positive {verifiedBlocks}");
             }
-            catch (Exception ex)
-            {
-                if (verifiedBlocks % lookupLimit == 0)
-                {
-                    throw new InvalidDataException(ex.ToString());
-                }
-                else
-                {
-                    _logger.Info($"Verified negative {verifiedBlocks} which is ok here");
-                }
-                throw;
-            }
-
             verifiedBlocks++;
         }
+        _logger.Info($"Verified positive {verifiedBlocks}");
     }
 }
