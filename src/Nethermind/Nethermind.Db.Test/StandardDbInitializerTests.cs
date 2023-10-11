@@ -18,7 +18,7 @@ namespace Nethermind.Db.Test
     [Parallelizable(ParallelScope.All)]
     public class StandardDbInitializerTests
     {
-        private string _folderWithDbs;
+        private string _folderWithDbs = null!;
 
         [OneTimeSetUp]
         public void Initialize()
@@ -30,7 +30,7 @@ namespace Nethermind.Db.Test
         [TestCase(true)]
         public async Task InitializerTests_MemDbProvider(bool useReceipts)
         {
-            IDbProvider dbProvider = await InitializeStandardDb(useReceipts, DbModeHint.Mem, "mem");
+            using IDbProvider dbProvider = await InitializeStandardDb(useReceipts, DbModeHint.Mem, "mem");
             Type receiptsType = GetReceiptsType(useReceipts, typeof(MemColumnsDb<ReceiptsColumns>));
             AssertStandardDbs(dbProvider, typeof(MemDb), receiptsType);
             dbProvider.StateDb.Should().BeOfType(typeof(FullPruningDb));
@@ -40,7 +40,7 @@ namespace Nethermind.Db.Test
         [TestCase(true)]
         public async Task InitializerTests_RocksDbProvider(bool useReceipts)
         {
-            IDbProvider dbProvider = await InitializeStandardDb(useReceipts, DbModeHint.Persisted, $"rocks_{useReceipts}");
+            using IDbProvider dbProvider = await InitializeStandardDb(useReceipts, DbModeHint.Persisted, $"rocks_{useReceipts}");
             Type receiptsType = GetReceiptsType(useReceipts);
             AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
             dbProvider.StateDb.Should().BeOfType(typeof(FullPruningDb));
@@ -50,7 +50,7 @@ namespace Nethermind.Db.Test
         [TestCase(true)]
         public async Task InitializerTests_ReadonlyDbProvider(bool useReceipts)
         {
-            IDbProvider dbProvider = await InitializeStandardDb(useReceipts, DbModeHint.Persisted, $"readonly_{useReceipts}");
+            using IDbProvider dbProvider = await InitializeStandardDb(useReceipts, DbModeHint.Persisted, $"readonly_{useReceipts}");
             using ReadOnlyDbProvider readonlyDbProvider = new(dbProvider, true);
             Type receiptsType = GetReceiptsType(useReceipts);
             AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
@@ -62,13 +62,13 @@ namespace Nethermind.Db.Test
         [Test]
         public async Task InitializerTests_WithPruning()
         {
-            IDbProvider dbProvider = await InitializeStandardDb(false, DbModeHint.Mem, "pruning");
+            using IDbProvider dbProvider = await InitializeStandardDb(false, DbModeHint.Mem, "pruning");
             dbProvider.StateDb.Should().BeOfType<FullPruningDb>();
         }
 
         private async Task<IDbProvider> InitializeStandardDb(bool useReceipts, DbModeHint dbModeHint, string path)
         {
-            using IDbProvider dbProvider = new DbProvider(dbModeHint);
+            IDbProvider dbProvider = new DbProvider(dbModeHint);
             RocksDbFactory rocksDbFactory = new(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, path));
             StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), Substitute.For<IFileSystem>());
             await initializer.InitStandardDbsAsync(useReceipts);

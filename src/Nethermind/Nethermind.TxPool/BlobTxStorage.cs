@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -32,7 +33,7 @@ public class BlobTxStorage : ITxStorage
         _lightBlobTxsDb = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
     }
 
-    public bool TryGet(ValueKeccak hash, Address sender, UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
+    public bool TryGet(in ValueKeccak hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
     {
         Span<byte> txHashPrefixed = stackalloc byte[64];
         GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
@@ -63,14 +64,15 @@ public class BlobTxStorage : ITxStorage
         GetHashPrefixedByTimestamp(transaction.Timestamp, transaction.Hash, txHashPrefixed);
 
         int length = _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
-        RlpStream rlpStream = new(length);
+        IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(length);
+        using NettyRlpStream rlpStream = new(byteBuffer);
         rlpStream.Encode(transaction, RlpBehaviors.InMempoolForm);
 
-        _fullBlobTxsDb.Set(txHashPrefixed, rlpStream.Data!);
+        _fullBlobTxsDb.Set(txHashPrefixed, byteBuffer.AsSpan());
         _lightBlobTxsDb.Set(transaction.Hash, _lightTxDecoder.Encode(transaction));
     }
 
-    public void Delete(ValueKeccak hash, UInt256 timestamp)
+    public void Delete(in ValueKeccak hash, in UInt256 timestamp)
     {
         Span<byte> txHashPrefixed = stackalloc byte[64];
         GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);

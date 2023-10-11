@@ -230,34 +230,30 @@ namespace Nethermind.Blockchain.Test
                 new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
-            Dictionary<Address, Transaction[]> transactions = testCase.Transactions
-                .Where(t => t.SenderAddress is not null)
-                .Where(t => !t.SupportsBlobs)
-                .GroupBy(t => t.SenderAddress)
-                .ToDictionary(
-                    g => g.Key!,
-                    g => g.OrderBy(t => t, comparer).ToArray());
-            Dictionary<Address, Transaction[]> blobTransactions = testCase.Transactions
-                .Where(t => t?.SenderAddress is not null)
-                .Where(t => t.SupportsBlobs)
-                .GroupBy(t => t.SenderAddress)
-                .ToDictionary(
-                    g => g.Key!,
-                    g => g.OrderBy(t => t, comparer).ToArray());
+
+            Dictionary<Address, Transaction[]> GroupTransactions(bool supportBlobs) =>
+                testCase.Transactions
+                    .Where(t => t.SenderAddress is not null)
+                    .Where(t => t.SupportsBlobs == supportBlobs)
+                    .GroupBy(t => t.SenderAddress)
+                    .ToDictionary(
+                        g => g.Key!,
+                        g => g.OrderBy(t => t, comparer).ToArray());
+
+            Dictionary<Address, Transaction[]> transactions = GroupTransactions(false);
+            Dictionary<Address, Transaction[]> blobTransactions = GroupTransactions(true);
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
             transactionPool.GetPendingLightBlobTransactionsBySender().Returns(blobTransactions);
-            foreach (KeyValuePair<Address, Transaction[]> keyValuePair in blobTransactions)
+            foreach (Transaction blobTx in blobTransactions.SelectMany(kvp => kvp.Value))
             {
-                foreach (Transaction blobTx in keyValuePair.Value)
+                transactionPool.TryGetPendingBlobTransaction(Arg.Is<Keccak>(h => h == blobTx.Hash),
+                    out Arg.Any<Transaction?>()).Returns(x =>
                 {
-                    transactionPool.TryGetPendingBlobTransaction(Arg.Is<Keccak>(h => h == blobTx.Hash),
-                        out Arg.Any<Transaction?>()).Returns(x =>
-                    {
-                        x[1] = blobTx;
-                        return true;
-                    });
-                }
+                    x[1] = blobTx;
+                    return true;
+                });
             }
+
             BlocksConfig blocksConfig = new() { MinGasPrice = testCase.MinGasPriceForMining };
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
                 .WithMinGasPriceFilter(blocksConfig, specProvider)
@@ -274,6 +270,7 @@ namespace Nethermind.Blockchain.Test
             {
                 parentHeader = parentHeader.WithExcessBlobGas(0);
             }
+
             IEnumerable<Transaction> selectedTransactions =
                 poolTxSource.GetTransactions(parentHeader.TestObject,
                     testCase.GasLimit);
