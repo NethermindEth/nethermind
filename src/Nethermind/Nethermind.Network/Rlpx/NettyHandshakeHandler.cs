@@ -110,7 +110,9 @@ namespace Nethermind.Network.Rlpx
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            string clientId = _session?.Node?.ToString(Node.Format.Console) ?? $"unknown {_session?.RemoteHost}";
+            string clientId = $"unknown {_session?.RemoteHost}";
+            if (_session.RemoteNodeId != null) clientId = _session?.Node?.ToString(Node.Format.Console);
+
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
@@ -127,7 +129,7 @@ namespace Nethermind.Network.Rlpx
                 }
             }
 
-            base.ExceptionCaught(context, exception);
+            _ = context.DisconnectAsync();
         }
 
         protected override void ChannelRead0(IChannelHandlerContext context, IByteBuffer input)
