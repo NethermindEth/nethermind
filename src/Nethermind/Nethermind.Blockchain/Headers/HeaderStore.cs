@@ -33,10 +33,8 @@ public class HeaderStore : IHeaderStore
     public void Insert(BlockHeader header)
     {
         using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
-        Span<byte> blockNumberSpan = stackalloc byte[8];
-        header.Number.WriteBigEndian(blockNumberSpan);
         _headerDb.Set(header.Number, header.Hash, newRlp.AsSpan());
-        _blockNumberDb.Set(header.Hash, blockNumberSpan);
+        InsertBlockNumber(header.Hash, header.Number);
     }
 
     public BlockHeader? Get(Keccak blockHash, bool shouldCache = false, long? blockNumber = null)
@@ -63,6 +61,22 @@ public class HeaderStore : IHeaderStore
         _blockNumberDb.Delete(blockHash);
         _headerDb.Delete(blockHash);
         _headerCache.Delete(blockHash);
+    }
+
+    public void InsertBlockNumber(Keccak blockHash, long blockNumber)
+    {
+        Span<byte> blockNumberSpan = stackalloc byte[8];
+        blockNumber.WriteBigEndian(blockNumberSpan);
+        _blockNumberDb.Set(blockHash, blockNumberSpan);
+    }
+
+    public long? GetBlockNumber(Keccak blockHash)
+    {
+        long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
+        if (blockNumber != null) return blockNumber.Value;
+
+        BlockHeader? header = Get(blockHash);
+        return header?.Number;
     }
 
     private long? GetBlockNumberFromBlockNumberDb(Keccak blockHash)

@@ -15,7 +15,7 @@ public interface IBlockStore
 {
     void Insert(Block block);
     void Delete(long blockNumber, Keccak blockHash);
-    Block Get(long blockNumber, Keccak blockHash, bool shouldCache = true);
+    Block? Get(long blockNumber, Keccak blockHash, bool shouldCache = true);
     ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Keccak blockHash);
     void Cache(Block block);
 

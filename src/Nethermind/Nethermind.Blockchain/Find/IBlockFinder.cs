@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Find
 
         Block? Head { get; }
 
-        Block? FindBlock(Keccak blockHash, BlockTreeLookupOptions options);
+        Block? FindBlock(Keccak blockHash, BlockTreeLookupOptions options, long? blockNumber = null);
 
         Block? FindBlock(long blockNumber, BlockTreeLookupOptions options);
 
@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Find
         /// <returns><value>True</value> if part of the canonical chain, otherwise <value>False</value></returns>
         bool IsMainChain(Keccak blockHash);
 
-        public Block? FindBlock(Keccak blockHash) => FindBlock(blockHash, BlockTreeLookupOptions.None);
+        public Block? FindBlock(Keccak blockHash, long? blockNumber = null) => FindBlock(blockHash, BlockTreeLookupOptions.None, blockNumber);
 
         public Block? FindBlock(long blockNumber) => FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
 
