@@ -4,6 +4,7 @@
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
+using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.Init.Snapshot;
 
