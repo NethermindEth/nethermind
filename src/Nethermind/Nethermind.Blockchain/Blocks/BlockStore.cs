@@ -64,9 +64,9 @@ public class BlockStore : IBlockStore
 
     public void Delete(long blockNumber, Keccak blockHash)
     {
-        _blockDb.Remove(blockHash.Bytes);
-        _blockDb.Delete(blockNumber, blockHash);
         _blockCache.Delete(blockHash);
+        _blockDb.Delete(blockNumber, blockHash);
+        _blockDb.Remove(blockHash.Bytes);
     }
 
     public Block? Get(long blockNumber, Keccak blockHash, bool shouldCache = false)

@@ -293,8 +293,8 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
 
-            _headerStore.InsertBlockNumber(block.Hash, block.Number);
             _blockStore.Insert(block);
+            _headerStore.InsertBlockNumber(block.Hash, block.Number);
 
             bool saveHeader = (insertBlockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0;
             if (saveHeader)
