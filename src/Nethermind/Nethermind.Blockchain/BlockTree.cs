@@ -783,7 +783,7 @@ namespace Nethermind.Blockchain
                 }
 
                 if (_logger.IsInfo) _logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
-                _blockStore.Delete(currentHash);
+                _blockStore.Delete(currentNumber, currentHash);
                 _headerStore.Delete(currentHash);
 
                 if (nextHash is null)
@@ -1292,7 +1292,10 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            Block block = _blockStore.Get(blockHash, shouldCache: false);
+            BlockHeader header = FindHeader(blockHash, options);
+            if (header == null) return null;
+
+            Block block = _blockStore.Get(header.Number, blockHash, shouldCache: false);
             if (block is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
@@ -1539,7 +1542,7 @@ namespace Nethermind.Blockchain
                     {
                         Keccak blockHash = blockInfo.BlockHash;
                         _blockInfoDb.Delete(blockHash);
-                        _blockStore.Delete(blockHash);
+                        _blockStore.Delete(i, blockHash);
                         _headerStore.Delete(blockHash);
                     }
                 }

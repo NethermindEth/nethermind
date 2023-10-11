@@ -14,9 +14,9 @@ namespace Nethermind.Blockchain.Blocks;
 public interface IBlockStore
 {
     void Insert(Block block);
-    void Delete(Keccak blockHash);
-    Block Get(Keccak blockHash, bool shouldCache = true);
-    ReceiptRecoveryBlock? GetReceiptRecoveryBlock(Keccak blockHash);
+    void Delete(long blockNumber, Keccak blockHash);
+    Block Get(long blockNumber, Keccak blockHash, bool shouldCache = true);
+    ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Keccak blockHash);
     void Cache(Block block);
 
 

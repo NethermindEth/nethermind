@@ -178,7 +178,8 @@ namespace Nethermind.Db
             return Get(db, hash, dbKey, decoder, cache, shouldCache);
         }
 
-        public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, LruCache<ValueKeccak, TItem> cache = null, bool shouldCache = true) where TItem : class
+        public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder,
+            LruCache<ValueKeccak, TItem> cache = null, bool shouldCache = true) where TItem : class
         {
             return Get(db, key, key.Bytes, decoder, cache, shouldCache);
         }
