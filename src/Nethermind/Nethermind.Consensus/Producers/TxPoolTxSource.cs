@@ -47,8 +47,8 @@ namespace Nethermind.Consensus.Producers
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
             long blockNumber = parent.Number + 1;
-            IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(blockNumber);
-            UInt256 baseFee = BaseFeeCalculator.Calculate(parent, specFor1559);
+            IReleaseSpec spec = _specProvider.GetSpec(parent);
+            UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
             IDictionary<Address, Transaction[]> pendingBlobTransactionsEquivalences = _transactionPool.GetPendingLightBlobTransactionsBySender();
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Producers
             int selectedTransactions = 0;
             using ArrayPoolList<Transaction> selectedBlobTxs = new(Eip4844Constants.MaxBlobsPerBlock);
 
-            SelectBlobTransactions(blobTransactions, parent, selectedBlobTxs);
+            SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
 
             foreach (Transaction tx in transactions)
             {
@@ -117,7 +117,7 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, ArrayPoolList<Transaction> selectedBlobTxs)
+        private void SelectBlobTransactions(IEnumerable<Transaction> blobTransactions, BlockHeader parent, IReleaseSpec spec, ArrayPoolList<Transaction> selectedBlobTxs)
         {
             int checkedBlobTransactions = 0;
             int selectedBlobTransactions = 0;
@@ -141,7 +141,7 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                if (blobGasPrice.IsZero && !TryUpdateBlobGasPrice(blobTx, parent, out blobGasPrice))
+                if (blobGasPrice.IsZero && !TryUpdateBlobGasPrice(blobTx, parent, spec, out blobGasPrice))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
                     continue;
@@ -179,25 +179,28 @@ namespace Nethermind.Consensus.Producers
                 fullBlobTx = blobTx;
                 return true;
             }
+
             fullBlobTx = null;
             return blobTx.Hash is not null && _transactionPool.TryGetPendingBlobTransaction(blobTx.Hash, out fullBlobTx);
         }
 
-        private bool TryUpdateBlobGasPrice(Transaction lightBlobTx, BlockHeader parent, out UInt256 blobGasPrice)
+        private bool TryUpdateBlobGasPrice(Transaction lightBlobTx, BlockHeader parent, IReleaseSpec spec, out UInt256 blobGasPrice)
         {
-            ulong? excessDataGas = BlobGasCalculator.CalculateExcessBlobGas(parent, _specProvider.GetSpec(parent));
+            ulong? excessDataGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             if (excessDataGas is null)
             {
                 if (_logger.IsTrace) _logger.Trace($"Declining {lightBlobTx.ToShortString()}, the specification is not configured to handle shard blob transactions.");
                 blobGasPrice = UInt256.Zero;
                 return false;
             }
+
             if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(excessDataGas.Value, out blobGasPrice))
             {
                 if (_logger.IsTrace) _logger.Trace($"Declining {lightBlobTx.ToShortString()}, failed to calculate data gas price.");
                 blobGasPrice = UInt256.Zero;
                 return false;
             }
+
             return true;
         }
 
