@@ -196,7 +196,7 @@ internal class BlobSender
 
                 Console.WriteLine("Result:" + result);
 
-                if (result!=null)
+                if (result != null)
                     signers[signerIndex] = new(signer, nonce + 1);
 
                 if (blockResult != null && waitForBlock)

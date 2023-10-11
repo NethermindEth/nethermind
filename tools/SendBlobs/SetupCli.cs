@@ -89,15 +89,8 @@ internal static class SetupCli
         ReadOnlySpan<char> chars = options.AsSpan();
         var result = new List<(int, int, string)>();
 
-        ReadOnlySpan<char> SplitToNext(ReadOnlySpan<char> line, char separator, bool returnRemainder = false){
-            int i = line.IndexOf(separator);
-            if (i == -1)
-                return returnRemainder ? ReadOnlySpan<char>.Empty : line;    
-            return returnRemainder ? line[(i+1)..] : line[..i];
-        };
-
         ReadOnlySpan<char> nextComma;
-        int offSet = 0; 
+        int offSet = 0;
         while (true)
         {
             nextComma = SplitToNext(chars[offSet..], ',');
@@ -117,6 +110,14 @@ internal static class SetupCli
             }
         }
         return result.ToArray();
+    }
+
+    private static ReadOnlySpan<char> SplitToNext(ReadOnlySpan<char> line, char separator, bool returnRemainder = false)
+    {
+        int i = line.IndexOf(separator);
+        if (i == -1)
+            return returnRemainder ? ReadOnlySpan<char>.Empty : line;
+        return returnRemainder ? line[(i + 1)..] : line[..i];
     }
 
     public static void SetupDistributeCommand(CommandLineApplication app)
@@ -189,6 +190,7 @@ internal static class SetupCli
             });
         });
     }
+
     public static INodeManager InitNodeManager(string rpcUrl, ILogger logger)
     {
         ICliConsole cliConsole = new CliConsole();
