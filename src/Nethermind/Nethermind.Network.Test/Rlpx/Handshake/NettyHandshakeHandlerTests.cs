@@ -68,6 +68,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             if (handshakeRole == HandshakeRole.Recipient)
             {
                 _session.Node.Throws(new InvalidOperationException("property throw on incoming connection before handshake"));
+                _session.RemoteNodeId.Returns((PublicKey)null); // Incoming connection have null remote node id until handshake finished
             }
             return new NettyHandshakeHandler(_serializationService, _handshakeService, _session, handshakeRole, _logger, _group, TimeSpan.Zero);
         }
