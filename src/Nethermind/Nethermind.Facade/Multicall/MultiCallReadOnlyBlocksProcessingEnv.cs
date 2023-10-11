@@ -3,6 +3,8 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
@@ -36,9 +38,16 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
         ISpecProvider specProvider,
         ILogManager? logManager = null)
     {
-        ReadOnlyDbProvider dbProvider = new(readOnlyDbProvider, true);
+        IReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(readOnlyDbProvider, true);
         TrieStore trieStore = new(readOnlyDbProvider.StateDb, logManager);
-        BlockTree blockTree = new(readOnlyDbProvider,
+
+        IBlockStore blockStore = new BlockStore(dbProvider.BlocksDb);
+        IHeaderStore headerStore = new HeaderStore(dbProvider.HeadersDb, dbProvider.BlockNumbersDb);
+
+        BlockTree blockTree = new(blockStore,
+            headerStore,
+            dbProvider.BlockInfosDb,
+            dbProvider.MetadataDb,
             new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb),
             specProvider,
             NullBloomStorage.Instance,

@@ -6,7 +6,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -142,14 +144,22 @@ public class TestBlockchain : IDisposable
         ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
-
-        IDb blockDb = DbProvider.BlocksDb;
-        IDb headerDb = DbProvider.HeadersDb;
         IDb blockInfoDb = DbProvider.BlockInfosDb;
         IDb metadataDb = DbProvider.MetadataDb;
         SyncConfig syncConfig = new();
-        BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, metadataDb, new ChainLevelInfoRepository(blockInfoDb),
-            SpecProvider, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+
+        IBlockStore blockStore = new BlockStore(DbProvider.BlocksDb);
+        IHeaderStore headerStore = new HeaderStore(DbProvider.HeadersDb, DbProvider.BlockNumbersDb);
+
+        BlockTree = new BlockTree(blockStore,
+            headerStore,
+            blockInfoDb,
+            metadataDb,
+            new ChainLevelInfoRepository(blockInfoDb),
+            SpecProvider,
+            NullBloomStorage.Instance,
+            syncConfig,
+            LimboLogs.Instance);
 
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
         TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
